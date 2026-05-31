@@ -1,6 +1,6 @@
 # surgeist
 
-This package name is reserved.
+This package is in early development.
 
 ## License
 

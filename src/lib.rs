@@ -1,4 +1,4 @@
-//! Reserved package name.
+//! Early-stage package under active development.
 
-/// The reserved package name.
+/// The package name.
 pub const NAME: &str = "surgeist";
