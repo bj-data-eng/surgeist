@@ -1,0 +1,15 @@
+[package]
+name = "surgeist"
+version = "0.0.1"
+edition = "2021"
+license = "MIT"
+description = "Reserved package name."
+repository = "https://github.com/bj-data-eng/surgeist"
+readme = "README.md"
+rust-version = "1.75"
+
+[lib]
+name = "surgeist"
+path = "src/lib.rs"
+
+[workspace]
