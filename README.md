@@ -41,6 +41,18 @@ Run the integrated workspace check:
 cargo check --workspace
 ```
 
+## API Artifact
+
+The committed API coordination artifact lives at `api/public-api.txt`.
+Refresh it explicitly when the public API changes:
+
+```sh
+cargo run --manifest-path api/generator/Cargo.toml
+```
+
+API refresh tooling is command-only. Do not wire it into normal `cargo test`
+runs.
+
 ## License
 
 Licensed under the MIT license. See [LICENSE](LICENSE).
