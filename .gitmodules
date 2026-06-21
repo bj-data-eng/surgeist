@@ -1,0 +1,27 @@
+[submodule "crates/surgeist-css"]
+	path = crates/surgeist-css
+	url = https://github.com/bj-data-eng/surgeist-css.git
+[submodule "crates/surgeist-dialog"]
+	path = crates/surgeist-dialog
+	url = https://github.com/bj-data-eng/surgeist-dialog.git
+[submodule "crates/surgeist-layout"]
+	path = crates/surgeist-layout
+	url = https://github.com/bj-data-eng/surgeist-layout.git
+[submodule "crates/surgeist-render"]
+	path = crates/surgeist-render
+	url = https://github.com/bj-data-eng/surgeist-render.git
+[submodule "crates/surgeist-retained"]
+	path = crates/surgeist-retained
+	url = https://github.com/bj-data-eng/surgeist-retained.git
+[submodule "crates/surgeist-shape"]
+	path = crates/surgeist-shape
+	url = https://github.com/bj-data-eng/surgeist-shape.git
+[submodule "crates/surgeist-style"]
+	path = crates/surgeist-style
+	url = https://github.com/bj-data-eng/surgeist-style.git
+[submodule "crates/surgeist-text"]
+	path = crates/surgeist-text
+	url = https://github.com/bj-data-eng/surgeist-text.git
+[submodule "crates/surgeist-window"]
+	path = crates/surgeist-window
+	url = https://github.com/bj-data-eng/surgeist-window.git

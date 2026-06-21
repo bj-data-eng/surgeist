@@ -1,16 +1,48 @@
 [package]
 name = "surgeist"
-version = "0.0.1"
-edition = "2021"
+version = "0.1.0"
+edition = "2024"
 license = "MIT"
-description = "Early-stage package under active development."
+description = "Facade crate and coordination workspace for the Surgeist UI framework."
 repository = "https://github.com/bj-data-eng/surgeist"
 readme = "README.md"
-rust-version = "1.75"
+rust-version = "1.89"
 exclude = ["Cargo.lock"]
 
 [lib]
 name = "surgeist"
 path = "src/lib.rs"
 
+[dependencies]
+surgeist-css = { path = "crates/surgeist-css", version = "=0.1.0" }
+surgeist-dialog = { path = "crates/surgeist-dialog", version = "=0.1.0" }
+surgeist-layout = { path = "crates/surgeist-layout", version = "=0.1.0" }
+surgeist-render = { path = "crates/surgeist-render", version = "=0.1.0" }
+surgeist-retained = { path = "crates/surgeist-retained", version = "=0.1.0" }
+surgeist-shape = { path = "crates/surgeist-shape", version = "=0.1.0" }
+surgeist-style = { path = "crates/surgeist-style", version = "=0.1.0" }
+surgeist-text = { path = "crates/surgeist-text", version = "=0.1.0" }
+surgeist-window = { path = "crates/surgeist-window", version = "=0.1.0" }
+
+[features]
+default = []
+dialog-system = ["surgeist-dialog/system"]
+render-web = ["surgeist-render/render-web"]
+render-window = ["surgeist-render/render-window"]
+text-accessibility = ["surgeist-text/text-accessibility"]
+text-render = ["surgeist-text/text-render"]
+window-accessibility = ["surgeist-window/accessibility"]
+
 [workspace]
+resolver = "3"
+members = [
+    "crates/surgeist-css",
+    "crates/surgeist-dialog",
+    "crates/surgeist-layout",
+    "crates/surgeist-render",
+    "crates/surgeist-retained",
+    "crates/surgeist-shape",
+    "crates/surgeist-style",
+    "crates/surgeist-text",
+    "crates/surgeist-window",
+]
