@@ -3,7 +3,7 @@ name = "surgeist"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-description = "Facade crate and coordination workspace for the Surgeist UI framework."
+description = "Rust-native UI authoring toolkit for retained, CSS-styled document surfaces."
 repository = "https://github.com/bj-data-eng/surgeist"
 readme = "README.md"
 rust-version = "1.89"
@@ -23,15 +23,42 @@ surgeist-shape = { path = "crates/surgeist-shape", version = "=0.1.0" }
 surgeist-style = { path = "crates/surgeist-style", version = "=0.1.0" }
 surgeist-text = { path = "crates/surgeist-text", version = "=0.1.0" }
 surgeist-window = { path = "crates/surgeist-window", version = "=0.1.0" }
+tokio = { version = "=1.48.0", optional = true }
 
 [features]
 default = []
+app-runtime-tokio = ["dep:tokio"]
 dialog-system = ["surgeist-dialog/system"]
 render-web = ["surgeist-render/render-web"]
 render-window = ["surgeist-render/render-window"]
 text-accessibility = ["surgeist-text/text-accessibility"]
 text-render = ["surgeist-text/text-render"]
 window-accessibility = ["surgeist-window/accessibility"]
+
+[dev-dependencies]
+pollster = "=0.4.0"
+proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
+
+[[example]]
+name = "hello-window"
+path = "examples/hello-window.rs"
+
+[[example]]
+name = "render-window"
+path = "examples/render-window.rs"
+required-features = ["render-window"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/bj-data-eng/surgeist"
+rust-version = "1.89"
+
+[workspace.dependencies]
+keyboard-types = "=0.7.0"
+pollster = "=0.4.0"
+surgeist = { path = ".", version = "=0.1.0" }
 
 [workspace]
 resolver = "3"
@@ -45,4 +72,5 @@ members = [
     "crates/surgeist-style",
     "crates/surgeist-text",
     "crates/surgeist-window",
+    "dev",
 ]
