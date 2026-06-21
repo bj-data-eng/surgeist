@@ -102,11 +102,7 @@ Plan cross-crate API changes at the top level, then implement crate-local pieces
 
 API coordination is source-derived only. Do not maintain handwritten API truth tables as authority.
 
-Each crate should expose intentional front-door APIs from `lib.rs` and keep internals private by default.
-
-Each crate owns the exact command used to derive or check its API shape. That command must be documented in the crate's `AGENTS.md`, `README.md`, `justfile`, or equivalent command docs. Workers must run the crate-owned command instead of inventing an ad hoc API report.
-
-The root repo may consume crate-generated API reports to coordinate compatibility, but source and the crate-owned derivation command remain the authority.
+Each crate should expose intentional front-door APIs from `lib.rs`, keep internals private by default, and support generated API shape checks when that tooling exists. The root repo may consume generated API reports, but source remains the source of truth.
 
 Prefer typed commands, events, snapshots, reports, and change sets. Avoid sibling crates reaching through private module paths, broad common crates that become dependency sinks, and accidental cycles introduced for convenience.
 
