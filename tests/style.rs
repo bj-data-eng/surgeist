@@ -2756,13 +2756,23 @@ fn resolver_cache_can_be_cleared_and_skips_unversioned_trees() {
     let model = r::Model::new(root).unwrap();
     let snapshot = model.snapshot();
     let child = snapshot.children(snapshot.root()).unwrap().next().unwrap();
-    let mut unversioned = s::Resolver::new(sheet);
+    let mut retained = s::Resolver::new(sheet.clone());
 
-    unversioned
+    retained
         .resolve(s::Context::new(&snapshot, child).viewport(viewport))
         .unwrap();
-    unversioned
+    retained
         .resolve(s::Context::new(&snapshot, child).viewport(viewport))
+        .unwrap();
+    assert_eq!(retained.cache_hits(), 1);
+
+    let mut unversioned = s::Resolver::new(sheet);
+    let unversioned_tree = UnversionedTree(&tree);
+    unversioned
+        .resolve(s::Context::new(&unversioned_tree, 1).viewport(viewport))
+        .unwrap();
+    unversioned
+        .resolve(s::Context::new(&unversioned_tree, 1).viewport(viewport))
         .unwrap();
     assert_eq!(unversioned.cache_hits(), 0);
 }
@@ -2916,6 +2926,40 @@ impl s::Tree for FixtureTree {
             .position(|sibling| *sibling == id)
             .and_then(|index| index.checked_sub(1))
             .map(|index| siblings[index]))
+    }
+}
+
+struct UnversionedTree<'a>(&'a FixtureTree);
+
+impl s::Tree for UnversionedTree<'_> {
+    type Id = usize;
+
+    fn version_hint(&self) -> Option<u64> {
+        None
+    }
+
+    fn node(&self, id: Self::Id) -> s::Result<s::Node<'_, Self::Id>> {
+        self.0.node(id)
+    }
+
+    fn parent(&self, id: Self::Id, traversal: s::Traversal) -> s::Result<Option<Self::Id>> {
+        self.0.parent(id, traversal)
+    }
+
+    fn children(
+        &self,
+        id: Self::Id,
+        traversal: s::Traversal,
+    ) -> s::Result<impl Iterator<Item = Self::Id> + '_> {
+        self.0.children(id, traversal)
+    }
+
+    fn previous_sibling(
+        &self,
+        id: Self::Id,
+        traversal: s::Traversal,
+    ) -> s::Result<Option<Self::Id>> {
+        self.0.previous_sibling(id, traversal)
     }
 }
 
