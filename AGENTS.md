@@ -154,12 +154,36 @@ Run focused checks before committing. Run broader root checks before updating su
 
 ## Subagents
 
-Use subagents for bounded work and clean reviews.
+Top-level coordinators are coordinators first. For implementation work, they
+assign, verify, reconcile, and integrate; they do not default to doing the
+code edit themselves.
+
+For any requested code change, the top-level coordinator must follow this
+sequence unless the user explicitly waives it:
+
+1. Identify the owning repo or crate lane.
+2. Assign one implementation worker to that lane.
+3. Wait for the worker's result.
+4. Assign a separate reviewer to inspect the worker's changes.
+5. Reconcile the worker and reviewer findings.
+6. Run the relevant root-level integration checks only after crate-local work
+   is complete.
+7. Commit only root-owned integration changes from the top-level repo, such as
+   submodule pointer updates, top-level plans, requirements, or facade wiring.
+
+The coordinator may directly edit root-only planning, documentation, workflow,
+or integration files when the user explicitly asks for a top-level repo change.
+If implementation code must change in a crate, use that crate's Codex project
+or a worker assigned to that crate lane.
+
+No coordinator may declare implementation complete until a separate reviewer
+has reviewed the changed code, or the user explicitly waives review.
 
 - Assign one clear repo/crate lane per worker.
 - Tell workers they are not alone in the codebase and must not revert others' work.
 - Do not duplicate a completed subagent's investigation. Review, verify, reconcile, and act on it.
-- Use clean reviewers for boundary changes, API changes, and nontrivial cross-crate work.
+- Use clean reviewers for code changes, boundary changes, API changes, and
+  nontrivial cross-crate work.
 
 ## Editing And Git
 
