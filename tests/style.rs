@@ -208,9 +208,9 @@ fn concise_style_helpers_and_rule_conditions_are_public_front_doors() {
     let font_size = s::Length::px(15.0);
     let condition = s::Condition::viewport(s::Viewport::min_width(640.0));
     let declarations = s::Declarations::new()
-        .margin(margin)
+        .margin(margin.clone())
         .opacity(0.65)
-        .font_size(font_size)
+        .font_size(font_size.clone())
         .cursor(s::Cursor::Pointer)
         .pointer_events(s::PointerEvents::None);
     let rule = s::Rule::new(s::Selector::any(), declarations.clone()).when([condition]);
@@ -218,7 +218,7 @@ fn concise_style_helpers_and_rule_conditions_are_public_front_doors() {
     assert_eq!(s::color(0x336699cc), s::Color::rgba(0.2, 0.4, 0.6, 0.8));
     assert_eq!(
         declarations.get(s::Property::Margin),
-        Some(&s::Value::Edges(margin))
+        Some(&s::Value::Edges(margin.clone()))
     );
     assert_eq!(declarations.margin_edges(), Some(margin));
     assert_eq!(declarations.opacity_number(), Some(0.65));
@@ -485,7 +485,7 @@ fn grid_flow_tolerance_length_accepts_only_px_lengths() {
     ] {
         let error = s::Declaration::try_new(
             s::Property::GridFlowTolerance,
-            s::Value::GridFlowTolerance(tolerance),
+            s::Value::GridFlowTolerance(tolerance.clone()),
         )
         .unwrap_err();
         assert_eq!(error.code(), s::ErrorCode::InvalidValue, "{tolerance:?}");
@@ -2010,25 +2010,28 @@ fn declarations_and_resolved_expose_typed_accessors_for_property_groups() {
     let local = s::Declarations::new()
         .width(s::Length::px(80.0))
         .height(s::Length::percent(50.0))
-        .border_width(border)
+        .border_width(border.clone())
         .border_color(red())
         .visibility(s::Visibility::Hidden)
         .transform(transform.clone())
-        .transform_origin(transform_origin)
+        .transform_origin(transform_origin.clone())
         .transition_properties(transition_properties.clone())
         .transition_duration(125.0)
         .transition_delay(25.0);
 
     assert_eq!(local.width_length(), Some(s::Length::px(80.0)));
     assert_eq!(local.height_length(), Some(s::Length::percent(50.0)));
-    assert_eq!(local.border_width_edges(), Some(border));
+    assert_eq!(local.border_width_edges(), Some(border.clone()));
     assert_eq!(
         local.get(s::Property::BorderColor),
         Some(&s::Value::Color(red()))
     );
     assert_eq!(local.visibility_state(), Some(s::Visibility::Hidden));
     assert_eq!(local.transform_value(), Some(&transform));
-    assert_eq!(local.transform_origin_size(), Some(transform_origin));
+    assert_eq!(
+        local.transform_origin_size(),
+        Some(transform_origin.clone())
+    );
     assert_eq!(
         local.transition_property_list(),
         Some(transition_properties.as_slice())
