@@ -44,6 +44,7 @@ surgeist/
     surgeist-retained/
     surgeist-shape/
     surgeist-style/
+    surgeist-test/
     surgeist-text/
     surgeist-window/
 ```
@@ -81,6 +82,9 @@ crates, but implementation workers should stay in their assigned project.
 - root `surgeist`: thin facade, integration surface, and public composition layer.
 - `surgeist-css`: strict CSS parsing and lowering into typed style data.
 - `surgeist-style`: style model, resolution, and visual/layout property contracts.
+- `surgeist-test`: shared test harnesses, fixture metadata, coverage and test
+  quality coordination, integration tests, e2e tests, system tests, and
+  integration verification support.
 - `surgeist-layout`: layout algorithms, layout contracts, oracle/parity tests,
   and fixture tooling.
 - `surgeist-retained`: retained identity, retained state, tree identity, and
@@ -117,6 +121,7 @@ surgeist-css -> surgeist-style
 surgeist-style -> surgeist-layout, surgeist-retained, surgeist-text
 surgeist-render -> surgeist-shape, surgeist-window optional
 surgeist-text -> surgeist-render optional
+surgeist-test may depend on production crates for verification
 ```
 
 Plan cross-crate API changes at the top level, then implement crate-local pieces

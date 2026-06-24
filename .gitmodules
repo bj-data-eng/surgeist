@@ -25,3 +25,6 @@
 [submodule "crates/surgeist-window"]
 	path = crates/surgeist-window
 	url = https://github.com/bj-data-eng/surgeist-window.git
+[submodule "crates/surgeist-test"]
+	path = crates/surgeist-test
+	url = https://github.com/bj-data-eng/surgeist-test.git

@@ -70,6 +70,7 @@ members = [
     "crates/surgeist-retained",
     "crates/surgeist-shape",
     "crates/surgeist-style",
+    "crates/surgeist-test",
     "crates/surgeist-text",
     "crates/surgeist-window",
     "dev",
