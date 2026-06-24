@@ -137,14 +137,14 @@ impl DevWindow {
         self.opened = true;
     }
 
-    fn attach_surface(&mut self, handle: Option<window::Handle>, state: &window::State) {
+    fn attach_surface(&mut self, handle: Option<window::Handle>, state: &window::WindowSnapshot) {
         if !self.mode.needs_surface() {
             let facts = facts_from_state(state);
             self.windows.insert(
-                state.id,
+                state.id(),
                 LiveWindow {
                     surface: None,
-                    metrics: state.metrics.clone(),
+                    metrics: state.metrics().clone(),
                     facts,
                     resizing: false,
                 },
@@ -168,10 +168,10 @@ impl DevWindow {
             )
             .expect("native render surface should attach");
         self.windows.insert(
-            state.id,
+            state.id(),
             LiveWindow {
                 surface: Some(surface),
-                metrics: state.metrics.clone(),
+                metrics: state.metrics().clone(),
                 facts,
                 resizing: false,
             },
@@ -257,7 +257,7 @@ impl Handler for DevWindow {
 
     fn ready(&mut self, win: &mut window::Ready<'_>) -> Result<()> {
         self.state
-            .push_event(format!("created {}", win.state().title));
+            .push_event(format!("created {}", win.state().title()));
         let handle = self
             .mode
             .needs_surface()
@@ -475,14 +475,12 @@ fn should_log_input(input: &InputEvent) -> bool {
     )
 }
 
-fn facts_from_state(state: &window::State) -> WindowFacts {
+fn facts_from_state(state: &window::WindowSnapshot) -> WindowFacts {
+    let metrics = state.metrics();
     WindowFacts {
-        logical_size: render::Size::new(
-            state.metrics.logical_size.width,
-            state.metrics.logical_size.height,
-        ),
-        scale_factor: state.metrics.scale_factor,
-        focused: state.focused,
+        logical_size: render::Size::new(metrics.logical_size.width, metrics.logical_size.height),
+        scale_factor: metrics.scale_factor,
+        focused: state.is_focused(),
     }
 }
 
