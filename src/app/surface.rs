@@ -206,32 +206,40 @@ impl UiSurface {
     }
 
     pub fn ready(&mut self) {
-        self.lifecycle = SurfaceLifecycle::Ready;
+        self.transition(SurfaceLifecycle::Ready);
     }
 
     pub fn resized(&mut self, viewport: window::Size) {
+        if self.lifecycle.is_terminal() {
+            return;
+        }
+
         self.viewport = viewport;
-        self.lifecycle = SurfaceLifecycle::Resized;
+        self.transition(SurfaceLifecycle::Resized);
         self.invalidate(SurfaceInvalidation::ViewportChanged);
     }
 
     pub fn hidden(&mut self) {
-        self.lifecycle = SurfaceLifecycle::Hidden;
+        self.transition(SurfaceLifecycle::Hidden);
     }
 
     pub fn occluded(&mut self) {
-        self.lifecycle = SurfaceLifecycle::Occluded;
+        self.transition(SurfaceLifecycle::Occluded);
     }
 
     pub fn suspended(&mut self) {
-        self.lifecycle = SurfaceLifecycle::Suspended;
+        self.transition(SurfaceLifecycle::Suspended);
     }
 
     pub fn closing(&mut self) {
-        self.lifecycle = SurfaceLifecycle::Closing;
+        self.transition(SurfaceLifecycle::Closing);
     }
 
     pub fn closed(&mut self) {
+        if self.lifecycle == SurfaceLifecycle::Destroyed {
+            return;
+        }
+
         self.lifecycle = SurfaceLifecycle::Closed;
     }
 
@@ -243,6 +251,8 @@ impl UiSurface {
         self.retained = root.retained_model();
         self.retained_generation += 1;
         self.root = root;
+        self.hovered = None;
+        self.focused = None;
         self.invalidate(SurfaceInvalidation::RootReplaced);
     }
 
@@ -268,5 +278,18 @@ impl UiSurface {
 
     pub fn set_scroll_offset(&mut self, scroll_offset: window::Point) {
         self.scroll_offset = scroll_offset;
+    }
+
+    fn transition(&mut self, lifecycle: SurfaceLifecycle) {
+        if !self.lifecycle.is_terminal() {
+            self.lifecycle = lifecycle;
+        }
+    }
+}
+
+impl SurfaceLifecycle {
+    #[must_use]
+    const fn is_terminal(self) -> bool {
+        matches!(self, Self::Closed | Self::Destroyed)
     }
 }

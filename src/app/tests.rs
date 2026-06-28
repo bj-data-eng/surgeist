@@ -138,6 +138,59 @@ fn replacing_root_creates_distinct_retained_model() {
 }
 
 #[test]
+fn replacing_root_clears_retained_focus_and_hover_state() {
+    let mut surface = UiSurface::new(
+        SurfaceId::from_u64(1),
+        surgeist::window::Id::from_u64(20),
+        WindowRoot::new(RootId::new("a")),
+    );
+    let retained_root = surface.retained().root().retained_id();
+    surface.set_hovered(Some(retained_root));
+    surface.set_focused(Some(retained_root));
+
+    surface.replace_root(WindowRoot::new(RootId::new("b")));
+
+    assert_eq!(surface.hovered(), None);
+    assert_eq!(surface.focused(), None);
+}
+
+#[test]
+fn terminal_lifecycle_states_are_not_revived_by_native_updates() {
+    let mut closed = UiSurface::new(
+        SurfaceId::from_u64(1),
+        surgeist::window::Id::from_u64(10),
+        WindowRoot::new(RootId::new("closed")),
+    );
+
+    closed.closed();
+    closed.ready();
+    closed.resized(surgeist::window::size(640, 480));
+    closed.hidden();
+    closed.occluded();
+    closed.suspended();
+    closed.closing();
+    assert_eq!(closed.lifecycle(), SurfaceLifecycle::Closed);
+    closed.destroyed();
+    assert_eq!(closed.lifecycle(), SurfaceLifecycle::Destroyed);
+
+    let mut destroyed = UiSurface::new(
+        SurfaceId::from_u64(2),
+        surgeist::window::Id::from_u64(11),
+        WindowRoot::new(RootId::new("destroyed")),
+    );
+
+    destroyed.destroyed();
+    destroyed.ready();
+    destroyed.resized(surgeist::window::size(320, 240));
+    destroyed.hidden();
+    destroyed.occluded();
+    destroyed.suspended();
+    destroyed.closing();
+    destroyed.closed();
+    assert_eq!(destroyed.lifecycle(), SurfaceLifecycle::Destroyed);
+}
+
+#[test]
 fn separate_surfaces_do_not_share_retained_or_invalidations() {
     let mut one = UiSurface::new(
         SurfaceId::from_u64(1),
