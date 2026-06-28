@@ -107,31 +107,31 @@ impl ServiceRegistration {
     }
 
     #[must_use]
-    pub fn scope(mut self, scope: AppScope) -> Self {
+    pub fn with_scope(mut self, scope: AppScope) -> Self {
         self.scope = scope;
         self
     }
 
     #[must_use]
-    pub const fn mailbox(mut self, mailbox: MailboxPolicy) -> Self {
+    pub const fn with_mailbox_policy(mut self, mailbox: MailboxPolicy) -> Self {
         self.mailbox = mailbox;
         self
     }
 
     #[must_use]
-    pub const fn startup(mut self, startup: ServiceStartup) -> Self {
+    pub const fn with_startup(mut self, startup: ServiceStartup) -> Self {
         self.startup = startup;
         self
     }
 
     #[must_use]
-    pub const fn shutdown(mut self, shutdown: ServiceShutdown) -> Self {
+    pub const fn with_shutdown(mut self, shutdown: ServiceShutdown) -> Self {
         self.shutdown = shutdown;
         self
     }
 
     #[must_use]
-    pub const fn restart(mut self, restart: ServiceRestart) -> Self {
+    pub const fn with_restart(mut self, restart: ServiceRestart) -> Self {
         self.restart = restart;
         self
     }
@@ -142,27 +142,27 @@ impl ServiceRegistration {
     }
 
     #[must_use]
-    pub const fn scope_ref(&self) -> &AppScope {
+    pub const fn scope(&self) -> &AppScope {
         &self.scope
     }
 
     #[must_use]
-    pub const fn mailbox_policy(&self) -> &MailboxPolicy {
+    pub const fn mailbox(&self) -> &MailboxPolicy {
         &self.mailbox
     }
 
     #[must_use]
-    pub const fn startup_policy(&self) -> ServiceStartup {
+    pub const fn startup(&self) -> ServiceStartup {
         self.startup
     }
 
     #[must_use]
-    pub const fn shutdown_policy(&self) -> ServiceShutdown {
+    pub const fn shutdown(&self) -> ServiceShutdown {
         self.shutdown
     }
 
     #[must_use]
-    pub const fn restart_policy(&self) -> ServiceRestart {
+    pub const fn restart(&self) -> ServiceRestart {
         self.restart
     }
 }

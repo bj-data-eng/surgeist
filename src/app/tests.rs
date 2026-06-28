@@ -250,19 +250,23 @@ fn cancellation_status_is_honest_until_terminal_event_arrives() {
 #[test]
 fn service_registration_exposes_mailbox_policy() {
     let registration = ServiceRegistration::new(ServiceId::new("jsonrpc"))
-        .scope(AppScope::app())
-        .mailbox(MailboxPolicy::bounded(4).drop_oldest().observe_overflow())
-        .startup(ServiceStartup::Lazy)
-        .shutdown(ServiceShutdown::DrainThenStop);
+        .with_scope(AppScope::app())
+        .with_mailbox_policy(MailboxPolicy::bounded(4).drop_oldest().observe_overflow())
+        .with_startup(ServiceStartup::Lazy)
+        .with_shutdown(ServiceShutdown::DrainThenStop)
+        .with_restart(ServiceRestart::OnFailure);
 
     assert_eq!(registration.id(), &ServiceId::new("jsonrpc"));
-    assert_eq!(registration.scope_ref(), &AppScope::app());
-    assert_eq!(registration.mailbox_policy().capacity(), 4);
+    assert_eq!(registration.scope(), &AppScope::app());
+    assert_eq!(registration.mailbox().capacity(), 4);
     assert_eq!(
-        registration.mailbox_policy().overflow(),
+        registration.mailbox().overflow(),
         MailboxOverflow::DropOldest
     );
-    assert!(registration.mailbox_policy().observes_overflow());
+    assert!(registration.mailbox().observes_overflow());
+    assert_eq!(registration.startup(), ServiceStartup::Lazy);
+    assert_eq!(registration.shutdown(), ServiceShutdown::DrainThenStop);
+    assert_eq!(registration.restart(), ServiceRestart::OnFailure);
 }
 
 #[test]
