@@ -301,6 +301,10 @@ impl DiagnosticLog {
 
     pub fn push(&mut self, diagnostic: Diagnostic) {
         *self.counts.entry(diagnostic.code().clone()).or_default() += 1;
+        if self.capacity == 0 {
+            self.dropped_oldest += 1;
+            return;
+        }
         if self.entries.len() == self.capacity {
             self.entries.pop_front();
             self.dropped_oldest += 1;

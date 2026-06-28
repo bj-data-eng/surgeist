@@ -75,3 +75,17 @@ fn diagnostics_keep_recent_entries_and_counters() {
     assert_eq!(entries[0].queue().unwrap().capacity(), 128);
     assert_eq!(entries[0].queue().unwrap().age_ms(), Some(17));
 }
+
+#[test]
+fn zero_capacity_diagnostic_log_counts_without_retaining_entries() {
+    let mut log = DiagnosticLog::with_capacity(0);
+    log.push(Diagnostic::warning(
+        DiagnosticCode::QUEUE_OVERFLOW,
+        "queue disabled",
+        InputProvenance::system(),
+    ));
+
+    assert!(log.entries().is_empty());
+    assert_eq!(log.dropped_oldest(), 1);
+    assert_eq!(log.count(&DiagnosticCode::QUEUE_OVERFLOW), 1);
+}
