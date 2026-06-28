@@ -148,7 +148,7 @@ impl<T> AppInput<T> {
 Add `effect.rs` with this public shape:
 
 ```rust
-use std::{any::Any, borrow::Cow, sync::Arc};
+use std::borrow::Cow;
 
 use super::{AppScope, Diagnostic, SurfaceId};
 
@@ -200,78 +200,45 @@ impl EffectKindId {
     }
 }
 
-#[derive(Clone)]
-pub struct EffectPayload {
-    value: Arc<dyn Any + Send + Sync>,
-}
-
-impl std::fmt::Debug for EffectPayload {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("EffectPayload").finish_non_exhaustive()
-    }
-}
-
-impl EffectPayload {
-    #[must_use]
-    pub fn new<T>(value: T) -> Self
-    where
-        T: Any + Send + Sync + 'static,
-    {
-        Self { value: Arc::new(value) }
-    }
-
-    #[must_use]
-    pub fn downcast_ref<T>(&self) -> Option<&T>
-    where
-        T: Any + Send + Sync + 'static,
-    {
-        self.value.downcast_ref::<T>()
-    }
+#[derive(Clone, Debug)]
+pub struct AppEffect {
+    payload: AppEffectPayload,
 }
 
 #[derive(Clone, Debug)]
-pub struct AppEffect {
-    kind: EffectKindId,
-    payload: EffectPayload,
+pub enum AppEffectPayload {
+    RequestRedraw(RequestRedrawEffect),
+    Persist(PersistEffect),
+    Diagnostic(DiagnosticEffect),
 }
 
 impl AppEffect {
     #[must_use]
-    pub fn new(kind: EffectKindId, payload: EffectPayload) -> Self {
-        Self { kind, payload }
-    }
-
-    #[must_use]
     pub fn request_redraw(target: RedrawTarget) -> Self {
-        Self::new(
-            EffectKindId::REQUEST_REDRAW,
-            EffectPayload::new(RequestRedrawEffect { target }),
-        )
+        Self { payload: AppEffectPayload::RequestRedraw(RequestRedrawEffect { target }) }
     }
 
     #[must_use]
     pub fn persist(key: impl Into<String>, scope: AppScope) -> Self {
-        Self::new(
-            EffectKindId::PERSIST,
-            EffectPayload::new(PersistEffect { key: key.into(), scope }),
-        )
+        Self { payload: AppEffectPayload::Persist(PersistEffect { key: key.into(), scope }) }
     }
 
     #[must_use]
     pub fn diagnostic(diagnostic: Diagnostic) -> Self {
-        Self::new(
-            EffectKindId::EMIT_DIAGNOSTIC,
-            EffectPayload::new(DiagnosticEffect { diagnostic }),
-        )
+        Self { payload: AppEffectPayload::Diagnostic(DiagnosticEffect { diagnostic }) }
     }
 
     #[must_use]
     pub fn kind(&self) -> &EffectKindId {
-        &self.kind
+        match &self.payload {
+            AppEffectPayload::RequestRedraw(_) => &EffectKindId::REQUEST_REDRAW,
+            AppEffectPayload::Persist(_) => &EffectKindId::PERSIST,
+            AppEffectPayload::Diagnostic(_) => &EffectKindId::EMIT_DIAGNOSTIC,
+        }
     }
 
     #[must_use]
-    pub fn payload(&self) -> &EffectPayload {
+    pub fn payload(&self) -> &AppEffectPayload {
         &self.payload
     }
 }
@@ -431,4 +398,3 @@ git commit -m "Add app reducer and effect contract"
 ```
 
 ---
-

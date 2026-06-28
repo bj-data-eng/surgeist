@@ -75,7 +75,7 @@ This sequence is policy for later task/service/executor plans. Do not introduce 
 - Enums are reserved for genuinely closed runtime protocols where Surgeist must exhaustively branch: `RedrawTarget`, `DiagnosticSeverity`, closed internal queue lanes, and task/resource/service status state machines are acceptable examples.
 - Split public provenance from runtime scheduling. Public `InputProvenance` carries an open `InputSourceId`; runtime queue draining uses a closed internal `RuntimeLane` because the runtime must exhaustively branch over its own lanes.
 - Model scope and subscriptions as open descriptors. `AppScope` is a path-like descriptor with typed helpers and accessors for built-ins such as app, window, surface, resource, workspace, document, and widget; subscription targets use `SubscriptionTarget { kind: SubscriptionTargetKindId, key: String }` with typed constructors instead of a closed task/resource/service enum.
-- Model effects as a type-first descriptor, not a public variant list. `AppEffect` carries an `EffectKindId` and opaque `EffectPayload`; runtime-owned effects have typed payload structs and constructors. External app/toolkit layers can introduce new effect kinds without editing a public catch-all enum.
+- Model effects as a typed runtime protocol with constructors that enforce valid payload pairings. `AppEffect` stores an `AppEffectPayload` enum whose variants are the closed set of effect families the runtime must exhaustively interpret in this slice. Do not expose `AppEffect::new(kind, payload)` or an arbitrary `Any` payload bag.
 - Apply the Taffy calc lesson consistently: future computed values should use explicit handles such as `ExpressionId`, `CalcId`, or `ValueExprId` resolved by registries at the correct phase. Do not embed arbitrary expression ASTs into every value enum. This guidance applies to future template/style DSL values, snapshot bindings, resource keys, effect payloads, and layout/style calc integration.
 - Keep zero lint allowances as a hard implementation constraint. Do not add lint suppression attributes or local lint-suppression calls in these tasks; reshape APIs and code until the compiler, formatter, and lints are satisfied without suppressions.
 
@@ -115,7 +115,8 @@ use surgeist::app::{
     App, AppCommand, AppDescriptor, AppEffect, AppEvent, AppId, AppLoop, AppManifest, AppScope,
     AppSnapshot, CommandDescriptor, EffectKindId, EventDescriptor, ExpressionId,
     ResourceDescriptor, ResourceId, RootDescriptor, RootId, Runtime, SnapshotBinding,
-    StartupWindow, TaskDescriptor, TaskName, UiSurface, WindowDescriptor, WindowRoot,
+    SnapshotBindingId, SnapshotSourceType, StartupWindow, TaskDescriptor, TaskName, UiSurface,
+    WindowDescriptor, WindowRoot,
 };
 
 #[test]
@@ -148,14 +149,18 @@ fn app_manifest_registers_identity_windows_roots_commands_events_and_bindings() 
     let event = EventDescriptor::new("photos.imported", "ImportFinished");
     let task = TaskDescriptor::new(TaskName::new("photos.import"), "ImportPhotos");
     let resource = ResourceDescriptor::new(ResourceId::new("photos"), "PhotoResource");
-    let binding = SnapshotBinding::new("photos", "PhotoGridSnapshot");
+    let binding = SnapshotBinding::new(
+        SnapshotBindingId::new("photos"),
+        SnapshotSourceType::new("PhotoGridSnapshot"),
+    );
     let root = RootDescriptor::new(RootId::new("gallery"))
         .requires_command(command.clone())
         .emits_event(event.clone())
         .binds_snapshot(binding.clone());
-    let window = WindowDescriptor::new("main", "Photo Lab")
+    let window_id = WindowDescriptorId::new("main");
+    let window = WindowDescriptor::new(window_id.clone(), "Photo Lab")
         .allows_root(RootId::new("gallery"));
-    let startup = StartupWindow::new("main", RootId::new("gallery"), AppScope::app());
+    let startup = StartupWindow::new(window_id, RootId::new("gallery"), AppScope::app());
     let manifest = AppManifest::new(app)
         .command(command)
         .event(event)
@@ -213,14 +218,14 @@ pub use command::{AppCommand, CommandDescriptor, CommandName};
 pub use coord::{AppScope, ScopePathSegment};
 pub use descriptor::{
     App, AppDescriptor, AppManifest, ResourceDescriptor, RootDescriptor, StartupWindow,
-    TaskDescriptor, WindowDescriptor,
+    TaskDescriptor, WindowDescriptor, WindowDescriptorId,
 };
 pub use event::{AppEvent, EventDescriptor, EventName};
 pub use ids::{
     AppId, CalcId, CorrelationId, CustomScopeId, ExpressionId, ResourceId, RootId, ServiceId,
     SurfaceId, TaskAttemptId, TaskId, TaskKey, TaskName, ValueExprId,
 };
-pub use snapshot::{AppSnapshot, SnapshotBinding, StateVersion};
+pub use snapshot::{AppSnapshot, SnapshotBinding, SnapshotBindingId, SnapshotSourceType, StateVersion};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AppLoop;
@@ -437,17 +442,57 @@ impl StateVersion {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SnapshotBinding {
-    pub name: String,
-    pub source_type: &'static str,
+    id: SnapshotBindingId,
+    source_type: SnapshotSourceType,
 }
 
 impl SnapshotBinding {
     #[must_use]
-    pub fn new(name: impl Into<String>, source_type: &'static str) -> Self {
+    pub fn new(id: SnapshotBindingId, source_type: SnapshotSourceType) -> Self {
         Self {
-            name: name.into(),
+            id,
             source_type,
         }
+    }
+
+    #[must_use]
+    pub fn id(&self) -> &SnapshotBindingId {
+        &self.id
+    }
+
+    #[must_use]
+    pub fn source_type(&self) -> &SnapshotSourceType {
+        &self.source_type
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct SnapshotBindingId(String);
+
+impl SnapshotBindingId {
+    #[must_use]
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct SnapshotSourceType(&'static str);
+
+impl SnapshotSourceType {
+    #[must_use]
+    pub const fn new(value: &'static str) -> Self {
+        Self(value)
+    }
+
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        self.0
     }
 }
 
@@ -623,17 +668,32 @@ impl AppDescriptor {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WindowDescriptorId(String);
+
+impl WindowDescriptorId {
+    #[must_use]
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WindowDescriptor {
-    id: String,
+    id: WindowDescriptorId,
     title: String,
     allowed_roots: Vec<RootId>,
 }
 
 impl WindowDescriptor {
     #[must_use]
-    pub fn new(id: impl Into<String>, title: impl Into<String>) -> Self {
+    pub fn new(id: WindowDescriptorId, title: impl Into<String>) -> Self {
         Self {
-            id: id.into(),
+            id,
             title: title.into(),
             allowed_roots: Vec::new(),
         }
@@ -727,40 +787,61 @@ impl ResourceDescriptor {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StartupWindow {
-    pub window_id: String,
-    pub root_id: RootId,
-    pub scope: AppScope,
+    window_id: WindowDescriptorId,
+    root_id: RootId,
+    scope: AppScope,
 }
 
 impl StartupWindow {
     #[must_use]
-    pub fn new(window_id: impl Into<String>, root_id: RootId, scope: AppScope) -> Self {
+    pub fn new(window_id: WindowDescriptorId, root_id: RootId, scope: AppScope) -> Self {
         Self {
-            window_id: window_id.into(),
+            window_id,
             root_id,
             scope,
         }
     }
+
+    #[must_use]
+    pub fn window_id(&self) -> &WindowDescriptorId {
+        &self.window_id
+    }
+
+    #[must_use]
+    pub fn root_id(&self) -> &RootId {
+        &self.root_id
+    }
+
+    #[must_use]
+    pub fn scope(&self) -> &AppScope {
+        &self.scope
+    }
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AppManifest {
-    pub app: Option<AppDescriptor>,
-    pub commands: Vec<CommandDescriptor>,
-    pub events: Vec<EventDescriptor>,
-    pub tasks: Vec<TaskDescriptor>,
-    pub resources: Vec<ResourceDescriptor>,
-    pub windows: Vec<WindowDescriptor>,
-    pub roots: Vec<RootDescriptor>,
-    pub startup: Vec<StartupWindow>,
+    app: AppDescriptor,
+    commands: Vec<CommandDescriptor>,
+    events: Vec<EventDescriptor>,
+    tasks: Vec<TaskDescriptor>,
+    resources: Vec<ResourceDescriptor>,
+    windows: Vec<WindowDescriptor>,
+    roots: Vec<RootDescriptor>,
+    startup: Vec<StartupWindow>,
 }
 
 impl AppManifest {
     #[must_use]
     pub fn new(app: AppDescriptor) -> Self {
         Self {
-            app: Some(app),
-            ..Self::default()
+            app,
+            commands: Vec::new(),
+            events: Vec::new(),
+            tasks: Vec::new(),
+            resources: Vec::new(),
+            windows: Vec::new(),
+            roots: Vec::new(),
+            startup: Vec::new(),
         }
     }
 
@@ -805,6 +886,9 @@ impl AppManifest {
         self.startup.push(startup);
         self
     }
+
+    #[must_use]
+    pub fn app(&self) -> &AppDescriptor { &self.app }
 
     #[must_use]
     pub fn commands(&self) -> &[CommandDescriptor] { &self.commands }

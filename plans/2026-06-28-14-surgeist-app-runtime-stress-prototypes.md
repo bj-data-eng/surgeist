@@ -243,7 +243,7 @@ impl PrototypeApp {
     #[must_use]
     pub fn proxy(&self) -> &AppProxy<PrototypeInput>;
     #[must_use]
-    pub fn progress_event(&self, index: usize) -> AppInput<PrototypeInput>;
+    pub fn progress_event(&self, index: usize) -> TaskInput<PrototypeInput>;
 
     pub fn open_surface(&mut self, name: &str) -> SurfaceId;
     pub fn observe_compile(&mut self, surface: SurfaceId);

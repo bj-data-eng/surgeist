@@ -382,7 +382,10 @@ Update `effect.rs` with:
 - `StartTaskEffect { name: TaskName, key: TaskKey, scope: AppScope }`;
 - `CancelTaskEffect { handle: TaskHandle }`;
 - `ReprioritizeTaskEffect { handle: TaskHandle, priority: TaskPriority }`;
+- `AppEffectPayload::StartTask`, `AppEffectPayload::CancelTask`, and `AppEffectPayload::ReprioritizeTask` variants;
 - constructors `AppEffect::start_task(...)`, `AppEffect::cancel_task(...)`, and `AppEffect::reprioritize_task(...)` used by runtime tests in Task 10.
+
+Do not add a public `AppEffect::new(kind, payload)` escape hatch. The constructors must be the only public way to create these task effects so `EffectKindId` and payload cannot disagree.
 
 - [ ] **Step 6: Verify**
 
@@ -404,4 +407,3 @@ git commit -m "Add app task registry and attempts"
 ```
 
 ---
-

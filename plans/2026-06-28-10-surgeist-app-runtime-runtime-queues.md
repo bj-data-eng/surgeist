@@ -38,7 +38,10 @@ fn runtime_commits_state_before_executing_effects() {
         WindowRoot::new(RootId::new("main")),
     ));
 
-    runtime.enqueue(AppInput::new(CounterInput::Increment, InputProvenance::system()));
+    runtime.enqueue_ui(UiInput::new(
+        CounterInput::Increment,
+        InputProvenance::system(),
+    ).unwrap());
     let report = runtime.drain_once(RuntimeBudget::default());
 
     assert_eq!(runtime.state().value, 1);
@@ -56,13 +59,14 @@ Add:
 #[test]
 fn runtime_drains_ui_before_task_events_and_respects_budget() {
     let mut runtime = Runtime::new(CounterState::default(), CounterReducer);
-    runtime.enqueue_task(AppInput::new(CounterInput::Increment, InputProvenance::task(
-        TaskId::from_u64(1),
-        TaskAttemptId::from_u64(1),
-    )));
-    runtime.enqueue(AppInput::new(CounterInput::Increment, InputProvenance::ui(
-        SurfaceId::from_u64(1),
-    )));
+    runtime.enqueue_task(TaskInput::new(
+        CounterInput::Increment,
+        InputProvenance::task(TaskId::from_u64(1), TaskAttemptId::from_u64(1)),
+    ).unwrap());
+    runtime.enqueue_ui(UiInput::new(
+        CounterInput::Increment,
+        InputProvenance::ui(SurfaceId::from_u64(1)),
+    ).unwrap());
 
     let report = runtime.drain_once(RuntimeBudget::new().max_inputs(1));
 
@@ -89,10 +93,10 @@ fn runtime_drops_stale_task_events_with_diagnostics() {
         TaskKey::new("search:rust"),
     ));
 
-    runtime.enqueue_task(AppInput::new(
+    runtime.enqueue_task(TaskInput::new(
         CounterInput::Increment,
         InputProvenance::task(TaskId::from_u64(1), TaskAttemptId::from_u64(1)),
-    ));
+    ).unwrap());
     let report = runtime.drain_once(RuntimeBudget::default());
 
     assert_eq!(runtime.state().value, 0);
@@ -115,13 +119,29 @@ impl Reducer<CounterState, CounterInput> for FailingReducer {
 #[test]
 fn runtime_turns_recoverable_reducer_errors_into_diagnostics() {
     let mut runtime = Runtime::new(CounterState::default(), FailingReducer);
-    runtime.enqueue(AppInput::new(CounterInput::Increment, InputProvenance::system()));
+    runtime.enqueue_ui(UiInput::new(
+        CounterInput::Increment,
+        InputProvenance::system(),
+    ).unwrap());
 
     let report = runtime.drain_once(RuntimeBudget::default());
 
     assert_eq!(runtime.state().value, 0);
     assert_eq!(report.reducer_errors(), 1);
     assert_eq!(runtime.diagnostics().count(&DiagnosticCode::REDUCER_ERROR), 1);
+}
+
+#[test]
+fn runtime_rejects_work_lane_provenance_for_ui_queue() {
+    let error = match UiInput::new(
+        CounterInput::Increment,
+        InputProvenance::task(TaskId::from_u64(1), TaskAttemptId::from_u64(1)),
+    ) {
+        Ok(_) => panic!("task provenance should not enter the UI queue"),
+        Err(error) => error,
+    };
+
+    assert_eq!(error.lane(), RuntimeLane::Ui);
 }
 ```
 
@@ -143,10 +163,10 @@ Add `runtime.rs` with this public API shape:
 use std::collections::{BTreeMap, VecDeque};
 
 use super::{
-    AppEffect, AppInput, BlockingPolicy, CancelTaskEffect, Diagnostic, DiagnosticCode,
-    DiagnosticEffect, DiagnosticLog, EffectKindId, ExecutorError, Reducer, ReducerResult,
-    RuntimeExecutor, RedrawTarget, RequestRedrawEffect, SpawnRequest, StartTaskEffect,
-    StateVersion, SurfaceId, TaskHandle, TaskId, TaskRecord, UiSurface,
+    AppEffect, AppEffectPayload, AppInput, BlockingPolicy, Diagnostic, DiagnosticCode,
+    DiagnosticLog, ExecutorError, Reducer, ReducerResult, RuntimeExecutor, RedrawTarget,
+    InputProvenance, SpawnRequest, StateVersion, SurfaceId, TaskHandle, TaskId, TaskRecord,
+    UiSurface,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -154,6 +174,79 @@ pub enum RuntimeLane {
     Ui,
     Task,
     Service,
+}
+
+pub struct UiInput<Input> {
+    input: AppInput<Input>,
+}
+
+impl<Input> UiInput<Input> {
+    pub fn new(payload: Input, provenance: InputProvenance) -> Result<Self, RuntimeInputError> {
+        if provenance.task_id().is_some() || provenance.service_id().is_some() {
+            return Err(RuntimeInputError::wrong_lane(RuntimeLane::Ui, provenance));
+        }
+        Ok(Self { input: AppInput::new(payload, provenance) })
+    }
+
+    pub fn into_app_input(self) -> AppInput<Input> {
+        self.input
+    }
+}
+
+pub struct TaskInput<Input> {
+    input: AppInput<Input>,
+}
+
+impl<Input> TaskInput<Input> {
+    pub fn new(payload: Input, provenance: InputProvenance) -> Result<Self, RuntimeInputError> {
+        if provenance.task_id().is_none() || provenance.task_attempt_id().is_none() {
+            return Err(RuntimeInputError::wrong_lane(RuntimeLane::Task, provenance));
+        }
+        Ok(Self { input: AppInput::new(payload, provenance) })
+    }
+
+    pub fn into_app_input(self) -> AppInput<Input> {
+        self.input
+    }
+}
+
+pub struct ServiceInput<Input> {
+    input: AppInput<Input>,
+}
+
+impl<Input> ServiceInput<Input> {
+    pub fn new(payload: Input, provenance: InputProvenance) -> Result<Self, RuntimeInputError> {
+        if provenance.service_id().is_none() {
+            return Err(RuntimeInputError::wrong_lane(RuntimeLane::Service, provenance));
+        }
+        Ok(Self { input: AppInput::new(payload, provenance) })
+    }
+
+    pub fn into_app_input(self) -> AppInput<Input> {
+        self.input
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RuntimeInputError {
+    lane: RuntimeLane,
+    provenance: InputProvenance,
+}
+
+impl RuntimeInputError {
+    fn wrong_lane(lane: RuntimeLane, provenance: InputProvenance) -> Self {
+        Self { lane, provenance }
+    }
+
+    #[must_use]
+    pub const fn lane(&self) -> RuntimeLane {
+        self.lane
+    }
+
+    #[must_use]
+    pub fn provenance(&self) -> &InputProvenance {
+        &self.provenance
+    }
 }
 
 pub struct Runtime<State = (), R = (), Input = ()> {
@@ -164,9 +257,9 @@ pub struct Runtime<State = (), R = (), Input = ()> {
     surfaces: BTreeMap<SurfaceId, UiSurface>,
     tasks: BTreeMap<TaskId, TaskRecord>,
     diagnostics: DiagnosticLog,
-    ui_queue: VecDeque<AppInput<Input>>,
-    task_queue: VecDeque<AppInput<Input>>,
-    service_queue: VecDeque<AppInput<Input>>,
+    ui_queue: VecDeque<UiInput<Input>>,
+    task_queue: VecDeque<TaskInput<Input>>,
+    service_queue: VecDeque<ServiceInput<Input>>,
 }
 
 impl<State, R, Input> Runtime<State, R, Input>
@@ -210,15 +303,15 @@ where
         self.tasks.insert(record.id(), record);
     }
 
-    pub fn enqueue(&mut self, input: AppInput<Input>) {
+    pub fn enqueue_ui(&mut self, input: UiInput<Input>) {
         self.ui_queue.push_back(input);
     }
 
-    pub fn enqueue_task(&mut self, input: AppInput<Input>) {
+    pub fn enqueue_task(&mut self, input: TaskInput<Input>) {
         self.task_queue.push_back(input);
     }
 
-    pub fn enqueue_service(&mut self, input: AppInput<Input>) {
+    pub fn enqueue_service(&mut self, input: ServiceInput<Input>) {
         self.service_queue.push_back(input);
     }
 
@@ -247,9 +340,9 @@ where
         let start_drained = report.drained_inputs;
         for _ in 0..budget {
             let input = match lane {
-                RuntimeLane::Ui => self.ui_queue.pop_front(),
-                RuntimeLane::Task => self.task_queue.pop_front(),
-                RuntimeLane::Service => self.service_queue.pop_front(),
+                RuntimeLane::Ui => self.ui_queue.pop_front().map(UiInput::into_app_input),
+                RuntimeLane::Task => self.task_queue.pop_front().map(TaskInput::into_app_input),
+                RuntimeLane::Service => self.service_queue.pop_front().map(ServiceInput::into_app_input),
             };
             let Some(input) = input else { break; };
             report.drained_inputs += 1;
@@ -296,43 +389,24 @@ where
         }
         for effect in result.effects() {
             report.executed_effects += 1;
-            match effect.kind() {
-                kind if kind == &EffectKindId::REQUEST_REDRAW => {
-                    if let Some(payload) = effect.payload().downcast_ref::<RequestRedrawEffect>() {
-                        report.record_redraw_target(payload.target().clone());
-                    }
+            match effect.payload() {
+                AppEffectPayload::RequestRedraw(payload) => {
+                    report.record_redraw_target(payload.target().clone());
                 }
-                kind if kind == &EffectKindId::EMIT_DIAGNOSTIC => {
-                    if let Some(payload) = effect.payload().downcast_ref::<DiagnosticEffect>() {
-                        self.diagnostics.push(payload.diagnostic().clone());
-                    }
+                AppEffectPayload::Diagnostic(payload) => {
+                    self.diagnostics.push(payload.diagnostic().clone());
                 }
-                kind if kind == &EffectKindId::START_TASK || kind == &EffectKindId::CANCEL_TASK => {
+                AppEffectPayload::StartTask(payload) => {
                     match self.executor.as_mut() {
                         Some(executor) => {
-                            let outcome = if kind == &EffectKindId::START_TASK {
-                                effect
-                                    .payload()
-                                    .downcast_ref::<StartTaskEffect<Input>>()
-                                    .ok_or_else(|| ExecutorError::invalid_request("missing start task payload"))
-                                    .and_then(|payload| {
-                                        let request = SpawnRequest::from_start_effect(payload);
-                                        match payload.blocking_policy() {
-                                            BlockingPolicy::Abortable => executor.spawn_task(request),
-                                            BlockingPolicy::NonAbortableReportCancelling => {
-                                                executor.spawn_blocking_task(request)
-                                            }
-                                        }
-                                        .map(|_| ())
-                                    })
-                            } else {
-                                effect
-                                    .payload()
-                                    .downcast_ref::<CancelTaskEffect>()
-                                    .ok_or_else(|| ExecutorError::invalid_request("missing cancel task payload"))
-                                    .and_then(|payload| executor.cancel(payload.handle()))
+                            let request = SpawnRequest::from_start_effect(payload);
+                            let outcome = match payload.blocking_policy() {
+                                BlockingPolicy::Abortable => executor.spawn_task(request),
+                                BlockingPolicy::NonAbortableReportCancelling => {
+                                    executor.spawn_blocking_task(request)
+                                }
                             };
-                            if let Err(error) = outcome {
+                            if let Err(error) = outcome.map(|_| ()) {
                                 self.diagnostics.push(Diagnostic::error(
                                     DiagnosticCode::EFFECT_FAILED,
                                     error.to_string(),
@@ -347,7 +421,50 @@ where
                         )),
                     }
                 }
-                _ => {}
+                AppEffectPayload::CancelTask(payload) => {
+                    match self.executor.as_mut() {
+                        Some(executor) => {
+                            if let Err(error) = executor.cancel(payload.handle()) {
+                                self.diagnostics.push(Diagnostic::error(
+                                    DiagnosticCode::EFFECT_FAILED,
+                                    error.to_string(),
+                                    super::InputProvenance::system(),
+                                ));
+                            }
+                        }
+                        None => self.diagnostics.push(Diagnostic::error(
+                            DiagnosticCode::EFFECT_FAILED,
+                            "task effect emitted without runtime executor",
+                            super::InputProvenance::system(),
+                        )),
+                    }
+                }
+                AppEffectPayload::LoadResource(payload) => {
+                    self.diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::EFFECT_FAILED,
+                        format!(
+                            "resource load requested before resource registry integration: {}",
+                            payload.id().as_str()
+                        ),
+                        super::InputProvenance::system(),
+                    ));
+                }
+                AppEffectPayload::InvalidateResource(payload) => {
+                    self.diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::EFFECT_FAILED,
+                        format!(
+                            "resource invalidation requested before resource registry integration: {}",
+                            payload.id().as_str()
+                        ),
+                        super::InputProvenance::system(),
+                    ));
+                }
+                AppEffectPayload::Persist(_)
+                | AppEffectPayload::ReprioritizeTask(_)
+                | AppEffectPayload::StartService(_)
+                | AppEffectPayload::StopService(_)
+                | AppEffectPayload::CallService(_)
+                | AppEffectPayload::ServiceDiagnostic(_) => {}
             }
         }
     }
@@ -447,6 +564,8 @@ Include:
 
 Do not add fake executor behavior, Tokio, child processes, closures, or real spawned work in this task. Start/cancel effects must lower into `SpawnRequest` or `cancel(TaskHandle)` calls on the injected `RuntimeExecutor`; Task 12 supplies fake and Tokio-backed implementations of the same trait. This keeps the app runtime compatible with future sidecar/process/service adapters without adding a second effect-lowering path.
 
+For resource effects, `LoadResource` should mark or report the resource as requested once the resource registry exists; `InvalidateResource` should mark or report stale state. If the required registry is absent in this slice, emit `DiagnosticCode::EFFECT_FAILED` with the resource id rather than silently ignoring the effect. Create a focused branch for every known effect family that the runtime deliberately observes but does not fully execute yet; do not use a wildcard arm that can silently swallow newly added `AppEffectPayload` variants.
+
 - [ ] **Step 6: Re-export runtime types**
 
 Update `mod.rs` with the concrete runtime module and public facade exports:
@@ -456,7 +575,7 @@ mod executor;
 mod runtime;
 
 pub use executor::{BlockingPolicy, ExecutorError, ExecutorTaskHandle, RuntimeExecutor, SpawnRequest};
-pub use runtime::{Runtime, RuntimeBudget, RuntimeDrainReport, RuntimeLane};
+pub use runtime::{Runtime, RuntimeBudget, RuntimeDrainReport, RuntimeInputError, RuntimeLane, ServiceInput, TaskInput, UiInput};
 ```
 
 Remove or replace the Task 1 temporary `Runtime<State = ()>` marker so only the concrete runtime type is exported.

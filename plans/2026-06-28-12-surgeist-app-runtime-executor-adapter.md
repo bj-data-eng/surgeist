@@ -61,7 +61,7 @@ Add a feature-gated test:
 #[cfg(feature = "app-runtime-tokio")]
 #[test]
 fn tokio_executor_is_hidden_behind_adapter() {
-    use surgeist::app::runtime_tokio::TokioExecutor;
+    use super::runtime_tokio::TokioExecutor;
 
     let executor = TokioExecutor::new();
     assert_eq!(executor.name(), "tokio");
@@ -110,16 +110,18 @@ tokio = { version = "=1.48.0", optional = true, features = ["rt-multi-thread", "
 app-runtime-tokio = ["dep:tokio"]
 ```
 
-Implement `new`, `name`, and the `RuntimeExecutor` methods. `spawn_task` is for ordinary executor work described by a typed `SpawnRequest`; `spawn_blocking_task` is for blocking or CPU-heavy work that must not run on the UI/app owner thread. Do not accept raw closures in the public app API, and do not expose the Tokio runtime, `JoinHandle`, `mpsc` channels, or cancellation internals through public app APIs. Re-export the module from `app::mod.rs` only under the feature:
+Implement `new`, `name`, and the `RuntimeExecutor` methods. `spawn_task` is for ordinary executor work described by a typed `SpawnRequest`; `spawn_blocking_task` is for blocking or CPU-heavy work that must not run on the UI/app owner thread. Do not accept raw closures in the public app API, and do not expose the Tokio runtime, `JoinHandle`, `mpsc` channels, or cancellation internals through public app APIs. Declare the module inside `app::mod.rs` only as crate-internal feature-gated backend machinery:
 
 ```rust
 #[cfg(feature = "app-runtime-tokio")]
-pub mod runtime_tokio;
+mod runtime_tokio;
 ```
+
+Do not re-export `TokioExecutor` from `surgeist::app`. App authors should configure runtime backends through Surgeist app/runtime descriptors or host integration code, not by naming Tokio types in the authoring API.
 
 - [ ] **Step 6: Hook runtime effect execution to executor requests**
 
-Implement `RuntimeExecutor` for the fake executor in `executor.rs` and for the feature-gated Tokio executor in `runtime_tokio.rs` so `Runtime::with_executor(...)` can execute task effects whose kind is `EffectKindId::START_TASK` or `EffectKindId::CANCEL_TASK` through the adapter. Preserve the runtime behavior for instances created without an executor: task effects emit a structured `DiagnosticCode::EFFECT_FAILED`.
+Implement `RuntimeExecutor` for the fake executor in `executor.rs` and for the feature-gated Tokio executor in `runtime_tokio.rs` so `Runtime::with_executor(...)` can execute `AppEffectPayload::StartTask` and `AppEffectPayload::CancelTask` through the adapter. Preserve the runtime behavior for instances created without an executor: task effects emit a structured `DiagnosticCode::EFFECT_FAILED`.
 
 This split should not add a process supervisor. Future process/sidecar adapters should implement the same backend-neutral executor or service contracts instead of introducing a second lowering layer.
 

@@ -49,6 +49,7 @@ fn provenance_carries_causal_fields() {
         .with_parent(parent);
 
     assert_eq!(child.source(), &InputSourceId::TASK);
+    assert!(matches!(child.origin(), InputOrigin::Task(_)));
     assert_eq!(child.task_id(), Some(TaskId::from_u64(2)));
     assert_eq!(child.task_attempt_id(), Some(TaskAttemptId::from_u64(3)));
     assert_eq!(child.surface_id(), Some(SurfaceId::from_u64(4)));
@@ -165,52 +166,79 @@ impl InputSourceId {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InputProvenance {
-    source: InputSourceId,
-    surface_id: Option<SurfaceId>,
-    task_id: Option<TaskId>,
-    task_attempt_id: Option<TaskAttemptId>,
-    service_id: Option<ServiceId>,
+    origin: InputOrigin,
     correlation_id: CorrelationId,
     parent_correlation_id: Option<CorrelationId>,
     sequence: Option<u64>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum InputOrigin {
+    System,
+    Ui(SurfaceProvenance),
+    Retained(SurfaceProvenance),
+    Task(TaskProvenance),
+    Service(ServiceProvenance),
+    Window(SurfaceProvenance),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SurfaceProvenance {
+    surface_id: SurfaceId,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TaskProvenance {
+    task_id: TaskId,
+    task_attempt_id: TaskAttemptId,
+    surface_id: Option<SurfaceId>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ServiceProvenance {
+    service_id: ServiceId,
+}
+
 impl InputProvenance {
     #[must_use]
     pub fn system() -> Self {
-        Self::new(InputSourceId::SYSTEM)
+        Self::from_origin(InputOrigin::System)
     }
 
     #[must_use]
     pub fn ui(surface_id: SurfaceId) -> Self {
-        Self::new(InputSourceId::UI).with_surface(surface_id)
+        Self::from_origin(InputOrigin::Ui(SurfaceProvenance { surface_id }))
     }
 
     #[must_use]
     pub fn retained(surface_id: SurfaceId) -> Self {
-        Self::new(InputSourceId::RETAINED).with_surface(surface_id)
+        Self::from_origin(InputOrigin::Retained(SurfaceProvenance { surface_id }))
     }
 
     #[must_use]
     pub fn task(task_id: TaskId, attempt_id: TaskAttemptId) -> Self {
-        Self::new(InputSourceId::TASK).with_task(task_id, attempt_id)
+        Self::from_origin(InputOrigin::Task(TaskProvenance {
+            task_id,
+            task_attempt_id: attempt_id,
+            surface_id: None,
+        }))
     }
 
     #[must_use]
     pub fn service(service_id: ServiceId) -> Self {
-        let mut value = Self::new(InputSourceId::SERVICE);
-        value.service_id = Some(service_id);
-        value
+        Self::from_origin(InputOrigin::Service(ServiceProvenance { service_id }))
     }
 
     #[must_use]
     pub fn window(surface_id: SurfaceId) -> Self {
-        Self::new(InputSourceId::WINDOW).with_surface(surface_id)
+        Self::from_origin(InputOrigin::Window(SurfaceProvenance { surface_id }))
     }
 
     #[must_use]
     pub fn with_surface(mut self, id: SurfaceId) -> Self {
-        self.surface_id = Some(id);
+        if let InputOrigin::Task(task) = &mut self.origin {
+            task.surface_id = Some(id);
+        }
         self
     }
 
@@ -233,36 +261,61 @@ impl InputProvenance {
     }
 
     #[must_use]
-    pub fn source(&self) -> &InputSourceId { &self.source }
+    pub fn source(&self) -> &InputSourceId {
+        match &self.origin {
+            InputOrigin::System => &InputSourceId::SYSTEM,
+            InputOrigin::Ui(_) => &InputSourceId::UI,
+            InputOrigin::Retained(_) => &InputSourceId::RETAINED,
+            InputOrigin::Task(_) => &InputSourceId::TASK,
+            InputOrigin::Service(_) => &InputSourceId::SERVICE,
+            InputOrigin::Window(_) => &InputSourceId::WINDOW,
+        }
+    }
     #[must_use]
-    pub const fn surface_id(&self) -> Option<SurfaceId> { self.surface_id }
+    pub fn origin(&self) -> &InputOrigin { &self.origin }
     #[must_use]
-    pub const fn task_id(&self) -> Option<TaskId> { self.task_id }
+    pub fn surface_id(&self) -> Option<SurfaceId> {
+        match &self.origin {
+            InputOrigin::Ui(value) | InputOrigin::Retained(value) | InputOrigin::Window(value) => {
+                Some(value.surface_id)
+            }
+            InputOrigin::Task(value) => value.surface_id,
+            InputOrigin::System | InputOrigin::Service(_) => None,
+        }
+    }
     #[must_use]
-    pub const fn task_attempt_id(&self) -> Option<TaskAttemptId> { self.task_attempt_id }
+    pub fn task_id(&self) -> Option<TaskId> {
+        match &self.origin {
+            InputOrigin::Task(value) => Some(value.task_id),
+            _ => None,
+        }
+    }
+    #[must_use]
+    pub fn task_attempt_id(&self) -> Option<TaskAttemptId> {
+        match &self.origin {
+            InputOrigin::Task(value) => Some(value.task_attempt_id),
+            _ => None,
+        }
+    }
+    #[must_use]
+    pub fn service_id(&self) -> Option<ServiceId> {
+        match &self.origin {
+            InputOrigin::Service(value) => Some(value.service_id),
+            _ => None,
+        }
+    }
     #[must_use]
     pub const fn correlation_id(&self) -> CorrelationId { self.correlation_id }
     #[must_use]
     pub const fn parent_correlation_id(&self) -> Option<CorrelationId> { self.parent_correlation_id }
 
-    #[must_use]
-    pub fn new(source: InputSourceId) -> Self {
+    fn from_origin(origin: InputOrigin) -> Self {
         Self {
-            source,
-            surface_id: None,
-            task_id: None,
-            task_attempt_id: None,
-            service_id: None,
+            origin,
             correlation_id: CorrelationId::from_u64(0),
             parent_correlation_id: None,
             sequence: None,
         }
-    }
-
-    fn with_task(mut self, task_id: TaskId, attempt_id: TaskAttemptId) -> Self {
-        self.task_id = Some(task_id);
-        self.task_attempt_id = Some(attempt_id);
-        self
     }
 }
 ```
@@ -511,4 +564,3 @@ git commit -m "Add app IDs provenance and diagnostics"
 ```
 
 ---
-

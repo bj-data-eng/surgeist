@@ -97,7 +97,14 @@ Update `effect.rs` with:
 - `EffectKindId::LOAD_RESOURCE` and `EffectKindId::INVALIDATE_RESOURCE`;
 - `LoadResourceEffect { id: ResourceId, scope: AppScope }`;
 - `InvalidateResourceEffect { id: ResourceId, reason: String }`;
+- `AppEffectPayload::LoadResource` and `AppEffectPayload::InvalidateResource` variants;
 - constructors `AppEffect::load_resource(id, scope)` and `AppEffect::invalidate_resource(id, reason)`.
+- accessors `LoadResourceEffect::id()`, `LoadResourceEffect::scope()`,
+  `InvalidateResourceEffect::id()`, and `InvalidateResourceEffect::reason()` so
+  later runtime handling can inspect typed payloads without matching on
+  `EffectKindId`.
+
+Do not add a public `AppEffect::new(kind, payload)` escape hatch. Runtime handling for these variants is added in Task 10 so the closed `AppEffectPayload` protocol remains exhaustive as effect families are introduced.
 
 - [ ] **Step 5: Verify**
 
@@ -119,4 +126,3 @@ git commit -m "Add app resource state machine"
 ```
 
 ---
-

@@ -33,14 +33,14 @@ fn app_proxy_coalesces_wakeups_while_queue_is_non_empty() {
     let wake = FakeWakeBridge::default();
     let proxy = AppProxy::<CounterInput>::new(wake.clone(), QueuePolicy::bounded(16));
 
-    proxy.send_task(AppInput::new(CounterInput::Increment, InputProvenance::task(
-        TaskId::from_u64(1),
-        TaskAttemptId::from_u64(1),
-    ))).unwrap();
-    proxy.send_task(AppInput::new(CounterInput::Increment, InputProvenance::task(
-        TaskId::from_u64(1),
-        TaskAttemptId::from_u64(1),
-    ))).unwrap();
+    proxy.send_task(TaskInput::new(
+        CounterInput::Increment,
+        InputProvenance::task(TaskId::from_u64(1), TaskAttemptId::from_u64(1)),
+    ).unwrap()).unwrap();
+    proxy.send_task(TaskInput::new(
+        CounterInput::Increment,
+        InputProvenance::task(TaskId::from_u64(1), TaskAttemptId::from_u64(1)),
+    ).unwrap()).unwrap();
 
     assert_eq!(wake.wake_count(), 1);
     assert_eq!(proxy.pending_len(), 2);
@@ -62,7 +62,10 @@ fn app_proxy_reports_closed_native_wake_bridge() {
     let proxy = AppProxy::<CounterInput>::new(wake, QueuePolicy::bounded(16));
 
     let error = proxy
-        .send_task(AppInput::new(CounterInput::Increment, InputProvenance::system()))
+        .send_task(TaskInput::new(
+            CounterInput::Increment,
+            InputProvenance::task(TaskId::from_u64(1), TaskAttemptId::from_u64(1)),
+        ).unwrap())
         .unwrap_err();
 
     assert_eq!(error.code(), AppProxyErrorCode::WakeFailed);
@@ -85,12 +88,22 @@ Add `proxy.rs` with:
 
 - `WakeBridge` trait with `wake(&self) -> Result<(), AppProxyError>`;
 - implementation for a wrapper around `window::Proxy` that calls a native wake command or request action once the native side exposes a suitable public call;
-- `AppProxy<T>` owning `Arc<Mutex<VecDeque<AppInput<T>>>>`, bounded policy, coalesced pending wake flag, and bridge;
+- `ProxyInput<T>` as a closed queue item enum with `Task(TaskInput<T>)` and
+  `Service(ServiceInput<T>)` variants;
+- `AppProxy<T>` owning `Arc<Mutex<VecDeque<ProxyInput<T>>>>`, bounded policy, coalesced pending wake flag, and bridge;
 - `send_task`, `send_service`, `drain_pending`, and `pending_len`;
 - `QueuePolicy` bounded capacity and overflow diagnostics;
 - `AppProxyError` and `AppProxyErrorCode`.
 
 `drain_pending` must clear the coalesced pending wake flag when the queue becomes empty. A later `send_task` or `send_service` after a full drain must wake again. Keep this behavior explicit because Task 14 stress tests rely on sustained wake coalescing across multiple drain cycles.
+
+`send_task` must accept `TaskInput<T>` and enqueue `ProxyInput::Task`.
+`send_service` must accept `ServiceInput<T>` and enqueue
+`ProxyInput::Service`. `drain_pending` must return `Vec<ProxyInput<T>>`, not
+`Vec<AppInput<T>>`, so lane identity survives until `AppLoop` routes each item
+into `Runtime::enqueue_task` or `Runtime::enqueue_service`. Do not accept
+arbitrary `AppInput<T>` at these lane-specific boundaries; lane/provenance
+mismatches should be rejected by the wrapper constructors before enqueueing.
 
 If `window::Proxy` lacks a public wake-only method, keep the `window::Proxy` implementation crate-private and drive tests through `WakeBridge`. Do not add typed task events to `window::UserEvent`.
 
@@ -145,6 +158,11 @@ Add `loop_.rs` with:
 - `AppLoop` marker/wrapper for `window::Loop`;
 - `AppHandler` adapter trait documenting the native-to-runtime flow;
 - a narrow constructor that stores app runtime and native loop pieces without changing window internals.
+
+When `AppLoop` drains an `AppProxy`, it must match `ProxyInput::Task(input)` and
+`ProxyInput::Service(input)` explicitly and call the matching runtime enqueue
+method. Do not convert proxy-drained values into raw `AppInput<T>` before
+selecting the runtime lane.
 
 Keep this task compile-focused. Native loop behavior is verified through fakes until a demo app needs full execution.
 

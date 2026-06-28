@@ -95,9 +95,12 @@ Update `effect.rs` with:
 - `StopServiceEffect { id: ServiceId }`;
 - `CallServiceEffect { id: ServiceId, command: ServiceCommandName, payload: ServiceCommandPayload, correlation: CorrelationId }`;
 - `ServiceDiagnosticEffect { id: ServiceId, diagnostic: Diagnostic }`;
+- `AppEffectPayload::StartService`, `AppEffectPayload::StopService`, `AppEffectPayload::CallService`, and `AppEffectPayload::ServiceDiagnostic` variants;
 - typed constructors with matching names on `AppEffect`.
 
 Use `ServiceCommandPayload` for the first command payload lane so typed service command decoding can be layered without blocking the runtime skeleton. The service API should make that layering possible without replacing `ServiceRegistration`, mailbox policy, or lifecycle status.
+
+Do not add a public `AppEffect::new(kind, payload)` escape hatch. The constructors must be the only public way to create these service effects so `EffectKindId` and payload cannot disagree.
 
 - [ ] **Step 5: Verify**
 

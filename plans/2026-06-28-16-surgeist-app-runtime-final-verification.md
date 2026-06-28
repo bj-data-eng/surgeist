@@ -41,7 +41,7 @@ cargo test --package surgeist --features app-runtime-tokio app::tests::tokio_exe
 ```
 
 Expected: feature-gated test passes and no Tokio type appears in public integration test signatures.
-The test should import `TokioExecutor` from `surgeist::app::runtime_tokio`, and default `cargo test -p surgeist` should not compile or export `runtime_tokio`.
+The test should exercise the crate-internal `runtime_tokio` module from app unit tests, not from the public `surgeist::app` integration surface. Default `cargo test -p surgeist` must not compile or export `runtime_tokio`, and `tests/app.rs` must not import `TokioExecutor`.
 
 - [ ] **Step 3: Verify thumbnail example contract**
 
