@@ -41,13 +41,27 @@ Run the integrated workspace check:
 cargo check --workspace
 ```
 
-## API Artifact
+## API Artifacts
 
-The committed API coordination artifact lives at `api/public-api.txt`.
-Refresh it explicitly when the public API changes:
+Root owns API artifact generation for the facade and linked Surgeist crate
+submodules. Do not copy `api/generator` into crate repos.
+
+Refresh all API artifacts:
 
 ```sh
 cargo run --manifest-path api/generator/Cargo.toml
+```
+
+Refresh one target:
+
+```sh
+cargo run --manifest-path api/generator/Cargo.toml -- --crate surgeist-task
+```
+
+Check artifacts without rewriting:
+
+```sh
+cargo run --manifest-path api/generator/Cargo.toml -- --check
 ```
 
 API refresh tooling is command-only. Do not wire it into normal `cargo test`
