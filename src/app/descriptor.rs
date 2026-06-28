@@ -257,19 +257,6 @@ pub struct AppManifest {
     startup: Vec<StartupWindow>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AppManifestStartupBuilder {
-    manifest: AppManifest,
-}
-
-impl AppManifestStartupBuilder {
-    #[must_use]
-    pub fn startup(mut self, descriptor: StartupWindow) -> AppManifest {
-        self.manifest.startup.push(descriptor);
-        self.manifest
-    }
-}
-
 impl AppManifest {
     #[must_use]
     pub fn new(app: AppDescriptor) -> Self {
@@ -316,9 +303,15 @@ impl AppManifest {
     }
 
     #[must_use]
-    pub fn root(mut self, descriptor: RootDescriptor) -> AppManifestStartupBuilder {
+    pub fn root(mut self, descriptor: RootDescriptor) -> Self {
         self.roots.push(descriptor);
-        AppManifestStartupBuilder { manifest: self }
+        self
+    }
+
+    #[must_use]
+    pub fn startup_window(mut self, descriptor: StartupWindow) -> Self {
+        self.startup.push(descriptor);
+        self
     }
 
     #[must_use]

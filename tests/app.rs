@@ -55,7 +55,7 @@ fn app_manifest_registers_identity_windows_roots_commands_events_and_bindings() 
         .resource(resource)
         .window(window)
         .root(root)
-        .startup(startup);
+        .startup_window(startup);
 
     assert_eq!(manifest.commands().len(), 1);
     assert_eq!(manifest.events().len(), 1);
@@ -65,4 +65,17 @@ fn app_manifest_registers_identity_windows_roots_commands_events_and_bindings() 
     assert_eq!(manifest.roots().len(), 1);
     assert_eq!(manifest.startup().len(), 1);
     assert_eq!(manifest.roots()[0].snapshot_bindings(), &[binding]);
+}
+
+#[test]
+fn app_manifest_can_register_multiple_roots_without_startup() {
+    let app = AppDescriptor::new(AppId::new("photo.lab"), "0.1.0");
+    let manifest = AppManifest::new(app)
+        .root(RootDescriptor::new(RootId::new("gallery")))
+        .root(RootDescriptor::new(RootId::new("editor")));
+
+    assert_eq!(manifest.roots().len(), 2);
+    assert_eq!(manifest.roots()[0].id().as_str(), "gallery");
+    assert_eq!(manifest.roots()[1].id().as_str(), "editor");
+    assert!(manifest.startup().is_empty());
 }
