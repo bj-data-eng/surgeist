@@ -299,7 +299,34 @@ fn fake_executor_records_spawn_and_cancel_requests() {
     executor
         .cancel(TaskHandle::new(handle.task_id(), handle.attempt_id()))
         .expect("fake cancel should succeed");
-    assert_eq!(executor.cancelled(), &[TaskId::from_u64(1)]);
+    assert_eq!(
+        executor.cancelled(),
+        &[TaskHandle::new(
+            TaskId::from_u64(1),
+            TaskAttemptId::from_u64(1)
+        )]
+    );
+}
+
+#[test]
+fn fake_executor_records_typed_request_input() {
+    let mut executor = FakeExecutor::<CounterInput>::default();
+    executor
+        .spawn_task(
+            SpawnRequest::new(
+                TaskId::from_u64(2),
+                TaskAttemptId::from_u64(3),
+                TaskKey::new("counter:increment"),
+                AppScope::app(),
+            )
+            .with_input(CounterInput::Increment),
+        )
+        .expect("fake spawn should succeed");
+
+    assert_eq!(
+        executor.spawned()[0].input(),
+        Some(&CounterInput::Increment)
+    );
 }
 
 #[cfg(feature = "app-runtime-tokio")]

@@ -47,6 +47,18 @@ impl SpawnRequest {
             input: None,
         }
     }
+
+    #[must_use]
+    pub fn with_input<Input>(self, input: Input) -> SpawnRequest<Input> {
+        SpawnRequest {
+            task_id: self.task_id,
+            attempt_id: self.attempt_id,
+            key: self.key,
+            scope: self.scope,
+            blocking: self.blocking,
+            input: Some(input),
+        }
+    }
 }
 
 impl<Input> SpawnRequest<Input> {
@@ -69,12 +81,6 @@ impl<Input> SpawnRequest<Input> {
     #[must_use]
     pub fn with_blocking_policy(mut self, blocking: BlockingPolicy) -> Self {
         self.blocking = blocking;
-        self
-    }
-
-    #[must_use]
-    pub fn with_input(mut self, input: Input) -> Self {
-        self.input = Some(input);
         self
     }
 
@@ -106,52 +112,6 @@ impl<Input> SpawnRequest<Input> {
     #[must_use]
     pub const fn input(&self) -> Option<&Input> {
         self.input.as_ref()
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SpawnRecord {
-    task_id: TaskId,
-    attempt_id: TaskAttemptId,
-    key: TaskKey,
-    scope: AppScope,
-    blocking: BlockingPolicy,
-}
-
-impl SpawnRecord {
-    fn from_request<Input>(request: &SpawnRequest<Input>) -> Self {
-        Self {
-            task_id: request.task_id(),
-            attempt_id: request.attempt_id(),
-            key: request.key().clone(),
-            scope: request.scope().clone(),
-            blocking: request.blocking_policy(),
-        }
-    }
-
-    #[must_use]
-    pub const fn task_id(&self) -> TaskId {
-        self.task_id
-    }
-
-    #[must_use]
-    pub const fn attempt_id(&self) -> TaskAttemptId {
-        self.attempt_id
-    }
-
-    #[must_use]
-    pub fn key(&self) -> &TaskKey {
-        &self.key
-    }
-
-    #[must_use]
-    pub const fn scope(&self) -> &AppScope {
-        &self.scope
-    }
-
-    #[must_use]
-    pub const fn blocking_policy(&self) -> BlockingPolicy {
-        self.blocking
     }
 }
 
@@ -236,21 +196,30 @@ pub enum ExecutorEventPayload<Output = ()> {
     Cancelled,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct FakeExecutor {
-    spawned: Vec<SpawnRecord>,
-    cancelled: Vec<TaskId>,
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FakeExecutor<Input = ()> {
+    spawned: Vec<SpawnRequest<Input>>,
+    cancelled: Vec<TaskHandle>,
 }
 
-impl FakeExecutor {
-    pub fn spawn_task<Input>(
+impl<Input> Default for FakeExecutor<Input> {
+    fn default() -> Self {
+        Self {
+            spawned: Vec::new(),
+            cancelled: Vec::new(),
+        }
+    }
+}
+
+impl<Input> FakeExecutor<Input> {
+    pub fn spawn_task(
         &mut self,
         request: SpawnRequest<Input>,
     ) -> Result<ExecutorTaskHandle, ExecutorError> {
         <Self as RuntimeExecutor<Input>>::spawn_task(self, request)
     }
 
-    pub fn spawn_blocking_task<Input>(
+    pub fn spawn_blocking_task(
         &mut self,
         request: SpawnRequest<Input>,
     ) -> Result<ExecutorTaskHandle, ExecutorError> {
@@ -258,27 +227,27 @@ impl FakeExecutor {
     }
 
     pub fn cancel(&mut self, handle: TaskHandle) -> Result<(), ExecutorError> {
-        <Self as RuntimeExecutor<()>>::cancel(self, handle)
+        <Self as RuntimeExecutor<Input>>::cancel(self, handle)
     }
 
     #[must_use]
-    pub fn spawned(&self) -> &[SpawnRecord] {
+    pub fn spawned(&self) -> &[SpawnRequest<Input>] {
         &self.spawned
     }
 
     #[must_use]
-    pub fn cancelled(&self) -> &[TaskId] {
+    pub fn cancelled(&self) -> &[TaskHandle] {
         &self.cancelled
     }
 
-    fn record_spawn<Input>(&mut self, request: SpawnRequest<Input>) -> ExecutorTaskHandle {
+    fn record_spawn(&mut self, request: SpawnRequest<Input>) -> ExecutorTaskHandle {
         let handle = ExecutorTaskHandle::new(request.task_id(), request.attempt_id());
-        self.spawned.push(SpawnRecord::from_request(&request));
+        self.spawned.push(request);
         handle
     }
 }
 
-impl<Input> RuntimeExecutor<Input> for FakeExecutor {
+impl<Input> RuntimeExecutor<Input> for FakeExecutor<Input> {
     fn spawn_task(
         &mut self,
         request: SpawnRequest<Input>,
@@ -294,7 +263,7 @@ impl<Input> RuntimeExecutor<Input> for FakeExecutor {
     }
 
     fn cancel(&mut self, handle: TaskHandle) -> Result<(), ExecutorError> {
-        self.cancelled.push(handle.task_id());
+        self.cancelled.push(handle);
         Ok(())
     }
 

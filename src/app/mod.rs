@@ -53,7 +53,7 @@ pub use effect::{
 pub use event::{AppEvent, EventDescriptor, EventName};
 pub use executor::{
     BlockingPolicy, ExecutorError, ExecutorEvent, ExecutorEventPayload, ExecutorTaskHandle,
-    FakeExecutor, RuntimeExecutor, SpawnRecord, SpawnRequest,
+    FakeExecutor, RuntimeExecutor, SpawnRequest,
 };
 pub use ids::{
     AppId, CalcId, CorrelationId, CustomScopeId, ExpressionId, ResourceId, RootId, ServiceId,
