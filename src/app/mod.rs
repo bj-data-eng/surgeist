@@ -8,9 +8,12 @@ mod command;
 mod coord;
 mod descriptor;
 mod diagnostic;
+mod effect;
 mod event;
 mod ids;
+mod input;
 mod provenance;
+mod reducer;
 mod snapshot;
 
 #[cfg(test)]
@@ -25,15 +28,21 @@ pub use descriptor::{
 pub use diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticLog, DiagnosticSeverity, QueueDiagnostic,
 };
+pub use effect::{
+    AppEffect, AppEffectPayload, DiagnosticEffect, EffectBatch, EffectKindId, PersistEffect,
+    RedrawTarget, RequestRedrawEffect,
+};
 pub use event::{AppEvent, EventDescriptor, EventName};
 pub use ids::{
     AppId, CalcId, CorrelationId, CustomScopeId, ExpressionId, ResourceId, RootId, ServiceId,
     SurfaceId, TaskAttemptId, TaskId, TaskKey, TaskName, ValueExprId,
 };
+pub use input::AppInput;
 pub use provenance::{
     InputOrigin, InputProvenance, InputSourceId, ServiceProvenance, SurfaceProvenance,
     TaskProvenance,
 };
+pub use reducer::{Reducer, ReducerResult};
 pub use snapshot::{
     AppSnapshot, SnapshotBinding, SnapshotBindingId, SnapshotSourceType, StateVersion,
 };
@@ -58,30 +67,3 @@ pub struct UiSurface;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct WindowRoot;
-
-#[derive(Clone, Debug)]
-pub struct AppEffect {
-    kind: EffectKindId,
-}
-
-impl AppEffect {
-    #[must_use]
-    pub fn kind(&self) -> &EffectKindId {
-        &self.kind
-    }
-}
-
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct EffectKindId(String);
-
-impl EffectKindId {
-    #[must_use]
-    pub fn new(value: impl Into<String>) -> Self {
-        Self(value.into())
-    }
-
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}

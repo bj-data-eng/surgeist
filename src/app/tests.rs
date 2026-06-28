@@ -89,3 +89,71 @@ fn zero_capacity_diagnostic_log_counts_without_retaining_entries() {
     assert_eq!(log.dropped_oldest(), 1);
     assert_eq!(log.count(&DiagnosticCode::QUEUE_OVERFLOW), 1);
 }
+
+#[derive(Default)]
+struct CounterState {
+    value: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum CounterInput {
+    Increment,
+    Save,
+}
+
+struct CounterReducer;
+
+impl Reducer<CounterState, CounterInput> for CounterReducer {
+    fn reduce(&mut self, state: &mut CounterState, input: AppInput<CounterInput>) -> ReducerResult {
+        match input.payload() {
+            CounterInput::Increment => {
+                state.value += 1;
+                ReducerResult::changed().with_effect(AppEffect::request_redraw(
+                    RedrawTarget::surface(SurfaceId::from_u64(1)),
+                ))
+            }
+            CounterInput::Save => ReducerResult::unchanged()
+                .with_effect(AppEffect::persist("counter", AppScope::app())),
+        }
+    }
+}
+
+#[test]
+fn reducer_returns_effects_without_executing_them() {
+    let mut reducer = CounterReducer;
+    let mut state = CounterState::default();
+    let result = reducer.reduce(
+        &mut state,
+        AppInput::new(CounterInput::Increment, InputProvenance::system()),
+    );
+
+    assert_eq!(state.value, 1);
+    assert!(result.is_changed());
+    assert_eq!(result.effects().len(), 1);
+    assert_eq!(result.effects()[0].kind(), &EffectKindId::REQUEST_REDRAW);
+
+    let result = reducer.reduce(
+        &mut state,
+        AppInput::new(CounterInput::Save, InputProvenance::system()),
+    );
+
+    assert_eq!(state.value, 1);
+    assert!(!result.is_changed());
+    assert_eq!(result.effects().len(), 1);
+    assert_eq!(result.effects()[0].kind(), &EffectKindId::PERSIST);
+}
+
+#[test]
+fn effect_batches_preserve_order() {
+    let effects = EffectBatch::new()
+        .push(AppEffect::diagnostic(Diagnostic::info(
+            DiagnosticCode::QUEUE_COALESCED,
+            "coalesced",
+            InputProvenance::system(),
+        )))
+        .push(AppEffect::request_redraw(RedrawTarget::all()));
+
+    assert_eq!(effects.effects().len(), 2);
+    assert_eq!(effects.effects()[0].kind(), &EffectKindId::EMIT_DIAGNOSTIC);
+    assert_eq!(effects.effects()[1].kind(), &EffectKindId::REQUEST_REDRAW);
+}
