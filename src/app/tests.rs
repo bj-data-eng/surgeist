@@ -281,6 +281,36 @@ fn app_proxy_reports_closed_native_wake_bridge() {
     assert_eq!(error.code(), AppProxyErrorCode::WakeFailed);
 }
 
+#[test]
+fn fake_executor_records_spawn_and_cancel_requests() {
+    let mut executor = FakeExecutor::default();
+    let handle = executor
+        .spawn_task(SpawnRequest::new(
+            TaskId::from_u64(1),
+            TaskAttemptId::from_u64(1),
+            TaskKey::new("search:rust"),
+            AppScope::app(),
+        ))
+        .expect("fake spawn should succeed");
+
+    assert_eq!(handle.task_id(), TaskId::from_u64(1));
+    assert_eq!(executor.spawned().len(), 1);
+
+    executor
+        .cancel(TaskHandle::new(handle.task_id(), handle.attempt_id()))
+        .expect("fake cancel should succeed");
+    assert_eq!(executor.cancelled(), &[TaskId::from_u64(1)]);
+}
+
+#[cfg(feature = "app-runtime-tokio")]
+#[test]
+fn tokio_executor_is_hidden_behind_adapter() {
+    use super::runtime_tokio::TokioExecutor;
+
+    let executor = TokioExecutor::new();
+    assert_eq!(executor.name(), "tokio");
+}
+
 struct CounterReducer;
 
 impl Reducer<CounterState, CounterInput> for CounterReducer {

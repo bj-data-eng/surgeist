@@ -1,6 +1,6 @@
 use std::{error::Error, fmt};
 
-use super::{AppScope, StartTaskEffect, TaskAttemptId, TaskHandle, TaskId, TaskKey};
+use super::{AppScope, CoalescingKey, StartTaskEffect, TaskAttemptId, TaskHandle, TaskId, TaskKey};
 
 pub trait RuntimeExecutor<Input> {
     fn spawn_task(
@@ -26,7 +26,7 @@ pub enum BlockingPolicy {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SpawnRequest<Input> {
+pub struct SpawnRequest<Input = ()> {
     task_id: TaskId,
     attempt_id: TaskAttemptId,
     key: TaskKey,
@@ -35,7 +35,7 @@ pub struct SpawnRequest<Input> {
     input: Option<Input>,
 }
 
-impl<Input> SpawnRequest<Input> {
+impl SpawnRequest {
     #[must_use]
     pub fn new(task_id: TaskId, attempt_id: TaskAttemptId, key: TaskKey, scope: AppScope) -> Self {
         Self {
@@ -47,19 +47,23 @@ impl<Input> SpawnRequest<Input> {
             input: None,
         }
     }
+}
 
+impl<Input> SpawnRequest<Input> {
     #[must_use]
     pub fn from_start_effect(
         task_id: TaskId,
         attempt_id: TaskAttemptId,
         effect: &StartTaskEffect,
     ) -> Self {
-        Self::new(
+        Self {
             task_id,
             attempt_id,
-            effect.key().clone(),
-            effect.scope().clone(),
-        )
+            key: effect.key().clone(),
+            scope: effect.scope().clone(),
+            blocking: BlockingPolicy::Abortable,
+            input: None,
+        }
     }
 
     #[must_use]
@@ -102,6 +106,200 @@ impl<Input> SpawnRequest<Input> {
     #[must_use]
     pub const fn input(&self) -> Option<&Input> {
         self.input.as_ref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SpawnRecord {
+    task_id: TaskId,
+    attempt_id: TaskAttemptId,
+    key: TaskKey,
+    scope: AppScope,
+    blocking: BlockingPolicy,
+}
+
+impl SpawnRecord {
+    fn from_request<Input>(request: &SpawnRequest<Input>) -> Self {
+        Self {
+            task_id: request.task_id(),
+            attempt_id: request.attempt_id(),
+            key: request.key().clone(),
+            scope: request.scope().clone(),
+            blocking: request.blocking_policy(),
+        }
+    }
+
+    #[must_use]
+    pub const fn task_id(&self) -> TaskId {
+        self.task_id
+    }
+
+    #[must_use]
+    pub const fn attempt_id(&self) -> TaskAttemptId {
+        self.attempt_id
+    }
+
+    #[must_use]
+    pub fn key(&self) -> &TaskKey {
+        &self.key
+    }
+
+    #[must_use]
+    pub const fn scope(&self) -> &AppScope {
+        &self.scope
+    }
+
+    #[must_use]
+    pub const fn blocking_policy(&self) -> BlockingPolicy {
+        self.blocking
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExecutorEvent<Output = ()> {
+    task_id: TaskId,
+    attempt_id: TaskAttemptId,
+    payload: ExecutorEventPayload<Output>,
+}
+
+impl<Output> ExecutorEvent<Output> {
+    #[must_use]
+    pub const fn new(
+        task_id: TaskId,
+        attempt_id: TaskAttemptId,
+        payload: ExecutorEventPayload<Output>,
+    ) -> Self {
+        Self {
+            task_id,
+            attempt_id,
+            payload,
+        }
+    }
+
+    #[must_use]
+    pub fn progress(
+        task_id: TaskId,
+        attempt_id: TaskAttemptId,
+        key: CoalescingKey,
+        payload: impl Into<String>,
+    ) -> Self {
+        Self::new(
+            task_id,
+            attempt_id,
+            ExecutorEventPayload::Progress {
+                key,
+                payload: payload.into(),
+            },
+        )
+    }
+
+    #[must_use]
+    pub const fn completed(task_id: TaskId, attempt_id: TaskAttemptId, output: Output) -> Self {
+        Self::new(task_id, attempt_id, ExecutorEventPayload::Completed(output))
+    }
+
+    #[must_use]
+    pub fn failed(task_id: TaskId, attempt_id: TaskAttemptId, message: impl Into<String>) -> Self {
+        Self::new(
+            task_id,
+            attempt_id,
+            ExecutorEventPayload::Failed(message.into()),
+        )
+    }
+
+    #[must_use]
+    pub const fn cancelled(task_id: TaskId, attempt_id: TaskAttemptId) -> Self {
+        Self::new(task_id, attempt_id, ExecutorEventPayload::Cancelled)
+    }
+
+    #[must_use]
+    pub const fn task_id(&self) -> TaskId {
+        self.task_id
+    }
+
+    #[must_use]
+    pub const fn attempt_id(&self) -> TaskAttemptId {
+        self.attempt_id
+    }
+
+    #[must_use]
+    pub const fn payload(&self) -> &ExecutorEventPayload<Output> {
+        &self.payload
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ExecutorEventPayload<Output = ()> {
+    Progress { key: CoalescingKey, payload: String },
+    Completed(Output),
+    Failed(String),
+    Cancelled,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct FakeExecutor {
+    spawned: Vec<SpawnRecord>,
+    cancelled: Vec<TaskId>,
+}
+
+impl FakeExecutor {
+    pub fn spawn_task<Input>(
+        &mut self,
+        request: SpawnRequest<Input>,
+    ) -> Result<ExecutorTaskHandle, ExecutorError> {
+        <Self as RuntimeExecutor<Input>>::spawn_task(self, request)
+    }
+
+    pub fn spawn_blocking_task<Input>(
+        &mut self,
+        request: SpawnRequest<Input>,
+    ) -> Result<ExecutorTaskHandle, ExecutorError> {
+        <Self as RuntimeExecutor<Input>>::spawn_blocking_task(self, request)
+    }
+
+    pub fn cancel(&mut self, handle: TaskHandle) -> Result<(), ExecutorError> {
+        <Self as RuntimeExecutor<()>>::cancel(self, handle)
+    }
+
+    #[must_use]
+    pub fn spawned(&self) -> &[SpawnRecord] {
+        &self.spawned
+    }
+
+    #[must_use]
+    pub fn cancelled(&self) -> &[TaskId] {
+        &self.cancelled
+    }
+
+    fn record_spawn<Input>(&mut self, request: SpawnRequest<Input>) -> ExecutorTaskHandle {
+        let handle = ExecutorTaskHandle::new(request.task_id(), request.attempt_id());
+        self.spawned.push(SpawnRecord::from_request(&request));
+        handle
+    }
+}
+
+impl<Input> RuntimeExecutor<Input> for FakeExecutor {
+    fn spawn_task(
+        &mut self,
+        request: SpawnRequest<Input>,
+    ) -> Result<ExecutorTaskHandle, ExecutorError> {
+        Ok(self.record_spawn(request))
+    }
+
+    fn spawn_blocking_task(
+        &mut self,
+        request: SpawnRequest<Input>,
+    ) -> Result<ExecutorTaskHandle, ExecutorError> {
+        Ok(self.record_spawn(request.with_blocking_policy(BlockingPolicy::Blocking)))
+    }
+
+    fn cancel(&mut self, handle: TaskHandle) -> Result<(), ExecutorError> {
+        self.cancelled.push(handle.task_id());
+        Ok(())
+    }
+
+    fn name(&self) -> &'static str {
+        "fake"
     }
 }
 

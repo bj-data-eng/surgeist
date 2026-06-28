@@ -20,6 +20,8 @@ mod proxy;
 mod reducer;
 mod resource;
 mod runtime;
+#[cfg(feature = "app-runtime-tokio")]
+mod runtime_tokio;
 mod service;
 mod snapshot;
 mod surface;
@@ -50,7 +52,8 @@ pub use effect::{
 };
 pub use event::{AppEvent, EventDescriptor, EventName};
 pub use executor::{
-    BlockingPolicy, ExecutorError, ExecutorTaskHandle, RuntimeExecutor, SpawnRequest,
+    BlockingPolicy, ExecutorError, ExecutorEvent, ExecutorEventPayload, ExecutorTaskHandle,
+    FakeExecutor, RuntimeExecutor, SpawnRecord, SpawnRequest,
 };
 pub use ids::{
     AppId, CalcId, CorrelationId, CustomScopeId, ExpressionId, ResourceId, RootId, ServiceId,
@@ -88,3 +91,9 @@ pub use task::{
     TaskStatus, UnobservedPolicy,
 };
 pub use testing::FakeWakeBridge;
+
+#[cfg(feature = "app-runtime-tokio")]
+const _: fn() -> runtime_tokio::TokioExecutor = runtime_tokio::TokioExecutor::new;
+
+#[cfg(feature = "app-runtime-tokio")]
+const _: fn(&runtime_tokio::TokioExecutor) -> &'static str = runtime_tokio::TokioExecutor::name;
