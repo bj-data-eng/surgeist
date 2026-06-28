@@ -272,6 +272,120 @@ fn reducer_returns_effects_without_executing_them() {
 }
 
 #[test]
+fn runtime_commits_state_before_executing_effects() {
+    let mut runtime = Runtime::new(CounterState::default(), CounterReducer);
+    runtime.add_surface(UiSurface::new(
+        SurfaceId::from_u64(1),
+        surgeist::window::Id::from_u64(1),
+        WindowRoot::new(RootId::new("main")),
+    ));
+
+    runtime.enqueue_ui(UiInput::new(CounterInput::Increment, InputProvenance::system()).unwrap());
+    let report = runtime.drain_once(RuntimeBudget::default());
+
+    assert_eq!(runtime.state().value, 1);
+    assert_eq!(runtime.state_version(), StateVersion::from_u64(1));
+    assert_eq!(report.executed_effects(), 1);
+    assert_eq!(report.redraw_requests(), &[SurfaceId::from_u64(1)]);
+}
+
+#[test]
+fn runtime_drains_ui_before_task_events_and_respects_budget() {
+    let mut runtime = Runtime::new(CounterState::default(), CounterReducer);
+    runtime.enqueue_task(
+        TaskInput::new(
+            CounterInput::Increment,
+            InputProvenance::task(TaskId::from_u64(1), TaskAttemptId::from_u64(1)),
+        )
+        .unwrap(),
+    );
+    runtime.enqueue_ui(
+        UiInput::new(
+            CounterInput::Increment,
+            InputProvenance::ui(SurfaceId::from_u64(1)),
+        )
+        .unwrap(),
+    );
+
+    let report = runtime.drain_once(RuntimeBudget::new().max_inputs(1));
+
+    assert_eq!(runtime.state().value, 1);
+    assert_eq!(report.drained_inputs(), 1);
+    assert_eq!(report.remaining_task_inputs(), 1);
+    assert_eq!(report.first_drained_lane(), Some(RuntimeLane::Ui));
+}
+
+#[test]
+fn runtime_drops_stale_task_events_with_diagnostics() {
+    let mut runtime = Runtime::new(CounterState::default(), CounterReducer);
+    runtime.register_task_record(TaskRecord::running_for_test(
+        TaskId::from_u64(1),
+        TaskKey::new("search:rust"),
+        AppScope::app(),
+        TaskPolicy::continue_when_unobserved(),
+        TaskAttemptId::from_u64(2),
+    ));
+
+    runtime.enqueue_task(
+        TaskInput::new(
+            CounterInput::Increment,
+            InputProvenance::task(TaskId::from_u64(1), TaskAttemptId::from_u64(1)),
+        )
+        .unwrap(),
+    );
+    let report = runtime.drain_once(RuntimeBudget::default());
+
+    assert_eq!(runtime.state().value, 0);
+    assert_eq!(report.dropped_stale_task_events(), 1);
+    assert_eq!(
+        runtime
+            .diagnostics()
+            .count(&DiagnosticCode::STALE_TASK_EVENT),
+        1
+    );
+}
+
+struct FailingReducer;
+
+impl Reducer<CounterState, CounterInput> for FailingReducer {
+    fn reduce(
+        &mut self,
+        _state: &mut CounterState,
+        _input: AppInput<CounterInput>,
+    ) -> ReducerResult {
+        ReducerResult::recoverable_failure("counter reducer rejected input")
+    }
+}
+
+#[test]
+fn runtime_turns_recoverable_reducer_errors_into_diagnostics() {
+    let mut runtime = Runtime::new(CounterState::default(), FailingReducer);
+    runtime.enqueue_ui(UiInput::new(CounterInput::Increment, InputProvenance::system()).unwrap());
+
+    let report = runtime.drain_once(RuntimeBudget::default());
+
+    assert_eq!(runtime.state().value, 0);
+    assert_eq!(report.reducer_errors(), 1);
+    assert_eq!(
+        runtime.diagnostics().count(&DiagnosticCode::REDUCER_ERROR),
+        1
+    );
+}
+
+#[test]
+fn runtime_rejects_work_lane_provenance_for_ui_queue() {
+    let error = match UiInput::new(
+        CounterInput::Increment,
+        InputProvenance::task(TaskId::from_u64(1), TaskAttemptId::from_u64(1)),
+    ) {
+        Ok(_) => panic!("task provenance should not enter the UI queue"),
+        Err(error) => error,
+    };
+
+    assert_eq!(error.lane(), RuntimeLane::Ui);
+}
+
+#[test]
 fn retained_bridge_decodes_registered_command() {
     let command_name = surgeist::retained::CommandName::new("open").unwrap();
     let bridge = RetainedBridge::<BridgeCommand>::new()
