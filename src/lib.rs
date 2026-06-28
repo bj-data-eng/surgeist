@@ -28,6 +28,9 @@ pub mod shape {
 pub mod style {
     pub use surgeist_style::*;
 }
+pub mod task {
+    pub use surgeist_task::*;
+}
 pub mod text {
     pub use surgeist_text::*;
 }

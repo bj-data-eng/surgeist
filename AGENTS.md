@@ -44,6 +44,7 @@ surgeist/
     surgeist-retained/
     surgeist-shape/
     surgeist-style/
+    surgeist-task/
     surgeist-test/
     surgeist-text/
     surgeist-window/
@@ -95,6 +96,8 @@ crates, but implementation workers should stay in their assigned project.
 - `surgeist-window`: window, app host, event-loop, and platform host contracts.
 - `surgeist-dialog`: dialog contracts and dialog coordination primitives.
 - `surgeist-shape`: shape, geometry, and primitive path data.
+- `surgeist-task`: task scheduling, work-plane contracts, cancellation,
+  progress, resource-class admission, and executor-facing task policy.
 
 Add crates only for real API boundaries, not architecture theater.
 
@@ -114,11 +117,15 @@ root surgeist crate
   -> surgeist-retained
   -> surgeist-shape
   -> surgeist-style
+  -> surgeist-task
   -> surgeist-text
   -> surgeist-window
 
 surgeist-css -> surgeist-style
 surgeist-style -> surgeist-layout, surgeist-retained, surgeist-text
+surgeist-task may depend on production crates only when task contracts require
+typed integration, and should keep executor backends behind crate-owned
+contracts
 surgeist-render -> surgeist-shape, surgeist-window optional
 surgeist-text -> surgeist-render optional
 surgeist-test may depend on production crates for verification

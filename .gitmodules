@@ -28,3 +28,6 @@
 [submodule "crates/surgeist-test"]
 	path = crates/surgeist-test
 	url = https://github.com/bj-data-eng/surgeist-test.git
+[submodule "crates/surgeist-task"]
+	path = crates/surgeist-task
+	url = https://github.com/bj-data-eng/surgeist-task.git
