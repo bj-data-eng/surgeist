@@ -1,5 +1,6 @@
 use super::*;
 use crate as surgeist;
+use std::time::Duration;
 
 #[test]
 fn typed_ids_are_stable_and_debuggable() {
@@ -327,6 +328,17 @@ fn fake_executor_records_typed_request_input() {
         executor.spawned()[0].input(),
         Some(&CounterInput::Increment)
     );
+}
+
+#[test]
+fn fake_clock_advances_scheduled_effects_deterministically() {
+    let mut harness = HeadlessHarness::counter();
+    harness.schedule_timer("debounce", Duration::from_millis(50));
+
+    assert!(harness.due_timers().is_empty());
+    harness.clock_mut().advance(Duration::from_millis(50));
+
+    assert_eq!(harness.due_timers(), vec!["debounce"]);
 }
 
 #[cfg(feature = "app-runtime-tokio")]

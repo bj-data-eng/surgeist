@@ -90,7 +90,7 @@ pub use task::{
     CancellationToken, TaskHandle, TaskPolicy, TaskPriority, TaskRecord, TaskRegistration,
     TaskStatus, UnobservedPolicy,
 };
-pub use testing::FakeWakeBridge;
+pub use testing::{FakeClock, FakeWakeBridge, FakeWindowBridge, HeadlessApp, HeadlessHarness};
 
 #[cfg(feature = "app-runtime-tokio")]
 const _: fn() -> runtime_tokio::TokioExecutor = runtime_tokio::TokioExecutor::new;

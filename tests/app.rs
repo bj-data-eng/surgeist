@@ -5,8 +5,21 @@ use surgeist::app::{
     QueueDiagnostic, ResourceDescriptor, ResourceId, RootDescriptor, RootId, Runtime,
     ServiceProvenance, SnapshotBinding, SnapshotBindingId, SnapshotSourceType, StartupWindow,
     SurfaceProvenance, TaskDescriptor, TaskName, TaskProvenance, UiSurface, WindowDescriptor,
-    WindowDescriptorId, WindowRoot,
+    WindowDescriptorId, WindowRoot, testing::HeadlessApp,
 };
+
+#[test]
+fn headless_app_runs_without_winit_or_tokio() {
+    let mut app = HeadlessApp::counter();
+
+    app.open_surface("main");
+    app.input_increment();
+    app.drain();
+
+    assert_eq!(app.counter(), 1);
+    assert_eq!(app.fake_window().redraws(), &[app.surface_id("main")]);
+    assert_eq!(app.fake_executor().spawned().len(), 0);
+}
 
 #[test]
 fn app_front_door_exports_expected_names() {
