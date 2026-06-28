@@ -22,6 +22,34 @@ fn headless_app_runs_without_winit_or_tokio() {
 }
 
 #[test]
+fn thumbnail_import_example_contract_runs_headless() {
+    let mut example = surgeist::app::testing::ThumbnailImportExample::new();
+
+    example.choose_folder("/tmp/photos");
+    example.drain_once();
+
+    assert_eq!(example.initial_tile_count(), 3);
+    assert_eq!(
+        example.thumbnail_status(0),
+        surgeist::app::ResourceStatus::Starting
+    );
+
+    example.finish_thumbnail(0);
+    example.navigate_away();
+    example.drain_all();
+
+    assert_eq!(
+        example.import_task_status(),
+        surgeist::app::TaskStatus::Running
+    );
+    assert!(
+        example
+            .redrawn_surfaces()
+            .contains(&example.gallery_surface())
+    );
+}
+
+#[test]
 fn app_front_door_exports_expected_names() {
     let _scope = AppScope::app();
     let _ = std::mem::size_of::<App>();
