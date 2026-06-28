@@ -5,12 +5,12 @@ use std::{
 };
 
 use super::{
-    AppEffect, AppInput, AppProxy, AppProxyError, AppProxyErrorCode, AppScope, CorrelationId,
-    DiagnosticLog, FakeExecutor, InputProvenance, ProxyInput, QueuePolicy, RedrawTarget, Reducer,
-    ReducerResult, RootId, Runtime, RuntimeBudget, RuntimeDrainReport, RuntimeExecutor,
-    RuntimeInputError, ServiceId, ServiceInput, ServiceStatus, SpawnRequest, SurfaceId,
-    TaskAttemptId, TaskHandle, TaskId, TaskInput, TaskKey, TaskPolicy, TaskRecord, TaskStatus,
-    UiInput, UiSurface, WakeBridge, WindowRoot,
+    AppEffect, AppInput, AppProxy, AppProxyError, AppProxyErrorCode, AppScope, BlockingPolicy,
+    CorrelationId, DiagnosticLog, FakeExecutor, InputProvenance, ProxyInput, QueuePolicy,
+    RedrawTarget, Reducer, ReducerResult, RootId, Runtime, RuntimeBudget, RuntimeDrainReport,
+    RuntimeExecutor, RuntimeInputError, ServiceId, ServiceInput, ServiceStatus, SpawnRequest,
+    SurfaceId, TaskAttemptId, TaskHandle, TaskId, TaskInput, TaskKey, TaskPolicy, TaskRecord,
+    TaskStatus, UiInput, UiSurface, WakeBridge, WindowRoot,
 };
 use crate::window;
 
@@ -433,6 +433,10 @@ pub struct PrototypeApp {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PrototypeInput {
+    SearchStarted {
+        query: String,
+        attempt: TaskAttemptId,
+    },
     SearchComplete {
         attempt: TaskAttemptId,
         results: Vec<String>,
@@ -454,6 +458,16 @@ pub enum PrototypeInput {
         request: ServiceRequestId,
     },
     ServiceReconnected,
+    ToolCallStarted {
+        request: ServiceRequestId,
+    },
+    ImportStarted {
+        handle: TaskHandle,
+        blocking: BlockingPolicy,
+    },
+    ImportCancelRequested {
+        handle: TaskHandle,
+    },
     ImportFinished {
         handle: TaskHandle,
     },
@@ -483,7 +497,8 @@ impl PrototypeApp {
     #[must_use]
     pub fn jsonrpc_service() -> Self {
         let mut app = Self::new(RuntimeBudget::default());
-        app.runtime.state_mut().jsonrpc_status = ServiceStatus::Running;
+        app.reconnect();
+        app.drain_all();
         app
     }
 
@@ -493,7 +508,6 @@ impl PrototypeApp {
     }
 
     pub fn start_search(&mut self, query: &str, attempt: TaskAttemptId) {
-        self.runtime.state_mut().active_search_query = Some(query.to_owned());
         self.runtime
             .register_task_record(TaskRecord::running_for_test(
                 SEARCH_TASK_ID,
@@ -502,9 +516,22 @@ impl PrototypeApp {
                 TaskPolicy::continue_when_unobserved(),
                 attempt,
             ));
+        self.enqueue_ui(PrototypeInput::SearchStarted {
+            query: query.to_owned(),
+            attempt,
+        });
     }
 
     pub fn complete_search(&mut self, attempt: TaskAttemptId, results: Vec<&str>) {
+        self.complete_search_with_provenance(attempt, attempt, results);
+    }
+
+    pub fn complete_search_with_provenance(
+        &mut self,
+        provenance_attempt: TaskAttemptId,
+        payload_attempt: TaskAttemptId,
+        results: Vec<&str>,
+    ) {
         let results = results
             .into_iter()
             .map(str::to_owned)
@@ -512,8 +539,11 @@ impl PrototypeApp {
         self.proxy
             .send_task(
                 TaskInput::new(
-                    PrototypeInput::SearchComplete { attempt, results },
-                    InputProvenance::task(SEARCH_TASK_ID, attempt),
+                    PrototypeInput::SearchComplete {
+                        attempt: payload_attempt,
+                        results,
+                    },
+                    InputProvenance::task(SEARCH_TASK_ID, provenance_attempt),
                 )
                 .expect("prototype search completion should be a task input"),
             )
@@ -633,10 +663,7 @@ impl PrototypeApp {
     pub fn call_tool(&mut self, _name: &str) -> ServiceRequestId {
         let request = ServiceRequestId(self.next_request_id);
         self.next_request_id += 1;
-        self.runtime
-            .state_mut()
-            .request_status
-            .insert(request, ServiceRequestStatus::Pending);
+        self.enqueue_ui(PrototypeInput::ToolCallStarted { request });
         request
     }
 
@@ -715,17 +742,31 @@ impl PrototypeApp {
         );
         self.next_import_task_id += 1;
         self.runtime
-            .state_mut()
-            .imports
-            .insert(handle, TaskStatus::Running);
+            .register_task_record(TaskRecord::running_for_test(
+                handle.task_id(),
+                TaskKey::new("prototype:media-import"),
+                AppScope::app(),
+                TaskPolicy::continue_when_unobserved(),
+                handle.attempt_id(),
+            ));
+        self.enqueue_ui(PrototypeInput::ImportStarted {
+            handle,
+            blocking: BlockingPolicy::NonAbortableReportCancelling,
+        });
         handle
     }
 
     pub fn cancel_import(&mut self, handle: TaskHandle) {
+        self.enqueue_ui(PrototypeInput::ImportCancelRequested { handle });
+    }
+
+    #[must_use]
+    pub fn import_blocking_policy(&self, handle: TaskHandle) -> Option<BlockingPolicy> {
         self.runtime
-            .state_mut()
+            .state()
             .imports
-            .insert(handle, TaskStatus::Cancelling);
+            .get(&handle)
+            .map(|record| record.blocking)
     }
 
     pub fn finish_non_abortable_import(&mut self, handle: TaskHandle) {
@@ -746,7 +787,7 @@ impl PrototypeApp {
             .state()
             .imports
             .get(&handle)
-            .copied()
+            .map(|record| record.status)
             .unwrap_or(TaskStatus::Queued)
     }
 
@@ -798,11 +839,20 @@ impl PrototypeApp {
             )
             .expect("prototype service event should enqueue");
     }
+
+    fn enqueue_ui(&mut self, input: PrototypeInput) {
+        self.runtime.enqueue_ui(
+            UiInput::new(input, InputProvenance::system()).expect(
+                "prototype setup action should be accepted as deterministic UI/system input",
+            ),
+        );
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct PrototypeState {
     active_search_query: Option<String>,
+    active_search_attempt: Option<TaskAttemptId>,
     search_results: Vec<String>,
     log_lines: Vec<String>,
     progress_count: usize,
@@ -812,13 +862,20 @@ struct PrototypeState {
     request_status: BTreeMap<ServiceRequestId, ServiceRequestStatus>,
     responses: BTreeMap<ServiceRequestId, String>,
     service_progress: BTreeMap<ServiceRequestId, Vec<String>>,
-    imports: BTreeMap<TaskHandle, TaskStatus>,
+    imports: BTreeMap<TaskHandle, ImportRecord>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ImportRecord {
+    status: TaskStatus,
+    blocking: BlockingPolicy,
 }
 
 impl Default for PrototypeState {
     fn default() -> Self {
         Self {
             active_search_query: None,
+            active_search_attempt: None,
             search_results: Vec::new(),
             log_lines: Vec::new(),
             progress_count: 0,
@@ -847,48 +904,107 @@ impl Reducer<PrototypeState, PrototypeInput> for PrototypeReducer {
         }
         state.reducing = true;
 
-        match input.payload() {
-            PrototypeInput::SearchComplete { attempt, results } => {
-                let _accepted_attempt = attempt;
-                state.search_results.clone_from(results);
+        let changed = match input.payload() {
+            PrototypeInput::SearchStarted { query, attempt } => {
+                state.active_search_query = Some(query.clone());
+                state.active_search_attempt = Some(*attempt);
+                true
             }
-            PrototypeInput::LogLine(line) => state.log_lines.push(line.clone()),
-            PrototypeInput::Progress(_index) => state.progress_count += 1,
+            PrototypeInput::SearchComplete { attempt, results } => {
+                if state.active_search_attempt == Some(*attempt) {
+                    state.search_results.clone_from(results);
+                    true
+                } else {
+                    false
+                }
+            }
+            PrototypeInput::LogLine(line) => {
+                state.log_lines.push(line.clone());
+                true
+            }
+            PrototypeInput::Progress(_index) => {
+                state.progress_count += 1;
+                true
+            }
             PrototypeInput::ServiceProgress { request, message } => {
                 state
                     .service_progress
                     .entry(*request)
                     .or_default()
                     .push(message.clone());
+                true
             }
             PrototypeInput::ServiceResponse { request, message } => {
                 state.responses.insert(*request, message.clone());
                 state
                     .request_status
                     .insert(*request, ServiceRequestStatus::Completed);
+                true
             }
             PrototypeInput::ServiceCancelled { request } => {
                 state
                     .request_status
                     .insert(*request, ServiceRequestStatus::Cancelled);
+                true
             }
             PrototypeInput::ServiceTimedOut { request } => {
                 state
                     .request_status
                     .insert(*request, ServiceRequestStatus::TimedOutAfterCancel);
+                true
             }
-            PrototypeInput::ServiceReconnected => state.jsonrpc_status = ServiceStatus::Running,
+            PrototypeInput::ServiceReconnected => {
+                state.jsonrpc_status = ServiceStatus::Running;
+                true
+            }
+            PrototypeInput::ToolCallStarted { request } => {
+                state
+                    .request_status
+                    .insert(*request, ServiceRequestStatus::Pending);
+                true
+            }
+            PrototypeInput::ImportStarted { handle, blocking } => {
+                state.imports.insert(
+                    *handle,
+                    ImportRecord {
+                        status: TaskStatus::Running,
+                        blocking: *blocking,
+                    },
+                );
+                true
+            }
+            PrototypeInput::ImportCancelRequested { handle } => {
+                if let Some(record) = state.imports.get_mut(handle) {
+                    record.status = match record.blocking {
+                        BlockingPolicy::NonAbortableReportCancelling => TaskStatus::Cancelling,
+                        BlockingPolicy::Abortable | BlockingPolicy::Blocking => {
+                            TaskStatus::Cancelled
+                        }
+                    };
+                    true
+                } else {
+                    false
+                }
+            }
             PrototypeInput::ImportFinished { handle } => {
-                let status = match state.imports.get(handle) {
-                    Some(TaskStatus::Cancelling) => TaskStatus::FinishedAfterCancel,
-                    _ => TaskStatus::Completed,
-                };
-                state.imports.insert(*handle, status);
+                if let Some(record) = state.imports.get_mut(handle) {
+                    record.status = match record.status {
+                        TaskStatus::Cancelling => TaskStatus::FinishedAfterCancel,
+                        _ => TaskStatus::Completed,
+                    };
+                    true
+                } else {
+                    false
+                }
             }
-        }
+        };
 
         state.reducing = false;
-        ReducerResult::changed()
+        if changed {
+            ReducerResult::changed()
+        } else {
+            ReducerResult::unchanged()
+        }
     }
 }
 

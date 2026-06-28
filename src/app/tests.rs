@@ -1003,6 +1003,15 @@ fn prototype_latest_search_wins_rejects_stale_completion() {
         app.diagnostics().count(&DiagnosticCode::STALE_TASK_EVENT),
         1
     );
+
+    app.complete_search_with_provenance(
+        TaskAttemptId::from_u64(2),
+        TaskAttemptId::from_u64(1),
+        vec!["payload-stale"],
+    );
+    app.drain();
+
+    assert_eq!(app.search_results(), &["new"]);
 }
 
 #[test]
@@ -1087,6 +1096,14 @@ fn prototype_blocking_media_import_reports_cancelling_until_non_abortable_work_f
     let mut app = PrototypeApp::blocking_media_import();
 
     let handle = app.start_import("photos");
+    app.drain();
+
+    assert_eq!(
+        app.import_blocking_policy(handle),
+        Some(BlockingPolicy::NonAbortableReportCancelling)
+    );
+    assert_eq!(app.import_status(handle), TaskStatus::Running);
+
     app.cancel_import(handle);
     app.drain();
 

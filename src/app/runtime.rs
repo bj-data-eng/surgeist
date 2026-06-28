@@ -147,10 +147,6 @@ impl<State, R, Input> Runtime<State, R, Input> {
         &self.state
     }
 
-    pub(crate) fn state_mut(&mut self) -> &mut State {
-        &mut self.state
-    }
-
     #[must_use]
     pub const fn state_version(&self) -> StateVersion {
         self.state_version
@@ -414,7 +410,9 @@ where
 
         let result = match request.blocking_policy() {
             BlockingPolicy::Abortable => executor.spawn_task(request),
-            BlockingPolicy::Blocking => executor.spawn_blocking_task(request),
+            BlockingPolicy::Blocking | BlockingPolicy::NonAbortableReportCancelling => {
+                executor.spawn_blocking_task(request)
+            }
         };
 
         if let Err(error) = result {

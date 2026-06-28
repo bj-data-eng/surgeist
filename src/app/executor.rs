@@ -23,6 +23,7 @@ pub enum BlockingPolicy {
     #[default]
     Abortable,
     Blocking,
+    NonAbortableReportCancelling,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -259,7 +260,12 @@ impl<Input> RuntimeExecutor<Input> for FakeExecutor<Input> {
         &mut self,
         request: SpawnRequest<Input>,
     ) -> Result<ExecutorTaskHandle, ExecutorError> {
-        Ok(self.record_spawn(request.with_blocking_policy(BlockingPolicy::Blocking)))
+        let request = if request.blocking_policy() == BlockingPolicy::Abortable {
+            request.with_blocking_policy(BlockingPolicy::Blocking)
+        } else {
+            request
+        };
+        Ok(self.record_spawn(request))
     }
 
     fn cancel(&mut self, handle: TaskHandle) -> Result<(), ExecutorError> {
