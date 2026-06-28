@@ -7,9 +7,14 @@
 mod command;
 mod coord;
 mod descriptor;
+mod diagnostic;
 mod event;
 mod ids;
+mod provenance;
 mod snapshot;
+
+#[cfg(test)]
+mod tests;
 
 pub use command::{AppCommand, CommandDescriptor, CommandName};
 pub use coord::{AppScope, ScopePathSegment};
@@ -17,10 +22,17 @@ pub use descriptor::{
     App, AppDescriptor, AppManifest, ResourceDescriptor, RootDescriptor, StartupWindow,
     TaskDescriptor, WindowDescriptor, WindowDescriptorId,
 };
+pub use diagnostic::{
+    Diagnostic, DiagnosticCode, DiagnosticLog, DiagnosticSeverity, QueueDiagnostic,
+};
 pub use event::{AppEvent, EventDescriptor, EventName};
 pub use ids::{
     AppId, CalcId, CorrelationId, CustomScopeId, ExpressionId, ResourceId, RootId, ServiceId,
     SurfaceId, TaskAttemptId, TaskId, TaskKey, TaskName, ValueExprId,
+};
+pub use provenance::{
+    InputOrigin, InputProvenance, InputSourceId, ServiceProvenance, SurfaceProvenance,
+    TaskProvenance,
 };
 pub use snapshot::{
     AppSnapshot, SnapshotBinding, SnapshotBindingId, SnapshotSourceType, StateVersion,

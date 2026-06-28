@@ -1,9 +1,11 @@
 use surgeist::app::{
     App, AppCommand, AppDescriptor, AppEffect, AppEvent, AppId, AppLoop, AppManifest, AppScope,
-    AppSnapshot, CommandDescriptor, EffectKindId, EventDescriptor, ExpressionId,
-    ResourceDescriptor, ResourceId, RootDescriptor, RootId, Runtime, SnapshotBinding,
-    SnapshotBindingId, SnapshotSourceType, StartupWindow, TaskDescriptor, TaskName, UiSurface,
-    WindowDescriptor, WindowDescriptorId, WindowRoot,
+    AppSnapshot, CommandDescriptor, Diagnostic, DiagnosticCode, DiagnosticLog, DiagnosticSeverity,
+    EffectKindId, EventDescriptor, ExpressionId, InputOrigin, InputProvenance, InputSourceId,
+    QueueDiagnostic, ResourceDescriptor, ResourceId, RootDescriptor, RootId, Runtime,
+    ServiceProvenance, SnapshotBinding, SnapshotBindingId, SnapshotSourceType, StartupWindow,
+    SurfaceProvenance, TaskDescriptor, TaskName, TaskProvenance, UiSurface, WindowDescriptor,
+    WindowDescriptorId, WindowRoot,
 };
 
 #[test]
@@ -27,6 +29,17 @@ fn app_front_door_exports_expected_names() {
     let _ = std::mem::size_of::<AppManifest>();
     let _ = std::mem::size_of::<CommandDescriptor>();
     let _ = std::mem::size_of::<EventDescriptor>();
+    let _ = std::mem::size_of::<InputSourceId>();
+    let _ = std::mem::size_of::<InputProvenance>();
+    let _ = std::mem::size_of::<InputOrigin>();
+    let _ = std::mem::size_of::<SurfaceProvenance>();
+    let _ = std::mem::size_of::<TaskProvenance>();
+    let _ = std::mem::size_of::<ServiceProvenance>();
+    let _ = std::mem::size_of::<DiagnosticSeverity>();
+    let _ = std::mem::size_of::<DiagnosticCode>();
+    let _ = std::mem::size_of::<QueueDiagnostic>();
+    let _ = std::mem::size_of::<Diagnostic>();
+    let _ = std::mem::size_of::<DiagnosticLog>();
 }
 
 #[test]

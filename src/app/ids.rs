@@ -51,3 +51,9 @@ numeric_id!(SurfaceId);
 numeric_id!(TaskId);
 numeric_id!(TaskAttemptId);
 numeric_id!(CorrelationId);
+
+impl Default for AppId {
+    fn default() -> Self {
+        Self::new("app")
+    }
+}
