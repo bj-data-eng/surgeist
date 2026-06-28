@@ -90,6 +90,75 @@ fn zero_capacity_diagnostic_log_counts_without_retaining_entries() {
     assert_eq!(log.count(&DiagnosticCode::QUEUE_OVERFLOW), 1);
 }
 
+#[test]
+fn ui_surface_lifecycle_tracks_native_state() {
+    let mut surface = UiSurface::new(
+        SurfaceId::from_u64(1),
+        surgeist::window::Id::from_u64(10),
+        WindowRoot::new(RootId::new("main")),
+    );
+
+    assert_eq!(surface.lifecycle(), SurfaceLifecycle::Created);
+    surface.ready();
+    assert_eq!(surface.lifecycle(), SurfaceLifecycle::Ready);
+    surface.resized(surgeist::window::size(640, 480));
+    assert_eq!(surface.viewport().width, 640.0);
+    surface.hidden();
+    assert_eq!(surface.lifecycle(), SurfaceLifecycle::Hidden);
+    surface.suspended();
+    assert_eq!(surface.lifecycle(), SurfaceLifecycle::Suspended);
+    surface.closing();
+    assert_eq!(surface.lifecycle(), SurfaceLifecycle::Closing);
+    surface.closed();
+    assert_eq!(surface.lifecycle(), SurfaceLifecycle::Closed);
+    surface.destroyed();
+    assert_eq!(surface.lifecycle(), SurfaceLifecycle::Destroyed);
+}
+
+#[test]
+fn replacing_root_creates_distinct_retained_model() {
+    let window_id = surgeist::window::Id::from_u64(20);
+    let mut surface = UiSurface::new(
+        SurfaceId::from_u64(1),
+        window_id,
+        WindowRoot::new(RootId::new("a")),
+    );
+    let old_retained_root = surface.retained().root();
+
+    surface.replace_root(WindowRoot::new(RootId::new("b")));
+
+    assert_eq!(surface.window_id(), window_id);
+    assert_eq!(surface.root().id(), &RootId::new("b"));
+    assert_ne!(surface.retained().root(), old_retained_root);
+    assert!(
+        surface
+            .invalidations()
+            .contains(&SurfaceInvalidation::RootReplaced)
+    );
+}
+
+#[test]
+fn separate_surfaces_do_not_share_retained_or_invalidations() {
+    let mut one = UiSurface::new(
+        SurfaceId::from_u64(1),
+        surgeist::window::Id::from_u64(1),
+        WindowRoot::new(RootId::new("main")),
+    );
+    let two = UiSurface::new(
+        SurfaceId::from_u64(2),
+        surgeist::window::Id::from_u64(2),
+        WindowRoot::new(RootId::new("main")),
+    );
+
+    one.invalidate(SurfaceInvalidation::SnapshotChanged(
+        StateVersion::from_u64(2),
+    ));
+
+    assert_ne!(one.retained().root(), two.retained().root());
+    assert_eq!(one.invalidations().len(), 1);
+    assert!(two.invalidations().is_empty());
+}
+
 #[derive(Default)]
 struct CounterState {
     value: u32,

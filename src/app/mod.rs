@@ -18,6 +18,7 @@ mod reducer;
 mod resource;
 mod service;
 mod snapshot;
+mod surface;
 mod task;
 
 #[cfg(test)]
@@ -64,6 +65,10 @@ pub use service::{
 pub use snapshot::{
     AppSnapshot, SnapshotBinding, SnapshotBindingId, SnapshotSourceType, StateVersion,
 };
+pub use surface::{
+    SurfaceInvalidation, SurfaceLifecycle, SurfaceRetained, SurfaceRetainedRoot, UiSurface,
+    WindowRoot,
+};
 pub use task::{
     CancellationToken, TaskHandle, TaskPolicy, TaskPriority, TaskRecord, TaskRegistration,
     TaskStatus, UnobservedPolicy,
@@ -83,9 +88,3 @@ impl<State> Runtime<State> {
         &self.state
     }
 }
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct UiSurface;
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct WindowRoot;
