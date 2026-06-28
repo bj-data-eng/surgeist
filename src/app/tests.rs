@@ -368,3 +368,70 @@ fn resource_failure_preserves_renderable_stale_value() {
     assert_eq!(resource.error(), Some(&"timeout".to_string()));
     assert!(resource.is_renderable());
 }
+
+#[test]
+fn app_scope_covers_runtime_ownership_kinds() {
+    assert!(AppScope::app().is_app());
+    assert_eq!(
+        AppScope::window(surgeist::window::Id::from_u64(9)).window_id(),
+        Some(surgeist::window::Id::from_u64(9))
+    );
+    assert_eq!(
+        AppScope::surface(SurfaceId::from_u64(3)).surface_id(),
+        Some(SurfaceId::from_u64(3))
+    );
+    assert_eq!(
+        AppScope::resource(ResourceId::new("graph")).resource_id(),
+        Some(ResourceId::new("graph"))
+    );
+    assert_eq!(
+        AppScope::custom("workspace:alpha").segments()[0].namespace(),
+        "custom"
+    );
+    assert_eq!(
+        AppScope::workspace("alpha")
+            .then(ScopePathSegment::new("resource", "graph"))
+            .segments()
+            .len(),
+        2
+    );
+}
+
+#[test]
+fn subscriptions_attach_and_detach_observers_without_owning_work() {
+    let mut coord = CoordinationState::default();
+    let sub = Subscription::task(TaskKey::new("compile:main"))
+        .scope(AppScope::resource(ResourceId::new("project:main")))
+        .observer(SurfaceId::from_u64(1));
+
+    coord.subscribe(sub.clone());
+    assert_eq!(coord.observer_count(&sub.target()), 1);
+    assert!(coord.is_observed(&sub.target()));
+
+    coord.unsubscribe(&sub);
+    assert_eq!(coord.observer_count(&sub.target()), 0);
+    assert!(!coord.is_observed(&sub.target()));
+}
+
+#[test]
+fn coordination_coalesces_progress_by_key() {
+    let mut coord = CoordinationState::default();
+
+    coord.record_progress(ProgressEvent::new(
+        TaskId::from_u64(1),
+        TaskAttemptId::from_u64(1),
+        CoalescingKey::new("bytes"),
+        "10",
+    ));
+    coord.record_progress(ProgressEvent::new(
+        TaskId::from_u64(1),
+        TaskAttemptId::from_u64(1),
+        CoalescingKey::new("bytes"),
+        "20",
+    ));
+
+    let drained = coord.drain_progress_budgeted(8);
+    assert_eq!(drained.len(), 1);
+    assert_eq!(drained[0].payload(), "20");
+    assert_eq!(coord.coalesced_progress_count(), 1);
+}

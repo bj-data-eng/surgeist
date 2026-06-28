@@ -23,7 +23,10 @@ mod task;
 mod tests;
 
 pub use command::{AppCommand, CommandDescriptor, CommandName};
-pub use coord::{AppScope, ScopePathSegment};
+pub use coord::{
+    AppScope, CoalescingKey, CoordinationState, ProgressEvent, ScopePathSegment, Subscription,
+    SubscriptionPriority, SubscriptionTarget, SubscriptionTargetKindId,
+};
 pub use descriptor::{
     App, AppDescriptor, AppManifest, ResourceDescriptor, RootDescriptor, StartupWindow,
     TaskDescriptor, WindowDescriptor, WindowDescriptorId,
