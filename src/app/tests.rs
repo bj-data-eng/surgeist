@@ -462,6 +462,77 @@ fn runtime_default_budget_caps_drained_inputs() {
 }
 
 #[test]
+fn runtime_task_queue_overflow_records_diagnostic_and_drops_newest() {
+    let mut runtime = Runtime::new(CounterState::default(), CounterReducer)
+        .with_queue_policy(RuntimeQueuePolicy::new().max_task_inputs(2));
+    for index in 0..3 {
+        runtime.enqueue_task(
+            TaskInput::new(
+                CounterInput::Increment,
+                InputProvenance::task(TaskId::from_u64(index), TaskAttemptId::from_u64(1)),
+            )
+            .unwrap(),
+        );
+    }
+
+    let diagnostic = runtime
+        .diagnostics()
+        .entries()
+        .into_iter()
+        .find(|diagnostic| diagnostic.code() == &DiagnosticCode::QUEUE_OVERFLOW)
+        .expect("task queue overflow should emit a diagnostic");
+
+    assert_eq!(diagnostic.queue().unwrap().name(), "runtime.task");
+    assert_eq!(diagnostic.queue().unwrap().capacity(), 2);
+    assert_eq!(diagnostic.queue().unwrap().dropped(), 1);
+    assert_eq!(
+        runtime.diagnostics().count(&DiagnosticCode::QUEUE_OVERFLOW),
+        1
+    );
+
+    let report = runtime.drain_once(RuntimeBudget::default());
+
+    assert_eq!(runtime.state().value, 2);
+    assert_eq!(report.drained_inputs(), 2);
+    assert_eq!(report.remaining_task_inputs(), 0);
+}
+
+#[test]
+fn runtime_service_queue_overflow_records_diagnostic_and_drops_newest() {
+    let mut runtime = Runtime::new(CounterState::default(), CounterReducer)
+        .with_queue_policy(RuntimeQueuePolicy::new().max_service_inputs(1));
+    for index in 0..2 {
+        runtime.enqueue_service(
+            ServiceInput::new(
+                CounterInput::Increment,
+                InputProvenance::service(ServiceId::new(format!("service.{index}"))),
+            )
+            .unwrap(),
+        );
+    }
+
+    let diagnostic = runtime
+        .diagnostics()
+        .entries()
+        .into_iter()
+        .find(|diagnostic| diagnostic.code() == &DiagnosticCode::QUEUE_OVERFLOW)
+        .expect("service queue overflow should emit a diagnostic");
+
+    assert_eq!(diagnostic.queue().unwrap().name(), "runtime.service");
+    assert_eq!(diagnostic.queue().unwrap().capacity(), 1);
+    assert_eq!(diagnostic.queue().unwrap().dropped(), 1);
+    assert_eq!(
+        runtime.diagnostics().count(&DiagnosticCode::QUEUE_OVERFLOW),
+        1
+    );
+
+    let report = runtime.drain_once(RuntimeBudget::default());
+
+    assert_eq!(runtime.state().value, 1);
+    assert_eq!(report.drained_inputs(), 1);
+}
+
+#[test]
 fn runtime_redraw_all_reports_registered_surface_ids() {
     let mut runtime = Runtime::new(CounterState::default(), CounterReducer);
     runtime.add_surface(UiSurface::new(

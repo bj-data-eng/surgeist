@@ -49,6 +49,7 @@ impl DiagnosticCode {
 pub struct QueueDiagnostic {
     name: String,
     capacity: usize,
+    dropped: usize,
     age_ms: Option<u64>,
 }
 
@@ -58,8 +59,15 @@ impl QueueDiagnostic {
         Self {
             name: name.into(),
             capacity,
+            dropped: 0,
             age_ms: None,
         }
+    }
+
+    #[must_use]
+    pub const fn with_dropped(mut self, dropped: usize) -> Self {
+        self.dropped = dropped;
+        self
     }
 
     #[must_use]
@@ -76,6 +84,11 @@ impl QueueDiagnostic {
     #[must_use]
     pub const fn capacity(&self) -> usize {
         self.capacity
+    }
+
+    #[must_use]
+    pub const fn dropped(&self) -> usize {
+        self.dropped
     }
 
     #[must_use]

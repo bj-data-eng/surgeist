@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, VecDeque};
 
 use super::{
     AppEffect, AppEffectPayload, AppInput, BlockingPolicy, Diagnostic, DiagnosticCode,
-    DiagnosticLog, InputProvenance, RedrawTarget, Reducer, RuntimeExecutor, SpawnRequest,
-    StateVersion, SurfaceId, TaskHandle, TaskId, TaskRecord, UiSurface,
+    DiagnosticLog, InputProvenance, QueueDiagnostic, RedrawTarget, Reducer, RuntimeExecutor,
+    SpawnRequest, StateVersion, SurfaceId, TaskHandle, TaskId, TaskRecord, UiSurface,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -104,6 +104,53 @@ impl RuntimeInputError {
     }
 }
 
+const DEFAULT_TASK_QUEUE_CAPACITY: usize = 65_536;
+const DEFAULT_SERVICE_QUEUE_CAPACITY: usize = 65_536;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RuntimeQueuePolicy {
+    max_task_inputs: usize,
+    max_service_inputs: usize,
+}
+
+impl RuntimeQueuePolicy {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            max_task_inputs: DEFAULT_TASK_QUEUE_CAPACITY,
+            max_service_inputs: DEFAULT_SERVICE_QUEUE_CAPACITY,
+        }
+    }
+
+    #[must_use]
+    pub const fn max_task_inputs(mut self, capacity: usize) -> Self {
+        self.max_task_inputs = capacity;
+        self
+    }
+
+    #[must_use]
+    pub const fn max_service_inputs(mut self, capacity: usize) -> Self {
+        self.max_service_inputs = capacity;
+        self
+    }
+
+    #[must_use]
+    pub const fn task_capacity(&self) -> usize {
+        self.max_task_inputs
+    }
+
+    #[must_use]
+    pub const fn service_capacity(&self) -> usize {
+        self.max_service_inputs
+    }
+}
+
+impl Default for RuntimeQueuePolicy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct Runtime<State = (), R = (), Input = ()> {
     state: State,
     reducer: R,
@@ -115,6 +162,7 @@ pub struct Runtime<State = (), R = (), Input = ()> {
     ui_queue: VecDeque<UiInput<Input>>,
     task_queue: VecDeque<TaskInput<Input>>,
     service_queue: VecDeque<ServiceInput<Input>>,
+    queue_policy: RuntimeQueuePolicy,
     next_task_id: u64,
 }
 
@@ -132,6 +180,7 @@ impl<State, R, Input> Runtime<State, R, Input> {
             ui_queue: VecDeque::new(),
             task_queue: VecDeque::new(),
             service_queue: VecDeque::new(),
+            queue_policy: RuntimeQueuePolicy::default(),
             next_task_id: 1,
         }
     }
@@ -140,6 +189,17 @@ impl<State, R, Input> Runtime<State, R, Input> {
     pub fn with_executor(mut self, executor: Box<dyn RuntimeExecutor<Input>>) -> Self {
         self.executor = Some(executor);
         self
+    }
+
+    #[must_use]
+    pub const fn with_queue_policy(mut self, policy: RuntimeQueuePolicy) -> Self {
+        self.queue_policy = policy;
+        self
+    }
+
+    #[must_use]
+    pub const fn queue_policy(&self) -> RuntimeQueuePolicy {
+        self.queue_policy
     }
 
     #[must_use]
@@ -170,11 +230,73 @@ impl<State, R, Input> Runtime<State, R, Input> {
     }
 
     pub fn enqueue_task(&mut self, input: TaskInput<Input>) {
+        if self.task_queue.len() >= self.queue_policy.task_capacity() {
+            self.record_queue_overflow(
+                RuntimeLane::Task,
+                self.queue_policy.task_capacity(),
+                input.input.provenance().clone(),
+            );
+            return;
+        }
         self.task_queue.push_back(input);
     }
 
     pub fn enqueue_service(&mut self, input: ServiceInput<Input>) {
+        if self.service_queue.len() >= self.queue_policy.service_capacity() {
+            self.record_queue_overflow(
+                RuntimeLane::Service,
+                self.queue_policy.service_capacity(),
+                input.input.provenance().clone(),
+            );
+            return;
+        }
         self.service_queue.push_back(input);
+    }
+
+    fn record_queue_overflow(
+        &mut self,
+        lane: RuntimeLane,
+        capacity: usize,
+        provenance: InputProvenance,
+    ) {
+        let task = provenance.task_id().zip(provenance.task_attempt_id());
+        let service = provenance.service_id();
+        let mut diagnostic = Diagnostic::warning(
+            DiagnosticCode::QUEUE_OVERFLOW,
+            format!(
+                "{} overflow at capacity {capacity}; dropped newest input",
+                lane.queue_display_name()
+            ),
+            provenance,
+        )
+        .with_queue(QueueDiagnostic::new(lane.queue_name(), capacity).with_dropped(1));
+
+        if let Some((task_id, attempt_id)) = task {
+            diagnostic = diagnostic.with_task(task_id, attempt_id);
+        }
+        if let Some(service_id) = service {
+            diagnostic = diagnostic.with_service(service_id);
+        }
+
+        self.diagnostics.push(diagnostic);
+    }
+}
+
+impl RuntimeLane {
+    const fn queue_name(self) -> &'static str {
+        match self {
+            Self::Ui => "runtime.ui",
+            Self::Task => "runtime.task",
+            Self::Service => "runtime.service",
+        }
+    }
+
+    const fn queue_display_name(self) -> &'static str {
+        match self {
+            Self::Ui => "runtime UI queue",
+            Self::Task => "runtime task queue",
+            Self::Service => "runtime service queue",
+        }
     }
 }
 
