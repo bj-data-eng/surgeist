@@ -14,7 +14,9 @@ mod event;
 mod executor;
 mod ids;
 mod input;
+mod loop_;
 mod provenance;
+mod proxy;
 mod reducer;
 mod resource;
 mod runtime;
@@ -22,6 +24,7 @@ mod service;
 mod snapshot;
 mod surface;
 mod task;
+pub mod testing;
 
 #[cfg(test)]
 mod tests;
@@ -54,10 +57,12 @@ pub use ids::{
     SurfaceId, TaskAttemptId, TaskId, TaskKey, TaskName, ValueExprId,
 };
 pub use input::AppInput;
+pub use loop_::{AppHandler, AppLoop};
 pub use provenance::{
     InputOrigin, InputProvenance, InputSourceId, ServiceProvenance, SurfaceProvenance,
     TaskProvenance,
 };
+pub use proxy::{AppProxy, AppProxyError, AppProxyErrorCode, ProxyInput, QueuePolicy, WakeBridge};
 pub use reducer::{Reducer, ReducerResult};
 pub use resource::{
     FailureVisibility, Freshness, ResourceSnapshot, ResourceState, ResourceStateReadyTransition,
@@ -82,6 +87,4 @@ pub use task::{
     CancellationToken, TaskHandle, TaskPolicy, TaskPriority, TaskRecord, TaskRegistration,
     TaskStatus, UnobservedPolicy,
 };
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct AppLoop;
+pub use testing::FakeWakeBridge;

@@ -231,6 +231,56 @@ enum BridgeCommand {
     OpenWithPayload(String),
 }
 
+#[test]
+fn app_proxy_coalesces_wakeups_while_queue_is_non_empty() {
+    let wake = FakeWakeBridge::default();
+    let proxy = AppProxy::<CounterInput>::new(wake.clone(), QueuePolicy::bounded(16));
+
+    proxy
+        .send_task(
+            TaskInput::new(
+                CounterInput::Increment,
+                InputProvenance::task(TaskId::from_u64(1), TaskAttemptId::from_u64(1)),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    proxy
+        .send_task(
+            TaskInput::new(
+                CounterInput::Increment,
+                InputProvenance::task(TaskId::from_u64(1), TaskAttemptId::from_u64(1)),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+    assert_eq!(wake.wake_count(), 1);
+    assert_eq!(proxy.pending_len(), 2);
+
+    let drained = proxy.drain_pending(8);
+    assert_eq!(drained.len(), 2);
+    assert_eq!(proxy.pending_len(), 0);
+}
+
+#[test]
+fn app_proxy_reports_closed_native_wake_bridge() {
+    let wake = FakeWakeBridge::closed();
+    let proxy = AppProxy::<CounterInput>::new(wake, QueuePolicy::bounded(16));
+
+    let error = proxy
+        .send_task(
+            TaskInput::new(
+                CounterInput::Increment,
+                InputProvenance::task(TaskId::from_u64(1), TaskAttemptId::from_u64(1)),
+            )
+            .unwrap(),
+        )
+        .unwrap_err();
+
+    assert_eq!(error.code(), AppProxyErrorCode::WakeFailed);
+}
+
 struct CounterReducer;
 
 impl Reducer<CounterState, CounterInput> for CounterReducer {
