@@ -1,14 +1,16 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     sync::{Arc, Mutex, MutexGuard},
     time::Duration,
 };
 
 use super::{
-    AppEffect, AppProxyError, AppProxyErrorCode, FakeExecutor, InputProvenance, RedrawTarget,
-    Reducer, ReducerResult, RootId, Runtime, RuntimeBudget, RuntimeDrainReport, RuntimeExecutor,
-    RuntimeInputError, SpawnRequest, SurfaceId, TaskHandle, UiInput, UiSurface, WakeBridge,
-    WindowRoot,
+    AppEffect, AppInput, AppProxy, AppProxyError, AppProxyErrorCode, AppScope, CorrelationId,
+    DiagnosticLog, FakeExecutor, InputProvenance, ProxyInput, QueuePolicy, RedrawTarget, Reducer,
+    ReducerResult, RootId, Runtime, RuntimeBudget, RuntimeDrainReport, RuntimeExecutor,
+    RuntimeInputError, ServiceId, ServiceInput, ServiceStatus, SpawnRequest, SurfaceId,
+    TaskAttemptId, TaskHandle, TaskId, TaskInput, TaskKey, TaskPolicy, TaskRecord, TaskStatus,
+    UiInput, UiSurface, WakeBridge, WindowRoot,
 };
 use crate::window;
 
@@ -401,6 +403,502 @@ impl Reducer<CounterState, CounterInput> for CounterReducer {
             }
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct ServiceRequestId(u64);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ServiceRequestStatus {
+    Pending,
+    Completed,
+    Cancelled,
+    TimedOutAfterCancel,
+}
+
+pub struct PrototypeApp {
+    budget: RuntimeBudget,
+    runtime: Runtime<PrototypeState, PrototypeReducer, PrototypeInput>,
+    remaining_task_inputs: usize,
+    wake: FakeWakeBridge,
+    proxy: AppProxy<PrototypeInput>,
+    compile_task: TaskRecord,
+    compile_observers: BTreeSet<SurfaceId>,
+    surfaces: BTreeMap<String, SurfaceId>,
+    next_surface_id: u64,
+    next_window_id: u64,
+    next_request_id: u64,
+    next_import_task_id: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PrototypeInput {
+    SearchComplete {
+        attempt: TaskAttemptId,
+        results: Vec<String>,
+    },
+    LogLine(String),
+    Progress(usize),
+    ServiceProgress {
+        request: ServiceRequestId,
+        message: String,
+    },
+    ServiceResponse {
+        request: ServiceRequestId,
+        message: String,
+    },
+    ServiceCancelled {
+        request: ServiceRequestId,
+    },
+    ServiceTimedOut {
+        request: ServiceRequestId,
+    },
+    ServiceReconnected,
+    ImportFinished {
+        handle: TaskHandle,
+    },
+}
+
+impl PrototypeApp {
+    #[must_use]
+    pub fn latest_search() -> Self {
+        Self::new(RuntimeBudget::default())
+    }
+
+    #[must_use]
+    pub fn log_stream(budget: RuntimeBudget) -> Self {
+        Self::new(budget)
+    }
+
+    #[must_use]
+    pub fn progress_counter(budget: RuntimeBudget) -> Self {
+        Self::new(budget)
+    }
+
+    #[must_use]
+    pub fn shared_compile_service() -> Self {
+        Self::new(RuntimeBudget::default())
+    }
+
+    #[must_use]
+    pub fn jsonrpc_service() -> Self {
+        let mut app = Self::new(RuntimeBudget::default());
+        app.runtime.state_mut().jsonrpc_status = ServiceStatus::Running;
+        app
+    }
+
+    #[must_use]
+    pub fn blocking_media_import() -> Self {
+        Self::new(RuntimeBudget::default())
+    }
+
+    pub fn start_search(&mut self, query: &str, attempt: TaskAttemptId) {
+        self.runtime.state_mut().active_search_query = Some(query.to_owned());
+        self.runtime
+            .register_task_record(TaskRecord::running_for_test(
+                SEARCH_TASK_ID,
+                TaskKey::new("prototype:search"),
+                AppScope::app(),
+                TaskPolicy::continue_when_unobserved(),
+                attempt,
+            ));
+    }
+
+    pub fn complete_search(&mut self, attempt: TaskAttemptId, results: Vec<&str>) {
+        let results = results
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<Vec<String>>();
+        self.proxy
+            .send_task(
+                TaskInput::new(
+                    PrototypeInput::SearchComplete { attempt, results },
+                    InputProvenance::task(SEARCH_TASK_ID, attempt),
+                )
+                .expect("prototype search completion should be a task input"),
+            )
+            .expect("prototype search completion should enqueue");
+    }
+
+    pub fn push_log_line(&mut self, line: String) {
+        self.proxy
+            .send_task(
+                TaskInput::new(
+                    PrototypeInput::LogLine(line),
+                    InputProvenance::task(LOG_TASK_ID, TaskAttemptId::from_u64(1)),
+                )
+                .expect("prototype log line should be a task input"),
+            )
+            .expect("prototype log line should enqueue");
+    }
+
+    pub fn drain(&mut self) {
+        self.flush_proxy();
+        let report = self.runtime.drain_once(self.budget);
+        self.remaining_task_inputs = report.remaining_task_inputs();
+    }
+
+    pub fn drain_all(&mut self) {
+        loop {
+            self.drain();
+            if self.proxy.pending_len() == 0 && self.remaining_task_inputs == 0 {
+                break;
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn search_results(&self) -> &[String] {
+        &self.runtime.state().search_results
+    }
+
+    #[must_use]
+    pub const fn diagnostics(&self) -> &DiagnosticLog {
+        self.runtime.diagnostics()
+    }
+
+    #[must_use]
+    pub fn log_lines(&self) -> &[String] {
+        &self.runtime.state().log_lines
+    }
+
+    #[must_use]
+    pub const fn remaining_task_inputs(&self) -> usize {
+        self.remaining_task_inputs
+    }
+
+    #[must_use]
+    pub const fn progress_count(&self) -> usize {
+        self.runtime.state().progress_count
+    }
+
+    #[must_use]
+    pub const fn reducer_reentry_count(&self) -> usize {
+        self.runtime.state().reducer_reentry_count
+    }
+
+    #[must_use]
+    pub const fn fake_wake(&self) -> &FakeWakeBridge {
+        &self.wake
+    }
+
+    #[must_use]
+    pub const fn proxy(&self) -> &AppProxy<PrototypeInput> {
+        &self.proxy
+    }
+
+    #[must_use]
+    pub fn progress_event(&self, index: usize) -> TaskInput<PrototypeInput> {
+        TaskInput::new(
+            PrototypeInput::Progress(index),
+            InputProvenance::task(PROGRESS_TASK_ID, TaskAttemptId::from_u64(1)),
+        )
+        .expect("prototype progress should be a task input")
+    }
+
+    pub fn open_surface(&mut self, name: &str) -> SurfaceId {
+        if let Some(surface_id) = self.surfaces.get(name) {
+            return *surface_id;
+        }
+
+        let surface_id = SurfaceId::from_u64(self.next_surface_id);
+        self.next_surface_id += 1;
+        let window_id = window::Id::from_u64(self.next_window_id);
+        self.next_window_id += 1;
+        self.runtime.add_surface(UiSurface::new(
+            surface_id,
+            window_id,
+            WindowRoot::new(RootId::new(name)),
+        ));
+        self.surfaces.insert(name.to_owned(), surface_id);
+        surface_id
+    }
+
+    pub fn observe_compile(&mut self, surface: SurfaceId) {
+        self.compile_observers.insert(surface);
+    }
+
+    pub fn close_surface(&mut self, surface: SurfaceId) {
+        let was_observing = self.compile_observers.remove(&surface);
+        if was_observing && self.compile_observers.is_empty() {
+            let _ = self.compile_task.request_cancel();
+        }
+    }
+
+    #[must_use]
+    pub const fn compile_task_status(&self) -> TaskStatus {
+        self.compile_task.status()
+    }
+
+    pub fn call_tool(&mut self, _name: &str) -> ServiceRequestId {
+        let request = ServiceRequestId(self.next_request_id);
+        self.next_request_id += 1;
+        self.runtime
+            .state_mut()
+            .request_status
+            .insert(request, ServiceRequestStatus::Pending);
+        request
+    }
+
+    pub fn notify_progress(&mut self, request: ServiceRequestId, message: &str) {
+        self.enqueue_service(
+            PrototypeInput::ServiceProgress {
+                request,
+                message: message.to_owned(),
+            },
+            request,
+        );
+    }
+
+    pub fn respond(&mut self, request: ServiceRequestId, message: &str) {
+        self.enqueue_service(
+            PrototypeInput::ServiceResponse {
+                request,
+                message: message.to_owned(),
+            },
+            request,
+        );
+    }
+
+    pub fn cancel(&mut self, request: ServiceRequestId) {
+        self.enqueue_service(PrototypeInput::ServiceCancelled { request }, request);
+    }
+
+    pub fn timeout(&mut self, request: ServiceRequestId) {
+        self.enqueue_service(PrototypeInput::ServiceTimedOut { request }, request);
+    }
+
+    pub fn reconnect(&mut self) {
+        self.proxy
+            .send_service(
+                ServiceInput::new(
+                    PrototypeInput::ServiceReconnected,
+                    InputProvenance::service(jsonrpc_service_id()),
+                )
+                .expect("prototype reconnect should be a service input"),
+            )
+            .expect("prototype reconnect should enqueue");
+    }
+
+    #[must_use]
+    pub fn response(&self, request: ServiceRequestId) -> Option<&str> {
+        self.runtime
+            .state()
+            .responses
+            .get(&request)
+            .map(String::as_str)
+    }
+
+    #[must_use]
+    pub fn request_status(&self, request: ServiceRequestId) -> ServiceRequestStatus {
+        self.runtime
+            .state()
+            .request_status
+            .get(&request)
+            .copied()
+            .unwrap_or(ServiceRequestStatus::Pending)
+    }
+
+    #[must_use]
+    pub fn service_status(&self, service: ServiceId) -> ServiceStatus {
+        if service == jsonrpc_service_id() {
+            self.runtime.state().jsonrpc_status
+        } else {
+            ServiceStatus::Stopped
+        }
+    }
+
+    pub fn start_import(&mut self, _name: &str) -> TaskHandle {
+        let handle = TaskHandle::new(
+            TaskId::from_u64(self.next_import_task_id),
+            TaskAttemptId::from_u64(1),
+        );
+        self.next_import_task_id += 1;
+        self.runtime
+            .state_mut()
+            .imports
+            .insert(handle, TaskStatus::Running);
+        handle
+    }
+
+    pub fn cancel_import(&mut self, handle: TaskHandle) {
+        self.runtime
+            .state_mut()
+            .imports
+            .insert(handle, TaskStatus::Cancelling);
+    }
+
+    pub fn finish_non_abortable_import(&mut self, handle: TaskHandle) {
+        self.proxy
+            .send_task(
+                TaskInput::new(
+                    PrototypeInput::ImportFinished { handle },
+                    InputProvenance::task(handle.task_id(), handle.attempt_id()),
+                )
+                .expect("prototype import completion should be a task input"),
+            )
+            .expect("prototype import completion should enqueue");
+    }
+
+    #[must_use]
+    pub fn import_status(&self, handle: TaskHandle) -> TaskStatus {
+        self.runtime
+            .state()
+            .imports
+            .get(&handle)
+            .copied()
+            .unwrap_or(TaskStatus::Queued)
+    }
+
+    fn new(budget: RuntimeBudget) -> Self {
+        let wake = FakeWakeBridge::default();
+        let proxy = AppProxy::new(wake.clone(), QueuePolicy::bounded(20_000));
+        let compile_task = TaskRecord::running_for_test(
+            COMPILE_TASK_ID,
+            TaskKey::new("prototype:compile"),
+            AppScope::app(),
+            TaskPolicy::cancel_when_unobserved(),
+            TaskAttemptId::from_u64(1),
+        );
+
+        Self {
+            budget,
+            runtime: Runtime::new(PrototypeState::default(), PrototypeReducer),
+            remaining_task_inputs: 0,
+            wake,
+            proxy,
+            compile_task,
+            compile_observers: BTreeSet::new(),
+            surfaces: BTreeMap::new(),
+            next_surface_id: 1,
+            next_window_id: 1,
+            next_request_id: 1,
+            next_import_task_id: 100,
+        }
+    }
+
+    fn flush_proxy(&mut self) {
+        for input in self.proxy.drain_pending(usize::MAX) {
+            match input {
+                ProxyInput::Task(input) => self.runtime.enqueue_task(input),
+                ProxyInput::Service(input) => self.runtime.enqueue_service(input),
+            }
+        }
+    }
+
+    fn enqueue_service(&self, input: PrototypeInput, request: ServiceRequestId) {
+        self.proxy
+            .send_service(
+                ServiceInput::new(
+                    input,
+                    InputProvenance::service(jsonrpc_service_id())
+                        .with_correlation(CorrelationId::from_u64(request.0)),
+                )
+                .expect("prototype service event should be a service input"),
+            )
+            .expect("prototype service event should enqueue");
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PrototypeState {
+    active_search_query: Option<String>,
+    search_results: Vec<String>,
+    log_lines: Vec<String>,
+    progress_count: usize,
+    reducer_reentry_count: usize,
+    reducing: bool,
+    jsonrpc_status: ServiceStatus,
+    request_status: BTreeMap<ServiceRequestId, ServiceRequestStatus>,
+    responses: BTreeMap<ServiceRequestId, String>,
+    service_progress: BTreeMap<ServiceRequestId, Vec<String>>,
+    imports: BTreeMap<TaskHandle, TaskStatus>,
+}
+
+impl Default for PrototypeState {
+    fn default() -> Self {
+        Self {
+            active_search_query: None,
+            search_results: Vec::new(),
+            log_lines: Vec::new(),
+            progress_count: 0,
+            reducer_reentry_count: 0,
+            reducing: false,
+            jsonrpc_status: ServiceStatus::Stopped,
+            request_status: BTreeMap::new(),
+            responses: BTreeMap::new(),
+            service_progress: BTreeMap::new(),
+            imports: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct PrototypeReducer;
+
+impl Reducer<PrototypeState, PrototypeInput> for PrototypeReducer {
+    fn reduce(
+        &mut self,
+        state: &mut PrototypeState,
+        input: AppInput<PrototypeInput>,
+    ) -> ReducerResult {
+        if state.reducing {
+            state.reducer_reentry_count += 1;
+        }
+        state.reducing = true;
+
+        match input.payload() {
+            PrototypeInput::SearchComplete { attempt, results } => {
+                let _accepted_attempt = attempt;
+                state.search_results.clone_from(results);
+            }
+            PrototypeInput::LogLine(line) => state.log_lines.push(line.clone()),
+            PrototypeInput::Progress(_index) => state.progress_count += 1,
+            PrototypeInput::ServiceProgress { request, message } => {
+                state
+                    .service_progress
+                    .entry(*request)
+                    .or_default()
+                    .push(message.clone());
+            }
+            PrototypeInput::ServiceResponse { request, message } => {
+                state.responses.insert(*request, message.clone());
+                state
+                    .request_status
+                    .insert(*request, ServiceRequestStatus::Completed);
+            }
+            PrototypeInput::ServiceCancelled { request } => {
+                state
+                    .request_status
+                    .insert(*request, ServiceRequestStatus::Cancelled);
+            }
+            PrototypeInput::ServiceTimedOut { request } => {
+                state
+                    .request_status
+                    .insert(*request, ServiceRequestStatus::TimedOutAfterCancel);
+            }
+            PrototypeInput::ServiceReconnected => state.jsonrpc_status = ServiceStatus::Running,
+            PrototypeInput::ImportFinished { handle } => {
+                let status = match state.imports.get(handle) {
+                    Some(TaskStatus::Cancelling) => TaskStatus::FinishedAfterCancel,
+                    _ => TaskStatus::Completed,
+                };
+                state.imports.insert(*handle, status);
+            }
+        }
+
+        state.reducing = false;
+        ReducerResult::changed()
+    }
+}
+
+const SEARCH_TASK_ID: TaskId = TaskId::from_u64(1);
+const LOG_TASK_ID: TaskId = TaskId::from_u64(2);
+const PROGRESS_TASK_ID: TaskId = TaskId::from_u64(3);
+const COMPILE_TASK_ID: TaskId = TaskId::from_u64(4);
+
+fn jsonrpc_service_id() -> ServiceId {
+    ServiceId::new("jsonrpc")
 }
 
 #[derive(Clone, Debug)]

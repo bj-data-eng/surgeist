@@ -213,7 +213,7 @@ impl Default for CancellationToken {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct TaskHandle {
     task_id: TaskId,
     attempt_id: TaskAttemptId,

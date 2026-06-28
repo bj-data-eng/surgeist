@@ -1,3 +1,4 @@
+use super::testing::{PrototypeApp, ServiceRequestStatus};
 use super::*;
 use crate as surgeist;
 use std::time::Duration;
@@ -983,6 +984,120 @@ fn coordination_coalesces_progress_by_key() {
     assert_eq!(drained.len(), 1);
     assert_eq!(drained[0].payload(), "20");
     assert_eq!(coord.coalesced_progress_count(), 1);
+}
+
+#[test]
+fn prototype_latest_search_wins_rejects_stale_completion() {
+    let mut app = PrototypeApp::latest_search();
+
+    app.start_search("rust", TaskAttemptId::from_u64(1));
+    app.start_search("rust async", TaskAttemptId::from_u64(2));
+    app.complete_search(TaskAttemptId::from_u64(1), vec!["old"]);
+    app.complete_search(TaskAttemptId::from_u64(2), vec!["new"]);
+
+    assert!(app.search_results().is_empty());
+    app.drain();
+
+    assert_eq!(app.search_results(), &["new"]);
+    assert_eq!(
+        app.diagnostics().count(&DiagnosticCode::STALE_TASK_EVENT),
+        1
+    );
+}
+
+#[test]
+fn prototype_log_stream_accumulates_ordered_entries_with_budgeted_draining() {
+    let mut app = PrototypeApp::log_stream(RuntimeBudget::new().max_task_events(10));
+
+    for index in 0..35 {
+        app.push_log_line(format!("line-{index:02}"));
+    }
+
+    assert!(app.log_lines().is_empty());
+    app.drain();
+
+    assert_eq!(app.log_lines().len(), 10);
+    assert_eq!(app.remaining_task_inputs(), 25);
+
+    app.drain_all();
+    assert_eq!(app.log_lines().first().unwrap(), "line-00");
+    assert_eq!(app.log_lines().last().unwrap(), "line-34");
+}
+
+#[test]
+fn stress_ten_thousand_task_events_use_coalesced_wakeups_and_budgeted_drains() {
+    let mut app = PrototypeApp::progress_counter(RuntimeBudget::new().max_task_events(128));
+
+    for index in 0..10_000 {
+        app.proxy().send_task(app.progress_event(index)).unwrap();
+    }
+
+    assert_eq!(app.progress_count(), 0);
+    assert!(app.fake_wake().wake_count() < 100);
+    app.drain_all();
+    assert_eq!(app.progress_count(), 10_000);
+    assert_eq!(app.reducer_reentry_count(), 0);
+}
+
+#[test]
+fn prototype_two_surfaces_share_app_scoped_task_until_last_observer_detaches() {
+    let mut app = PrototypeApp::shared_compile_service();
+    let left = app.open_surface("left");
+    let right = app.open_surface("right");
+
+    app.observe_compile(left);
+    app.observe_compile(right);
+    app.close_surface(left);
+
+    assert_eq!(app.compile_task_status(), TaskStatus::Running);
+
+    app.close_surface(right);
+    assert_eq!(app.compile_task_status(), TaskStatus::Cancelling);
+}
+
+#[test]
+fn prototype_jsonrpc_service_handles_out_of_order_progress_cancel_timeout_and_reconnect() {
+    let mut app = PrototypeApp::jsonrpc_service();
+
+    let first = app.call_tool("compile");
+    let second = app.call_tool("docs");
+    app.notify_progress(second, "half");
+    app.respond(first, "compiled");
+    app.cancel(second);
+    app.timeout(second);
+    app.reconnect();
+
+    assert_eq!(app.response(first), None);
+    assert_eq!(app.request_status(second), ServiceRequestStatus::Pending);
+    app.drain_all();
+
+    assert_eq!(app.response(first), Some("compiled"));
+    assert_eq!(
+        app.request_status(second),
+        ServiceRequestStatus::TimedOutAfterCancel
+    );
+    assert_eq!(
+        app.service_status(ServiceId::new("jsonrpc")),
+        ServiceStatus::Running
+    );
+}
+
+#[test]
+fn prototype_blocking_media_import_reports_cancelling_until_non_abortable_work_finishes() {
+    let mut app = PrototypeApp::blocking_media_import();
+
+    let handle = app.start_import("photos");
+    app.cancel_import(handle);
+    app.drain();
+
+    assert_eq!(app.import_status(handle), TaskStatus::Cancelling);
+
+    app.finish_non_abortable_import(handle);
+
+    assert_eq!(app.import_status(handle), TaskStatus::Cancelling);
+    app.drain();
+
+    assert_eq!(app.import_status(handle), TaskStatus::FinishedAfterCancel);
 }
 
 fn retained_command_for_test(name: surgeist::retained::CommandName) -> surgeist::retained::Command {

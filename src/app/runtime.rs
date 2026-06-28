@@ -147,6 +147,10 @@ impl<State, R, Input> Runtime<State, R, Input> {
         &self.state
     }
 
+    pub(crate) fn state_mut(&mut self) -> &mut State {
+        &mut self.state
+    }
+
     #[must_use]
     pub const fn state_version(&self) -> StateVersion {
         self.state_version
