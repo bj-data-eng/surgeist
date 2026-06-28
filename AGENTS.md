@@ -240,6 +240,7 @@ Plans go in `/plans` at the root of the repo where the implementation will happe
 
 If writing specs or design docs, use the same root-local convention unless the
 user chooses a separate folder. Do not put new plans under `docs/superpowers`.
+This repo-local plan location intentionally overrides Superpowers default paths.
 
 ## Testing
 
@@ -366,6 +367,9 @@ change did not attempt to hide or work around that failure.
 - Before committing, review `git diff --stat` and the relevant detailed diff.
 - Do not rewrite unrelated files or revert user changes unless explicitly
   asked.
+- Do not create or switch branches for ordinary Surgeist work. Use the current
+  `main` branch and sequential task-scoped commits unless the user explicitly
+  asks for a branch or worktree.
 - Keep `.venv/`, `target/`, `build/`, `dist/`, secrets, host identity, editor
   residue, and runtime residue out of git.
 - Commit logical points with short, concrete messages.
