@@ -220,6 +220,8 @@ struct CounterState {
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum CounterInput {
     Increment,
+    RedrawAll,
+    RedrawWindow(surgeist::window::Id),
     Save,
 }
 
@@ -240,6 +242,10 @@ impl Reducer<CounterState, CounterInput> for CounterReducer {
                     RedrawTarget::surface(SurfaceId::from_u64(1)),
                 ))
             }
+            CounterInput::RedrawAll => ReducerResult::unchanged()
+                .with_effect(AppEffect::request_redraw(RedrawTarget::all())),
+            CounterInput::RedrawWindow(window_id) => ReducerResult::unchanged()
+                .with_effect(AppEffect::request_redraw(RedrawTarget::Window(*window_id))),
             CounterInput::Save => ReducerResult::unchanged()
                 .with_effect(AppEffect::persist("counter", AppScope::app())),
         }
@@ -313,6 +319,85 @@ fn runtime_drains_ui_before_task_events_and_respects_budget() {
     assert_eq!(report.drained_inputs(), 1);
     assert_eq!(report.remaining_task_inputs(), 1);
     assert_eq!(report.first_drained_lane(), Some(RuntimeLane::Ui));
+}
+
+#[test]
+fn runtime_default_budget_caps_drained_inputs() {
+    let mut runtime = Runtime::new(CounterState::default(), CounterReducer);
+    for index in 0..65 {
+        runtime.enqueue_task(
+            TaskInput::new(
+                CounterInput::Increment,
+                InputProvenance::task(TaskId::from_u64(index), TaskAttemptId::from_u64(1)),
+            )
+            .unwrap(),
+        );
+    }
+
+    let report = runtime.drain_once(RuntimeBudget::default());
+
+    assert_eq!(runtime.state().value, 64);
+    assert_eq!(report.drained_inputs(), 64);
+    assert_eq!(report.remaining_task_inputs(), 1);
+}
+
+#[test]
+fn runtime_redraw_all_reports_registered_surface_ids() {
+    let mut runtime = Runtime::new(CounterState::default(), CounterReducer);
+    runtime.add_surface(UiSurface::new(
+        SurfaceId::from_u64(2),
+        surgeist::window::Id::from_u64(1),
+        WindowRoot::new(RootId::new("secondary")),
+    ));
+    runtime.add_surface(UiSurface::new(
+        SurfaceId::from_u64(1),
+        surgeist::window::Id::from_u64(1),
+        WindowRoot::new(RootId::new("main")),
+    ));
+    runtime.enqueue_ui(UiInput::new(CounterInput::RedrawAll, InputProvenance::system()).unwrap());
+
+    let report = runtime.drain_once(RuntimeBudget::default());
+
+    assert_eq!(
+        report.redraw_requests(),
+        &[SurfaceId::from_u64(1), SurfaceId::from_u64(2)]
+    );
+}
+
+#[test]
+fn runtime_redraw_window_reports_surfaces_for_that_window() {
+    let target_window = surgeist::window::Id::from_u64(7);
+    let other_window = surgeist::window::Id::from_u64(8);
+    let mut runtime = Runtime::new(CounterState::default(), CounterReducer);
+    runtime.add_surface(UiSurface::new(
+        SurfaceId::from_u64(1),
+        other_window,
+        WindowRoot::new(RootId::new("other")),
+    ));
+    runtime.add_surface(UiSurface::new(
+        SurfaceId::from_u64(3),
+        target_window,
+        WindowRoot::new(RootId::new("right")),
+    ));
+    runtime.add_surface(UiSurface::new(
+        SurfaceId::from_u64(2),
+        target_window,
+        WindowRoot::new(RootId::new("left")),
+    ));
+    runtime.enqueue_ui(
+        UiInput::new(
+            CounterInput::RedrawWindow(target_window),
+            InputProvenance::system(),
+        )
+        .unwrap(),
+    );
+
+    let report = runtime.drain_once(RuntimeBudget::default());
+
+    assert_eq!(
+        report.redraw_requests(),
+        &[SurfaceId::from_u64(2), SurfaceId::from_u64(3)]
+    );
 }
 
 #[test]

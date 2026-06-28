@@ -303,9 +303,17 @@ where
             AppEffectPayload::RequestRedraw(effect) => {
                 report.executed_effects += 1;
                 match effect.target() {
-                    RedrawTarget::All => report.redraw_requests.clear(),
+                    RedrawTarget::All => {
+                        report.redraw_requests.extend(self.surfaces.keys().copied());
+                    }
                     RedrawTarget::Surface(id) => report.redraw_requests.push(*id),
-                    RedrawTarget::Window(_) => {}
+                    RedrawTarget::Window(window_id) => {
+                        report
+                            .redraw_requests
+                            .extend(self.surfaces.iter().filter_map(|(surface_id, surface)| {
+                                (surface.window_id() == *window_id).then_some(*surface_id)
+                            }));
+                    }
                 }
             }
             AppEffectPayload::Diagnostic(effect) => {
@@ -450,9 +458,9 @@ impl RuntimeBudget {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            max_inputs: usize::MAX,
-            max_task_events: usize::MAX,
-            max_service_events: usize::MAX,
+            max_inputs: 64,
+            max_task_events: 64,
+            max_service_events: 32,
         }
     }
 
