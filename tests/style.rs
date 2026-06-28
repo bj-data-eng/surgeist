@@ -1,6 +1,204 @@
 use proptest::prelude::*;
 use surgeist::{layout as l, retained as r, style as s};
 
+trait TestDeclarationsExt {
+    fn raw(self, property: s::Property, value: s::Value) -> Self;
+    fn bg(self, color: s::Color) -> Self;
+    fn text_color(self, color: s::Color) -> Self;
+    fn padding(self, edges: s::Edges) -> Self;
+    fn margin(self, edges: s::Edges) -> Self;
+    fn radius(self, corners: s::Corners) -> Self;
+    fn border_width(self, edges: s::Edges) -> Self;
+    fn border_color(self, color: s::Color) -> Self;
+    fn font_size(self, size: s::Length) -> Self;
+    fn transform(self, transform: s::Transform) -> Self;
+    fn transform_origin(self, origin: s::Size) -> Self;
+    fn transition_properties(self, properties: Vec<s::Property>) -> Self;
+    fn grid_template_columns(self, tracks: s::GridTrackList) -> Self;
+    fn grid_template_rows(self, tracks: s::GridTrackList) -> Self;
+    fn grid_template_areas(self, areas: s::GridTemplateAreas) -> Self;
+    fn grid_template(self, template: s::GridTemplate) -> Self;
+    fn grid(self, grid: s::GridDefinition) -> Self;
+    fn grid_flow_tolerance(self, tolerance: s::GridFlowTolerance) -> Self;
+    fn grid_auto_columns(self, tracks: s::GridTrackList) -> Self;
+    fn grid_row_start(self, line: s::GridLine) -> Self;
+    fn grid_row_end(self, line: s::GridLine) -> Self;
+    fn grid_column_end(self, line: s::GridLine) -> Self;
+    fn grid_row(self, placement: s::GridPlacement) -> Self;
+    fn grid_column(self, placement: s::GridPlacement) -> Self;
+    fn grid_area(self, area: s::GridAreaPlacement) -> Self;
+}
+
+impl TestDeclarationsExt for s::Declarations {
+    fn raw(self, property: s::Property, value: s::Value) -> Self {
+        self.try_set(property, value)
+            .expect("valid raw declaration")
+    }
+
+    fn bg(self, color: s::Color) -> Self {
+        self.try_bg(color).expect("valid background color")
+    }
+
+    fn text_color(self, color: s::Color) -> Self {
+        self.try_text_color(color).expect("valid text color")
+    }
+
+    fn padding(self, edges: s::Edges) -> Self {
+        self.try_padding(edges).expect("valid padding")
+    }
+
+    fn margin(self, edges: s::Edges) -> Self {
+        self.try_margin(edges).expect("valid margin")
+    }
+
+    fn radius(self, corners: s::Corners) -> Self {
+        self.try_radius(corners).expect("valid radius")
+    }
+
+    fn border_width(self, edges: s::Edges) -> Self {
+        self.try_border_width(edges).expect("valid border width")
+    }
+
+    fn border_color(self, color: s::Color) -> Self {
+        self.try_border_color(color).expect("valid border color")
+    }
+
+    fn font_size(self, size: s::Length) -> Self {
+        self.try_font_size(size).expect("valid font size")
+    }
+
+    fn transform(self, transform: s::Transform) -> Self {
+        self.try_transform(transform).expect("valid transform")
+    }
+
+    fn transform_origin(self, origin: s::Size) -> Self {
+        self.try_transform_origin(origin)
+            .expect("valid transform origin")
+    }
+
+    fn transition_properties(self, properties: Vec<s::Property>) -> Self {
+        self.try_transition_properties(properties)
+            .expect("valid transition properties")
+    }
+
+    fn grid_template_columns(self, tracks: s::GridTrackList) -> Self {
+        self.try_grid_template_columns(tracks)
+            .expect("valid grid template columns")
+    }
+
+    fn grid_template_rows(self, tracks: s::GridTrackList) -> Self {
+        self.try_grid_template_rows(tracks)
+            .expect("valid grid template rows")
+    }
+
+    fn grid_template_areas(self, areas: s::GridTemplateAreas) -> Self {
+        self.try_grid_template_areas(areas)
+            .expect("valid grid template areas")
+    }
+
+    fn grid_template(self, template: s::GridTemplate) -> Self {
+        self.try_grid_template(template)
+            .expect("valid grid template")
+    }
+
+    fn grid(self, grid: s::GridDefinition) -> Self {
+        self.try_grid(grid).expect("valid grid definition")
+    }
+
+    fn grid_flow_tolerance(self, tolerance: s::GridFlowTolerance) -> Self {
+        self.try_grid_flow_tolerance(tolerance)
+            .expect("valid grid flow tolerance")
+    }
+
+    fn grid_auto_columns(self, tracks: s::GridTrackList) -> Self {
+        self.try_grid_auto_columns(tracks)
+            .expect("valid grid auto columns")
+    }
+
+    fn grid_row_start(self, line: s::GridLine) -> Self {
+        self.try_grid_row_start(line).expect("valid grid row start")
+    }
+
+    fn grid_row_end(self, line: s::GridLine) -> Self {
+        self.try_grid_row_end(line).expect("valid grid row end")
+    }
+
+    fn grid_column_end(self, line: s::GridLine) -> Self {
+        self.try_grid_column_end(line)
+            .expect("valid grid column end")
+    }
+
+    fn grid_row(self, placement: s::GridPlacement) -> Self {
+        self.try_grid_row(placement).expect("valid grid row")
+    }
+
+    fn grid_column(self, placement: s::GridPlacement) -> Self {
+        self.try_grid_column(placement).expect("valid grid column")
+    }
+
+    fn grid_area(self, area: s::GridAreaPlacement) -> Self {
+        self.try_grid_area(area).expect("valid grid area")
+    }
+}
+
+fn style_opacity(value: f32) -> s::Opacity {
+    s::Opacity::new(value).expect("valid opacity")
+}
+
+fn dim_px(value: f32) -> s::DimensionLength {
+    s::DimensionLength::px(s::CssPx::new(value).expect("valid css px")).expect("valid dimension")
+}
+
+fn grid_line(line: i16) -> s::GridLine {
+    s::GridLine::line(line).expect("valid grid line")
+}
+
+fn grid_span(span: u16) -> s::GridLine {
+    s::GridLine::span(span).expect("valid grid span")
+}
+
+fn grid_named_line(name: &str, index: i16) -> s::GridLine {
+    s::GridLine::named_line(name, index).expect("valid named grid line")
+}
+
+fn grid_named_span(name: &str, index: u16) -> s::GridLine {
+    s::GridLine::named_span(name, index).expect("valid named grid span")
+}
+
+fn grid_bare_ident(name: &str) -> s::GridLine {
+    s::GridLine::bare_ident(name).expect("valid grid line name")
+}
+
+fn line_names(names: impl IntoIterator<Item = impl Into<String>>) -> s::GridTrackComponent {
+    s::GridTrackComponent::line_names(names).expect("valid grid track line names")
+}
+
+fn repeat(count: u16, components: Vec<s::GridTrackComponent>) -> s::TrackRepeat {
+    s::TrackRepeat::count(count, components).expect("valid grid track repeat")
+}
+
+fn subgrid(line_names: Vec<Vec<String>>) -> s::SubgridTrack {
+    s::SubgridTrack::new(line_names).expect("valid subgrid track")
+}
+
+fn subgrid_component_line_names(
+    names: impl IntoIterator<Item = impl Into<String>>,
+) -> s::SubgridLineNameComponent {
+    s::SubgridLineNameComponent::line_names(names).expect("valid subgrid line names")
+}
+
+fn subgrid_component_repeat(
+    count: s::SubgridLineNameRepeatCount,
+    line_name_sets: impl IntoIterator<Item = impl IntoIterator<Item = impl Into<String>>>,
+) -> s::SubgridLineNameComponent {
+    s::SubgridLineNameComponent::repeat(count, line_name_sets)
+        .expect("valid subgrid line-name repeat")
+}
+
+fn subgrid_repeat_count(count: usize) -> s::SubgridLineNameRepeatCount {
+    s::SubgridLineNameRepeatCount::count(count).expect("valid subgrid repeat count")
+}
+
 #[test]
 fn public_color_helper_and_error_surface_are_stable() {
     let color = s::color(0x11223344);
@@ -79,7 +277,7 @@ proptest! {
     ) {
         let declarations = s::Declarations::new()
             .bg(first)
-            .opacity(opacity)
+            .opacity(style_opacity(opacity))
             .bg(second);
 
         prop_assert_eq!(declarations.len(), 2);
@@ -177,11 +375,14 @@ fn declarations_mutation_methods_preserve_unique_properties_and_report_lengths()
 
     assert_eq!(
         declarations
-            .insert(s::Property::Background, s::Value::Color(red()))
+            .try_insert(s::Property::Background, s::Value::Color(red()))
+            .expect("valid background insert")
             .get(s::Property::Background),
         Some(&s::Value::Color(red()))
     );
-    declarations.insert(s::Property::Background, s::Value::Color(blue()));
+    declarations
+        .try_insert(s::Property::Background, s::Value::Color(blue()))
+        .expect("valid background insert");
     declarations
         .try_insert(s::Property::Opacity, s::Value::Keyword(s::Keyword::Initial))
         .unwrap();
@@ -209,7 +410,7 @@ fn concise_style_helpers_and_rule_conditions_are_public_front_doors() {
     let condition = s::Condition::viewport(s::Viewport::min_width(640.0));
     let declarations = s::Declarations::new()
         .margin(margin.clone())
-        .opacity(0.65)
+        .opacity(style_opacity(0.65))
         .font_size(font_size.clone())
         .cursor(s::Cursor::Pointer)
         .pointer_events(s::PointerEvents::None);
@@ -243,86 +444,77 @@ fn declaration_fingerprint_changes_with_content() {
 #[test]
 fn declaration_fingerprint_distinguishes_grid_flow_tolerance_from_box_sizing() {
     let base = s::Declarations::new()
-        .set(
+        .raw(
             s::Property::BoxSizing,
             s::Value::BoxSizing(s::BoxSizing::ContentBox),
         )
-        .set(
+        .raw(
             s::Property::GridFlowTolerance,
             s::Value::GridFlowTolerance(s::GridFlowTolerance::Normal),
         );
-    let swapped = s::Declarations::new()
-        .set(
+    let changed = s::Declarations::new()
+        .raw(
             s::Property::BoxSizing,
-            s::Value::GridFlowTolerance(s::GridFlowTolerance::Normal),
+            s::Value::BoxSizing(s::BoxSizing::BorderBox),
         )
-        .set(
+        .raw(
             s::Property::GridFlowTolerance,
-            s::Value::BoxSizing(s::BoxSizing::ContentBox),
+            s::Value::GridFlowTolerance(s::GridFlowTolerance::Normal),
         );
 
-    assert_ne!(base.fingerprint(), swapped.fingerprint());
+    assert_ne!(base.fingerprint(), changed.fingerprint());
 }
 
 #[test]
 fn metadata_reports_defaults_inheritance_impact_and_animation() {
     let color = s::Property::Color.metadata();
-    assert!(color.inherited);
-    assert!(color.impact.text);
-    assert!(color.animatable);
-    assert_eq!(color.interpolation, s::Interpolation::Color);
+    assert!(color.is_inherited());
+    assert!(color.impact_flags().affects_text());
+    assert!(color.is_animatable());
+    assert_eq!(color.interpolation_kind(), s::Interpolation::Color);
     assert_eq!(
-        color.default,
-        s::Value::Color(s::Color::rgba(0.0, 0.0, 0.0, 1.0))
+        color.default(),
+        &s::Value::Color(s::Color::rgba(0.0, 0.0, 0.0, 1.0))
     );
 
     let padding = s::Property::Padding.metadata();
-    assert!(!padding.inherited);
-    assert!(padding.impact.layout);
-    assert!(!padding.impact.text);
-    assert_eq!(padding.interpolation, s::Interpolation::Edges);
+    assert!(!padding.is_inherited());
+    assert!(padding.impact_flags().affects_layout());
+    assert!(!padding.impact_flags().affects_text());
+    assert_eq!(padding.interpolation_kind(), s::Interpolation::Edges);
     assert_eq!(
-        padding.default,
-        s::Value::Edges(s::Edges::all(s::Length::px(0.0)))
+        padding.default(),
+        &s::Value::Edges(s::Edges::all(s::Length::px(0.0)))
     );
 
     let visibility = s::Property::Visibility.metadata();
-    assert_eq!(visibility.interpolation, s::Interpolation::Discrete);
+    assert_eq!(visibility.interpolation_kind(), s::Interpolation::Discrete);
 }
 
 #[test]
-fn metadata_and_invalidation_builders_accumulate_flags() {
-    let metadata = s::Metadata::new(s::Value::Number(1.0))
-        .inherited(true)
-        .impact(
-            s::Impact::empty()
-                .layout()
-                .paint()
-                .text()
-                .effect()
-                .animation(),
-        )
-        .animatable(true)
-        .interpolation(s::Interpolation::Number);
+fn metadata_and_invalidation_accessors_expose_flags() {
     let mut scope = s::Scope::empty();
     let invalidation = s::Invalidation::from_properties([
         s::Property::Padding,
         s::Property::Opacity,
         s::Property::TransitionDuration,
     ]);
+    let opacity = s::Property::Opacity.metadata();
 
     scope.include_node();
     scope.include_siblings();
     scope.include_descendants();
 
-    assert!(metadata.inherited);
-    assert!(metadata.animatable);
-    assert_eq!(metadata.interpolation, s::Interpolation::Number);
-    assert!(metadata.impact.layout);
-    assert!(metadata.impact.paint);
-    assert!(metadata.impact.text);
-    assert!(metadata.impact.effect);
-    assert!(metadata.impact.animation);
+    assert!(!opacity.is_inherited());
+    assert!(opacity.is_animatable());
+    assert_eq!(opacity.interpolation_kind(), s::Interpolation::Number);
+    assert!(opacity.impact_flags().affects_paint());
+    assert!(
+        s::Property::TransitionDuration
+            .metadata()
+            .impact_flags()
+            .affects_animation()
+    );
     assert!(scope.node);
     assert!(scope.siblings);
     assert!(scope.descendants);
@@ -350,9 +542,7 @@ fn malformed_numeric_values_are_rejected_by_fallible_apis() {
     );
     assert!(declarations.is_empty());
 
-    let declarations = s::Declarations::new()
-        .try_set(s::Property::Opacity, s::Value::Number(0.5))
-        .unwrap();
+    let declarations = s::Declarations::new().raw(s::Property::Opacity, s::Value::Number(0.5));
     assert_eq!(
         declarations.get(s::Property::Opacity),
         Some(&s::Value::Number(0.5))
@@ -380,7 +570,10 @@ fn declarations_reject_property_value_mismatches() {
 fn declarations_reject_mismatches_across_property_groups() {
     for (property, value) in [
         (s::Property::Display, s::Value::Length(s::Length::px(1.0))),
-        (s::Property::ZIndex, s::Value::StringList(vec!["1".into()])),
+        (
+            s::Property::ZIndex,
+            s::Value::FontFamilyList(s::FontFamilyList::new(["Inter"]).unwrap()),
+        ),
         (s::Property::AnimationName, s::Value::Number(1.0)),
         (
             s::Property::TransitionProperty,
@@ -509,7 +702,7 @@ fn values_expose_interpolation_categories() {
         s::Interpolation::Stroke
     );
     assert_eq!(
-        s::Value::StringList(vec!["Inter".to_owned()]).interpolation(),
+        s::Value::FontFamilyList(s::FontFamilyList::new(["Inter"]).unwrap()).interpolation(),
         s::Interpolation::Discrete
     );
 }
@@ -571,12 +764,9 @@ fn composite_values_validate_nested_fields() {
         );
     }
 
-    for value in [
-        s::Value::StringList(vec![String::new()]),
-        s::Value::StringList(vec!["\u{0000}".to_string()]),
-    ] {
+    for value in [String::new(), "\u{0000}".to_string()] {
         assert_eq!(
-            value.validate().unwrap_err().code(),
+            s::FontFamilyList::new([value]).unwrap_err().code(),
             s::ErrorCode::InvalidString
         );
     }
@@ -585,28 +775,19 @@ fn composite_values_validate_nested_fields() {
 #[test]
 fn grid_style_values_represent_templates_subgrid_placements_and_lanes() {
     let track_list = s::GridTrackList::new(vec![
-        s::GridTrackComponent::line_names(["outer-start"]),
+        line_names(["outer-start"]),
         s::GridTrackComponent::Track(s::TrackSizing::px(40.0)),
-        s::GridTrackComponent::line_names(["outer-end"]),
-        s::GridTrackComponent::Repeat(s::TrackRepeat::count(
+        line_names(["outer-end"]),
+        s::GridTrackComponent::Repeat(repeat(
             2,
             vec![
-                s::GridTrackComponent::line_names(["inner"]),
+                line_names(["inner"]),
                 s::GridTrackComponent::Track(s::TrackSizing::fr(1.0)),
             ],
         )),
-        s::GridTrackComponent::Subgrid(s::SubgridTrack::new(vec![vec![], vec!["b".to_string()]])),
+        s::GridTrackComponent::Subgrid(subgrid(vec![vec![], vec!["b".to_string()]])),
     ]);
-    let placement = s::GridPlacement::new(
-        s::GridLine::NamedSpan {
-            name: "bar".to_string(),
-            index: 1,
-        },
-        s::GridLine::NamedLine {
-            name: "foo".to_string(),
-            index: 3,
-        },
-    );
+    let placement = s::GridPlacement::new(grid_named_span("bar", 1), grid_named_line("foo", 3));
     let areas = s::GridTemplateAreas::new([
         s::GridTemplateAreaRow::named(["header", "header"]),
         s::GridTemplateAreaRow::new([Some("rail"), Some("content")]),
@@ -632,8 +813,8 @@ fn grid_style_values_represent_templates_subgrid_placements_and_lanes() {
         .display(s::Display::GridLanes)
         .grid_template_columns(track_list.clone())
         .grid_template_areas(areas.clone())
-        .grid_row_start(s::GridLine::Line(1))
-        .grid_column_end(s::GridLine::Span(2))
+        .grid_row_start(grid_line(1))
+        .grid_column_end(grid_span(2))
         .grid_column(placement.clone())
         .grid_auto_flow(s::GridAutoFlow::ColumnDense);
 
@@ -651,14 +832,11 @@ fn grid_style_values_represent_templates_subgrid_placements_and_lanes() {
     );
     assert_eq!(
         declarations.get(s::Property::GridRowStart),
-        Some(&s::Value::GridLine(s::GridLine::Line(1)))
+        Some(&s::Value::GridLine(grid_line(1)))
     );
     assert_eq!(
         declarations.get(s::Property::GridColumnEnd),
-        Some(&s::Value::GridLine(s::GridLine::NamedLine {
-            name: "foo".to_string(),
-            index: 3,
-        }))
+        Some(&s::Value::GridLine(grid_named_line("foo", 3)))
     );
     assert_eq!(declarations.get(s::Property::GridColumn), None);
     assert_eq!(
@@ -669,9 +847,6 @@ fn grid_style_values_represent_templates_subgrid_placements_and_lanes() {
 
 #[test]
 fn grid_style_properties_validate_domains_and_resolve_defaults() {
-    let invalid_subgrid = s::GridTrackList::new(vec![s::GridTrackComponent::Subgrid(
-        s::SubgridTrack::new(vec![vec!["".to_string()]]),
-    )]);
     let invalid_areas = s::GridTemplateAreas::new([
         s::GridTemplateAreaRow::named(["header", "header"]),
         s::GridTemplateAreaRow::named(["content"]),
@@ -683,11 +858,8 @@ fn grid_style_properties_validate_domains_and_resolve_defaults() {
         s::MaxTrackSizing::fr(1.0),
     ))]);
     let areas = s::GridTemplateAreas::new([s::GridTemplateAreaRow::named(["a", "b"])]);
-    let row_start = s::GridLine::NamedLine {
-        name: "a-start".to_string(),
-        index: 1,
-    };
-    let row = s::GridPlacement::span_line(2, 4);
+    let row_start = grid_named_line("a-start", 1);
+    let row = s::GridPlacement::span_line(2, 4).expect("valid grid row placement");
     let local = s::Declarations::new()
         .display(s::Display::InlineGridLanes)
         .grid_template_rows(rows.clone())
@@ -696,12 +868,9 @@ fn grid_style_properties_validate_domains_and_resolve_defaults() {
         .grid_row(row.clone());
 
     assert_eq!(
-        s::Declaration::try_new(
-            s::Property::GridTemplateColumns,
-            s::Value::GridTrackList(invalid_subgrid)
-        )
-        .unwrap_err()
-        .code(),
+        s::SubgridTrack::new(vec![vec![String::new()]])
+            .unwrap_err()
+            .code(),
         s::ErrorCode::InvalidString
     );
     assert_eq!(
@@ -748,33 +917,52 @@ fn grid_style_properties_validate_domains_and_resolve_defaults() {
         resolved.get(s::Property::GridRowEnd),
         &s::Value::GridLine(row.end)
     );
-    assert!(s::Property::GridTemplateColumns.metadata().impact.layout);
-    assert!(s::Property::GridTemplateAreas.metadata().impact.layout);
-    assert!(s::Property::GridColumnEnd.metadata().impact.layout);
+    assert!(
+        s::Property::GridTemplateColumns
+            .metadata()
+            .impact_flags()
+            .affects_layout()
+    );
+    assert!(
+        s::Property::GridTemplateAreas
+            .metadata()
+            .impact_flags()
+            .affects_layout()
+    );
+    assert!(
+        s::Property::GridColumnEnd
+            .metadata()
+            .impact_flags()
+            .affects_layout()
+    );
 }
 
 #[test]
 fn grid_style_values_reject_invalid_track_and_line_domains() {
-    let invalid_repeat =
-        s::GridTrackList::new(vec![s::GridTrackComponent::Repeat(s::TrackRepeat::count(
-            0,
-            vec![s::GridTrackComponent::Track(s::TrackSizing::px(8.0))],
-        ))]);
     let invalid_track =
         s::GridTrackList::new(vec![s::GridTrackComponent::Track(s::TrackSizing::fr(-1.0))]);
-    let invalid_line = s::GridPlacement::line(0);
     let invalid_area = s::GridTemplateAreas::new([s::GridTemplateAreaRow::new([Some("")])]);
 
-    for value in [
-        s::Value::GridTrackList(invalid_repeat),
-        s::Value::GridTrackList(invalid_track),
-        s::Value::GridPlacement(invalid_line),
-    ] {
-        assert_eq!(
-            value.validate().unwrap_err().code(),
-            s::ErrorCode::InvalidValue
-        );
-    }
+    assert_eq!(
+        s::TrackRepeat::count(
+            0,
+            vec![s::GridTrackComponent::Track(s::TrackSizing::px(8.0))]
+        )
+        .unwrap_err()
+        .code(),
+        s::ErrorCode::InvalidValue
+    );
+    assert_eq!(
+        s::GridPlacement::line(0).unwrap_err().code(),
+        s::ErrorCode::InvalidValue
+    );
+    assert_eq!(
+        s::Value::GridTrackList(invalid_track)
+            .validate()
+            .unwrap_err()
+            .code(),
+        s::ErrorCode::InvalidValue
+    );
     assert_eq!(
         s::Value::GridTemplateAreas(invalid_area)
             .validate()
@@ -787,76 +975,36 @@ fn grid_style_values_reject_invalid_track_and_line_domains() {
 #[test]
 fn named_grid_style_values_reject_reserved_grid_line_names() {
     for name in ["auto", "span"] {
-        let values = [
-            s::Value::GridLine(s::GridLine::BareIdent(name.to_string())),
-            s::Value::GridLine(s::GridLine::NamedLine {
-                name: name.to_string(),
-                index: 1,
-            }),
-            s::Value::GridLine(s::GridLine::NamedSpan {
-                name: name.to_string(),
-                index: 1,
-            }),
-        ];
-
-        for value in values {
-            assert_eq!(
-                value.validate().unwrap_err().code(),
-                s::ErrorCode::InvalidString
-            );
+        for error in [
+            s::GridLine::bare_ident(name).unwrap_err(),
+            s::GridLine::named_line(name, 1).unwrap_err(),
+            s::GridLine::named_span(name, 1).unwrap_err(),
+        ] {
+            assert_eq!(error.code(), s::ErrorCode::InvalidString);
         }
     }
 }
 
 #[test]
 fn named_grid_style_values_reject_zero_line_occurrences_and_spans() {
-    let values = [
-        s::Value::GridLine(s::GridLine::Span(0)),
-        s::Value::GridLine(s::GridLine::NamedLine {
-            name: "content".to_string(),
-            index: 0,
-        }),
-        s::Value::GridLine(s::GridLine::NamedSpan {
-            name: "content".to_string(),
-            index: 0,
-        }),
-    ];
-
-    for value in values {
-        assert_eq!(
-            value.validate().unwrap_err().code(),
-            s::ErrorCode::InvalidValue
-        );
+    for error in [
+        s::GridLine::span(0).unwrap_err(),
+        s::GridLine::named_line("content", 0).unwrap_err(),
+        s::GridLine::named_span("content", 0).unwrap_err(),
+    ] {
+        assert_eq!(error.code(), s::ErrorCode::InvalidValue);
     }
 }
 
 #[test]
 fn named_grid_track_line_name_components_reject_reserved_names() {
     for name in ["auto", "span"] {
-        let track_list = s::GridTrackList::new(vec![s::GridTrackComponent::line_names([name])]);
-        let repeated_track_list = s::GridTrackList::new(vec![s::GridTrackComponent::Repeat(
-            s::TrackRepeat::count(1, vec![s::GridTrackComponent::line_names([name])]),
-        )]);
-        let subgrid = s::GridTrackList::new(vec![s::GridTrackComponent::Subgrid(
-            s::SubgridTrack::new(vec![vec![name.to_string()]]),
-        )]);
-        let repeated_subgrid = s::GridTrackList::new(vec![s::GridTrackComponent::Subgrid(
-            s::SubgridTrack::from_components(vec![s::SubgridLineNameComponent::Repeat {
-                count: s::SubgridLineNameRepeatCount::Count(1),
-                line_name_sets: vec![vec![name.to_string()]],
-            }]),
-        )]);
-
-        for value in [
-            s::Value::GridTrackList(track_list),
-            s::Value::GridTrackList(repeated_track_list),
-            s::Value::GridTrackList(subgrid),
-            s::Value::GridTrackList(repeated_subgrid),
+        for error in [
+            s::GridTrackComponent::line_names([name]).unwrap_err(),
+            s::SubgridTrack::new(vec![vec![name.to_string()]]).unwrap_err(),
+            s::SubgridLineNameComponent::repeat(subgrid_repeat_count(1), [[name]]).unwrap_err(),
         ] {
-            assert_eq!(
-                value.validate().unwrap_err().code(),
-                s::ErrorCode::InvalidString
-            );
+            assert_eq!(error.code(), s::ErrorCode::InvalidString);
         }
     }
 }
@@ -864,20 +1012,12 @@ fn named_grid_track_line_name_components_reject_reserved_names() {
 #[test]
 fn named_grid_subgrid_line_name_repeats_expand_fixed_and_auto_fill_components() {
     let subgrid = s::SubgridTrack::from_components(vec![
-        s::SubgridLineNameComponent::LineNames(vec!["start".to_string()]),
-        s::SubgridLineNameComponent::Repeat {
-            count: s::SubgridLineNameRepeatCount::Count(2),
-            line_name_sets: vec![
-                vec!["a".to_string()],
-                vec!["b".to_string(), "c".to_string()],
-            ],
-        },
-        s::SubgridLineNameComponent::Repeat {
-            count: s::SubgridLineNameRepeatCount::AutoFill,
-            line_name_sets: vec![vec!["fill".to_string()]],
-        },
-        s::SubgridLineNameComponent::LineNames(vec!["tail".to_string()]),
-    ]);
+        subgrid_component_line_names(["start"]),
+        subgrid_component_repeat(subgrid_repeat_count(2), vec![vec!["a"], vec!["b", "c"]]),
+        subgrid_component_repeat(s::SubgridLineNameRepeatCount::AutoFill, [["fill"]]),
+        subgrid_component_line_names(["tail"]),
+    ])
+    .expect("valid subgrid line-name components");
 
     assert!(subgrid.validate().is_ok());
     assert_eq!(
@@ -896,27 +1036,15 @@ fn named_grid_subgrid_line_name_repeats_expand_fixed_and_auto_fill_components() 
 
 #[test]
 fn named_grid_subgrid_line_name_repeats_reject_invalid_repeat_forms() {
-    let zero_repeat = s::SubgridTrack::from_components(vec![s::SubgridLineNameComponent::Repeat {
-        count: s::SubgridLineNameRepeatCount::Count(0),
-        line_name_sets: vec![vec!["a".to_string()]],
-    }]);
+    let zero_repeat = s::SubgridLineNameRepeatCount::count(0).unwrap_err();
     let multiple_auto_fill = s::SubgridTrack::from_components(vec![
-        s::SubgridLineNameComponent::Repeat {
-            count: s::SubgridLineNameRepeatCount::AutoFill,
-            line_name_sets: vec![vec!["a".to_string()]],
-        },
-        s::SubgridLineNameComponent::Repeat {
-            count: s::SubgridLineNameRepeatCount::AutoFill,
-            line_name_sets: vec![vec!["b".to_string()]],
-        },
+        subgrid_component_repeat(s::SubgridLineNameRepeatCount::AutoFill, [["a"]]),
+        subgrid_component_repeat(s::SubgridLineNameRepeatCount::AutoFill, [["b"]]),
     ]);
 
+    assert_eq!(zero_repeat.code(), s::ErrorCode::InvalidValue);
     assert_eq!(
-        zero_repeat.validate().unwrap_err().code(),
-        s::ErrorCode::InvalidValue
-    );
-    assert_eq!(
-        multiple_auto_fill.validate().unwrap_err().code(),
+        multiple_auto_fill.unwrap_err().code(),
         s::ErrorCode::InvalidValue
     );
 }
@@ -934,16 +1062,10 @@ fn shorthand_declarations_are_canonicalized_at_intake() {
         )]))
         .auto_flow(s::GridAutoFlow::RowDense);
     let area = s::GridAreaPlacement::new(
-        s::GridLine::NamedLine {
-            name: "main-start".to_string(),
-            index: 1,
-        },
-        s::GridLine::Line(1),
-        s::GridLine::NamedLine {
-            name: "main-end".to_string(),
-            index: 1,
-        },
-        s::GridLine::Span(2),
+        grid_named_line("main-start", 1),
+        grid_line(1),
+        grid_named_line("main-end", 1),
+        grid_span(2),
     );
 
     assert!(s::Value::GridTemplate(template.clone()).validate().is_ok());
@@ -958,14 +1080,14 @@ fn shorthand_declarations_are_canonicalized_at_intake() {
         .grid_template(template.clone())
         .grid(definition.clone())
         .grid_area(area.clone())
-        .set(
+        .raw(
             s::Property::Overflow,
             s::Value::OverflowAxes(s::OverflowAxes::new(
                 s::Overflow::Hidden,
                 s::Overflow::Scroll,
             )),
         )
-        .set(s::Property::Gap, s::Value::Length(s::Length::px(8.0)));
+        .raw(s::Property::Gap, s::Value::Length(s::Length::px(8.0)));
 
     assert_eq!(declarations.get(s::Property::GridTemplate), None);
     assert_eq!(declarations.get(s::Property::Grid), None);
@@ -1021,34 +1143,28 @@ fn shorthand_declarations_are_canonicalized_at_intake() {
 #[test]
 fn grid_column_shorthand_repeats_bare_ident_on_omitted_end_side() {
     let declarations = s::Declarations::new().grid_column(s::GridPlacement::new(
-        s::GridLine::BareIdent("main".to_string()),
+        grid_bare_ident("main"),
         s::GridLine::Auto,
     ));
 
     assert_eq!(
         declarations.get(s::Property::GridColumnStart),
-        Some(&s::Value::GridLine(s::GridLine::BareIdent(
-            "main".to_string()
-        )))
+        Some(&s::Value::GridLine(grid_bare_ident("main")))
     );
     assert_eq!(
         declarations.get(s::Property::GridColumnEnd),
-        Some(&s::Value::GridLine(s::GridLine::BareIdent(
-            "main".to_string()
-        )))
+        Some(&s::Value::GridLine(grid_bare_ident("main")))
     );
 }
 
 #[test]
 fn grid_column_shorthand_omits_non_ident_end_to_auto() {
-    let declarations = s::Declarations::new().grid_column(s::GridPlacement::new(
-        s::GridLine::Line(2),
-        s::GridLine::Auto,
-    ));
+    let declarations =
+        s::Declarations::new().grid_column(s::GridPlacement::new(grid_line(2), s::GridLine::Auto));
 
     assert_eq!(
         declarations.get(s::Property::GridColumnStart),
-        Some(&s::Value::GridLine(s::GridLine::Line(2)))
+        Some(&s::Value::GridLine(grid_line(2)))
     );
     assert_eq!(
         declarations.get(s::Property::GridColumnEnd),
@@ -1059,7 +1175,7 @@ fn grid_column_shorthand_omits_non_ident_end_to_auto() {
 #[test]
 fn grid_area_one_bare_ident_expands_to_all_four_sides() {
     let declarations = s::Declarations::new().grid_area(s::GridAreaPlacement::new(
-        s::GridLine::BareIdent("main".to_string()),
+        grid_bare_ident("main"),
         s::GridLine::Auto,
         s::GridLine::Auto,
         s::GridLine::Auto,
@@ -1067,39 +1183,31 @@ fn grid_area_one_bare_ident_expands_to_all_four_sides() {
 
     assert_eq!(
         declarations.get(s::Property::GridRowStart),
-        Some(&s::Value::GridLine(s::GridLine::BareIdent(
-            "main".to_string()
-        )))
+        Some(&s::Value::GridLine(grid_bare_ident("main")))
     );
     assert_eq!(
         declarations.get(s::Property::GridColumnStart),
-        Some(&s::Value::GridLine(s::GridLine::BareIdent(
-            "main".to_string()
-        )))
+        Some(&s::Value::GridLine(grid_bare_ident("main")))
     );
     assert_eq!(
         declarations.get(s::Property::GridRowEnd),
-        Some(&s::Value::GridLine(s::GridLine::BareIdent(
-            "main".to_string()
-        )))
+        Some(&s::Value::GridLine(grid_bare_ident("main")))
     );
     assert_eq!(
         declarations.get(s::Property::GridColumnEnd),
-        Some(&s::Value::GridLine(s::GridLine::BareIdent(
-            "main".to_string()
-        )))
+        Some(&s::Value::GridLine(grid_bare_ident("main")))
     );
 }
 
 #[test]
 fn shorthand_canonicalization_preserves_later_longhand_overrides() {
-    let shorthand_row = s::GridPlacement::new(s::GridLine::Line(1), s::GridLine::Line(3));
-    let override_row_end = s::GridLine::Line(5);
+    let shorthand_row = s::GridPlacement::new(grid_line(1), grid_line(3));
+    let override_row_end = grid_line(5);
     let declarations = s::Declarations::new()
         .grid_row(shorthand_row.clone())
         .grid_row_end(override_row_end.clone())
-        .set(s::Property::Gap, s::Value::Length(s::Length::px(4.0)))
-        .set(
+        .raw(s::Property::Gap, s::Value::Length(s::Length::px(4.0)))
+        .raw(
             s::Property::ColumnGap,
             s::Value::Length(s::Length::px(12.0)),
         );
@@ -1128,11 +1236,8 @@ fn resolved_styles_do_not_store_transient_shorthand_properties() {
     let tree = FixtureTree::new(vec![FixtureNode::new("root")]);
     let mut resolver = s::Resolver::new(s::Sheet::new());
     let local = s::Declarations::new()
-        .grid_column(s::GridPlacement::new(
-            s::GridLine::Line(2),
-            s::GridLine::Span(3),
-        ))
-        .set(s::Property::Gap, s::Value::Length(s::Length::px(6.0)));
+        .grid_column(s::GridPlacement::new(grid_line(2), grid_span(3)))
+        .raw(s::Property::Gap, s::Value::Length(s::Length::px(6.0)));
 
     let resolved = resolver
         .resolve(s::Context::new(&tree, 0).local(&local))
@@ -1150,11 +1255,11 @@ fn resolved_styles_do_not_store_transient_shorthand_properties() {
     );
     assert_eq!(
         resolved.get(s::Property::GridColumnStart),
-        &s::Value::GridLine(s::GridLine::Line(2))
+        &s::Value::GridLine(grid_line(2))
     );
     assert_eq!(
         resolved.get(s::Property::GridColumnEnd),
-        &s::Value::GridLine(s::GridLine::Span(3))
+        &s::Value::GridLine(grid_span(3))
     );
     assert_eq!(
         resolved.get(s::Property::RowGap),
@@ -1181,7 +1286,7 @@ fn layout_adapter_preserves_gap_normal_and_explicit_zero() {
     assert_eq!(default_layout.gap.height, l::Length::NORMAL);
 
     let explicit_zero =
-        s::Declarations::new().set(s::Property::Gap, s::Value::Length(s::Length::ZERO));
+        s::Declarations::new().raw(s::Property::Gap, s::Value::Length(s::Length::ZERO));
     let resolved_zero = resolver
         .resolve(s::Context::new(&tree, 0).local(&explicit_zero))
         .unwrap();
@@ -1196,7 +1301,7 @@ fn layout_adapter_lowers_canonical_layout_properties() {
     let mut resolver = s::Resolver::new(s::Sheet::new());
     let columns = s::GridTrackList::new(vec![
         s::GridTrackComponent::Track(s::TrackSizing::px(40.0)),
-        s::GridTrackComponent::Repeat(s::TrackRepeat::count(
+        s::GridTrackComponent::Repeat(repeat(
             2,
             vec![s::GridTrackComponent::Track(s::TrackSizing::fr(1.0))],
         )),
@@ -1207,46 +1312,49 @@ fn layout_adapter_lowers_canonical_layout_properties() {
     ))]);
     let local = s::Declarations::new()
         .display(s::Display::Grid)
-        .set(
+        .raw(
             s::Property::BoxSizing,
             s::Value::BoxSizing(s::BoxSizing::ContentBox),
         )
-        .set(
+        .raw(
             s::Property::Position,
             s::Value::Position(s::LayoutPosition::Absolute),
         )
-        .set(
+        .raw(
             s::Property::Direction,
             s::Value::Direction(s::Direction::Rtl),
         )
-        .set(
+        .raw(
             s::Property::WritingMode,
             s::Value::WritingMode(s::WritingMode::VerticalRl),
         )
-        .set(
+        .raw(
             s::Property::TextAlign,
             s::Value::TextAlign(s::StyleTextAlign::LegacyCenter),
         )
-        .set(
+        .raw(
             s::Property::Overflow,
             s::Value::Overflow(s::Overflow::Scroll),
         )
-        .set(s::Property::Float, s::Value::Float(s::Float::Left))
-        .set(s::Property::Clear, s::Value::Clear(s::Clear::Both))
-        .set(s::Property::ScrollbarWidth, s::Value::Number(7.0))
-        .width(s::Length::px(120.0))
-        .height(s::Length::percent(50.0))
-        .set(s::Property::MinSize, s::Value::Length(s::Length::px(20.0)))
-        .set(
+        .raw(s::Property::Float, s::Value::Float(s::Float::Left))
+        .raw(s::Property::Clear, s::Value::Clear(s::Clear::Both))
+        .raw(s::Property::ScrollbarWidth, s::Value::Number(7.0))
+        .width(dim_px(120.0))
+        .raw(
+            s::Property::Height,
+            s::Value::Length(s::Length::percent(50.0)),
+        )
+        .raw(s::Property::MinSize, s::Value::Length(s::Length::px(20.0)))
+        .raw(
             s::Property::MaxWidth,
             s::Value::Length(s::Length::px(400.0)),
         )
-        .set(
+        .raw(
             s::Property::MaxHeight,
             s::Value::Length(s::Length::percent(75.0)),
         )
-        .set(s::Property::AspectRatio, s::Value::Number(1.5))
-        .set(
+        .raw(s::Property::AspectRatio, s::Value::Number(1.5))
+        .raw(
             s::Property::Inset,
             s::Value::Edges(s::Edges::new(
                 s::Length::px(3.0),
@@ -1263,48 +1371,45 @@ fn layout_adapter_lowers_canonical_layout_properties() {
         ))
         .padding(s::Edges::all(s::Length::px(8.0)))
         .border_width(s::Edges::all(s::Length::px(1.0)))
-        .set(
+        .raw(
             s::Property::AlignItems,
             s::Value::AlignItems(s::AlignItems::Center),
         )
-        .set(
+        .raw(
             s::Property::AlignSelf,
             s::Value::AlignItems(s::AlignItems::SafeEnd),
         )
-        .set(
+        .raw(
             s::Property::JustifyItems,
             s::Value::AlignItems(s::AlignItems::Stretch),
         )
-        .set(
+        .raw(
             s::Property::JustifySelf,
             s::Value::AlignItems(s::AlignItems::FlexEnd),
         )
-        .set(
+        .raw(
             s::Property::AlignContent,
             s::Value::AlignContent(s::AlignContent::SpaceBetween),
         )
-        .set(
+        .raw(
             s::Property::JustifyContent,
             s::Value::AlignContent(s::AlignContent::SafeCenter),
         )
-        .set(
+        .raw(
             s::Property::FlexDirection,
             s::Value::FlexDirection(s::FlexDirection::ColumnReverse),
         )
-        .set(s::Property::FlexWrap, s::Value::FlexWrap(s::FlexWrap::Wrap))
-        .set(s::Property::FlexGrow, s::Value::Number(2.0))
-        .set(s::Property::Gap, s::Value::Length(s::Length::px(6.0)))
+        .raw(s::Property::FlexWrap, s::Value::FlexWrap(s::FlexWrap::Wrap))
+        .raw(s::Property::FlexGrow, s::Value::Number(2.0))
+        .raw(s::Property::Gap, s::Value::Length(s::Length::px(6.0)))
         .grid_template_columns(columns)
         .grid_template_rows(rows)
         .grid_auto_columns(s::GridTrackList::new(vec![s::GridTrackComponent::Track(
             s::TrackSizing::percent(10.0),
         )]))
         .grid_auto_flow(s::GridAutoFlow::ColumnDense)
-        .grid_column(s::GridPlacement::new(
-            s::GridLine::Line(2),
-            s::GridLine::Span(3),
-        ))
-        .grid_row(s::GridPlacement::span_line(2, 4));
+        .grid_column(s::GridPlacement::new(grid_line(2), grid_span(3)))
+        .grid_row(s::GridPlacement::span_line(2, 4).expect("valid grid row placement"));
 
     let resolved = resolver
         .resolve(s::Context::new(&tree, 0).local(&local))
@@ -1328,7 +1433,7 @@ fn layout_adapter_lowers_canonical_layout_properties() {
     assert_eq!(layout.min_size.height, l::Dimension::px(20.0));
     assert_eq!(layout.max_size.width, l::Dimension::px(400.0));
     assert_eq!(layout.max_size.height, l::Dimension::percent(0.75));
-    assert_eq!(layout.aspect_ratio, Some(1.5));
+    assert_eq!(layout.aspect_ratio, l::AspectRatio::new(1.5));
     assert_eq!(layout.inset.top, l::LengthAuto::px(3.0));
     assert_eq!(layout.inset.right, l::LengthAuto::AUTO);
     assert_eq!(layout.inset.bottom, l::LengthAuto::percent(0.1));
@@ -1352,7 +1457,10 @@ fn layout_adapter_lowers_canonical_layout_properties() {
         layout.grid_template_columns,
         vec![
             l::TrackComponent::px(40.0),
-            l::TrackComponent::Repeat(l::TrackRepetition::count(2, vec![l::TrackSizing::fr(1.0)])),
+            l::TrackComponent::Repeat(
+                l::TrackRepetition::count(2, vec![l::TrackSizing::fr(1.0)])
+                    .expect("valid track repetition")
+            ),
         ]
     );
     assert_eq!(
@@ -1367,8 +1475,14 @@ fn layout_adapter_lowers_canonical_layout_properties() {
         vec![l::TrackComponent::percent(0.1)]
     );
     assert_eq!(layout.grid_auto_flow, l::GridAutoFlow::ColumnDense);
-    assert_eq!(layout.grid_column, l::GridPlacement::line_span(2, 3));
-    assert_eq!(layout.grid_row, l::GridPlacement::span_line(2, 4));
+    assert_eq!(
+        layout.grid_column,
+        l::GridPlacement::try_line_span(2, 3).expect("valid layout grid placement")
+    );
+    assert_eq!(
+        layout.grid_row,
+        l::GridPlacement::try_span_line(2, 4).expect("valid layout grid placement")
+    );
 }
 
 #[test]
@@ -1381,14 +1495,8 @@ fn layout_adapter_preserves_named_grid_line_placement() {
                 &s::Declarations::new()
                     .display(s::Display::Grid)
                     .grid_column(s::GridPlacement::new(
-                        s::GridLine::NamedLine {
-                            name: "content".to_string(),
-                            index: 2,
-                        },
-                        s::GridLine::NamedSpan {
-                            name: "content".to_string(),
-                            index: 3,
-                        },
+                        grid_named_line("content", 2),
+                        grid_named_span("content", 3),
                     )),
             ),
         )
@@ -1417,13 +1525,7 @@ fn layout_adapter_preserves_bare_grid_line_ident() {
     let resolved = resolver
         .resolve(
             s::Context::new(&tree, 0).local(&s::Declarations::new().grid_column(
-                s::GridPlacement::new(
-                    s::GridLine::BareIdent("main".to_string()),
-                    s::GridLine::NamedLine {
-                        name: "main".to_string(),
-                        index: 1,
-                    },
-                ),
+                s::GridPlacement::new(grid_bare_ident("main"), grid_named_line("main", 1)),
             )),
         )
         .unwrap();
@@ -1455,16 +1557,16 @@ fn layout_adapter_preserves_template_areas_and_track_line_names() {
                 &s::Declarations::new()
                     .grid_template_areas(areas.clone())
                     .grid_template_columns(s::GridTrackList::new(vec![
-                        s::GridTrackComponent::line_names(["page-start"]),
+                        line_names(["page-start"]),
                         s::GridTrackComponent::Track(s::TrackSizing::px(12.0)),
-                        s::GridTrackComponent::Repeat(s::TrackRepeat::count(
+                        s::GridTrackComponent::Repeat(repeat(
                             2,
                             vec![
-                                s::GridTrackComponent::line_names(["inner"]),
+                                line_names(["inner"]),
                                 s::GridTrackComponent::Track(s::TrackSizing::fr(1.0)),
                             ],
                         )),
-                        s::GridTrackComponent::line_names(["page-end"]),
+                        line_names(["page-end"]),
                     ])),
             ),
         )
@@ -1488,13 +1590,16 @@ fn layout_adapter_preserves_template_areas_and_track_line_names() {
         vec![
             l::TrackComponent::line_names(["page-start"]),
             l::TrackComponent::px(12.0),
-            l::TrackComponent::Repeat(l::TrackRepetition::count_components(
-                2,
-                vec![
-                    l::TrackComponent::line_names(["inner"]),
-                    l::TrackComponent::fr(1.0),
-                ],
-            )),
+            l::TrackComponent::Repeat(
+                l::TrackRepetition::count_components(
+                    2,
+                    vec![
+                        l::TrackComponent::line_names(["inner"]),
+                        l::TrackComponent::fr(1.0),
+                    ],
+                )
+                .expect("valid track repetition"),
+            ),
             l::TrackComponent::line_names(["page-end"]),
         ]
     );
@@ -1554,7 +1659,7 @@ fn lowers_inline_block_to_layout_inline_block() {
 fn lowers_last_baseline_alignment_to_layout() {
     let tree = FixtureTree::new(vec![FixtureNode::new("root")]);
     let mut resolver = s::Resolver::new(s::Sheet::new());
-    let local = s::Declarations::new().set(
+    let local = s::Declarations::new().raw(
         s::Property::AlignSelf,
         s::Value::AlignItems(s::AlignItems::LastBaseline),
     );
@@ -1572,7 +1677,7 @@ fn layout_adapter_preserves_subgrid_track_components() {
     let tree = FixtureTree::new(vec![FixtureNode::new("root")]);
     let mut resolver = s::Resolver::new(s::Sheet::new());
     let local = s::Declarations::new().grid_template_columns(s::GridTrackList::new(vec![
-        s::GridTrackComponent::Subgrid(s::SubgridTrack::new(vec![vec!["main".to_string()]])),
+        s::GridTrackComponent::Subgrid(subgrid(vec![vec!["main".to_string()]])),
     ]));
     let resolved = resolver
         .resolve(s::Context::new(&tree, 0).local(&local))
@@ -1592,9 +1697,9 @@ fn layout_adapter_preserves_subgrid_track_components() {
 
 #[test]
 fn subgrid_tracks_are_valid_only_for_grid_template_axes() {
-    let subgrid = s::GridTrackList::new(vec![s::GridTrackComponent::Subgrid(
-        s::SubgridTrack::new(vec![vec!["main".to_string()]]),
-    )]);
+    let subgrid = s::GridTrackList::new(vec![s::GridTrackComponent::Subgrid(subgrid(vec![vec![
+        "main".to_string(),
+    ]]))]);
     let template = s::GridTemplate::new(
         s::GridTrackList::default(),
         s::GridTrackList::default(),
@@ -1755,13 +1860,28 @@ fn property_vocabulary_covers_first_pass_style_groups() {
     for property in required {
         assert!(s::Property::ALL.contains(&property), "{property:?}");
         let metadata = property.metadata();
-        metadata.default.validate().unwrap();
+        metadata.default().validate().unwrap();
     }
 
-    assert!(s::Property::Gap.metadata().impact.layout);
-    assert!(s::Property::FontWeight.metadata().impact.text);
-    assert!(s::Property::Cursor.metadata().impact.paint);
-    assert!(s::Property::TransitionDuration.metadata().impact.animation);
+    assert!(s::Property::Gap.metadata().impact_flags().affects_layout());
+    assert!(
+        s::Property::FontWeight
+            .metadata()
+            .impact_flags()
+            .affects_text()
+    );
+    assert!(
+        s::Property::Cursor
+            .metadata()
+            .impact_flags()
+            .affects_paint()
+    );
+    assert!(
+        s::Property::TransitionDuration
+            .metadata()
+            .impact_flags()
+            .affects_animation()
+    );
 }
 
 #[test]
@@ -1800,7 +1920,10 @@ fn sheet_and_rule_accessors_report_public_state() {
     )
     .when([s::Condition::viewport(s::Viewport::max_height(720.0))]);
     let second_selector = s::Selector::key("save").unwrap();
-    let second = s::Rule::new(second_selector.clone(), s::Declarations::new().opacity(0.5));
+    let second = s::Rule::new(
+        second_selector.clone(),
+        s::Declarations::new().opacity(style_opacity(0.5)),
+    );
     let mut sheet = s::Sheet::new();
     let initial_version = sheet.version();
 
@@ -1901,31 +2024,27 @@ fn text_values_are_complete_and_validate_owned_strings_and_numbers() {
 }
 
 #[test]
-fn resolver_rejects_invalid_values_even_when_declarations_were_built_infallibly() {
-    let tree = FixtureTree::new(vec![FixtureNode::new("root")]);
+fn declarations_reject_invalid_values_at_public_intake() {
     let mut local = s::Declarations::new();
-    local.insert(s::Property::Opacity, s::Value::Number(f32::NAN));
-    let mut resolver = s::Resolver::new(s::Sheet::new());
 
-    let error = resolver
-        .resolve(s::Context::new(&tree, 0).local(&local))
+    let error = local
+        .try_insert(s::Property::Opacity, s::Value::Number(f32::NAN))
         .unwrap_err();
 
     assert_eq!(error.code(), s::ErrorCode::InvalidValue);
+    assert!(local.is_empty());
 }
 
 #[test]
-fn resolver_rejects_property_value_mismatches_built_infallibly() {
-    let tree = FixtureTree::new(vec![FixtureNode::new("root")]);
+fn declarations_reject_property_value_mismatches_at_public_intake() {
     let mut local = s::Declarations::new();
-    local.insert(s::Property::Padding, s::Value::Color(red()));
-    let mut resolver = s::Resolver::new(s::Sheet::new());
 
-    let error = resolver
-        .resolve(s::Context::new(&tree, 0).local(&local))
+    let error = local
+        .try_insert(s::Property::Padding, s::Value::Color(red()))
         .unwrap_err();
 
     assert_eq!(error.code(), s::ErrorCode::InvalidProperty);
+    assert!(local.is_empty());
 }
 
 #[test]
@@ -1942,14 +2061,14 @@ fn resolver_resolves_style_keywords_against_parent_and_defaults() {
         .unwrap();
 
     let inherit = s::Declarations::new()
-        .set(s::Property::Color, s::Value::Keyword(s::Keyword::Inherit))
-        .set(s::Property::Padding, s::Value::Keyword(s::Keyword::Inherit));
+        .raw(s::Property::Color, s::Value::Keyword(s::Keyword::Inherit))
+        .raw(s::Property::Padding, s::Value::Keyword(s::Keyword::Inherit));
     let initial = s::Declarations::new()
-        .set(s::Property::Color, s::Value::Keyword(s::Keyword::Initial))
-        .set(s::Property::Padding, s::Value::Keyword(s::Keyword::Initial));
+        .raw(s::Property::Color, s::Value::Keyword(s::Keyword::Initial))
+        .raw(s::Property::Padding, s::Value::Keyword(s::Keyword::Initial));
     let unset = s::Declarations::new()
-        .set(s::Property::Color, s::Value::Keyword(s::Keyword::Unset))
-        .set(s::Property::Padding, s::Value::Keyword(s::Keyword::Unset));
+        .raw(s::Property::Color, s::Value::Keyword(s::Keyword::Unset))
+        .raw(s::Property::Padding, s::Value::Keyword(s::Keyword::Unset));
 
     let inherited = resolver
         .resolve(s::Context::new(&tree, 1).parent(&parent).local(&inherit))
@@ -2008,16 +2127,19 @@ fn declarations_and_resolved_expose_typed_accessors_for_property_groups() {
     let mut resolver = s::Resolver::new(s::Sheet::new());
     let tree = FixtureTree::new(vec![FixtureNode::new("root")]);
     let local = s::Declarations::new()
-        .width(s::Length::px(80.0))
-        .height(s::Length::percent(50.0))
+        .width(dim_px(80.0))
+        .raw(
+            s::Property::Height,
+            s::Value::Length(s::Length::percent(50.0)),
+        )
         .border_width(border.clone())
         .border_color(red())
         .visibility(s::Visibility::Hidden)
         .transform(transform.clone())
         .transform_origin(transform_origin.clone())
         .transition_properties(transition_properties.clone())
-        .transition_duration(125.0)
-        .transition_delay(25.0);
+        .transition_duration(s::DurationSeconds::new(125.0).expect("valid duration"))
+        .transition_delay(s::DurationSeconds::new(25.0).expect("valid delay"));
 
     assert_eq!(local.width_length(), Some(s::Length::px(80.0)));
     assert_eq!(local.height_length(), Some(s::Length::percent(50.0)));
@@ -2060,16 +2182,29 @@ fn declarations_and_resolved_expose_typed_accessors_for_property_groups() {
 
 #[test]
 fn selectors_match_tags_classes_keys_states_attributes_and_positions() {
-    let tree = FixtureTree::new(vec![FixtureNode::new("root"), {
-        let mut node = FixtureNode::new("button");
-        node.parent = Some(0);
-        node.key = Some(key("submit"));
-        node.classes = vec![class("primary"), class("large")];
-        node.attributes = vec![r::Attribute::new(attr("data-kind"), value("hero"))];
-        node.state.hovered = true;
-        node
-    }]);
-    let id = 1;
+    let mut model = r::Model::new(
+        r::Element::root().with_child(
+            r::Element::tagged(tag("button"))
+                .with_key(key("submit"))
+                .with_class(class("primary"))
+                .with_class(class("large"))
+                .with_attribute(r::Attribute::new(attr("data-kind"), value("hero"))),
+        ),
+    )
+    .unwrap();
+    let id = model
+        .snapshot()
+        .children(model.snapshot().root())
+        .unwrap()
+        .next()
+        .unwrap();
+    model
+        .apply(r::Patch::SetState {
+            id,
+            state: r::StatePatch::new().selected(true),
+        })
+        .unwrap();
+    let tree = model.snapshot();
 
     assert!(
         s::Selector::tag("button")
@@ -2090,7 +2225,7 @@ fn selectors_match_tags_classes_keys_states_attributes_and_positions() {
             .unwrap()
     );
     assert!(
-        s::Selector::state(s::StateFlag::Hovered)
+        s::Selector::state(s::StateFlag::Selected)
             .matches(&tree, id, s::Traversal::Canonical)
             .unwrap()
     );
@@ -2568,49 +2703,78 @@ fn retained_snapshot_adapts_canonical_and_default_projected_traversal() {
 
 #[test]
 fn nodes_report_each_state_flag_explicitly() {
-    let mut state = r::State::default();
-    state.hovered = true;
-    state.active = true;
-    state.focused = true;
-    state.focus_within = true;
-    state.pointer_captured = true;
-    state.disabled = true;
-    state.selected = true;
-    state.pressed = true;
-    state.checked = Some(true);
-    state.expanded = Some(true);
-    let node = s::Node {
-        id: 0usize,
+    let root = r::Element::root().with_child(r::Element::tagged(tag("button")));
+    let mut model = r::Model::new(root).unwrap();
+    let id = model
+        .snapshot()
+        .children(model.snapshot().root())
+        .unwrap()
+        .next()
+        .unwrap();
+    model
+        .apply(r::Patch::SetState {
+            id,
+            state: r::StatePatch::new()
+                .disabled(true)
+                .selected(true)
+                .checked(Some(true))
+                .expanded(Some(true)),
+        })
+        .unwrap();
+    {
+        let snapshot = model.snapshot();
+        let state = snapshot.get(id).unwrap().state();
+        let node = s::Node {
+            id,
+            tag: None,
+            key: None,
+            classes: &[],
+            attributes: &[],
+            role: r::Role::Generic,
+            state,
+            text: false,
+        };
+
+        for flag in [
+            s::StateFlag::Disabled,
+            s::StateFlag::Selected,
+            s::StateFlag::Checked,
+            s::StateFlag::Expanded,
+        ] {
+            assert!(node.has_state(flag), "{flag:?}");
+        }
+        for flag in [
+            s::StateFlag::Hovered,
+            s::StateFlag::Active,
+            s::StateFlag::Focused,
+            s::StateFlag::FocusWithin,
+            s::StateFlag::PointerCaptured,
+            s::StateFlag::Pressed,
+        ] {
+            assert!(!node.has_state(flag), "{flag:?}");
+        }
+    }
+
+    model
+        .apply(r::Patch::SetState {
+            id,
+            state: r::StatePatch::new()
+                .checked(Some(false))
+                .expanded(Some(false)),
+        })
+        .unwrap();
+    let snapshot = model.snapshot();
+    let unchecked = snapshot.get(id).unwrap().state();
+    let unchecked_node = s::Node {
+        id,
         tag: None,
         key: None,
         classes: &[],
         attributes: &[],
         role: r::Role::Generic,
-        state: &state,
+        state: unchecked,
         text: false,
     };
-    let mut unchecked = r::State::default();
-    unchecked.checked = Some(false);
-    unchecked.expanded = Some(false);
-    let unchecked_node = s::Node {
-        state: &unchecked,
-        ..node.clone()
-    };
-
-    for flag in [
-        s::StateFlag::Hovered,
-        s::StateFlag::Active,
-        s::StateFlag::Focused,
-        s::StateFlag::FocusWithin,
-        s::StateFlag::PointerCaptured,
-        s::StateFlag::Disabled,
-        s::StateFlag::Selected,
-        s::StateFlag::Pressed,
-        s::StateFlag::Checked,
-        s::StateFlag::Expanded,
-    ] {
-        assert!(node.has_state(flag), "{flag:?}");
-    }
     assert!(!unchecked_node.has_state(s::StateFlag::Checked));
     assert!(!unchecked_node.has_state(s::StateFlag::Expanded));
 }

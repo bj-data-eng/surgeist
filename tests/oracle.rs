@@ -16,6 +16,10 @@ use surgeist::layout::{
     RunMode, Size, SizingMode, TrackComponent,
 };
 
+fn oracle_lane_span(value: usize) -> support::oracle::grid::LaneTrackSpanLength {
+    support::oracle::grid::LaneTrackSpanLength::new(value).expect("valid oracle lane span length")
+}
+
 #[test]
 fn oracle_atomic_inline_item_metrics_include_margins_and_baseline() {
     let item = inline::AtomicInlineItemFacts {
@@ -5150,11 +5154,14 @@ fn oracle_lanes_intrinsic_keeps_definite_items_by_span() {
             gap: 10.0,
             tracks: vec![GridTrack::auto(), GridTrack::auto()],
             content_sized_tracks: vec![0, 1],
-            items: vec![support::oracle::grid::LaneIntrinsicItem::definite(
-                "a",
-                support::oracle::grid::TrackSpan::new(1, 2),
-                oracle_lane_facts(20.0, 50.0),
-            )],
+            items: vec![
+                support::oracle::grid::LaneIntrinsicItem::definite(
+                    "a",
+                    support::oracle::grid::TrackSpan::new(1, 2),
+                    oracle_lane_facts(20.0, 50.0),
+                )
+                .expect("valid oracle lane item"),
+            ],
         },
     )
     .unwrap();
@@ -5176,11 +5183,14 @@ fn oracle_lanes_intrinsic_rewrites_definite_item_area_from_span() {
             gap: 10.0,
             tracks: vec![GridTrack::auto(), GridTrack::auto()],
             content_sized_tracks: vec![0, 1],
-            items: vec![support::oracle::grid::LaneIntrinsicItem::definite(
-                "a",
-                support::oracle::grid::TrackSpan::new(2, 3),
-                oracle_lane_facts(20.0, 50.0),
-            )],
+            items: vec![
+                support::oracle::grid::LaneIntrinsicItem::definite(
+                    "a",
+                    support::oracle::grid::TrackSpan::new(2, 3),
+                    oracle_lane_facts(20.0, 50.0),
+                )
+                .expect("valid oracle lane item"),
+            ],
         },
     )
     .unwrap();
@@ -5200,11 +5210,14 @@ fn oracle_lanes_intrinsic_rewrites_row_axis_areas_from_spans() {
             gap: 10.0,
             tracks: vec![GridTrack::auto(), GridTrack::auto()],
             content_sized_tracks: vec![0, 1],
-            items: vec![support::oracle::grid::LaneIntrinsicItem::definite(
-                "a",
-                support::oracle::grid::TrackSpan::new(2, 3),
-                oracle_lane_facts(20.0, 50.0),
-            )],
+            items: vec![
+                support::oracle::grid::LaneIntrinsicItem::definite(
+                    "a",
+                    support::oracle::grid::TrackSpan::new(2, 3),
+                    oracle_lane_facts(20.0, 50.0),
+                )
+                .expect("valid oracle lane item"),
+            ],
         },
     )
     .unwrap();
@@ -5226,10 +5239,14 @@ fn oracle_lanes_intrinsic_groups_indefinite_items_by_span_length() {
             tracks: vec![GridTrack::auto(), GridTrack::auto(), GridTrack::auto()],
             content_sized_tracks: vec![0, 1, 2],
             items: vec![
-                support::oracle::grid::LaneIntrinsicItem::indefinite("a", 2, facts),
+                support::oracle::grid::LaneIntrinsicItem::indefinite(
+                    "a",
+                    oracle_lane_span(2),
+                    facts,
+                ),
                 support::oracle::grid::LaneIntrinsicItem::indefinite(
                     "b",
-                    2,
+                    oracle_lane_span(2),
                     ItemContributionFacts {
                         min_content: 30.0,
                         max_content: 60.0,
@@ -5265,7 +5282,9 @@ fn oracle_lanes_intrinsic_groups_indefinite_items_by_min_size() {
             tracks: vec![GridTrack::auto(), GridTrack::auto()],
             content_sized_tracks: vec![0, 1],
             items: vec![support::oracle::grid::LaneIntrinsicItem::indefinite(
-                "a", 1, facts,
+                "a",
+                oracle_lane_span(1),
+                facts,
             )],
         },
     )
@@ -5305,7 +5324,9 @@ fn oracle_lanes_intrinsic_uses_min_content_for_min_content_tracks() {
             tracks: vec![GridTrack::new(TrackMin::MinContent, TrackMax::MaxContent)],
             content_sized_tracks: vec![0],
             items: vec![support::oracle::grid::LaneIntrinsicItem::indefinite(
-                "a", 1, facts,
+                "a",
+                oracle_lane_span(1),
+                facts,
             )],
         },
     )
@@ -5331,7 +5352,7 @@ fn oracle_lanes_intrinsic_converts_all_spans_that_overlap_content_tracks() {
             content_sized_tracks: vec![1],
             items: vec![support::oracle::grid::LaneIntrinsicItem::indefinite(
                 "a",
-                2,
+                oracle_lane_span(2),
                 oracle_lane_facts(30.0, 60.0),
             )],
         },
@@ -5367,7 +5388,9 @@ fn oracle_lanes_intrinsic_distributes_converted_spanning_items() {
             tracks: vec![GridTrack::auto(), GridTrack::auto()],
             content_sized_tracks: vec![0, 1],
             items: vec![support::oracle::grid::LaneIntrinsicItem::indefinite(
-                "a", 2, facts,
+                "a",
+                oracle_lane_span(2),
+                facts,
             )],
         },
     )
@@ -5397,7 +5420,9 @@ fn oracle_lanes_intrinsic_splits_full_span_deficit_across_disjoint_content_track
             tracks: vec![GridTrack::auto(), GridTrack::fixed(20.0), GridTrack::auto()],
             content_sized_tracks: vec![0, 2],
             items: vec![support::oracle::grid::LaneIntrinsicItem::indefinite(
-                "a", 3, facts,
+                "a",
+                oracle_lane_span(3),
+                facts,
             )],
         },
     )
@@ -5419,7 +5444,7 @@ fn oracle_lanes_intrinsic_clamps_oversized_indefinite_spans_before_reporting() {
             content_sized_tracks: vec![0, 1],
             items: vec![support::oracle::grid::LaneIntrinsicItem::indefinite(
                 "a",
-                5,
+                oracle_lane_span(5),
                 oracle_lane_facts(30.0, 60.0),
             )],
         },
@@ -5446,11 +5471,14 @@ fn oracle_lanes_intrinsic_skips_definite_items_outside_content_tracks_for_sizing
             gap: 10.0,
             tracks: vec![GridTrack::auto(), GridTrack::auto()],
             content_sized_tracks: vec![1],
-            items: vec![support::oracle::grid::LaneIntrinsicItem::definite(
-                "a",
-                support::oracle::grid::TrackSpan::new(1, 2),
-                oracle_lane_facts(80.0, 120.0),
-            )],
+            items: vec![
+                support::oracle::grid::LaneIntrinsicItem::definite(
+                    "a",
+                    support::oracle::grid::TrackSpan::new(1, 2),
+                    oracle_lane_facts(80.0, 120.0),
+                )
+                .expect("valid oracle lane item"),
+            ],
         },
     )
     .unwrap();
@@ -5472,7 +5500,7 @@ fn oracle_lanes_intrinsic_reports_nested_indefinite_subgrid_unsupported() {
             items: vec![
                 support::oracle::grid::LaneIntrinsicItem::nested_indefinite_subgrid(
                     "subgrid-child",
-                    2,
+                    oracle_lane_span(2),
                     oracle_lane_facts(20.0, 50.0),
                 ),
             ],
@@ -5488,19 +5516,10 @@ fn oracle_lanes_intrinsic_reports_nested_indefinite_subgrid_unsupported() {
 
 #[test]
 fn oracle_lanes_intrinsic_rejects_invalid_definite_span() {
-    let err = support::oracle::grid::lane_intrinsic_sizing(
-        support::oracle::grid::LaneIntrinsicSizingInput {
-            axis: GridAxis::Column,
-            available: Some(300.0),
-            gap: 10.0,
-            tracks: vec![GridTrack::auto()],
-            content_sized_tracks: vec![0],
-            items: vec![support::oracle::grid::LaneIntrinsicItem::definite(
-                "bad",
-                support::oracle::grid::TrackSpan::new(2, 2),
-                oracle_lane_facts(20.0, 50.0),
-            )],
-        },
+    let err = support::oracle::grid::LaneIntrinsicItem::definite(
+        "bad",
+        support::oracle::grid::TrackSpan::new(2, 2),
+        oracle_lane_facts(20.0, 50.0),
     )
     .unwrap_err();
 
@@ -5516,11 +5535,14 @@ fn oracle_lanes_intrinsic_rejects_definite_span_outside_tracks() {
             gap: 10.0,
             tracks: vec![GridTrack::auto()],
             content_sized_tracks: vec![0],
-            items: vec![support::oracle::grid::LaneIntrinsicItem::definite(
-                "bad",
-                support::oracle::grid::TrackSpan::new(2, 3),
-                oracle_lane_facts(20.0, 50.0),
-            )],
+            items: vec![
+                support::oracle::grid::LaneIntrinsicItem::definite(
+                    "bad",
+                    support::oracle::grid::TrackSpan::new(2, 3),
+                    oracle_lane_facts(20.0, 50.0),
+                )
+                .expect("valid oracle lane item"),
+            ],
         },
     )
     .unwrap_err();
@@ -5539,7 +5561,7 @@ fn oracle_lanes_intrinsic_rejects_invalid_content_sized_track() {
             content_sized_tracks: vec![1],
             items: vec![support::oracle::grid::LaneIntrinsicItem::indefinite(
                 "bad",
-                1,
+                oracle_lane_span(1),
                 oracle_lane_facts(20.0, 50.0),
             )],
         },

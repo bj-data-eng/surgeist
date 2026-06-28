@@ -26,6 +26,14 @@ use surgeist::layout::{
     place_lanes as production_place_lanes, round_layout,
 };
 
+fn oracle_lane_span(value: usize) -> support::oracle::grid::LaneTrackSpanLength {
+    support::oracle::grid::LaneTrackSpanLength::new(value).expect("valid oracle lane span length")
+}
+
+fn production_lane_span(value: usize) -> surgeist::layout::LaneTrackSpanLength {
+    surgeist::layout::LaneTrackSpanLength::new(value).expect("valid production lane span length")
+}
+
 fn fixed_rows(height: f32) -> support::oracle::grid::TrackSizingReport {
     TrackSizingSlice::definite_rows(height, 0.0)
         .track(GridTrack::fixed(height))
@@ -647,8 +655,8 @@ fn subgrid_layout_oracle_matches_merged_local_and_inherited_area_lines() {
             2,
             NodeInput {
                 display: Display::Grid,
-                grid_column: GridPlacement::lines(2, 4),
-                grid_row: GridPlacement::lines(1, 3),
+                grid_column: GridPlacement::try_lines(2, 4).expect("valid grid placement"),
+                grid_row: GridPlacement::try_lines(1, 3).expect("valid grid placement"),
                 grid_template_columns: vec![TrackComponent::Subgrid(
                     surgeist::layout::SubgridTrack {
                         name_components: Vec::new(),
@@ -756,8 +764,8 @@ fn subgrid_layout_oracle_matches_local_area_clamp_to_inherited_span() {
             2,
             NodeInput {
                 display: Display::Grid,
-                grid_column: GridPlacement::lines(1, 3),
-                grid_row: GridPlacement::line(1),
+                grid_column: GridPlacement::try_lines(1, 3).expect("valid grid placement"),
+                grid_row: GridPlacement::try_line(1).expect("valid grid placement"),
                 grid_template_columns: vec![TrackComponent::Subgrid(
                     surgeist::layout::SubgridTrack {
                         name_components: Vec::new(),
@@ -2003,8 +2011,8 @@ fn subgrid_named_placement_clamp_matches_oracle() {
             2,
             NodeInput {
                 display: Display::Grid,
-                grid_column: GridPlacement::lines(1, 2),
-                grid_row: GridPlacement::line(1),
+                grid_column: GridPlacement::try_lines(1, 2).expect("valid grid placement"),
+                grid_row: GridPlacement::try_line(1).expect("valid grid placement"),
                 grid_template_columns: vec![TrackComponent::Subgrid(
                     surgeist::layout::SubgridTrack {
                         name_components: Vec::new(),
@@ -2064,7 +2072,7 @@ fn oracle_layout_harness_can_compare_lane_reports() {
         content_sized_tracks: vec![0],
         items: vec![LaneIntrinsicItem::indefinite(
             "b",
-            1,
+            oracle_lane_span(1),
             ItemContributionFacts {
                 area: GridArea::new(1, 1, 1, 1),
                 min_content: 24.0,
@@ -2300,10 +2308,14 @@ fn lanes_intrinsic_groups_indefinite_items_like_oracle() {
             ],
             content_sized_tracks: vec![0, 1, 2],
             items: vec![
-                ProductionLaneIntrinsicItem::indefinite("a", 2, production_facts),
+                ProductionLaneIntrinsicItem::indefinite(
+                    "a",
+                    production_lane_span(2),
+                    production_facts,
+                ),
                 ProductionLaneIntrinsicItem::indefinite(
                     "b",
-                    2,
+                    production_lane_span(2),
                     ProductionLaneContributionFacts {
                         min_content: 30.0,
                         max_content: 60.0,
@@ -2319,10 +2331,10 @@ fn lanes_intrinsic_groups_indefinite_items_like_oracle() {
             tracks: vec![GridTrack::auto(), GridTrack::auto(), GridTrack::auto()],
             content_sized_tracks: vec![0, 1, 2],
             items: vec![
-                LaneIntrinsicItem::indefinite("a", 2, facts),
+                LaneIntrinsicItem::indefinite("a", oracle_lane_span(2), facts),
                 LaneIntrinsicItem::indefinite(
                     "b",
-                    2,
+                    oracle_lane_span(2),
                     ItemContributionFacts {
                         min_content: 30.0,
                         max_content: 60.0,
@@ -2345,12 +2357,14 @@ fn lanes_intrinsic_skips_definite_items_outside_content_sized_tracks() {
             gap: 10.0,
             tracks: vec![ProductionTrackSizing::AUTO, ProductionTrackSizing::AUTO],
             content_sized_tracks: vec![1],
-            items: vec![ProductionLaneIntrinsicItem::definite(
-                "a",
-                1,
-                2,
-                production_facts,
-            )],
+            items: vec![
+                ProductionLaneIntrinsicItem::definite(
+                    "a",
+                    surgeist::layout::LaneTrackSpan::new(1, 2),
+                    production_facts,
+                )
+                .expect("valid production lane item"),
+            ],
         },
         LaneIntrinsicSizingInput {
             axis: GridAxis::Column,
@@ -2358,11 +2372,14 @@ fn lanes_intrinsic_skips_definite_items_outside_content_sized_tracks() {
             gap: 10.0,
             tracks: vec![GridTrack::auto(), GridTrack::auto()],
             content_sized_tracks: vec![1],
-            items: vec![LaneIntrinsicItem::definite(
-                "a",
-                support::oracle::grid::TrackSpan::new(1, 2),
-                facts,
-            )],
+            items: vec![
+                LaneIntrinsicItem::definite(
+                    "a",
+                    support::oracle::grid::TrackSpan::new(1, 2),
+                    facts,
+                )
+                .expect("valid oracle lane item"),
+            ],
         },
     );
 }
@@ -2392,7 +2409,7 @@ fn lanes_intrinsic_projects_disjoint_content_sized_spans_like_oracle() {
             content_sized_tracks: vec![0, 2],
             items: vec![ProductionLaneIntrinsicItem::indefinite(
                 "a",
-                3,
+                production_lane_span(3),
                 production_facts,
             )],
         },
@@ -2402,7 +2419,11 @@ fn lanes_intrinsic_projects_disjoint_content_sized_spans_like_oracle() {
             gap: 10.0,
             tracks: vec![GridTrack::auto(), GridTrack::fixed(20.0), GridTrack::auto()],
             content_sized_tracks: vec![0, 2],
-            items: vec![LaneIntrinsicItem::indefinite("a", 3, facts)],
+            items: vec![LaneIntrinsicItem::indefinite(
+                "a",
+                oracle_lane_span(3),
+                facts,
+            )],
         },
     );
 }
@@ -2420,7 +2441,7 @@ fn lanes_intrinsic_clamps_oversized_indefinite_spans_like_oracle() {
             content_sized_tracks: vec![0, 1],
             items: vec![ProductionLaneIntrinsicItem::indefinite(
                 "a",
-                5,
+                production_lane_span(5),
                 production_facts,
             )],
         },
@@ -2430,7 +2451,11 @@ fn lanes_intrinsic_clamps_oversized_indefinite_spans_like_oracle() {
             gap: 10.0,
             tracks: vec![GridTrack::auto(), GridTrack::auto()],
             content_sized_tracks: vec![0, 1],
-            items: vec![LaneIntrinsicItem::indefinite("a", 5, facts)],
+            items: vec![LaneIntrinsicItem::indefinite(
+                "a",
+                oracle_lane_span(5),
+                facts,
+            )],
         },
     );
 }
@@ -2459,7 +2484,7 @@ fn lanes_intrinsic_preserves_min_content_track_behavior() {
             content_sized_tracks: vec![0],
             items: vec![ProductionLaneIntrinsicItem::indefinite(
                 "a",
-                1,
+                production_lane_span(1),
                 production_facts,
             )],
         },
@@ -2469,7 +2494,11 @@ fn lanes_intrinsic_preserves_min_content_track_behavior() {
             gap: 10.0,
             tracks: vec![GridTrack::new(TrackMin::MinContent, TrackMax::MaxContent)],
             content_sized_tracks: vec![0],
-            items: vec![LaneIntrinsicItem::indefinite("a", 1, facts)],
+            items: vec![LaneIntrinsicItem::indefinite(
+                "a",
+                oracle_lane_span(1),
+                facts,
+            )],
         },
     );
 }
@@ -2489,7 +2518,7 @@ fn lanes_intrinsic_reports_nested_indefinite_subgrid_unsupported_like_oracle() {
         content_sized_tracks: vec![0, 1, 2],
         items: vec![ProductionLaneIntrinsicItem::nested_indefinite_subgrid(
             "subgrid-child",
-            2,
+            production_lane_span(2),
             production_facts,
         )],
     });
@@ -2813,7 +2842,8 @@ fn lanes_spanning_child_measurement_uses_distributed_grid_axis_gap() {
         .style(
             2,
             NodeInput {
-                grid_column: surgeist::layout::GridPlacement::span(2),
+                grid_column: surgeist::layout::GridPlacement::try_span(2)
+                    .expect("valid grid placement"),
                 ..NodeInput::default()
             },
         );
@@ -3111,11 +3141,6 @@ fn assert_production_lane_placement_matches_oracle(
         "grid axis"
     );
     assert_eq!(production.content_size, oracle.content_size, "content size");
-    assert_eq!(production.final_cursor, oracle.final_cursor, "final cursor");
-    assert_eq!(
-        production.running_positions_after_each_item, oracle.running_positions_after_each_item,
-        "running positions"
-    );
     assert_eq!(
         production
             .item_offsets

@@ -191,7 +191,7 @@ impl RetainedHarness {
             .apply_projection(retained::ProjectionEdit::new(
                 slot.clone(),
                 retained::ProjectionSource::Elements(vec![retained_fixture_panel(self.projected)]),
-                retained::ReplaceMode::PreserveCompatible,
+                retained::ProjectionReplaceMode::PreserveCompatible,
             ))
             .and_then(|_| self.model.resolve_projection(slot));
         self.record_report("project", report);
@@ -210,7 +210,7 @@ impl RetainedHarness {
             self.selected = self.model.root();
             return;
         };
-        let next = if node.state().presence == retained::Presence::Visible {
+        let next = if node.state().presence() == retained::Presence::Visible {
             retained::Presence::Hidden
         } else {
             retained::Presence::Visible
@@ -1319,15 +1319,15 @@ fn format_kind(kind: &retained::Kind) -> String {
 fn format_state(state: &retained::State) -> String {
     format!(
         "{:?} dis={} hov={} act={} foc={} within={} cap={} sel={} press={}",
-        state.presence,
-        state.disabled,
-        state.hovered,
-        state.active,
-        state.focused,
-        state.focus_within,
-        state.pointer_captured,
-        state.selected,
-        state.pressed
+        state.presence(),
+        state.disabled(),
+        state.hovered(),
+        state.active(),
+        state.focused(),
+        state.focus_within(),
+        state.pointer_captured(),
+        state.selected(),
+        state.pressed()
     )
 }
 
