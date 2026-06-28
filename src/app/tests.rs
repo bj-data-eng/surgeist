@@ -157,3 +157,60 @@ fn effect_batches_preserve_order() {
     assert_eq!(effects.effects()[0].kind(), &EffectKindId::EMIT_DIAGNOSTIC);
     assert_eq!(effects.effects()[1].kind(), &EffectKindId::REQUEST_REDRAW);
 }
+
+#[test]
+fn resource_effects_expose_typed_payloads_and_kinds() {
+    let load = AppEffect::load_resource(ResourceId::new("thumb:1"), AppScope::app());
+    assert_eq!(load.kind(), &EffectKindId::LOAD_RESOURCE);
+    assert!(matches!(
+        load.payload(),
+        AppEffectPayload::LoadResource(effect)
+            if effect.id() == &ResourceId::new("thumb:1") && effect.scope() == &AppScope::app()
+    ));
+
+    let invalidate = AppEffect::invalidate_resource(ResourceId::new("thumb:1"), "source changed");
+    assert_eq!(invalidate.kind(), &EffectKindId::INVALIDATE_RESOURCE);
+    assert!(matches!(
+        invalidate.payload(),
+        AppEffectPayload::InvalidateResource(effect)
+            if effect.id() == &ResourceId::new("thumb:1") && effect.reason() == "source changed"
+    ));
+}
+
+#[test]
+fn resource_state_tracks_freshness_and_refreshing_independently() {
+    let mut resource = ResourceState::<u32, String>::idle(ResourceId::new("thumb:1"));
+
+    resource.starting();
+    assert_eq!(resource.status(), ResourceStatus::Starting);
+    assert!(!resource.is_renderable());
+
+    resource.ready(7, Freshness::Fresh);
+    assert_eq!(resource.status(), ResourceStatus::Ready);
+    assert_eq!(resource.value(), Some(&7));
+    assert!(resource.is_renderable());
+    assert_eq!(resource.freshness(), Freshness::Fresh);
+
+    resource.refreshing();
+    assert_eq!(resource.status(), ResourceStatus::Refreshing);
+    assert_eq!(resource.value(), Some(&7));
+    assert!(resource.is_renderable());
+
+    resource.mark_stale("source changed");
+    assert_eq!(resource.freshness(), Freshness::Stale);
+    assert_eq!(resource.stale_reason(), Some("source changed"));
+}
+
+#[test]
+fn resource_failure_preserves_renderable_stale_value() {
+    let mut resource =
+        ResourceState::<u32, String>::ready(ResourceId::new("query:1"), 10, Freshness::Fresh);
+
+    resource.refreshing();
+    resource.failed("timeout".to_string(), FailureVisibility::KeepStaleValue);
+
+    assert_eq!(resource.status(), ResourceStatus::Failed);
+    assert_eq!(resource.value(), Some(&10));
+    assert_eq!(resource.error(), Some(&"timeout".to_string()));
+    assert!(resource.is_renderable());
+}

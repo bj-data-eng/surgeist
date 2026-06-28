@@ -14,6 +14,7 @@ mod ids;
 mod input;
 mod provenance;
 mod reducer;
+mod resource;
 mod snapshot;
 
 #[cfg(test)]
@@ -29,8 +30,8 @@ pub use diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticLog, DiagnosticSeverity, QueueDiagnostic,
 };
 pub use effect::{
-    AppEffect, AppEffectPayload, DiagnosticEffect, EffectBatch, EffectKindId, PersistEffect,
-    RedrawTarget, RequestRedrawEffect,
+    AppEffect, AppEffectPayload, DiagnosticEffect, EffectBatch, EffectKindId,
+    InvalidateResourceEffect, LoadResourceEffect, PersistEffect, RedrawTarget, RequestRedrawEffect,
 };
 pub use event::{AppEvent, EventDescriptor, EventName};
 pub use ids::{
@@ -43,6 +44,10 @@ pub use provenance::{
     TaskProvenance,
 };
 pub use reducer::{Reducer, ReducerResult};
+pub use resource::{
+    FailureVisibility, Freshness, ResourceSnapshot, ResourceState, ResourceStateReadyTransition,
+    ResourceStatus,
+};
 pub use snapshot::{
     AppSnapshot, SnapshotBinding, SnapshotBindingId, SnapshotSourceType, StateVersion,
 };

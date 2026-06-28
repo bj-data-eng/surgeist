@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use super::{AppScope, Diagnostic, SurfaceId};
+use super::{AppScope, Diagnostic, ResourceId, SurfaceId};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RedrawTarget {
@@ -27,11 +27,15 @@ pub struct EffectKindId(Cow<'static, str>);
 static REQUEST_REDRAW_EFFECT_KIND: EffectKindId = EffectKindId::REQUEST_REDRAW;
 static PERSIST_EFFECT_KIND: EffectKindId = EffectKindId::PERSIST;
 static EMIT_DIAGNOSTIC_EFFECT_KIND: EffectKindId = EffectKindId::EMIT_DIAGNOSTIC;
+static LOAD_RESOURCE_EFFECT_KIND: EffectKindId = EffectKindId::LOAD_RESOURCE;
+static INVALIDATE_RESOURCE_EFFECT_KIND: EffectKindId = EffectKindId::INVALIDATE_RESOURCE;
 
 impl EffectKindId {
     pub const REQUEST_REDRAW: Self = Self::from_static("runtime.request_redraw");
     pub const PERSIST: Self = Self::from_static("runtime.persist");
     pub const EMIT_DIAGNOSTIC: Self = Self::from_static("runtime.emit_diagnostic");
+    pub const LOAD_RESOURCE: Self = Self::from_static("runtime.load_resource");
+    pub const INVALIDATE_RESOURCE: Self = Self::from_static("runtime.invalidate_resource");
     pub const START_TASK: Self = Self::from_static("runtime.start_task");
     pub const CANCEL_TASK: Self = Self::from_static("runtime.cancel_task");
     pub const START_SERVICE: Self = Self::from_static("runtime.start_service");
@@ -87,11 +91,30 @@ impl AppEffect {
     }
 
     #[must_use]
+    pub fn load_resource(id: ResourceId, scope: AppScope) -> Self {
+        Self {
+            payload: AppEffectPayload::LoadResource(LoadResourceEffect { id, scope }),
+        }
+    }
+
+    #[must_use]
+    pub fn invalidate_resource(id: ResourceId, reason: impl Into<String>) -> Self {
+        Self {
+            payload: AppEffectPayload::InvalidateResource(InvalidateResourceEffect {
+                id,
+                reason: reason.into(),
+            }),
+        }
+    }
+
+    #[must_use]
     pub fn kind(&self) -> &EffectKindId {
         match &self.payload {
             AppEffectPayload::RequestRedraw(_) => &REQUEST_REDRAW_EFFECT_KIND,
             AppEffectPayload::Persist(_) => &PERSIST_EFFECT_KIND,
             AppEffectPayload::Diagnostic(_) => &EMIT_DIAGNOSTIC_EFFECT_KIND,
+            AppEffectPayload::LoadResource(_) => &LOAD_RESOURCE_EFFECT_KIND,
+            AppEffectPayload::InvalidateResource(_) => &INVALIDATE_RESOURCE_EFFECT_KIND,
         }
     }
 
@@ -106,6 +129,8 @@ pub enum AppEffectPayload {
     RequestRedraw(RequestRedrawEffect),
     Persist(PersistEffect),
     Diagnostic(DiagnosticEffect),
+    LoadResource(LoadResourceEffect),
+    InvalidateResource(InvalidateResourceEffect),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -147,6 +172,42 @@ impl DiagnosticEffect {
     #[must_use]
     pub fn diagnostic(&self) -> &Diagnostic {
         self.diagnostic.as_ref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LoadResourceEffect {
+    id: ResourceId,
+    scope: AppScope,
+}
+
+impl LoadResourceEffect {
+    #[must_use]
+    pub fn id(&self) -> &ResourceId {
+        &self.id
+    }
+
+    #[must_use]
+    pub const fn scope(&self) -> &AppScope {
+        &self.scope
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InvalidateResourceEffect {
+    id: ResourceId,
+    reason: String,
+}
+
+impl InvalidateResourceEffect {
+    #[must_use]
+    pub fn id(&self) -> &ResourceId {
+        &self.id
+    }
+
+    #[must_use]
+    pub fn reason(&self) -> &str {
+        &self.reason
     }
 }
 
