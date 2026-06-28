@@ -16,6 +16,7 @@ mod provenance;
 mod reducer;
 mod resource;
 mod snapshot;
+mod task;
 
 #[cfg(test)]
 mod tests;
@@ -30,8 +31,9 @@ pub use diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticLog, DiagnosticSeverity, QueueDiagnostic,
 };
 pub use effect::{
-    AppEffect, AppEffectPayload, DiagnosticEffect, EffectBatch, EffectKindId,
-    InvalidateResourceEffect, LoadResourceEffect, PersistEffect, RedrawTarget, RequestRedrawEffect,
+    AppEffect, AppEffectPayload, CancelTaskEffect, DiagnosticEffect, EffectBatch, EffectKindId,
+    InvalidateResourceEffect, LoadResourceEffect, PersistEffect, RedrawTarget,
+    ReprioritizeTaskEffect, RequestRedrawEffect, StartTaskEffect,
 };
 pub use event::{AppEvent, EventDescriptor, EventName};
 pub use ids::{
@@ -50,6 +52,10 @@ pub use resource::{
 };
 pub use snapshot::{
     AppSnapshot, SnapshotBinding, SnapshotBindingId, SnapshotSourceType, StateVersion,
+};
+pub use task::{
+    CancellationToken, TaskHandle, TaskPolicy, TaskPriority, TaskRecord, TaskRegistration,
+    TaskStatus, UnobservedPolicy,
 };
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

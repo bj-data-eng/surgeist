@@ -177,6 +177,76 @@ fn resource_effects_expose_typed_payloads_and_kinds() {
     ));
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct SearchInput {
+    query: String,
+}
+
+#[test]
+fn task_registry_records_identity_scope_key_and_policy() {
+    let registration = TaskRegistration::<SearchInput>::new("search")
+        .scope(|_| AppScope::resource(ResourceId::new("search-results")))
+        .key(|input| TaskKey::new(format!("search:{}", input.query)))
+        .with_policy(TaskPolicy::continue_when_unobserved().dedupe_by_key());
+
+    let input = SearchInput {
+        query: "rust".into(),
+    };
+    assert_eq!(registration.id().as_str(), "search");
+    assert_eq!(
+        registration.scope_for(&input),
+        AppScope::resource(ResourceId::new("search-results"))
+    );
+    assert_eq!(registration.key_for(&input), TaskKey::new("search:rust"));
+    assert!(registration.policy().dedupes_by_key());
+    assert_eq!(
+        registration.policy().unobserved(),
+        UnobservedPolicy::Continue
+    );
+}
+
+#[test]
+fn task_record_rejects_events_from_stale_attempts() {
+    let mut record = TaskRecord::queued(
+        TaskId::from_u64(1),
+        TaskKey::new("search:rust"),
+        AppScope::app(),
+        TaskPolicy::cancel_when_unobserved(),
+    );
+
+    let first = record.start_attempt(TaskAttemptId::from_u64(1));
+    assert_eq!(first, TaskAttemptId::from_u64(1));
+    record.mark_running();
+    record.start_attempt(TaskAttemptId::from_u64(2));
+
+    assert!(record.accepts_attempt(TaskAttemptId::from_u64(2)));
+    assert!(!record.accepts_attempt(TaskAttemptId::from_u64(1)));
+    assert_eq!(
+        record.reject_stale(TaskAttemptId::from_u64(1)).code(),
+        &DiagnosticCode::STALE_TASK_EVENT
+    );
+}
+
+#[test]
+fn cancellation_status_is_honest_until_terminal_event_arrives() {
+    let mut record = TaskRecord::queued(
+        TaskId::from_u64(2),
+        TaskKey::new("media:import"),
+        AppScope::app(),
+        TaskPolicy::continue_when_unobserved(),
+    );
+
+    record.start_attempt(TaskAttemptId::from_u64(1));
+    record.mark_running();
+    let token = record.request_cancel();
+
+    assert!(token.is_cancelled());
+    assert_eq!(record.status(), TaskStatus::Cancelling);
+
+    record.mark_finished_after_cancel();
+    assert_eq!(record.status(), TaskStatus::FinishedAfterCancel);
+}
+
 #[test]
 fn resource_state_tracks_freshness_and_refreshing_independently() {
     let mut resource = ResourceState::<u32, String>::idle(ResourceId::new("thumb:1"));
