@@ -248,6 +248,86 @@ fn cancellation_status_is_honest_until_terminal_event_arrives() {
 }
 
 #[test]
+fn service_registration_exposes_mailbox_policy() {
+    let registration = ServiceRegistration::new(ServiceId::new("jsonrpc"))
+        .scope(AppScope::app())
+        .mailbox(MailboxPolicy::bounded(4).drop_oldest().observe_overflow())
+        .startup(ServiceStartup::Lazy)
+        .shutdown(ServiceShutdown::DrainThenStop);
+
+    assert_eq!(registration.id(), &ServiceId::new("jsonrpc"));
+    assert_eq!(registration.scope_ref(), &AppScope::app());
+    assert_eq!(registration.mailbox_policy().capacity(), 4);
+    assert_eq!(
+        registration.mailbox_policy().overflow(),
+        MailboxOverflow::DropOldest
+    );
+    assert!(registration.mailbox_policy().observes_overflow());
+}
+
+#[test]
+fn service_mailbox_reports_overflow_and_keeps_capacity() {
+    let policy = MailboxPolicy::bounded(2).drop_oldest().observe_overflow();
+    let mut mailbox = ServiceMailbox::<u32>::new(ServiceId::new("rpc"), policy);
+
+    mailbox.push(1);
+    mailbox.push(2);
+    mailbox.push(3);
+
+    assert_eq!(mailbox.len(), 2);
+    assert_eq!(mailbox.overflow_count(), 1);
+    assert_eq!(mailbox.drain().collect::<Vec<_>>(), vec![2, 3]);
+}
+
+#[test]
+fn service_effects_expose_typed_payloads_and_kinds() {
+    let start = AppEffect::start_service(ServiceId::new("jsonrpc"));
+    assert_eq!(start.kind(), &EffectKindId::START_SERVICE);
+    assert!(matches!(
+        start.payload(),
+        AppEffectPayload::StartService(effect) if effect.id() == &ServiceId::new("jsonrpc")
+    ));
+
+    let stop = AppEffect::stop_service(ServiceId::new("jsonrpc"));
+    assert_eq!(stop.kind(), &EffectKindId::STOP_SERVICE);
+    assert!(matches!(
+        stop.payload(),
+        AppEffectPayload::StopService(effect) if effect.id() == &ServiceId::new("jsonrpc")
+    ));
+
+    let call = AppEffect::call_service(
+        ServiceId::new("jsonrpc"),
+        ServiceCommandName::new("textDocument/hover"),
+        ServiceCommandPayload::from_json_text(r#"{"line":3}"#),
+        CorrelationId::from_u64(42),
+    );
+    assert_eq!(call.kind(), &EffectKindId::CALL_SERVICE);
+    assert!(matches!(
+        call.payload(),
+        AppEffectPayload::CallService(effect)
+            if effect.id() == &ServiceId::new("jsonrpc")
+                && effect.command().as_str() == "textDocument/hover"
+                && effect.payload().as_json_text() == r#"{"line":3}"#
+                && effect.correlation() == CorrelationId::from_u64(42)
+    ));
+
+    let diagnostic = Diagnostic::warning(
+        DiagnosticCode::SERVICE_MAILBOX_OVERFLOW,
+        "service mailbox overflow",
+        InputProvenance::system(),
+    );
+    let service_diagnostic =
+        AppEffect::service_diagnostic(ServiceId::new("jsonrpc"), diagnostic.clone());
+    assert_eq!(service_diagnostic.kind(), &EffectKindId::SERVICE_DIAGNOSTIC);
+    assert!(matches!(
+        service_diagnostic.payload(),
+        AppEffectPayload::ServiceDiagnostic(effect)
+            if effect.id() == &ServiceId::new("jsonrpc")
+                && effect.diagnostic() == &diagnostic
+    ));
+}
+
+#[test]
 fn resource_state_tracks_freshness_and_refreshing_independently() {
     let mut resource = ResourceState::<u32, String>::idle(ResourceId::new("thumb:1"));
 

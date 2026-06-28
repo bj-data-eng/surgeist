@@ -15,6 +15,7 @@ mod input;
 mod provenance;
 mod reducer;
 mod resource;
+mod service;
 mod snapshot;
 mod task;
 
@@ -31,9 +32,10 @@ pub use diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticLog, DiagnosticSeverity, QueueDiagnostic,
 };
 pub use effect::{
-    AppEffect, AppEffectPayload, CancelTaskEffect, DiagnosticEffect, EffectBatch, EffectKindId,
-    InvalidateResourceEffect, LoadResourceEffect, PersistEffect, RedrawTarget,
-    ReprioritizeTaskEffect, RequestRedrawEffect, StartTaskEffect,
+    AppEffect, AppEffectPayload, CallServiceEffect, CancelTaskEffect, DiagnosticEffect,
+    EffectBatch, EffectKindId, InvalidateResourceEffect, LoadResourceEffect, PersistEffect,
+    RedrawTarget, ReprioritizeTaskEffect, RequestRedrawEffect, ServiceDiagnosticEffect,
+    StartServiceEffect, StartTaskEffect, StopServiceEffect,
 };
 pub use event::{AppEvent, EventDescriptor, EventName};
 pub use ids::{
@@ -49,6 +51,10 @@ pub use reducer::{Reducer, ReducerResult};
 pub use resource::{
     FailureVisibility, Freshness, ResourceSnapshot, ResourceState, ResourceStateReadyTransition,
     ResourceStatus,
+};
+pub use service::{
+    MailboxOverflow, MailboxPolicy, ServiceCommandName, ServiceCommandPayload, ServiceMailbox,
+    ServiceRegistration, ServiceRestart, ServiceShutdown, ServiceStartup, ServiceStatus,
 };
 pub use snapshot::{
     AppSnapshot, SnapshotBinding, SnapshotBindingId, SnapshotSourceType, StateVersion,

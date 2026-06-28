@@ -1,7 +1,8 @@
 use std::borrow::Cow;
 
 use super::{
-    AppScope, Diagnostic, ResourceId, SurfaceId, TaskHandle, TaskKey, TaskName, TaskPriority,
+    AppScope, CorrelationId, Diagnostic, ResourceId, ServiceCommandName, ServiceCommandPayload,
+    ServiceId, SurfaceId, TaskHandle, TaskKey, TaskName, TaskPriority,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -34,6 +35,10 @@ static INVALIDATE_RESOURCE_EFFECT_KIND: EffectKindId = EffectKindId::INVALIDATE_
 static START_TASK_EFFECT_KIND: EffectKindId = EffectKindId::START_TASK;
 static CANCEL_TASK_EFFECT_KIND: EffectKindId = EffectKindId::CANCEL_TASK;
 static REPRIORITIZE_TASK_EFFECT_KIND: EffectKindId = EffectKindId::REPRIORITIZE_TASK;
+static START_SERVICE_EFFECT_KIND: EffectKindId = EffectKindId::START_SERVICE;
+static STOP_SERVICE_EFFECT_KIND: EffectKindId = EffectKindId::STOP_SERVICE;
+static CALL_SERVICE_EFFECT_KIND: EffectKindId = EffectKindId::CALL_SERVICE;
+static SERVICE_DIAGNOSTIC_EFFECT_KIND: EffectKindId = EffectKindId::SERVICE_DIAGNOSTIC;
 
 impl EffectKindId {
     pub const REQUEST_REDRAW: Self = Self::from_static("runtime.request_redraw");
@@ -46,6 +51,8 @@ impl EffectKindId {
     pub const REPRIORITIZE_TASK: Self = Self::from_static("runtime.reprioritize_task");
     pub const START_SERVICE: Self = Self::from_static("runtime.start_service");
     pub const STOP_SERVICE: Self = Self::from_static("runtime.stop_service");
+    pub const CALL_SERVICE: Self = Self::from_static("runtime.call_service");
+    pub const SERVICE_DIAGNOSTIC: Self = Self::from_static("runtime.service_diagnostic");
     pub const SCHEDULE_TIMER: Self = Self::from_static("runtime.schedule_timer");
     pub const WINDOW_COMMAND: Self = Self::from_static("runtime.window_command");
 
@@ -138,6 +145,47 @@ impl AppEffect {
     }
 
     #[must_use]
+    pub fn start_service(id: ServiceId) -> Self {
+        Self {
+            payload: AppEffectPayload::StartService(StartServiceEffect { id }),
+        }
+    }
+
+    #[must_use]
+    pub fn stop_service(id: ServiceId) -> Self {
+        Self {
+            payload: AppEffectPayload::StopService(StopServiceEffect { id }),
+        }
+    }
+
+    #[must_use]
+    pub fn call_service(
+        id: ServiceId,
+        command: ServiceCommandName,
+        payload: ServiceCommandPayload,
+        correlation: CorrelationId,
+    ) -> Self {
+        Self {
+            payload: AppEffectPayload::CallService(CallServiceEffect {
+                id,
+                command,
+                payload,
+                correlation,
+            }),
+        }
+    }
+
+    #[must_use]
+    pub fn service_diagnostic(id: ServiceId, diagnostic: Diagnostic) -> Self {
+        Self {
+            payload: AppEffectPayload::ServiceDiagnostic(ServiceDiagnosticEffect {
+                id,
+                diagnostic: Box::new(diagnostic),
+            }),
+        }
+    }
+
+    #[must_use]
     pub fn kind(&self) -> &EffectKindId {
         match &self.payload {
             AppEffectPayload::RequestRedraw(_) => &REQUEST_REDRAW_EFFECT_KIND,
@@ -148,6 +196,10 @@ impl AppEffect {
             AppEffectPayload::StartTask(_) => &START_TASK_EFFECT_KIND,
             AppEffectPayload::CancelTask(_) => &CANCEL_TASK_EFFECT_KIND,
             AppEffectPayload::ReprioritizeTask(_) => &REPRIORITIZE_TASK_EFFECT_KIND,
+            AppEffectPayload::StartService(_) => &START_SERVICE_EFFECT_KIND,
+            AppEffectPayload::StopService(_) => &STOP_SERVICE_EFFECT_KIND,
+            AppEffectPayload::CallService(_) => &CALL_SERVICE_EFFECT_KIND,
+            AppEffectPayload::ServiceDiagnostic(_) => &SERVICE_DIAGNOSTIC_EFFECT_KIND,
         }
     }
 
@@ -167,6 +219,10 @@ pub enum AppEffectPayload {
     StartTask(StartTaskEffect),
     CancelTask(CancelTaskEffect),
     ReprioritizeTask(ReprioritizeTaskEffect),
+    StartService(StartServiceEffect),
+    StopService(StopServiceEffect),
+    CallService(CallServiceEffect),
+    ServiceDiagnostic(ServiceDiagnosticEffect),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -298,6 +354,78 @@ impl ReprioritizeTaskEffect {
     #[must_use]
     pub const fn priority(&self) -> TaskPriority {
         self.priority
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StartServiceEffect {
+    id: ServiceId,
+}
+
+impl StartServiceEffect {
+    #[must_use]
+    pub const fn id(&self) -> &ServiceId {
+        &self.id
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StopServiceEffect {
+    id: ServiceId,
+}
+
+impl StopServiceEffect {
+    #[must_use]
+    pub const fn id(&self) -> &ServiceId {
+        &self.id
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CallServiceEffect {
+    id: ServiceId,
+    command: ServiceCommandName,
+    payload: ServiceCommandPayload,
+    correlation: CorrelationId,
+}
+
+impl CallServiceEffect {
+    #[must_use]
+    pub const fn id(&self) -> &ServiceId {
+        &self.id
+    }
+
+    #[must_use]
+    pub const fn command(&self) -> &ServiceCommandName {
+        &self.command
+    }
+
+    #[must_use]
+    pub const fn payload(&self) -> &ServiceCommandPayload {
+        &self.payload
+    }
+
+    #[must_use]
+    pub const fn correlation(&self) -> CorrelationId {
+        self.correlation
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ServiceDiagnosticEffect {
+    id: ServiceId,
+    diagnostic: Box<Diagnostic>,
+}
+
+impl ServiceDiagnosticEffect {
+    #[must_use]
+    pub const fn id(&self) -> &ServiceId {
+        &self.id
+    }
+
+    #[must_use]
+    pub fn diagnostic(&self) -> &Diagnostic {
+        self.diagnostic.as_ref()
     }
 }
 
