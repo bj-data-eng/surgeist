@@ -6,7 +6,6 @@
 //! UIs: Rust-first dynamic structure, CSS styling, typed behavior intent, and
 //! host adapters that do not own app semantics.
 
-pub mod app;
 pub mod css {
     pub use surgeist_css::*;
 }

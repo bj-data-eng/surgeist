@@ -23,11 +23,9 @@ surgeist-shape = { path = "crates/surgeist-shape", version = "=0.1.0" }
 surgeist-style = { path = "crates/surgeist-style", version = "=0.1.0" }
 surgeist-text = { path = "crates/surgeist-text", version = "=0.1.0" }
 surgeist-window = { path = "crates/surgeist-window", version = "=0.1.0" }
-tokio = { version = "=1.48.0", optional = true }
 
 [features]
 default = []
-app-runtime-tokio = ["dep:tokio"]
 dialog-system = ["surgeist-dialog/system"]
 render-web = ["surgeist-render/render-web"]
 render-window = ["surgeist-render/render-window"]
