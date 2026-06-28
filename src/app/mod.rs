@@ -4,6 +4,7 @@
 //! resources, tasks, services, native wakeups, and declared effects. Native
 //! window mechanics stay in `surgeist::window`.
 
+mod bridge;
 mod command;
 mod coord;
 mod descriptor;
@@ -22,6 +23,7 @@ mod task;
 #[cfg(test)]
 mod tests;
 
+pub use bridge::{BridgeContext, BridgeDecodeError, BridgeError, RetainedBridge};
 pub use command::{AppCommand, CommandDescriptor, CommandName};
 pub use coord::{
     AppScope, CoalescingKey, CoordinationState, ProgressEvent, ScopePathSegment, Subscription,

@@ -101,6 +101,12 @@ enum CounterInput {
     Save,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum BridgeCommand {
+    Open,
+    OpenWithPayload(String),
+}
+
 struct CounterReducer;
 
 impl Reducer<CounterState, CounterInput> for CounterReducer {
@@ -141,6 +147,109 @@ fn reducer_returns_effects_without_executing_them() {
     assert!(!result.is_changed());
     assert_eq!(result.effects().len(), 1);
     assert_eq!(result.effects()[0].kind(), &EffectKindId::PERSIST);
+}
+
+#[test]
+fn retained_bridge_decodes_registered_command() {
+    let command_name = surgeist::retained::CommandName::new("open").unwrap();
+    let bridge = RetainedBridge::<BridgeCommand>::new()
+        .command(command_name.clone(), |_| Ok(BridgeCommand::Open));
+
+    let retained = retained_command_for_test(command_name);
+    let context = BridgeContext::new(
+        SurfaceId::from_u64(1),
+        retained.route().clone(),
+        CorrelationId::from_u64(7),
+    );
+    let inputs = bridge
+        .commands_to_inputs(context, std::slice::from_ref(&retained))
+        .unwrap();
+
+    assert_eq!(inputs.len(), 1);
+    assert_eq!(inputs[0].payload(), &BridgeCommand::Open);
+    assert_eq!(inputs[0].provenance().source(), &InputSourceId::RETAINED);
+    assert_eq!(
+        inputs[0].provenance().surface_id(),
+        Some(SurfaceId::from_u64(1))
+    );
+    assert_eq!(
+        inputs[0].provenance().correlation_id(),
+        CorrelationId::from_u64(7)
+    );
+}
+
+#[test]
+fn retained_bridge_decodes_registered_payload_command() {
+    let command_name = surgeist::retained::CommandName::new("open.with.payload").unwrap();
+    let bridge = RetainedBridge::<BridgeCommand>::new().command(command_name.clone(), |command| {
+        Ok(BridgeCommand::OpenWithPayload(
+            command.command().as_str().to_owned(),
+        ))
+    });
+
+    let retained = retained_command_for_test(command_name);
+    let context = BridgeContext::new(
+        SurfaceId::from_u64(1),
+        retained.route().clone(),
+        CorrelationId::from_u64(10),
+    );
+    let inputs = bridge
+        .commands_to_inputs(context, std::slice::from_ref(&retained))
+        .unwrap();
+
+    assert_eq!(
+        inputs[0].payload(),
+        &BridgeCommand::OpenWithPayload("open.with.payload".to_owned())
+    );
+}
+
+#[test]
+fn retained_bridge_reports_unknown_command() {
+    let command_name = surgeist::retained::CommandName::new("unknown").unwrap();
+    let bridge = RetainedBridge::<BridgeCommand>::new();
+    let retained = retained_command_for_test(command_name);
+    let context = BridgeContext::new(
+        SurfaceId::from_u64(1),
+        retained.route().clone(),
+        CorrelationId::from_u64(8),
+    );
+
+    let error = bridge
+        .commands_to_inputs(context, std::slice::from_ref(&retained))
+        .unwrap_err();
+
+    assert_eq!(
+        error.diagnostic().code(),
+        &DiagnosticCode::UNKNOWN_RETAINED_COMMAND
+    );
+    assert_eq!(
+        error.diagnostic().provenance().surface_id(),
+        Some(SurfaceId::from_u64(1))
+    );
+}
+
+#[test]
+fn retained_bridge_reports_invalid_payload() {
+    let command_name = surgeist::retained::CommandName::new("open").unwrap();
+    let bridge = RetainedBridge::<BridgeCommand>::new().command(command_name.clone(), |_| {
+        Err(BridgeDecodeError::invalid_payload("expected folder id"))
+    });
+    let retained = retained_command_for_test(command_name);
+    let context = BridgeContext::new(
+        SurfaceId::from_u64(1),
+        retained.route().clone(),
+        CorrelationId::from_u64(9),
+    );
+
+    let error = bridge
+        .commands_to_inputs(context, std::slice::from_ref(&retained))
+        .unwrap_err();
+
+    assert_eq!(
+        error.diagnostic().code(),
+        &DiagnosticCode::INVALID_RETAINED_PAYLOAD
+    );
+    assert!(error.diagnostic().message().contains("expected folder id"));
 }
 
 #[test]
@@ -434,4 +543,29 @@ fn coordination_coalesces_progress_by_key() {
     assert_eq!(drained.len(), 1);
     assert_eq!(drained[0].payload(), "20");
     assert_eq!(coord.coalesced_progress_count(), 1);
+}
+
+fn retained_command_for_test(name: surgeist::retained::CommandName) -> surgeist::retained::Command {
+    let button =
+        surgeist::retained::Element::tagged(surgeist::retained::Tag::new("button").unwrap())
+            .with_hook(surgeist::retained::Hook::new(
+                surgeist::retained::Trigger::Event(surgeist::retained::EventKind::Click),
+                name,
+            ));
+    let mut model =
+        surgeist::retained::Model::new(surgeist::retained::Element::root().with_child(button))
+            .unwrap();
+    let target = model
+        .snapshot()
+        .children(model.root())
+        .unwrap()
+        .next()
+        .unwrap();
+    let report = model
+        .dispatch(surgeist::retained::Event::new(
+            target,
+            surgeist::retained::EventKind::Click,
+        ))
+        .unwrap();
+    report.commands()[0].clone()
 }
