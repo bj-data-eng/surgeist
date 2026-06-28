@@ -158,18 +158,10 @@ For release-facing API changes:
 
 ## Type And Value Modeling
 
-Prefer semantic types over broad enums when a distinction carries invariants,
-units, phases, or API meaning. Use newtypes and focused structs to make invalid
-states hard to express and call sites easy to read.
-
-Use enums for genuinely closed choices with different behavior, not as catch-all
-value bags. If an enum starts accumulating unrelated states, revisit the model
-before extending it.
-
-For values that may stay symbolic across parsing, style resolution, and layout,
-prefer a generic value representation such as `Calc<T>` over premature
-conversion to raw numbers. Preserve enough structure to resolve values at the
-layer with the right context.
+Use `guidance/surgeist-rust-modeling-guide.md` when designing, reviewing, or
+refactoring Rust models. Keep this repo aligned with that guide: semantic types,
+explicit phases, narrow conversion boundaries, and symbolic values resolved only
+by the owning layer.
 
 ## Unsafe Code
 
@@ -293,20 +285,33 @@ sequence unless the user explicitly waives it:
 
 1. Check root status and relevant crate status before work begins.
 2. Identify the owning repo or crate lane.
-3. Assign one implementation worker to that lane.
-4. Wait for the worker's result, including its reported tests and git status.
-5. Assign a separate reviewer to inspect the worker's changes.
-6. Reconcile the worker and reviewer findings.
-7. Confirm the owning repo has a clean committed branch. Require it to be
+3. If executing an implementation plan, split the plan into its sequential
+   tasks and assign workers one task or tightly coupled task group at a time.
+   Do not hand an entire multi-task plan to one worker unless the user
+   explicitly approves that shortcut.
+4. Assign one implementation worker to the current scoped task in that lane.
+5. Wait for the worker's result, including its reported tests and git status.
+6. Assign a separate reviewer to inspect the worker's scoped changes before
+   moving to the next task.
+7. Reconcile the worker and reviewer findings before assigning follow-up work.
+8. After all scoped tasks are complete, assign a final holistic reviewer to
+   inspect the complete result against the implementation plan, crate boundary,
+   tests, and git diff.
+9. Confirm the owning repo has a clean committed branch. Require it to be
    pushed when another repo/thread must fetch it, when updating root submodule
    pointers, or when the user requested publication.
-8. Run the relevant root-level integration checks only after crate-local work
+10. Run the relevant root-level integration checks only after crate-local work
    is complete.
-9. Commit only root-owned integration changes from the top-level repo, such as
+11. Commit only root-owned integration changes from the top-level repo, such as
    submodule pointer updates, top-level plans, requirements, workflow docs, or
    facade wiring.
-10. Push root commits when the user requested publication or when a pointer
+12. Push root commits when the user requested publication or when a pointer
     update must be available to other coordinators.
+
+During plan execution, assign one clear repo/crate lane and scoped plan task to
+each worker. The coordinator owns sequencing, integration, and deciding when the
+next task is safe to start. Tell workers they are not alone in the codebase and
+must not revert others' work.
 
 The coordinator may directly edit root-only planning, documentation,
 requirements, or workflow files when the user explicitly asks for a top-level
@@ -320,13 +325,12 @@ project or a worker assigned from that crate project.
 No coordinator may declare implementation complete until a separate reviewer
 has reviewed the changed code, or the user explicitly waives review.
 
-- Assign one clear repo/crate lane per worker.
-- Tell workers they are not alone in the codebase and must not revert others'
-  work.
 - Do not duplicate a completed subagent's investigation. Review, verify,
   reconcile, and act on it.
 - Use clean reviewers for code changes, boundary changes, API changes, and
   nontrivial cross-crate work.
+- Do not declare a multi-task implementation plan complete until the
+  task-scoped worker/reviewer cycles and final holistic review are clean.
 
 ## Submodule Pointer Updates
 
