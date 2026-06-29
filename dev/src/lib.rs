@@ -1500,11 +1500,44 @@ fn render_shape(shape: &shape::Shape) -> render::Shape {
 }
 
 fn render_stroke(stroke: shape::Stroke) -> render::Stroke {
-    render_stroke_width(stroke.width()).align(match stroke.align() {
+    let converted = render_stroke_width(stroke.width())
+        .align(render_stroke_align(stroke.align()))
+        .join(render_line_join(stroke.join()))
+        .caps(
+            render_line_cap(stroke.start_cap()),
+            render_line_cap(stroke.end_cap()),
+        );
+    if stroke.miter_limit() > 0.0 {
+        converted
+            .try_miter_limit(stroke.miter_limit())
+            .expect("dev harness positive shape stroke miter limit should be valid for render")
+    } else {
+        converted
+    }
+}
+
+fn render_line_join(join: shape::LineJoin) -> render::LineJoin {
+    match join {
+        shape::LineJoin::Miter => render::LineJoin::Miter,
+        shape::LineJoin::Round => render::LineJoin::Round,
+        shape::LineJoin::Bevel => render::LineJoin::Bevel,
+    }
+}
+
+fn render_line_cap(cap: shape::LineCap) -> render::LineCap {
+    match cap {
+        shape::LineCap::Butt => render::LineCap::Butt,
+        shape::LineCap::Round => render::LineCap::Round,
+        shape::LineCap::Square => render::LineCap::Square,
+    }
+}
+
+fn render_stroke_align(align: shape::StrokeAlign) -> render::StrokeAlign {
+    match align {
         shape::StrokeAlign::Center => render::StrokeAlign::Center,
         shape::StrokeAlign::Inside => render::StrokeAlign::Inside,
         shape::StrokeAlign::Outside => render::StrokeAlign::Outside,
-    })
+    }
 }
 
 fn render_path(path: &shape::Path) -> render::Path {
@@ -1795,5 +1828,39 @@ mod tests {
         renderer
             .render(&mut surface, &scene, render::Parameters::default())
             .expect("shape geometry scene should render without unsupported path strokes");
+    }
+
+    #[test]
+    fn render_stroke_preserves_shape_stroke_style() {
+        let stroke = shape::Stroke::try_inside(3.0)
+            .expect("test stroke should be valid")
+            .with_join(shape::LineJoin::Round)
+            .with_caps(shape::LineCap::Round, shape::LineCap::Square)
+            .try_with_miter_limit(7.0)
+            .expect("test miter limit should be valid");
+
+        let converted = render_stroke(stroke);
+
+        assert_eq!(converted.width(), 3.0);
+        assert_eq!(converted.align_kind(), render::StrokeAlign::Inside);
+        assert_eq!(converted.join_kind(), render::LineJoin::Round);
+        assert_eq!(converted.start_cap(), render::LineCap::Round);
+        assert_eq!(converted.end_cap(), render::LineCap::Square);
+        assert_eq!(converted.miter_limit(), 7.0);
+    }
+
+    #[test]
+    fn render_stroke_handles_shape_zero_miter_limit_without_panicking() {
+        let stroke = shape::Stroke::try_new(3.0)
+            .expect("test stroke should be valid")
+            .try_with_miter_limit(0.0)
+            .expect("shape accepts zero miter limits");
+
+        let converted = render_stroke(stroke);
+
+        assert_eq!(
+            converted.miter_limit(),
+            render_stroke_width(3.0).miter_limit()
+        );
     }
 }

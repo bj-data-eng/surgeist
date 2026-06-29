@@ -285,7 +285,11 @@ impl surgeist_shape::Stroke
 pub const fn surgeist_shape::Stroke::align(self) -> surgeist_shape::StrokeAlign
 pub fn surgeist_shape::Stroke::bounds_for(self, shape: &surgeist_shape::Shape) -> surgeist_shape::Result<surgeist_shape::Rect>
 pub const fn surgeist_shape::Stroke::dash(self) -> core::option::Option<surgeist_shape::Dash>
+pub const fn surgeist_shape::Stroke::end_cap(self) -> surgeist_shape::LineCap
 pub fn surgeist_shape::Stroke::hairline() -> Self
+pub const fn surgeist_shape::Stroke::join(self) -> surgeist_shape::LineJoin
+pub const fn surgeist_shape::Stroke::miter_limit(self) -> f64
+pub const fn surgeist_shape::Stroke::start_cap(self) -> surgeist_shape::LineCap
 pub fn surgeist_shape::Stroke::try_centered(width: f64) -> surgeist_shape::Result<Self>
 pub fn surgeist_shape::Stroke::try_inside(width: f64) -> surgeist_shape::Result<Self>
 pub fn surgeist_shape::Stroke::try_new(width: f64) -> surgeist_shape::Result<Self>
