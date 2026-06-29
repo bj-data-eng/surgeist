@@ -340,11 +340,11 @@ pub fn retained_node_at_point(state: &DevState, x: f64, y: f64) -> Option<retain
 pub fn scenario_at_point(x: f64, y: f64) -> Option<usize> {
     Scenario::ALL.iter().enumerate().find_map(|(index, _)| {
         let rect = tab_rect(index);
-        (x >= rect.origin.x
-            && x <= rect.origin.x + rect.size.width
-            && y >= rect.origin.y
-            && y <= rect.origin.y + rect.size.height)
-            .then_some(index)
+        (x >= rect.x()
+            && x <= rect.x() + rect.width()
+            && y >= rect.y()
+            && y <= rect.y() + rect.height())
+        .then_some(index)
     })
 }
 
@@ -487,6 +487,146 @@ pub struct WindowFacts {
     pub focused: bool,
 }
 
+fn render_point(x: f64, y: f64) -> render::Point {
+    render::Point::try_new(x, y).expect("dev harness render point should be valid")
+}
+
+fn render_size(width: f64, height: f64) -> render::Size {
+    render::Size::try_new(width, height).expect("dev harness render size should be valid")
+}
+
+fn render_rect(x: f64, y: f64, width: f64, height: f64) -> render::Rect {
+    render::Rect::try_new(x, y, width, height).expect("dev harness render rect should be valid")
+}
+
+fn render_radii(
+    top_left: f64,
+    top_right: f64,
+    bottom_right: f64,
+    bottom_left: f64,
+) -> render::Radii {
+    render::Radii::try_new(top_left, top_right, bottom_right, bottom_left)
+        .expect("dev harness render radii should be valid")
+}
+
+fn render_radii_all(radius: f64) -> render::Radii {
+    render::Radii::try_all(radius).expect("dev harness render radii should be valid")
+}
+
+fn render_stroke_width(width: f64) -> render::Stroke {
+    render::Stroke::try_new(width).expect("dev harness render stroke should be valid")
+}
+
+fn render_shadow(
+    offset: render::Point,
+    blur: f64,
+    spread: f64,
+    paint: render::Color,
+) -> render::Shadow {
+    render::Shadow::try_new(offset, blur, spread, paint)
+        .expect("dev harness render shadow should be valid")
+}
+
+fn render_color_rgba(r: f32, g: f32, b: f32, a: f32) -> render::Color {
+    render::Color::try_rgba(r, g, b, a).expect("dev harness color should be valid")
+}
+
+fn render_gradient_stop(offset: f32, color: render::Color) -> render::GradientStop {
+    render::GradientStop::try_new(offset, color).expect("dev harness gradient stop should be valid")
+}
+
+fn render_linear_gradient(
+    start: render::Point,
+    end: render::Point,
+    stops: Vec<render::GradientStop>,
+) -> render::Gradient {
+    render::Gradient::try_linear(start, end, stops)
+        .expect("dev harness linear gradient should be valid")
+}
+
+fn render_translate(x: f64, y: f64) -> render::Transform {
+    render::Transform::try_new([1.0, 0.0, 0.0, 1.0, x, y])
+        .expect("dev harness render transform should be valid")
+}
+
+fn render_circle(center: render::Point, radius: f64) -> render::Shape {
+    render::Shape::try_circle(center, radius).expect("dev harness render circle should be valid")
+}
+
+fn render_layer_blend(blend: render::BlendMode) -> render::Layer {
+    render::Layer::new().blend(blend)
+}
+
+fn render_layer_opacity(opacity: f32) -> render::Layer {
+    render::Layer::new()
+        .try_opacity(opacity)
+        .expect("dev harness layer opacity should be valid")
+}
+
+fn shape_point(x: f64, y: f64) -> shape::Point {
+    shape::Point::try_new(x, y).expect("dev harness shape point should be valid")
+}
+
+fn shape_size(width: f64, height: f64) -> shape::Size {
+    shape::Size::try_new(width, height).expect("dev harness shape size should be valid")
+}
+
+fn shape_rect(x: f64, y: f64, width: f64, height: f64) -> shape::Rect {
+    shape::Rect::try_new(x, y, width, height).expect("dev harness shape rect should be valid")
+}
+
+fn shape_insets(top: f64, right: f64, bottom: f64, left: f64) -> shape::Insets {
+    shape::Insets::try_new(top, right, bottom, left)
+        .expect("dev harness shape insets should be valid")
+}
+
+fn shape_radii(top_left: f64, top_right: f64, bottom_right: f64, bottom_left: f64) -> shape::Radii {
+    shape::Radii::try_new(top_left, top_right, bottom_right, bottom_left)
+        .expect("dev harness shape radii should be valid")
+}
+
+fn shape_radii_all(radius: f64) -> shape::Radii {
+    shape::Radii::try_all(radius).expect("dev harness shape radii should be valid")
+}
+
+fn shape_stroke_width(width: f64) -> shape::Stroke {
+    shape::Stroke::try_new(width).expect("dev harness shape stroke should be valid")
+}
+
+fn shape_stroke_inside(width: f64) -> shape::Stroke {
+    shape::Stroke::try_inside(width).expect("dev harness shape stroke should be valid")
+}
+
+fn shape_dash_density(dash: shape::Dash, density: f64) -> shape::Dash {
+    dash.try_with_density(density)
+        .expect("dev harness dash density should be valid")
+}
+
+fn shape_dash_sides(dash: shape::Dash, sides: shape::SideSet) -> shape::Dash {
+    dash.with_sides(sides)
+        .expect("dev harness dash side set should be valid")
+}
+
+fn shape_rect_shape(rect: shape::Rect) -> shape::Shape {
+    shape::Shape::try_rect(rect).expect("dev harness shape rect should be valid")
+}
+
+fn shape_rounded_rect(rect: shape::Rect, radii: shape::Radii) -> shape::Shape {
+    shape::Shape::try_rounded_rect(rect, radii).expect("dev harness rounded shape should be valid")
+}
+
+fn shape_circle(center: shape::Point, radius: f64) -> shape::Shape {
+    shape::Shape::try_circle(center, radius).expect("dev harness circle should be valid")
+}
+
+fn shape_ellipse(center: shape::Point, radii: shape::Size) -> shape::Shape {
+    shape::Shape::try_ellipse(center, radii).expect("dev harness ellipse should be valid")
+}
+
+fn shape_path(path: shape::Path, fill_rule: shape::FillRule) -> shape::Shape {
+    shape::Shape::try_path(path, fill_rule).expect("dev harness path shape should be valid")
+}
+
 pub fn build_scene(
     text_system: &mut text::System,
     state: &DevState,
@@ -511,21 +651,15 @@ pub fn build_scene(
 
 fn draw_background(scene: &mut render::Scene, size: render::Size) {
     scene.fill(
-        render::Rect::new(0.0, 0.0, size.width, size.height),
-        render::Gradient::Linear {
-            start: render::Point::new(0.0, 0.0),
-            end: render::Point::new(size.width.max(1.0), size.height.max(1.0)),
-            stops: vec![
-                render::GradientStop {
-                    offset: 0.0,
-                    color: color(0xF7, 0xF8, 0xFB, 0xFF),
-                },
-                render::GradientStop {
-                    offset: 1.0,
-                    color: color(0xDF, 0xE7, 0xF3, 0xFF),
-                },
+        render_rect(0.0, 0.0, size.width(), size.height()),
+        render_linear_gradient(
+            render_point(0.0, 0.0),
+            render_point(size.width().max(1.0), size.height().max(1.0)),
+            vec![
+                render_gradient_stop(0.0, color(0xF7, 0xF8, 0xFB, 0xFF)),
+                render_gradient_stop(1.0, color(0xDF, 0xE7, 0xF3, 0xFF)),
             ],
-        },
+        ),
     );
 }
 
@@ -538,11 +672,11 @@ fn draw_chrome(
     scene
         .shadow(
             render::Shape::rounded_rect(
-                render::Rect::new(24.0, 24.0, 960.0, 88.0),
-                render::Radii::all(18.0),
+                render_rect(24.0, 24.0, 960.0, 88.0),
+                render_radii_all(18.0),
             ),
-            render::Shadow::new(
-                render::Point::new(0.0, 12.0),
+            render_shadow(
+                render_point(0.0, 12.0),
                 28.0,
                 0.0,
                 color(0x27, 0x38, 0x53, 0x33),
@@ -550,8 +684,8 @@ fn draw_chrome(
         )
         .fill(
             render::Shape::rounded_rect(
-                render::Rect::new(24.0, 24.0, 960.0, 88.0),
-                render::Radii::all(18.0),
+                render_rect(24.0, 24.0, 960.0, 88.0),
+                render_radii_all(18.0),
             ),
             color(0xFF, 0xFF, 0xFF, 0xE8),
         );
@@ -560,7 +694,7 @@ fn draw_chrome(
         scene,
         text_system,
         "Surgeist dev harness",
-        render::Point::new(48.0, 48.0),
+        render_point(48.0, 48.0),
         760.0,
         text_style(28.0, color(0x1E, 0x2A, 0x3A, 0xFF)),
         &[],
@@ -571,12 +705,12 @@ fn draw_chrome(
         &format!(
             "{}  |  {}x{} @ {:.2}x  |  focused: {}",
             state.active_scenario().title(),
-            facts.logical_size.width.round(),
-            facts.logical_size.height.round(),
+            facts.logical_size.width().round(),
+            facts.logical_size.height().round(),
             facts.scale_factor,
             facts.focused
         ),
-        render::Point::new(48.0, 82.0),
+        render_point(48.0, 82.0),
         850.0,
         text_style(14.0, color(0x58, 0x67, 0x7A, 0xFF)),
         &[],
@@ -586,7 +720,7 @@ fn draw_chrome(
         let rect = tab_rect(index);
         let active = index == state.active;
         scene.fill(
-            render::Shape::rounded_rect(rect, render::Radii::all(10.0)),
+            render::Shape::rounded_rect(rect, render_radii_all(10.0)),
             if active {
                 color(0x20, 0x58, 0xA8, 0xFF)
             } else {
@@ -597,7 +731,7 @@ fn draw_chrome(
             scene,
             text_system,
             &format!("{} {}", index + 1, scenario.title()),
-            render::Point::new(rect.origin.x + 12.0, rect.origin.y + 8.0),
+            render_point(rect.x() + 12.0, rect.y() + 8.0),
             116.0,
             text_style(
                 12.0,
@@ -613,7 +747,7 @@ fn draw_chrome(
 }
 
 fn tab_rect(index: usize) -> render::Rect {
-    render::Rect::new(
+    render_rect(
         TAB_X + index as f64 * TAB_STEP,
         TAB_Y,
         TAB_WIDTH,
@@ -653,8 +787,8 @@ fn draw_text_basics(scene: &mut render::Scene, text_system: &mut text::System) {
         &spans,
         &[],
     );
-    draw_layout(scene, &layout, render::Point::new(76.0, 232.0));
-    draw_layout_diagnostics(scene, &layout, render::Point::new(76.0, 232.0));
+    draw_layout(scene, &layout, render_point(76.0, 232.0));
+    draw_layout_diagnostics(scene, &layout, render_point(76.0, 232.0));
 }
 
 fn draw_bidi_selection(scene: &mut render::Scene, text_system: &mut text::System) {
@@ -668,7 +802,7 @@ fn draw_bidi_selection(scene: &mut render::Scene, text_system: &mut text::System
         &[],
         &[],
     );
-    let origin = render::Point::new(76.0, 232.0);
+    let origin = render_point(76.0, 232.0);
     draw_selection(
         scene,
         &layout,
@@ -713,21 +847,21 @@ fn draw_inline_boxes(scene: &mut render::Scene, text_system: &mut text::System) 
         &[],
         &boxes,
     );
-    let origin = render::Point::new(76.0, 232.0);
+    let origin = render_point(76.0, 232.0);
     draw_layout(scene, &layout, origin);
     for box_ in layout.inline_boxes() {
-        let rect = translated_rect(box_.rect, origin);
+        let rect = translated_rect(box_.rect(), origin);
         scene
             .fill(
-                render::Shape::rounded_rect(rect, render::Radii::all(8.0)),
-                match box_.kind {
+                render::Shape::rounded_rect(rect, render_radii_all(8.0)),
+                match box_.kind() {
                     text::InlineBoxKind::InFlow => color(0xF2, 0xC8, 0x5E, 0xDD),
                     text::InlineBoxKind::OutOfFlow => color(0x5A, 0xC8, 0xA0, 0xDD),
                 },
             )
             .stroke(
-                render::Shape::rounded_rect(rect, render::Radii::all(8.0)),
-                render::Stroke::new(2.0),
+                render::Shape::rounded_rect(rect, render_radii_all(8.0)),
+                render_stroke_width(2.0),
                 color(0x2F, 0x3B, 0x4A, 0xFF),
             );
     }
@@ -739,11 +873,11 @@ fn draw_render_primitives(scene: &mut render::Scene) {
     scene
         .shadow(
             render::Shape::rounded_rect(
-                render::Rect::new(76.0, 230.0, 170.0, 96.0),
-                render::Radii::all(20.0),
+                render_rect(76.0, 230.0, 170.0, 96.0),
+                render_radii_all(20.0),
             ),
-            render::Shadow::new(
-                render::Point::new(0.0, 16.0),
+            render_shadow(
+                render_point(0.0, 16.0),
                 30.0,
                 2.0,
                 color(0x16, 0x22, 0x34, 0x55),
@@ -751,53 +885,41 @@ fn draw_render_primitives(scene: &mut render::Scene) {
         )
         .fill(
             render::Shape::rounded_rect(
-                render::Rect::new(76.0, 230.0, 170.0, 96.0),
-                render::Radii::all(20.0),
+                render_rect(76.0, 230.0, 170.0, 96.0),
+                render_radii_all(20.0),
             ),
-            render::Gradient::Linear {
-                start: render::Point::new(76.0, 230.0),
-                end: render::Point::new(246.0, 326.0),
-                stops: vec![
-                    render::GradientStop {
-                        offset: 0.0,
-                        color: color(0xFF, 0xFF, 0xFF, 0xFF),
-                    },
-                    render::GradientStop {
-                        offset: 1.0,
-                        color: color(0xB9, 0xD4, 0xFF, 0xFF),
-                    },
+            render_linear_gradient(
+                render_point(76.0, 230.0),
+                render_point(246.0, 326.0),
+                vec![
+                    render_gradient_stop(0.0, color(0xFF, 0xFF, 0xFF, 0xFF)),
+                    render_gradient_stop(1.0, color(0xB9, 0xD4, 0xFF, 0xFF)),
                 ],
-            },
+            ),
         );
 
     scene.stroke(
-        render::Rect::new(290.0, 230.0, 126.0, 86.0),
-        render::Stroke::new(10.0).align(render::StrokeAlign::Inside),
+        render_rect(290.0, 230.0, 126.0, 86.0),
+        render_stroke_width(10.0).align(render::StrokeAlign::Inside),
         color(0x20, 0x58, 0xA8, 0xFF),
     );
     scene.stroke(
-        render::Rect::new(450.0, 230.0, 126.0, 86.0),
-        render::Stroke::new(10.0).align(render::StrokeAlign::Outside),
+        render_rect(450.0, 230.0, 126.0, 86.0),
+        render_stroke_width(10.0).align(render::StrokeAlign::Outside),
         color(0xB7, 0x3A, 0x47, 0xFF),
     );
 
     let mut path = render::Path::new();
-    path.move_to(render::Point::new(650.0, 284.0)).cubic_to(
-        render::Point::new(690.0, 194.0),
-        render::Point::new(760.0, 374.0),
-        render::Point::new(810.0, 244.0),
+    path.move_to(render_point(650.0, 284.0)).cubic_to(
+        render_point(690.0, 194.0),
+        render_point(760.0, 374.0),
+        render_point(810.0, 244.0),
     );
     scene.stroke(
-        render::Shape::Path(path),
-        render::Stroke {
-            width: 12.0,
-            join: render::LineJoin::Round,
-            start_cap: render::LineCap::Round,
-            end_cap: render::LineCap::Square,
-            miter_limit: 4.0,
-            dash: None,
-            align: render::StrokeAlign::Center,
-        },
+        render::Shape::path(path),
+        render_stroke_width(12.0)
+            .join(render::LineJoin::Round)
+            .caps(render::LineCap::Round, render::LineCap::Square),
         color(0x25, 0x8B, 0x73, 0xFF),
     );
 
@@ -806,100 +928,65 @@ fn draw_render_primitives(scene: &mut render::Scene) {
         image
             .quality(render::ImageQuality::Low)
             .extend(render::Extend::Repeat),
-        render::Rect::new(78.0, 370.0, 160.0, 96.0),
+        render_rect(78.0, 370.0, 160.0, 96.0),
         render::ImageFit::Stretch,
     );
 
-    let multiply_clip = render::Rect::new(284.0, 358.0, 252.0, 128.0);
+    let multiply_clip = render_rect(284.0, 358.0, 252.0, 128.0);
     scene
         .stroke(
             multiply_clip,
-            render::Stroke::new(1.0),
+            render_stroke_width(1.0),
             color(0xD4, 0xDE, 0xEC, 0xFF),
         )
         .clip(multiply_clip, |scene| {
             scene.fill(
-                render::Shape::Circle {
-                    center: render::Point::new(360.0, 422.0),
-                    radius: 58.0,
-                },
+                render_circle(render_point(360.0, 422.0), 58.0),
                 color(0xFF, 0xC0, 0x52, 0xFF),
             );
-            scene.layer(
-                render::Layer {
-                    blend: render::BlendMode::Multiply,
-                    ..render::Layer::new()
-                },
-                |scene| {
-                    scene.fill(
-                        render::Shape::Circle {
-                            center: render::Point::new(438.0, 422.0),
-                            radius: 58.0,
-                        },
-                        color(0x5B, 0xA9, 0xFF, 0xFF),
-                    );
-                },
-            );
+            scene.layer(render_layer_blend(render::BlendMode::Multiply), |scene| {
+                scene.fill(
+                    render_circle(render_point(438.0, 422.0), 58.0),
+                    color(0x5B, 0xA9, 0xFF, 0xFF),
+                );
+            });
         });
 
-    scene.layer(
-        render::Layer {
-            opacity: 0.5,
-            ..render::Layer::new()
-        },
-        |scene| {
-            scene.fill(
-                render::Shape::Circle {
-                    center: render::Point::new(650.0, 422.0),
-                    radius: 58.0,
-                },
-                color(0xB7, 0x3A, 0x47, 0xFF),
-            );
-        },
-    );
+    scene.layer(render_layer_opacity(0.5), |scene| {
+        scene.fill(
+            render_circle(render_point(650.0, 422.0), 58.0),
+            color(0xB7, 0x3A, 0x47, 0xFF),
+        );
+    });
     scene.fill(
-        render::Shape::Circle {
-            center: render::Point::new(710.0, 422.0),
-            radius: 58.0,
-        },
+        render_circle(render_point(710.0, 422.0), 58.0),
         color(0x25, 0x8B, 0x73, 0xB8),
     );
 
-    scene.clip(render::Rect::new(800.0, 358.0, 144.0, 96.0), |scene| {
+    scene.clip(render_rect(800.0, 358.0, 144.0, 96.0), |scene| {
         scene
             .fill(
-                render::Shape::Circle {
-                    center: render::Point::new(800.0, 406.0),
-                    radius: 64.0,
-                },
+                render_circle(render_point(800.0, 406.0), 64.0),
                 color(0xF2, 0xC8, 0x5E, 0xDD),
             )
             .fill(
-                render::Shape::Circle {
-                    center: render::Point::new(944.0, 406.0),
-                    radius: 64.0,
-                },
+                render_circle(render_point(944.0, 406.0), 64.0),
                 color(0x5B, 0xA9, 0xFF, 0xDD),
             );
     });
     scene.stroke(
-        render::Rect::new(800.0, 358.0, 144.0, 96.0),
-        render::Stroke::new(1.0),
+        render_rect(800.0, 358.0, 144.0, 96.0),
+        render_stroke_width(1.0),
         color(0xD4, 0xDE, 0xEC, 0xFF),
     );
 
-    let corner_rect = render::Rect::new(846.0, 226.0, 124.0, 86.0);
-    let corner_radii = render::Radii {
-        top_left: 0.0,
-        top_right: 5.0,
-        bottom_right: 10.0,
-        bottom_left: 0.0,
-    };
+    let corner_rect = render_rect(846.0, 226.0, 124.0, 86.0);
+    let corner_radii = render_radii(0.0, 5.0, 10.0, 0.0);
     scene
         .shadow(
             render::Shape::rounded_rect(corner_rect, corner_radii),
-            render::Shadow::new(
-                render::Point::new(12.0, 14.0),
+            render_shadow(
+                render_point(12.0, 14.0),
                 24.0,
                 0.0,
                 color(0x16, 0x22, 0x34, 0x3A),
@@ -911,7 +998,7 @@ fn draw_render_primitives(scene: &mut render::Scene) {
         )
         .stroke(
             render::Shape::rounded_rect(corner_rect, corner_radii),
-            render::Stroke::new(2.0).align(render::StrokeAlign::Inside),
+            render_stroke_width(2.0).align(render::StrokeAlign::Inside),
             color(0xB7, 0x8B, 0x2D, 0xFF),
         );
 }
@@ -919,157 +1006,122 @@ fn draw_render_primitives(scene: &mut render::Scene) {
 fn draw_shape_geometry(scene: &mut render::Scene) {
     draw_panel(scene, 42.0, 190.0, 1040.0, 500.0);
 
-    let rounded = shape::Shape::rounded_rect(
-        shape::Rect::new(76.0, 230.0, 190.0, 110.0),
-        shape::Radii::new(0.0, 10.0, 28.0, 0.0),
+    let rounded = shape_rounded_rect(
+        shape_rect(76.0, 230.0, 190.0, 110.0),
+        shape_radii(0.0, 10.0, 28.0, 0.0),
     );
     draw_shape_fill(scene, &rounded, color(0xD8, 0xE8, 0xFF, 0xFF));
     draw_shape_stroke(
         scene,
         &rounded,
-        shape::Stroke::inside(3.0),
+        shape_stroke_inside(3.0),
         color(0x20, 0x58, 0xA8, 0xFF),
     );
     draw_shape_rect(scene, rounded.bounds(), color(0x20, 0x58, 0xA8, 0x28));
     draw_shape_rect(
         scene,
         rounded
-            .support_bounds(shape::Insets::new(18.0, 26.0, 18.0, 10.0))
+            .support_bounds(shape_insets(18.0, 26.0, 18.0, 10.0))
             .expect("shape support bounds should resolve"),
         color(0xB7, 0x3A, 0x47, 0x22),
     );
 
-    let circle = shape::Shape::circle(shape::Point::new(380.0, 286.0), 58.0);
+    let circle = shape_circle(shape_point(380.0, 286.0), 58.0);
     draw_shape_fill(scene, &circle, color(0xF2, 0xC8, 0x5E, 0xD8));
     draw_shape_dashes(
         scene,
         &circle,
-        shape::Stroke {
-            width: 5.0,
-            dash: Some(shape::Dash::dotted().with_density(1.35)),
-            ..shape::Stroke::default()
-        },
+        shape_stroke_width(5.0).with_dash(shape_dash_density(shape::Dash::dotted(), 1.35)),
         color(0x25, 0x8B, 0x73, 0xFF),
     );
 
-    let ellipse = shape::Shape::ellipse(
-        shape::Point::new(560.0, 286.0),
-        shape::Size::new(76.0, 46.0),
-    );
+    let ellipse = shape_ellipse(shape_point(560.0, 286.0), shape_size(76.0, 46.0));
     draw_shape_fill(scene, &ellipse, color(0xFF, 0xF7, 0xE0, 0xFF));
     draw_shape_dashes(
         scene,
         &ellipse,
-        shape::Stroke {
-            width: 4.0,
-            dash: Some(shape::Dash::dashed().with_density(1.6).rounded()),
-            ..shape::Stroke::default()
-        },
+        shape_stroke_width(4.0).with_dash(shape_dash_density(shape::Dash::dashed(), 1.6).rounded()),
         color(0xB7, 0x3A, 0x47, 0xFF),
     );
 
-    let full_dash = shape::Shape::rounded_rect(
-        shape::Rect::new(76.0, 410.0, 230.0, 130.0),
-        shape::Radii::all(24.0),
-    );
+    let full_dash =
+        shape_rounded_rect(shape_rect(76.0, 410.0, 230.0, 130.0), shape_radii_all(24.0));
     draw_shape_fill(scene, &full_dash, color(0xFF, 0xFF, 0xFF, 0xF0));
     draw_shape_dashes(
         scene,
         &full_dash,
-        shape::Stroke {
-            width: 6.0,
-            dash: Some(
-                shape::Dash::dashed()
-                    .with_density(1.1)
-                    .with_corner_anchors(),
-            ),
-            ..shape::Stroke::default()
-        },
+        shape_stroke_width(6.0)
+            .with_dash(shape_dash_density(shape::Dash::dashed(), 1.1).with_corner_anchors()),
         color(0x20, 0x58, 0xA8, 0xFF),
     );
 
-    let side_dash = shape::Shape::rounded_rect(
-        shape::Rect::new(360.0, 410.0, 230.0, 130.0),
-        shape::Radii::all(30.0),
+    let side_dash = shape_rounded_rect(
+        shape_rect(360.0, 410.0, 230.0, 130.0),
+        shape_radii_all(30.0),
     );
     draw_shape_fill(scene, &side_dash, color(0xFF, 0xFF, 0xFF, 0xF0));
     draw_shape_dashes(
         scene,
         &side_dash,
-        shape::Stroke {
-            width: 6.0,
-            dash: Some(
-                shape::Dash::dashed()
-                    .with_density(1.2)
-                    .rounded()
-                    .with_sides(shape::SideSet {
-                        top: true,
-                        right: true,
-                        bottom: false,
-                        left: false,
-                    })
-                    .with_corner_anchors(),
-            ),
-            ..shape::Stroke::default()
-        },
+        shape_stroke_width(6.0).with_dash(
+            shape_dash_sides(
+                shape_dash_density(shape::Dash::dashed(), 1.2).rounded(),
+                shape::SideSet {
+                    top: true,
+                    right: true,
+                    bottom: false,
+                    left: false,
+                },
+            )
+            .with_corner_anchors(),
+        ),
         color(0x25, 0x8B, 0x73, 0xFF),
     );
 
-    let dot_dash = shape::Shape::rounded_rect(
-        shape::Rect::new(644.0, 410.0, 230.0, 130.0),
-        shape::Radii::all(30.0),
+    let dot_dash = shape_rounded_rect(
+        shape_rect(644.0, 410.0, 230.0, 130.0),
+        shape_radii_all(30.0),
     );
     draw_shape_fill(scene, &dot_dash, color(0xFF, 0xFF, 0xFF, 0xF0));
     draw_shape_dashes(
         scene,
         &dot_dash,
-        shape::Stroke {
-            width: 7.0,
-            dash: Some(
-                shape::Dash::dotted()
-                    .with_density(1.15)
-                    .with_sides(shape::SideSet::horizontal())
-                    .with_corner_anchors(),
-            ),
-            ..shape::Stroke::default()
-        },
+        shape_stroke_width(7.0).with_dash(
+            shape_dash_sides(
+                shape_dash_density(shape::Dash::dotted(), 1.15),
+                shape::SideSet::horizontal(),
+            )
+            .with_corner_anchors(),
+        ),
         color(0xB7, 0x3A, 0x47, 0xFF),
     );
 
-    let sharp_dash = shape::Shape::rect(shape::Rect::new(928.0, 410.0, 120.0, 130.0));
+    let sharp_dash = shape_rect_shape(shape_rect(928.0, 410.0, 120.0, 130.0));
     draw_shape_fill(scene, &sharp_dash, color(0xFF, 0xFF, 0xFF, 0xF0));
     draw_shape_dashes(
         scene,
         &sharp_dash,
-        shape::Stroke {
-            width: 6.0,
-            dash: Some(
-                shape::Dash::dashed()
-                    .with_density(1.1)
-                    .with_corner_anchors(),
-            ),
-            ..shape::Stroke::default()
-        },
+        shape_stroke_width(6.0)
+            .with_dash(shape_dash_density(shape::Dash::dashed(), 1.1).with_corner_anchors()),
         color(0x20, 0x58, 0xA8, 0xFF),
     );
 
-    let mut path = shape::Path::new();
-    path.move_to(shape::Point::new(760.0, 270.0)).cubic_to(
-        shape::Point::new(805.0, 205.0),
-        shape::Point::new(845.0, 360.0),
-        shape::Point::new(910.0, 252.0),
+    let mut path = shape::PathBuilder::new();
+    path.move_to(shape_point(760.0, 270.0)).cubic_to(
+        shape_point(805.0, 205.0),
+        shape_point(845.0, 360.0),
+        shape_point(910.0, 252.0),
     );
-    let custom = shape::Shape::path(path, shape::FillRule::NonZero);
+    let custom = shape_path(
+        path.build().expect("dev harness path should be valid"),
+        shape::FillRule::NonZero,
+    );
     draw_shape_stroke(
         scene,
         &custom,
-        shape::Stroke {
-            width: 10.0,
-            join: shape::LineJoin::Round,
-            start_cap: shape::LineCap::Round,
-            end_cap: shape::LineCap::Round,
-            ..shape::Stroke::default()
-        },
+        shape_stroke_width(10.0)
+            .with_join(shape::LineJoin::Round)
+            .with_caps(shape::LineCap::Round, shape::LineCap::Round),
         color(0x2F, 0x3B, 0x4A, 0xFF),
     );
 }
@@ -1105,21 +1157,21 @@ fn draw_retained_model(
         scene,
         text_system,
         &summary,
-        render::Point::new(76.0, 258.0),
+        render_point(76.0, 258.0),
         980.0,
         text_style(14.0, color(0x58, 0x67, 0x7A, 0xFF)),
         &[],
     );
 
     for (index, action) in RetainedAction::ALL.iter().copied().enumerate() {
-        let rect = render::Rect::new(
+        let rect = render_rect(
             RETAINED_ACTION_X + index as f64 * RETAINED_ACTION_STEP,
             RETAINED_ACTION_Y,
             RETAINED_ACTION_WIDTH,
             RETAINED_ACTION_HEIGHT,
         );
         scene.fill(
-            render::Shape::rounded_rect(rect, render::Radii::all(8.0)),
+            render::Shape::rounded_rect(rect, render_radii_all(8.0)),
             match action {
                 RetainedAction::Stress10k => color(0x25, 0x8B, 0x73, 0xFF),
                 RetainedAction::Reset => color(0xEC, 0xF0, 0xF5, 0xFF),
@@ -1130,7 +1182,7 @@ fn draw_retained_model(
             scene,
             text_system,
             action.label(),
-            render::Point::new(rect.origin.x + 12.0, rect.origin.y + 7.0),
+            render_point(rect.x() + 12.0, rect.y() + 7.0),
             108.0,
             text_style(
                 12.0,
@@ -1149,7 +1201,7 @@ fn draw_retained_model(
         scene,
         text_system,
         "model tree",
-        render::Point::new(82.0, 292.0),
+        render_point(82.0, 292.0),
         180.0,
         text_style(13.0, color(0x58, 0x67, 0x7A, 0xFF)),
         &[],
@@ -1160,8 +1212,8 @@ fn draw_retained_model(
         if *id == harness.selected {
             scene.fill(
                 render::Shape::rounded_rect(
-                    render::Rect::new(RETAINED_TREE_X - 6.0, y - 2.0, 388.0, 22.0),
-                    render::Radii::all(6.0),
+                    render_rect(RETAINED_TREE_X - 6.0, y - 2.0, 388.0, 22.0),
+                    render_radii_all(6.0),
                 ),
                 color(0xD8, 0xE8, 0xFF, 0xFF),
             );
@@ -1171,7 +1223,7 @@ fn draw_retained_model(
             scene,
             text_system,
             &label,
-            render::Point::new(RETAINED_TREE_X + *depth as f64 * 14.0, y),
+            render_point(RETAINED_TREE_X + *depth as f64 * 14.0, y),
             370.0 - *depth as f32 * 14.0,
             text_style(13.0, color(0x1E, 0x2A, 0x3A, 0xFF)),
             &[],
@@ -1183,7 +1235,7 @@ fn draw_retained_model(
         scene,
         text_system,
         "selected node",
-        render::Point::new(524.0, 292.0),
+        render_point(524.0, 292.0),
         180.0,
         text_style(13.0, color(0x58, 0x67, 0x7A, 0xFF)),
         &[],
@@ -1192,7 +1244,7 @@ fn draw_retained_model(
         scene,
         text_system,
         &retained_inspector_text(harness),
-        render::Point::new(524.0, 318.0),
+        render_point(524.0, 318.0),
         248.0,
         text_style(13.0, color(0x1E, 0x2A, 0x3A, 0xFF)),
         &[],
@@ -1203,7 +1255,7 @@ fn draw_retained_model(
         scene,
         text_system,
         "routes, commands, flags",
-        render::Point::new(838.0, 292.0),
+        render_point(838.0, 292.0),
         250.0,
         text_style(13.0, color(0x58, 0x67, 0x7A, 0xFF)),
         &[],
@@ -1212,7 +1264,7 @@ fn draw_retained_model(
         scene,
         text_system,
         &retained_log_text(harness),
-        render::Point::new(838.0, 318.0),
+        render_point(838.0, 318.0),
         252.0,
         text_style(12.0, color(0x1E, 0x2A, 0x3A, 0xFF)),
         &[],
@@ -1222,18 +1274,12 @@ fn draw_retained_model(
 fn draw_retained_box(scene: &mut render::Scene, x: f64, y: f64, width: f64, height: f64) {
     scene
         .fill(
-            render::Shape::rounded_rect(
-                render::Rect::new(x, y, width, height),
-                render::Radii::all(10.0),
-            ),
+            render::Shape::rounded_rect(render_rect(x, y, width, height), render_radii_all(10.0)),
             color(0xFF, 0xFF, 0xFF, 0xC8),
         )
         .stroke(
-            render::Shape::rounded_rect(
-                render::Rect::new(x, y, width, height),
-                render::Radii::all(10.0),
-            ),
-            render::Stroke::new(1.0),
+            render::Shape::rounded_rect(render_rect(x, y, width, height), render_radii_all(10.0)),
+            render_stroke_width(1.0),
             color(0xD4, 0xDE, 0xEC, 0xFF),
         );
 }
@@ -1346,7 +1392,8 @@ fn draw_window_state(
         "Window integration facts".to_owned(),
         format!(
             "logical size: {:.0} x {:.0}",
-            facts.logical_size.width, facts.logical_size.height
+            facts.logical_size.width(),
+            facts.logical_size.height()
         ),
         format!("scale factor: {:.2}", facts.scale_factor),
         format!("focused: {}", facts.focused),
@@ -1358,7 +1405,7 @@ fn draw_window_state(
         scene,
         text_system,
         &lines.join("\n"),
-        render::Point::new(76.0, 232.0),
+        render_point(76.0, 232.0),
         660.0,
         text_style(18.0, color(0x1E, 0x2A, 0x3A, 0xFF)),
         &[],
@@ -1368,22 +1415,16 @@ fn draw_window_state(
 fn draw_panel(scene: &mut render::Scene, x: f64, y: f64, width: f64, height: f64) {
     scene
         .shadow(
-            render::Shape::rounded_rect(
-                render::Rect::new(x, y, width, height),
-                render::Radii::all(18.0),
-            ),
-            render::Shadow::new(
-                render::Point::new(0.0, 14.0),
+            render::Shape::rounded_rect(render_rect(x, y, width, height), render_radii_all(18.0)),
+            render_shadow(
+                render_point(0.0, 14.0),
                 30.0,
                 0.0,
                 color(0x27, 0x38, 0x53, 0x28),
             ),
         )
         .fill(
-            render::Shape::rounded_rect(
-                render::Rect::new(x, y, width, height),
-                render::Radii::all(18.0),
-            ),
+            render::Shape::rounded_rect(render_rect(x, y, width, height), render_radii_all(18.0)),
             color(0xFF, 0xFF, 0xFF, 0xEA),
         );
 }
@@ -1412,75 +1453,58 @@ fn draw_shape_dashes(
         .expect("shape dash geometry should resolve");
     for segment in geometry.segments() {
         scene.stroke(
-            render::Shape::Path(render_path(segment.path())),
-            render::Stroke {
-                width: segment.width,
-                join: render::LineJoin::Round,
-                start_cap: if segment.rounded() {
-                    render::LineCap::Round
-                } else {
-                    render::LineCap::Butt
-                },
-                end_cap: if segment.rounded() {
-                    render::LineCap::Round
-                } else {
-                    render::LineCap::Butt
-                },
-                miter_limit: 4.0,
-                dash: None,
-                align: render::StrokeAlign::Center,
-            },
+            render::Shape::path(render_path(segment.path())),
+            render_stroke_width(segment.width())
+                .join(render::LineJoin::Round)
+                .caps(
+                    if segment.rounded() {
+                        render::LineCap::Round
+                    } else {
+                        render::LineCap::Butt
+                    },
+                    if segment.rounded() {
+                        render::LineCap::Round
+                    } else {
+                        render::LineCap::Butt
+                    },
+                ),
             paint,
         );
     }
 }
 
 fn draw_shape_rect(scene: &mut render::Scene, rect: shape::Rect, paint: render::Color) {
-    scene.stroke(render_rect(rect), render::Stroke::new(1.0), paint);
+    scene.stroke(shape_rect_to_render(rect), render_stroke_width(1.0), paint);
 }
 
 fn render_shape(shape: &shape::Shape) -> render::Shape {
-    match shape {
-        shape::Shape::Rect(rect) => render::Shape::Rect(render_rect(*rect)),
-        shape::Shape::RoundedRect { rect, radii } => {
-            render::Shape::rounded_rect(render_rect(*rect), render_radii(*radii))
-        }
-        shape::Shape::Circle { center, radius } => render::Shape::Circle {
-            center: render_point(*center),
-            radius: *radius,
-        },
-        shape::Shape::Ellipse { .. } | shape::Shape::Path { .. } => render::Shape::Path(
-            render_path(&shape.to_path().expect("shape should convert to path")),
-        ),
+    if shape.to_kurbo_rect().is_some() {
+        return render::Shape::rect(shape_rect_to_render(shape.bounds()));
     }
+    if let Some(rounded) = shape.to_kurbo_rounded_rect() {
+        let rect = rounded.rect();
+        let radii = rounded.radii();
+        return render::Shape::rounded_rect(
+            render_rect(rect.x0, rect.y0, rect.width(), rect.height()),
+            render_radii(
+                radii.top_left,
+                radii.top_right,
+                radii.bottom_right,
+                radii.bottom_left,
+            ),
+        );
+    }
+    render::Shape::path(render_path(
+        &shape.to_path().expect("shape should convert to path"),
+    ))
 }
 
 fn render_stroke(stroke: shape::Stroke) -> render::Stroke {
-    render::Stroke {
-        width: stroke.width,
-        join: match stroke.join {
-            shape::LineJoin::Miter => render::LineJoin::Miter,
-            shape::LineJoin::Round => render::LineJoin::Round,
-            shape::LineJoin::Bevel => render::LineJoin::Bevel,
-        },
-        start_cap: match stroke.start_cap {
-            shape::LineCap::Butt => render::LineCap::Butt,
-            shape::LineCap::Round => render::LineCap::Round,
-            shape::LineCap::Square => render::LineCap::Square,
-        },
-        end_cap: match stroke.end_cap {
-            shape::LineCap::Butt => render::LineCap::Butt,
-            shape::LineCap::Round => render::LineCap::Round,
-            shape::LineCap::Square => render::LineCap::Square,
-        },
-        miter_limit: stroke.miter_limit,
-        dash: None,
-        align: match stroke.align {
-            shape::StrokeAlign::Center => render::StrokeAlign::Center,
-            shape::StrokeAlign::Inside => render::StrokeAlign::Inside,
-            shape::StrokeAlign::Outside => render::StrokeAlign::Outside,
-        },
-    }
+    render_stroke_width(stroke.width()).align(match stroke.align() {
+        shape::StrokeAlign::Center => render::StrokeAlign::Center,
+        shape::StrokeAlign::Inside => render::StrokeAlign::Inside,
+        shape::StrokeAlign::Outside => render::StrokeAlign::Outside,
+    })
 }
 
 fn render_path(path: &shape::Path) -> render::Path {
@@ -1488,13 +1512,13 @@ fn render_path(path: &shape::Path) -> render::Path {
     for command in path.commands() {
         match *command {
             shape::Command::MoveTo(point) => {
-                out.move_to(render_point(point));
+                out.move_to(shape_point_to_render(point));
             }
             shape::Command::LineTo(point) => {
-                out.line_to(render_point(point));
+                out.line_to(shape_point_to_render(point));
             }
             shape::Command::QuadTo { control, end } => {
-                out.quad_to(render_point(control), render_point(end));
+                out.quad_to(shape_point_to_render(control), shape_point_to_render(end));
             }
             shape::Command::CubicTo {
                 control_a,
@@ -1502,9 +1526,9 @@ fn render_path(path: &shape::Path) -> render::Path {
                 end,
             } => {
                 out.cubic_to(
-                    render_point(control_a),
-                    render_point(control_b),
-                    render_point(end),
+                    shape_point_to_render(control_a),
+                    shape_point_to_render(control_b),
+                    shape_point_to_render(end),
                 );
             }
             shape::Command::Close => {
@@ -1515,26 +1539,17 @@ fn render_path(path: &shape::Path) -> render::Path {
     out
 }
 
-fn render_rect(rect: shape::Rect) -> render::Rect {
-    render::Rect::new(
-        rect.origin.x,
-        rect.origin.y,
-        rect.size.width,
-        rect.size.height,
+fn shape_rect_to_render(rect: shape::Rect) -> render::Rect {
+    render_rect(
+        rect.origin().x(),
+        rect.origin().y(),
+        rect.size().width(),
+        rect.size().height(),
     )
 }
 
-fn render_point(point: shape::Point) -> render::Point {
-    render::Point::new(point.x, point.y)
-}
-
-fn render_radii(radii: shape::Radii) -> render::Radii {
-    render::Radii {
-        top_left: radii.top_left,
-        top_right: radii.top_right,
-        bottom_right: radii.bottom_right,
-        bottom_left: radii.bottom_left,
-    }
+fn shape_point_to_render(point: shape::Point) -> render::Point {
+    render_point(point.x(), point.y())
 }
 
 fn draw_text(
@@ -1564,7 +1579,7 @@ fn layout_text(
         ..text::Options::default()
     });
     for span in spans {
-        builder.span(span.range, span.style.clone());
+        builder.span(span.range(), span.style().clone());
     }
     for box_ in boxes {
         builder.inline_box(*box_);
@@ -1573,7 +1588,7 @@ fn layout_text(
 }
 
 fn draw_layout(scene: &mut render::Scene, layout: &text::Layout, origin: render::Point) {
-    layout.push_render_text(scene, render::Transform::translate(origin.x, origin.y));
+    layout.push_render_text(scene, render_translate(origin.x(), origin.y()));
 }
 
 fn draw_selection(
@@ -1582,9 +1597,9 @@ fn draw_selection(
     origin: render::Point,
     selection: text::Selection,
 ) {
-    for rect in layout.selection(selection).rects {
+    for rect in layout.selection(selection).rects() {
         scene.fill(
-            translated_rect(rect.rect, origin),
+            translated_rect(rect.rect(), origin),
             color(0x86, 0xB7, 0xFF, 0x66),
         );
     }
@@ -1596,7 +1611,7 @@ fn draw_cursor(
     origin: render::Point,
     cursor: text::Cursor,
 ) {
-    let rect = translated_rect(layout.cursor(cursor).rect, origin);
+    let rect = translated_rect(layout.cursor(cursor).rect(), origin);
     scene.fill(rect, color(0x20, 0x58, 0xA8, 0xFF));
 }
 
@@ -1607,26 +1622,26 @@ fn draw_layout_diagnostics(
 ) {
     for line in layout.lines() {
         scene.stroke(
-            translated_rect(line.bounds, origin),
-            render::Stroke::new(1.0),
+            translated_rect(line.bounds(), origin),
+            render_stroke_width(1.0),
             color(0x20, 0x58, 0xA8, 0x24),
         );
     }
     for cluster in layout.clusters().into_iter().take(48) {
         scene.stroke(
-            translated_rect(cluster.bounds, origin),
-            render::Stroke::new(0.5),
+            translated_rect(cluster.bounds(), origin),
+            render_stroke_width(0.5),
             color(0xD9, 0x86, 0x24, 0x45),
         );
     }
 }
 
 fn translated_rect(rect: text::Rect, origin: render::Point) -> render::Rect {
-    render::Rect::new(
-        origin.x + f64::from(rect.origin.x),
-        origin.y + f64::from(rect.origin.y),
-        f64::from(rect.size.width),
-        f64::from(rect.size.height),
+    render_rect(
+        origin.x() + f64::from(rect.origin().x()),
+        origin.y() + f64::from(rect.origin().y()),
+        f64::from(rect.size().width()),
+        f64::from(rect.size().height()),
     )
 }
 
@@ -1634,7 +1649,7 @@ fn text_style(size: f32, brush: render::Color) -> text::Style {
     text::Style {
         size,
         line_height: text::LineHeight::FontSizeRelative(1.25),
-        brush: text::Brush::color(brush.r, brush.g, brush.b, brush.a),
+        brush: text::Brush::color(brush.r(), brush.g(), brush.b(), brush.a()),
         ..text::Style::default()
     }
 }
@@ -1652,20 +1667,28 @@ impl StyleExt for text::Style {
     }
 
     fn with_underline(mut self, brush: render::Color) -> Self {
-        self.underline =
-            text::Decoration::solid(Some(text::Brush::color(brush.r, brush.g, brush.b, brush.a)));
+        self.underline = text::Decoration::solid(Some(text::Brush::color(
+            brush.r(),
+            brush.g(),
+            brush.b(),
+            brush.a(),
+        )));
         self
     }
 
     fn with_strikethrough(mut self, brush: render::Color) -> Self {
-        self.strikethrough =
-            text::Decoration::solid(Some(text::Brush::color(brush.r, brush.g, brush.b, brush.a)));
+        self.strikethrough = text::Decoration::solid(Some(text::Brush::color(
+            brush.r(),
+            brush.g(),
+            brush.b(),
+            brush.a(),
+        )));
         self
     }
 }
 
 fn color(r: u8, g: u8, b: u8, a: u8) -> render::Color {
-    render::Color::rgba(
+    render_color_rgba(
         f32::from(r) / 255.0,
         f32::from(g) / 255.0,
         f32::from(b) / 255.0,
@@ -1692,7 +1715,7 @@ fn checker_image() -> render::Result<render::Image> {
             });
         }
     }
-    render::Image::from_rgba(render::Size::new(32.0, 32.0), rgba)
+    render::Image::from_rgba(render_size(32.0, 32.0), rgba)
 }
 
 #[cfg(test)]
@@ -1741,11 +1764,36 @@ mod tests {
                 &mut system,
                 &state,
                 WindowFacts {
-                    logical_size: render::Size::new(1024.0, 720.0),
+                    logical_size: render_size(1024.0, 720.0),
                     scale_factor: 1.0,
                     focused: true,
                 },
             );
         }
+    }
+
+    #[test]
+    fn shape_geometry_scene_renders_headless() {
+        let mut system = text::System::default();
+        let mut state = DevState::default();
+        state.select(4);
+        let scene = build_scene(
+            &mut system,
+            &state,
+            WindowFacts {
+                logical_size: render_size(1024.0, 720.0),
+                scale_factor: 1.0,
+                focused: true,
+            },
+        );
+        let mut renderer = pollster::block_on(render::Renderer::new(render::Options::default()))
+            .expect("dev harness renderer should initialize");
+        let mut surface = renderer
+            .create_headless(render_size(1024.0, 720.0), 1.0)
+            .expect("dev harness surface should initialize");
+
+        renderer
+            .render(&mut surface, &scene, render::Parameters::default())
+            .expect("shape geometry scene should render without unsupported path strokes");
     }
 }

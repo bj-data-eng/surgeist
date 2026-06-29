@@ -74,13 +74,19 @@ impl Cli {
 pub struct ApiTarget {
     name: String,
     root: PathBuf,
+    artifact: PathBuf,
 }
 
 impl ApiTarget {
-    pub fn new(name: impl Into<String>, root: impl Into<PathBuf>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        root: impl Into<PathBuf>,
+        artifact: impl Into<PathBuf>,
+    ) -> Self {
         Self {
             name: name.into(),
             root: root.into(),
+            artifact: artifact.into(),
         }
     }
 
@@ -97,7 +103,7 @@ impl ApiTarget {
     }
 
     pub fn artifact_path(&self) -> PathBuf {
-        self.root.join("api").join("public-api.txt")
+        self.artifact.clone()
     }
 }
 
@@ -107,7 +113,11 @@ pub fn discover_targets(root: &Path) -> Result<Vec<ApiTarget>, String> {
         return Err(format!("missing root manifest {}", root_manifest.display()));
     }
 
-    let mut targets = vec![ApiTarget::new("surgeist", root)];
+    let mut targets = vec![ApiTarget::new(
+        "surgeist",
+        root,
+        root.join("api").join("public-api.txt"),
+    )];
     let crates_dir = root.join("crates");
 
     if crates_dir.is_dir() {
@@ -135,7 +145,8 @@ pub fn discover_targets(root: &Path) -> Result<Vec<ApiTarget>, String> {
                     manifest.display()
                 ));
             }
-            crate_targets.push(ApiTarget::new(name, path));
+            let artifact = root.join("api").join("crates").join(format!("{name}.txt"));
+            crate_targets.push(ApiTarget::new(name, path, artifact));
         }
         crate_targets.sort_by(|left, right| left.name().cmp(right.name()));
         targets.extend(crate_targets);
@@ -370,8 +381,12 @@ mod tests {
     }
 
     #[test]
-    fn artifact_path_is_inside_target_api_directory() {
-        let target = ApiTarget::new("surgeist-task", PathBuf::from("crates/surgeist-task"));
+    fn artifact_path_is_root_owned_for_crate_target() {
+        let target = ApiTarget::new(
+            "surgeist-task",
+            PathBuf::from("crates/surgeist-task"),
+            PathBuf::from("api/crates/surgeist-task.txt"),
+        );
 
         assert_eq!(
             target.manifest_path(),
@@ -379,7 +394,7 @@ mod tests {
         );
         assert_eq!(
             target.artifact_path(),
-            PathBuf::from("crates/surgeist-task/api/public-api.txt")
+            PathBuf::from("api/crates/surgeist-task.txt")
         );
     }
 
@@ -453,7 +468,11 @@ mod tests {
     #[test]
     fn list_line_formats_root_as_dot() {
         let fixture = TempFixture::new("surgeist-api-list-root");
-        let target = ApiTarget::new("surgeist", fixture.path());
+        let target = ApiTarget::new(
+            "surgeist",
+            fixture.path(),
+            fixture.path().join("api/public-api.txt"),
+        );
 
         assert_eq!(render_list_line(fixture.path(), &target), "surgeist .");
     }
@@ -475,7 +494,11 @@ mod tests {
     fn check_artifact_reports_difference_without_writing() {
         let fixture = TempFixture::new("surgeist-api-check-different");
         fixture.file("api/public-api.txt", "old artifact\n");
-        let target = ApiTarget::new("surgeist-task", fixture.path());
+        let target = ApiTarget::new(
+            "surgeist-task",
+            fixture.path(),
+            fixture.path().join("api/public-api.txt"),
+        );
 
         let check = compare_artifact(&target, "new artifact\n").unwrap();
 
@@ -489,12 +512,16 @@ mod tests {
     #[test]
     fn write_artifact_creates_api_directory() {
         let fixture = TempFixture::new("surgeist-api-write");
-        let target = ApiTarget::new("surgeist-task", fixture.path());
+        let target = ApiTarget::new(
+            "surgeist-task",
+            fixture.path(),
+            fixture.path().join("api/crates/surgeist-task.txt"),
+        );
 
         write_artifact(&target, "generated artifact\n").unwrap();
 
         assert_eq!(
-            std::fs::read_to_string(target.artifact_path()).unwrap(),
+            std::fs::read_to_string(fixture.path().join("api/crates/surgeist-task.txt")).unwrap(),
             "generated artifact\n"
         );
     }

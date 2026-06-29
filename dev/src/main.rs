@@ -41,6 +41,30 @@ enum HarnessMode {
     Window,
 }
 
+fn render_point(x: f64, y: f64) -> render::Point {
+    render::Point::try_new(x, y).expect("dev harness render point should be valid")
+}
+
+fn render_size(width: f64, height: f64) -> render::Size {
+    render::Size::try_new(width, height).expect("dev harness render size should be valid")
+}
+
+fn render_rect(x: f64, y: f64, width: f64, height: f64) -> render::Rect {
+    render::Rect::try_new(x, y, width, height).expect("dev harness render rect should be valid")
+}
+
+fn render_color(r: f32, g: f32, b: f32, a: f32) -> render::Color {
+    render::Color::try_rgba(r, g, b, a).expect("dev harness color should be valid")
+}
+
+fn render_stroke(width: f64) -> render::Stroke {
+    render::Stroke::try_new(width).expect("dev harness render stroke should be valid")
+}
+
+fn render_circle(center: render::Point, radius: f64) -> render::Shape {
+    render::Shape::try_circle(center, radius).expect("dev harness render circle should be valid")
+}
+
 impl HarnessMode {
     fn from_env() -> Self {
         match env::var("SURGEIST_HARNESS_MODE") {
@@ -192,7 +216,7 @@ impl DevWindow {
             }
             live.metrics = metrics.clone();
             live.facts.logical_size =
-                render::Size::new(metrics.logical_size.width, metrics.logical_size.height);
+                render_size(metrics.logical_size.width, metrics.logical_size.height);
             live.facts.scale_factor = metrics.scale_factor;
             if let Some(surface) = &mut live.surface {
                 surface
@@ -478,7 +502,7 @@ fn should_log_input(input: &InputEvent) -> bool {
 fn facts_from_state(state: &window::WindowSnapshot) -> WindowFacts {
     let metrics = state.metrics();
     WindowFacts {
-        logical_size: render::Size::new(metrics.logical_size.width, metrics.logical_size.height),
+        logical_size: render_size(metrics.logical_size.width, metrics.logical_size.height),
         scale_factor: metrics.scale_factor,
         focused: state.is_focused(),
     }
@@ -486,32 +510,26 @@ fn facts_from_state(state: &window::WindowSnapshot) -> WindowFacts {
 
 fn build_render_probe_scene(facts: WindowFacts) -> render::Scene {
     let mut scene = render::Scene::new();
-    let panel = render::Rect::new(
+    let panel = render_rect(
         40.0,
         40.0,
-        (facts.logical_size.width - 80.0).max(120.0),
-        (facts.logical_size.height - 80.0).max(120.0),
+        (facts.logical_size.width() - 80.0).max(120.0),
+        (facts.logical_size.height() - 80.0).max(120.0),
     );
     scene
-        .fill(panel, render::Color::rgba(0.96, 0.97, 1.0, 1.0))
+        .fill(panel, render_color(0.96, 0.97, 1.0, 1.0))
         .stroke(
             panel,
-            render::Stroke::new(2.0),
-            render::Color::rgba(0.15, 0.33, 0.64, 1.0),
+            render_stroke(2.0),
+            render_color(0.15, 0.33, 0.64, 1.0),
         )
         .fill(
-            render::Shape::Circle {
-                center: render::Point::new(panel.origin.x + 92.0, panel.origin.y + 92.0),
-                radius: 54.0,
-            },
-            render::Color::rgba(0.96, 0.72, 0.24, 0.78),
+            render_circle(render_point(panel.x() + 92.0, panel.y() + 92.0), 54.0),
+            render_color(0.96, 0.72, 0.24, 0.78),
         )
         .fill(
-            render::Shape::Circle {
-                center: render::Point::new(panel.origin.x + 148.0, panel.origin.y + 92.0),
-                radius: 54.0,
-            },
-            render::Color::rgba(0.25, 0.58, 0.96, 0.78),
+            render_circle(render_point(panel.x() + 148.0, panel.y() + 92.0), 54.0),
+            render_color(0.25, 0.58, 0.96, 0.78),
         );
     scene
 }

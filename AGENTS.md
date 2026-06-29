@@ -144,9 +144,9 @@ internals private by default, and support generated API shape checks when that
 tooling exists. The root repo may consume generated API reports, but source
 remains the source of truth.
 
-The root repo owns the API artifact generator at `api/generator`. Crate repos
-may carry generated `api/public-api.txt` artifacts, but they must not carry
-their own generator copy. From root, use:
+The root repo owns the API artifact generator at `api/generator` and stores
+source-derived API artifacts under root `api/`. Crate repos must not carry
+their own generator copy or generated API artifacts. From root, use:
 
 ```sh
 cargo run --manifest-path api/generator/Cargo.toml
@@ -155,11 +155,10 @@ cargo run --manifest-path api/generator/Cargo.toml -- --crate surgeist-task
 ```
 
 Run API artifact refresh after the owning crate's source changes are committed
-and pushed. The root generator may write `api/public-api.txt` inside submodule
-working trees, but those artifact changes and stale generator deletions are
-reviewed, committed, and pushed in the owning crate repos before root submodule
-pointer updates. The root repo commits only root-owned generator/docs/artifacts
-and submodule pointer updates.
+and pushed. Root's facade artifact lives at `api/public-api.txt`; crate
+artifacts live at `api/crates/<crate>.txt`. Commit API artifact changes only in
+the root repo, alongside any root submodule pointer update that made the source
+visible to root.
 
 Prefer typed commands, events, snapshots, reports, and change sets. Avoid
 sibling crates reaching through private module paths, broad common crates that
@@ -227,10 +226,9 @@ When generated API reports, fixtures, snapshots, bindings, or parity artifacts
 change:
 
 - run the documented generator or snapshot update command
-- commit source inputs and generated outputs together when the owning crate
+- commit source inputs and generated outputs together when the owning repo
   expects both
-- commit generated submodule API artifact changes in the owning crate repo,
-  then update the root submodule pointer only after that crate commit is pushed
+- commit root-owned API artifact changes in the root repo, not in crate repos
 - explain why the generated delta is expected
 - do not weaken tests or snapshots just to make a check pass
 

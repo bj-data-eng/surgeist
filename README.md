@@ -44,7 +44,8 @@ cargo check --workspace
 ## API Artifacts
 
 Root owns API artifact generation for the facade and linked Surgeist crate
-submodules. Do not copy `api/generator` into crate repos.
+submodules. API artifacts are stored in this repo under `api/`; do not copy
+`api/generator` or generated API artifacts into crate repos.
 
 Refresh all API artifacts:
 
@@ -57,6 +58,9 @@ Refresh one target:
 ```sh
 cargo run --manifest-path api/generator/Cargo.toml -- --crate surgeist-task
 ```
+
+Root's facade artifact lives at `api/public-api.txt`. Crate artifacts live at
+`api/crates/<crate>.txt`.
 
 Check artifacts without rewriting:
 
