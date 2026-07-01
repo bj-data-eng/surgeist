@@ -338,6 +338,9 @@ each worker. The coordinator owns sequencing, integration, and deciding when the
 next task is safe to start. Tell workers they are not alone in the codebase and
 must not revert others' work.
 
+Do not fork any conversation context into workers or reviewers. Provide only the
+scoped task prompt, relevant files, commands, and constraints.
+
 The coordinator may directly edit root-only planning, documentation,
 requirements, or workflow files when the user explicitly asks for a top-level
 repo change.
