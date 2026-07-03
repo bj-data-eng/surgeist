@@ -9,6 +9,19 @@ implementation crates live under `crates/` as Git submodules so each boundary
 can be developed and reviewed independently while the root crate verifies the
 integrated framework shape.
 
+## Adapter Boundaries
+
+The root `surgeist` crate owns Surgeist-to-Surgeist adapters: conversions that
+compose public models from one Surgeist crate into public inputs for another.
+Leaf crates own their domain models, algorithms, and backend-local adapters,
+such as rendering, text shaping, window host, or platform integrations that are
+implementation details of that crate.
+
+Adapter-composed fixture generation belongs in root-owned tools, where root
+adapters can prepare integrated fixture metadata. Reusable fixture schemas and
+harnesses belong in `surgeist-test` so production crates can share test
+contracts without depending on the root facade.
+
 ## Crates
 
 - `surgeist-css`
