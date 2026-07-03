@@ -903,7 +903,11 @@ Steps:
 - [ ] The tool crate may depend on root `surgeist` and public `surgeist-test` schema APIs. Root `surgeist` production code must not depend on `surgeist-test`.
 - [ ] Root `surgeist` must not depend on this tool crate or on `surgeist-test`.
 - [ ] Add fixture metadata generation that uses root adapters to compose CSS, style, text, retained, and layout-ready metadata.
-- [ ] Generate layout-ready fixture attributes such as `surgeist-inline-line-height` and `surgeist-inline-baseline` using root adapters and text-owned metric derivation.
+- [ ] Validate layout-ready inline metric inputs through the root adapters where
+  the current schema can observe them. The committed `surgeist-test` schema used
+  by this plan does not yet represent emitted inline metric attributes such as
+  `surgeist-inline-line-height` or `surgeist-inline-baseline`; adding those
+  schema fields belongs to the later inline-metrics cross-crate plan.
 - [ ] Do not make `surgeist-test` depend on root.
 - [ ] Do not make `surgeist-layout` depend on root.
 - [ ] Repeat the public front-door API gate for every crate the tool composes:

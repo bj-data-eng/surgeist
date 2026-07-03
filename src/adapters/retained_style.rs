@@ -20,7 +20,7 @@ impl style::Tree for RetainedStyleTree<'_> {
         Some(self.snapshot.revision().get())
     }
 
-    fn node(&self, id: Self::Id) -> style::Result<style::Node<'_, Self::Id>> {
+    fn node(&self, id: Self::Id) -> style::Result<style::Node<Self::Id>> {
         let node = self.snapshot.get(id).ok_or_else(|| {
             style::Error::new(
                 style::ErrorCode::MissingNode,
@@ -29,12 +29,20 @@ impl style::Tree for RetainedStyleTree<'_> {
         })?;
         Ok(style::Node {
             id,
-            tag: tag_for_kind(node.kind()),
-            key: node.key(),
-            classes: node.classes(),
-            attributes: node.attributes(),
-            role: node.role(),
-            state: node.state(),
+            tag: tag_for_kind(node.kind())?,
+            key: node.key().map(style_key_from_retained).transpose()?,
+            classes: node
+                .classes()
+                .iter()
+                .map(style_class_from_retained)
+                .collect::<style::Result<Vec<_>>>()?,
+            attributes: node
+                .attributes()
+                .iter()
+                .map(style_attribute_from_retained)
+                .collect::<style::Result<Vec<_>>>()?,
+            role: style_role_from_retained(node.role())?,
+            state: style_state_from_retained(node.state()),
             text: matches!(node.kind(), retained::Kind::Text),
         })
     }
@@ -156,17 +164,76 @@ pub fn clear_style_cache_for_retained_changes(
     }
 }
 
-fn tag_for_kind(kind: &retained::Kind) -> Option<&retained::Tag> {
-    match kind {
+fn tag_for_kind(kind: &retained::Kind) -> style::Result<Option<style::StyleTag>> {
+    Ok(match kind {
         retained::Kind::Element(tag) | retained::Kind::Slot(tag) | retained::Kind::Widget(tag) => {
-            Some(tag)
+            Some(style_tag_from_retained(tag)?)
         }
         retained::Kind::Root
         | retained::Kind::Text
         | retained::Kind::Canvas
         | retained::Kind::Fragment => None,
         _ => None,
-    }
+    })
+}
+
+fn style_tag_from_retained(tag: &retained::Tag) -> style::Result<style::StyleTag> {
+    style::StyleTag::new(tag.as_str()).map_err(map_style_identity_error)
+}
+
+fn style_key_from_retained(key: &retained::Key) -> style::Result<style::StyleKey> {
+    style::StyleKey::new(key.as_str()).map_err(map_style_identity_error)
+}
+
+fn style_class_from_retained(class: &retained::Class) -> style::Result<style::StyleClass> {
+    style::StyleClass::new(class.as_str()).map_err(map_style_identity_error)
+}
+
+fn style_attribute_from_retained(
+    attribute: &retained::Attribute,
+) -> style::Result<style::StyleAttribute> {
+    Ok(style::StyleAttribute::new(
+        style::StyleAttributeName::new(attribute.name.as_str())
+            .map_err(map_style_identity_error)?,
+        style::StyleAttributeValue::new(attribute.value.as_str())
+            .map_err(map_style_identity_error)?,
+    ))
+}
+
+fn style_role_from_retained(role: retained::Role) -> style::Result<style::StyleRole> {
+    Ok(match role {
+        retained::Role::Generic => style::StyleRole::Generic,
+        retained::Role::Application => style::StyleRole::Application,
+        retained::Role::Button => style::StyleRole::Button,
+        retained::Role::Text => style::StyleRole::Text,
+        retained::Role::List => style::StyleRole::List,
+        retained::Role::ListItem => style::StyleRole::ListItem,
+        retained::Role::Checkbox => style::StyleRole::Checkbox,
+        retained::Role::Textbox => style::StyleRole::Textbox,
+        retained::Role::Image => style::StyleRole::Image,
+        retained::Role::Canvas => style::StyleRole::Canvas,
+        retained::Role::Widget => style::StyleRole::Widget,
+        retained::Role::Custom(tag) => style::StyleRole::Custom(style_tag_from_retained(&tag)?),
+        _ => style::StyleRole::Generic,
+    })
+}
+
+fn style_state_from_retained(state: &retained::State) -> style::StyleState {
+    style::StyleState::default()
+        .with_disabled(state.disabled())
+        .with_hovered(state.hovered())
+        .with_active(state.active())
+        .with_focused(state.focused())
+        .with_focus_within(state.focus_within())
+        .with_pointer_captured(state.pointer_captured())
+        .with_selected(state.selected())
+        .with_pressed(state.pressed())
+        .with_checked(state.checked())
+        .with_expanded(state.expanded())
+}
+
+fn map_style_identity_error(error: style::Error) -> style::Error {
+    style::Error::new(style::ErrorCode::InvalidString, error.message().to_owned())
 }
 
 fn map_retained_error(error: retained::Error) -> style::Error {

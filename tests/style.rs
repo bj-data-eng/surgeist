@@ -1,4 +1,7 @@
 use proptest::prelude::*;
+use surgeist::adapters::{
+    RetainedStyleTree, lower_style_to_layout, style_change_from_retained_flags,
+};
 use surgeist::{layout as l, retained as r, style as s};
 
 trait TestDeclarationsExt {
@@ -1277,7 +1280,7 @@ fn layout_adapter_preserves_gap_normal_and_explicit_zero() {
     let mut resolver = s::Resolver::new(s::Sheet::new());
 
     let resolved_default = resolver.resolve(s::Context::new(&tree, 0)).unwrap();
-    let default_layout = s::adapters::layout::lower(&resolved_default).unwrap();
+    let default_layout = lower_style_to_layout(&resolved_default).unwrap();
     assert_eq!(
         resolved_default.get(s::Property::RowGap),
         &s::Value::Length(s::Length::NORMAL)
@@ -1290,7 +1293,7 @@ fn layout_adapter_preserves_gap_normal_and_explicit_zero() {
     let resolved_zero = resolver
         .resolve(s::Context::new(&tree, 0).local(&explicit_zero))
         .unwrap();
-    let zero_layout = s::adapters::layout::lower(&resolved_zero).unwrap();
+    let zero_layout = lower_style_to_layout(&resolved_zero).unwrap();
     assert_eq!(zero_layout.gap.width, l::Length::ZERO);
     assert_eq!(zero_layout.gap.height, l::Length::ZERO);
 }
@@ -1414,7 +1417,7 @@ fn layout_adapter_lowers_canonical_layout_properties() {
     let resolved = resolver
         .resolve(s::Context::new(&tree, 0).local(&local))
         .unwrap();
-    let layout = s::adapters::layout::lower(&resolved).unwrap();
+    let layout = lower_style_to_layout(&resolved).unwrap();
 
     assert_eq!(layout.display, l::Display::Grid);
     assert_eq!(layout.box_sizing, l::BoxSizing::ContentBox);
@@ -1502,7 +1505,7 @@ fn layout_adapter_preserves_named_grid_line_placement() {
         )
         .unwrap();
 
-    let input = s::adapters::layout::lower(&resolved).unwrap();
+    let input = lower_style_to_layout(&resolved).unwrap();
     assert_eq!(
         input.raw_grid_column,
         l::RawGridPlacement::new(
@@ -1530,7 +1533,7 @@ fn layout_adapter_preserves_bare_grid_line_ident() {
         )
         .unwrap();
 
-    let input = s::adapters::layout::lower(&resolved).unwrap();
+    let input = lower_style_to_layout(&resolved).unwrap();
     assert_eq!(
         input.raw_grid_column,
         l::RawGridPlacement::new(
@@ -1572,7 +1575,7 @@ fn layout_adapter_preserves_template_areas_and_track_line_names() {
         )
         .unwrap();
 
-    let input = s::adapters::layout::lower(&resolved).unwrap();
+    let input = lower_style_to_layout(&resolved).unwrap();
     assert_eq!(
         input.grid_template_areas,
         l::GridTemplateAreas {
@@ -1615,7 +1618,7 @@ fn layout_adapter_lowers_grid_lanes_displays_to_layout_grid_lanes() {
         .resolve(s::Context::new(&tree, 0).local(&local))
         .unwrap();
 
-    let layout = s::adapters::layout::lower(&resolved).unwrap();
+    let layout = lower_style_to_layout(&resolved).unwrap();
 
     assert_eq!(layout.display, l::Display::GridLanes);
 }
@@ -1634,7 +1637,7 @@ fn lowers_inline_grid_displays_to_layout_inline_variants() {
             )
             .unwrap();
 
-        let layout = s::adapters::layout::lower(&resolved).unwrap();
+        let layout = lower_style_to_layout(&resolved).unwrap();
 
         assert_eq!(layout.display, layout_display);
     }
@@ -1650,7 +1653,7 @@ fn lowers_inline_block_to_layout_inline_block() {
                 .local(&s::Declarations::new().display(s::Display::InlineBlock)),
         )
         .unwrap();
-    let layout = s::adapters::layout::lower(&resolved).unwrap();
+    let layout = lower_style_to_layout(&resolved).unwrap();
 
     assert_eq!(layout.display, l::Display::InlineBlock);
 }
@@ -1667,7 +1670,7 @@ fn lowers_last_baseline_alignment_to_layout() {
         .resolve(s::Context::new(&tree, 0).local(&local))
         .unwrap();
 
-    let layout = s::adapters::layout::lower(&resolved).expect("style lowers");
+    let layout = lower_style_to_layout(&resolved).expect("style lowers");
 
     assert_eq!(layout.align_self, Some(l::AlignItems::LastBaseline));
 }
@@ -1683,7 +1686,7 @@ fn layout_adapter_preserves_subgrid_track_components() {
         .resolve(s::Context::new(&tree, 0).local(&local))
         .unwrap();
 
-    let layout = s::adapters::layout::lower(&resolved).unwrap();
+    let layout = lower_style_to_layout(&resolved).unwrap();
 
     assert_eq!(
         layout.grid_template_columns,
@@ -1753,7 +1756,7 @@ fn layout_adapter_lowers_grid_flow_tolerance_with_resolved_font_size() {
     let resolved = resolver
         .resolve(s::Context::new(&tree, 0).local(&local))
         .unwrap();
-    let layout = s::adapters::layout::lower(&resolved).unwrap();
+    let layout = lower_style_to_layout(&resolved).unwrap();
     assert_eq!(
         layout.grid_flow_tolerance,
         l::GridFlowTolerance::Normal { font_size: 18.0 }
@@ -1764,7 +1767,7 @@ fn layout_adapter_lowers_grid_flow_tolerance_with_resolved_font_size() {
     let resolved = resolver
         .resolve(s::Context::new(&tree, 0).local(&local))
         .unwrap();
-    let layout = s::adapters::layout::lower(&resolved).unwrap();
+    let layout = lower_style_to_layout(&resolved).unwrap();
     assert_eq!(
         layout.grid_flow_tolerance,
         l::GridFlowTolerance::Length(l::Length::px(12.0))
@@ -1774,7 +1777,7 @@ fn layout_adapter_lowers_grid_flow_tolerance_with_resolved_font_size() {
     let resolved = resolver
         .resolve(s::Context::new(&tree, 0).local(&local))
         .unwrap();
-    let layout = s::adapters::layout::lower(&resolved).unwrap();
+    let layout = lower_style_to_layout(&resolved).unwrap();
     assert_eq!(
         layout.grid_flow_tolerance,
         l::GridFlowTolerance::Percent(0.25)
@@ -1784,7 +1787,7 @@ fn layout_adapter_lowers_grid_flow_tolerance_with_resolved_font_size() {
     let resolved = resolver
         .resolve(s::Context::new(&tree, 0).local(&local))
         .unwrap();
-    let layout = s::adapters::layout::lower(&resolved).unwrap();
+    let layout = lower_style_to_layout(&resolved).unwrap();
     assert_eq!(layout.grid_flow_tolerance, l::GridFlowTolerance::Infinite);
 }
 
@@ -1995,12 +1998,12 @@ fn text_values_are_complete_and_validate_owned_strings_and_numbers() {
         .style(s::TextSlant::Italic)
         .line_height(s::Length::percent(120.0))
         .color(red())
-        .align(s::TextAlign::Center)
+        .align(s::StyleTextAlign::Center)
         .wrap(s::TextWrap::Word)
         .white_space(s::WhiteSpace::Preserve)
         .word_break(s::WordBreak::Normal)
         .overflow_wrap(s::OverflowWrap::Anywhere)
-        .underline(s::Decoration::solid(None))
+        .underline(s::Decoration::solid(None).expect("solid underline decoration is valid"))
         .selection_color(blue());
 
     assert_eq!(text.font_family, vec!["Inter", "Arial"]);
@@ -2184,11 +2187,14 @@ fn declarations_and_resolved_expose_typed_accessors_for_property_groups() {
 fn selectors_match_tags_classes_keys_states_attributes_and_positions() {
     let mut model = r::Model::new(
         r::Element::root().with_child(
-            r::Element::tagged(tag("button"))
-                .with_key(key("submit"))
-                .with_class(class("primary"))
-                .with_class(class("large"))
-                .with_attribute(r::Attribute::new(attr("data-kind"), value("hero"))),
+            r::Element::tagged(retained_tag("button"))
+                .with_key(retained_key("submit"))
+                .with_class(retained_class("primary"))
+                .with_class(retained_class("large"))
+                .with_attribute(r::Attribute::new(
+                    retained_attr("data-kind"),
+                    retained_value("hero"),
+                )),
         ),
     )
     .unwrap();
@@ -2204,7 +2210,8 @@ fn selectors_match_tags_classes_keys_states_attributes_and_positions() {
             state: r::StatePatch::new().selected(true),
         })
         .unwrap();
-    let tree = model.snapshot();
+    let snapshot = model.snapshot();
+    let tree = RetainedStyleTree::new(snapshot);
 
     assert!(
         s::Selector::tag("button")
@@ -2670,24 +2677,25 @@ fn resolver_cache_key_tracks_inherited_parent_style() {
 #[test]
 fn retained_snapshot_adapts_canonical_and_default_projected_traversal() {
     let root = r::Element::root().with_child(
-        r::Element::tagged(tag("button"))
-            .with_key(key("submit"))
-            .with_class(class("primary")),
+        r::Element::tagged(retained_tag("button"))
+            .with_key(retained_key("submit"))
+            .with_class(retained_class("primary")),
     );
     let model = r::Model::new(root).unwrap();
     let snapshot = model.snapshot();
     let child = snapshot.children(snapshot.root()).unwrap().next().unwrap();
+    let tree = RetainedStyleTree::new(snapshot);
 
     assert!(
         s::Selector::class("primary")
             .unwrap()
-            .matches(&snapshot, child, s::Traversal::Canonical)
+            .matches(&tree, child, s::Traversal::Canonical)
             .unwrap()
     );
     assert!(
         s::Selector::key("submit")
             .unwrap()
-            .matches(&snapshot, child, s::Traversal::Projected)
+            .matches(&tree, child, s::Traversal::Projected)
             .unwrap()
     );
     assert_eq!(
@@ -2695,7 +2703,7 @@ fn retained_snapshot_adapts_canonical_and_default_projected_traversal() {
             .children(snapshot.root())
             .unwrap()
             .collect::<Vec<_>>(),
-        s::Tree::children(&snapshot, snapshot.root(), s::Traversal::Projected)
+        s::Tree::children(&tree, snapshot.root(), s::Traversal::Projected)
             .unwrap()
             .collect::<Vec<_>>()
     );
@@ -2703,7 +2711,7 @@ fn retained_snapshot_adapts_canonical_and_default_projected_traversal() {
 
 #[test]
 fn nodes_report_each_state_flag_explicitly() {
-    let root = r::Element::root().with_child(r::Element::tagged(tag("button")));
+    let root = r::Element::root().with_child(r::Element::tagged(retained_tag("button")));
     let mut model = r::Model::new(root).unwrap();
     let id = model
         .snapshot()
@@ -2723,17 +2731,8 @@ fn nodes_report_each_state_flag_explicitly() {
         .unwrap();
     {
         let snapshot = model.snapshot();
-        let state = snapshot.get(id).unwrap().state();
-        let node = s::Node {
-            id,
-            tag: None,
-            key: None,
-            classes: &[],
-            attributes: &[],
-            role: r::Role::Generic,
-            state,
-            text: false,
-        };
+        let tree = RetainedStyleTree::new(snapshot);
+        let node = s::Tree::node(&tree, id).unwrap();
 
         for flag in [
             s::StateFlag::Disabled,
@@ -2764,17 +2763,8 @@ fn nodes_report_each_state_flag_explicitly() {
         })
         .unwrap();
     let snapshot = model.snapshot();
-    let unchecked = snapshot.get(id).unwrap().state();
-    let unchecked_node = s::Node {
-        id,
-        tag: None,
-        key: None,
-        classes: &[],
-        attributes: &[],
-        role: r::Role::Generic,
-        state: unchecked,
-        text: false,
-    };
+    let tree = RetainedStyleTree::new(snapshot);
+    let unchecked_node = s::Tree::node(&tree, id).unwrap();
     assert!(!unchecked_node.has_state(s::StateFlag::Checked));
     assert!(!unchecked_node.has_state(s::StateFlag::Expanded));
 }
@@ -2788,24 +2778,24 @@ fn invalidation_classifies_changed_properties_and_retained_changes() {
     assert!(property_invalidation.paint);
     assert!(!property_invalidation.effect);
 
-    let style_change = s::Change::from_retained_flags(r::ChangeFlags::empty().classes().state());
+    let style_change = style_change_from_retained_flags(r::ChangeFlags::empty().classes().state());
     assert!(style_change.rematch);
     assert!(!style_change.invalidation.layout);
 
-    let text_change = s::Change::from_retained_flags(r::ChangeFlags::empty().text());
+    let text_change = style_change_from_retained_flags(r::ChangeFlags::empty().text());
     assert!(!text_change.rematch);
     assert!(text_change.invalidation.text);
 }
 
 #[test]
 fn changes_report_scope_for_structure_projection_and_inheritance() {
-    let structure = s::Change::from_retained_flags(r::ChangeFlags::empty().structure());
+    let structure = style_change_from_retained_flags(r::ChangeFlags::empty().structure());
     assert!(structure.rematch);
     assert!(structure.scope.node);
     assert!(structure.scope.siblings);
     assert!(structure.scope.descendants);
 
-    let projection = s::Change::from_retained_flags(r::ChangeFlags::empty().projection());
+    let projection = style_change_from_retained_flags(r::ChangeFlags::empty().projection());
     assert!(projection.rematch);
     assert!(projection.scope.node);
     assert!(projection.scope.siblings);
@@ -2918,18 +2908,20 @@ fn resolver_cache_can_be_cleared_and_skips_unversioned_trees() {
         .unwrap();
     assert_eq!(resolver.cache_hits(), 1);
 
-    let root = r::Element::root()
-        .with_child(r::Element::tagged(tag("button")).with_class(class("primary")));
+    let root = r::Element::root().with_child(
+        r::Element::tagged(retained_tag("button")).with_class(retained_class("primary")),
+    );
     let model = r::Model::new(root).unwrap();
     let snapshot = model.snapshot();
     let child = snapshot.children(snapshot.root()).unwrap().next().unwrap();
+    let retained_tree = RetainedStyleTree::new(snapshot);
     let mut retained = s::Resolver::new(sheet.clone());
 
     retained
-        .resolve(s::Context::new(&snapshot, child).viewport(viewport))
+        .resolve(s::Context::new(&retained_tree, child).viewport(viewport))
         .unwrap();
     retained
-        .resolve(s::Context::new(&snapshot, child).viewport(viewport))
+        .resolve(s::Context::new(&retained_tree, child).viewport(viewport))
         .unwrap();
     assert_eq!(retained.cache_hits(), 1);
 
@@ -3038,7 +3030,7 @@ impl s::Tree for FixtureTree {
         Some(1)
     }
 
-    fn node(&self, id: Self::Id) -> s::Result<s::Node<'_, Self::Id>> {
+    fn node(&self, id: Self::Id) -> s::Result<s::Node<Self::Id>> {
         let node = self.nodes.get(id).ok_or_else(|| {
             s::Error::new(
                 s::ErrorCode::MissingNode,
@@ -3047,12 +3039,12 @@ impl s::Tree for FixtureTree {
         })?;
         Ok(s::Node {
             id,
-            tag: Some(&node.tag),
-            key: node.key.as_ref(),
-            classes: &node.classes,
-            attributes: &node.attributes,
+            tag: Some(node.tag.clone()),
+            key: node.key.clone(),
+            classes: node.classes.clone(),
+            attributes: node.attributes.clone(),
             role: node.role.clone(),
-            state: &node.state,
+            state: node.state.clone(),
             text: node.text,
         })
     }
@@ -3105,7 +3097,7 @@ impl s::Tree for UnversionedTree<'_> {
         None
     }
 
-    fn node(&self, id: Self::Id) -> s::Result<s::Node<'_, Self::Id>> {
+    fn node(&self, id: Self::Id) -> s::Result<s::Node<Self::Id>> {
         self.0.node(id)
     }
 
@@ -3134,12 +3126,12 @@ struct FixtureNode {
     parent: Option<usize>,
     children: Vec<usize>,
     projected_children: Vec<usize>,
-    tag: r::Tag,
-    key: Option<r::Key>,
-    classes: Vec<r::Class>,
-    attributes: Vec<r::Attribute>,
-    role: r::Role,
-    state: r::State,
+    tag: s::StyleTag,
+    key: Option<s::StyleKey>,
+    classes: Vec<s::StyleClass>,
+    attributes: Vec<s::StyleAttribute>,
+    role: s::StyleRole,
+    state: s::StyleState,
     text: bool,
 }
 
@@ -3149,34 +3141,46 @@ impl FixtureNode {
             parent: None,
             children: Vec::new(),
             projected_children: Vec::new(),
-            tag: r::Tag::new(tag).unwrap(),
+            tag: s::StyleTag::new(tag).unwrap(),
             key: None,
             classes: Vec::new(),
             attributes: Vec::new(),
-            role: r::Role::Generic,
-            state: r::State::default(),
+            role: s::StyleRole::Generic,
+            state: s::StyleState::default(),
             text: false,
         }
     }
 }
 
-fn key(value: &str) -> r::Key {
+fn key(value: &str) -> s::StyleKey {
+    s::StyleKey::new(value).unwrap()
+}
+
+fn class(value: &str) -> s::StyleClass {
+    s::StyleClass::new(value).unwrap()
+}
+
+fn tag(value: &str) -> s::StyleTag {
+    s::StyleTag::new(value).unwrap()
+}
+
+fn retained_key(value: &str) -> r::Key {
     r::Key::new(value).unwrap()
 }
 
-fn class(value: &str) -> r::Class {
+fn retained_class(value: &str) -> r::Class {
     r::Class::new(value).unwrap()
 }
 
-fn attr(value: &str) -> r::AttributeName {
+fn retained_attr(value: &str) -> r::AttributeName {
     r::AttributeName::new(value).unwrap()
 }
 
-fn tag(value: &str) -> r::Tag {
+fn retained_tag(value: &str) -> r::Tag {
     r::Tag::new(value).unwrap()
 }
 
-fn value(value: &str) -> r::Value {
+fn retained_value(value: &str) -> r::Value {
     r::Value::new(value).unwrap()
 }
 

@@ -3,7 +3,8 @@ use super::style_layout::{
     lower_grid_placement, lower_track_repeat_with_session, map_track_repetition_error,
 };
 use super::{
-    AdapterBoundary, AdapterErrorKind, lower_style_to_layout, lower_style_to_layout_with_store,
+    AdapterBoundary, AdapterErrorKind, RetainedStyleTree, lower_style_to_layout,
+    lower_style_to_layout_with_store,
 };
 use crate::{layout, style};
 
@@ -208,7 +209,7 @@ fn resolved_with(declarations: style::Declarations) -> style::Resolved {
         .unwrap()
         .changes()
         .inserted()[0];
-    let tree = model.snapshot();
+    let tree = RetainedStyleTree::new(model.snapshot());
     style::Resolver::new(style::Sheet::new())
         .resolve(style::Context::new(&tree, panel).local(&declarations))
         .unwrap()

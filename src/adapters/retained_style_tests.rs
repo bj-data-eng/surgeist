@@ -28,7 +28,12 @@ fn retained_style_tree_exposes_retained_snapshot_to_style_resolver() {
 fn retained_style_tree_exposes_canonical_tree_facts() {
     let mut model = retained::Model::empty();
     let root = model.root();
-    let parent = insert(&mut model, root, 0, element("panel"));
+    let parent = insert(
+        &mut model,
+        root,
+        0,
+        element("panel").with_role(retained::Role::Button),
+    );
     let first = insert(&mut model, parent, 0, element("label"));
     let second = insert(
         &mut model,
@@ -40,11 +45,21 @@ fn retained_style_tree_exposes_canonical_tree_facts() {
     let tree = RetainedStyleTree::new(snapshot);
 
     let parent_node = style::Tree::node(&tree, parent).unwrap();
-    assert_eq!(parent_node.tag, Some(&retained::Tag::new("panel").unwrap()));
+    assert_eq!(
+        parent_node.tag,
+        Some(style::StyleTag::new("panel").unwrap())
+    );
+    assert_eq!(parent_node.role, style::StyleRole::Button);
     assert!(!parent_node.text);
     let text_node = style::Tree::node(&tree, second).unwrap();
     assert_eq!(text_node.tag, None);
     assert!(text_node.text);
+    assert!(
+        !style::Selector::tag("label")
+            .unwrap()
+            .matches(&tree, second, style::Traversal::Canonical)
+            .unwrap()
+    );
 
     let children = style::Tree::children(&tree, parent, style::Traversal::Canonical)
         .unwrap()
@@ -53,6 +68,63 @@ fn retained_style_tree_exposes_canonical_tree_facts() {
     assert_eq!(
         style::Tree::previous_sibling(&tree, second, style::Traversal::Canonical).unwrap(),
         Some(first)
+    );
+}
+
+#[test]
+fn retained_style_tree_resolves_style_owned_selector_facts() {
+    let mut model = retained::Model::empty();
+    let root = model.root();
+    let button = insert(
+        &mut model,
+        root,
+        0,
+        element("button")
+            .with_key(retained::Key::new("primary/action").unwrap())
+            .with_class(retained::Class::new("primary").unwrap())
+            .with_attribute(retained::Attribute::new(
+                retained::AttributeName::new("data-route").unwrap(),
+                retained::Value::new("settings").unwrap(),
+            )),
+    );
+    model
+        .apply(retained::Patch::SetState {
+            id: button,
+            state: retained::StatePatch::new().selected(true),
+        })
+        .unwrap();
+    let snapshot = model.snapshot();
+    let tree = RetainedStyleTree::new(snapshot);
+
+    assert_resolves_background(
+        &tree,
+        button,
+        style::Selector::tag("button").unwrap(),
+        style::color(0xff0000ff),
+    );
+    assert_resolves_background(
+        &tree,
+        button,
+        style::Selector::class("primary").unwrap(),
+        style::color(0x00ff00ff),
+    );
+    assert_resolves_background(
+        &tree,
+        button,
+        style::Selector::key("primary/action").unwrap(),
+        style::color(0x0000ffff),
+    );
+    assert_resolves_background(
+        &tree,
+        button,
+        style::Selector::attribute_equals("data-route", "settings").unwrap(),
+        style::color(0xffff00ff),
+    );
+    assert_resolves_background(
+        &tree,
+        button,
+        style::Selector::state(style::StateFlag::Selected),
+        style::color(0xff00ffff),
     );
 }
 
@@ -161,4 +233,23 @@ fn insert(
 
 fn element(name: &str) -> retained::Element {
     retained::Element::tagged(retained::Tag::new(name).unwrap())
+}
+
+fn assert_resolves_background(
+    tree: &RetainedStyleTree<'_>,
+    id: retained::Id,
+    selector: style::Selector,
+    color: style::Color,
+) {
+    let sheet =
+        style::Sheet::new().rule(selector, style::Declarations::new().try_bg(color).unwrap());
+
+    let resolved = style::Resolver::new(sheet)
+        .resolve(style::Context::new(tree, id))
+        .unwrap();
+
+    assert_eq!(
+        resolved.get(style::Property::Background),
+        &style::Value::Color(color)
+    );
 }

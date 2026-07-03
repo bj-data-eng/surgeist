@@ -80,4 +80,5 @@ members = [
     "crates/surgeist-text",
     "crates/surgeist-window",
     "dev",
+    "tools/surgeist-fixture-metadata",
 ]
