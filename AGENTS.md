@@ -80,14 +80,17 @@ crates, but implementation workers should stay in their assigned project.
 
 ## Crate Roles
 
-- root `surgeist`: thin facade, integration surface, and public composition layer.
-- `surgeist-css`: strict CSS parsing and lowering into typed style data.
-- `surgeist-style`: style model, resolution, and visual/layout property contracts.
-- `surgeist-test`: shared test harnesses, fixture metadata, coverage and test
-  quality coordination, integration tests, e2e tests, system tests, and
-  integration verification support.
-- `surgeist-layout`: layout algorithms, layout contracts, oracle/parity tests,
-  and fixture tooling.
+- root `surgeist`: thin facade, integration surface, public composition layer,
+  and Surgeist-to-Surgeist adapter boundary.
+- `surgeist-css`: strict CSS syntax parsing and authored CSS value contracts.
+- `surgeist-style`: style model, cascade, resolution, property validation, and
+  invalidation contracts.
+- `surgeist-test`: shared test schemas, harnesses, coverage and test quality
+  coordination, integration tests, e2e tests, system tests, and integration
+  verification support. Root-owned tools generate metadata that requires root
+  adapters.
+- `surgeist-layout`: layout algorithms, layout contracts, layout-ready fixture
+  consumption, and oracle/parity tests.
 - `surgeist-retained`: retained identity, retained state, tree identity, and
   stable handles.
 - `surgeist-text`: text shaping, measurement, font-facing abstractions, and text
@@ -121,18 +124,24 @@ root surgeist crate
   -> surgeist-text
   -> surgeist-window
 
-surgeist-css -> surgeist-style
-surgeist-style -> surgeist-layout, surgeist-retained, surgeist-text
+surgeist-css owns CSS syntax and must not depend on sibling Surgeist crates
+surgeist-style owns style data and must not depend on layout, retained, text, or css
 surgeist-task may depend on production crates only when task contracts require
 typed integration, and should keep executor backends behind crate-owned
 contracts
 surgeist-render -> surgeist-shape, surgeist-window optional
 surgeist-text -> surgeist-render optional
-surgeist-test may depend on production crates for verification
+surgeist-test may depend on production leaf crates for schemas, harnesses, and
+verification, but must not depend on root surgeist
+root surgeist must not production-depend on surgeist-test
 ```
 
 Plan cross-crate API changes at the top level, then implement crate-local pieces
 in the owning crate projects.
+
+Surgeist-to-Surgeist lowering belongs in the root facade or root-owned tools.
+Leaf crates expose front-door domain APIs and keep only backend-local adapters
+owned by their implementation domain.
 
 ## API Coordination
 

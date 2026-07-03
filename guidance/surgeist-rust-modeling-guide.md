@@ -133,9 +133,10 @@ API.
 
 Representation changes should happen at named chokepoints:
 
-- parser to style model
-- style model to layout input
-- layout output to render input
+- CSS syntax to style model, owned by the root adapter boundary
+- style model to layout input, owned by the root adapter boundary
+- layout output to render input, owned by the root adapter boundary when it is
+  Surgeist-to-Surgeist lowering
 - retained tree to app or accessibility projection
 - app command to host command
 - backend event to framework event
@@ -271,9 +272,9 @@ needs more work.
 These are prompts, not prescriptions.
 
 - `surgeist-css`: authored syntax ownership, parse errors, source spans,
-  lowering into style values, unsupported CSS reporting.
+  property-specific grammar, unsupported CSS reporting.
 - `surgeist-style`: authored versus resolved values, property metadata,
-  validation, invalidation, adapter contracts into layout/text/retained.
+  validation, invalidation, style-domain contracts.
 - `surgeist-layout`: symbolic values, basis-dependent sizing, axis mapping,
   track and fragment invariants, oracle/parity fixture inputs.
 - `surgeist-render`: backend capabilities, draw command normalization, resource
@@ -290,6 +291,12 @@ These are prompts, not prescriptions.
   normalization, render-facing primitive contracts.
 - `surgeist-test`: fixture ownership, integration harness contracts, coverage
   reports, generated artifacts, cross-crate verification boundaries.
+
+## Adapter Boundaries
+
+Surgeist-to-Surgeist lowering belongs in the root facade or in root-owned
+tools. Leaf crates should expose front-door domain APIs and keep backend-local
+adapters only when the backend is part of that crate's implementation.
 
 ## Final Check
 
