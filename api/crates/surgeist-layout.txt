@@ -203,6 +203,14 @@ pub surgeist_layout::LanePlacementError::InvalidGridAxisSpan::span: usize
 pub surgeist_layout::LanePlacementError::InvalidGridAxisStart
 pub surgeist_layout::LanePlacementError::InvalidGridAxisStart::start: usize
 pub surgeist_layout::LanePlacementError::NestedGridLanesSubgridIndefiniteUnsupported
+pub enum surgeist_layout::LayoutInputOf<S: surgeist_layout::LayoutScalar>
+pub surgeist_layout::LayoutInputOf::Box(alloc::boxed::Box<surgeist_layout::NodeInputOf<S>>)
+pub surgeist_layout::LayoutInputOf::LineBreak(surgeist_layout::LineBreakInput)
+impl<S: surgeist_layout::LayoutScalar> surgeist_layout::LayoutInputOf<S>
+pub fn surgeist_layout::LayoutInputOf<S>::as_box(&self) -> core::option::Option<&surgeist_layout::NodeInputOf<S>>
+pub const fn surgeist_layout::LayoutInputOf<S>::as_line_break(&self) -> core::option::Option<surgeist_layout::LineBreakInput>
+pub fn surgeist_layout::LayoutInputOf<S>::box_input(input: surgeist_layout::NodeInputOf<S>) -> Self
+pub const fn surgeist_layout::LayoutInputOf<S>::line_break(input: surgeist_layout::LineBreakInput) -> Self
 pub enum surgeist_layout::LengthAutoOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::LengthAutoOf::Auto
 pub surgeist_layout::LengthAutoOf::Calc(surgeist_layout::CalcId)
@@ -265,6 +273,11 @@ impl<S: surgeist_layout::LayoutScalar> core::convert::From<surgeist_layout::Leng
 pub fn surgeist_layout::TrackSizingOf<S>::from(value: surgeist_layout::LengthOf<S>) -> Self
 impl<S: surgeist_layout::LayoutScalar> core::default::Default for surgeist_layout::LengthOf<S>
 pub fn surgeist_layout::LengthOf<S>::default() -> Self
+pub enum surgeist_layout::LineBreakDisplay
+pub surgeist_layout::LineBreakDisplay::Break
+pub surgeist_layout::LineBreakDisplay::None
+impl surgeist_layout::LineBreakDisplay
+pub const fn surgeist_layout::LineBreakDisplay::is_none(self) -> bool
 pub enum surgeist_layout::MaxTrackSizingOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::MaxTrackSizingOf::Auto
 pub surgeist_layout::MaxTrackSizingOf::FitContent(surgeist_layout::LengthOf<S>)
@@ -663,6 +676,22 @@ pub fn surgeist_layout::LayoutCalcStoreOf<S>::calc_depends_on_basis(&self, id: s
 pub fn surgeist_layout::LayoutCalcStoreOf<S>::calc_generation(&self) -> surgeist_layout::CalcGeneration
 pub fn surgeist_layout::LayoutCalcStoreOf<S>::calc_percent_fraction(&self, id: surgeist_layout::CalcId) -> core::option::Option<S>
 pub fn surgeist_layout::LayoutCalcStoreOf<S>::resolve_calc(&self, id: surgeist_layout::CalcId, basis: core::option::Option<S>) -> surgeist_layout::CalcResolutionOf<S>
+pub struct surgeist_layout::LineBreakInput
+impl surgeist_layout::LineBreakInput
+pub const surgeist_layout::LineBreakInput::DEFAULT: Self
+pub const fn surgeist_layout::LineBreakInput::clear(self) -> surgeist_layout::Clear
+pub const fn surgeist_layout::LineBreakInput::direction(self) -> surgeist_layout::Direction
+pub const fn surgeist_layout::LineBreakInput::display(self) -> surgeist_layout::LineBreakDisplay
+pub const fn surgeist_layout::LineBreakInput::hidden(self) -> Self
+pub const fn surgeist_layout::LineBreakInput::new() -> Self
+pub const fn surgeist_layout::LineBreakInput::vertical_align(self) -> surgeist_layout::VerticalAlign
+pub const fn surgeist_layout::LineBreakInput::with_clear(self, clear: surgeist_layout::Clear) -> Self
+pub const fn surgeist_layout::LineBreakInput::with_direction(self, direction: surgeist_layout::Direction) -> Self
+pub const fn surgeist_layout::LineBreakInput::with_vertical_align(self, vertical_align: surgeist_layout::VerticalAlign) -> Self
+pub const fn surgeist_layout::LineBreakInput::with_writing_mode(self, writing_mode: surgeist_layout::WritingMode) -> Self
+pub const fn surgeist_layout::LineBreakInput::writing_mode(self) -> surgeist_layout::WritingMode
+impl core::default::Default for surgeist_layout::LineBreakInput
+pub fn surgeist_layout::LineBreakInput::default() -> Self
 pub struct surgeist_layout::NamedGridReport
 impl surgeist_layout::NamedGridReport
 pub fn surgeist_layout::NamedGridReport::errors(&self) -> &[surgeist_layout::NamedGridErrorReport]
@@ -860,6 +889,7 @@ pub fn surgeist_layout::NoCalcResolver::resolve_calc(&self, _id: surgeist_layout
 pub trait surgeist_layout::Compute: surgeist_layout::Traverse
 pub fn surgeist_layout::Compute::calc_resolver(&self) -> &dyn surgeist_layout::CalcResolver<Self::Scalar>
 pub fn surgeist_layout::Compute::compute_child(&mut self, node: Self::Node, input: surgeist_layout::ComputeInputOf<Self::Scalar>) -> surgeist_layout::ComputeOutputOf<Self::Scalar>
+pub fn surgeist_layout::Compute::layout_input(&self, node: Self::Node) -> surgeist_layout::LayoutInputOf<Self::Scalar>
 pub fn surgeist_layout::Compute::node_input(&self, node: Self::Node) -> &surgeist_layout::NodeInputOf<Self::Scalar>
 pub fn surgeist_layout::Compute::set_unrounded(&mut self, node: Self::Node, layout: surgeist_layout::NodeOutputOf<Self::Scalar>)
 pub trait surgeist_layout::LayoutScalar: surgeist_layout::scalar::private::Sealed + core::marker::Copy + core::clone::Clone + core::fmt::Debug + core::default::Default + core::cmp::PartialEq + core::cmp::PartialOrd + core::ops::arith::Add<Output = Self> + core::ops::arith::Sub<Output = Self> + core::ops::arith::Mul<Output = Self> + core::ops::arith::Div<Output = Self> + core::ops::arith::Neg<Output = Self> + 'static
@@ -966,6 +996,7 @@ pub type surgeist_layout::LaneItemOffset<Item> = surgeist_layout::LaneItemOffset
 pub type surgeist_layout::LanePlacementInput<Item> = surgeist_layout::LanePlacementInputOf<Item, surgeist_layout::DefaultScalar>
 pub type surgeist_layout::LanePlacementReport<Item> = surgeist_layout::LanePlacementReportOf<Item, surgeist_layout::DefaultScalar>
 pub type surgeist_layout::LayoutCalcStore = surgeist_layout::LayoutCalcStoreOf<surgeist_layout::DefaultScalar>
+pub type surgeist_layout::LayoutInput = surgeist_layout::LayoutInputOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::Length = surgeist_layout::LengthOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::LengthAuto = surgeist_layout::LengthAutoOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::MaxTrackSizing = surgeist_layout::MaxTrackSizingOf<surgeist_layout::DefaultScalar>
