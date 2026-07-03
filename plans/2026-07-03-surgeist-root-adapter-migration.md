@@ -495,6 +495,118 @@ After worker and reviewer are clean, the root coordinator commits this root adap
 
 ---
 
+## Task 5A: Split Style Tree And Selector Vocabulary From Retained
+
+**Repo:** `/Users/codex/Development/surgeist-style`
+
+**Why this task exists:** Task 6's dependency search found `surgeist-retained`
+usage outside `src/adapters/retained.rs`. Style's public tree and selector
+contracts currently use retained `Tag`, `Class`, `Key`, `Attribute`, `State`,
+and `Role` types. That is a style-domain modeling dependency, not adapter
+residue, so deleting the retained adapter alone would leave the crate coupled
+to retained.
+
+**Files:**
+
+- Create or modify: `/Users/codex/Development/surgeist-style/src/identity.rs`
+- Modify: `/Users/codex/Development/surgeist-style/src/tree.rs`
+- Modify: `/Users/codex/Development/surgeist-style/src/selector.rs`
+- Modify: `/Users/codex/Development/surgeist-style/src/sheet.rs`
+- Modify: `/Users/codex/Development/surgeist-style/src/resolver.rs`
+- Modify: `/Users/codex/Development/surgeist-style/src/lib.rs`
+- Modify style tests that construct retained-backed trees directly
+
+Steps:
+
+- [ ] Record the current dependency search output before edits:
+
+```sh
+rg -n "surgeist_retained|surgeist-retained|retained::" src tests Cargo.toml
+```
+
+- [ ] Add style-owned identity/fact types for style selector and tree matching:
+  - `StyleTag`
+  - `StyleClass`
+  - `StyleKey`
+  - `StyleAttributeName`
+  - `StyleAttributeValue`
+  - `StyleAttribute`
+  - `StyleRole`
+  - `StyleState`
+- [ ] Preserve current validation semantics from retained types. If a retained
+  constructor rejected an empty or malformed value, the equivalent style-owned
+  constructor must reject it too.
+- [ ] Update `Selector`, `Compound`, `AttributeSelector`, `PrimaryKey`,
+  `Sheet` indexes, `Tree::Node`, and resolver cache hashing to use style-owned
+  types.
+- [ ] Keep these types style-domain-facing. Do not make them wrappers around
+  retained types internally.
+- [ ] Keep selector string constructors such as `Selector::tag`,
+  `Selector::class`, `Selector::key`, and attribute selector constructors
+  working with the same validation behavior.
+- [ ] Update tests so style model tests use style-owned types or simple test
+  trees instead of retained models except where a retained adapter test still
+  intentionally covers the temporary style-owned retained adapter.
+- [ ] Do not remove `src/adapters/retained.rs` in this task; Task 6 removes it
+  after root has a matching adapter update.
+- [ ] Run dependency search again. Remaining `surgeist-retained` usage must be
+  limited to `src/adapters/retained.rs`, adapter tests, temporary tests that
+  explicitly exercise that adapter, and the temporary `Cargo.toml` dependency
+  required by that adapter until Task 6 removes it.
+
+Checks:
+
+```sh
+cargo fmt --check
+cargo test -p surgeist-style
+cargo clippy -p surgeist-style --all-targets -- -D warnings
+```
+
+After worker and reviewer are clean, the style coordinator commits this logical point and pushes it. Workers do not commit.
+
+---
+
+## Task 5B: Update Root Retained Adapter For Style-Owned Tree Facts
+
+**Repo:** `/Users/codex/Development/surgeist`
+
+**Files:**
+
+- Modify: `/Users/codex/Development/surgeist/src/adapters/retained_style.rs`
+- Modify: `/Users/codex/Development/surgeist/src/adapters/retained_style_tests.rs`
+- Modify generated API artifacts under `/Users/codex/Development/surgeist/api/`
+
+Steps:
+
+- [ ] Confirm Task 5A is committed and pushed by the style coordinator.
+- [ ] Fetch or pull the updated `surgeist-style` commit into the root
+  submodule checkout. Do not commit the pointer yet.
+- [ ] Update `RetainedStyleTree` so retained `Tag`, `Class`, `Key`,
+  attributes, role, and state are converted into style-owned tree facts at the
+  root adapter boundary.
+- [ ] Keep conversions explicit and local to the root adapter. Do not add a
+  retained dependency back into style.
+- [ ] Preserve cache invalidation behavior from Task 5.
+- [ ] Preserve the orphan-rule wrapper shape: root still implements
+  `style::Tree` for `RetainedStyleTree<'_>`, not for retained snapshot types.
+- [ ] Add or update tests proving retained nodes resolve through style-owned
+  selector/tree facts, including at least tag, class, key, attribute, state,
+  and text-node matching.
+
+Checks:
+
+```sh
+cargo fmt --check
+cargo test -p surgeist retained_style
+cargo clippy -p surgeist --all-targets -- -D warnings
+cargo run --manifest-path api/generator/Cargo.toml
+cargo run --manifest-path api/generator/Cargo.toml -- --check
+```
+
+After worker and reviewer are clean, the root coordinator keeps this reviewed root adapter/API-artifact diff uncommitted until Task 15 because it depends on crate API changes. Workers do not commit.
+
+---
+
 ## Task 6: Remove Retained Adapter From Style
 
 **Repo:** `/Users/codex/Development/surgeist-style`
@@ -509,6 +621,7 @@ After worker and reviewer are clean, the root coordinator commits this root adap
 
 Steps:
 
+- [ ] Confirm Task 5A is committed and pushed by the style coordinator.
 - [ ] Delete `src/adapters/retained.rs`.
 - [ ] Delete `src/adapters/mod.rs` if no adapter modules remain.
 - [ ] Remove `pub mod adapters;` from `src/lib.rs` if the adapters module is empty.
