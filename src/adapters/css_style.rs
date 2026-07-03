@@ -88,6 +88,7 @@ fn lower_property(property: css::CssProperty) -> style::Property {
 fn lower_value(declaration: &css::CssDeclaration) -> AdapterResult<style::Value> {
     let property = declaration.property();
     match declaration.value() {
+        css::CssValue::GlobalKeyword(value) => lower_global_keyword(*value, property),
         css::CssValue::Display(value) => Ok(style::Value::Display(lower_display(*value))),
         css::CssValue::BoxSizing(value) => Ok(style::Value::BoxSizing(lower_box_sizing(*value))),
         css::CssValue::Position(value) => Ok(style::Value::Position(lower_position(*value))),
@@ -108,6 +109,25 @@ fn lower_value(declaration: &css::CssDeclaration) -> AdapterResult<style::Value>
         css::CssValue::Edges(value) => Ok(style::Value::Edges(lower_edges(value, property)?)),
         css::CssValue::Color(value) => Ok(style::Value::Color(lower_color(*value))),
         css::CssValue::Number(value) => Ok(style::Value::Number(*value)),
+    }
+}
+
+fn lower_global_keyword(
+    value: css::CssGlobalKeyword,
+    property: css::CssProperty,
+) -> AdapterResult<style::Value> {
+    match value {
+        css::CssGlobalKeyword::Inherit => Ok(style::Value::Keyword(style::Keyword::Inherit)),
+        css::CssGlobalKeyword::Initial => Ok(style::Value::Keyword(style::Keyword::Initial)),
+        css::CssGlobalKeyword::Unset => Ok(style::Value::Keyword(style::Keyword::Unset)),
+        css::CssGlobalKeyword::Revert => Err(unsupported_property_value(
+            property,
+            "unsupported CSS global keyword `revert`".to_owned(),
+        )),
+        css::CssGlobalKeyword::RevertLayer => Err(unsupported_property_value(
+            property,
+            "unsupported CSS global keyword `revert-layer`".to_owned(),
+        )),
     }
 }
 

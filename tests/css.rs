@@ -251,10 +251,7 @@ fn extended_sheets_preserve_manifest_load_order() {
 #[test]
 fn rejects_unsupported_css_instead_of_recovering_like_a_browser() {
     let property = css::parse_sheet(".panel { unknown-prop: 1px; }").unwrap_err();
-    assert!(
-        property.message().contains("unsupported CSS property"),
-        "{property}"
-    );
+    assert!(property.message().contains("CSS property"), "{property}");
 
     let at_rule =
         css::parse_sheet("@media (min-width: 1px) { .panel { display: flex; } }").unwrap_err();

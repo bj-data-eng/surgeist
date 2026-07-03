@@ -51,6 +51,12 @@ pub enum surgeist_css::CssFlexWrap
 pub surgeist_css::CssFlexWrap::NoWrap
 pub surgeist_css::CssFlexWrap::Wrap
 pub surgeist_css::CssFlexWrap::WrapReverse
+pub enum surgeist_css::CssGlobalKeyword
+pub surgeist_css::CssGlobalKeyword::Inherit
+pub surgeist_css::CssGlobalKeyword::Initial
+pub surgeist_css::CssGlobalKeyword::Revert
+pub surgeist_css::CssGlobalKeyword::RevertLayer
+pub surgeist_css::CssGlobalKeyword::Unset
 pub enum surgeist_css::CssGridFlowTolerance
 pub surgeist_css::CssGridFlowTolerance::Infinite
 pub surgeist_css::CssGridFlowTolerance::Length(surgeist_css::CssLength)
@@ -129,6 +135,7 @@ pub surgeist_css::CssValue::Display(surgeist_css::CssDisplay)
 pub surgeist_css::CssValue::Edges(surgeist_css::CssEdges)
 pub surgeist_css::CssValue::FlexDirection(surgeist_css::CssFlexDirection)
 pub surgeist_css::CssValue::FlexWrap(surgeist_css::CssFlexWrap)
+pub surgeist_css::CssValue::GlobalKeyword(surgeist_css::CssGlobalKeyword)
 pub surgeist_css::CssValue::GridFlowTolerance(surgeist_css::CssGridFlowTolerance)
 pub surgeist_css::CssValue::Length(surgeist_css::CssLength)
 pub surgeist_css::CssValue::Number(f32)
@@ -142,6 +149,8 @@ pub surgeist_css::ErrorKind::InvalidSelector
 pub surgeist_css::ErrorKind::InvalidSelector::reason: alloc::string::String
 pub surgeist_css::ErrorKind::InvalidSyntax
 pub surgeist_css::ErrorKind::InvalidSyntax::reason: alloc::string::String
+pub surgeist_css::ErrorKind::UnknownProperty
+pub surgeist_css::ErrorKind::UnknownProperty::name: alloc::string::String
 pub surgeist_css::ErrorKind::UnsupportedAtRule
 pub surgeist_css::ErrorKind::UnsupportedAtRule::name: alloc::string::String
 pub surgeist_css::ErrorKind::UnsupportedProperty

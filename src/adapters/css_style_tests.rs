@@ -67,6 +67,44 @@ fn style_validation_error_uses_declaration_location() {
 }
 
 #[test]
+fn css_global_keywords_lower_to_style_keywords() {
+    let sheet = lower(".panel { color: inherit; padding: initial; margin: unset; }");
+    let declarations = sheet.rules()[0].declarations();
+
+    assert_eq!(
+        declarations.get(style::Property::Color),
+        Some(&style::Value::Keyword(style::Keyword::Inherit))
+    );
+    assert_eq!(
+        declarations.get(style::Property::Padding),
+        Some(&style::Value::Keyword(style::Keyword::Initial))
+    );
+    assert_eq!(
+        declarations.get(style::Property::Margin),
+        Some(&style::Value::Keyword(style::Keyword::Unset))
+    );
+}
+
+#[test]
+fn unsupported_css_global_keywords_are_adapter_errors() {
+    for keyword in ["revert", "revert-layer"] {
+        let css = css::parse_sheet(&format!(".panel {{ width: {keyword}; }}")).unwrap();
+        let error = lower_css_sheet_to_style(&css).unwrap_err();
+
+        match error.kind() {
+            AdapterErrorKind::CssValueUnsupported { property, reason } => {
+                assert_eq!(property, "Width");
+                assert!(
+                    reason.contains(&format!("unsupported CSS global keyword `{keyword}`")),
+                    "{reason}"
+                );
+            }
+            other => panic!("expected CSS value unsupported error for {keyword}, got {other:?}"),
+        }
+    }
+}
+
+#[test]
 fn parses_calc_in_edge_shorthands() {
     let sheet = lower(".panel { margin: calc(4px + 1%) 2px; }");
     let edges = match sheet.rules()[0].declarations().get(style::Property::Margin) {
