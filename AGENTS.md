@@ -45,6 +45,7 @@ surgeist/
     surgeist-shape/
     surgeist-style/
     surgeist-task/
+    surgeist-template/
     surgeist-test/
     surgeist-text/
     surgeist-window/
@@ -101,6 +102,8 @@ crates, but implementation workers should stay in their assigned project.
 - `surgeist-shape`: shape, geometry, and primitive path data.
 - `surgeist-task`: task scheduling, work-plane contracts, cancellation,
   progress, resource-class admission, and executor-facing task policy.
+- `surgeist-template`: template-layer and future DSL-facing contracts for typed
+  app authoring surfaces.
 
 Add crates only for real API boundaries, not architecture theater.
 
@@ -121,6 +124,7 @@ root surgeist crate
   -> surgeist-shape
   -> surgeist-style
   -> surgeist-task
+  -> surgeist-template
   -> surgeist-text
   -> surgeist-window
 

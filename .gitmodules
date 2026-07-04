@@ -31,3 +31,6 @@
 [submodule "crates/surgeist-task"]
 	path = crates/surgeist-task
 	url = https://github.com/bj-data-eng/surgeist-task.git
+[submodule "crates/surgeist-template"]
+	path = crates/surgeist-template
+	url = https://github.com/bj-data-eng/surgeist-template.git

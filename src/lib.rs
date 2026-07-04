@@ -32,6 +32,9 @@ pub mod style {
 pub mod task {
     pub use surgeist_task::*;
 }
+pub mod template {
+    pub use surgeist_template::*;
+}
 pub mod text {
     pub use surgeist_text::*;
 }
