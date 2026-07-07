@@ -42,6 +42,7 @@ surgeist/
     surgeist-layout/
     surgeist-render/
     surgeist-retained/
+    surgeist-runtime/
     surgeist-shape/
     surgeist-style/
     surgeist-task/
@@ -94,6 +95,10 @@ crates, but implementation workers should stay in their assigned project.
   consumption, and oracle/parity tests.
 - `surgeist-retained`: retained identity, retained state, tree identity, and
   stable handles.
+- `surgeist-runtime`: app runtime orchestration contracts, event/input
+  scheduling, effect execution boundaries, resource lifecycle policy hooks,
+  invalidation scheduling, animation/frame scheduling, diagnostics, and
+  provenance.
 - `surgeist-text`: text shaping, measurement, font-facing abstractions, and text
   layout contracts.
 - `surgeist-render`: rendering contracts and backend-facing draw data.
@@ -121,6 +126,7 @@ root surgeist crate
   -> surgeist-layout
   -> surgeist-render
   -> surgeist-retained
+  -> surgeist-runtime
   -> surgeist-shape
   -> surgeist-style
   -> surgeist-task
@@ -130,6 +136,10 @@ root surgeist crate
 
 surgeist-css owns CSS syntax and must not depend on sibling Surgeist crates
 surgeist-style owns style data and must not depend on layout, retained, text, or css
+surgeist-runtime owns app-plane orchestration contracts and should avoid
+production dependencies on domain crates such as style, layout, text, render,
+template, retained, css, or window unless a narrow runtime contract truly
+requires one
 surgeist-task may depend on production crates only when task contracts require
 typed integration, and should keep executor backends behind crate-owned
 contracts

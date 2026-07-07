@@ -19,6 +19,7 @@ surgeist-dialog = { path = "crates/surgeist-dialog", version = "=0.1.0" }
 surgeist-layout = { path = "crates/surgeist-layout", version = "=0.1.0" }
 surgeist-render = { path = "crates/surgeist-render", version = "=0.1.0" }
 surgeist-retained = { path = "crates/surgeist-retained", version = "=0.1.0" }
+surgeist-runtime = { path = "crates/surgeist-runtime", version = "=0.1.0" }
 surgeist-shape = { path = "crates/surgeist-shape", version = "=0.1.0" }
 surgeist-style = { path = "crates/surgeist-style", version = "=0.1.0" }
 surgeist-task = { path = "crates/surgeist-task", version = "=0.1.0" }
@@ -74,6 +75,7 @@ members = [
     "crates/surgeist-layout",
     "crates/surgeist-render",
     "crates/surgeist-retained",
+    "crates/surgeist-runtime",
     "crates/surgeist-shape",
     "crates/surgeist-style",
     "crates/surgeist-task",

@@ -23,6 +23,9 @@ pub mod render {
 pub mod retained {
     pub use surgeist_retained::*;
 }
+pub mod runtime {
+    pub use surgeist_runtime::*;
+}
 pub mod shape {
     pub use surgeist_shape::*;
 }
