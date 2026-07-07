@@ -26,11 +26,10 @@ surgeist-task = { path = "crates/surgeist-task", version = "=0.1.0" }
 surgeist-template = { path = "crates/surgeist-template", version = "=0.1.0" }
 surgeist-text = { path = "crates/surgeist-text", version = "=0.1.0" }
 surgeist-window = { path = "crates/surgeist-window", version = "=0.1.0" }
-tokio = { version = "=1.48.0", optional = true, features = ["rt-multi-thread", "sync", "time"] }
 
 [features]
 default = []
-app-runtime-tokio = ["dep:tokio"]
+app-runtime-tokio = ["surgeist-runtime/runtime-tokio"]
 dialog-system = ["surgeist-dialog/system"]
 render-web = ["surgeist-render/render-web"]
 render-window = ["surgeist-render/render-window"]
