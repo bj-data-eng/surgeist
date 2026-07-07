@@ -4,7 +4,7 @@ use surgeist::app::{
     EffectKindId, EventDescriptor, ExpressionId, InputOrigin, InputProvenance, InputSourceId,
     QueueDiagnostic, ResourceDescriptor, ResourceId, RootDescriptor, RootId, Runtime,
     ServiceProvenance, SnapshotBinding, SnapshotBindingId, SnapshotSourceType, StartupWindow,
-    SurfaceProvenance, TaskDescriptor, TaskName, TaskProvenance, UiSurface, WindowDescriptor,
+    SurfaceProvenance, TaskDescriptor, TaskIntentName, TaskProvenance, UiSurface, WindowDescriptor,
     WindowDescriptorId, WindowRoot, testing::HeadlessApp,
 };
 
@@ -18,7 +18,6 @@ fn headless_app_runs_without_winit_or_tokio() {
 
     assert_eq!(app.counter(), 1);
     assert_eq!(app.fake_window().redraws(), &[app.surface_id("main")]);
-    assert_eq!(app.fake_executor().spawned().len(), 0);
 }
 
 #[test]
@@ -38,10 +37,6 @@ fn thumbnail_import_example_contract_runs_headless() {
     example.navigate_away();
     example.drain_all();
 
-    assert_eq!(
-        example.import_task_status(),
-        surgeist::app::TaskStatus::Running
-    );
     assert!(
         example
             .redrawn_surfaces()
@@ -88,7 +83,7 @@ fn app_manifest_registers_identity_windows_roots_commands_events_and_bindings() 
     let app = AppDescriptor::new(AppId::new("photo.lab"), "0.1.0");
     let command = CommandDescriptor::new("photos.import", "ImportPhotos");
     let event = EventDescriptor::new("photos.imported", "ImportFinished");
-    let task = TaskDescriptor::new(TaskName::new("photos.import"), "ImportPhotos");
+    let task = TaskDescriptor::new(TaskIntentName::new("photos.import"), "ImportPhotos");
     let resource = ResourceDescriptor::new(ResourceId::new("photos"), "PhotoResource");
     let binding = SnapshotBinding::new(
         SnapshotBindingId::new("photos"),

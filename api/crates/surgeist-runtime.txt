@@ -17,20 +17,13 @@ pub surgeist_runtime::testing::FakeWindowCommand::OpenSurface::root_id: surgeist
 pub surgeist_runtime::testing::FakeWindowCommand::OpenSurface::surface_id: surgeist_runtime::SurfaceId
 pub surgeist_runtime::testing::FakeWindowCommand::OpenSurface::window_id: surgeist_window::geometry::Id
 pub enum surgeist_runtime::testing::PrototypeInput
-pub surgeist_runtime::testing::PrototypeInput::ImportCancelRequested
-pub surgeist_runtime::testing::PrototypeInput::ImportCancelRequested::handle: surgeist_runtime::TaskHandle
-pub surgeist_runtime::testing::PrototypeInput::ImportFinished
-pub surgeist_runtime::testing::PrototypeInput::ImportFinished::handle: surgeist_runtime::TaskHandle
-pub surgeist_runtime::testing::PrototypeInput::ImportStarted
-pub surgeist_runtime::testing::PrototypeInput::ImportStarted::blocking: surgeist_runtime::BlockingPolicy
-pub surgeist_runtime::testing::PrototypeInput::ImportStarted::handle: surgeist_runtime::TaskHandle
 pub surgeist_runtime::testing::PrototypeInput::LogLine(alloc::string::String)
 pub surgeist_runtime::testing::PrototypeInput::Progress(usize)
 pub surgeist_runtime::testing::PrototypeInput::SearchComplete
-pub surgeist_runtime::testing::PrototypeInput::SearchComplete::attempt: surgeist_runtime::TaskAttemptId
+pub surgeist_runtime::testing::PrototypeInput::SearchComplete::attempt: surgeist_runtime::TaskIntentAttemptId
 pub surgeist_runtime::testing::PrototypeInput::SearchComplete::results: alloc::vec::Vec<alloc::string::String>
 pub surgeist_runtime::testing::PrototypeInput::SearchStarted
-pub surgeist_runtime::testing::PrototypeInput::SearchStarted::attempt: surgeist_runtime::TaskAttemptId
+pub surgeist_runtime::testing::PrototypeInput::SearchStarted::attempt: surgeist_runtime::TaskIntentAttemptId
 pub surgeist_runtime::testing::PrototypeInput::SearchStarted::query: alloc::string::String
 pub surgeist_runtime::testing::PrototypeInput::ServiceCancelled
 pub surgeist_runtime::testing::PrototypeInput::ServiceCancelled::request: surgeist_runtime::testing::ServiceRequestId
@@ -54,7 +47,6 @@ pub struct surgeist_runtime::testing::CounterApp
 impl surgeist_runtime::testing::CounterApp
 pub fn surgeist_runtime::testing::CounterApp::counter(&self) -> u32
 pub fn surgeist_runtime::testing::CounterApp::drain(&mut self) -> surgeist_runtime::RuntimeDrainReport
-pub fn surgeist_runtime::testing::CounterApp::fake_executor(&self) -> std::sync::poison::mutex::MutexGuard<'_, surgeist_runtime::FakeExecutor<surgeist_runtime::testing::CounterInput>>
 pub const fn surgeist_runtime::testing::CounterApp::fake_window(&self) -> &surgeist_runtime::testing::FakeWindowBridge
 pub fn surgeist_runtime::testing::CounterApp::input_increment(&mut self)
 pub fn surgeist_runtime::testing::CounterApp::open_surface(&mut self, name: &str) -> surgeist_runtime::SurfaceId
@@ -96,7 +88,6 @@ pub const fn surgeist_runtime::testing::HeadlessHarness<State, R, Input>::clock(
 pub fn surgeist_runtime::testing::HeadlessHarness<State, R, Input>::clock_mut(&mut self) -> &mut surgeist_runtime::testing::FakeClock
 pub fn surgeist_runtime::testing::HeadlessHarness<State, R, Input>::due_timers(&mut self) -> alloc::vec::Vec<alloc::string::String>
 pub fn surgeist_runtime::testing::HeadlessHarness<State, R, Input>::enqueue_ui(&mut self, input: Input, provenance: surgeist_runtime::InputProvenance) -> core::result::Result<(), surgeist_runtime::RuntimeInputError>
-pub fn surgeist_runtime::testing::HeadlessHarness<State, R, Input>::fake_executor(&self) -> std::sync::poison::mutex::MutexGuard<'_, surgeist_runtime::FakeExecutor<Input>>
 pub const fn surgeist_runtime::testing::HeadlessHarness<State, R, Input>::fake_window(&self) -> &surgeist_runtime::testing::FakeWindowBridge
 pub const fn surgeist_runtime::testing::HeadlessHarness<State, R, Input>::last_report(&self) -> core::option::Option<&surgeist_runtime::RuntimeDrainReport>
 pub fn surgeist_runtime::testing::HeadlessHarness<State, R, Input>::new(state: State, reducer: R) -> Self
@@ -110,27 +101,19 @@ impl<State, R, Input> surgeist_runtime::testing::HeadlessHarness<State, R, Input
 pub fn surgeist_runtime::testing::HeadlessHarness<State, R, Input>::drain(&mut self) -> surgeist_runtime::RuntimeDrainReport
 pub struct surgeist_runtime::testing::PrototypeApp
 impl surgeist_runtime::testing::PrototypeApp
-pub fn surgeist_runtime::testing::PrototypeApp::blocking_media_import() -> Self
 pub fn surgeist_runtime::testing::PrototypeApp::call_tool(&mut self, _name: &str) -> surgeist_runtime::testing::ServiceRequestId
 pub fn surgeist_runtime::testing::PrototypeApp::cancel(&mut self, request: surgeist_runtime::testing::ServiceRequestId)
-pub fn surgeist_runtime::testing::PrototypeApp::cancel_import(&mut self, handle: surgeist_runtime::TaskHandle)
-pub fn surgeist_runtime::testing::PrototypeApp::close_surface(&mut self, surface: surgeist_runtime::SurfaceId)
-pub const fn surgeist_runtime::testing::PrototypeApp::compile_task_status(&self) -> surgeist_runtime::TaskStatus
-pub fn surgeist_runtime::testing::PrototypeApp::complete_search(&mut self, attempt: surgeist_runtime::TaskAttemptId, results: alloc::vec::Vec<&str>)
-pub fn surgeist_runtime::testing::PrototypeApp::complete_search_with_provenance(&mut self, provenance_attempt: surgeist_runtime::TaskAttemptId, payload_attempt: surgeist_runtime::TaskAttemptId, results: alloc::vec::Vec<&str>)
+pub fn surgeist_runtime::testing::PrototypeApp::complete_search(&mut self, attempt: surgeist_runtime::TaskIntentAttemptId, results: alloc::vec::Vec<&str>)
+pub fn surgeist_runtime::testing::PrototypeApp::complete_search_with_provenance(&mut self, provenance_attempt: surgeist_runtime::TaskIntentAttemptId, payload_attempt: surgeist_runtime::TaskIntentAttemptId, results: alloc::vec::Vec<&str>)
 pub const fn surgeist_runtime::testing::PrototypeApp::diagnostics(&self) -> &surgeist_runtime::DiagnosticLog
 pub fn surgeist_runtime::testing::PrototypeApp::drain(&mut self)
 pub fn surgeist_runtime::testing::PrototypeApp::drain_all(&mut self)
 pub const fn surgeist_runtime::testing::PrototypeApp::fake_wake(&self) -> &surgeist_runtime::testing::FakeWakeBridge
-pub fn surgeist_runtime::testing::PrototypeApp::finish_non_abortable_import(&mut self, handle: surgeist_runtime::TaskHandle)
-pub fn surgeist_runtime::testing::PrototypeApp::import_blocking_policy(&self, handle: surgeist_runtime::TaskHandle) -> core::option::Option<surgeist_runtime::BlockingPolicy>
-pub fn surgeist_runtime::testing::PrototypeApp::import_status(&self, handle: surgeist_runtime::TaskHandle) -> surgeist_runtime::TaskStatus
 pub fn surgeist_runtime::testing::PrototypeApp::jsonrpc_service() -> Self
 pub fn surgeist_runtime::testing::PrototypeApp::latest_search() -> Self
 pub fn surgeist_runtime::testing::PrototypeApp::log_lines(&self) -> &[alloc::string::String]
 pub fn surgeist_runtime::testing::PrototypeApp::log_stream(budget: surgeist_runtime::RuntimeBudget) -> Self
 pub fn surgeist_runtime::testing::PrototypeApp::notify_progress(&mut self, request: surgeist_runtime::testing::ServiceRequestId, message: &str)
-pub fn surgeist_runtime::testing::PrototypeApp::observe_compile(&mut self, surface: surgeist_runtime::SurfaceId)
 pub fn surgeist_runtime::testing::PrototypeApp::open_surface(&mut self, name: &str) -> surgeist_runtime::SurfaceId
 pub const fn surgeist_runtime::testing::PrototypeApp::progress_count(&self) -> usize
 pub fn surgeist_runtime::testing::PrototypeApp::progress_counter(budget: surgeist_runtime::RuntimeBudget) -> Self
@@ -145,9 +128,7 @@ pub fn surgeist_runtime::testing::PrototypeApp::respond(&mut self, request: surg
 pub fn surgeist_runtime::testing::PrototypeApp::response(&self, request: surgeist_runtime::testing::ServiceRequestId) -> core::option::Option<&str>
 pub fn surgeist_runtime::testing::PrototypeApp::search_results(&self) -> &[alloc::string::String]
 pub fn surgeist_runtime::testing::PrototypeApp::service_status(&self, service: surgeist_runtime::ServiceId) -> surgeist_runtime::ServiceStatus
-pub fn surgeist_runtime::testing::PrototypeApp::shared_compile_service() -> Self
-pub fn surgeist_runtime::testing::PrototypeApp::start_import(&mut self, _name: &str) -> surgeist_runtime::TaskHandle
-pub fn surgeist_runtime::testing::PrototypeApp::start_search(&mut self, query: &str, attempt: surgeist_runtime::TaskAttemptId)
+pub fn surgeist_runtime::testing::PrototypeApp::start_search(&mut self, query: &str, attempt: surgeist_runtime::TaskIntentAttemptId)
 pub fn surgeist_runtime::testing::PrototypeApp::timeout(&mut self, request: surgeist_runtime::testing::ServiceRequestId)
 pub struct surgeist_runtime::testing::ServiceRequestId(_)
 pub struct surgeist_runtime::testing::ThumbnailImportExample
@@ -158,7 +139,6 @@ pub fn surgeist_runtime::testing::ThumbnailImportExample::drain_once(&mut self) 
 pub const fn surgeist_runtime::testing::ThumbnailImportExample::fake_wake(&self) -> &surgeist_runtime::testing::FakeWakeBridge
 pub fn surgeist_runtime::testing::ThumbnailImportExample::finish_thumbnail(&mut self, index: usize)
 pub const fn surgeist_runtime::testing::ThumbnailImportExample::gallery_surface(&self) -> surgeist_runtime::SurfaceId
-pub fn surgeist_runtime::testing::ThumbnailImportExample::import_task_status(&self) -> surgeist_runtime::TaskStatus
 pub fn surgeist_runtime::testing::ThumbnailImportExample::initial_tile_count(&self) -> usize
 pub fn surgeist_runtime::testing::ThumbnailImportExample::navigate_away(&mut self)
 pub fn surgeist_runtime::testing::ThumbnailImportExample::new() -> Self
@@ -183,21 +163,10 @@ pub surgeist_runtime::AppEffectPayload::StopService(surgeist_runtime::StopServic
 pub enum surgeist_runtime::AppProxyErrorCode
 pub surgeist_runtime::AppProxyErrorCode::QueueOverflow
 pub surgeist_runtime::AppProxyErrorCode::WakeFailed
-pub enum surgeist_runtime::BlockingPolicy
-pub surgeist_runtime::BlockingPolicy::Abortable
-pub surgeist_runtime::BlockingPolicy::Blocking
-pub surgeist_runtime::BlockingPolicy::NonAbortableReportCancelling
 pub enum surgeist_runtime::DiagnosticSeverity
 pub surgeist_runtime::DiagnosticSeverity::Error
 pub surgeist_runtime::DiagnosticSeverity::Info
 pub surgeist_runtime::DiagnosticSeverity::Warning
-pub enum surgeist_runtime::ExecutorEventPayload<Output>
-pub surgeist_runtime::ExecutorEventPayload::Cancelled
-pub surgeist_runtime::ExecutorEventPayload::Completed(Output)
-pub surgeist_runtime::ExecutorEventPayload::Failed(alloc::string::String)
-pub surgeist_runtime::ExecutorEventPayload::Progress
-pub surgeist_runtime::ExecutorEventPayload::Progress::key: surgeist_runtime::CoalescingKey
-pub surgeist_runtime::ExecutorEventPayload::Progress::payload: alloc::string::String
 pub enum surgeist_runtime::FailureVisibility
 pub surgeist_runtime::FailureVisibility::ClearValue
 pub surgeist_runtime::FailureVisibility::KeepStaleValue
@@ -275,26 +244,10 @@ pub surgeist_runtime::SurfaceLifecycle::Occluded
 pub surgeist_runtime::SurfaceLifecycle::Ready
 pub surgeist_runtime::SurfaceLifecycle::Resized
 pub surgeist_runtime::SurfaceLifecycle::Suspended
-pub enum surgeist_runtime::TaskPriority
-pub surgeist_runtime::TaskPriority::High
-pub surgeist_runtime::TaskPriority::Low
-pub surgeist_runtime::TaskPriority::Normal
-pub enum surgeist_runtime::TaskStatus
-pub surgeist_runtime::TaskStatus::Blocked
-pub surgeist_runtime::TaskStatus::Cancelled
-pub surgeist_runtime::TaskStatus::Cancelling
-pub surgeist_runtime::TaskStatus::Completed
-pub surgeist_runtime::TaskStatus::Failed
-pub surgeist_runtime::TaskStatus::FailedToCancel
-pub surgeist_runtime::TaskStatus::FinishedAfterCancel
-pub surgeist_runtime::TaskStatus::Queued
-pub surgeist_runtime::TaskStatus::Running
-pub surgeist_runtime::TaskStatus::Waiting
-pub enum surgeist_runtime::UnobservedPolicy
-pub surgeist_runtime::UnobservedPolicy::Cancel
-pub surgeist_runtime::UnobservedPolicy::Continue
-pub surgeist_runtime::UnobservedPolicy::LowerPriority
-pub surgeist_runtime::UnobservedPolicy::Pause
+pub enum surgeist_runtime::TaskPriorityHint
+pub surgeist_runtime::TaskPriorityHint::High
+pub surgeist_runtime::TaskPriorityHint::Low
+pub surgeist_runtime::TaskPriorityHint::Normal
 pub struct surgeist_runtime::App
 impl surgeist_runtime::App
 pub fn surgeist_runtime::App::descriptor(&self) -> &surgeist_runtime::AppDescriptor
@@ -312,18 +265,18 @@ pub fn surgeist_runtime::AppDescriptor::version(&self) -> &str
 pub struct surgeist_runtime::AppEffect
 impl surgeist_runtime::AppEffect
 pub fn surgeist_runtime::AppEffect::call_service(id: surgeist_runtime::ServiceId, command: surgeist_runtime::ServiceCommandName, payload: surgeist_runtime::ServiceCommandPayload, correlation: surgeist_runtime::CorrelationId) -> Self
-pub fn surgeist_runtime::AppEffect::cancel_task(handle: surgeist_runtime::TaskHandle) -> Self
+pub fn surgeist_runtime::AppEffect::cancel_task(handle: surgeist_runtime::TaskIntentHandle) -> Self
 pub fn surgeist_runtime::AppEffect::diagnostic(diagnostic: surgeist_runtime::Diagnostic) -> Self
 pub fn surgeist_runtime::AppEffect::invalidate_resource(id: surgeist_runtime::ResourceId, reason: impl core::convert::Into<alloc::string::String>) -> Self
 pub fn surgeist_runtime::AppEffect::kind(&self) -> &surgeist_runtime::EffectKindId
 pub fn surgeist_runtime::AppEffect::load_resource(id: surgeist_runtime::ResourceId, scope: surgeist_runtime::AppScope) -> Self
 pub const fn surgeist_runtime::AppEffect::payload(&self) -> &surgeist_runtime::AppEffectPayload
 pub fn surgeist_runtime::AppEffect::persist(key: impl core::convert::Into<alloc::string::String>, scope: surgeist_runtime::AppScope) -> Self
-pub fn surgeist_runtime::AppEffect::reprioritize_task(handle: surgeist_runtime::TaskHandle, priority: surgeist_runtime::TaskPriority) -> Self
+pub fn surgeist_runtime::AppEffect::reprioritize_task(handle: surgeist_runtime::TaskIntentHandle, priority: surgeist_runtime::TaskPriorityHint) -> Self
 pub fn surgeist_runtime::AppEffect::request_redraw(target: surgeist_runtime::RedrawTarget) -> Self
 pub fn surgeist_runtime::AppEffect::service_diagnostic(id: surgeist_runtime::ServiceId, diagnostic: surgeist_runtime::Diagnostic) -> Self
 pub fn surgeist_runtime::AppEffect::start_service(id: surgeist_runtime::ServiceId) -> Self
-pub fn surgeist_runtime::AppEffect::start_task(name: surgeist_runtime::TaskName, key: surgeist_runtime::TaskKey, scope: surgeist_runtime::AppScope) -> Self
+pub fn surgeist_runtime::AppEffect::start_task(name: surgeist_runtime::TaskIntentName, key: surgeist_runtime::TaskIntentKey, scope: surgeist_runtime::AppScope) -> Self
 pub fn surgeist_runtime::AppEffect::stop_service(id: surgeist_runtime::ServiceId) -> Self
 pub struct surgeist_runtime::AppEvent
 impl surgeist_runtime::AppEvent
@@ -439,18 +392,7 @@ pub const fn surgeist_runtime::CallServiceEffect::id(&self) -> &surgeist_runtime
 pub const fn surgeist_runtime::CallServiceEffect::payload(&self) -> &surgeist_runtime::ServiceCommandPayload
 pub struct surgeist_runtime::CancelTaskEffect
 impl surgeist_runtime::CancelTaskEffect
-pub const fn surgeist_runtime::CancelTaskEffect::handle(&self) -> surgeist_runtime::TaskHandle
-pub struct surgeist_runtime::CancellationToken(_)
-impl surgeist_runtime::CancellationToken
-pub fn surgeist_runtime::CancellationToken::cancel(&self)
-pub fn surgeist_runtime::CancellationToken::is_cancelled(&self) -> bool
-pub fn surgeist_runtime::CancellationToken::new() -> Self
-impl core::default::Default for surgeist_runtime::CancellationToken
-pub fn surgeist_runtime::CancellationToken::default() -> Self
-pub struct surgeist_runtime::CoalescingKey(_)
-impl surgeist_runtime::CoalescingKey
-pub fn surgeist_runtime::CoalescingKey::as_str(&self) -> &str
-pub fn surgeist_runtime::CoalescingKey::new(value: impl core::convert::Into<alloc::string::String>) -> Self
+pub const fn surgeist_runtime::CancelTaskEffect::handle(&self) -> surgeist_runtime::TaskIntentHandle
 pub struct surgeist_runtime::CommandDescriptor
 impl surgeist_runtime::CommandDescriptor
 pub fn surgeist_runtime::CommandDescriptor::name(&self) -> &surgeist_runtime::CommandName
@@ -462,11 +404,8 @@ pub fn surgeist_runtime::CommandName::as_str(&self) -> &str
 pub fn surgeist_runtime::CommandName::new(value: impl core::convert::Into<alloc::string::String>) -> Self
 pub struct surgeist_runtime::CoordinationState
 impl surgeist_runtime::CoordinationState
-pub const fn surgeist_runtime::CoordinationState::coalesced_progress_count(&self) -> usize
-pub fn surgeist_runtime::CoordinationState::drain_progress_budgeted(&mut self, budget: usize) -> alloc::vec::Vec<surgeist_runtime::ProgressEvent>
 pub fn surgeist_runtime::CoordinationState::is_observed(&self, target: &surgeist_runtime::SubscriptionTarget) -> bool
 pub fn surgeist_runtime::CoordinationState::observer_count(&self, target: &surgeist_runtime::SubscriptionTarget) -> usize
-pub fn surgeist_runtime::CoordinationState::record_progress(&mut self, event: surgeist_runtime::ProgressEvent)
 pub fn surgeist_runtime::CoordinationState::subscribe(&mut self, subscription: surgeist_runtime::Subscription)
 pub fn surgeist_runtime::CoordinationState::unsubscribe(&mut self, subscription: &surgeist_runtime::Subscription)
 pub struct surgeist_runtime::CorrelationId(_)
@@ -496,8 +435,8 @@ pub fn surgeist_runtime::Diagnostic::root_id(&self) -> core::option::Option<&sur
 pub fn surgeist_runtime::Diagnostic::scope(&self) -> core::option::Option<&surgeist_runtime::AppScope>
 pub fn surgeist_runtime::Diagnostic::service_id(&self) -> core::option::Option<&surgeist_runtime::ServiceId>
 pub const fn surgeist_runtime::Diagnostic::severity(&self) -> surgeist_runtime::DiagnosticSeverity
-pub const fn surgeist_runtime::Diagnostic::task_attempt_id(&self) -> core::option::Option<surgeist_runtime::TaskAttemptId>
-pub const fn surgeist_runtime::Diagnostic::task_id(&self) -> core::option::Option<surgeist_runtime::TaskId>
+pub const fn surgeist_runtime::Diagnostic::task_attempt_id(&self) -> core::option::Option<surgeist_runtime::TaskIntentAttemptId>
+pub const fn surgeist_runtime::Diagnostic::task_id(&self) -> core::option::Option<surgeist_runtime::TaskIntentId>
 pub fn surgeist_runtime::Diagnostic::warning(code: surgeist_runtime::DiagnosticCode, message: impl core::convert::Into<alloc::string::String>, provenance: surgeist_runtime::InputProvenance) -> Self
 pub const fn surgeist_runtime::Diagnostic::window_id(&self) -> core::option::Option<surgeist_window::geometry::Id>
 pub fn surgeist_runtime::Diagnostic::with_app(self, id: surgeist_runtime::AppId) -> Self
@@ -507,7 +446,7 @@ pub fn surgeist_runtime::Diagnostic::with_resource(self, id: surgeist_runtime::R
 pub fn surgeist_runtime::Diagnostic::with_root(self, id: surgeist_runtime::RootId) -> Self
 pub fn surgeist_runtime::Diagnostic::with_scope(self, scope: surgeist_runtime::AppScope) -> Self
 pub fn surgeist_runtime::Diagnostic::with_service(self, id: surgeist_runtime::ServiceId) -> Self
-pub fn surgeist_runtime::Diagnostic::with_task(self, id: surgeist_runtime::TaskId, attempt: surgeist_runtime::TaskAttemptId) -> Self
+pub fn surgeist_runtime::Diagnostic::with_task(self, id: surgeist_runtime::TaskIntentId, attempt: surgeist_runtime::TaskIntentAttemptId) -> Self
 pub fn surgeist_runtime::Diagnostic::with_window(self, id: surgeist_window::geometry::Id) -> Self
 pub struct surgeist_runtime::DiagnosticCode(_)
 impl surgeist_runtime::DiagnosticCode
@@ -519,7 +458,6 @@ pub const surgeist_runtime::DiagnosticCode::QUEUE_OVERFLOW: Self
 pub const surgeist_runtime::DiagnosticCode::REDUCER_ERROR: Self
 pub const surgeist_runtime::DiagnosticCode::SERVICE_MAILBOX_OVERFLOW: Self
 pub const surgeist_runtime::DiagnosticCode::STALE_ELEMENT: Self
-pub const surgeist_runtime::DiagnosticCode::STALE_TASK_EVENT: Self
 pub const surgeist_runtime::DiagnosticCode::SURFACE_DEGRADED: Self
 pub const surgeist_runtime::DiagnosticCode::UNKNOWN_RETAINED_COMMAND: Self
 pub fn surgeist_runtime::DiagnosticCode::as_str(&self) -> &str
@@ -566,28 +504,6 @@ pub struct surgeist_runtime::EventName(_)
 impl surgeist_runtime::EventName
 pub fn surgeist_runtime::EventName::as_str(&self) -> &str
 pub fn surgeist_runtime::EventName::new(value: impl core::convert::Into<alloc::string::String>) -> Self
-pub struct surgeist_runtime::ExecutorError
-impl surgeist_runtime::ExecutorError
-pub fn surgeist_runtime::ExecutorError::invalid_request(message: impl core::convert::Into<alloc::string::String>) -> Self
-pub fn surgeist_runtime::ExecutorError::message(&self) -> &str
-impl core::error::Error for surgeist_runtime::ExecutorError
-impl core::fmt::Display for surgeist_runtime::ExecutorError
-pub fn surgeist_runtime::ExecutorError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub struct surgeist_runtime::ExecutorEvent<Output>
-impl<Output> surgeist_runtime::ExecutorEvent<Output>
-pub const fn surgeist_runtime::ExecutorEvent<Output>::attempt_id(&self) -> surgeist_runtime::TaskAttemptId
-pub const fn surgeist_runtime::ExecutorEvent<Output>::cancelled(task_id: surgeist_runtime::TaskId, attempt_id: surgeist_runtime::TaskAttemptId) -> Self
-pub const fn surgeist_runtime::ExecutorEvent<Output>::completed(task_id: surgeist_runtime::TaskId, attempt_id: surgeist_runtime::TaskAttemptId, output: Output) -> Self
-pub fn surgeist_runtime::ExecutorEvent<Output>::failed(task_id: surgeist_runtime::TaskId, attempt_id: surgeist_runtime::TaskAttemptId, message: impl core::convert::Into<alloc::string::String>) -> Self
-pub const fn surgeist_runtime::ExecutorEvent<Output>::new(task_id: surgeist_runtime::TaskId, attempt_id: surgeist_runtime::TaskAttemptId, payload: surgeist_runtime::ExecutorEventPayload<Output>) -> Self
-pub const fn surgeist_runtime::ExecutorEvent<Output>::payload(&self) -> &surgeist_runtime::ExecutorEventPayload<Output>
-pub fn surgeist_runtime::ExecutorEvent<Output>::progress(task_id: surgeist_runtime::TaskId, attempt_id: surgeist_runtime::TaskAttemptId, key: surgeist_runtime::CoalescingKey, payload: impl core::convert::Into<alloc::string::String>) -> Self
-pub const fn surgeist_runtime::ExecutorEvent<Output>::task_id(&self) -> surgeist_runtime::TaskId
-pub struct surgeist_runtime::ExecutorTaskHandle
-impl surgeist_runtime::ExecutorTaskHandle
-pub const fn surgeist_runtime::ExecutorTaskHandle::attempt_id(&self) -> surgeist_runtime::TaskAttemptId
-pub const fn surgeist_runtime::ExecutorTaskHandle::new(task_id: surgeist_runtime::TaskId, attempt_id: surgeist_runtime::TaskAttemptId) -> Self
-pub const fn surgeist_runtime::ExecutorTaskHandle::task_id(&self) -> surgeist_runtime::TaskId
 pub struct surgeist_runtime::ExpressionId(_)
 impl surgeist_runtime::ExpressionId
 pub fn surgeist_runtime::ExpressionId::as_str(&self) -> &str
@@ -598,20 +514,6 @@ pub fn surgeist_runtime::testing::FakeClock::advance(&mut self, duration: core::
 pub fn surgeist_runtime::testing::FakeClock::drain_due_timers(&mut self) -> alloc::vec::Vec<alloc::string::String>
 pub const fn surgeist_runtime::testing::FakeClock::now(&self) -> core::time::Duration
 pub fn surgeist_runtime::testing::FakeClock::schedule_timer(&mut self, id: impl core::convert::Into<alloc::string::String>, delay: core::time::Duration)
-pub struct surgeist_runtime::FakeExecutor<Input>
-impl<Input> surgeist_runtime::FakeExecutor<Input>
-pub fn surgeist_runtime::FakeExecutor<Input>::cancel(&mut self, handle: surgeist_runtime::TaskHandle) -> core::result::Result<(), surgeist_runtime::ExecutorError>
-pub fn surgeist_runtime::FakeExecutor<Input>::cancelled(&self) -> &[surgeist_runtime::TaskHandle]
-pub fn surgeist_runtime::FakeExecutor<Input>::spawn_blocking_task(&mut self, request: surgeist_runtime::SpawnRequest<Input>) -> core::result::Result<surgeist_runtime::ExecutorTaskHandle, surgeist_runtime::ExecutorError>
-pub fn surgeist_runtime::FakeExecutor<Input>::spawn_task(&mut self, request: surgeist_runtime::SpawnRequest<Input>) -> core::result::Result<surgeist_runtime::ExecutorTaskHandle, surgeist_runtime::ExecutorError>
-pub fn surgeist_runtime::FakeExecutor<Input>::spawned(&self) -> &[surgeist_runtime::SpawnRequest<Input>]
-impl<Input> core::default::Default for surgeist_runtime::FakeExecutor<Input>
-pub fn surgeist_runtime::FakeExecutor<Input>::default() -> Self
-impl<Input> surgeist_runtime::RuntimeExecutor<Input> for surgeist_runtime::FakeExecutor<Input>
-pub fn surgeist_runtime::FakeExecutor<Input>::cancel(&mut self, handle: surgeist_runtime::TaskHandle) -> core::result::Result<(), surgeist_runtime::ExecutorError>
-pub fn surgeist_runtime::FakeExecutor<Input>::name(&self) -> &'static str
-pub fn surgeist_runtime::FakeExecutor<Input>::spawn_blocking_task(&mut self, request: surgeist_runtime::SpawnRequest<Input>) -> core::result::Result<surgeist_runtime::ExecutorTaskHandle, surgeist_runtime::ExecutorError>
-pub fn surgeist_runtime::FakeExecutor<Input>::spawn_task(&mut self, request: surgeist_runtime::SpawnRequest<Input>) -> core::result::Result<surgeist_runtime::ExecutorTaskHandle, surgeist_runtime::ExecutorError>
 pub struct surgeist_runtime::FakeWakeBridge
 impl surgeist_runtime::testing::FakeWakeBridge
 pub fn surgeist_runtime::testing::FakeWakeBridge::closed() -> Self
@@ -637,7 +539,6 @@ pub const fn surgeist_runtime::testing::HeadlessHarness<State, R, Input>::clock(
 pub fn surgeist_runtime::testing::HeadlessHarness<State, R, Input>::clock_mut(&mut self) -> &mut surgeist_runtime::testing::FakeClock
 pub fn surgeist_runtime::testing::HeadlessHarness<State, R, Input>::due_timers(&mut self) -> alloc::vec::Vec<alloc::string::String>
 pub fn surgeist_runtime::testing::HeadlessHarness<State, R, Input>::enqueue_ui(&mut self, input: Input, provenance: surgeist_runtime::InputProvenance) -> core::result::Result<(), surgeist_runtime::RuntimeInputError>
-pub fn surgeist_runtime::testing::HeadlessHarness<State, R, Input>::fake_executor(&self) -> std::sync::poison::mutex::MutexGuard<'_, surgeist_runtime::FakeExecutor<Input>>
 pub const fn surgeist_runtime::testing::HeadlessHarness<State, R, Input>::fake_window(&self) -> &surgeist_runtime::testing::FakeWindowBridge
 pub const fn surgeist_runtime::testing::HeadlessHarness<State, R, Input>::last_report(&self) -> core::option::Option<&surgeist_runtime::RuntimeDrainReport>
 pub fn surgeist_runtime::testing::HeadlessHarness<State, R, Input>::new(state: State, reducer: R) -> Self
@@ -661,9 +562,9 @@ pub fn surgeist_runtime::InputProvenance::service_id(&self) -> core::option::Opt
 pub fn surgeist_runtime::InputProvenance::source(&self) -> &surgeist_runtime::InputSourceId
 pub fn surgeist_runtime::InputProvenance::surface_id(&self) -> core::option::Option<surgeist_runtime::SurfaceId>
 pub fn surgeist_runtime::InputProvenance::system() -> Self
-pub fn surgeist_runtime::InputProvenance::task(task_id: surgeist_runtime::TaskId, attempt_id: surgeist_runtime::TaskAttemptId) -> Self
-pub fn surgeist_runtime::InputProvenance::task_attempt_id(&self) -> core::option::Option<surgeist_runtime::TaskAttemptId>
-pub fn surgeist_runtime::InputProvenance::task_id(&self) -> core::option::Option<surgeist_runtime::TaskId>
+pub fn surgeist_runtime::InputProvenance::task(task_id: surgeist_runtime::TaskIntentId, attempt_id: surgeist_runtime::TaskIntentAttemptId) -> Self
+pub fn surgeist_runtime::InputProvenance::task_attempt_id(&self) -> core::option::Option<surgeist_runtime::TaskIntentAttemptId>
+pub fn surgeist_runtime::InputProvenance::task_id(&self) -> core::option::Option<surgeist_runtime::TaskIntentId>
 pub fn surgeist_runtime::InputProvenance::ui(surface_id: surgeist_runtime::SurfaceId) -> Self
 pub fn surgeist_runtime::InputProvenance::window(surface_id: surgeist_runtime::SurfaceId) -> Self
 pub fn surgeist_runtime::InputProvenance::with_correlation(self, id: surgeist_runtime::CorrelationId) -> Self
@@ -700,13 +601,6 @@ pub struct surgeist_runtime::PersistEffect
 impl surgeist_runtime::PersistEffect
 pub fn surgeist_runtime::PersistEffect::key(&self) -> &str
 pub const fn surgeist_runtime::PersistEffect::scope(&self) -> &surgeist_runtime::AppScope
-pub struct surgeist_runtime::ProgressEvent
-impl surgeist_runtime::ProgressEvent
-pub const fn surgeist_runtime::ProgressEvent::attempt_id(&self) -> surgeist_runtime::TaskAttemptId
-pub const fn surgeist_runtime::ProgressEvent::key(&self) -> &surgeist_runtime::CoalescingKey
-pub fn surgeist_runtime::ProgressEvent::new(task_id: surgeist_runtime::TaskId, attempt_id: surgeist_runtime::TaskAttemptId, key: surgeist_runtime::CoalescingKey, payload: impl core::convert::Into<alloc::string::String>) -> Self
-pub fn surgeist_runtime::ProgressEvent::payload(&self) -> &str
-pub const fn surgeist_runtime::ProgressEvent::task_id(&self) -> surgeist_runtime::TaskId
 pub struct surgeist_runtime::QueueDiagnostic
 impl surgeist_runtime::QueueDiagnostic
 pub const fn surgeist_runtime::QueueDiagnostic::age_ms(&self) -> core::option::Option<u64>
@@ -734,8 +628,8 @@ pub fn surgeist_runtime::ReducerResult::with_effects(self, effects: surgeist_run
 pub fn surgeist_runtime::ReducerResult::with_provenance(self, provenance: surgeist_runtime::InputProvenance) -> Self
 pub struct surgeist_runtime::ReprioritizeTaskEffect
 impl surgeist_runtime::ReprioritizeTaskEffect
-pub const fn surgeist_runtime::ReprioritizeTaskEffect::handle(&self) -> surgeist_runtime::TaskHandle
-pub const fn surgeist_runtime::ReprioritizeTaskEffect::priority(&self) -> surgeist_runtime::TaskPriority
+pub const fn surgeist_runtime::ReprioritizeTaskEffect::handle(&self) -> surgeist_runtime::TaskIntentHandle
+pub const fn surgeist_runtime::ReprioritizeTaskEffect::priority(&self) -> surgeist_runtime::TaskPriorityHint
 pub struct surgeist_runtime::RequestRedrawEffect
 impl surgeist_runtime::RequestRedrawEffect
 pub const fn surgeist_runtime::RequestRedrawEffect::target(&self) -> &surgeist_runtime::RedrawTarget
@@ -814,10 +708,8 @@ pub fn surgeist_runtime::Runtime<State, R, Input>::enqueue_task(&mut self, input
 pub fn surgeist_runtime::Runtime<State, R, Input>::enqueue_ui(&mut self, input: surgeist_runtime::UiInput<Input>)
 pub fn surgeist_runtime::Runtime<State, R, Input>::new(state: State, reducer: R) -> Self
 pub const fn surgeist_runtime::Runtime<State, R, Input>::queue_policy(&self) -> surgeist_runtime::RuntimeQueuePolicy
-pub fn surgeist_runtime::Runtime<State, R, Input>::register_task_record(&mut self, record: surgeist_runtime::TaskRecord)
 pub const fn surgeist_runtime::Runtime<State, R, Input>::state(&self) -> &State
 pub const fn surgeist_runtime::Runtime<State, R, Input>::state_version(&self) -> surgeist_runtime::StateVersion
-pub fn surgeist_runtime::Runtime<State, R, Input>::with_executor(self, executor: alloc::boxed::Box<dyn surgeist_runtime::RuntimeExecutor<Input>>) -> Self
 pub const fn surgeist_runtime::Runtime<State, R, Input>::with_queue_policy(self, policy: surgeist_runtime::RuntimeQueuePolicy) -> Self
 impl core::default::Default for surgeist_runtime::Runtime<(), (), ()>
 pub fn surgeist_runtime::Runtime<(), (), ()>::default() -> Self
@@ -832,12 +724,12 @@ pub fn surgeist_runtime::RuntimeBudget::default() -> Self
 pub struct surgeist_runtime::RuntimeDrainReport
 impl surgeist_runtime::RuntimeDrainReport
 pub const fn surgeist_runtime::RuntimeDrainReport::drained_inputs(&self) -> usize
-pub const fn surgeist_runtime::RuntimeDrainReport::dropped_stale_task_events(&self) -> usize
 pub const fn surgeist_runtime::RuntimeDrainReport::executed_effects(&self) -> usize
 pub const fn surgeist_runtime::RuntimeDrainReport::first_drained_lane(&self) -> core::option::Option<surgeist_runtime::RuntimeLane>
 pub fn surgeist_runtime::RuntimeDrainReport::redraw_requests(&self) -> &[surgeist_runtime::SurfaceId]
 pub const fn surgeist_runtime::RuntimeDrainReport::reducer_errors(&self) -> usize
 pub const fn surgeist_runtime::RuntimeDrainReport::remaining_task_inputs(&self) -> usize
+pub fn surgeist_runtime::RuntimeDrainReport::task_intents(&self) -> &[surgeist_runtime::AppEffect]
 pub struct surgeist_runtime::RuntimeInputError
 impl surgeist_runtime::RuntimeInputError
 pub const fn surgeist_runtime::RuntimeInputError::lane(&self) -> surgeist_runtime::RuntimeLane
@@ -914,26 +806,13 @@ pub struct surgeist_runtime::SnapshotSourceType(_)
 impl surgeist_runtime::SnapshotSourceType
 pub const fn surgeist_runtime::SnapshotSourceType::as_str(self) -> &'static str
 pub const fn surgeist_runtime::SnapshotSourceType::new(value: &'static str) -> Self
-pub struct surgeist_runtime::SpawnRequest<Input>
-impl surgeist_runtime::SpawnRequest
-pub fn surgeist_runtime::SpawnRequest::new(task_id: surgeist_runtime::TaskId, attempt_id: surgeist_runtime::TaskAttemptId, key: surgeist_runtime::TaskKey, scope: surgeist_runtime::AppScope) -> Self
-pub fn surgeist_runtime::SpawnRequest::with_input<Input>(self, input: Input) -> surgeist_runtime::SpawnRequest<Input>
-impl<Input> surgeist_runtime::SpawnRequest<Input>
-pub const fn surgeist_runtime::SpawnRequest<Input>::attempt_id(&self) -> surgeist_runtime::TaskAttemptId
-pub const fn surgeist_runtime::SpawnRequest<Input>::blocking_policy(&self) -> surgeist_runtime::BlockingPolicy
-pub fn surgeist_runtime::SpawnRequest<Input>::from_start_effect(task_id: surgeist_runtime::TaskId, attempt_id: surgeist_runtime::TaskAttemptId, effect: &surgeist_runtime::StartTaskEffect) -> Self
-pub const fn surgeist_runtime::SpawnRequest<Input>::input(&self) -> core::option::Option<&Input>
-pub fn surgeist_runtime::SpawnRequest<Input>::key(&self) -> &surgeist_runtime::TaskKey
-pub const fn surgeist_runtime::SpawnRequest<Input>::scope(&self) -> &surgeist_runtime::AppScope
-pub const fn surgeist_runtime::SpawnRequest<Input>::task_id(&self) -> surgeist_runtime::TaskId
-pub fn surgeist_runtime::SpawnRequest<Input>::with_blocking_policy(self, blocking: surgeist_runtime::BlockingPolicy) -> Self
 pub struct surgeist_runtime::StartServiceEffect
 impl surgeist_runtime::StartServiceEffect
 pub const fn surgeist_runtime::StartServiceEffect::id(&self) -> &surgeist_runtime::ServiceId
 pub struct surgeist_runtime::StartTaskEffect
 impl surgeist_runtime::StartTaskEffect
-pub fn surgeist_runtime::StartTaskEffect::key(&self) -> &surgeist_runtime::TaskKey
-pub fn surgeist_runtime::StartTaskEffect::name(&self) -> &surgeist_runtime::TaskName
+pub fn surgeist_runtime::StartTaskEffect::key(&self) -> &surgeist_runtime::TaskIntentKey
+pub fn surgeist_runtime::StartTaskEffect::name(&self) -> &surgeist_runtime::TaskIntentName
 pub const fn surgeist_runtime::StartTaskEffect::scope(&self) -> &surgeist_runtime::AppScope
 pub struct surgeist_runtime::StartupWindow
 impl surgeist_runtime::StartupWindow
@@ -961,7 +840,7 @@ pub fn surgeist_runtime::Subscription::scope(self, scope: surgeist_runtime::AppS
 pub const fn surgeist_runtime::Subscription::scope_ref(&self) -> &surgeist_runtime::AppScope
 pub fn surgeist_runtime::Subscription::service(id: surgeist_runtime::ServiceId) -> Self
 pub fn surgeist_runtime::Subscription::target(&self) -> surgeist_runtime::SubscriptionTarget
-pub fn surgeist_runtime::Subscription::task(key: surgeist_runtime::TaskKey) -> Self
+pub fn surgeist_runtime::Subscription::task(key: surgeist_runtime::TaskIntentKey) -> Self
 pub const fn surgeist_runtime::Subscription::with_priority(self, priority: surgeist_runtime::SubscriptionPriority) -> Self
 pub struct surgeist_runtime::SubscriptionTarget
 impl surgeist_runtime::SubscriptionTarget
@@ -970,7 +849,7 @@ pub fn surgeist_runtime::SubscriptionTarget::kind(&self) -> &surgeist_runtime::S
 pub fn surgeist_runtime::SubscriptionTarget::new(kind: surgeist_runtime::SubscriptionTargetKindId, key: impl core::convert::Into<alloc::string::String>) -> Self
 pub fn surgeist_runtime::SubscriptionTarget::resource(id: surgeist_runtime::ResourceId) -> Self
 pub fn surgeist_runtime::SubscriptionTarget::service(id: surgeist_runtime::ServiceId) -> Self
-pub fn surgeist_runtime::SubscriptionTarget::task(key: surgeist_runtime::TaskKey) -> Self
+pub fn surgeist_runtime::SubscriptionTarget::task(key: surgeist_runtime::TaskIntentKey) -> Self
 pub struct surgeist_runtime::SubscriptionTargetKindId(_)
 impl surgeist_runtime::SubscriptionTargetKindId
 pub const surgeist_runtime::SubscriptionTargetKindId::RESOURCE: Self
@@ -992,80 +871,37 @@ impl surgeist_runtime::SurfaceRetainedRoot
 pub const fn surgeist_runtime::SurfaceRetainedRoot::generation(self) -> u64
 pub const fn surgeist_runtime::SurfaceRetainedRoot::retained_id(self) -> surgeist_retained::identity::Id
 pub const fn surgeist_runtime::SurfaceRetainedRoot::surface_id(self) -> surgeist_runtime::SurfaceId
-pub struct surgeist_runtime::TaskAttemptId(_)
-impl surgeist_runtime::TaskAttemptId
-pub const fn surgeist_runtime::TaskAttemptId::as_u64(self) -> u64
-pub const fn surgeist_runtime::TaskAttemptId::from_u64(value: u64) -> Self
 pub struct surgeist_runtime::TaskDescriptor
 impl surgeist_runtime::TaskDescriptor
 pub const fn surgeist_runtime::TaskDescriptor::input_type(&self) -> &'static str
-pub fn surgeist_runtime::TaskDescriptor::name(&self) -> &surgeist_runtime::TaskName
-pub const fn surgeist_runtime::TaskDescriptor::new(name: surgeist_runtime::TaskName, input_type: &'static str) -> Self
-pub struct surgeist_runtime::TaskHandle
-impl surgeist_runtime::TaskHandle
-pub const fn surgeist_runtime::TaskHandle::attempt_id(&self) -> surgeist_runtime::TaskAttemptId
-pub const fn surgeist_runtime::TaskHandle::new(task_id: surgeist_runtime::TaskId, attempt_id: surgeist_runtime::TaskAttemptId) -> Self
-pub const fn surgeist_runtime::TaskHandle::task_id(&self) -> surgeist_runtime::TaskId
-pub struct surgeist_runtime::TaskId(_)
-impl surgeist_runtime::TaskId
-pub const fn surgeist_runtime::TaskId::as_u64(self) -> u64
-pub const fn surgeist_runtime::TaskId::from_u64(value: u64) -> Self
+pub fn surgeist_runtime::TaskDescriptor::name(&self) -> &surgeist_runtime::TaskIntentName
+pub const fn surgeist_runtime::TaskDescriptor::new(name: surgeist_runtime::TaskIntentName, input_type: &'static str) -> Self
 pub struct surgeist_runtime::TaskInput<Input>
 impl<Input> surgeist_runtime::TaskInput<Input>
 pub fn surgeist_runtime::TaskInput<Input>::into_app_input(self) -> surgeist_runtime::AppInput<Input>
 pub fn surgeist_runtime::TaskInput<Input>::new(payload: Input, provenance: surgeist_runtime::InputProvenance) -> core::result::Result<Self, surgeist_runtime::RuntimeInputError>
-pub struct surgeist_runtime::TaskKey(_)
-impl surgeist_runtime::TaskKey
-pub fn surgeist_runtime::TaskKey::as_str(&self) -> &str
-pub fn surgeist_runtime::TaskKey::new(value: impl core::convert::Into<alloc::string::String>) -> Self
-pub struct surgeist_runtime::TaskName(_)
-impl surgeist_runtime::TaskName
-pub fn surgeist_runtime::TaskName::as_str(&self) -> &str
-pub fn surgeist_runtime::TaskName::new(value: impl core::convert::Into<alloc::string::String>) -> Self
-pub struct surgeist_runtime::TaskPolicy
-impl surgeist_runtime::TaskPolicy
-pub const fn surgeist_runtime::TaskPolicy::cancel_when_unobserved() -> Self
-pub const fn surgeist_runtime::TaskPolicy::continue_when_unobserved() -> Self
-pub const fn surgeist_runtime::TaskPolicy::dedupe_by_key(self) -> Self
-pub const fn surgeist_runtime::TaskPolicy::dedupes_by_key(&self) -> bool
-pub const fn surgeist_runtime::TaskPolicy::priority(&self) -> surgeist_runtime::TaskPriority
-pub const fn surgeist_runtime::TaskPolicy::retry_limit(&self) -> core::option::Option<u32>
-pub const fn surgeist_runtime::TaskPolicy::unobserved(&self) -> surgeist_runtime::UnobservedPolicy
-pub const fn surgeist_runtime::TaskPolicy::with_priority(self, priority: surgeist_runtime::TaskPriority) -> Self
-pub const fn surgeist_runtime::TaskPolicy::with_retry_limit(self, retry_limit: u32) -> Self
+pub struct surgeist_runtime::TaskIntentAttemptId(_)
+impl surgeist_runtime::TaskIntentAttemptId
+pub const fn surgeist_runtime::TaskIntentAttemptId::as_u64(self) -> u64
+pub const fn surgeist_runtime::TaskIntentAttemptId::from_u64(value: u64) -> Self
+pub struct surgeist_runtime::TaskIntentHandle
+impl surgeist_runtime::TaskIntentHandle
+pub const fn surgeist_runtime::TaskIntentHandle::attempt_id(self) -> surgeist_runtime::TaskIntentAttemptId
+pub const fn surgeist_runtime::TaskIntentHandle::id(self) -> surgeist_runtime::TaskIntentId
+pub const fn surgeist_runtime::TaskIntentHandle::new(id: surgeist_runtime::TaskIntentId, attempt_id: surgeist_runtime::TaskIntentAttemptId) -> Self
+pub struct surgeist_runtime::TaskIntentId(_)
+impl surgeist_runtime::TaskIntentId
+pub const fn surgeist_runtime::TaskIntentId::as_u64(self) -> u64
+pub const fn surgeist_runtime::TaskIntentId::from_u64(value: u64) -> Self
+pub struct surgeist_runtime::TaskIntentKey(_)
+impl surgeist_runtime::TaskIntentKey
+pub fn surgeist_runtime::TaskIntentKey::as_str(&self) -> &str
+pub fn surgeist_runtime::TaskIntentKey::new(value: impl core::convert::Into<alloc::string::String>) -> Self
+pub struct surgeist_runtime::TaskIntentName(_)
+impl surgeist_runtime::TaskIntentName
+pub fn surgeist_runtime::TaskIntentName::as_str(&self) -> &str
+pub fn surgeist_runtime::TaskIntentName::new(value: impl core::convert::Into<alloc::string::String>) -> Self
 pub struct surgeist_runtime::TaskProvenance
-pub struct surgeist_runtime::TaskRecord
-impl surgeist_runtime::TaskRecord
-pub fn surgeist_runtime::TaskRecord::accepts_attempt(&self, attempt_id: surgeist_runtime::TaskAttemptId) -> bool
-pub const fn surgeist_runtime::TaskRecord::attempt_id(&self) -> core::option::Option<surgeist_runtime::TaskAttemptId>
-pub const fn surgeist_runtime::TaskRecord::cancellation(&self) -> &surgeist_runtime::CancellationToken
-pub const fn surgeist_runtime::TaskRecord::id(&self) -> surgeist_runtime::TaskId
-pub fn surgeist_runtime::TaskRecord::key(&self) -> &surgeist_runtime::TaskKey
-pub fn surgeist_runtime::TaskRecord::mark_finished_after_cancel(&mut self)
-pub fn surgeist_runtime::TaskRecord::mark_running(&mut self)
-pub const fn surgeist_runtime::TaskRecord::observers(&self) -> usize
-pub const fn surgeist_runtime::TaskRecord::policy(&self) -> &surgeist_runtime::TaskPolicy
-pub fn surgeist_runtime::TaskRecord::queued(id: surgeist_runtime::TaskId, key: surgeist_runtime::TaskKey, scope: surgeist_runtime::AppScope, policy: surgeist_runtime::TaskPolicy) -> Self
-pub fn surgeist_runtime::TaskRecord::reject_stale(&self, attempt_id: surgeist_runtime::TaskAttemptId) -> surgeist_runtime::Diagnostic
-pub fn surgeist_runtime::TaskRecord::request_cancel(&mut self) -> surgeist_runtime::CancellationToken
-pub fn surgeist_runtime::TaskRecord::running_for_test(id: surgeist_runtime::TaskId, key: surgeist_runtime::TaskKey, scope: surgeist_runtime::AppScope, policy: surgeist_runtime::TaskPolicy, attempt_id: surgeist_runtime::TaskAttemptId) -> Self
-pub const fn surgeist_runtime::TaskRecord::scope(&self) -> &surgeist_runtime::AppScope
-pub fn surgeist_runtime::TaskRecord::start_attempt(&mut self, attempt_id: surgeist_runtime::TaskAttemptId) -> surgeist_runtime::TaskAttemptId
-pub const fn surgeist_runtime::TaskRecord::status(&self) -> surgeist_runtime::TaskStatus
-pub struct surgeist_runtime::TaskRegistration<Input>
-impl<Input> surgeist_runtime::TaskRegistration<Input>
-pub fn surgeist_runtime::TaskRegistration<Input>::id(&self) -> &surgeist_runtime::TaskName
-pub fn surgeist_runtime::TaskRegistration<Input>::key(self, key: impl core::ops::function::Fn(&Input) -> surgeist_runtime::TaskKey + core::marker::Send + core::marker::Sync + 'static) -> Self
-pub fn surgeist_runtime::TaskRegistration<Input>::key_for(&self, input: &Input) -> surgeist_runtime::TaskKey
-pub fn surgeist_runtime::TaskRegistration<Input>::new(id: impl core::convert::Into<alloc::string::String>) -> Self
-pub const fn surgeist_runtime::TaskRegistration<Input>::policy(&self) -> &surgeist_runtime::TaskPolicy
-pub fn surgeist_runtime::TaskRegistration<Input>::scope(self, scope: impl core::ops::function::Fn(&Input) -> surgeist_runtime::AppScope + core::marker::Send + core::marker::Sync + 'static) -> Self
-pub fn surgeist_runtime::TaskRegistration<Input>::scope_for(&self, input: &Input) -> surgeist_runtime::AppScope
-pub fn surgeist_runtime::TaskRegistration<Input>::with_policy(self, policy: surgeist_runtime::TaskPolicy) -> Self
-impl<Input> core::clone::Clone for surgeist_runtime::TaskRegistration<Input>
-pub fn surgeist_runtime::TaskRegistration<Input>::clone(&self) -> Self
-impl<Input> core::fmt::Debug for surgeist_runtime::TaskRegistration<Input>
-pub fn surgeist_runtime::TaskRegistration<Input>::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_runtime::UiInput<Input>
 impl<Input> surgeist_runtime::UiInput<Input>
 pub fn surgeist_runtime::UiInput<Input>::into_app_input(self) -> surgeist_runtime::AppInput<Input>
@@ -1131,16 +967,6 @@ pub trait surgeist_runtime::ResourceStateReadyTransition<T>
 pub fn surgeist_runtime::ResourceStateReadyTransition::ready(&mut self, value: T, freshness: surgeist_runtime::Freshness)
 impl<T, E> surgeist_runtime::ResourceStateReadyTransition<T> for surgeist_runtime::ResourceState<T, E>
 pub fn surgeist_runtime::ResourceState<T, E>::ready(&mut self, value: T, freshness: surgeist_runtime::Freshness)
-pub trait surgeist_runtime::RuntimeExecutor<Input>
-pub fn surgeist_runtime::RuntimeExecutor::cancel(&mut self, handle: surgeist_runtime::TaskHandle) -> core::result::Result<(), surgeist_runtime::ExecutorError>
-pub fn surgeist_runtime::RuntimeExecutor::name(&self) -> &'static str
-pub fn surgeist_runtime::RuntimeExecutor::spawn_blocking_task(&mut self, request: surgeist_runtime::SpawnRequest<Input>) -> core::result::Result<surgeist_runtime::ExecutorTaskHandle, surgeist_runtime::ExecutorError>
-pub fn surgeist_runtime::RuntimeExecutor::spawn_task(&mut self, request: surgeist_runtime::SpawnRequest<Input>) -> core::result::Result<surgeist_runtime::ExecutorTaskHandle, surgeist_runtime::ExecutorError>
-impl<Input> surgeist_runtime::RuntimeExecutor<Input> for surgeist_runtime::FakeExecutor<Input>
-pub fn surgeist_runtime::FakeExecutor<Input>::cancel(&mut self, handle: surgeist_runtime::TaskHandle) -> core::result::Result<(), surgeist_runtime::ExecutorError>
-pub fn surgeist_runtime::FakeExecutor<Input>::name(&self) -> &'static str
-pub fn surgeist_runtime::FakeExecutor<Input>::spawn_blocking_task(&mut self, request: surgeist_runtime::SpawnRequest<Input>) -> core::result::Result<surgeist_runtime::ExecutorTaskHandle, surgeist_runtime::ExecutorError>
-pub fn surgeist_runtime::FakeExecutor<Input>::spawn_task(&mut self, request: surgeist_runtime::SpawnRequest<Input>) -> core::result::Result<surgeist_runtime::ExecutorTaskHandle, surgeist_runtime::ExecutorError>
 pub trait surgeist_runtime::WakeBridge: core::marker::Send + core::marker::Sync + 'static
 pub fn surgeist_runtime::WakeBridge::wake(&self) -> core::result::Result<(), surgeist_runtime::AppProxyError>
 impl surgeist_runtime::WakeBridge for surgeist_runtime::testing::FakeWakeBridge

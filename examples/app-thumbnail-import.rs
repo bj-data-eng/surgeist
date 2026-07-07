@@ -1,4 +1,4 @@
-use surgeist::app::{ResourceStatus, TaskStatus, testing::ThumbnailImportExample};
+use surgeist::app::{ResourceStatus, testing::ThumbnailImportExample};
 
 fn main() {
     let mut example = ThumbnailImportExample::new();
@@ -19,7 +19,6 @@ fn main() {
     example.navigate_away();
     example.drain_all();
     assert_eq!(example.thumbnail_status(0), ResourceStatus::Ready);
-    assert_eq!(example.import_task_status(), TaskStatus::Running);
     assert!(
         example
             .redrawn_surfaces()
@@ -28,5 +27,4 @@ fn main() {
 
     println!("initial_tiles={}", example.initial_tile_count());
     println!("thumbnail_0=ready");
-    println!("import=running");
 }

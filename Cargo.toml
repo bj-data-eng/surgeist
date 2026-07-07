@@ -29,7 +29,6 @@ surgeist-window = { path = "crates/surgeist-window", version = "=0.1.0" }
 
 [features]
 default = []
-app-runtime-tokio = ["surgeist-runtime/runtime-tokio"]
 dialog-system = ["surgeist-dialog/system"]
 render-web = ["surgeist-render/render-web"]
 render-window = ["surgeist-render/render-window"]
