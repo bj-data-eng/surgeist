@@ -7,6 +7,9 @@
 //! host adapters that do not own app semantics.
 
 pub mod adapters;
+pub mod animation {
+    pub use surgeist_animation::*;
+}
 pub mod app {
     pub use surgeist_runtime::*;
 }

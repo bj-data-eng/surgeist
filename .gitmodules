@@ -37,3 +37,6 @@
 [submodule "crates/surgeist-runtime"]
 	path = crates/surgeist-runtime
 	url = https://github.com/bj-data-eng/surgeist-runtime.git
+[submodule "crates/surgeist-animation"]
+	path = crates/surgeist-animation
+	url = https://github.com/bj-data-eng/surgeist-animation.git

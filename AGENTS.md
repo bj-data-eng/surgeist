@@ -37,6 +37,7 @@ surgeist/
   Cargo.toml
   src/
   crates/
+    surgeist-animation/
     surgeist-css/
     surgeist-dialog/
     surgeist-layout/
@@ -84,6 +85,9 @@ crates, but implementation workers should stay in their assigned project.
 
 - root `surgeist`: thin facade, integration surface, public composition layer,
   and Surgeist-to-Surgeist adapter boundary.
+- `surgeist-animation`: CSS animation and transition timing contracts, easing
+  evaluation, keyframe timing, interpolation contracts, and sampled animation
+  values.
 - `surgeist-css`: strict CSS syntax parsing and authored CSS value contracts.
 - `surgeist-style`: style model, cascade, resolution, property validation, and
   invalidation contracts.
@@ -121,6 +125,7 @@ Current intended shape:
 
 ```text
 root surgeist crate
+  -> surgeist-animation
   -> surgeist-css
   -> surgeist-dialog
   -> surgeist-layout
@@ -135,6 +140,9 @@ root surgeist crate
   -> surgeist-window
 
 surgeist-css owns CSS syntax and must not depend on sibling Surgeist crates
+surgeist-animation owns CSS animation execution contracts and should not depend
+on style, runtime, retained, layout, render, text, or css unless a narrow typed
+contract truly requires it
 surgeist-style owns style data and must not depend on layout, retained, text, or css
 surgeist-runtime owns app-plane orchestration contracts and should avoid
 production dependencies on domain crates such as style, layout, text, render,

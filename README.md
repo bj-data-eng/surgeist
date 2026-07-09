@@ -1,8 +1,8 @@
 # surgeist
 
-Surgeist is a reusable Rust UI framework built from focused crates for CSS,
-style, layout, retained state, text, rendering, native windows, dialogs,
-template contracts, task scheduling, shared testing, and geometry.
+Surgeist is a reusable Rust UI framework built from focused crates for
+animation, CSS, style, layout, retained state, text, rendering, native windows,
+dialogs, template contracts, task scheduling, shared testing, and geometry.
 
 This repository is the top-level facade crate and coordination workspace. The
 implementation crates live under `crates/` as Git submodules so each boundary
@@ -24,6 +24,7 @@ contracts without depending on the root facade.
 
 ## Crates
 
+- `surgeist-animation`
 - `surgeist-css`
 - `surgeist-dialog`
 - `surgeist-layout`
