@@ -1,443 +1,141 @@
-# Agent Guide
+# Surgeist Root Repository Guide
 
-Use this guide for automated work in the Surgeist top-level repo.
+Use `$surgeist-agent` for every task in this repository.
 
-## Product Compass
+## Authority Split
 
-Surgeist is a reusable Rust UI framework built around strict, typed,
-composable primitives for app structure, layout, style, rendering, retained
-state, text, windows, dialogs, and future template/DSL layers.
+This file is the root repository's committed discovery entry point. It owns the
+mapping from facts to authoritative sources, the intended ownership and
+architecture boundaries, and the configured root command inventory. The sources
+named below own their current values.
 
-Keep Surgeist host-adapter-agnostic unless a crate is explicitly about a host,
-runtime, or backend. Prefer typed contracts over loose runtime behavior, hidden
-shared state, or broad framework magic.
+`$surgeist-agent` is the sole Surgeist workflow authority. It owns scope control,
+planning, debugging and TDD, worker/reviewer gates, external-software permission,
+the absolute unsafe prohibition, Git landing and publication, handoffs, and
+submodule promotion. This file does not redefine those procedures or grant
+authority to mutate, install, commit, or publish.
 
-Refinement bar:
+Resolve an apparent conflict by domain: use this file and the sources below for
+mutable repository facts; use `$surgeist-agent` for workflow. Higher-priority user
+and system instructions still apply. Do not import another general development
+workflow.
 
-- Can this API be explained in one paragraph?
-- Can this behavior be tested in its owning crate?
-- Can this layer be reused outside a single app?
-- Can an app override behavior without forking internals?
-- Does this boundary reduce coordination, or just move complexity?
+## Repository Identity And Ownership
 
-Treat public APIs, internals, tests, docs, commands, defaults, and errors as
-part of the product. Names and boundaries should feel intentional.
+This repository has two roles:
 
-## Repository Model
+- the root `surgeist` facade crate in `src/`;
+- the integration workspace that pins independent `surgeist-*` repositories as
+  Git submodules under `crates/`.
 
-This repo is both:
+Root owns the facade and public composition surface, Surgeist-to-Surgeist
+adapters, workspace wiring, gitlinks, cross-crate plans, root integration tests
+and tools, source-derived API artifacts, and whole-workspace verification.
 
-- the root `surgeist` facade crate at the repo root
-- the coordination workspace for sibling Surgeist crate repos linked as submodules
+Each leaf repository owns its domain implementation, manifest, public front
+door, focused tests, docs, commits, and published candidate. A parent workspace,
+Codex project, task, branch, or worktree does not change repository ownership.
+Root may inspect leaf source for integration but does not implement leaf code.
 
-Expected shape:
+## Discover The Current Structure
 
-```text
-surgeist/
-  Cargo.toml
-  src/
-  crates/
-    surgeist-animation/
-    surgeist-css/
-    surgeist-dialog/
-    surgeist-layout/
-    surgeist-render/
-    surgeist-retained/
-    surgeist-runtime/
-    surgeist-shape/
-    surgeist-style/
-    surgeist-task/
-    surgeist-template/
-    surgeist-test/
-    surgeist-text/
-    surgeist-window/
-```
+Read these sources in order. Do not substitute a cached roster or a descriptive
+README list for them. In this file, `<crate>` means the exact leaf package name
+from a `crates/<crate>` workspace member in root `Cargo.toml`.
 
-The root repo owns workspace wiring, submodule pointers, cross-crate plans,
-source-derived API coordination, and whole-system verification. Crate
-implementation work belongs in that crate's own repo and Codex project.
+| Fact | Authoritative source |
+| --- | --- |
+| Root package, MSRV, facade dependencies, features, workspace members | root `Cargo.toml` |
+| Leaf repository paths and authoritative URLs | `.gitmodules` |
+| Compatible leaf revisions currently selected by root | committed gitlinks; inspect with `git submodule status --recursive` |
+| Leaf package identity, actual dependencies, and features | pinned `crates/<crate>/Cargo.toml` |
+| Leaf role, front door, and crate-specific commands | pinned leaf `AGENTS.md`, `src/lib.rs`, README/task runner, and CI |
+| Root public facade | `src/lib.rs` and its reexports |
+| Root API generator and generated audit artifacts | `api/generator/`, `api/public-api.txt`, and `api/crates/` |
+| Root-owned integration helpers | `dev/` and `tools/` manifests and source |
 
-## Project Boundaries
-
-Use one Codex project for this root repo and one Codex project for each crate
-repo.
-
-Top-level agents may coordinate, inspect submodules, write integration plans,
-run workspace checks, update submodule pointers, and review cross-crate
-compatibility.
-
-Top-level agents must not casually edit submodule contents. If a crate needs
-implementation work, do it from that crate's Codex project unless the user
-explicitly asks for a top-level integration edit.
-
-Crate project agents edit only their crate repo, run focused checks there,
-commit there, and expose intentional front-door APIs for integration.
-
-Subagents inherit the project boundary they are launched from. A root-launched
-subagent does not become a crate implementation worker just because it is
-assigned a crate lane. For crate implementation work, use that crate's Codex
-project or thread.
-
-Give each worker one clear repo/crate lane. Reviewers may inspect across
-crates, but implementation workers should stay in their assigned project.
+When these sources disagree, report the exact paths and pinned revisions. Do not
+guess, silently update another document, or widen the task to reconcile them.
 
 ## Crate Roles
 
-- root `surgeist`: thin facade, integration surface, public composition layer,
-  and Surgeist-to-Surgeist adapter boundary.
-- `surgeist-animation`: CSS animation and transition timing contracts, easing
-  evaluation, keyframe timing, interpolation contracts, and sampled animation
-  values.
-- `surgeist-css`: strict CSS syntax parsing and authored CSS value contracts.
-- `surgeist-style`: style model, cascade, resolution, property validation, and
-  invalidation contracts.
-- `surgeist-test`: shared test schemas, harnesses, coverage and test quality
-  coordination, integration tests, e2e tests, system tests, and integration
-  verification support. Root-owned tools generate metadata that requires root
-  adapters.
-- `surgeist-layout`: layout algorithms, layout contracts, layout-ready fixture
-  consumption, and oracle/parity tests.
-- `surgeist-retained`: retained identity, retained state, tree identity, and
-  stable handles.
-- `surgeist-runtime`: app runtime orchestration contracts, event/input
-  scheduling, effect execution boundaries, resource lifecycle policy hooks,
-  invalidation scheduling, animation/frame scheduling, diagnostics, and
-  provenance.
-- `surgeist-text`: text shaping, measurement, font-facing abstractions, and text
-  layout contracts.
-- `surgeist-render`: rendering contracts and backend-facing draw data.
-- `surgeist-window`: window, app host, event-loop, and platform host contracts.
-- `surgeist-dialog`: dialog contracts and dialog coordination primitives.
-- `surgeist-shape`: shape, geometry, and primitive path data.
-- `surgeist-task`: task scheduling, work-plane contracts, cancellation,
-  progress, resource-class admission, and executor-facing task policy.
-- `surgeist-template`: template-layer and future DSL-facing contracts for typed
-  app authoring surfaces.
+These are the intended ownership boundaries; manifests and source at the pinned
+revisions provide the current implementation facts.
 
-Add crates only for real API boundaries, not architecture theater.
+| Crate | Owns |
+| --- | --- |
+| root `surgeist` | Thin facade, public composition, cross-crate adapters, and integration |
+| `surgeist-animation` | CSS animation and transition timing, easing, keyframes, interpolation, and sampled values |
+| `surgeist-css` | Strict CSS syntax parsing and authored CSS values |
+| `surgeist-dialog` | Dialog contracts and coordination primitives |
+| `surgeist-layout` | Layout algorithms and contracts, layout-ready fixtures, and parity/oracle tests |
+| `surgeist-render` | Rendering contracts and backend-facing draw data |
+| `surgeist-retained` | Retained identity and state, tree identity, and stable handles |
+| `surgeist-runtime` | App orchestration, events/effects, lifecycle, invalidation, frame scheduling, and provenance |
+| `surgeist-shape` | Shape, geometry, and primitive path data |
+| `surgeist-style` | Style model, cascade, resolution, validation, and invalidation |
+| `surgeist-task` | Task scheduling, cancellation, progress, admission, and executor-facing policy |
+| `surgeist-template` | Typed template and future DSL-facing authoring contracts |
+| `surgeist-test` | Shared test schemas, harnesses, fixtures, and integration verification support |
+| `surgeist-text` | Text shaping, measurement, font abstractions, and text layout |
+| `surgeist-window` | Window, app-host, event-loop, and platform-host contracts |
 
-## Dependency Direction
+Add or repurpose a crate only for a durable API and ownership boundary. Update
+this table in the same authorized architecture change.
 
-Keep dependencies directional and acyclic. If a small change needs edits across
-many crates, stop and revisit the boundary.
+## Architecture Boundaries
 
-Current intended shape:
+- Keep production dependencies directional and acyclic. The pinned manifests are
+  the actual graph; a proposed new edge must preserve the roles above.
+- Root composes leaf front-door APIs. Surgeist-to-Surgeist lowering belongs in
+  root or a root-owned tool.
+- Leaf internals are private by default. Do not reach through sibling private
+  modules or duplicate cross-crate interpretation.
+- A leaf owns backend-local adapters only when that backend belongs to its domain.
+- `surgeist-test` may depend on production leaves for shared verification, but the
+  root facade must not production-depend on `surgeist-test`.
+- A small change requiring many leaf edits is evidence to revisit the boundary,
+  not permission to create a dependency sink.
 
-```text
-root surgeist crate
-  -> surgeist-animation
-  -> surgeist-css
-  -> surgeist-dialog
-  -> surgeist-layout
-  -> surgeist-render
-  -> surgeist-retained
-  -> surgeist-runtime
-  -> surgeist-shape
-  -> surgeist-style
-  -> surgeist-task
-  -> surgeist-template
-  -> surgeist-text
-  -> surgeist-window
+Surgeist is a reusable, host-adapter-agnostic Rust UI framework built from strict,
+typed, composable primitives. Public APIs, internal models, errors, defaults,
+features, tests, docs, and examples are all product contracts. Expose intentional
+front doors and keep symbolic values unresolved until their owning layer has the
+required context.
 
-surgeist-css owns CSS syntax and must not depend on sibling Surgeist crates
-surgeist-animation owns CSS animation execution contracts and should not depend
-on style, runtime, retained, layout, render, text, or css unless a narrow typed
-contract truly requires it
-surgeist-style owns style data and must not depend on layout, retained, text, or css
-surgeist-runtime owns app-plane orchestration contracts and should avoid
-production dependencies on domain crates such as style, layout, text, render,
-template, retained, css, or window unless a narrow runtime contract truly
-requires one
-surgeist-task may depend on production crates only when task contracts require
-typed integration, and should keep executor backends behind crate-owned
-contracts
-surgeist-render -> surgeist-shape, surgeist-window optional
-surgeist-text -> surgeist-render optional
-surgeist-test may depend on production leaf crates for schemas, harnesses, and
-verification, but must not depend on root surgeist
-root surgeist must not production-depend on surgeist-test
-```
+## API Artifacts
 
-Plan cross-crate API changes at the top level, then implement crate-local pieces
-in the owning crate projects.
+Source is authoritative; files under `api/` are generated audit artifacts. The
+root owns the only API generator and all generated API artifacts. Leaf repositories
+must not carry copies.
 
-Surgeist-to-Surgeist lowering belongs in the root facade or root-owned tools.
-Leaf crates expose front-door domain APIs and keep only backend-local adapters
-owned by their implementation domain.
-
-## API Coordination
-
-API coordination is source-derived only. Do not maintain handwritten API truth
-tables as authority.
-
-Each crate should expose intentional front-door APIs from `lib.rs`, keep
-internals private by default, and support generated API shape checks when that
-tooling exists. The root repo may consume generated API reports, but source
-remains the source of truth.
-
-The root repo owns the API artifact generator at `api/generator` and stores
-source-derived API artifacts under root `api/`. Crate repos must not carry
-their own generator copy or generated API artifacts. From root, use:
+Configured root commands are:
 
 ```sh
 cargo run --manifest-path api/generator/Cargo.toml
 cargo run --manifest-path api/generator/Cargo.toml -- --check
-cargo run --manifest-path api/generator/Cargo.toml -- --crate surgeist-task
+cargo run --manifest-path api/generator/Cargo.toml -- --crate <crate>
 ```
 
-Run API artifact refresh after the owning crate's source changes are committed
-and pushed. Root's facade artifact lives at `api/public-api.txt`; crate
-artifacts live at `api/crates/<crate>.txt`. Commit API artifact changes only in
-the root repo, alongside any root submodule pointer update that made the source
-visible to root.
+Refresh artifacts only after the owning leaf source is committed, published, and
+visible at the root gitlink. Commit generated deltas in root with the integration
+change that exposed their source. Never hand-edit generated artifacts.
 
-Prefer typed commands, events, snapshots, reports, and change sets. Avoid
-sibling crates reaching through private module paths, broad common crates that
-become dependency sinks, and accidental cycles introduced for convenience.
+## Root Command Inventory
 
-## Public API Surface
-
-Treat public APIs as product contracts. Public surface includes `pub` items,
-reexports, feature flags, error types, trait impls, docs, examples, and MSRV.
-Generated API reports are audit artifacts for that source-derived contract, not
-the source of truth.
-
-For release-facing API changes:
-
-- name the owning crate and public entry point
-- explain whether the change is additive, breaking, or internal-only
-- update docs, examples, and API artifacts when the owning crate requires them
-- run source-derived API checks or `cargo semver-checks` when that tooling is
-  configured
-
-## Type And Value Modeling
-
-Use `guidance/surgeist-rust-modeling-guide.md` when designing, reviewing, or
-refactoring Rust models. Keep this repo aligned with that guide: semantic types,
-explicit phases, narrow conversion boundaries, and symbolic values resolved only
-by the owning layer.
-
-## Unsafe Code
-
-Default to no new `unsafe` code.
-
-If `unsafe` is unavoidable:
-
-- get explicit maintainer or user approval before adding it
-- keep the unsafe block as small as possible
-- document the safety contract at the unsafe boundary
-- add focused tests around the invariants the unsafe code relies on
-- require reviewer attention on the safety argument
-
-Do not add broad `#[allow(...)]` attributes to quiet warnings. Prefer scoped
-`#[expect(...)]` with a reason when a lint exception is intentional.
-
-## Dependencies And Features
-
-Prefer workspace dependencies and existing crate-local dependencies. New
-dependencies must justify why they belong at that layer, whether they affect
-MSRV, licenses, advisories, binary size, optional features, or dependency
-cycles.
-
-Feature checks must match the crate's real feature matrix. Do not assume
-`--all-features` is valid when features are mutually exclusive, host-specific,
-backend-specific, or generator-only. Document the correct feature combinations
-in the owning crate guide when broad Cargo commands are misleading.
-
-Run `cargo deny` or equivalent dependency checks when configured by the owning
-repo. Do not introduce secrets, credential bypasses, network shortcuts, or CI
-bypasses.
-
-## Generated Artifacts
-
-Generated files are owned by their generator. Do not hand-edit generated output
-unless the owning crate explicitly says that is allowed.
-
-When generated API reports, fixtures, snapshots, bindings, or parity artifacts
-change:
-
-- run the documented generator or snapshot update command
-- commit source inputs and generated outputs together when the owning repo
-  expects both
-- commit root-owned API artifact changes in the root repo, not in crate repos
-- explain why the generated delta is expected
-- do not weaken tests or snapshots just to make a check pass
-
-## Upstream Issue Reporting
-
-Workers and reviewers may identify issues in sibling or upstream crates while
-working from another repo. They must not edit that crate from the wrong Codex
-project.
-
-When an upstream issue affects correctness, compatibility, integration, or
-developer workflow:
-
-- Confirm the owning repo/crate.
-- Capture reproduction steps, expected behavior, observed behavior, affected
-  APIs/files, and relevant commands/tests/plans/commits.
-- Report the issue in the owning GitHub repo.
-- If GitHub issue creation is unavailable, write a complete issue draft in the
-  task output and stop for coordinator action.
-
-Issue reports should be specific enough for a crate-local worker to act without
-rediscovering the problem. Do not file upstream issues for bugs owned by the
-current repo; fix those locally.
-
-## Plans And Specs
-
-Use Superpowers for workflow guidance. Repo file locations override Superpowers
-default paths.
-
-Plans go in `/plans` at the root of the repo where the implementation will happen:
-
-- Top-level integration plans: `surgeist/plans/`
-- Crate-local plans: that crate repo's `plans/`
-
-If writing specs or design docs, use the same root-local convention unless the
-user chooses a separate folder. Do not put new plans under `docs/superpowers`.
-This repo-local plan location intentionally overrides Superpowers default paths.
-
-## Testing
-
-Each crate owns its focused test commands. The root repo coordinates
-whole-system checks, but tight iteration should happen in the relevant crate
-project.
-
-Expected command pattern:
+These commands describe root verification capability; `$surgeist-agent` decides
+their exact gate, order, feature matrix, and whether already-present tooling can
+run without unauthorized acquisition.
 
 ```sh
-cargo test -p <crate>
-cargo clippy -p <crate> --all-targets -- -D warnings
+cargo check --workspace
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -F unsafe-code -D warnings
 cargo fmt --check
+cargo run --manifest-path api/generator/Cargo.toml -- --check
 ```
 
-These commands are a baseline, not a substitute for crate-specific guidance.
-Use the owning crate's `AGENTS.md`, `README.md`, plans, or task runner when it
-defines feature-specific, generated-artifact, snapshot, fuzzing, or dependency
-checks.
-
-For root-owned code or integration wiring, run root or workspace Clippy when it
-is expected to pass:
-
-```sh
-cargo clippy --workspace --all-targets -- -D warnings
-```
-
-If root Clippy is skipped because of a known upstream failure, feature matrix
-constraint, or unavailable platform dependency, name the reason in the task
-output.
-
-Run focused checks before committing. Run broader root checks before updating
-submodule pointers or declaring cross-crate work complete.
-
-## Subagents
-
-Top-level coordinators are coordinators first. For implementation work, they
-assign, verify, reconcile, and integrate; they do not default to doing the
-code edit themselves.
-
-For any requested code change, the top-level coordinator must follow this
-sequence unless the user explicitly waives it:
-
-1. Check root status and relevant crate status before work begins.
-2. Identify the owning repo or crate lane.
-3. If executing an implementation plan, split the plan into its sequential
-   tasks and assign workers one task or tightly coupled task group at a time.
-   Do not hand an entire multi-task plan to one worker unless the user
-   explicitly approves that shortcut.
-4. Assign one implementation worker to the current scoped task in that lane.
-5. Wait for the worker's result, including its reported tests and git status.
-6. Assign a separate reviewer to inspect the worker's scoped changes before
-   moving to the next task.
-7. Reconcile the worker and reviewer findings before assigning follow-up work.
-8. After all scoped tasks are complete, assign a final holistic reviewer to
-   inspect the complete result against the implementation plan, crate boundary,
-   tests, and git diff.
-9. Confirm the owning repo has a clean committed branch. Require it to be
-   pushed when another repo/thread must fetch it, when updating root submodule
-   pointers, or when the user requested publication.
-10. Run the relevant root-level integration checks only after crate-local work
-   is complete.
-11. Commit only root-owned integration changes from the top-level repo, such as
-   submodule pointer updates, top-level plans, requirements, workflow docs, or
-   facade wiring.
-12. Push root commits when the user requested publication or when a pointer
-    update must be available to other coordinators.
-
-During plan execution, assign one clear repo/crate lane and scoped plan task to
-each worker. The coordinator owns sequencing, integration, and deciding when the
-next task is safe to start. Tell workers they are not alone in the codebase and
-must not revert others' work.
-
-Do not fork any conversation context into workers or reviewers. Provide only the
-scoped task prompt, relevant files, commands, and constraints.
-
-The coordinator may directly edit root-only planning, documentation,
-requirements, or workflow files when the user explicitly asks for a top-level
-repo change.
-
-Root code changes, including facade wiring, still count as code changes and
-must go through the worker and reviewer gate unless the user explicitly waives
-it. If implementation code must change in a crate, use that crate's Codex
-project or a worker assigned from that crate project.
-
-No coordinator may declare implementation complete until a separate reviewer
-has reviewed the changed code, or the user explicitly waives review.
-
-- Do not duplicate a completed subagent's investigation. Review, verify,
-  reconcile, and act on it.
-- Use clean reviewers for code changes, boundary changes, API changes, and
-  nontrivial cross-crate work.
-- Do not declare a multi-task implementation plan complete until the
-  task-scoped worker/reviewer cycles and final holistic review are clean.
-
-## Submodule Pointer Updates
-
-The root repo is the known-good integration pinboard.
-
-Do not update submodule pointers unless:
-
-- the owning crate changes are committed and pushed
-- the pinned submodule commit is fetchable from the configured submodule remote
-- crate-local focused checks passed
-- root `cargo check --workspace` passed
-- root `cargo test --workspace` passed
-- root `cargo clippy --workspace --all-targets -- -D warnings` passed, or the
-  task output names why it is not expected to pass
-- root `cargo fmt --check` passed
-- the coordinator reviewed `git diff --submodule=log` or an equivalent
-  submodule summary
-
-Exception: if a red pointer update is explicitly requested, the root commit
-message or task output must name the failing command, failing test or error,
-owning issue/PR, and why the pointer update is still intentional.
-
-Root-owned planning, documentation, workflow, requirements, and facade-only
-changes may still be committed while an unrelated upstream crate issue is red,
-but the task output must name the failing broad check and confirm the root
-change did not attempt to hide or work around that failure.
-
-## Editing And Git
-
-- Use `apply_patch` for manual edits.
-- Prefer `rg` and `rg --files`.
-- Check status before and after edits: `git status --short --branch`.
-- Before committing, review `git diff --stat` and the relevant detailed diff.
-- Do not rewrite unrelated files or revert user changes unless explicitly
-  asked.
-- Do not create or switch branches for ordinary Surgeist work. Use the current
-  `main` branch and sequential task-scoped commits unless the user explicitly
-  asks for a branch or worktree.
-- Keep `.venv/`, `target/`, `build/`, `dist/`, secrets, host identity, editor
-  residue, and runtime residue out of git.
-- Commit logical points with short, concrete messages.
-- Push commits only when requested, when handing work to another repo/thread,
-  or when updating root pointers to commits that other users must fetch.
-
-Commit in the repo being changed:
-
-- crate implementation commits inside that crate repo
-- submodule pointer and integration commits inside the root Surgeist repo
-
-Never silently edit a sibling submodule from the root project and call it done.
-If that happens by mistake, stop, report it, and reconcile deliberately.
+Derive package-specific and feature-specific checks from the pinned owning
+manifest and policy. Discovery is complete when the owning repository, pinned
+revision, public entry point, dependency and feature facts, generated-artifact
+owner, and applicable command inventory are identified without inventing policy.
