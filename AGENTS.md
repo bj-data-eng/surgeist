@@ -1,6 +1,7 @@
 # Surgeist Root Repository Guide
 
-Use `$surgeist-agent` for every task in this repository.
+Use the installed `surgeist-agent` plugin for every task in this repository.
+Select the task-appropriate focused skill.
 
 ## Authority Split
 
@@ -9,15 +10,16 @@ mapping from facts to authoritative sources, the intended ownership and
 architecture boundaries, and the configured root command inventory. The sources
 named below own their current values.
 
-`$surgeist-agent` is the sole Surgeist workflow authority. It owns scope control,
-planning, debugging and TDD, worker/reviewer gates, external-software permission,
+The installed `surgeist-agent` plugin is the sole Surgeist workflow authority.
+Its selected skill owns scope control, planning, debugging and TDD,
+worker/reviewer gates, external-software permission,
 the absolute unsafe prohibition, Git landing and publication, handoffs, and
 submodule promotion. This file does not redefine those procedures or grant
 authority to mutate, install, commit, or publish.
 
 Resolve an apparent conflict by domain: use this file and the sources below for
-mutable repository facts; use `$surgeist-agent` for workflow. Higher-priority user
-and system instructions still apply. Do not import another general development
+mutable repository facts; use the selected plugin skill for workflow.
+Higher-priority user and system instructions still apply. Do not import another
 workflow.
 
 ## Repository Identity And Ownership
@@ -123,9 +125,9 @@ change that exposed their source. Never hand-edit generated artifacts.
 
 ## Root Command Inventory
 
-These commands describe root verification capability; `$surgeist-agent` decides
-their exact gate, order, feature matrix, and whether already-present tooling can
-run without unauthorized acquisition.
+These commands describe root verification capability; the selected plugin
+skill decides their exact gate, order, feature matrix, and whether
+already-present tooling can run without unauthorized acquisition.
 
 ```sh
 cargo check --workspace
