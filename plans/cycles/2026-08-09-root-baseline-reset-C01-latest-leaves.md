@@ -4,7 +4,7 @@
 
 - Cycle ID: `C01`
 - Owning repository: root `surgeist`
-- Status: `in_progress`
+- Status: `complete`
 - Cycle base: `359322aae90afbaf68ba7c9afffd79fb57b383d6`
 - Reviewed specification:
   `plans/specs/2026-08-09-root-baseline-reset.md` at
