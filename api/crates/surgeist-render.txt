@@ -6,13 +6,39 @@ pub enum surgeist_render::Antialiasing
 pub surgeist_render::Antialiasing::Area
 pub surgeist_render::Antialiasing::Msaa16
 pub surgeist_render::Antialiasing::Msaa8
-impl core::convert::From<surgeist_render::Antialiasing> for vello::AaConfig
-pub fn vello::AaConfig::from(antialiasing: surgeist_render::Antialiasing) -> Self
 pub enum surgeist_render::Attachment
 pub surgeist_render::Attachment::Headless
 pub surgeist_render::Attachment::WebCanvas(surgeist_render::WebCanvas)
 impl surgeist_render::Attachment
 pub fn surgeist_render::Attachment::from_web_canvas(id: impl core::convert::Into<alloc::string::String>) -> Self
+pub enum surgeist_render::BackgroundAttachment
+pub surgeist_render::BackgroundAttachment::Fixed
+pub surgeist_render::BackgroundAttachment::Local
+pub surgeist_render::BackgroundAttachment::Scroll
+pub enum surgeist_render::BackgroundAttachmentCoordinatePolicy
+pub surgeist_render::BackgroundAttachmentCoordinatePolicy::RootResolvedOrTagged
+pub enum surgeist_render::BackgroundBlendMode
+pub surgeist_render::BackgroundBlendMode::Darken
+pub surgeist_render::BackgroundBlendMode::Lighten
+pub surgeist_render::BackgroundBlendMode::Multiply
+pub surgeist_render::BackgroundBlendMode::Normal
+pub surgeist_render::BackgroundBlendMode::Overlay
+pub surgeist_render::BackgroundBlendMode::Plus
+pub surgeist_render::BackgroundBlendMode::Screen
+pub enum surgeist_render::BackgroundBox
+pub surgeist_render::BackgroundBox::Border
+pub surgeist_render::BackgroundBox::Content
+pub surgeist_render::BackgroundBox::Padding
+pub enum surgeist_render::BackgroundClipGeometryKind
+pub surgeist_render::BackgroundClipGeometryKind::Rect(surgeist_render::Rect)
+pub surgeist_render::BackgroundClipGeometryKind::Shape(surgeist_render::Shape)
+pub enum surgeist_render::BackgroundSizeKind
+pub surgeist_render::BackgroundSizeKind::Auto
+pub surgeist_render::BackgroundSizeKind::Contain
+pub surgeist_render::BackgroundSizeKind::Cover
+pub surgeist_render::BackgroundSizeKind::Explicit
+pub surgeist_render::BackgroundSizeKind::Explicit::height: surgeist_render::SizeComponent
+pub surgeist_render::BackgroundSizeKind::Explicit::width: surgeist_render::SizeComponent
 pub enum surgeist_render::BlendMode
 pub surgeist_render::BlendMode::Darken
 pub surgeist_render::BlendMode::Lighten
@@ -21,45 +47,130 @@ pub surgeist_render::BlendMode::Normal
 pub surgeist_render::BlendMode::Overlay
 pub surgeist_render::BlendMode::Plus
 pub surgeist_render::BlendMode::Screen
+pub enum surgeist_render::BorderStyle
+pub surgeist_render::BorderStyle::Dashed
+pub surgeist_render::BorderStyle::Dotted
+pub surgeist_render::BorderStyle::Double
+pub surgeist_render::BorderStyle::Groove
+pub surgeist_render::BorderStyle::Hidden
+pub surgeist_render::BorderStyle::Inset
+pub surgeist_render::BorderStyle::None
+pub surgeist_render::BorderStyle::Outset
+pub surgeist_render::BorderStyle::Ridge
+pub surgeist_render::BorderStyle::Solid
+pub enum surgeist_render::BoxDecorationBreak
+pub surgeist_render::BoxDecorationBreak::Clone
+pub surgeist_render::BoxDecorationBreak::Slice
+pub enum surgeist_render::BoxSide
+pub surgeist_render::BoxSide::Bottom
+pub surgeist_render::BoxSide::Left
+pub surgeist_render::BoxSide::Right
+pub surgeist_render::BoxSide::Top
+pub enum surgeist_render::ClipGeometryKind
+pub surgeist_render::ClipGeometryKind::Circle
+pub surgeist_render::ClipGeometryKind::Circle::center: surgeist_render::Point
+pub surgeist_render::ClipGeometryKind::Circle::radius: f64
+pub surgeist_render::ClipGeometryKind::Ellipse
+pub surgeist_render::ClipGeometryKind::Ellipse::center: surgeist_render::Point
+pub surgeist_render::ClipGeometryKind::Ellipse::radii: surgeist_render::Size
+pub surgeist_render::ClipGeometryKind::Path(surgeist_render::FilledPath)
+pub surgeist_render::ClipGeometryKind::Rect(surgeist_render::Rect)
+pub surgeist_render::ClipGeometryKind::RoundedRect
+pub surgeist_render::ClipGeometryKind::RoundedRect::radii: surgeist_render::Radii
+pub surgeist_render::ClipGeometryKind::RoundedRect::rect: surgeist_render::Rect
+pub enum surgeist_render::ClipInputKind
+pub surgeist_render::ClipInputKind::Path(surgeist_render::FilledPath)
+pub surgeist_render::ClipInputKind::Reference(surgeist_render::StyleResourceRef)
+pub surgeist_render::ClipInputKind::Shape(surgeist_render::Shape)
+pub enum surgeist_render::CoordinateSpaceKind
+pub surgeist_render::CoordinateSpaceKind::Local
+pub surgeist_render::CoordinateSpaceKind::Named(surgeist_render::CoordinateSpaceId)
+pub surgeist_render::CoordinateSpaceKind::Surface
+pub surgeist_render::CoordinateSpaceKind::Viewport
+pub enum surgeist_render::DegradedQualityKind
+pub surgeist_render::DegradedQualityKind::ReducedIntermediatePrecision
+pub surgeist_render::DegradedQualityKind::UnsupportedPaintSpaceConversion
+impl surgeist_render::DegradedQualityKind
+pub const fn surgeist_render::DegradedQualityKind::label(self) -> &'static str
+pub enum surgeist_render::DeviceLossReason
+pub surgeist_render::DeviceLossReason::Destroyed
+pub surgeist_render::DeviceLossReason::Unknown
+pub enum surgeist_render::EffectPrecision
+pub surgeist_render::EffectPrecision::High
+pub surgeist_render::EffectPrecision::Reduced
+pub enum surgeist_render::EffectQualityPolicy
+pub surgeist_render::EffectQualityPolicy::AllowReducedPrecision
+pub surgeist_render::EffectQualityPolicy::RequireHighPrecision
 pub enum surgeist_render::ErrorCode
-pub surgeist_render::ErrorCode::AdapterUnavailable
+pub surgeist_render::ErrorCode::DegradedQuality
 pub surgeist_render::ErrorCode::DeviceCreateFailed
 pub surgeist_render::ErrorCode::ImageUploadFailed
 pub surgeist_render::ErrorCode::InvalidInput
 pub surgeist_render::ErrorCode::PresentFailed
+pub surgeist_render::ErrorCode::ReadbackFailed
 pub surgeist_render::ErrorCode::RenderFailed
 pub surgeist_render::ErrorCode::RendererCreateFailed
+pub surgeist_render::ErrorCode::RuntimeCapabilityUnavailable
 pub surgeist_render::ErrorCode::SurfaceConfigureFailed
 pub surgeist_render::ErrorCode::SurfaceCreateFailed
-pub surgeist_render::ErrorCode::SurfaceLost
 pub surgeist_render::ErrorCode::SurfaceOutOfMemory
 pub surgeist_render::ErrorCode::SurfaceOutdated
 pub surgeist_render::ErrorCode::SurfaceTimeout
-pub surgeist_render::ErrorCode::SurfaceUnavailable
+pub surgeist_render::ErrorCode::UnresolvedResource
 pub surgeist_render::ErrorCode::UnsupportedBackend
+pub surgeist_render::ErrorCode::UnsupportedPrimitive
 pub enum surgeist_render::Extend
 pub surgeist_render::Extend::Pad
 pub surgeist_render::Extend::Reflect
 pub surgeist_render::Extend::Repeat
 impl core::convert::From<surgeist_render::Extend> for peniko::brush::Extend
 pub fn peniko::brush::Extend::from(extend: surgeist_render::Extend) -> Self
+pub enum surgeist_render::FillRule
+pub surgeist_render::FillRule::EvenOdd
+pub surgeist_render::FillRule::NonZero
+pub enum surgeist_render::FilterOpKind
+pub surgeist_render::FilterOpKind::Blur(surgeist_render::FilterBlur)
+pub surgeist_render::FilterOpKind::Brightness(surgeist_render::FilterAmount)
+pub surgeist_render::FilterOpKind::Contrast(surgeist_render::FilterAmount)
+pub surgeist_render::FilterOpKind::DropShadow(surgeist_render::FilterDropShadow)
+pub surgeist_render::FilterOpKind::Grayscale(surgeist_render::UnitFilterAmount)
+pub surgeist_render::FilterOpKind::HueRotate(surgeist_render::FilterAngle)
+pub surgeist_render::FilterOpKind::Invert(surgeist_render::UnitFilterAmount)
+pub surgeist_render::FilterOpKind::Opacity(surgeist_render::UnitFilterAmount)
+pub surgeist_render::FilterOpKind::Saturate(surgeist_render::FilterAmount)
+pub surgeist_render::FilterOpKind::Sepia(surgeist_render::UnitFilterAmount)
 pub enum surgeist_render::Format
 pub surgeist_render::Format::Bgra8
 pub surgeist_render::Format::Rgba8
 impl core::convert::From<surgeist_render::Format> for wgpu_types::texture::format::TextureFormat
 pub fn wgpu_types::texture::format::TextureFormat::from(format: surgeist_render::Format) -> Self
+pub enum surgeist_render::GpuFaultKind
+pub surgeist_render::GpuFaultKind::Internal
+pub surgeist_render::GpuFaultKind::OutOfMemory
+pub surgeist_render::GpuFaultKind::Validation
+pub enum surgeist_render::HitTestOwnership
+pub surgeist_render::HitTestOwnership::RootOwned
+pub enum surgeist_render::ImageColorProfilePolicy
+pub surgeist_render::ImageColorProfilePolicy::RootResolvedOnly
 pub enum surgeist_render::ImageFit
 pub surgeist_render::ImageFit::Contain
 pub surgeist_render::ImageFit::Cover
 pub surgeist_render::ImageFit::Fill
 pub surgeist_render::ImageFit::None
 pub surgeist_render::ImageFit::Stretch
+pub enum surgeist_render::ImageOrientationPolicy
+pub surgeist_render::ImageOrientationPolicy::RootResolvedOnly
 pub enum surgeist_render::ImageQuality
 pub surgeist_render::ImageQuality::High
 pub surgeist_render::ImageQuality::Low
 pub surgeist_render::ImageQuality::Medium
 impl core::convert::From<surgeist_render::ImageQuality> for peniko::image::ImageQuality
 pub fn peniko::image::ImageQuality::from(quality: surgeist_render::ImageQuality) -> Self
+pub enum surgeist_render::ImageRepeatMode
+pub surgeist_render::ImageRepeatMode::NoRepeat
+pub surgeist_render::ImageRepeatMode::RepeatBoth
+pub surgeist_render::ImageRepeatMode::RepeatX
+pub surgeist_render::ImageRepeatMode::RepeatY
 pub enum surgeist_render::LineCap
 pub surgeist_render::LineCap::Butt
 pub surgeist_render::LineCap::Round
@@ -72,12 +183,63 @@ pub surgeist_render::LineJoin::Miter
 pub surgeist_render::LineJoin::Round
 impl core::convert::From<surgeist_render::LineJoin> for kurbo::stroke::Join
 pub fn kurbo::stroke::Join::from(join: surgeist_render::LineJoin) -> Self
+pub enum surgeist_render::MaskCompositeMode
+pub surgeist_render::MaskCompositeMode::Add
+pub surgeist_render::MaskCompositeMode::Exclude
+pub surgeist_render::MaskCompositeMode::Intersect
+pub surgeist_render::MaskCompositeMode::Subtract
+pub enum surgeist_render::MaskMode
+pub surgeist_render::MaskMode::Alpha
+pub surgeist_render::MaskMode::Luminance
+pub enum surgeist_render::MaskSourceKind
+pub surgeist_render::MaskSourceKind::ImageLayer(surgeist_render::StyleImageLayer)
+pub surgeist_render::MaskSourceKind::Reference(surgeist_render::StyleResourceRef)
+pub surgeist_render::MaskSourceKind::Shape(surgeist_render::Shape)
+pub enum surgeist_render::NormalizedBackgroundCommandKind
+pub surgeist_render::NormalizedBackgroundCommandKind::ColorFill
+pub surgeist_render::NormalizedBackgroundCommandKind::ColorFill::color: surgeist_render::Color
+pub surgeist_render::NormalizedBackgroundCommandKind::ColorFill::rect: surgeist_render::Rect
+pub surgeist_render::NormalizedBackgroundCommandKind::Layer
+pub surgeist_render::NormalizedBackgroundCommandKind::Layer::layer: surgeist_render::NormalizedBackgroundLayer
+pub enum surgeist_render::NormalizedBackgroundLayerSource
+pub surgeist_render::NormalizedBackgroundLayerSource::Image(surgeist_render::Image)
+pub surgeist_render::NormalizedBackgroundLayerSource::Paint(surgeist_render::Paint)
+pub surgeist_render::NormalizedBackgroundLayerSource::ResolvedImage(surgeist_render::ResolvedImageResource)
+pub enum surgeist_render::NormalizedBorderStyle
+pub surgeist_render::NormalizedBorderStyle::Dashed
+pub surgeist_render::NormalizedBorderStyle::Dotted
+pub surgeist_render::NormalizedBorderStyle::Double(surgeist_render::NormalizedDoubleBorderBands)
+pub surgeist_render::NormalizedBorderStyle::Solid
+pub enum surgeist_render::NormalizedBoxDecorationCommandKind
+pub surgeist_render::NormalizedBoxDecorationCommandKind::Border(surgeist_render::NormalizedBorderCommand)
+pub surgeist_render::NormalizedBoxDecorationCommandKind::Outline(surgeist_render::NormalizedOutlineCommand)
+pub enum surgeist_render::NormalizedOutlineStyle
+pub surgeist_render::NormalizedOutlineStyle::Dashed
+pub surgeist_render::NormalizedOutlineStyle::Dotted
+pub surgeist_render::NormalizedOutlineStyle::Solid
+pub enum surgeist_render::OutlineStyle
+pub surgeist_render::OutlineStyle::Auto
+pub surgeist_render::OutlineStyle::Dashed
+pub surgeist_render::OutlineStyle::Dotted
+pub surgeist_render::OutlineStyle::Double
+pub surgeist_render::OutlineStyle::None
+pub surgeist_render::OutlineStyle::Solid
+pub enum surgeist_render::PaintColorSpace
+pub surgeist_render::PaintColorSpace::Hsl
+pub surgeist_render::PaintColorSpace::Srgb
 pub enum surgeist_render::PathElement
 pub surgeist_render::PathElement::Close
 pub surgeist_render::PathElement::CubicTo(surgeist_render::Point, surgeist_render::Point, surgeist_render::Point)
 pub surgeist_render::PathElement::LineTo(surgeist_render::Point)
 pub surgeist_render::PathElement::MoveTo(surgeist_render::Point)
 pub surgeist_render::PathElement::QuadTo(surgeist_render::Point, surgeist_render::Point)
+pub enum surgeist_render::PositionComponentKind
+pub surgeist_render::PositionComponentKind::EdgeOffset(surgeist_render::PositionEdge)
+pub surgeist_render::PositionComponentKind::Length
+pub surgeist_render::PositionComponentKind::Percent
+pub enum surgeist_render::PositionEdge
+pub surgeist_render::PositionEdge::End
+pub surgeist_render::PositionEdge::Start
 pub enum surgeist_render::PresentMode
 pub surgeist_render::PresentMode::Auto
 pub surgeist_render::PresentMode::Fifo
@@ -85,32 +247,335 @@ pub surgeist_render::PresentMode::Immediate
 pub surgeist_render::PresentMode::Mailbox
 impl core::convert::From<surgeist_render::PresentMode> for wgpu_types::surface::PresentMode
 pub fn wgpu_types::surface::PresentMode::from(mode: surgeist_render::PresentMode) -> Self
+pub enum surgeist_render::PrimitiveFamily
+pub surgeist_render::PrimitiveFamily::BoxDecorations
+pub surgeist_render::PrimitiveFamily::Compositing
+pub surgeist_render::PrimitiveFamily::Filters
+pub surgeist_render::PrimitiveFamily::GeometryTargets
+pub surgeist_render::PrimitiveFamily::ImageSampling
+pub surgeist_render::PrimitiveFamily::MasksAndClips
+pub surgeist_render::PrimitiveFamily::OffscreenPipeline
+pub surgeist_render::PrimitiveFamily::PaintSources
+pub surgeist_render::PrimitiveFamily::Shadows
+pub surgeist_render::PrimitiveFamily::Surfaces
+pub surgeist_render::PrimitiveFamily::TextDecorations
+pub surgeist_render::PrimitiveFamily::TransformsAndCoordinateSpaces
+impl surgeist_render::PrimitiveFamily
+pub const fn surgeist_render::PrimitiveFamily::label(self) -> &'static str
+pub enum surgeist_render::PrimitiveOperation
+pub surgeist_render::PrimitiveOperation::AdditionalMixBlendMode
+pub surgeist_render::PrimitiveOperation::AlphaMaskSourceExecution
+pub surgeist_render::PrimitiveOperation::BackdropIsolationComposition
+pub surgeist_render::PrimitiveOperation::BackgroundBlendMode
+pub surgeist_render::PrimitiveOperation::BackgroundRepeatRound
+pub surgeist_render::PrimitiveOperation::BackgroundRepeatSpace
+pub surgeist_render::PrimitiveOperation::BorderGrooveStyle
+pub surgeist_render::PrimitiveOperation::BorderInsetStyle
+pub surgeist_render::PrimitiveOperation::BorderOutsetStyle
+pub surgeist_render::PrimitiveOperation::BorderRidgeStyle
+pub surgeist_render::PrimitiveOperation::BoundedBackdropCapture
+pub surgeist_render::PrimitiveOperation::BoundedBackdropFilterExecution
+pub surgeist_render::PrimitiveOperation::BoundedVelloCapture
+pub surgeist_render::PrimitiveOperation::BroadBackdropExecution
+pub surgeist_render::PrimitiveOperation::ClipReferenceExecution
+pub surgeist_render::PrimitiveOperation::ColorFilteredImagePaint
+pub surgeist_render::PrimitiveOperation::ColorMixFunction
+pub surgeist_render::PrimitiveOperation::CompositePassExecution
+pub surgeist_render::PrimitiveOperation::EllipsePathShadowShape
+pub surgeist_render::PrimitiveOperation::FilterRegionPlanning
+pub surgeist_render::PrimitiveOperation::FilteredImagePaint
+pub surgeist_render::PrimitiveOperation::GeometryBooleanOperation
+pub surgeist_render::PrimitiveOperation::GeometryOffsetOperation
+pub surgeist_render::PrimitiveOperation::GpuBlurFilterExecution
+pub surgeist_render::PrimitiveOperation::GpuColorFilterExecution
+pub surgeist_render::PrimitiveOperation::GpuDropShadowFilterExecution
+pub surgeist_render::PrimitiveOperation::ImageColorProfileConversion
+pub surgeist_render::PrimitiveOperation::ImageOrientationConversion
+pub surgeist_render::PrimitiveOperation::ImagePassExecution
+pub surgeist_render::PrimitiveOperation::InsetBoxShadow
+pub surgeist_render::PrimitiveOperation::InsideOutsidePathStrokeAlignment
+pub surgeist_render::PrimitiveOperation::LayerFilter
+pub surgeist_render::PrimitiveOperation::LayerFilterExecution
+pub surgeist_render::PrimitiveOperation::LayerMask
+pub surgeist_render::PrimitiveOperation::LuminanceMaskMode
+pub surgeist_render::PrimitiveOperation::MaskCompositeMode
+pub surgeist_render::PrimitiveOperation::MaskExecution
+pub surgeist_render::PrimitiveOperation::Matrix3dTransform
+pub surgeist_render::PrimitiveOperation::MultiLayerMaskComposition
+pub surgeist_render::PrimitiveOperation::NestedOpacityComposition
+pub surgeist_render::PrimitiveOperation::NonSolidShadowPaint
+pub surgeist_render::PrimitiveOperation::OffscreenLayerRendering
+pub surgeist_render::PrimitiveOperation::OrderedFilterList
+pub surgeist_render::PrimitiveOperation::OutlineAutoStyle
+pub surgeist_render::PrimitiveOperation::OutlineDoubleStyle
+pub surgeist_render::PrimitiveOperation::PersistentEffectResources
+pub surgeist_render::PrimitiveOperation::PerspectiveTransform
+pub surgeist_render::PrimitiveOperation::PorterDuffCompositeMode
+pub surgeist_render::PrimitiveOperation::RepeatingGradient
+pub surgeist_render::PrimitiveOperation::ResolvedAlphaMaskExecution
+pub surgeist_render::PrimitiveOperation::RootBackdropPolicy
+pub surgeist_render::PrimitiveOperation::Rotate3dTransform
+pub surgeist_render::PrimitiveOperation::ScaleZTransform
+pub surgeist_render::PrimitiveOperation::ShapeClip
+pub surgeist_render::PrimitiveOperation::TextDecorationStyle
+pub surgeist_render::PrimitiveOperation::TextShadow
+pub surgeist_render::PrimitiveOperation::TranslateZTransform
+pub surgeist_render::PrimitiveOperation::UnresolvedSymbolicColor
+pub surgeist_render::PrimitiveOperation::UnsupportedColorSpace
+pub surgeist_render::PrimitiveOperation::WebCanvasSurface
+impl surgeist_render::PrimitiveOperation
+pub const fn surgeist_render::PrimitiveOperation::label(self) -> &'static str
+pub enum surgeist_render::RenderRoute
+pub surgeist_render::RenderRoute::DirectVello
+pub surgeist_render::RenderRoute::GpuGraph
+pub enum surgeist_render::RenderSurfaceAvailability
+pub surgeist_render::RenderSurfaceAvailability::Lost
+pub surgeist_render::RenderSurfaceAvailability::NonRenderable
+pub surgeist_render::RenderSurfaceAvailability::Occluded
+pub surgeist_render::RenderSurfaceAvailability::Suspended
+pub surgeist_render::RenderSurfaceAvailability::Uninitialized
+pub enum surgeist_render::RepeatMode
+pub surgeist_render::RepeatMode::NoRepeat
+pub surgeist_render::RepeatMode::Repeat
+pub surgeist_render::RepeatMode::Round
+pub surgeist_render::RepeatMode::Space
+pub enum surgeist_render::RuntimeCapabilities
+pub surgeist_render::RuntimeCapabilities::Available(surgeist_render::AvailableRuntimeCapabilities)
+pub surgeist_render::RuntimeCapabilities::Unavailable(surgeist_render::RuntimeCapabilityUnavailableReason)
+impl surgeist_render::RuntimeCapabilities
+pub const fn surgeist_render::RuntimeCapabilities::available(self) -> core::option::Option<surgeist_render::AvailableRuntimeCapabilities>
+pub const fn surgeist_render::RuntimeCapabilities::unavailable_reason(self) -> core::option::Option<surgeist_render::RuntimeCapabilityUnavailableReason>
+#[non_exhaustive] pub enum surgeist_render::RuntimeCapabilityUnavailableReason
+pub surgeist_render::RuntimeCapabilityUnavailableReason::AdapterUnavailable
+pub surgeist_render::RuntimeCapabilityUnavailableReason::DeviceFaulted
+pub surgeist_render::RuntimeCapabilityUnavailableReason::DeviceFaulted::kind: surgeist_render::GpuFaultKind
+pub surgeist_render::RuntimeCapabilityUnavailableReason::DeviceLost
+pub surgeist_render::RuntimeCapabilityUnavailableReason::DeviceLost::reason: surgeist_render::DeviceLossReason
+pub surgeist_render::RuntimeCapabilityUnavailableReason::EffectFormatUnavailable
+pub surgeist_render::RuntimeCapabilityUnavailableReason::EffectFormatUnavailable::policy: surgeist_render::EffectQualityPolicy
+pub surgeist_render::RuntimeCapabilityUnavailableReason::SurfaceFormatUnavailable
+pub surgeist_render::RuntimeCapabilityUnavailableReason::SurfaceFormatUnavailable::format: surgeist_render::Format
+pub surgeist_render::RuntimeCapabilityUnavailableReason::SurfaceIdentityMismatch
+pub surgeist_render::RuntimeCapabilityUnavailableReason::SurfaceIdentityMismatch::kind: surgeist_render::SurfaceIdentityMismatchKind
+pub surgeist_render::RuntimeCapabilityUnavailableReason::SurfaceUnavailable
+pub surgeist_render::RuntimeCapabilityUnavailableReason::SurfaceUnavailable::state: surgeist_render::RenderSurfaceAvailability
+pub surgeist_render::RuntimeCapabilityUnavailableReason::TextureDimensionExceeded
+pub surgeist_render::RuntimeCapabilityUnavailableReason::TextureDimensionExceeded::maximum: u32
+pub surgeist_render::RuntimeCapabilityUnavailableReason::TextureDimensionExceeded::requested: surgeist_render::PhysicalSize
+#[non_exhaustive] pub enum surgeist_render::RuntimeOperation
+pub surgeist_render::RuntimeOperation::AdapterSelection
+pub surgeist_render::RuntimeOperation::EffectPresentation
+pub surgeist_render::RuntimeOperation::EffectRendering
+pub surgeist_render::RuntimeOperation::EffectTextureAllocation
+pub surgeist_render::RuntimeOperation::SurfaceReadback
+pub surgeist_render::RuntimeOperation::SurfaceRendering
+pub surgeist_render::RuntimeOperation::SurfaceResume
+pub enum surgeist_render::ShadowKind
+pub surgeist_render::ShadowKind::Inset
+pub surgeist_render::ShadowKind::Outer
+pub enum surgeist_render::SizeComponentKind
+pub surgeist_render::SizeComponentKind::Auto
+pub surgeist_render::SizeComponentKind::Length(f64)
+pub surgeist_render::SizeComponentKind::Percent(f64)
 pub enum surgeist_render::StrokeAlign
 pub surgeist_render::StrokeAlign::Center
 pub surgeist_render::StrokeAlign::Inside
 pub surgeist_render::StrokeAlign::Outside
+pub enum surgeist_render::StyleImageSourceKind
+pub surgeist_render::StyleImageSourceKind::Image(surgeist_render::Image)
+pub surgeist_render::StyleImageSourceKind::Paint(surgeist_render::Paint)
+pub surgeist_render::StyleImageSourceKind::Resolved(surgeist_render::ResolvedImageResource)
+pub surgeist_render::StyleImageSourceKind::Unresolved(surgeist_render::StyleResourceRef)
+pub enum surgeist_render::SurfaceIdentityMismatchKind
+pub surgeist_render::SurfaceIdentityMismatchKind::ForeignRenderer
+pub surgeist_render::SurfaceIdentityMismatchKind::StaleDeviceGeneration
 pub enum surgeist_render::SurfaceResourceState
 pub surgeist_render::SurfaceResourceState::ContractOnly
+pub surgeist_render::SurfaceResourceState::Empty
 pub surgeist_render::SurfaceResourceState::PendingAllocation
 pub surgeist_render::SurfaceResourceState::Presented
 pub surgeist_render::SurfaceResourceState::Ready
 pub enum surgeist_render::SurfaceState
 pub surgeist_render::SurfaceState::Available
 pub surgeist_render::SurfaceState::Suspended
-pub enum surgeist_render::UnsupportedCapability
-pub surgeist_render::UnsupportedCapability::LayerFilter
-pub surgeist_render::UnsupportedCapability::LayerMask
-pub surgeist_render::UnsupportedCapability::NonSolidShadowPaint
-pub surgeist_render::UnsupportedCapability::PathStrokeAlignment
-pub surgeist_render::UnsupportedCapability::WebCanvasSurface
-impl surgeist_render::UnsupportedCapability
-pub const fn surgeist_render::UnsupportedCapability::label(self) -> &'static str
+pub enum surgeist_render::SymbolicColorPolicy
+pub surgeist_render::SymbolicColorPolicy::RootResolvedOnly
+pub enum surgeist_render::TextDecorationLineStyle
+pub surgeist_render::TextDecorationLineStyle::Dashed
+pub surgeist_render::TextDecorationLineStyle::Dotted
+pub surgeist_render::TextDecorationLineStyle::Double
+pub surgeist_render::TextDecorationLineStyle::Solid
+pub surgeist_render::TextDecorationLineStyle::Wavy
+impl surgeist_render::TextDecorationLineStyle
+pub const fn surgeist_render::TextDecorationLineStyle::label(self) -> &'static str
+pub enum surgeist_render::TextRunBoundsKind
+pub surgeist_render::TextRunBoundsKind::Empty
+pub surgeist_render::TextRunBoundsKind::Ink
+pub surgeist_render::TextRunBoundsKind::Unspecified
+pub enum surgeist_render::UnresolvedResourceKind
+pub surgeist_render::UnresolvedResourceKind::Clip
+pub surgeist_render::UnresolvedResourceKind::Filter
+pub surgeist_render::UnresolvedResourceKind::Image
+pub surgeist_render::UnresolvedResourceKind::Mask
+pub surgeist_render::UnresolvedResourceKind::TextRunInkBounds
+impl surgeist_render::UnresolvedResourceKind
+pub const fn surgeist_render::UnresolvedResourceKind::label(self) -> &'static str
+pub struct surgeist_render::AvailableRuntimeCapabilities
+impl surgeist_render::AvailableRuntimeCapabilities
+pub const fn surgeist_render::AvailableRuntimeCapabilities::effect_precisions(self) -> surgeist_render::EffectPrecisionCapabilities
+pub const fn surgeist_render::AvailableRuntimeCapabilities::max_effect_texture_dimension_2d(self) -> u32
+pub const fn surgeist_render::AvailableRuntimeCapabilities::surface_format(self) -> surgeist_render::Format
+pub struct surgeist_render::BackdropCaptureBounds
+impl surgeist_render::BackdropCaptureBounds
+pub const fn surgeist_render::BackdropCaptureBounds::rect(self) -> surgeist_render::Rect
+pub fn surgeist_render::BackdropCaptureBounds::try_new(rect: surgeist_render::Rect) -> surgeist_render::Result<Self>
+pub struct surgeist_render::BackdropFilterInput
+impl surgeist_render::BackdropFilterInput
+pub const fn surgeist_render::BackdropFilterInput::capture_bounds(&self) -> surgeist_render::BackdropCaptureBounds
+pub const fn surgeist_render::BackdropFilterInput::clip(&self) -> core::option::Option<&surgeist_render::ClipInput>
+pub fn surgeist_render::BackdropFilterInput::ensure_supported(&self, capabilities: surgeist_render::Capabilities) -> surgeist_render::Result<()>
+pub const fn surgeist_render::BackdropFilterInput::filters(&self) -> &surgeist_render::FilterList
+pub fn surgeist_render::BackdropFilterInput::try_new(filters: surgeist_render::FilterList, capture_bounds: surgeist_render::BackdropCaptureBounds, clip: core::option::Option<surgeist_render::ClipInput>) -> surgeist_render::Result<Self>
+pub fn surgeist_render::BackdropFilterInput::try_root_backdrop(filters: surgeist_render::FilterList, clip: core::option::Option<surgeist_render::ClipInput>) -> surgeist_render::Result<Self>
+pub struct surgeist_render::BackgroundAreas
+impl surgeist_render::BackgroundAreas
+pub const fn surgeist_render::BackgroundAreas::border_box(self) -> surgeist_render::Rect
+pub const fn surgeist_render::BackgroundAreas::content_box(self) -> surgeist_render::Rect
+pub const fn surgeist_render::BackgroundAreas::padding_box(self) -> surgeist_render::Rect
+pub const fn surgeist_render::BackgroundAreas::rect_for(self, box_kind: surgeist_render::BackgroundBox) -> surgeist_render::Rect
+pub fn surgeist_render::BackgroundAreas::try_new(border_box: surgeist_render::Rect, padding_box: surgeist_render::Rect, content_box: surgeist_render::Rect) -> surgeist_render::Result<Self>
+pub struct surgeist_render::BackgroundBlendList
+impl surgeist_render::BackgroundBlendList
+pub fn surgeist_render::BackgroundBlendList::modes(&self) -> &[surgeist_render::BackgroundBlendMode]
+pub fn surgeist_render::BackgroundBlendList::try_new(modes: alloc::vec::Vec<surgeist_render::BackgroundBlendMode>) -> surgeist_render::Result<Self>
+pub struct surgeist_render::BackgroundClipGeometry
+impl surgeist_render::BackgroundClipGeometry
+pub fn surgeist_render::BackgroundClipGeometry::kind(&self) -> &surgeist_render::BackgroundClipGeometryKind
+pub fn surgeist_render::BackgroundClipGeometry::rect(&self) -> core::option::Option<surgeist_render::Rect>
+pub fn surgeist_render::BackgroundClipGeometry::shape(&self) -> core::option::Option<&surgeist_render::Shape>
+pub fn surgeist_render::BackgroundClipGeometry::try_rect(rect: surgeist_render::Rect) -> surgeist_render::Result<Self>
+pub fn surgeist_render::BackgroundClipGeometry::try_shape(shape: surgeist_render::Shape) -> surgeist_render::Result<Self>
+pub struct surgeist_render::BackgroundLayer
+impl surgeist_render::BackgroundLayer
+pub const fn surgeist_render::BackgroundLayer::image(&self) -> &surgeist_render::StyleImageLayer
+pub const fn surgeist_render::BackgroundLayer::new(image: surgeist_render::StyleImageLayer) -> Self
+pub struct surgeist_render::BackgroundNormalizationInput
+impl surgeist_render::BackgroundNormalizationInput
+pub const fn surgeist_render::BackgroundNormalizationInput::areas(&self) -> surgeist_render::BackgroundAreas
+pub fn surgeist_render::BackgroundNormalizationInput::layer_clip_overrides(&self) -> &[core::option::Option<surgeist_render::BackgroundClipGeometry>]
+pub fn surgeist_render::BackgroundNormalizationInput::normalize(&self, capabilities: surgeist_render::Capabilities) -> surgeist_render::Result<surgeist_render::NormalizedBackgroundStack>
+pub fn surgeist_render::BackgroundNormalizationInput::stack(&self) -> &surgeist_render::BackgroundStack
+pub fn surgeist_render::BackgroundNormalizationInput::try_new(stack: surgeist_render::BackgroundStack, areas: surgeist_render::BackgroundAreas) -> surgeist_render::Result<Self>
+pub fn surgeist_render::BackgroundNormalizationInput::with_layer_clip_overrides(self, layer_clip_overrides: alloc::vec::Vec<core::option::Option<surgeist_render::BackgroundClipGeometry>>) -> surgeist_render::Result<Self>
+pub struct surgeist_render::BackgroundPosition
+impl surgeist_render::BackgroundPosition
+pub fn surgeist_render::BackgroundPosition::components(x: surgeist_render::PositionComponent, y: surgeist_render::PositionComponent) -> Self
+pub const fn surgeist_render::BackgroundPosition::edge_offsets(x: surgeist_render::PositionEdgeOffset, y: surgeist_render::PositionEdgeOffset) -> Self
+pub fn surgeist_render::BackgroundPosition::length(x: f64, y: f64) -> surgeist_render::Result<Self>
+pub fn surgeist_render::BackgroundPosition::percent(x: f64, y: f64) -> surgeist_render::Result<Self>
+pub const fn surgeist_render::BackgroundPosition::x(self) -> surgeist_render::PositionComponent
+pub const fn surgeist_render::BackgroundPosition::y(self) -> surgeist_render::PositionComponent
+impl core::default::Default for surgeist_render::BackgroundPosition
+pub fn surgeist_render::BackgroundPosition::default() -> Self
+pub struct surgeist_render::BackgroundRepeat
+impl surgeist_render::BackgroundRepeat
+pub const fn surgeist_render::BackgroundRepeat::new(x: surgeist_render::RepeatMode, y: surgeist_render::RepeatMode) -> Self
+pub const fn surgeist_render::BackgroundRepeat::no_repeat() -> Self
+pub const fn surgeist_render::BackgroundRepeat::repeat() -> Self
+pub const fn surgeist_render::BackgroundRepeat::repeat_x() -> Self
+pub const fn surgeist_render::BackgroundRepeat::repeat_y() -> Self
+pub const fn surgeist_render::BackgroundRepeat::x(self) -> surgeist_render::RepeatMode
+pub const fn surgeist_render::BackgroundRepeat::y(self) -> surgeist_render::RepeatMode
+pub struct surgeist_render::BackgroundSize
+impl surgeist_render::BackgroundSize
+pub const fn surgeist_render::BackgroundSize::auto() -> Self
+pub const fn surgeist_render::BackgroundSize::contain() -> Self
+pub const fn surgeist_render::BackgroundSize::cover() -> Self
+pub const fn surgeist_render::BackgroundSize::explicit(width: surgeist_render::SizeComponent, height: surgeist_render::SizeComponent) -> Self
+pub const fn surgeist_render::BackgroundSize::kind(self) -> surgeist_render::BackgroundSizeKind
+pub struct surgeist_render::BackgroundStack
+impl surgeist_render::BackgroundStack
+pub const fn surgeist_render::BackgroundStack::color(&self) -> core::option::Option<surgeist_render::Color>
+pub fn surgeist_render::BackgroundStack::layers(&self) -> &[surgeist_render::BackgroundLayer]
+pub fn surgeist_render::BackgroundStack::try_new(color: core::option::Option<surgeist_render::Color>, layers: alloc::vec::Vec<surgeist_render::BackgroundLayer>) -> surgeist_render::Result<Self>
+pub struct surgeist_render::BorderEdges
+impl surgeist_render::BorderEdges
+pub const fn surgeist_render::BorderEdges::bottom(&self) -> &surgeist_render::BorderSide
+pub const fn surgeist_render::BorderEdges::left(&self) -> &surgeist_render::BorderSide
+pub const fn surgeist_render::BorderEdges::new(top: surgeist_render::BorderSide, right: surgeist_render::BorderSide, bottom: surgeist_render::BorderSide, left: surgeist_render::BorderSide) -> Self
+pub const fn surgeist_render::BorderEdges::right(&self) -> &surgeist_render::BorderSide
+pub const fn surgeist_render::BorderEdges::top(&self) -> &surgeist_render::BorderSide
+pub struct surgeist_render::BorderSide
+impl surgeist_render::BorderSide
+pub const fn surgeist_render::BorderSide::paint(&self) -> &surgeist_render::Paint
+pub const fn surgeist_render::BorderSide::style(&self) -> surgeist_render::BorderStyle
+pub fn surgeist_render::BorderSide::try_new(style: surgeist_render::BorderStyle, width: f64, paint: impl core::convert::Into<surgeist_render::Paint>) -> surgeist_render::Result<Self>
+pub const fn surgeist_render::BorderSide::width(&self) -> f64
+pub struct surgeist_render::BoxDecorationCapabilities
+impl surgeist_render::BoxDecorationCapabilities
+pub const fn surgeist_render::BoxDecorationCapabilities::supports_border_dashed_dotted_styles(self) -> bool
+pub const fn surgeist_render::BoxDecorationCapabilities::supports_border_double_style(self) -> bool
+pub const fn surgeist_render::BoxDecorationCapabilities::supports_border_groove_style(self) -> bool
+pub const fn surgeist_render::BoxDecorationCapabilities::supports_border_inset_style(self) -> bool
+pub const fn surgeist_render::BoxDecorationCapabilities::supports_border_none_hidden_styles(self) -> bool
+pub const fn surgeist_render::BoxDecorationCapabilities::supports_border_outset_style(self) -> bool
+pub const fn surgeist_render::BoxDecorationCapabilities::supports_border_radii(self) -> bool
+pub const fn surgeist_render::BoxDecorationCapabilities::supports_border_ridge_style(self) -> bool
+pub const fn surgeist_render::BoxDecorationCapabilities::supports_border_solid_style(self) -> bool
+pub const fn surgeist_render::BoxDecorationCapabilities::supports_fragments(self) -> bool
+pub const fn surgeist_render::BoxDecorationCapabilities::supports_outline_auto_style(self) -> bool
+pub const fn surgeist_render::BoxDecorationCapabilities::supports_outline_dashed_dotted_styles(self) -> bool
+pub const fn surgeist_render::BoxDecorationCapabilities::supports_outline_double_style(self) -> bool
+pub const fn surgeist_render::BoxDecorationCapabilities::supports_outline_none_style(self) -> bool
+pub const fn surgeist_render::BoxDecorationCapabilities::supports_outline_solid_style(self) -> bool
+pub const fn surgeist_render::BoxDecorationCapabilities::supports_outlines(self) -> bool
+pub struct surgeist_render::BoxDecorationFragment
+impl surgeist_render::BoxDecorationFragment
+pub const fn surgeist_render::BoxDecorationFragment::areas(&self) -> surgeist_render::BackgroundAreas
+pub const fn surgeist_render::BoxDecorationFragment::border_clip_override(&self) -> core::option::Option<&surgeist_render::BackgroundClipGeometry>
+pub const fn surgeist_render::BoxDecorationFragment::break_mode(&self) -> surgeist_render::BoxDecorationBreak
+pub const fn surgeist_render::BoxDecorationFragment::radii(&self) -> surgeist_render::NormalizedBoxRadii
+pub fn surgeist_render::BoxDecorationFragment::try_new(areas: surgeist_render::BackgroundAreas, radii: surgeist_render::Radii, break_mode: surgeist_render::BoxDecorationBreak) -> surgeist_render::Result<Self>
+pub fn surgeist_render::BoxDecorationFragment::with_border_clip_override(self, border_clip_override: surgeist_render::BackgroundClipGeometry) -> Self
+pub struct surgeist_render::BoxDecorationInput
+impl surgeist_render::BoxDecorationInput
+pub const fn surgeist_render::BoxDecorationInput::border_edges(&self) -> core::option::Option<&surgeist_render::BorderEdges>
+pub fn surgeist_render::BoxDecorationInput::fragments(&self) -> &[surgeist_render::BoxDecorationFragment]
+pub fn surgeist_render::BoxDecorationInput::normalize(&self, _capabilities: surgeist_render::Capabilities) -> surgeist_render::Result<surgeist_render::NormalizedBoxDecoration>
+pub const fn surgeist_render::BoxDecorationInput::outline(&self) -> core::option::Option<&surgeist_render::Outline>
+pub fn surgeist_render::BoxDecorationInput::try_new(border_edges: core::option::Option<surgeist_render::BorderEdges>, outline: core::option::Option<surgeist_render::Outline>, fragments: alloc::vec::Vec<surgeist_render::BoxDecorationFragment>) -> surgeist_render::Result<Self>
 pub struct surgeist_render::Capabilities
 impl surgeist_render::Capabilities
-pub const fn surgeist_render::Capabilities::supports_inside_outside_path_strokes(self) -> bool
-pub const fn surgeist_render::Capabilities::supports_layer_filters(self) -> bool
-pub const fn surgeist_render::Capabilities::supports_layer_masks(self) -> bool
-pub const fn surgeist_render::Capabilities::supports_web_canvas_surfaces(self) -> bool
+pub const surgeist_render::Capabilities::CURRENT: Self
+pub const fn surgeist_render::Capabilities::box_decorations(self) -> surgeist_render::BoxDecorationCapabilities
+pub const fn surgeist_render::Capabilities::compositing(self) -> surgeist_render::CompositingCapabilities
+pub fn surgeist_render::Capabilities::ensure_supported(self, primitive: surgeist_render::UnsupportedPrimitive) -> surgeist_render::Result<()>
+pub const fn surgeist_render::Capabilities::filters(self) -> surgeist_render::FilterCapabilities
+pub const fn surgeist_render::Capabilities::geometry_targets(self) -> surgeist_render::GeometryTargetCapabilities
+pub const fn surgeist_render::Capabilities::image_sampling(self) -> surgeist_render::ImageSamplingCapabilities
+pub const fn surgeist_render::Capabilities::masks_clips(self) -> surgeist_render::MaskClipCapabilities
+pub const fn surgeist_render::Capabilities::offscreen_pipeline(self) -> surgeist_render::OffscreenPipelineCapabilities
+pub const fn surgeist_render::Capabilities::paint_sources(self) -> surgeist_render::PaintSourceCapabilities
+pub const fn surgeist_render::Capabilities::shadows(self) -> surgeist_render::ShadowCapabilities
+pub const fn surgeist_render::Capabilities::surfaces(self) -> surgeist_render::SurfaceCapabilities
+pub const fn surgeist_render::Capabilities::transform_coordinate_spaces(self) -> surgeist_render::TransformCoordinateSpaceCapabilities
+pub struct surgeist_render::ClipGeometry
+impl surgeist_render::ClipGeometry
+pub const fn surgeist_render::ClipGeometry::kind(&self) -> &surgeist_render::ClipGeometryKind
+pub fn surgeist_render::ClipGeometry::try_path(path: surgeist_render::FilledPath) -> surgeist_render::Result<Self>
+pub struct surgeist_render::ClipInput
+impl surgeist_render::ClipInput
+pub const fn surgeist_render::ClipInput::coordinate_space(&self) -> core::option::Option<surgeist_render::CoordinateSpaceTag>
+pub fn surgeist_render::ClipInput::ensure_supported(&self, capabilities: surgeist_render::Capabilities) -> surgeist_render::Result<()>
+pub const fn surgeist_render::ClipInput::filled_path(&self) -> core::option::Option<&surgeist_render::FilledPath>
+pub const fn surgeist_render::ClipInput::kind(&self) -> &surgeist_render::ClipInputKind
+pub fn surgeist_render::ClipInput::normalize(&self, capabilities: surgeist_render::Capabilities) -> surgeist_render::Result<surgeist_render::NormalizedClip>
+pub const fn surgeist_render::ClipInput::reference(reference: surgeist_render::StyleResourceRef) -> Self
+pub const fn surgeist_render::ClipInput::reference_ref(&self) -> core::option::Option<&surgeist_render::StyleResourceRef>
+pub const fn surgeist_render::ClipInput::shape(&self) -> core::option::Option<&surgeist_render::Shape>
+pub fn surgeist_render::ClipInput::try_filled_path(path: surgeist_render::FilledPath) -> surgeist_render::Result<Self>
+pub fn surgeist_render::ClipInput::try_shape(shape: surgeist_render::Shape) -> surgeist_render::Result<Self>
+pub fn surgeist_render::ClipInput::with_coordinate_space(self, coordinate_space: surgeist_render::CoordinateSpaceTag) -> Self
 pub struct surgeist_render::Color
 impl surgeist_render::Color
 pub const surgeist_render::Color::BLACK: Self
@@ -126,31 +591,125 @@ impl core::convert::From<surgeist_render::Color> for surgeist_render::Paint
 pub fn surgeist_render::Paint::from(color: surgeist_render::Color) -> Self
 impl core::default::Default for surgeist_render::Color
 pub fn surgeist_render::Color::default() -> Self
+pub struct surgeist_render::CompositingCapabilities
+impl surgeist_render::CompositingCapabilities
+pub const fn surgeist_render::CompositingCapabilities::supports_additional_mix_blend_modes(self) -> bool
+pub const fn surgeist_render::CompositingCapabilities::supports_background_blend_modes(self) -> bool
+pub const fn surgeist_render::CompositingCapabilities::supports_blend_modes(self) -> bool
+pub const fn surgeist_render::CompositingCapabilities::supports_layer_opacity(self) -> bool
+pub const fn surgeist_render::CompositingCapabilities::supports_porter_duff_composite_modes(self) -> bool
+pub const fn surgeist_render::CompositingCapabilities::supports_root_backdrop_policy(self) -> bool
+pub struct surgeist_render::CoordinateSpaceId
+impl surgeist_render::CoordinateSpaceId
+pub const fn surgeist_render::CoordinateSpaceId::get(self) -> u64
+pub fn surgeist_render::CoordinateSpaceId::try_new(value: u64) -> surgeist_render::Result<Self>
+pub struct surgeist_render::CoordinateSpaceTag
+impl surgeist_render::CoordinateSpaceTag
+pub const fn surgeist_render::CoordinateSpaceTag::kind(self) -> surgeist_render::CoordinateSpaceKind
+pub fn surgeist_render::CoordinateSpaceTag::local() -> Self
+pub fn surgeist_render::CoordinateSpaceTag::surface(transform: surgeist_render::Transform) -> surgeist_render::Result<Self>
+pub const fn surgeist_render::CoordinateSpaceTag::transform(self) -> surgeist_render::Transform
+pub fn surgeist_render::CoordinateSpaceTag::try_new(kind: surgeist_render::CoordinateSpaceKind, transform: surgeist_render::Transform) -> surgeist_render::Result<Self>
+pub fn surgeist_render::CoordinateSpaceTag::viewport(transform: surgeist_render::Transform) -> surgeist_render::Result<Self>
 pub struct surgeist_render::Dash
 impl surgeist_render::Dash
 pub const fn surgeist_render::Dash::intervals(self) -> &'static [f64]
 pub const fn surgeist_render::Dash::offset(self) -> f64
 pub fn surgeist_render::Dash::try_new(offset: f64, intervals: &'static [f64]) -> surgeist_render::Result<Self>
+pub struct surgeist_render::DegradedQuality
+impl surgeist_render::DegradedQuality
+pub const fn surgeist_render::DegradedQuality::kind(&self) -> surgeist_render::DegradedQualityKind
+pub fn surgeist_render::DegradedQuality::new(kind: surgeist_render::DegradedQualityKind, value: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn surgeist_render::DegradedQuality::value(&self) -> &str
+pub struct surgeist_render::EffectPrecisionCapabilities
+impl surgeist_render::EffectPrecisionCapabilities
+pub const fn surgeist_render::EffectPrecisionCapabilities::supports_high_precision(self) -> bool
+pub const fn surgeist_render::EffectPrecisionCapabilities::supports_reduced_precision(self) -> bool
 pub struct surgeist_render::Error
-pub surgeist_render::Error::code: surgeist_render::ErrorCode
-pub surgeist_render::Error::message: alloc::string::String
-pub surgeist_render::Error::source: core::option::Option<alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync)>>
 impl surgeist_render::Error
+pub const fn surgeist_render::Error::code(&self) -> surgeist_render::ErrorCode
+pub fn surgeist_render::Error::degraded_quality(diagnostic: surgeist_render::DegradedQuality) -> Self
+pub const fn surgeist_render::Error::degraded_quality_diagnostic(&self) -> core::option::Option<&surgeist_render::DegradedQuality>
+pub fn surgeist_render::Error::from_invalid_value(invalid_value: surgeist_render::InvalidValue) -> Self
 pub fn surgeist_render::Error::invalid_value(name: impl core::convert::Into<alloc::string::String>, value: impl core::fmt::Display, rule: &'static str) -> Self
-pub fn surgeist_render::Error::new(code: surgeist_render::ErrorCode, message: impl core::convert::Into<alloc::string::String>) -> Self
-pub fn surgeist_render::Error::unsupported_capability(capability: surgeist_render::UnsupportedCapability) -> Self
-pub fn surgeist_render::Error::with_source(self, source: impl core::error::Error + core::marker::Send + core::marker::Sync + 'static) -> Self
+pub const fn surgeist_render::Error::invalid_value_diagnostic(&self) -> core::option::Option<&surgeist_render::InvalidValue>
+pub fn surgeist_render::Error::message(&self) -> &str
+pub fn surgeist_render::Error::runtime_capability_unavailable(value: surgeist_render::RuntimeCapabilityUnavailable) -> Self
+pub const fn surgeist_render::Error::runtime_capability_unavailable_diagnostic(&self) -> core::option::Option<&surgeist_render::RuntimeCapabilityUnavailable>
+pub fn surgeist_render::Error::unresolved_resource(resource: surgeist_render::UnresolvedResource) -> Self
+pub const fn surgeist_render::Error::unresolved_resource_diagnostic(&self) -> core::option::Option<&surgeist_render::UnresolvedResource>
+pub const fn surgeist_render::Error::unsupported_primitive(&self) -> core::option::Option<surgeist_render::UnsupportedPrimitive>
+pub fn surgeist_render::Error::unsupported_render_primitive(primitive: surgeist_render::UnsupportedPrimitive) -> Self
 impl core::error::Error for surgeist_render::Error
 pub fn surgeist_render::Error::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_render::Error
 pub fn surgeist_render::Error::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_render::FilledPath
+impl surgeist_render::FilledPath
+pub const fn surgeist_render::FilledPath::fill_rule(&self) -> surgeist_render::FillRule
+pub const fn surgeist_render::FilledPath::path(&self) -> &surgeist_render::Path
+pub fn surgeist_render::FilledPath::try_new(path: surgeist_render::Path, fill_rule: surgeist_render::FillRule) -> surgeist_render::Result<Self>
 pub struct surgeist_render::Filter
 impl surgeist_render::Filter
 pub const fn surgeist_render::Filter::blur_radius(self) -> f64
 pub fn surgeist_render::Filter::try_blur(radius: f64) -> surgeist_render::Result<Self>
+pub struct surgeist_render::FilterAmount
+impl surgeist_render::FilterAmount
+pub fn surgeist_render::FilterAmount::try_new(value: f64) -> surgeist_render::Result<Self>
+pub const fn surgeist_render::FilterAmount::value(self) -> f64
+pub struct surgeist_render::FilterAngle
+impl surgeist_render::FilterAngle
+pub const fn surgeist_render::FilterAngle::radians(self) -> f64
+pub fn surgeist_render::FilterAngle::try_radians(radians: f64) -> surgeist_render::Result<Self>
+pub struct surgeist_render::FilterBlur
+impl surgeist_render::FilterBlur
+pub const fn surgeist_render::FilterBlur::radius(self) -> f64
+pub fn surgeist_render::FilterBlur::try_new(radius: f64) -> surgeist_render::Result<Self>
+pub struct surgeist_render::FilterCapabilities
+impl surgeist_render::FilterCapabilities
+pub const fn surgeist_render::FilterCapabilities::supports_filter_region_planning(self) -> bool
+pub const fn surgeist_render::FilterCapabilities::supports_gpu_blur_filter_execution(self) -> bool
+pub const fn surgeist_render::FilterCapabilities::supports_gpu_color_filter_execution(self) -> bool
+pub const fn surgeist_render::FilterCapabilities::supports_gpu_drop_shadow_filter_execution(self) -> bool
+pub const fn surgeist_render::FilterCapabilities::supports_layer_filters(self) -> bool
+pub const fn surgeist_render::FilterCapabilities::supports_ordered_filter_lists(self) -> bool
+pub struct surgeist_render::FilterDropShadow
+impl surgeist_render::FilterDropShadow
+pub const fn surgeist_render::FilterDropShadow::blur(self) -> surgeist_render::FilterBlur
+pub const fn surgeist_render::FilterDropShadow::color(self) -> surgeist_render::Color
+pub const fn surgeist_render::FilterDropShadow::offset(self) -> surgeist_render::Point
+pub fn surgeist_render::FilterDropShadow::try_from_shadow(shadow: surgeist_render::Shadow) -> surgeist_render::Result<Self>
+pub fn surgeist_render::FilterDropShadow::try_new(offset: surgeist_render::Point, blur: surgeist_render::FilterBlur, color: surgeist_render::Color) -> surgeist_render::Result<Self>
+pub struct surgeist_render::FilterList
+impl surgeist_render::FilterList
+pub fn surgeist_render::FilterList::color_filter_pipeline(&self) -> core::result::Result<core::option::Option<surgeist_render::style::filter::ColorFilterPipeline>, surgeist_render::UnsupportedPrimitive>
+pub const fn surgeist_render::FilterList::is_none(&self) -> bool
+pub const fn surgeist_render::FilterList::none() -> Self
+pub fn surgeist_render::FilterList::ops(&self) -> &[surgeist_render::FilterOp]
+pub fn surgeist_render::FilterList::try_ops(ops: alloc::vec::Vec<surgeist_render::FilterOp>) -> surgeist_render::Result<Self>
+pub struct surgeist_render::FilterOp
+impl surgeist_render::FilterOp
+pub const fn surgeist_render::FilterOp::blur(blur: surgeist_render::FilterBlur) -> Self
+pub const fn surgeist_render::FilterOp::brightness(amount: surgeist_render::FilterAmount) -> Self
+pub const fn surgeist_render::FilterOp::contrast(amount: surgeist_render::FilterAmount) -> Self
+pub const fn surgeist_render::FilterOp::drop_shadow(shadow: surgeist_render::FilterDropShadow) -> Self
+pub const fn surgeist_render::FilterOp::grayscale(amount: surgeist_render::UnitFilterAmount) -> Self
+pub const fn surgeist_render::FilterOp::hue_rotate(angle: surgeist_render::FilterAngle) -> Self
+pub const fn surgeist_render::FilterOp::invert(amount: surgeist_render::UnitFilterAmount) -> Self
+pub const fn surgeist_render::FilterOp::kind(&self) -> &surgeist_render::FilterOpKind
+pub const fn surgeist_render::FilterOp::opacity(amount: surgeist_render::UnitFilterAmount) -> Self
+pub const fn surgeist_render::FilterOp::saturate(amount: surgeist_render::FilterAmount) -> Self
+pub const fn surgeist_render::FilterOp::sepia(amount: surgeist_render::UnitFilterAmount) -> Self
+pub fn surgeist_render::FilterOp::try_drop_shadow(shadow: surgeist_render::Shadow) -> surgeist_render::Result<Self>
+pub struct surgeist_render::FilteredImagePaint
+impl surgeist_render::FilteredImagePaint
+pub fn surgeist_render::FilteredImagePaint::ensure_supported(&self, capabilities: surgeist_render::Capabilities) -> surgeist_render::Result<()>
+pub const fn surgeist_render::FilteredImagePaint::filters(&self) -> &surgeist_render::FilterList
+pub const fn surgeist_render::FilteredImagePaint::resource(&self) -> &surgeist_render::ResolvedImageResource
+pub fn surgeist_render::FilteredImagePaint::try_new(resource: surgeist_render::ResolvedImageResource, filters: surgeist_render::FilterList) -> surgeist_render::Result<Self>
 pub struct surgeist_render::FontData
 impl surgeist_render::FontData
-pub fn surgeist_render::FontData::from_bytes(bytes: alloc::vec::Vec<u8>, index: u32) -> Self
+pub fn surgeist_render::FontData::try_from_bytes(bytes: alloc::vec::Vec<u8>, index: u32) -> surgeist_render::Result<Self>
 pub struct surgeist_render::FontId(_)
 impl surgeist_render::FontId
 pub const fn surgeist_render::FontId::get(self) -> u64
@@ -164,8 +723,23 @@ pub const fn surgeist_render::FontRef<'a>::id(&self) -> surgeist_render::FontId
 pub fn surgeist_render::FontRef<'a>::named(self, name: impl core::convert::Into<alloc::borrow::Cow<'a, str>>) -> Self
 pub fn surgeist_render::FontRef<'a>::new(id: impl core::convert::Into<surgeist_render::FontId>) -> Self
 pub fn surgeist_render::FontRef<'a>::with_data(self, data: surgeist_render::FontData) -> Self
+pub struct surgeist_render::GeometryTargetCapabilities
+impl surgeist_render::GeometryTargetCapabilities
+pub const fn surgeist_render::GeometryTargetCapabilities::hit_testing(self) -> surgeist_render::HitTestOwnership
+pub const fn surgeist_render::GeometryTargetCapabilities::supports_arbitrary_path_centered_stroke(self) -> bool
+pub const fn surgeist_render::GeometryTargetCapabilities::supports_arbitrary_path_fill(self) -> bool
+pub const fn surgeist_render::GeometryTargetCapabilities::supports_arbitrary_path_inside_outside_stroke(self) -> bool
+pub const fn surgeist_render::GeometryTargetCapabilities::supports_circle_ellipse_fill_stroke(self) -> bool
+pub const fn surgeist_render::GeometryTargetCapabilities::supports_geometry_booleans(self) -> bool
+pub const fn surgeist_render::GeometryTargetCapabilities::supports_geometry_offsets(self) -> bool
+pub const fn surgeist_render::GeometryTargetCapabilities::supports_rect_fill_stroke(self) -> bool
+pub const fn surgeist_render::GeometryTargetCapabilities::supports_rounded_rect_fill_stroke(self) -> bool
 pub struct surgeist_render::Gradient
 impl surgeist_render::Gradient
+pub const fn surgeist_render::Gradient::linear_points(&self) -> core::option::Option<(surgeist_render::Point, surgeist_render::Point)>
+pub const fn surgeist_render::Gradient::radial_geometry(&self) -> core::option::Option<(surgeist_render::Point, f64)>
+pub fn surgeist_render::Gradient::stops(&self) -> &[surgeist_render::GradientStop]
+pub const fn surgeist_render::Gradient::sweep_center(&self) -> core::option::Option<surgeist_render::Point>
 pub fn surgeist_render::Gradient::try_linear(start: surgeist_render::Point, end: surgeist_render::Point, stops: alloc::vec::Vec<surgeist_render::GradientStop>) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Gradient::try_radial(center: surgeist_render::Point, radius: f64, stops: alloc::vec::Vec<surgeist_render::GradientStop>) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Gradient::try_sweep(center: surgeist_render::Point, stops: alloc::vec::Vec<surgeist_render::GradientStop>) -> surgeist_render::Result<Self>
@@ -185,36 +759,224 @@ pub fn surgeist_render::Image::from_rgba(size: surgeist_render::Size, data: impl
 pub const fn surgeist_render::Image::id(&self) -> surgeist_render::ImageId
 pub const fn surgeist_render::Image::quality(self, quality: surgeist_render::ImageQuality) -> Self
 pub const fn surgeist_render::Image::size(&self) -> surgeist_render::Size
+impl core::cmp::PartialEq for surgeist_render::Image
+pub fn surgeist_render::Image::eq(&self, other: &Self) -> bool
 impl core::convert::From<surgeist_render::Image> for surgeist_render::Paint
 pub fn surgeist_render::Paint::from(image: surgeist_render::Image) -> Self
+pub struct surgeist_render::ImageAttachmentPlan
+impl surgeist_render::ImageAttachmentPlan
+pub const fn surgeist_render::ImageAttachmentPlan::attachment(self) -> surgeist_render::BackgroundAttachment
+pub const fn surgeist_render::ImageAttachmentPlan::coordinate_space(self) -> core::option::Option<surgeist_render::CoordinateSpaceTag>
+pub fn surgeist_render::ImageAttachmentPlan::try_new(attachment: surgeist_render::BackgroundAttachment, coordinate_space: core::option::Option<surgeist_render::CoordinateSpaceTag>) -> surgeist_render::Result<Self>
 pub struct surgeist_render::ImageBuffer
-pub surgeist_render::ImageBuffer::rgba: alloc::vec::Vec<u8>
-pub surgeist_render::ImageBuffer::size: surgeist_render::PhysicalSize
+impl surgeist_render::ImageBuffer
+pub fn surgeist_render::ImageBuffer::into_rgba(self) -> alloc::vec::Vec<u8>
+pub fn surgeist_render::ImageBuffer::rgba(&self) -> &[u8]
+pub const fn surgeist_render::ImageBuffer::size(&self) -> surgeist_render::PhysicalSize
+pub fn surgeist_render::ImageBuffer::try_new(size: surgeist_render::PhysicalSize, rgba: alloc::vec::Vec<u8>) -> surgeist_render::Result<Self>
 pub struct surgeist_render::ImageId(_)
 impl surgeist_render::ImageId
 pub const fn surgeist_render::ImageId::get(self) -> u64
 pub const fn surgeist_render::ImageId::new(value: u64) -> Self
+pub struct surgeist_render::ImagePlacementInput
+impl surgeist_render::ImagePlacementInput
+pub const fn surgeist_render::ImagePlacementInput::intrinsic_size(self) -> surgeist_render::Size
+pub const fn surgeist_render::ImagePlacementInput::paint_rect(self) -> surgeist_render::Rect
+pub const fn surgeist_render::ImagePlacementInput::position(self) -> surgeist_render::BackgroundPosition
+pub fn surgeist_render::ImagePlacementInput::resolve(self) -> surgeist_render::Result<surgeist_render::ResolvedImagePlacement>
+pub const fn surgeist_render::ImagePlacementInput::size(self) -> surgeist_render::BackgroundSize
+pub fn surgeist_render::ImagePlacementInput::try_new(paint_rect: surgeist_render::Rect, intrinsic_size: surgeist_render::Size, position: surgeist_render::BackgroundPosition, size: surgeist_render::BackgroundSize) -> surgeist_render::Result<Self>
+pub struct surgeist_render::ImageRepeatPlan
+impl surgeist_render::ImageRepeatPlan
+pub const fn surgeist_render::ImageRepeatPlan::mode(self) -> surgeist_render::ImageRepeatMode
+pub const fn surgeist_render::ImageRepeatPlan::repeat(self) -> surgeist_render::BackgroundRepeat
+pub fn surgeist_render::ImageRepeatPlan::resolve(self, placement: surgeist_render::ResolvedImagePlacement) -> surgeist_render::Result<surgeist_render::ResolvedImageRepeat>
+pub fn surgeist_render::ImageRepeatPlan::try_new(repeat: surgeist_render::BackgroundRepeat, capabilities: surgeist_render::Capabilities) -> surgeist_render::Result<Self>
+pub struct surgeist_render::ImageResourceDensity
+impl surgeist_render::ImageResourceDensity
+pub fn surgeist_render::ImageResourceDensity::try_new(value: f64) -> surgeist_render::Result<Self>
+pub const fn surgeist_render::ImageResourceDensity::value(self) -> f64
+pub struct surgeist_render::ImageSamplingCapabilities
+impl surgeist_render::ImageSamplingCapabilities
+pub const fn surgeist_render::ImageSamplingCapabilities::attachment_coordinate_policy(self) -> surgeist_render::BackgroundAttachmentCoordinatePolicy
+pub const fn surgeist_render::ImageSamplingCapabilities::image_color_profile_policy(self) -> surgeist_render::ImageColorProfilePolicy
+pub const fn surgeist_render::ImageSamplingCapabilities::image_orientation_policy(self) -> surgeist_render::ImageOrientationPolicy
+pub const fn surgeist_render::ImageSamplingCapabilities::supports_background_position(self) -> bool
+pub const fn surgeist_render::ImageSamplingCapabilities::supports_background_size(self) -> bool
+pub const fn surgeist_render::ImageSamplingCapabilities::supports_color_filtered_image_paint(self) -> bool
+pub const fn surgeist_render::ImageSamplingCapabilities::supports_filtered_image_paint(self) -> bool
+pub const fn surgeist_render::ImageSamplingCapabilities::supports_image_color_profile_conversion(self) -> bool
+pub const fn surgeist_render::ImageSamplingCapabilities::supports_image_fit(self) -> bool
+pub const fn surgeist_render::ImageSamplingCapabilities::supports_image_orientation_conversion(self) -> bool
+pub const fn surgeist_render::ImageSamplingCapabilities::supports_repeat_round(self) -> bool
+pub const fn surgeist_render::ImageSamplingCapabilities::supports_repeat_space(self) -> bool
+pub const fn surgeist_render::ImageSamplingCapabilities::supports_repeat_xy(self) -> bool
+pub struct surgeist_render::InvalidValue
+impl surgeist_render::InvalidValue
+pub fn surgeist_render::InvalidValue::field(&self) -> &str
+pub const fn surgeist_render::InvalidValue::invariant(&self) -> &'static str
+pub fn surgeist_render::InvalidValue::new(field: impl core::convert::Into<alloc::string::String>, value: impl core::fmt::Display, invariant: &'static str) -> Self
+pub fn surgeist_render::InvalidValue::value(&self) -> &str
 pub struct surgeist_render::Layer
 impl surgeist_render::Layer
+pub fn surgeist_render::Layer::backdrop_filter(&self) -> core::option::Option<&surgeist_render::BackdropFilterInput>
 pub const fn surgeist_render::Layer::blend(self, blend: surgeist_render::BlendMode) -> Self
 pub const fn surgeist_render::Layer::blend_mode(&self) -> surgeist_render::BlendMode
 pub fn surgeist_render::Layer::clip(&self) -> core::option::Option<&surgeist_render::Shape>
+pub fn surgeist_render::Layer::clip_input(&self) -> core::option::Option<&surgeist_render::ClipInput>
 pub const fn surgeist_render::Layer::filter(&self) -> core::option::Option<surgeist_render::Filter>
 pub fn surgeist_render::Layer::mask(&self) -> core::option::Option<&surgeist_render::Shape>
 pub fn surgeist_render::Layer::new() -> Self
 pub const fn surgeist_render::Layer::opacity(&self) -> f32
+pub fn surgeist_render::Layer::resolved_alpha_mask(&self) -> core::option::Option<&surgeist_render::ResolvedLayerAlphaMask>
 pub const fn surgeist_render::Layer::transform(&self) -> surgeist_render::Transform
+pub fn surgeist_render::Layer::try_backdrop_filter(self, backdrop_filter: surgeist_render::BackdropFilterInput) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Layer::try_clip(self, clip: surgeist_render::Shape) -> surgeist_render::Result<Self>
+pub fn surgeist_render::Layer::try_clip_input(self, clip: surgeist_render::ClipInput) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Layer::try_filter(self, filter: surgeist_render::Filter) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Layer::try_mask(self, mask: surgeist_render::Shape) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Layer::try_opacity(self, opacity: f32) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Layer::try_transform(self, transform: surgeist_render::Transform) -> surgeist_render::Result<Self>
+pub fn surgeist_render::Layer::with_resolved_alpha_mask(self, alpha_mask: surgeist_render::ResolvedLayerAlphaMask) -> Self
 impl core::default::Default for surgeist_render::Layer
 pub fn surgeist_render::Layer::default() -> Self
+pub struct surgeist_render::MaskClipCapabilities
+impl surgeist_render::MaskClipCapabilities
+pub const fn surgeist_render::MaskClipCapabilities::supports_clip_reference_execution(self) -> bool
+pub const fn surgeist_render::MaskClipCapabilities::supports_layer_masks(self) -> bool
+pub const fn surgeist_render::MaskClipCapabilities::supports_luminance_mask_mode(self) -> bool
+pub const fn surgeist_render::MaskClipCapabilities::supports_mask_composite_modes(self) -> bool
+pub const fn surgeist_render::MaskClipCapabilities::supports_multi_layer_mask_composition(self) -> bool
+pub const fn surgeist_render::MaskClipCapabilities::supports_resolved_alpha_mask_execution(self) -> bool
+pub const fn surgeist_render::MaskClipCapabilities::supports_shape_clips(self) -> bool
+pub struct surgeist_render::MaskInput
+impl surgeist_render::MaskInput
+pub const fn surgeist_render::MaskInput::coordinate_space(&self) -> core::option::Option<surgeist_render::CoordinateSpaceTag>
+pub fn surgeist_render::MaskInput::ensure_supported(&self, capabilities: surgeist_render::Capabilities) -> surgeist_render::Result<()>
+pub const fn surgeist_render::MaskInput::image_layer(layer: surgeist_render::StyleImageLayer, mode: surgeist_render::MaskMode) -> Self
+pub const fn surgeist_render::MaskInput::mode(&self) -> surgeist_render::MaskMode
+pub const fn surgeist_render::MaskInput::reference(reference: surgeist_render::StyleResourceRef, mode: surgeist_render::MaskMode) -> Self
+pub const fn surgeist_render::MaskInput::source(&self) -> &surgeist_render::MaskSource
+pub fn surgeist_render::MaskInput::try_shape(shape: surgeist_render::Shape, mode: surgeist_render::MaskMode) -> surgeist_render::Result<Self>
+pub fn surgeist_render::MaskInput::with_coordinate_space(self, coordinate_space: surgeist_render::CoordinateSpaceTag) -> Self
+impl core::convert::From<surgeist_render::MaskInput> for surgeist_render::MaskLayer
+pub fn surgeist_render::MaskLayer::from(input: surgeist_render::MaskInput) -> Self
+pub struct surgeist_render::MaskLayer
+impl surgeist_render::MaskLayer
+pub const fn surgeist_render::MaskLayer::composite_mode(&self) -> surgeist_render::MaskCompositeMode
+pub const fn surgeist_render::MaskLayer::input(&self) -> &surgeist_render::MaskInput
+pub const fn surgeist_render::MaskLayer::new(input: surgeist_render::MaskInput) -> Self
+pub const fn surgeist_render::MaskLayer::try_new(input: surgeist_render::MaskInput, composite_mode: surgeist_render::MaskCompositeMode) -> surgeist_render::Result<Self>
+impl core::convert::From<surgeist_render::MaskInput> for surgeist_render::MaskLayer
+pub fn surgeist_render::MaskLayer::from(input: surgeist_render::MaskInput) -> Self
+pub struct surgeist_render::MaskLayerStack
+impl surgeist_render::MaskLayerStack
+pub fn surgeist_render::MaskLayerStack::ensure_supported(&self, capabilities: surgeist_render::Capabilities) -> surgeist_render::Result<()>
+pub fn surgeist_render::MaskLayerStack::is_empty(&self) -> bool
+pub fn surgeist_render::MaskLayerStack::layers(&self) -> &[surgeist_render::MaskLayer]
+pub fn surgeist_render::MaskLayerStack::len(&self) -> usize
+pub fn surgeist_render::MaskLayerStack::single(layer: impl core::convert::Into<surgeist_render::MaskLayer>) -> Self
+pub fn surgeist_render::MaskLayerStack::try_new(layers: impl core::iter::traits::collect::IntoIterator<Item = surgeist_render::MaskLayer>) -> surgeist_render::Result<Self>
+pub struct surgeist_render::MaskSource
+impl surgeist_render::MaskSource
+pub const fn surgeist_render::MaskSource::kind(&self) -> &surgeist_render::MaskSourceKind
+pub struct surgeist_render::NormalizedBackgroundCommand
+impl surgeist_render::NormalizedBackgroundCommand
+pub fn surgeist_render::NormalizedBackgroundCommand::clip(&self) -> &surgeist_render::BackgroundClipGeometry
+pub fn surgeist_render::NormalizedBackgroundCommand::kind(&self) -> &surgeist_render::NormalizedBackgroundCommandKind
+pub struct surgeist_render::NormalizedBackgroundLayer
+impl surgeist_render::NormalizedBackgroundLayer
+pub const fn surgeist_render::NormalizedBackgroundLayer::attachment(&self) -> surgeist_render::ImageAttachmentPlan
+pub const fn surgeist_render::NormalizedBackgroundLayer::placement(&self) -> surgeist_render::ResolvedImagePlacement
+pub fn surgeist_render::NormalizedBackgroundLayer::repeat(&self) -> &surgeist_render::ResolvedImageRepeat
+pub fn surgeist_render::NormalizedBackgroundLayer::source(&self) -> &surgeist_render::NormalizedBackgroundLayerSource
+pub struct surgeist_render::NormalizedBackgroundStack
+impl surgeist_render::NormalizedBackgroundStack
+pub fn surgeist_render::NormalizedBackgroundStack::commands(&self) -> &[surgeist_render::NormalizedBackgroundCommand]
+pub struct surgeist_render::NormalizedBorderCommand
+impl surgeist_render::NormalizedBorderCommand
+pub const fn surgeist_render::NormalizedBorderCommand::break_mode(&self) -> surgeist_render::BoxDecorationBreak
+pub const fn surgeist_render::NormalizedBorderCommand::clip(&self) -> &surgeist_render::BackgroundClipGeometry
+pub const fn surgeist_render::NormalizedBorderCommand::fragment_index(&self) -> usize
+pub const fn surgeist_render::NormalizedBorderCommand::paint(&self) -> &surgeist_render::Paint
+pub const fn surgeist_render::NormalizedBorderCommand::radii(&self) -> surgeist_render::NormalizedBoxRadii
+pub const fn surgeist_render::NormalizedBorderCommand::side(&self) -> surgeist_render::BoxSide
+pub const fn surgeist_render::NormalizedBorderCommand::style(&self) -> &surgeist_render::NormalizedBorderStyle
+pub const fn surgeist_render::NormalizedBorderCommand::target_rect(&self) -> surgeist_render::Rect
+pub const fn surgeist_render::NormalizedBorderCommand::width(&self) -> f64
+pub struct surgeist_render::NormalizedBoxDecoration
+impl surgeist_render::NormalizedBoxDecoration
+pub fn surgeist_render::NormalizedBoxDecoration::commands(&self) -> &[surgeist_render::NormalizedBoxDecorationCommand]
+pub struct surgeist_render::NormalizedBoxDecorationCommand
+impl surgeist_render::NormalizedBoxDecorationCommand
+pub const fn surgeist_render::NormalizedBoxDecorationCommand::kind(&self) -> &surgeist_render::NormalizedBoxDecorationCommandKind
+pub struct surgeist_render::NormalizedBoxRadii
+impl surgeist_render::NormalizedBoxRadii
+pub const fn surgeist_render::NormalizedBoxRadii::border_box(self) -> surgeist_render::Rect
+pub const fn surgeist_render::NormalizedBoxRadii::radii(self) -> surgeist_render::Radii
+pub fn surgeist_render::NormalizedBoxRadii::try_new(border_box: surgeist_render::Rect, radii: surgeist_render::Radii) -> surgeist_render::Result<Self>
+pub struct surgeist_render::NormalizedClip
+impl surgeist_render::NormalizedClip
+pub const fn surgeist_render::NormalizedClip::coordinate_space(&self) -> core::option::Option<surgeist_render::CoordinateSpaceTag>
+pub const fn surgeist_render::NormalizedClip::geometry(&self) -> &surgeist_render::ClipGeometry
+pub fn surgeist_render::NormalizedClip::try_new(geometry: surgeist_render::ClipGeometry, coordinate_space: core::option::Option<surgeist_render::CoordinateSpaceTag>) -> surgeist_render::Result<Self>
+pub struct surgeist_render::NormalizedDoubleBorderBands
+impl surgeist_render::NormalizedDoubleBorderBands
+pub const fn surgeist_render::NormalizedDoubleBorderBands::gap_width(self) -> f64
+pub const fn surgeist_render::NormalizedDoubleBorderBands::inner_width(self) -> f64
+pub const fn surgeist_render::NormalizedDoubleBorderBands::original_width(self) -> f64
+pub const fn surgeist_render::NormalizedDoubleBorderBands::outer_width(self) -> f64
+pub struct surgeist_render::NormalizedOutlineCommand
+impl surgeist_render::NormalizedOutlineCommand
+pub const fn surgeist_render::NormalizedOutlineCommand::break_mode(&self) -> surgeist_render::BoxDecorationBreak
+pub const fn surgeist_render::NormalizedOutlineCommand::clip(&self) -> &surgeist_render::BackgroundClipGeometry
+pub const fn surgeist_render::NormalizedOutlineCommand::fragment_index(&self) -> usize
+pub const fn surgeist_render::NormalizedOutlineCommand::offset(&self) -> f64
+pub const fn surgeist_render::NormalizedOutlineCommand::paint(&self) -> &surgeist_render::Paint
+pub const fn surgeist_render::NormalizedOutlineCommand::radii(&self) -> surgeist_render::NormalizedBoxRadii
+pub const fn surgeist_render::NormalizedOutlineCommand::style(&self) -> surgeist_render::NormalizedOutlineStyle
+pub const fn surgeist_render::NormalizedOutlineCommand::target_rect(&self) -> surgeist_render::Rect
+pub const fn surgeist_render::NormalizedOutlineCommand::width(&self) -> f64
+pub struct surgeist_render::NormalizedPaintLayer
+impl surgeist_render::NormalizedPaintLayer
+pub const fn surgeist_render::NormalizedPaintLayer::paint(&self) -> &surgeist_render::Paint
+pub fn surgeist_render::NormalizedPaintLayer::try_new(paint: surgeist_render::Paint) -> surgeist_render::Result<Self>
+pub struct surgeist_render::OffscreenPipelineCapabilities
+impl surgeist_render::OffscreenPipelineCapabilities
+pub const fn surgeist_render::OffscreenPipelineCapabilities::supports_backdrop_isolation_composition(self) -> bool
+pub const fn surgeist_render::OffscreenPipelineCapabilities::supports_bounded_backdrop_capture(self) -> bool
+pub const fn surgeist_render::OffscreenPipelineCapabilities::supports_bounded_backdrop_filter_execution(self) -> bool
+pub const fn surgeist_render::OffscreenPipelineCapabilities::supports_bounded_vello_capture(self) -> bool
+pub const fn surgeist_render::OffscreenPipelineCapabilities::supports_broad_backdrop_execution(self) -> bool
+pub const fn surgeist_render::OffscreenPipelineCapabilities::supports_composite_pass_execution(self) -> bool
+pub const fn surgeist_render::OffscreenPipelineCapabilities::supports_direct_vello_blend_isolation(self) -> bool
+pub const fn surgeist_render::OffscreenPipelineCapabilities::supports_direct_vello_opacity_isolation(self) -> bool
+pub const fn surgeist_render::OffscreenPipelineCapabilities::supports_image_pass_execution(self) -> bool
+pub const fn surgeist_render::OffscreenPipelineCapabilities::supports_layer_filter_execution(self) -> bool
+pub const fn surgeist_render::OffscreenPipelineCapabilities::supports_mask_execution(self) -> bool
+pub const fn surgeist_render::OffscreenPipelineCapabilities::supports_nested_opacity_composition(self) -> bool
+pub const fn surgeist_render::OffscreenPipelineCapabilities::supports_offscreen_layer_rendering(self) -> bool
+pub const fn surgeist_render::OffscreenPipelineCapabilities::supports_persistent_effect_resources(self) -> bool
 pub struct surgeist_render::Options
-pub surgeist_render::Options::antialiasing: surgeist_render::Antialiasing
-pub surgeist_render::Options::debug: bool
-pub surgeist_render::Options::use_cpu: bool
+impl surgeist_render::Options
+pub const fn surgeist_render::Options::antialiasing(self) -> surgeist_render::Antialiasing
+pub const fn surgeist_render::Options::debug(self) -> bool
+pub const fn surgeist_render::Options::effect_quality_policy(self) -> surgeist_render::EffectQualityPolicy
+pub const fn surgeist_render::Options::new() -> Self
+pub const fn surgeist_render::Options::resource_cache_budget(self) -> surgeist_render::ResourceCacheBudget
+pub const fn surgeist_render::Options::with_antialiasing(self, antialiasing: surgeist_render::Antialiasing) -> Self
+pub const fn surgeist_render::Options::with_debug(self, debug: bool) -> Self
+pub const fn surgeist_render::Options::with_effect_quality_policy(self, effect_quality_policy: surgeist_render::EffectQualityPolicy) -> Self
+pub const fn surgeist_render::Options::with_resource_cache_budget(self, resource_cache_budget: surgeist_render::ResourceCacheBudget) -> Self
+impl core::default::Default for surgeist_render::Options
+pub fn surgeist_render::Options::default() -> Self
+pub struct surgeist_render::Outline
+impl surgeist_render::Outline
+pub const fn surgeist_render::Outline::offset(&self) -> f64
+pub const fn surgeist_render::Outline::paint(&self) -> &surgeist_render::Paint
+pub const fn surgeist_render::Outline::style(&self) -> surgeist_render::OutlineStyle
+pub fn surgeist_render::Outline::try_new(style: surgeist_render::OutlineStyle, width: f64, paint: impl core::convert::Into<surgeist_render::Paint>, offset: f64) -> surgeist_render::Result<Self>
+pub const fn surgeist_render::Outline::width(&self) -> f64
 pub struct surgeist_render::Paint
 impl surgeist_render::Paint
 pub const fn surgeist_render::Paint::color(color: surgeist_render::Color) -> Self
@@ -226,6 +988,25 @@ impl core::convert::From<surgeist_render::Gradient> for surgeist_render::Paint
 pub fn surgeist_render::Paint::from(gradient: surgeist_render::Gradient) -> Self
 impl core::convert::From<surgeist_render::Image> for surgeist_render::Paint
 pub fn surgeist_render::Paint::from(image: surgeist_render::Image) -> Self
+pub struct surgeist_render::PaintColor
+impl surgeist_render::PaintColor
+pub const fn surgeist_render::PaintColor::channels(self) -> [f32; 4]
+pub const fn surgeist_render::PaintColor::space(self) -> surgeist_render::PaintColorSpace
+pub fn surgeist_render::PaintColor::to_color(self) -> surgeist_render::Result<surgeist_render::Color>
+pub fn surgeist_render::PaintColor::try_hsl(hue_degrees: f32, saturation: f32, lightness: f32, alpha: f32) -> surgeist_render::Result<Self>
+pub fn surgeist_render::PaintColor::try_srgb(r: f32, g: f32, b: f32, a: f32) -> surgeist_render::Result<Self>
+pub struct surgeist_render::PaintSourceCapabilities
+impl surgeist_render::PaintSourceCapabilities
+pub const fn surgeist_render::PaintSourceCapabilities::supports_color_mix(self) -> bool
+pub const fn surgeist_render::PaintSourceCapabilities::supports_gradients(self) -> bool
+pub const fn surgeist_render::PaintSourceCapabilities::supports_hsl_color_conversion(self) -> bool
+pub const fn surgeist_render::PaintSourceCapabilities::supports_image_paint(self) -> bool
+pub const fn surgeist_render::PaintSourceCapabilities::supports_non_solid_shadow_paint(self) -> bool
+pub const fn surgeist_render::PaintSourceCapabilities::supports_repeating_gradients(self) -> bool
+pub const fn surgeist_render::PaintSourceCapabilities::supports_solid_rgba(self) -> bool
+pub const fn surgeist_render::PaintSourceCapabilities::supports_srgb_color_conversion(self) -> bool
+pub const fn surgeist_render::PaintSourceCapabilities::supports_unresolved_symbolic_colors(self) -> bool
+pub const fn surgeist_render::PaintSourceCapabilities::symbolic_color_policy(self) -> surgeist_render::SymbolicColorPolicy
 pub struct surgeist_render::Parameters
 pub surgeist_render::Parameters::base_color: surgeist_render::Color
 pub surgeist_render::Parameters::debug: bool
@@ -235,6 +1016,7 @@ pub struct surgeist_render::Path
 impl surgeist_render::Path
 pub fn surgeist_render::Path::close(&mut self) -> &mut Self
 pub fn surgeist_render::Path::cubic_to(&mut self, a: surgeist_render::Point, b: surgeist_render::Point, point: surgeist_render::Point) -> &mut Self
+pub fn surgeist_render::Path::elements(&self) -> &[surgeist_render::PathElement]
 pub fn surgeist_render::Path::line_to(&mut self, point: surgeist_render::Point) -> &mut Self
 pub fn surgeist_render::Path::move_to(&mut self, point: surgeist_render::Point) -> &mut Self
 pub fn surgeist_render::Path::new() -> Self
@@ -250,6 +1032,19 @@ impl surgeist_render::Point
 pub fn surgeist_render::Point::try_new(x: f64, y: f64) -> surgeist_render::Result<Self>
 pub const fn surgeist_render::Point::x(self) -> f64
 pub const fn surgeist_render::Point::y(self) -> f64
+pub struct surgeist_render::PositionComponent
+impl surgeist_render::PositionComponent
+pub const fn surgeist_render::PositionComponent::edge_offset(offset: surgeist_render::PositionEdgeOffset) -> Self
+pub const fn surgeist_render::PositionComponent::kind(self) -> surgeist_render::PositionComponentKind
+pub fn surgeist_render::PositionComponent::try_length(value: f64) -> surgeist_render::Result<Self>
+pub fn surgeist_render::PositionComponent::try_percent(value: f64) -> surgeist_render::Result<Self>
+pub const fn surgeist_render::PositionComponent::value(self) -> f64
+pub struct surgeist_render::PositionEdgeOffset
+impl surgeist_render::PositionEdgeOffset
+pub const fn surgeist_render::PositionEdgeOffset::edge(self) -> surgeist_render::PositionEdge
+pub fn surgeist_render::PositionEdgeOffset::end(offset: f64) -> surgeist_render::Result<Self>
+pub const fn surgeist_render::PositionEdgeOffset::offset(self) -> f64
+pub fn surgeist_render::PositionEdgeOffset::start(offset: f64) -> surgeist_render::Result<Self>
 pub struct surgeist_render::Radii
 impl surgeist_render::Radii
 pub const fn surgeist_render::Radii::bottom_left(self) -> f64
@@ -280,15 +1075,51 @@ pub fn surgeist_render::Rect::try_from(rect: kurbo::rect::Rect) -> surgeist_rend
 pub struct surgeist_render::Renderer
 impl surgeist_render::Renderer
 pub const fn surgeist_render::Renderer::capabilities(&self) -> surgeist_render::Capabilities
-pub fn surgeist_render::Renderer::create_headless(&mut self, size: surgeist_render::Size, scale: f64) -> surgeist_render::Result<surgeist_render::Surface>
-pub fn surgeist_render::Renderer::create_surface(&mut self, attachment: surgeist_render::Attachment, options: surgeist_render::SurfaceOptions) -> surgeist_render::Result<surgeist_render::Surface>
+pub async fn surgeist_render::Renderer::create_headless(&mut self, size: surgeist_render::Size, scale: f64) -> surgeist_render::Result<surgeist_render::Surface>
+pub async fn surgeist_render::Renderer::create_surface(&mut self, attachment: surgeist_render::Attachment, options: surgeist_render::SurfaceOptions) -> surgeist_render::Result<surgeist_render::Surface>
 pub async fn surgeist_render::Renderer::new(options: surgeist_render::Options) -> surgeist_render::Result<Self>
 pub const fn surgeist_render::Renderer::options(&self) -> surgeist_render::Options
-pub fn surgeist_render::Renderer::read_headless(&mut self, surface: &surgeist_render::Surface) -> surgeist_render::Result<surgeist_render::ImageBuffer>
-pub fn surgeist_render::Renderer::render(&mut self, surface: &mut surgeist_render::Surface, scene: &surgeist_render::Scene, parameters: surgeist_render::Parameters) -> surgeist_render::Result<surgeist_render::Stats>
-pub fn surgeist_render::Renderer::resume_surface(&mut self, surface: &mut surgeist_render::Surface, attachment: surgeist_render::Attachment) -> surgeist_render::Result<()>
+pub async fn surgeist_render::Renderer::read_headless(&mut self, surface: &surgeist_render::Surface) -> surgeist_render::Result<surgeist_render::ImageBuffer>
+pub async fn surgeist_render::Renderer::render(&mut self, surface: &mut surgeist_render::Surface, scene: &surgeist_render::Scene, parameters: surgeist_render::Parameters) -> surgeist_render::Result<surgeist_render::Stats>
+pub async fn surgeist_render::Renderer::resume_surface(&mut self, surface: &mut surgeist_render::Surface, attachment: surgeist_render::Attachment) -> surgeist_render::Result<()>
+pub fn surgeist_render::Renderer::runtime_capabilities(&mut self, surface: &surgeist_render::Surface) -> surgeist_render::RuntimeCapabilities
 pub fn surgeist_render::Renderer::set_surface_resizing(&mut self, surface: &mut surgeist_render::Surface, resizing: bool) -> surgeist_render::Result<()>
 pub const fn surgeist_render::Renderer::stats(&self) -> surgeist_render::Stats
+pub struct surgeist_render::ResolvedImagePlacement
+impl surgeist_render::ResolvedImagePlacement
+pub fn surgeist_render::ResolvedImagePlacement::from_parts(paint_rect: surgeist_render::Rect, tile_rect: surgeist_render::Rect) -> surgeist_render::Result<Self>
+pub const fn surgeist_render::ResolvedImagePlacement::paint_rect(self) -> surgeist_render::Rect
+pub const fn surgeist_render::ResolvedImagePlacement::tile_rect(self) -> surgeist_render::Rect
+pub struct surgeist_render::ResolvedImageRepeat
+impl surgeist_render::ResolvedImageRepeat
+pub const fn surgeist_render::ResolvedImageRepeat::clip_rect(&self) -> surgeist_render::Rect
+pub fn surgeist_render::ResolvedImageRepeat::tile_rects(&self) -> &[surgeist_render::Rect]
+pub struct surgeist_render::ResolvedImageResource
+impl surgeist_render::ResolvedImageResource
+pub const fn surgeist_render::ResolvedImageResource::color_profile_policy(&self) -> surgeist_render::ImageColorProfilePolicy
+pub const fn surgeist_render::ResolvedImageResource::density(&self) -> core::option::Option<surgeist_render::ImageResourceDensity>
+pub const fn surgeist_render::ResolvedImageResource::id(&self) -> surgeist_render::ImageId
+pub const fn surgeist_render::ResolvedImageResource::intrinsic_size(&self) -> surgeist_render::Size
+pub const fn surgeist_render::ResolvedImageResource::orientation_policy(&self) -> surgeist_render::ImageOrientationPolicy
+pub fn surgeist_render::ResolvedImageResource::try_new(id: surgeist_render::ImageId, intrinsic_size: surgeist_render::Size) -> surgeist_render::Result<Self>
+pub const fn surgeist_render::ResolvedImageResource::with_density(self, density: surgeist_render::ImageResourceDensity) -> Self
+pub struct surgeist_render::ResolvedLayerAlphaMask
+impl surgeist_render::ResolvedLayerAlphaMask
+pub const fn surgeist_render::ResolvedLayerAlphaMask::bounds(&self) -> surgeist_render::Rect
+pub const fn surgeist_render::ResolvedLayerAlphaMask::image(&self) -> &surgeist_render::Image
+pub fn surgeist_render::ResolvedLayerAlphaMask::try_new(image: surgeist_render::Image, bounds: surgeist_render::Rect) -> surgeist_render::Result<Self>
+pub struct surgeist_render::ResourceCacheBudget(_)
+impl surgeist_render::ResourceCacheBudget
+pub const surgeist_render::ResourceCacheBudget::DEFAULT: Self
+pub const surgeist_render::ResourceCacheBudget::DISABLED: Self
+pub const fn surgeist_render::ResourceCacheBudget::bytes(self) -> u64
+pub const fn surgeist_render::ResourceCacheBudget::new(bytes: u64) -> Self
+impl core::default::Default for surgeist_render::ResourceCacheBudget
+pub fn surgeist_render::ResourceCacheBudget::default() -> Self
+pub struct surgeist_render::RuntimeCapabilityUnavailable
+impl surgeist_render::RuntimeCapabilityUnavailable
+pub const fn surgeist_render::RuntimeCapabilityUnavailable::operation(self) -> surgeist_render::RuntimeOperation
+pub const fn surgeist_render::RuntimeCapabilityUnavailable::reason(self) -> surgeist_render::RuntimeCapabilityUnavailableReason
 pub struct surgeist_render::Scene
 impl surgeist_render::Scene
 pub fn surgeist_render::Scene::clear(&mut self)
@@ -300,17 +1131,35 @@ pub fn surgeist_render::Scene::layer(&mut self, layer: surgeist_render::Layer, c
 pub fn surgeist_render::Scene::len(&self) -> usize
 pub fn surgeist_render::Scene::new() -> Self
 pub fn surgeist_render::Scene::shadow(&mut self, shape: impl core::convert::Into<surgeist_render::Shape>, shadow: surgeist_render::Shadow) -> &mut Self
+pub fn surgeist_render::Scene::shadows(&mut self, shape: impl core::convert::Into<surgeist_render::Shape>, shadows: surgeist_render::ShadowList) -> &mut Self
 pub fn surgeist_render::Scene::stats(&self) -> surgeist_render::Stats
 pub fn surgeist_render::Scene::stroke(&mut self, shape: impl core::convert::Into<surgeist_render::Shape>, stroke: surgeist_render::Stroke, paint: impl core::convert::Into<surgeist_render::Paint>) -> &mut Self
+pub fn surgeist_render::Scene::text_decoration_line(&mut self, line: surgeist_render::TextDecorationLine) -> &mut Self
 pub fn surgeist_render::Scene::text_run(&mut self, run: surgeist_render::TextRun<'_>) -> &mut Self
+pub fn surgeist_render::Scene::text_shadow_run(&mut self, run: surgeist_render::TextShadowRun<'_>) -> &mut Self
 pub fn surgeist_render::Scene::transform(&mut self, transform: surgeist_render::Transform, children: impl core::ops::function::FnOnce(&mut surgeist_render::Scene)) -> &mut Self
 pub struct surgeist_render::Shadow
 impl surgeist_render::Shadow
 pub const fn surgeist_render::Shadow::blur(&self) -> f64
+pub const fn surgeist_render::Shadow::kind(&self) -> surgeist_render::ShadowKind
 pub const fn surgeist_render::Shadow::offset(&self) -> surgeist_render::Point
 pub const fn surgeist_render::Shadow::paint(&self) -> &surgeist_render::Paint
 pub const fn surgeist_render::Shadow::spread(&self) -> f64
+pub fn surgeist_render::Shadow::try_inset(offset: surgeist_render::Point, blur: f64, spread: f64, paint: impl core::convert::Into<surgeist_render::Paint>) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Shadow::try_new(offset: surgeist_render::Point, blur: f64, spread: f64, paint: impl core::convert::Into<surgeist_render::Paint>) -> surgeist_render::Result<Self>
+pub fn surgeist_render::Shadow::try_with_kind(kind: surgeist_render::ShadowKind, offset: surgeist_render::Point, blur: f64, spread: f64, paint: impl core::convert::Into<surgeist_render::Paint>) -> surgeist_render::Result<Self>
+pub struct surgeist_render::ShadowCapabilities
+impl surgeist_render::ShadowCapabilities
+pub const fn surgeist_render::ShadowCapabilities::supports_ellipse_path_shadows(self) -> bool
+pub const fn surgeist_render::ShadowCapabilities::supports_inset_box_shadows(self) -> bool
+pub const fn surgeist_render::ShadowCapabilities::supports_rect_rounded_circle_shadows(self) -> bool
+pub const fn surgeist_render::ShadowCapabilities::supports_text_shadows(self) -> bool
+pub struct surgeist_render::ShadowList
+impl surgeist_render::ShadowList
+pub fn surgeist_render::ShadowList::is_empty(&self) -> bool
+pub fn surgeist_render::ShadowList::len(&self) -> usize
+pub fn surgeist_render::ShadowList::shadows(&self) -> &[surgeist_render::Shadow]
+pub fn surgeist_render::ShadowList::try_new(shadows: alloc::vec::Vec<surgeist_render::Shadow>) -> surgeist_render::Result<Self>
 pub struct surgeist_render::Shape
 impl surgeist_render::Shape
 pub fn surgeist_render::Shape::path(path: surgeist_render::Path) -> Self
@@ -326,21 +1175,37 @@ impl surgeist_render::Size
 pub const fn surgeist_render::Size::height(self) -> f64
 pub fn surgeist_render::Size::try_new(width: f64, height: f64) -> surgeist_render::Result<Self>
 pub const fn surgeist_render::Size::width(self) -> f64
+pub struct surgeist_render::SizeComponent
+impl surgeist_render::SizeComponent
+pub const fn surgeist_render::SizeComponent::auto() -> Self
+pub const fn surgeist_render::SizeComponent::kind(self) -> surgeist_render::SizeComponentKind
+pub fn surgeist_render::SizeComponent::try_length(value: f64) -> surgeist_render::Result<Self>
+pub fn surgeist_render::SizeComponent::try_percent(value: f64) -> surgeist_render::Result<Self>
 pub struct surgeist_render::Stats
 pub surgeist_render::Stats::cache_hits: usize
 pub surgeist_render::Stats::cache_misses: usize
 pub surgeist_render::Stats::commands: usize
+pub surgeist_render::Stats::composite_passes: usize
+pub surgeist_render::Stats::copy_operations: usize
+pub surgeist_render::Stats::custom_present_passes: usize
+pub surgeist_render::Stats::effect_precision: core::option::Option<surgeist_render::EffectPrecision>
+pub surgeist_render::Stats::effect_texture_allocations: usize
+pub surgeist_render::Stats::effect_texture_reuses: usize
 pub surgeist_render::Stats::encode_time: core::time::Duration
 pub surgeist_render::Stats::fills: usize
 pub surgeist_render::Stats::frame_time: core::time::Duration
 pub surgeist_render::Stats::glyphs: usize
+pub surgeist_render::Stats::image_passes: usize
 pub surgeist_render::Stats::images: usize
 pub surgeist_render::Stats::layers: usize
 pub surgeist_render::Stats::present_time: core::time::Duration
 pub surgeist_render::Stats::render_time: core::time::Duration
+pub surgeist_render::Stats::retained_effect_bytes: u64
+pub surgeist_render::Stats::route: core::option::Option<surgeist_render::RenderRoute>
 pub surgeist_render::Stats::shadows: usize
 pub surgeist_render::Stats::strokes: usize
 pub surgeist_render::Stats::uploaded_bytes: u64
+pub surgeist_render::Stats::vello_passes: usize
 pub struct surgeist_render::Stroke
 impl surgeist_render::Stroke
 pub const fn surgeist_render::Stroke::align(self, align: surgeist_render::StrokeAlign) -> Self
@@ -356,6 +1221,41 @@ pub fn surgeist_render::Stroke::try_dash(self, dash: surgeist_render::Dash) -> s
 pub fn surgeist_render::Stroke::try_miter_limit(self, miter_limit: f64) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Stroke::try_new(width: f64) -> surgeist_render::Result<Self>
 pub const fn surgeist_render::Stroke::width(self) -> f64
+pub struct surgeist_render::StyleColor
+impl surgeist_render::StyleColor
+pub const fn surgeist_render::StyleColor::color(self) -> surgeist_render::Color
+pub const fn surgeist_render::StyleColor::new(color: surgeist_render::Color) -> Self
+pub const fn surgeist_render::StyleColor::symbolic_policy() -> surgeist_render::SymbolicColorPolicy
+pub struct surgeist_render::StyleImageLayer
+impl surgeist_render::StyleImageLayer
+pub const fn surgeist_render::StyleImageLayer::attachment(&self) -> surgeist_render::BackgroundAttachment
+pub const fn surgeist_render::StyleImageLayer::clip(&self) -> surgeist_render::BackgroundBox
+pub const fn surgeist_render::StyleImageLayer::coordinate_space(&self) -> core::option::Option<surgeist_render::CoordinateSpaceTag>
+pub const fn surgeist_render::StyleImageLayer::origin(&self) -> surgeist_render::BackgroundBox
+pub const fn surgeist_render::StyleImageLayer::position(&self) -> surgeist_render::BackgroundPosition
+pub const fn surgeist_render::StyleImageLayer::repeat(&self) -> surgeist_render::BackgroundRepeat
+pub const fn surgeist_render::StyleImageLayer::size(&self) -> surgeist_render::BackgroundSize
+pub const fn surgeist_render::StyleImageLayer::source(&self) -> &surgeist_render::StyleImageSource
+pub fn surgeist_render::StyleImageLayer::try_new(source: surgeist_render::StyleImageSource) -> surgeist_render::Result<Self>
+pub fn surgeist_render::StyleImageLayer::with_attachment(self, attachment: surgeist_render::BackgroundAttachment) -> Self
+pub fn surgeist_render::StyleImageLayer::with_clip(self, clip: surgeist_render::BackgroundBox) -> Self
+pub fn surgeist_render::StyleImageLayer::with_coordinate_space(self, coordinate_space: surgeist_render::CoordinateSpaceTag) -> Self
+pub fn surgeist_render::StyleImageLayer::with_origin(self, origin: surgeist_render::BackgroundBox) -> Self
+pub fn surgeist_render::StyleImageLayer::with_position(self, position: surgeist_render::BackgroundPosition) -> Self
+pub fn surgeist_render::StyleImageLayer::with_repeat(self, repeat: surgeist_render::BackgroundRepeat) -> Self
+pub fn surgeist_render::StyleImageLayer::with_size(self, size: surgeist_render::BackgroundSize) -> Self
+pub struct surgeist_render::StyleImageSource
+impl surgeist_render::StyleImageSource
+pub fn surgeist_render::StyleImageSource::image(image: surgeist_render::Image) -> surgeist_render::Result<Self>
+pub const fn surgeist_render::StyleImageSource::kind(&self) -> &surgeist_render::StyleImageSourceKind
+pub fn surgeist_render::StyleImageSource::paint(paint: surgeist_render::Paint) -> surgeist_render::Result<Self>
+pub fn surgeist_render::StyleImageSource::require_resolved(&self) -> surgeist_render::Result<()>
+pub const fn surgeist_render::StyleImageSource::resolved(resource: surgeist_render::ResolvedImageResource) -> Self
+pub fn surgeist_render::StyleImageSource::unresolved(reference: surgeist_render::StyleResourceRef) -> Self
+pub struct surgeist_render::StyleResourceRef
+impl surgeist_render::StyleResourceRef
+pub fn surgeist_render::StyleResourceRef::identifier(&self) -> &str
+pub fn surgeist_render::StyleResourceRef::try_new(identifier: impl core::convert::Into<alloc::string::String>) -> surgeist_render::Result<Self>
 pub struct surgeist_render::Surface
 impl surgeist_render::Surface
 pub const fn surgeist_render::Surface::physical_size(&self) -> surgeist_render::PhysicalSize
@@ -366,6 +1266,10 @@ pub const fn surgeist_render::Surface::scale(&self) -> f64
 pub const fn surgeist_render::Surface::size(&self) -> surgeist_render::Size
 pub const fn surgeist_render::Surface::state(&self) -> surgeist_render::SurfaceState
 pub fn surgeist_render::Surface::suspend(&mut self) -> surgeist_render::Result<()>
+pub struct surgeist_render::SurfaceCapabilities
+impl surgeist_render::SurfaceCapabilities
+pub const fn surgeist_render::SurfaceCapabilities::supports_headless_surfaces(self) -> bool
+pub const fn surgeist_render::SurfaceCapabilities::supports_web_canvas_surfaces(self) -> bool
 pub struct surgeist_render::SurfaceOptions
 pub surgeist_render::SurfaceOptions::format: surgeist_render::Format
 pub surgeist_render::SurfaceOptions::present_mode: surgeist_render::PresentMode
@@ -373,6 +1277,15 @@ pub surgeist_render::SurfaceOptions::scale: f64
 pub surgeist_render::SurfaceOptions::size: surgeist_render::Size
 impl core::default::Default for surgeist_render::SurfaceOptions
 pub fn surgeist_render::SurfaceOptions::default() -> Self
+pub struct surgeist_render::TextDecorationLine
+impl surgeist_render::TextDecorationLine
+pub const fn surgeist_render::TextDecorationLine::end(&self) -> surgeist_render::Point
+pub const fn surgeist_render::TextDecorationLine::paint(&self) -> &surgeist_render::Paint
+pub const fn surgeist_render::TextDecorationLine::start(&self) -> surgeist_render::Point
+pub const fn surgeist_render::TextDecorationLine::thickness(&self) -> f64
+pub const fn surgeist_render::TextDecorationLine::transform(&self) -> surgeist_render::Transform
+pub fn surgeist_render::TextDecorationLine::try_new(start: surgeist_render::Point, end: surgeist_render::Point, thickness: f64, transform: surgeist_render::Transform, paint: surgeist_render::Paint, style: surgeist_render::TextDecorationLineStyle) -> surgeist_render::Result<Self>
+pub fn surgeist_render::TextDecorationLine::try_solid(start: surgeist_render::Point, end: surgeist_render::Point, thickness: f64, transform: surgeist_render::Transform, paint: surgeist_render::Paint) -> surgeist_render::Result<Self>
 pub struct surgeist_render::TextGlyph
 impl surgeist_render::TextGlyph
 pub const fn surgeist_render::TextGlyph::advance(self) -> f32
@@ -386,22 +1299,64 @@ pub const fn surgeist_render::TextPaint::fill(&self) -> &surgeist_render::Paint
 pub fn surgeist_render::TextPaint::try_fill(fill: surgeist_render::Paint) -> surgeist_render::Result<Self>
 pub struct surgeist_render::TextRun<'a>
 impl<'a> surgeist_render::TextRun<'a>
+pub const fn surgeist_render::TextRun<'a>::bounds(&self) -> surgeist_render::TextRunBounds
 pub const fn surgeist_render::TextRun<'a>::font(&self) -> &surgeist_render::FontRef<'a>
 pub const fn surgeist_render::TextRun<'a>::glyphs(&self) -> &'a [surgeist_render::TextGlyph]
 pub const fn surgeist_render::TextRun<'a>::paint(&self) -> &surgeist_render::TextPaint
 pub const fn surgeist_render::TextRun<'a>::size(&self) -> f32
 pub const fn surgeist_render::TextRun<'a>::transform(&self) -> surgeist_render::Transform
-pub fn surgeist_render::TextRun<'a>::try_new(font: surgeist_render::FontRef<'a>, size: f32, transform: surgeist_render::Transform, paint: surgeist_render::TextPaint, glyphs: &'a [surgeist_render::TextGlyph]) -> surgeist_render::Result<Self>
+pub fn surgeist_render::TextRun<'a>::try_new(font: surgeist_render::FontRef<'a>, size: f32, transform: surgeist_render::Transform, paint: surgeist_render::TextPaint, glyphs: &'a [surgeist_render::TextGlyph], bounds: surgeist_render::TextRunBounds) -> surgeist_render::Result<Self>
+pub struct surgeist_render::TextRunBounds
+impl surgeist_render::TextRunBounds
+pub const fn surgeist_render::TextRunBounds::empty() -> Self
+pub const fn surgeist_render::TextRunBounds::ink_rect(self) -> core::option::Option<surgeist_render::Rect>
+pub const fn surgeist_render::TextRunBounds::kind(self) -> surgeist_render::TextRunBoundsKind
+pub fn surgeist_render::TextRunBounds::try_ink(rect: surgeist_render::Rect) -> surgeist_render::Result<Self>
+pub const fn surgeist_render::TextRunBounds::unspecified() -> Self
+pub struct surgeist_render::TextShadowRun<'a>
+impl<'a> surgeist_render::TextShadowRun<'a>
+pub const fn surgeist_render::TextShadowRun<'a>::run(&self) -> &surgeist_render::TextRun<'a>
+pub const fn surgeist_render::TextShadowRun<'a>::shadows(&self) -> &surgeist_render::ShadowList
+pub fn surgeist_render::TextShadowRun<'a>::try_new(run: surgeist_render::TextRun<'a>, shadows: surgeist_render::ShadowList) -> surgeist_render::Result<Self>
 pub struct surgeist_render::Transform(_)
 impl surgeist_render::Transform
 pub const surgeist_render::Transform::IDENTITY: Self
+pub fn surgeist_render::Transform::around(self, origin: surgeist_render::Point) -> surgeist_render::Result<Self>
 pub const fn surgeist_render::Transform::as_array(self) -> [f64; 6]
 pub const fn surgeist_render::Transform::identity() -> Self
+pub fn surgeist_render::Transform::rotation(radians: f64) -> surgeist_render::Result<Self>
+pub fn surgeist_render::Transform::scale(x: f64, y: f64) -> surgeist_render::Result<Self>
+pub fn surgeist_render::Transform::skew_x(radians: f64) -> surgeist_render::Result<Self>
+pub fn surgeist_render::Transform::skew_y(radians: f64) -> surgeist_render::Result<Self>
+pub fn surgeist_render::Transform::then(self, next: Self) -> surgeist_render::Result<Self>
+pub fn surgeist_render::Transform::translation(x: f64, y: f64) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Transform::try_new(values: [f64; 6]) -> surgeist_render::Result<Self>
 impl core::convert::From<surgeist_render::Transform> for kurbo::affine::Affine
 pub fn kurbo::affine::Affine::from(transform: surgeist_render::Transform) -> Self
 impl core::default::Default for surgeist_render::Transform
 pub fn surgeist_render::Transform::default() -> Self
+pub struct surgeist_render::TransformCoordinateSpaceCapabilities
+impl surgeist_render::TransformCoordinateSpaceCapabilities
+pub const fn surgeist_render::TransformCoordinateSpaceCapabilities::supports_affine_2d(self) -> bool
+pub const fn surgeist_render::TransformCoordinateSpaceCapabilities::supports_coordinate_space_tags(self) -> bool
+pub const fn surgeist_render::TransformCoordinateSpaceCapabilities::supports_skew(self) -> bool
+pub const fn surgeist_render::TransformCoordinateSpaceCapabilities::supports_transform_3d(self) -> bool
+pub const fn surgeist_render::TransformCoordinateSpaceCapabilities::supports_transform_origin(self) -> bool
+pub struct surgeist_render::UnitFilterAmount
+impl surgeist_render::UnitFilterAmount
+pub fn surgeist_render::UnitFilterAmount::try_new(value: f64) -> surgeist_render::Result<Self>
+pub const fn surgeist_render::UnitFilterAmount::value(self) -> f64
+pub struct surgeist_render::UnresolvedResource
+impl surgeist_render::UnresolvedResource
+pub fn surgeist_render::UnresolvedResource::identifier(&self) -> &str
+pub const fn surgeist_render::UnresolvedResource::kind(&self) -> surgeist_render::UnresolvedResourceKind
+pub fn surgeist_render::UnresolvedResource::new(kind: surgeist_render::UnresolvedResourceKind, identifier: impl core::convert::Into<alloc::string::String>) -> Self
+pub struct surgeist_render::UnsupportedPrimitive
+impl surgeist_render::UnsupportedPrimitive
+pub const fn surgeist_render::UnsupportedPrimitive::family(self) -> surgeist_render::PrimitiveFamily
+pub const fn surgeist_render::UnsupportedPrimitive::label(self) -> &'static str
+pub const fn surgeist_render::UnsupportedPrimitive::new(family: surgeist_render::PrimitiveFamily, operation: surgeist_render::PrimitiveOperation) -> Self
+pub const fn surgeist_render::UnsupportedPrimitive::operation(self) -> surgeist_render::PrimitiveOperation
 pub struct surgeist_render::WebCanvas
 impl surgeist_render::WebCanvas
 pub fn surgeist_render::WebCanvas::id(&self) -> &str

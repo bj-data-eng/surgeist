@@ -103,6 +103,9 @@ pub surgeist_retained::Patch::SetLabel::label: core::option::Option<surgeist_ret
 pub surgeist_retained::Patch::SetRole
 pub surgeist_retained::Patch::SetRole::id: surgeist_retained::Id
 pub surgeist_retained::Patch::SetRole::role: surgeist_retained::Role
+pub surgeist_retained::Patch::SetRuntimeState
+pub surgeist_retained::Patch::SetRuntimeState::id: surgeist_retained::Id
+pub surgeist_retained::Patch::SetRuntimeState::state: surgeist_retained::RuntimeStatePatch
 pub surgeist_retained::Patch::SetState
 pub surgeist_retained::Patch::SetState::id: surgeist_retained::Id
 pub surgeist_retained::Patch::SetState::state: surgeist_retained::StatePatch
@@ -146,6 +149,20 @@ pub surgeist_retained::Role::ListItem
 pub surgeist_retained::Role::Text
 pub surgeist_retained::Role::Textbox
 pub surgeist_retained::Role::Widget
+pub enum surgeist_retained::SelectorInvalidation
+pub surgeist_retained::SelectorInvalidation::Metadata
+pub surgeist_retained::SelectorInvalidation::Metadata::facts: surgeist_retained::SelectorMetadataChange
+pub surgeist_retained::SelectorInvalidation::Metadata::id: surgeist_retained::Id
+pub surgeist_retained::SelectorInvalidation::Projection
+pub surgeist_retained::SelectorInvalidation::Projection::slot: surgeist_retained::ProjectionSlot
+pub surgeist_retained::SelectorInvalidation::Siblings
+pub surgeist_retained::SelectorInvalidation::Siblings::parent: surgeist_retained::Id
+pub surgeist_retained::SelectorInvalidation::Siblings::traversal: surgeist_retained::SelectorTraversal
+pub surgeist_retained::SelectorInvalidation::State
+pub surgeist_retained::SelectorInvalidation::State::id: surgeist_retained::Id
+pub enum surgeist_retained::SelectorTraversal
+pub surgeist_retained::SelectorTraversal::Canonical
+pub surgeist_retained::SelectorTraversal::ProjectedDefaultSlot
 #[non_exhaustive] pub enum surgeist_retained::SlotKey
 pub surgeist_retained::SlotKey::Default
 pub surgeist_retained::SlotKey::Named(surgeist_retained::SlotName)
@@ -186,6 +203,7 @@ pub const fn surgeist_retained::ChangeFlags::has_pointer_capture(self) -> bool
 pub const fn surgeist_retained::ChangeFlags::has_presence(self) -> bool
 pub const fn surgeist_retained::ChangeFlags::has_projection(self) -> bool
 pub const fn surgeist_retained::ChangeFlags::has_role(self) -> bool
+pub const fn surgeist_retained::ChangeFlags::has_runtime_state(self) -> bool
 pub const fn surgeist_retained::ChangeFlags::has_state(self) -> bool
 pub const fn surgeist_retained::ChangeFlags::has_structure(self) -> bool
 pub const fn surgeist_retained::ChangeFlags::has_text(self) -> bool
@@ -197,6 +215,7 @@ pub const fn surgeist_retained::ChangeFlags::pointer_capture(self) -> Self
 pub const fn surgeist_retained::ChangeFlags::presence(self) -> Self
 pub const fn surgeist_retained::ChangeFlags::projection(self) -> Self
 pub const fn surgeist_retained::ChangeFlags::role(self) -> Self
+pub const fn surgeist_retained::ChangeFlags::runtime_state(self) -> Self
 pub const fn surgeist_retained::ChangeFlags::state(self) -> Self
 pub const fn surgeist_retained::ChangeFlags::structure(self) -> Self
 pub const fn surgeist_retained::ChangeFlags::text(self) -> Self
@@ -209,6 +228,7 @@ pub fn surgeist_retained::ChangeSet::is_empty(&self) -> bool
 pub fn surgeist_retained::ChangeSet::moved(&self) -> &[surgeist_retained::Id]
 pub fn surgeist_retained::ChangeSet::new() -> Self
 pub fn surgeist_retained::ChangeSet::removed(&self) -> &[surgeist_retained::Id]
+pub fn surgeist_retained::ChangeSet::selector_invalidations(&self) -> &[surgeist_retained::SelectorInvalidation]
 pub struct surgeist_retained::Class(_)
 impl surgeist_retained::Class
 pub fn surgeist_retained::Class::as_str(&self) -> &str
@@ -365,6 +385,7 @@ pub fn surgeist_retained::NodeRef<'a>::id(&self) -> surgeist_retained::Id
 pub fn surgeist_retained::NodeRef<'a>::key(&self) -> core::option::Option<&'a surgeist_retained::Key>
 pub fn surgeist_retained::NodeRef<'a>::key_path(&self) -> &'a surgeist_retained::KeyPath
 pub fn surgeist_retained::NodeRef<'a>::kind(&self) -> &'a surgeist_retained::Kind
+pub fn surgeist_retained::NodeRef<'a>::label(&self) -> core::option::Option<&'a surgeist_retained::Text>
 pub fn surgeist_retained::NodeRef<'a>::parent(&self) -> core::option::Option<surgeist_retained::Id>
 pub fn surgeist_retained::NodeRef<'a>::projected_parent(&self) -> core::option::Option<surgeist_retained::Id>
 pub fn surgeist_retained::NodeRef<'a>::role(&self) -> surgeist_retained::Role
@@ -409,6 +430,65 @@ pub surgeist_retained::RouteStep::id: surgeist_retained::Id
 pub surgeist_retained::RouteStep::phase: surgeist_retained::Phase
 impl surgeist_retained::RouteStep
 pub const fn surgeist_retained::RouteStep::new(id: surgeist_retained::Id, phase: surgeist_retained::Phase) -> Self
+pub struct surgeist_retained::RuntimeStatePatch
+impl surgeist_retained::RuntimeStatePatch
+pub fn surgeist_retained::RuntimeStatePatch::active(self, active: bool) -> Self
+pub fn surgeist_retained::RuntimeStatePatch::checked(self, checked: core::option::Option<bool>) -> Self
+pub fn surgeist_retained::RuntimeStatePatch::disabled(self, disabled: bool) -> Self
+pub fn surgeist_retained::RuntimeStatePatch::expanded(self, expanded: core::option::Option<bool>) -> Self
+pub fn surgeist_retained::RuntimeStatePatch::hovered(self, hovered: bool) -> Self
+pub fn surgeist_retained::RuntimeStatePatch::new() -> Self
+pub fn surgeist_retained::RuntimeStatePatch::pressed(self, pressed: bool) -> Self
+pub fn surgeist_retained::RuntimeStatePatch::selected(self, selected: bool) -> Self
+pub struct surgeist_retained::SelectorCount(_)
+impl surgeist_retained::SelectorCount
+pub const fn surgeist_retained::SelectorCount::get(self) -> usize
+pub const fn surgeist_retained::SelectorCount::new(value: usize) -> core::option::Option<Self>
+pub struct surgeist_retained::SelectorIndex(_)
+impl surgeist_retained::SelectorIndex
+pub const fn surgeist_retained::SelectorIndex::get(self) -> usize
+pub const fn surgeist_retained::SelectorIndex::new(value: usize) -> Self
+pub struct surgeist_retained::SelectorMetadata<'a>
+impl<'a> surgeist_retained::SelectorMetadata<'a>
+pub fn surgeist_retained::SelectorMetadata<'a>::attribute(&self, name: &surgeist_retained::AttributeName) -> core::option::Option<&'a surgeist_retained::Value>
+pub fn surgeist_retained::SelectorMetadata<'a>::attributes(&self) -> &'a [surgeist_retained::Attribute]
+pub fn surgeist_retained::SelectorMetadata<'a>::classes(&self) -> &'a [surgeist_retained::Class]
+pub fn surgeist_retained::SelectorMetadata<'a>::has_class(&self, class: &surgeist_retained::Class) -> bool
+pub fn surgeist_retained::SelectorMetadata<'a>::id(&self) -> surgeist_retained::Id
+pub fn surgeist_retained::SelectorMetadata<'a>::key(&self) -> core::option::Option<&'a surgeist_retained::Key>
+pub fn surgeist_retained::SelectorMetadata<'a>::kind(&self) -> &'a surgeist_retained::Kind
+pub fn surgeist_retained::SelectorMetadata<'a>::label(&self) -> core::option::Option<&'a surgeist_retained::Text>
+pub fn surgeist_retained::SelectorMetadata<'a>::role(&self) -> surgeist_retained::Role
+pub fn surgeist_retained::SelectorMetadata<'a>::text(&self) -> core::option::Option<&'a surgeist_retained::Text>
+pub struct surgeist_retained::SelectorMetadataChange
+impl surgeist_retained::SelectorMetadataChange
+pub const fn surgeist_retained::SelectorMetadataChange::attributes(self) -> Self
+pub const fn surgeist_retained::SelectorMetadataChange::classes(self) -> Self
+pub const fn surgeist_retained::SelectorMetadataChange::empty() -> Self
+pub const fn surgeist_retained::SelectorMetadataChange::has_attributes(self) -> bool
+pub const fn surgeist_retained::SelectorMetadataChange::has_classes(self) -> bool
+pub const fn surgeist_retained::SelectorMetadataChange::has_key(self) -> bool
+pub const fn surgeist_retained::SelectorMetadataChange::has_kind(self) -> bool
+pub const fn surgeist_retained::SelectorMetadataChange::has_label(self) -> bool
+pub const fn surgeist_retained::SelectorMetadataChange::has_role(self) -> bool
+pub const fn surgeist_retained::SelectorMetadataChange::has_text(self) -> bool
+pub const fn surgeist_retained::SelectorMetadataChange::key(self) -> Self
+pub const fn surgeist_retained::SelectorMetadataChange::kind(self) -> Self
+pub const fn surgeist_retained::SelectorMetadataChange::label(self) -> Self
+pub const fn surgeist_retained::SelectorMetadataChange::role(self) -> Self
+pub const fn surgeist_retained::SelectorMetadataChange::text(self) -> Self
+#[non_exhaustive] pub struct surgeist_retained::SelectorSiblingFacts
+impl surgeist_retained::SelectorSiblingFacts
+pub const fn surgeist_retained::SelectorSiblingFacts::is_first_child(&self) -> bool
+pub const fn surgeist_retained::SelectorSiblingFacts::is_last_child(&self) -> bool
+pub const fn surgeist_retained::SelectorSiblingFacts::is_only_child(&self) -> bool
+pub const fn surgeist_retained::SelectorSiblingFacts::next_sibling(&self) -> core::option::Option<surgeist_retained::Id>
+pub const fn surgeist_retained::SelectorSiblingFacts::parent(&self) -> core::option::Option<surgeist_retained::Id>
+pub const fn surgeist_retained::SelectorSiblingFacts::previous_sibling(&self) -> core::option::Option<surgeist_retained::Id>
+pub const fn surgeist_retained::SelectorSiblingFacts::sibling_count(&self) -> core::option::Option<surgeist_retained::SelectorCount>
+pub const fn surgeist_retained::SelectorSiblingFacts::sibling_index(&self) -> core::option::Option<surgeist_retained::SelectorIndex>
+pub const fn surgeist_retained::SelectorSiblingFacts::type_count(&self) -> core::option::Option<surgeist_retained::SelectorCount>
+pub const fn surgeist_retained::SelectorSiblingFacts::type_index(&self) -> core::option::Option<surgeist_retained::SelectorIndex>
 pub struct surgeist_retained::SlotName(_)
 impl surgeist_retained::SlotName
 pub fn surgeist_retained::SlotName::as_str(&self) -> &str
@@ -430,13 +510,17 @@ pub fn surgeist_retained::Snapshot<'a>::descendants(&self, id: surgeist_retained
 pub fn surgeist_retained::Snapshot<'a>::dirty_slots(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_retained::ProjectionSlot> + '_
 pub fn surgeist_retained::Snapshot<'a>::effective_presence(&self, id: surgeist_retained::Id) -> surgeist_retained::Result<surgeist_retained::Presence>
 pub fn surgeist_retained::Snapshot<'a>::find_key(&self, key_path: &surgeist_retained::KeyPath) -> core::option::Option<surgeist_retained::Id>
-pub fn surgeist_retained::Snapshot<'a>::get(&self, id: surgeist_retained::Id) -> core::option::Option<surgeist_retained::NodeRef<'_>>
+pub fn surgeist_retained::Snapshot<'a>::get(&self, id: surgeist_retained::Id) -> core::option::Option<surgeist_retained::NodeRef<'a>>
 pub fn surgeist_retained::Snapshot<'a>::hooks(&self, id: surgeist_retained::Id) -> surgeist_retained::Result<&[surgeist_retained::Hook]>
 pub fn surgeist_retained::Snapshot<'a>::is_input_eligible(&self, id: surgeist_retained::Id) -> surgeist_retained::Result<bool>
 pub fn surgeist_retained::Snapshot<'a>::projected_ancestors(&self, id: surgeist_retained::Id) -> surgeist_retained::Result<impl core::iter::traits::iterator::Iterator<Item = surgeist_retained::Id> + '_>
 pub fn surgeist_retained::Snapshot<'a>::projected_children(&self, slot: surgeist_retained::ProjectionSlot) -> surgeist_retained::Result<impl core::iter::traits::iterator::Iterator<Item = surgeist_retained::Id> + '_>
 pub fn surgeist_retained::Snapshot<'a>::revision(&self) -> surgeist_retained::ModelRevision
 pub fn surgeist_retained::Snapshot<'a>::root(&self) -> surgeist_retained::Id
+pub fn surgeist_retained::Snapshot<'a>::selector_children(&self, id: surgeist_retained::Id, traversal: surgeist_retained::SelectorTraversal) -> surgeist_retained::Result<impl core::iter::traits::iterator::Iterator<Item = surgeist_retained::Id> + '_>
+pub fn surgeist_retained::Snapshot<'a>::selector_metadata(&self, id: surgeist_retained::Id) -> core::option::Option<surgeist_retained::SelectorMetadata<'a>>
+pub fn surgeist_retained::Snapshot<'a>::selector_parent(&self, id: surgeist_retained::Id, traversal: surgeist_retained::SelectorTraversal) -> surgeist_retained::Result<core::option::Option<surgeist_retained::Id>>
+pub fn surgeist_retained::Snapshot<'a>::selector_sibling_facts(&self, id: surgeist_retained::Id, traversal: surgeist_retained::SelectorTraversal) -> surgeist_retained::Result<surgeist_retained::SelectorSiblingFacts>
 pub fn surgeist_retained::Snapshot<'a>::virtual_projection(&self, slot: surgeist_retained::ProjectionSlot) -> surgeist_retained::Result<core::option::Option<&surgeist_retained::VirtualProjection>>
 pub struct surgeist_retained::SourceRevision(_)
 impl surgeist_retained::SourceRevision

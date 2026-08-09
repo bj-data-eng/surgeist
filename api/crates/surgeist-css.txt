@@ -6,30 +6,278 @@ pub enum surgeist_css::CssAlignItems
 pub surgeist_css::CssAlignItems::Baseline
 pub surgeist_css::CssAlignItems::Center
 pub surgeist_css::CssAlignItems::End
+pub surgeist_css::CssAlignItems::FirstBaseline
 pub surgeist_css::CssAlignItems::FlexEnd
 pub surgeist_css::CssAlignItems::FlexStart
 pub surgeist_css::CssAlignItems::LastBaseline
+pub surgeist_css::CssAlignItems::Normal
 pub surgeist_css::CssAlignItems::SafeCenter
 pub surgeist_css::CssAlignItems::SafeEnd
 pub surgeist_css::CssAlignItems::SafeFlexEnd
 pub surgeist_css::CssAlignItems::Start
 pub surgeist_css::CssAlignItems::Stretch
+pub enum surgeist_css::CssAlignment
+pub surgeist_css::CssAlignment::Baseline
+pub surgeist_css::CssAlignment::Center
+pub surgeist_css::CssAlignment::End
+pub surgeist_css::CssAlignment::FirstBaseline
+pub surgeist_css::CssAlignment::FlexEnd
+pub surgeist_css::CssAlignment::FlexStart
+pub surgeist_css::CssAlignment::LastBaseline
+pub surgeist_css::CssAlignment::Normal
+pub surgeist_css::CssAlignment::SafeCenter
+pub surgeist_css::CssAlignment::SafeEnd
+pub surgeist_css::CssAlignment::SafeFlexEnd
+pub surgeist_css::CssAlignment::SpaceAround
+pub surgeist_css::CssAlignment::SpaceBetween
+pub surgeist_css::CssAlignment::SpaceEvenly
+pub surgeist_css::CssAlignment::Start
+pub surgeist_css::CssAlignment::Stretch
+pub enum surgeist_css::CssAnimationDirection
+pub surgeist_css::CssAnimationDirection::Alternate
+pub surgeist_css::CssAnimationDirection::AlternateReverse
+pub surgeist_css::CssAnimationDirection::Normal
+pub surgeist_css::CssAnimationDirection::Reverse
+pub enum surgeist_css::CssAnimationFillMode
+pub surgeist_css::CssAnimationFillMode::Backwards
+pub surgeist_css::CssAnimationFillMode::Both
+pub surgeist_css::CssAnimationFillMode::Forwards
+pub surgeist_css::CssAnimationFillMode::None
+pub enum surgeist_css::CssAnimationIterationCount
+pub surgeist_css::CssAnimationIterationCount::Infinite
+pub surgeist_css::CssAnimationIterationCount::Number(surgeist_css::CssAnimationIterationNumber)
+impl surgeist_css::CssAnimationIterationCount
+pub const fn surgeist_css::CssAnimationIterationCount::try_number(value: f32) -> core::option::Option<Self>
+pub enum surgeist_css::CssAnimationName
+pub surgeist_css::CssAnimationName::Custom(surgeist_css::CssCustomIdent)
+pub surgeist_css::CssAnimationName::None
+pub surgeist_css::CssAnimationName::String(surgeist_css::CssKeyframesString)
+pub enum surgeist_css::CssAnimationPlayState
+pub surgeist_css::CssAnimationPlayState::Paused
+pub surgeist_css::CssAnimationPlayState::Running
+pub enum surgeist_css::CssAttributeCaseSensitivity
+pub surgeist_css::CssAttributeCaseSensitivity::AsciiCaseInsensitive
+pub surgeist_css::CssAttributeCaseSensitivity::DocumentDefault
+pub surgeist_css::CssAttributeCaseSensitivity::ExplicitSensitive
+pub enum surgeist_css::CssAttributeMatcher
+pub surgeist_css::CssAttributeMatcher::DashMatch(alloc::string::String)
+pub surgeist_css::CssAttributeMatcher::Equals(alloc::string::String)
+pub surgeist_css::CssAttributeMatcher::Exists
+pub surgeist_css::CssAttributeMatcher::Includes(alloc::string::String)
+pub surgeist_css::CssAttributeMatcher::Prefix(alloc::string::String)
+pub surgeist_css::CssAttributeMatcher::Substring(alloc::string::String)
+pub surgeist_css::CssAttributeMatcher::Suffix(alloc::string::String)
+pub enum surgeist_css::CssBackgroundAttachment
+pub surgeist_css::CssBackgroundAttachment::Fixed
+pub surgeist_css::CssBackgroundAttachment::Local
+pub surgeist_css::CssBackgroundAttachment::Scroll
+pub enum surgeist_css::CssBackgroundBox
+pub surgeist_css::CssBackgroundBox::BorderBox
+pub surgeist_css::CssBackgroundBox::ContentBox
+pub surgeist_css::CssBackgroundBox::PaddingBox
+pub enum surgeist_css::CssBackgroundRepeat
+pub surgeist_css::CssBackgroundRepeat::Axes
+pub surgeist_css::CssBackgroundRepeat::Axes::x: surgeist_css::CssBackgroundRepeatStyle
+pub surgeist_css::CssBackgroundRepeat::Axes::y: surgeist_css::CssBackgroundRepeatStyle
+pub surgeist_css::CssBackgroundRepeat::RepeatX
+pub surgeist_css::CssBackgroundRepeat::RepeatY
+pub enum surgeist_css::CssBackgroundRepeatStyle
+pub surgeist_css::CssBackgroundRepeatStyle::NoRepeat
+pub surgeist_css::CssBackgroundRepeatStyle::Repeat
+pub surgeist_css::CssBackgroundRepeatStyle::Round
+pub surgeist_css::CssBackgroundRepeatStyle::Space
+pub enum surgeist_css::CssBackgroundSize
+pub surgeist_css::CssBackgroundSize::Contain
+pub surgeist_css::CssBackgroundSize::Cover
+pub surgeist_css::CssBackgroundSize::Explicit
+pub surgeist_css::CssBackgroundSize::Explicit::height: core::option::Option<surgeist_css::CssBackgroundSizeComponent>
+pub surgeist_css::CssBackgroundSize::Explicit::width: surgeist_css::CssBackgroundSizeComponent
+pub enum surgeist_css::CssBackgroundSizeComponent
+pub surgeist_css::CssBackgroundSizeComponent::Auto
+pub surgeist_css::CssBackgroundSizeComponent::Length(surgeist_css::CssLength)
+pub enum surgeist_css::CssBasicShape
+pub surgeist_css::CssBasicShape::Circle(surgeist_css::CssBasicShapeArguments)
+pub surgeist_css::CssBasicShape::Ellipse(surgeist_css::CssBasicShapeArguments)
+pub surgeist_css::CssBasicShape::Inset(surgeist_css::CssBasicShapeArguments)
+pub surgeist_css::CssBasicShape::Polygon(surgeist_css::CssBasicShapeArguments)
+pub enum surgeist_css::CssBorderStyle
+pub surgeist_css::CssBorderStyle::Dashed
+pub surgeist_css::CssBorderStyle::Dotted
+pub surgeist_css::CssBorderStyle::Double
+pub surgeist_css::CssBorderStyle::Groove
+pub surgeist_css::CssBorderStyle::Hidden
+pub surgeist_css::CssBorderStyle::Inset
+pub surgeist_css::CssBorderStyle::None
+pub surgeist_css::CssBorderStyle::Outset
+pub surgeist_css::CssBorderStyle::Ridge
+pub surgeist_css::CssBorderStyle::Solid
+pub enum surgeist_css::CssBoxDecorationBreak
+pub surgeist_css::CssBoxDecorationBreak::Clone
+pub surgeist_css::CssBoxDecorationBreak::Slice
+pub enum surgeist_css::CssBoxShadow
+pub surgeist_css::CssBoxShadow::None
+pub surgeist_css::CssBoxShadow::Shadows(surgeist_css::CssBoxShadowList)
 pub enum surgeist_css::CssBoxSizing
 pub surgeist_css::CssBoxSizing::BorderBox
 pub surgeist_css::CssBoxSizing::ContentBox
+pub enum surgeist_css::CssBuiltInCounterStyle
+pub surgeist_css::CssBuiltInCounterStyle::Circle
+pub surgeist_css::CssBuiltInCounterStyle::Decimal
+pub surgeist_css::CssBuiltInCounterStyle::DecimalLeadingZero
+pub surgeist_css::CssBuiltInCounterStyle::Disc
+pub surgeist_css::CssBuiltInCounterStyle::LowerAlpha
+pub surgeist_css::CssBuiltInCounterStyle::LowerLatin
+pub surgeist_css::CssBuiltInCounterStyle::LowerRoman
+pub surgeist_css::CssBuiltInCounterStyle::Square
+pub surgeist_css::CssBuiltInCounterStyle::UpperAlpha
+pub surgeist_css::CssBuiltInCounterStyle::UpperLatin
+pub surgeist_css::CssBuiltInCounterStyle::UpperRoman
 pub enum surgeist_css::CssCalcLength
-pub surgeist_css::CssCalcLength::Percent(f32)
-pub surgeist_css::CssCalcLength::Px(f32)
+pub surgeist_css::CssCalcLength::Dimension(surgeist_css::CssLengthDimension)
+pub surgeist_css::CssCalcLength::Percent(surgeist_css::CssFiniteNumber)
+pub surgeist_css::CssCalcLength::Px(surgeist_css::CssFiniteNumber)
 pub surgeist_css::CssCalcLength::Sum(alloc::vec::Vec<surgeist_css::CssCalcLengthTerm>)
 impl surgeist_css::CssCalcLength
-pub const fn surgeist_css::CssCalcLength::percent(value: f32) -> Self
-pub const fn surgeist_css::CssCalcLength::px(value: f32) -> Self
 pub fn surgeist_css::CssCalcLength::sum(first: surgeist_css::CssCalcLengthTerm, rest: impl core::iter::traits::collect::IntoIterator<Item = surgeist_css::CssCalcLengthTerm>) -> Self
 pub fn surgeist_css::CssCalcLength::to_css_string(&self) -> alloc::string::String
+pub fn surgeist_css::CssCalcLength::try_dimension(value: f32, unit: surgeist_css::CssLengthUnit) -> core::option::Option<Self>
+pub fn surgeist_css::CssCalcLength::try_percent(value: f32) -> core::option::Option<Self>
+pub fn surgeist_css::CssCalcLength::try_px(value: f32) -> core::option::Option<Self>
 pub fn surgeist_css::CssCalcLength::uses_percentage(&self) -> bool
 pub enum surgeist_css::CssCalcOperator
 pub surgeist_css::CssCalcOperator::Add
 pub surgeist_css::CssCalcOperator::Subtract
+pub enum surgeist_css::CssClear
+pub surgeist_css::CssClear::Both
+pub surgeist_css::CssClear::Left
+pub surgeist_css::CssClear::None
+pub surgeist_css::CssClear::Right
+pub enum surgeist_css::CssClipPath
+pub surgeist_css::CssClipPath::BasicShape(surgeist_css::CssBasicShape)
+pub surgeist_css::CssClipPath::None
+pub surgeist_css::CssClipPath::Url(surgeist_css::CssUrl)
+pub enum surgeist_css::CssColor
+pub surgeist_css::CssColor::ColorFunction(surgeist_css::CssColorFunction)
+pub surgeist_css::CssColor::ColorMix(surgeist_css::CssColorMix)
+pub surgeist_css::CssColor::CurrentColor
+pub surgeist_css::CssColor::Hsl(surgeist_css::CssHslColor)
+pub surgeist_css::CssColor::Hwb(surgeist_css::CssHwbColor)
+pub surgeist_css::CssColor::Lab(surgeist_css::CssLabColor)
+pub surgeist_css::CssColor::Lch(surgeist_css::CssLchColor)
+pub surgeist_css::CssColor::Oklab(surgeist_css::CssLabColor)
+pub surgeist_css::CssColor::Oklch(surgeist_css::CssLchColor)
+pub surgeist_css::CssColor::Relative(surgeist_css::CssRelativeColor)
+pub surgeist_css::CssColor::Rgba(surgeist_css::CssRgbaColor)
+pub surgeist_css::CssColor::System(surgeist_css::CssSystemColor)
+impl surgeist_css::CssColor
+pub const surgeist_css::CssColor::BLACK: Self
+pub const surgeist_css::CssColor::TRANSPARENT: Self
+pub const surgeist_css::CssColor::WHITE: Self
+pub const fn surgeist_css::CssColor::as_rgba(&self) -> core::option::Option<&surgeist_css::CssRgbaColor>
+pub const fn surgeist_css::CssColor::kind_name(&self) -> &'static str
+pub fn surgeist_css::CssColor::try_rgba(r: f32, g: f32, b: f32, a: f32) -> core::option::Option<Self>
+pub enum surgeist_css::CssColorInterpolationSpace
+pub surgeist_css::CssColorInterpolationSpace::Hsl
+pub surgeist_css::CssColorInterpolationSpace::Hwb
+pub surgeist_css::CssColorInterpolationSpace::Lab
+pub surgeist_css::CssColorInterpolationSpace::Lch
+pub surgeist_css::CssColorInterpolationSpace::Oklab
+pub surgeist_css::CssColorInterpolationSpace::Oklch
+pub surgeist_css::CssColorInterpolationSpace::Predefined(surgeist_css::CssPredefinedColorSpace)
+pub enum surgeist_css::CssColorSchemePreference
+pub surgeist_css::CssColorSchemePreference::Dark
+pub surgeist_css::CssColorSchemePreference::Light
+pub enum surgeist_css::CssContainerCondition
+pub surgeist_css::CssContainerCondition::And(surgeist_css::CssContainerConditionList)
+pub surgeist_css::CssContainerCondition::Feature(surgeist_css::CssContainerFeatureQuery)
+pub surgeist_css::CssContainerCondition::Not(alloc::boxed::Box<surgeist_css::CssContainerCondition>)
+pub surgeist_css::CssContainerCondition::Or(surgeist_css::CssContainerConditionList)
+pub surgeist_css::CssContainerCondition::Style(surgeist_css::CssContainerStyleQuery)
+pub enum surgeist_css::CssContainerFeatureQuery
+pub surgeist_css::CssContainerFeatureQuery::AspectRatio(surgeist_css::CssRangeFeature<surgeist_css::CssRatio>)
+pub surgeist_css::CssContainerFeatureQuery::BlockSize(surgeist_css::CssRangeFeature<surgeist_css::CssQueryLength>)
+pub surgeist_css::CssContainerFeatureQuery::Height(surgeist_css::CssRangeFeature<surgeist_css::CssQueryLength>)
+pub surgeist_css::CssContainerFeatureQuery::InlineSize(surgeist_css::CssRangeFeature<surgeist_css::CssQueryLength>)
+pub surgeist_css::CssContainerFeatureQuery::Orientation(surgeist_css::CssOrientation)
+pub surgeist_css::CssContainerFeatureQuery::Width(surgeist_css::CssRangeFeature<surgeist_css::CssQueryLength>)
+pub enum surgeist_css::CssContainerStyleQuery
+pub surgeist_css::CssContainerStyleQuery::CustomPropertyPresence(surgeist_css::CssCustomPropertyName)
+pub surgeist_css::CssContainerStyleQuery::CustomPropertyValue
+pub surgeist_css::CssContainerStyleQuery::CustomPropertyValue::name: surgeist_css::CssCustomPropertyName
+pub surgeist_css::CssContainerStyleQuery::CustomPropertyValue::value: surgeist_css::CssAuthoredDeclarationValue
+pub enum surgeist_css::CssContent
+pub surgeist_css::CssContent::Items(surgeist_css::CssContentList)
+pub surgeist_css::CssContent::None
+pub surgeist_css::CssContent::Normal
+pub enum surgeist_css::CssContentItem
+pub surgeist_css::CssContentItem::Attr(surgeist_css::CssAttributeName)
+pub surgeist_css::CssContentItem::CloseQuote
+pub surgeist_css::CssContentItem::Counter(surgeist_css::CssCounterFunction)
+pub surgeist_css::CssContentItem::Counters(surgeist_css::CssCountersFunction)
+pub surgeist_css::CssContentItem::NoCloseQuote
+pub surgeist_css::CssContentItem::NoOpenQuote
+pub surgeist_css::CssContentItem::OpenQuote
+pub surgeist_css::CssContentItem::String(surgeist_css::CssContentString)
+pub surgeist_css::CssContentItem::Url(surgeist_css::CssUrl)
+pub enum surgeist_css::CssContentVisibility
+pub surgeist_css::CssContentVisibility::Auto
+pub surgeist_css::CssContentVisibility::Hidden
+pub surgeist_css::CssContentVisibility::Visible
+pub enum surgeist_css::CssContrastPreference
+pub surgeist_css::CssContrastPreference::Custom
+pub surgeist_css::CssContrastPreference::Less
+pub surgeist_css::CssContrastPreference::More
+pub surgeist_css::CssContrastPreference::NoPreference
+pub enum surgeist_css::CssCounterChanges
+pub surgeist_css::CssCounterChanges::Changes(surgeist_css::CssCounterChangeList)
+pub surgeist_css::CssCounterChanges::None
+impl surgeist_css::CssCounterChanges
+pub fn surgeist_css::CssCounterChanges::try_changes(changes: alloc::vec::Vec<surgeist_css::CssCounterChange>) -> core::option::Option<Self>
+pub enum surgeist_css::CssCounterStyle
+pub surgeist_css::CssCounterStyle::BuiltIn(surgeist_css::CssBuiltInCounterStyle)
+pub surgeist_css::CssCounterStyle::Named(surgeist_css::CssCounterStyleName)
+pub enum surgeist_css::CssCursor
+pub surgeist_css::CssCursor::Keyword(surgeist_css::CssCursorKeyword)
+pub surgeist_css::CssCursor::Urls(surgeist_css::CssCursorUrls)
+impl surgeist_css::CssCursor
+pub fn surgeist_css::CssCursor::try_urls(urls: alloc::vec::Vec<surgeist_css::CssUrl>, fallback: surgeist_css::CssCursorKeyword) -> core::option::Option<Self>
+pub enum surgeist_css::CssCursorKeyword
+pub surgeist_css::CssCursorKeyword::Alias
+pub surgeist_css::CssCursorKeyword::AllScroll
+pub surgeist_css::CssCursorKeyword::Auto
+pub surgeist_css::CssCursorKeyword::Cell
+pub surgeist_css::CssCursorKeyword::ColResize
+pub surgeist_css::CssCursorKeyword::ContextMenu
+pub surgeist_css::CssCursorKeyword::Copy
+pub surgeist_css::CssCursorKeyword::Crosshair
+pub surgeist_css::CssCursorKeyword::Default
+pub surgeist_css::CssCursorKeyword::EResize
+pub surgeist_css::CssCursorKeyword::EwResize
+pub surgeist_css::CssCursorKeyword::Grab
+pub surgeist_css::CssCursorKeyword::Grabbing
+pub surgeist_css::CssCursorKeyword::Help
+pub surgeist_css::CssCursorKeyword::Move
+pub surgeist_css::CssCursorKeyword::NResize
+pub surgeist_css::CssCursorKeyword::NeResize
+pub surgeist_css::CssCursorKeyword::NeswResize
+pub surgeist_css::CssCursorKeyword::NoDrop
+pub surgeist_css::CssCursorKeyword::None
+pub surgeist_css::CssCursorKeyword::NotAllowed
+pub surgeist_css::CssCursorKeyword::NsResize
+pub surgeist_css::CssCursorKeyword::NwResize
+pub surgeist_css::CssCursorKeyword::NwseResize
+pub surgeist_css::CssCursorKeyword::Pointer
+pub surgeist_css::CssCursorKeyword::Progress
+pub surgeist_css::CssCursorKeyword::RowResize
+pub surgeist_css::CssCursorKeyword::SResize
+pub surgeist_css::CssCursorKeyword::SeResize
+pub surgeist_css::CssCursorKeyword::SwResize
+pub surgeist_css::CssCursorKeyword::Text
+pub surgeist_css::CssCursorKeyword::VerticalText
+pub surgeist_css::CssCursorKeyword::WResize
+pub surgeist_css::CssCursorKeyword::Wait
+pub surgeist_css::CssCursorKeyword::ZoomIn
+pub surgeist_css::CssCursorKeyword::ZoomOut
 pub enum surgeist_css::CssDirection
 pub surgeist_css::CssDirection::Ltr
 pub surgeist_css::CssDirection::Rtl
@@ -42,6 +290,46 @@ pub surgeist_css::CssDisplay::InlineBlock
 pub surgeist_css::CssDisplay::InlineGrid
 pub surgeist_css::CssDisplay::InlineGridLanes
 pub surgeist_css::CssDisplay::None
+pub enum surgeist_css::CssDisplayMode
+pub surgeist_css::CssDisplayMode::Browser
+pub surgeist_css::CssDisplayMode::Fullscreen
+pub surgeist_css::CssDisplayMode::MinimalUi
+pub surgeist_css::CssDisplayMode::PictureInPicture
+pub surgeist_css::CssDisplayMode::Standalone
+pub enum surgeist_css::CssEasing
+pub surgeist_css::CssEasing::CubicBezier(surgeist_css::CssEasingArguments)
+pub surgeist_css::CssEasing::Ease
+pub surgeist_css::CssEasing::EaseIn
+pub surgeist_css::CssEasing::EaseInOut
+pub surgeist_css::CssEasing::EaseOut
+pub surgeist_css::CssEasing::Linear
+pub surgeist_css::CssEasing::StepEnd
+pub surgeist_css::CssEasing::StepStart
+pub surgeist_css::CssEasing::Steps(surgeist_css::CssEasingArguments)
+pub enum surgeist_css::CssFilter
+pub surgeist_css::CssFilter::Functions(surgeist_css::CssFilterFunctionList)
+pub surgeist_css::CssFilter::None
+pub enum surgeist_css::CssFilterFunction
+pub surgeist_css::CssFilterFunction::Blur(surgeist_css::CssFilterArguments)
+pub surgeist_css::CssFilterFunction::Brightness(surgeist_css::CssFilterArguments)
+pub surgeist_css::CssFilterFunction::Contrast(surgeist_css::CssFilterArguments)
+pub surgeist_css::CssFilterFunction::DropShadow(surgeist_css::CssFilterArguments)
+pub surgeist_css::CssFilterFunction::Grayscale(surgeist_css::CssFilterArguments)
+pub surgeist_css::CssFilterFunction::HueRotate(surgeist_css::CssFilterArguments)
+pub surgeist_css::CssFilterFunction::Invert(surgeist_css::CssFilterArguments)
+pub surgeist_css::CssFilterFunction::Opacity(surgeist_css::CssFilterArguments)
+pub surgeist_css::CssFilterFunction::Saturate(surgeist_css::CssFilterArguments)
+pub surgeist_css::CssFilterFunction::Sepia(surgeist_css::CssFilterArguments)
+pub surgeist_css::CssFilterFunction::Url(surgeist_css::CssUrl)
+pub enum surgeist_css::CssFlex
+pub surgeist_css::CssFlex::Auto
+pub surgeist_css::CssFlex::Components
+pub surgeist_css::CssFlex::Components::basis: core::option::Option<surgeist_css::CssLength>
+pub surgeist_css::CssFlex::Components::grow: surgeist_css::CssFlexFactor
+pub surgeist_css::CssFlex::Components::shrink: core::option::Option<surgeist_css::CssFlexFactor>
+pub surgeist_css::CssFlex::None
+impl surgeist_css::CssFlex
+pub const fn surgeist_css::CssFlex::components(grow: surgeist_css::CssFlexFactor, shrink: core::option::Option<surgeist_css::CssFlexFactor>, basis: core::option::Option<surgeist_css::CssLength>) -> Self
 pub enum surgeist_css::CssFlexDirection
 pub surgeist_css::CssFlexDirection::Column
 pub surgeist_css::CssFlexDirection::ColumnReverse
@@ -51,97 +339,910 @@ pub enum surgeist_css::CssFlexWrap
 pub surgeist_css::CssFlexWrap::NoWrap
 pub surgeist_css::CssFlexWrap::Wrap
 pub surgeist_css::CssFlexWrap::WrapReverse
+pub enum surgeist_css::CssFloat
+pub surgeist_css::CssFloat::Left
+pub surgeist_css::CssFloat::None
+pub surgeist_css::CssFloat::Right
+pub enum surgeist_css::CssFontDisplay
+pub surgeist_css::CssFontDisplay::Auto
+pub surgeist_css::CssFontDisplay::Block
+pub surgeist_css::CssFontDisplay::Fallback
+pub surgeist_css::CssFontDisplay::Optional
+pub surgeist_css::CssFontDisplay::Swap
+pub enum surgeist_css::CssFontFaceSource
+pub surgeist_css::CssFontFaceSource::Local(surgeist_css::CssFontLocalName)
+pub surgeist_css::CssFontFaceSource::Url(surgeist_css::CssFontFaceUrlSource)
+pub enum surgeist_css::CssFontFaceStyle
+pub surgeist_css::CssFontFaceStyle::Italic
+pub surgeist_css::CssFontFaceStyle::Normal
+pub surgeist_css::CssFontFaceStyle::Oblique(core::option::Option<surgeist_css::CssFontFaceObliqueRange>)
+pub enum surgeist_css::CssFontFamilyNameKind
+pub surgeist_css::CssFontFamilyNameKind::IdentSequence
+pub surgeist_css::CssFontFamilyNameKind::Quoted
+pub enum surgeist_css::CssFontFeatureSettings
+pub surgeist_css::CssFontFeatureSettings::Features(surgeist_css::CssFontFeatureList)
+pub surgeist_css::CssFontFeatureSettings::Normal
+pub enum surgeist_css::CssFontFeatureValue
+pub surgeist_css::CssFontFeatureValue::Integer(i32)
+pub surgeist_css::CssFontFeatureValue::Off
+pub surgeist_css::CssFontFeatureValue::On
+pub enum surgeist_css::CssFontFormatHint
+pub surgeist_css::CssFontFormatHint::Collection
+pub surgeist_css::CssFontFormatHint::EmbeddedOpenType
+pub surgeist_css::CssFontFormatHint::OpenType
+pub surgeist_css::CssFontFormatHint::Svg
+pub surgeist_css::CssFontFormatHint::TrueType
+pub surgeist_css::CssFontFormatHint::Woff
+pub surgeist_css::CssFontFormatHint::Woff2
+pub enum surgeist_css::CssFontStretch
+pub surgeist_css::CssFontStretch::Condensed
+pub surgeist_css::CssFontStretch::Expanded
+pub surgeist_css::CssFontStretch::ExtraCondensed
+pub surgeist_css::CssFontStretch::ExtraExpanded
+pub surgeist_css::CssFontStretch::Normal
+pub surgeist_css::CssFontStretch::SemiCondensed
+pub surgeist_css::CssFontStretch::SemiExpanded
+pub surgeist_css::CssFontStretch::UltraCondensed
+pub surgeist_css::CssFontStretch::UltraExpanded
+pub enum surgeist_css::CssFontStyle
+pub surgeist_css::CssFontStyle::Italic
+pub surgeist_css::CssFontStyle::Normal
+pub surgeist_css::CssFontStyle::Oblique
+pub enum surgeist_css::CssFontTechHint
+pub surgeist_css::CssFontTechHint::ColorCBDT
+pub surgeist_css::CssFontTechHint::ColorCOLRv0
+pub surgeist_css::CssFontTechHint::ColorCOLRv1
+pub surgeist_css::CssFontTechHint::ColorSVG
+pub surgeist_css::CssFontTechHint::ColorSbix
+pub surgeist_css::CssFontTechHint::FeaturesAAT
+pub surgeist_css::CssFontTechHint::FeaturesGraphite
+pub surgeist_css::CssFontTechHint::FeaturesOpenType
+pub surgeist_css::CssFontTechHint::Incremental
+pub surgeist_css::CssFontTechHint::Variations
+pub enum surgeist_css::CssFontVariant
+pub surgeist_css::CssFontVariant::Normal
+pub surgeist_css::CssFontVariant::SmallCaps
+pub enum surgeist_css::CssFontWeight
+pub surgeist_css::CssFontWeight::Bold
+pub surgeist_css::CssFontWeight::Bolder
+pub surgeist_css::CssFontWeight::Lighter
+pub surgeist_css::CssFontWeight::Normal
+pub surgeist_css::CssFontWeight::Number(surgeist_css::CssFontWeightNumber)
+pub enum surgeist_css::CssForcedColorsMode
+pub surgeist_css::CssForcedColorsMode::Active
+pub surgeist_css::CssForcedColorsMode::None
 pub enum surgeist_css::CssGlobalKeyword
 pub surgeist_css::CssGlobalKeyword::Inherit
 pub surgeist_css::CssGlobalKeyword::Initial
 pub surgeist_css::CssGlobalKeyword::Revert
 pub surgeist_css::CssGlobalKeyword::RevertLayer
 pub surgeist_css::CssGlobalKeyword::Unset
+pub enum surgeist_css::CssGrid
+pub surgeist_css::CssGrid::AutoFlow
+pub surgeist_css::CssGrid::AutoFlow::auto_tracks: core::option::Option<surgeist_css::CssGridTrackList>
+pub surgeist_css::CssGrid::AutoFlow::explicit_tracks: surgeist_css::CssGridTrackList
+pub surgeist_css::CssGrid::AutoFlow::flow: surgeist_css::CssGridAutoFlow
+pub surgeist_css::CssGrid::Template(surgeist_css::CssGridTemplate)
+pub enum surgeist_css::CssGridAutoFlowAxis
+pub surgeist_css::CssGridAutoFlowAxis::Column
+pub surgeist_css::CssGridAutoFlowAxis::Row
 pub enum surgeist_css::CssGridFlowTolerance
 pub surgeist_css::CssGridFlowTolerance::Infinite
 pub surgeist_css::CssGridFlowTolerance::Length(surgeist_css::CssLength)
 pub surgeist_css::CssGridFlowTolerance::Normal
 pub surgeist_css::CssGridFlowTolerance::Percent(f32)
+pub enum surgeist_css::CssGridLine
+pub surgeist_css::CssGridLine::Auto
+pub surgeist_css::CssGridLine::CustomIdent(surgeist_css::CssCustomIdent)
+pub surgeist_css::CssGridLine::Integer(surgeist_css::CssGridLineInteger)
+pub surgeist_css::CssGridLine::Span(surgeist_css::CssGridLineSpan)
+impl surgeist_css::CssGridLine
+pub fn surgeist_css::CssGridLine::try_integer(value: i32) -> core::option::Option<Self>
+pub fn surgeist_css::CssGridLine::try_span(integer: core::option::Option<i32>, name: core::option::Option<surgeist_css::CssCustomIdent>) -> core::option::Option<Self>
+pub enum surgeist_css::CssGridRepeatCount
+pub surgeist_css::CssGridRepeatCount::AutoFill
+pub surgeist_css::CssGridRepeatCount::AutoFit
+pub surgeist_css::CssGridRepeatCount::Integer(surgeist_css::CssGridRepeatInteger)
+impl surgeist_css::CssGridRepeatCount
+pub const fn surgeist_css::CssGridRepeatCount::try_integer(value: i32) -> core::option::Option<Self>
+pub enum surgeist_css::CssGridTemplate
+pub surgeist_css::CssGridTemplate::None
+pub surgeist_css::CssGridTemplate::RowsColumns
+pub surgeist_css::CssGridTemplate::RowsColumns::columns: core::option::Option<surgeist_css::CssGridTrackList>
+pub surgeist_css::CssGridTemplate::RowsColumns::rows: surgeist_css::CssGridTrackList
+pub enum surgeist_css::CssGridTemplateAreaCell
+pub surgeist_css::CssGridTemplateAreaCell::Empty
+pub surgeist_css::CssGridTemplateAreaCell::Named(surgeist_css::CssCustomIdent)
+pub enum surgeist_css::CssGridTemplateAreas
+pub surgeist_css::CssGridTemplateAreas::None
+pub surgeist_css::CssGridTemplateAreas::Rows(surgeist_css::CssGridTemplateAreaRows)
+impl surgeist_css::CssGridTemplateAreas
+pub fn surgeist_css::CssGridTemplateAreas::try_rows(rows: alloc::vec::Vec<surgeist_css::CssGridTemplateAreaRow>) -> core::option::Option<Self>
+pub enum surgeist_css::CssGridTrackBreadth
+pub surgeist_css::CssGridTrackBreadth::Auto
+pub surgeist_css::CssGridTrackBreadth::Fraction(surgeist_css::CssNonNegativeNumber)
+pub surgeist_css::CssGridTrackBreadth::Length(surgeist_css::CssLength)
+pub surgeist_css::CssGridTrackBreadth::MaxContent
+pub surgeist_css::CssGridTrackBreadth::MinContent
+impl surgeist_css::CssGridTrackBreadth
+pub const fn surgeist_css::CssGridTrackBreadth::length(length: surgeist_css::CssLength) -> Self
+pub fn surgeist_css::CssGridTrackBreadth::try_fraction(value: f32) -> core::option::Option<Self>
+pub enum surgeist_css::CssGridTrackComponent
+pub surgeist_css::CssGridTrackComponent::LineNames(surgeist_css::CssGridLineNames)
+pub surgeist_css::CssGridTrackComponent::Repeat(surgeist_css::CssGridRepeat)
+pub surgeist_css::CssGridTrackComponent::TrackSize(surgeist_css::CssGridTrackSize)
+pub enum surgeist_css::CssGridTrackSize
+pub surgeist_css::CssGridTrackSize::Breadth(surgeist_css::CssGridTrackBreadth)
+pub surgeist_css::CssGridTrackSize::FitContent(surgeist_css::CssLength)
+pub surgeist_css::CssGridTrackSize::MinMax
+pub surgeist_css::CssGridTrackSize::MinMax::max: surgeist_css::CssGridTrackBreadth
+pub surgeist_css::CssGridTrackSize::MinMax::min: surgeist_css::CssGridTrackBreadth
+impl surgeist_css::CssGridTrackSize
+pub const fn surgeist_css::CssGridTrackSize::breadth(breadth: surgeist_css::CssGridTrackBreadth) -> Self
+pub const fn surgeist_css::CssGridTrackSize::fit_content(limit: surgeist_css::CssLength) -> Self
+pub const fn surgeist_css::CssGridTrackSize::minmax(min: surgeist_css::CssGridTrackBreadth, max: surgeist_css::CssGridTrackBreadth) -> Self
+pub enum surgeist_css::CssHorizontalPositionKeyword
+pub surgeist_css::CssHorizontalPositionKeyword::Center
+pub surgeist_css::CssHorizontalPositionKeyword::Left
+pub surgeist_css::CssHorizontalPositionKeyword::Right
+pub enum surgeist_css::CssHoverCapability
+pub surgeist_css::CssHoverCapability::Hover
+pub surgeist_css::CssHoverCapability::None
+pub enum surgeist_css::CssHueInterpolationMethod
+pub surgeist_css::CssHueInterpolationMethod::Decreasing
+pub surgeist_css::CssHueInterpolationMethod::Increasing
+pub surgeist_css::CssHueInterpolationMethod::Longer
+pub surgeist_css::CssHueInterpolationMethod::Shorter
+pub enum surgeist_css::CssImageLayer
+pub surgeist_css::CssImageLayer::None
+pub surgeist_css::CssImageLayer::Url(surgeist_css::CssUrl)
+pub enum surgeist_css::CssImportLayer
+pub surgeist_css::CssImportLayer::Anonymous
+pub surgeist_css::CssImportLayer::Named(surgeist_css::CssLayerName)
+pub enum surgeist_css::CssImportTarget
+pub surgeist_css::CssImportTarget::String(surgeist_css::CssImportString)
+pub surgeist_css::CssImportTarget::Url(surgeist_css::CssImportUrl)
+pub enum surgeist_css::CssKeyframeSelector
+pub surgeist_css::CssKeyframeSelector::From
+pub surgeist_css::CssKeyframeSelector::Percent(surgeist_css::CssKeyframePercent)
+pub surgeist_css::CssKeyframeSelector::To
+impl surgeist_css::CssKeyframeSelector
+pub fn surgeist_css::CssKeyframeSelector::offset(self) -> surgeist_css::CssKeyframePercent
+pub enum surgeist_css::CssKeyframesName
+pub surgeist_css::CssKeyframesName::Ident(surgeist_css::CssCustomIdent)
+pub surgeist_css::CssKeyframesName::String(surgeist_css::CssKeyframesString)
 pub enum surgeist_css::CssLayoutPosition
 pub surgeist_css::CssLayoutPosition::Absolute
+pub surgeist_css::CssLayoutPosition::Fixed
 pub surgeist_css::CssLayoutPosition::Relative
+pub surgeist_css::CssLayoutPosition::Static
+pub surgeist_css::CssLayoutPosition::Sticky
 pub enum surgeist_css::CssLength
 pub surgeist_css::CssLength::Auto
 pub surgeist_css::CssLength::Calc(surgeist_css::CssCalcLength)
+pub surgeist_css::CssLength::Dimension(surgeist_css::CssLengthDimension)
 pub surgeist_css::CssLength::FitContent
 pub surgeist_css::CssLength::MaxContent
 pub surgeist_css::CssLength::MinContent
 pub surgeist_css::CssLength::Normal
-pub surgeist_css::CssLength::Percent(f32)
-pub surgeist_css::CssLength::Px(f32)
+pub surgeist_css::CssLength::Percent(surgeist_css::CssFiniteNumber)
+pub surgeist_css::CssLength::Px(surgeist_css::CssFiniteNumber)
 pub surgeist_css::CssLength::Zero
 impl surgeist_css::CssLength
-pub const fn surgeist_css::CssLength::percent(value: f32) -> Self
-pub const fn surgeist_css::CssLength::px(value: f32) -> Self
+pub fn surgeist_css::CssLength::try_dimension(value: f32, unit: surgeist_css::CssLengthUnit) -> core::option::Option<Self>
+pub fn surgeist_css::CssLength::try_percent(value: f32) -> core::option::Option<Self>
+pub fn surgeist_css::CssLength::try_px(value: f32) -> core::option::Option<Self>
+pub enum surgeist_css::CssLengthUnit
+pub surgeist_css::CssLengthUnit::Cap
+pub surgeist_css::CssLengthUnit::Ch
+pub surgeist_css::CssLengthUnit::Cm
+pub surgeist_css::CssLengthUnit::Cqb
+pub surgeist_css::CssLengthUnit::Cqh
+pub surgeist_css::CssLengthUnit::Cqi
+pub surgeist_css::CssLengthUnit::Cqmax
+pub surgeist_css::CssLengthUnit::Cqmin
+pub surgeist_css::CssLengthUnit::Cqw
+pub surgeist_css::CssLengthUnit::Dvb
+pub surgeist_css::CssLengthUnit::Dvh
+pub surgeist_css::CssLengthUnit::Dvi
+pub surgeist_css::CssLengthUnit::Dvmax
+pub surgeist_css::CssLengthUnit::Dvmin
+pub surgeist_css::CssLengthUnit::Dvw
+pub surgeist_css::CssLengthUnit::Em
+pub surgeist_css::CssLengthUnit::Ex
+pub surgeist_css::CssLengthUnit::Ic
+pub surgeist_css::CssLengthUnit::In
+pub surgeist_css::CssLengthUnit::Lh
+pub surgeist_css::CssLengthUnit::Lvb
+pub surgeist_css::CssLengthUnit::Lvh
+pub surgeist_css::CssLengthUnit::Lvi
+pub surgeist_css::CssLengthUnit::Lvmax
+pub surgeist_css::CssLengthUnit::Lvmin
+pub surgeist_css::CssLengthUnit::Lvw
+pub surgeist_css::CssLengthUnit::Mm
+pub surgeist_css::CssLengthUnit::Pc
+pub surgeist_css::CssLengthUnit::Pt
+pub surgeist_css::CssLengthUnit::Px
+pub surgeist_css::CssLengthUnit::Q
+pub surgeist_css::CssLengthUnit::Rcap
+pub surgeist_css::CssLengthUnit::Rch
+pub surgeist_css::CssLengthUnit::Rem
+pub surgeist_css::CssLengthUnit::Rex
+pub surgeist_css::CssLengthUnit::Ric
+pub surgeist_css::CssLengthUnit::Rlh
+pub surgeist_css::CssLengthUnit::Svb
+pub surgeist_css::CssLengthUnit::Svh
+pub surgeist_css::CssLengthUnit::Svi
+pub surgeist_css::CssLengthUnit::Svmax
+pub surgeist_css::CssLengthUnit::Svmin
+pub surgeist_css::CssLengthUnit::Svw
+pub surgeist_css::CssLengthUnit::Vb
+pub surgeist_css::CssLengthUnit::Vh
+pub surgeist_css::CssLengthUnit::Vi
+pub surgeist_css::CssLengthUnit::Vmax
+pub surgeist_css::CssLengthUnit::Vmin
+pub surgeist_css::CssLengthUnit::Vw
+impl surgeist_css::CssLengthUnit
+pub const fn surgeist_css::CssLengthUnit::as_css_str(self) -> &'static str
+pub enum surgeist_css::CssLetterSpacing
+pub surgeist_css::CssLetterSpacing::Length(surgeist_css::CssLetterSpacingLength)
+pub surgeist_css::CssLetterSpacing::Normal
+pub enum surgeist_css::CssListStyleImage
+pub surgeist_css::CssListStyleImage::None
+pub surgeist_css::CssListStyleImage::Url(surgeist_css::CssUrl)
+pub enum surgeist_css::CssListStylePosition
+pub surgeist_css::CssListStylePosition::Inside
+pub surgeist_css::CssListStylePosition::Outside
+pub enum surgeist_css::CssListStyleType
+pub surgeist_css::CssListStyleType::CounterStyle(surgeist_css::CssCounterStyle)
+pub surgeist_css::CssListStyleType::None
+pub surgeist_css::CssListStyleType::String(surgeist_css::CssContentString)
+pub enum surgeist_css::CssMediaCondition
+pub surgeist_css::CssMediaCondition::And(surgeist_css::CssMediaConditionList)
+pub surgeist_css::CssMediaCondition::Feature(surgeist_css::CssMediaFeatureQuery)
+pub surgeist_css::CssMediaCondition::Not(alloc::boxed::Box<surgeist_css::CssMediaCondition>)
+pub surgeist_css::CssMediaCondition::Or(surgeist_css::CssMediaConditionList)
+pub enum surgeist_css::CssMediaFeatureQuery
+pub surgeist_css::CssMediaFeatureQuery::AnyHover(surgeist_css::CssHoverCapability)
+pub surgeist_css::CssMediaFeatureQuery::AnyPointer(surgeist_css::CssPointerCapability)
+pub surgeist_css::CssMediaFeatureQuery::Color(surgeist_css::CssRangeFeature<surgeist_css::CssNonNegativeInteger>)
+pub surgeist_css::CssMediaFeatureQuery::DisplayMode(surgeist_css::CssDisplayMode)
+pub surgeist_css::CssMediaFeatureQuery::ForcedColors(surgeist_css::CssForcedColorsMode)
+pub surgeist_css::CssMediaFeatureQuery::Height(surgeist_css::CssRangeFeature<surgeist_css::CssQueryLength>)
+pub surgeist_css::CssMediaFeatureQuery::Hover(surgeist_css::CssHoverCapability)
+pub surgeist_css::CssMediaFeatureQuery::Monochrome(surgeist_css::CssRangeFeature<surgeist_css::CssNonNegativeInteger>)
+pub surgeist_css::CssMediaFeatureQuery::Orientation(surgeist_css::CssOrientation)
+pub surgeist_css::CssMediaFeatureQuery::Pointer(surgeist_css::CssPointerCapability)
+pub surgeist_css::CssMediaFeatureQuery::PrefersColorScheme(surgeist_css::CssColorSchemePreference)
+pub surgeist_css::CssMediaFeatureQuery::PrefersContrast(surgeist_css::CssContrastPreference)
+pub surgeist_css::CssMediaFeatureQuery::PrefersReducedMotion(surgeist_css::CssReducedMotionPreference)
+pub surgeist_css::CssMediaFeatureQuery::PrefersReducedTransparency(surgeist_css::CssReducedTransparencyPreference)
+pub surgeist_css::CssMediaFeatureQuery::Resolution(surgeist_css::CssRangeFeature<surgeist_css::CssResolution>)
+pub surgeist_css::CssMediaFeatureQuery::Width(surgeist_css::CssRangeFeature<surgeist_css::CssQueryLength>)
+impl surgeist_css::CssMediaFeatureQuery
+pub const fn surgeist_css::CssMediaFeatureQuery::name(&self) -> &'static str
+pub enum surgeist_css::CssMediaQuery
+pub surgeist_css::CssMediaQuery::Condition(surgeist_css::CssMediaCondition)
+pub surgeist_css::CssMediaQuery::Typed(surgeist_css::CssTypedMediaQuery)
+pub enum surgeist_css::CssMediaQueryModifier
+pub surgeist_css::CssMediaQueryModifier::Not
+pub surgeist_css::CssMediaQueryModifier::Only
+pub enum surgeist_css::CssMediaType
+pub surgeist_css::CssMediaType::All
+pub surgeist_css::CssMediaType::Print
+pub surgeist_css::CssMediaType::Screen
+pub enum surgeist_css::CssNthPattern
+pub surgeist_css::CssNthPattern::AnPlusB(surgeist_css::CssNthAnPlusB)
+pub surgeist_css::CssNthPattern::Even
+pub surgeist_css::CssNthPattern::Integer(i32)
+pub surgeist_css::CssNthPattern::Odd
+pub enum surgeist_css::CssOrder
+pub surgeist_css::CssOrder::Integer(i32)
+pub enum surgeist_css::CssOrientation
+pub surgeist_css::CssOrientation::Landscape
+pub surgeist_css::CssOrientation::Portrait
+pub enum surgeist_css::CssOutlineStyle
+pub surgeist_css::CssOutlineStyle::Auto
+pub surgeist_css::CssOutlineStyle::Border(surgeist_css::CssBorderStyle)
+pub enum surgeist_css::CssOutlineWidth
+pub surgeist_css::CssOutlineWidth::Length(surgeist_css::CssLength)
+pub surgeist_css::CssOutlineWidth::Medium
+pub surgeist_css::CssOutlineWidth::Thick
+pub surgeist_css::CssOutlineWidth::Thin
 pub enum surgeist_css::CssOverflow
 pub surgeist_css::CssOverflow::Clip
 pub surgeist_css::CssOverflow::Hidden
 pub surgeist_css::CssOverflow::Scroll
 pub surgeist_css::CssOverflow::Visible
+pub enum surgeist_css::CssOverflowWrap
+pub surgeist_css::CssOverflowWrap::Anywhere
+pub surgeist_css::CssOverflowWrap::BreakWord
+pub surgeist_css::CssOverflowWrap::Normal
+pub enum surgeist_css::CssPlaceAlignment
+pub surgeist_css::CssPlaceAlignment::Content(surgeist_css::CssPlaceContentAlignment)
+pub surgeist_css::CssPlaceAlignment::Items(surgeist_css::CssPlaceItemsAlignment)
+impl surgeist_css::CssPlaceAlignment
+pub const fn surgeist_css::CssPlaceAlignment::content(first: surgeist_css::CssAlignment, second: surgeist_css::CssAlignment) -> Self
+pub const fn surgeist_css::CssPlaceAlignment::content_all(value: surgeist_css::CssAlignment) -> Self
+pub const fn surgeist_css::CssPlaceAlignment::items(first: surgeist_css::CssAlignItems, second: surgeist_css::CssAlignItems) -> Self
+pub const fn surgeist_css::CssPlaceAlignment::items_all(value: surgeist_css::CssAlignItems) -> Self
+pub enum surgeist_css::CssPointerCapability
+pub surgeist_css::CssPointerCapability::Coarse
+pub surgeist_css::CssPointerCapability::Fine
+pub surgeist_css::CssPointerCapability::None
+pub enum surgeist_css::CssPointerEvents
+pub surgeist_css::CssPointerEvents::Auto
+pub surgeist_css::CssPointerEvents::None
+pub enum surgeist_css::CssPositionComponent
+pub surgeist_css::CssPositionComponent::Horizontal(surgeist_css::CssHorizontalPositionKeyword)
+pub surgeist_css::CssPositionComponent::Length(surgeist_css::CssLength)
+pub surgeist_css::CssPositionComponent::Vertical(surgeist_css::CssVerticalPositionKeyword)
+pub enum surgeist_css::CssPredefinedColorSpace
+pub surgeist_css::CssPredefinedColorSpace::A98Rgb
+pub surgeist_css::CssPredefinedColorSpace::DisplayP3
+pub surgeist_css::CssPredefinedColorSpace::DisplayP3Linear
+pub surgeist_css::CssPredefinedColorSpace::ProphotoRgb
+pub surgeist_css::CssPredefinedColorSpace::Rec2020
+pub surgeist_css::CssPredefinedColorSpace::Srgb
+pub surgeist_css::CssPredefinedColorSpace::SrgbLinear
+pub surgeist_css::CssPredefinedColorSpace::XyzD50
+pub surgeist_css::CssPredefinedColorSpace::XyzD65
 pub enum surgeist_css::CssProperty
+pub surgeist_css::CssProperty::AlignContent
 pub surgeist_css::CssProperty::AlignItems
 pub surgeist_css::CssProperty::AlignSelf
+pub surgeist_css::CssProperty::AlignTracks
+pub surgeist_css::CssProperty::All
+pub surgeist_css::CssProperty::Animation
+pub surgeist_css::CssProperty::AnimationDelay
+pub surgeist_css::CssProperty::AnimationDirection
+pub surgeist_css::CssProperty::AnimationDuration
+pub surgeist_css::CssProperty::AnimationFillMode
+pub surgeist_css::CssProperty::AnimationIterationCount
+pub surgeist_css::CssProperty::AnimationName
+pub surgeist_css::CssProperty::AnimationPlayState
+pub surgeist_css::CssProperty::AnimationTimingFunction
 pub surgeist_css::CssProperty::AspectRatio
+pub surgeist_css::CssProperty::BackdropFilter
 pub surgeist_css::CssProperty::Background
+pub surgeist_css::CssProperty::BackgroundAttachment
+pub surgeist_css::CssProperty::BackgroundClip
+pub surgeist_css::CssProperty::BackgroundColor
+pub surgeist_css::CssProperty::BackgroundImage
+pub surgeist_css::CssProperty::BackgroundOrigin
+pub surgeist_css::CssProperty::BackgroundPosition
+pub surgeist_css::CssProperty::BackgroundRepeat
+pub surgeist_css::CssProperty::BackgroundSize
+pub surgeist_css::CssProperty::Border
+pub surgeist_css::CssProperty::BorderBottom
+pub surgeist_css::CssProperty::BorderBottomColor
+pub surgeist_css::CssProperty::BorderBottomLeftRadius
+pub surgeist_css::CssProperty::BorderBottomRightRadius
+pub surgeist_css::CssProperty::BorderBottomStyle
+pub surgeist_css::CssProperty::BorderBottomWidth
 pub surgeist_css::CssProperty::BorderColor
+pub surgeist_css::CssProperty::BorderLeft
+pub surgeist_css::CssProperty::BorderLeftColor
+pub surgeist_css::CssProperty::BorderLeftStyle
+pub surgeist_css::CssProperty::BorderLeftWidth
+pub surgeist_css::CssProperty::BorderRadius
+pub surgeist_css::CssProperty::BorderRight
+pub surgeist_css::CssProperty::BorderRightColor
+pub surgeist_css::CssProperty::BorderRightStyle
+pub surgeist_css::CssProperty::BorderRightWidth
+pub surgeist_css::CssProperty::BorderStyle
+pub surgeist_css::CssProperty::BorderTop
+pub surgeist_css::CssProperty::BorderTopColor
+pub surgeist_css::CssProperty::BorderTopLeftRadius
+pub surgeist_css::CssProperty::BorderTopRightRadius
+pub surgeist_css::CssProperty::BorderTopStyle
+pub surgeist_css::CssProperty::BorderTopWidth
 pub surgeist_css::CssProperty::BorderWidth
+pub surgeist_css::CssProperty::Bottom
+pub surgeist_css::CssProperty::BoxDecorationBreak
+pub surgeist_css::CssProperty::BoxShadow
 pub surgeist_css::CssProperty::BoxSizing
+pub surgeist_css::CssProperty::Clear
+pub surgeist_css::CssProperty::ClipPath
 pub surgeist_css::CssProperty::Color
 pub surgeist_css::CssProperty::ColumnGap
+pub surgeist_css::CssProperty::Content
+pub surgeist_css::CssProperty::ContentVisibility
+pub surgeist_css::CssProperty::CounterIncrement
+pub surgeist_css::CssProperty::CounterReset
+pub surgeist_css::CssProperty::CounterSet
+pub surgeist_css::CssProperty::Cursor
+pub surgeist_css::CssProperty::Custom(surgeist_css::CssCustomPropertyName)
 pub surgeist_css::CssProperty::Direction
 pub surgeist_css::CssProperty::Display
+pub surgeist_css::CssProperty::Filter
+pub surgeist_css::CssProperty::Flex
 pub surgeist_css::CssProperty::FlexBasis
 pub surgeist_css::CssProperty::FlexDirection
 pub surgeist_css::CssProperty::FlexGrow
 pub surgeist_css::CssProperty::FlexShrink
 pub surgeist_css::CssProperty::FlexWrap
+pub surgeist_css::CssProperty::Float
+pub surgeist_css::CssProperty::Font
+pub surgeist_css::CssProperty::FontFamily
+pub surgeist_css::CssProperty::FontFeatureSettings
 pub surgeist_css::CssProperty::FontSize
+pub surgeist_css::CssProperty::FontStretch
+pub surgeist_css::CssProperty::FontStyle
+pub surgeist_css::CssProperty::FontVariant
+pub surgeist_css::CssProperty::FontWeight
 pub surgeist_css::CssProperty::Gap
+pub surgeist_css::CssProperty::Grid
+pub surgeist_css::CssProperty::GridArea
+pub surgeist_css::CssProperty::GridAutoColumns
+pub surgeist_css::CssProperty::GridAutoFlow
+pub surgeist_css::CssProperty::GridAutoRows
+pub surgeist_css::CssProperty::GridColumn
+pub surgeist_css::CssProperty::GridColumnEnd
+pub surgeist_css::CssProperty::GridColumnStart
 pub surgeist_css::CssProperty::GridFlowTolerance
+pub surgeist_css::CssProperty::GridRow
+pub surgeist_css::CssProperty::GridRowEnd
+pub surgeist_css::CssProperty::GridRowStart
+pub surgeist_css::CssProperty::GridTemplate
+pub surgeist_css::CssProperty::GridTemplateAreas
+pub surgeist_css::CssProperty::GridTemplateColumns
+pub surgeist_css::CssProperty::GridTemplateRows
 pub surgeist_css::CssProperty::Height
+pub surgeist_css::CssProperty::Inset
+pub surgeist_css::CssProperty::JustifyContent
 pub surgeist_css::CssProperty::JustifyItems
 pub surgeist_css::CssProperty::JustifySelf
+pub surgeist_css::CssProperty::JustifyTracks
+pub surgeist_css::CssProperty::Left
+pub surgeist_css::CssProperty::LetterSpacing
 pub surgeist_css::CssProperty::LineHeight
+pub surgeist_css::CssProperty::ListStyle
+pub surgeist_css::CssProperty::ListStyleImage
+pub surgeist_css::CssProperty::ListStylePosition
+pub surgeist_css::CssProperty::ListStyleType
 pub surgeist_css::CssProperty::Margin
+pub surgeist_css::CssProperty::MarginBottom
+pub surgeist_css::CssProperty::MarginLeft
+pub surgeist_css::CssProperty::MarginRight
+pub surgeist_css::CssProperty::MarginTop
+pub surgeist_css::CssProperty::Mask
+pub surgeist_css::CssProperty::MaskImage
+pub surgeist_css::CssProperty::MaskPosition
+pub surgeist_css::CssProperty::MaskRepeat
+pub surgeist_css::CssProperty::MaskSize
 pub surgeist_css::CssProperty::MaxHeight
 pub surgeist_css::CssProperty::MaxWidth
 pub surgeist_css::CssProperty::MinHeight
 pub surgeist_css::CssProperty::MinWidth
 pub surgeist_css::CssProperty::Opacity
+pub surgeist_css::CssProperty::Order
+pub surgeist_css::CssProperty::Outline
+pub surgeist_css::CssProperty::OutlineColor
+pub surgeist_css::CssProperty::OutlineStyle
+pub surgeist_css::CssProperty::OutlineWidth
 pub surgeist_css::CssProperty::Overflow
+pub surgeist_css::CssProperty::OverflowWrap
 pub surgeist_css::CssProperty::OverflowX
 pub surgeist_css::CssProperty::OverflowY
 pub surgeist_css::CssProperty::Padding
+pub surgeist_css::CssProperty::PaddingBottom
+pub surgeist_css::CssProperty::PaddingLeft
+pub surgeist_css::CssProperty::PaddingRight
+pub surgeist_css::CssProperty::PaddingTop
+pub surgeist_css::CssProperty::PlaceContent
+pub surgeist_css::CssProperty::PlaceItems
+pub surgeist_css::CssProperty::PlaceSelf
+pub surgeist_css::CssProperty::PointerEvents
 pub surgeist_css::CssProperty::Position
+pub surgeist_css::CssProperty::Right
+pub surgeist_css::CssProperty::Rotate
 pub surgeist_css::CssProperty::RowGap
+pub surgeist_css::CssProperty::Scale
 pub surgeist_css::CssProperty::ScrollbarWidth
+pub surgeist_css::CssProperty::TextAlign
+pub surgeist_css::CssProperty::TextAlignLast
+pub surgeist_css::CssProperty::TextDecoration
+pub surgeist_css::CssProperty::TextDecorationColor
+pub surgeist_css::CssProperty::TextDecorationLine
+pub surgeist_css::CssProperty::TextDecorationStyle
+pub surgeist_css::CssProperty::TextDecorationThickness
+pub surgeist_css::CssProperty::TextIndent
+pub surgeist_css::CssProperty::TextOverflow
+pub surgeist_css::CssProperty::TextTransform
+pub surgeist_css::CssProperty::TextWrap
+pub surgeist_css::CssProperty::Top
+pub surgeist_css::CssProperty::Transform
+pub surgeist_css::CssProperty::TransformOrigin
+pub surgeist_css::CssProperty::Transition
+pub surgeist_css::CssProperty::TransitionDelay
+pub surgeist_css::CssProperty::TransitionDuration
+pub surgeist_css::CssProperty::TransitionProperty
+pub surgeist_css::CssProperty::TransitionTimingFunction
+pub surgeist_css::CssProperty::Translate
+pub surgeist_css::CssProperty::UserSelect
+pub surgeist_css::CssProperty::VerticalAlign
+pub surgeist_css::CssProperty::Visibility
+pub surgeist_css::CssProperty::WhiteSpace
 pub surgeist_css::CssProperty::Width
+pub surgeist_css::CssProperty::WordBreak
+pub surgeist_css::CssProperty::WritingMode
+pub surgeist_css::CssProperty::ZIndex
+pub enum surgeist_css::CssPseudoClass
+pub surgeist_css::CssPseudoClass::Active
+pub surgeist_css::CssPseudoClass::Checked
+pub surgeist_css::CssPseudoClass::Default
+pub surgeist_css::CssPseudoClass::Disabled
+pub surgeist_css::CssPseudoClass::Empty
+pub surgeist_css::CssPseudoClass::Enabled
+pub surgeist_css::CssPseudoClass::FirstChild
+pub surgeist_css::CssPseudoClass::FirstOfType
+pub surgeist_css::CssPseudoClass::Focus
+pub surgeist_css::CssPseudoClass::FocusVisible
+pub surgeist_css::CssPseudoClass::FocusWithin
+pub surgeist_css::CssPseudoClass::Fullscreen
+pub surgeist_css::CssPseudoClass::Has(surgeist_css::CssRelativeSelectorList)
+pub surgeist_css::CssPseudoClass::Hover
+pub surgeist_css::CssPseudoClass::InRange
+pub surgeist_css::CssPseudoClass::Indeterminate
+pub surgeist_css::CssPseudoClass::Invalid
+pub surgeist_css::CssPseudoClass::Is(surgeist_css::CssPseudoSelectorList)
+pub surgeist_css::CssPseudoClass::LastChild
+pub surgeist_css::CssPseudoClass::LastOfType
+pub surgeist_css::CssPseudoClass::Modal
+pub surgeist_css::CssPseudoClass::Not(surgeist_css::CssPseudoSelectorList)
+pub surgeist_css::CssPseudoClass::NthChild(surgeist_css::CssNthChildPattern)
+pub surgeist_css::CssPseudoClass::NthLastChild(surgeist_css::CssNthChildPattern)
+pub surgeist_css::CssPseudoClass::NthLastOfType(surgeist_css::CssNthPattern)
+pub surgeist_css::CssPseudoClass::NthOfType(surgeist_css::CssNthPattern)
+pub surgeist_css::CssPseudoClass::OnlyChild
+pub surgeist_css::CssPseudoClass::OnlyOfType
+pub surgeist_css::CssPseudoClass::Optional
+pub surgeist_css::CssPseudoClass::OutOfRange
+pub surgeist_css::CssPseudoClass::PlaceholderShown
+pub surgeist_css::CssPseudoClass::PopoverOpen
+pub surgeist_css::CssPseudoClass::ReadOnly
+pub surgeist_css::CssPseudoClass::ReadWrite
+pub surgeist_css::CssPseudoClass::Required
+pub surgeist_css::CssPseudoClass::Root
+pub surgeist_css::CssPseudoClass::Scope
+pub surgeist_css::CssPseudoClass::Valid
+pub surgeist_css::CssPseudoClass::Where(surgeist_css::CssPseudoSelectorList)
+impl surgeist_css::CssPseudoClass
+pub fn surgeist_css::CssPseudoClass::has_pseudo_elements(&self) -> bool
+pub enum surgeist_css::CssPseudoElement
+pub surgeist_css::CssPseudoElement::After
+pub surgeist_css::CssPseudoElement::Backdrop
+pub surgeist_css::CssPseudoElement::Before
+pub surgeist_css::CssPseudoElement::Marker
+pub surgeist_css::CssPseudoElement::Selection
+pub enum surgeist_css::CssQueryComparison
+pub surgeist_css::CssQueryComparison::Equal
+pub surgeist_css::CssQueryComparison::GreaterThan
+pub surgeist_css::CssQueryComparison::GreaterThanOrEqual
+pub surgeist_css::CssQueryComparison::LessThan
+pub surgeist_css::CssQueryComparison::LessThanOrEqual
+pub enum surgeist_css::CssReducedMotionPreference
+pub surgeist_css::CssReducedMotionPreference::NoPreference
+pub surgeist_css::CssReducedMotionPreference::Reduce
+pub enum surgeist_css::CssReducedTransparencyPreference
+pub surgeist_css::CssReducedTransparencyPreference::NoPreference
+pub surgeist_css::CssReducedTransparencyPreference::Reduce
+pub enum surgeist_css::CssRelativeColorFunction
+pub surgeist_css::CssRelativeColorFunction::Color(surgeist_css::CssPredefinedColorSpace)
+pub surgeist_css::CssRelativeColorFunction::Hsl
+pub surgeist_css::CssRelativeColorFunction::Hwb
+pub surgeist_css::CssRelativeColorFunction::Lab
+pub surgeist_css::CssRelativeColorFunction::Lch
+pub surgeist_css::CssRelativeColorFunction::Oklab
+pub surgeist_css::CssRelativeColorFunction::Oklch
+pub surgeist_css::CssRelativeColorFunction::Rgb
+impl surgeist_css::CssRelativeColorFunction
+pub const fn surgeist_css::CssRelativeColorFunction::component_count(self) -> usize
+pub enum surgeist_css::CssResolutionUnit
+pub surgeist_css::CssResolutionUnit::Dpcm
+pub surgeist_css::CssResolutionUnit::Dpi
+pub surgeist_css::CssResolutionUnit::Dppx
+pub enum surgeist_css::CssRotate
+pub surgeist_css::CssRotate::None
+pub surgeist_css::CssRotate::Value(alloc::string::String)
+pub enum surgeist_css::CssRule
+pub surgeist_css::CssRule::Container(surgeist_css::CssContainerRule)
+pub surgeist_css::CssRule::FontFace(surgeist_css::CssFontFaceRule)
+pub surgeist_css::CssRule::Import(surgeist_css::CssImportRule)
+pub surgeist_css::CssRule::Keyframes(surgeist_css::CssKeyframesRule)
+pub surgeist_css::CssRule::LayerBlock(surgeist_css::CssLayerBlockRule)
+pub surgeist_css::CssRule::LayerStatement(surgeist_css::CssLayerStatementRule)
+pub surgeist_css::CssRule::Media(surgeist_css::CssMediaRule)
+pub surgeist_css::CssRule::Scope(surgeist_css::CssScopeRule)
+pub surgeist_css::CssRule::Style(surgeist_css::CssStyleRule)
+pub enum surgeist_css::CssScale
+pub surgeist_css::CssScale::None
+pub surgeist_css::CssScale::Values(surgeist_css::CssScaleValues)
+pub enum surgeist_css::CssScopedRule
+pub surgeist_css::CssScopedRule::Container(surgeist_css::CssScopedContainerRule)
+pub surgeist_css::CssScopedRule::LayerBlock(surgeist_css::CssScopedLayerBlockRule)
+pub surgeist_css::CssScopedRule::LayerStatement(surgeist_css::CssScopedLayerStatementRule)
+pub surgeist_css::CssScopedRule::Media(surgeist_css::CssScopedMediaRule)
+pub surgeist_css::CssScopedRule::Scope(surgeist_css::CssScopeRule)
+pub surgeist_css::CssScopedRule::Style(surgeist_css::CssScopedStyleRule)
+pub enum surgeist_css::CssScopedStyleSelector
+pub surgeist_css::CssScopedStyleSelector::Relative(surgeist_css::CssRelativeSelector)
+pub surgeist_css::CssScopedStyleSelector::Selector(surgeist_css::CssSelector)
+pub enum surgeist_css::CssScrollbarWidth
+pub surgeist_css::CssScrollbarWidth::Auto
+pub surgeist_css::CssScrollbarWidth::None
+pub surgeist_css::CssScrollbarWidth::Thin
 pub enum surgeist_css::CssSelector
 pub surgeist_css::CssSelector::Class(alloc::string::String)
+pub surgeist_css::CssSelector::Complex(surgeist_css::CssComplexSelector)
 pub surgeist_css::CssSelector::Compound(surgeist_css::CssCompoundSelector)
 pub surgeist_css::CssSelector::Key(alloc::string::String)
+pub surgeist_css::CssSelector::PseudoClass(surgeist_css::CssPseudoClass)
 pub surgeist_css::CssSelector::Tag(alloc::string::String)
+impl surgeist_css::CssSelector
+pub fn surgeist_css::CssSelector::has_pseudo_elements(&self) -> bool
+pub enum surgeist_css::CssSelectorCombinator
+pub surgeist_css::CssSelectorCombinator::Child
+pub surgeist_css::CssSelectorCombinator::Descendant
+pub surgeist_css::CssSelectorCombinator::NextSibling
+pub surgeist_css::CssSelectorCombinator::SubsequentSibling
+pub enum surgeist_css::CssSystemColor
+pub surgeist_css::CssSystemColor::AccentColor
+pub surgeist_css::CssSystemColor::AccentColorText
+pub surgeist_css::CssSystemColor::ActiveText
+pub surgeist_css::CssSystemColor::ButtonBorder
+pub surgeist_css::CssSystemColor::ButtonFace
+pub surgeist_css::CssSystemColor::ButtonText
+pub surgeist_css::CssSystemColor::Canvas
+pub surgeist_css::CssSystemColor::CanvasText
+pub surgeist_css::CssSystemColor::Field
+pub surgeist_css::CssSystemColor::FieldText
+pub surgeist_css::CssSystemColor::GrayText
+pub surgeist_css::CssSystemColor::Highlight
+pub surgeist_css::CssSystemColor::HighlightText
+pub surgeist_css::CssSystemColor::LinkText
+pub surgeist_css::CssSystemColor::Mark
+pub surgeist_css::CssSystemColor::MarkText
+pub surgeist_css::CssSystemColor::SelectedItem
+pub surgeist_css::CssSystemColor::SelectedItemText
+pub surgeist_css::CssSystemColor::VisitedText
+pub enum surgeist_css::CssTextAlign
+pub surgeist_css::CssTextAlign::Center
+pub surgeist_css::CssTextAlign::End
+pub surgeist_css::CssTextAlign::Justify
+pub surgeist_css::CssTextAlign::Left
+pub surgeist_css::CssTextAlign::MatchParent
+pub surgeist_css::CssTextAlign::Right
+pub surgeist_css::CssTextAlign::Start
+pub enum surgeist_css::CssTextAlignLast
+pub surgeist_css::CssTextAlignLast::Auto
+pub surgeist_css::CssTextAlignLast::Center
+pub surgeist_css::CssTextAlignLast::End
+pub surgeist_css::CssTextAlignLast::Justify
+pub surgeist_css::CssTextAlignLast::Left
+pub surgeist_css::CssTextAlignLast::Right
+pub surgeist_css::CssTextAlignLast::Start
+pub enum surgeist_css::CssTextDecorationLineComponent
+pub surgeist_css::CssTextDecorationLineComponent::Blink
+pub surgeist_css::CssTextDecorationLineComponent::LineThrough
+pub surgeist_css::CssTextDecorationLineComponent::Overline
+pub surgeist_css::CssTextDecorationLineComponent::Underline
+pub enum surgeist_css::CssTextDecorationStyle
+pub surgeist_css::CssTextDecorationStyle::Dashed
+pub surgeist_css::CssTextDecorationStyle::Dotted
+pub surgeist_css::CssTextDecorationStyle::Double
+pub surgeist_css::CssTextDecorationStyle::Solid
+pub surgeist_css::CssTextDecorationStyle::Wavy
+pub enum surgeist_css::CssTextDecorationThickness
+pub surgeist_css::CssTextDecorationThickness::Auto
+pub surgeist_css::CssTextDecorationThickness::FromFont
+pub surgeist_css::CssTextDecorationThickness::Length(surgeist_css::CssTextDecorationThicknessLength)
+pub enum surgeist_css::CssTextOverflow
+pub surgeist_css::CssTextOverflow::Clip
+pub surgeist_css::CssTextOverflow::Ellipsis
+pub enum surgeist_css::CssTextTransform
+pub surgeist_css::CssTextTransform::Capitalize
+pub surgeist_css::CssTextTransform::Lowercase
+pub surgeist_css::CssTextTransform::None
+pub surgeist_css::CssTextTransform::Uppercase
+pub enum surgeist_css::CssTextWrap
+pub surgeist_css::CssTextWrap::Balance
+pub surgeist_css::CssTextWrap::NoWrap
+pub surgeist_css::CssTextWrap::Pretty
+pub surgeist_css::CssTextWrap::Stable
+pub surgeist_css::CssTextWrap::Wrap
+pub enum surgeist_css::CssTimeUnit
+pub surgeist_css::CssTimeUnit::Milliseconds
+pub surgeist_css::CssTimeUnit::Seconds
+pub enum surgeist_css::CssTransform
+pub surgeist_css::CssTransform::Functions(surgeist_css::CssTransformFunctionList)
+pub surgeist_css::CssTransform::None
+pub enum surgeist_css::CssTransformFunctionKind
+pub surgeist_css::CssTransformFunctionKind::Matrix
+pub surgeist_css::CssTransformFunctionKind::Matrix3d
+pub surgeist_css::CssTransformFunctionKind::Perspective
+pub surgeist_css::CssTransformFunctionKind::Rotate
+pub surgeist_css::CssTransformFunctionKind::Rotate3d
+pub surgeist_css::CssTransformFunctionKind::RotateX
+pub surgeist_css::CssTransformFunctionKind::RotateY
+pub surgeist_css::CssTransformFunctionKind::RotateZ
+pub surgeist_css::CssTransformFunctionKind::Scale
+pub surgeist_css::CssTransformFunctionKind::Scale3d
+pub surgeist_css::CssTransformFunctionKind::ScaleX
+pub surgeist_css::CssTransformFunctionKind::ScaleY
+pub surgeist_css::CssTransformFunctionKind::ScaleZ
+pub surgeist_css::CssTransformFunctionKind::Skew
+pub surgeist_css::CssTransformFunctionKind::SkewX
+pub surgeist_css::CssTransformFunctionKind::SkewY
+pub surgeist_css::CssTransformFunctionKind::Translate
+pub surgeist_css::CssTransformFunctionKind::Translate3d
+pub surgeist_css::CssTransformFunctionKind::TranslateX
+pub surgeist_css::CssTransformFunctionKind::TranslateY
+pub surgeist_css::CssTransformFunctionKind::TranslateZ
+pub enum surgeist_css::CssTransitionProperty
+pub surgeist_css::CssTransitionProperty::All
+pub surgeist_css::CssTransitionProperty::Custom(surgeist_css::CssCustomIdent)
+pub surgeist_css::CssTransitionProperty::None
+pub enum surgeist_css::CssTranslate
+pub surgeist_css::CssTranslate::None
+pub surgeist_css::CssTranslate::Values(surgeist_css::CssTranslateValues)
+pub enum surgeist_css::CssUserSelect
+pub surgeist_css::CssUserSelect::All
+pub surgeist_css::CssUserSelect::Auto
+pub surgeist_css::CssUserSelect::Contain
+pub surgeist_css::CssUserSelect::None
+pub surgeist_css::CssUserSelect::Text
 pub enum surgeist_css::CssValue
 pub surgeist_css::CssValue::AlignItems(surgeist_css::CssAlignItems)
+pub surgeist_css::CssValue::Alignment(surgeist_css::CssAlignment)
+pub surgeist_css::CssValue::Animation(surgeist_css::CssAnimationList)
+pub surgeist_css::CssValue::AnimationDirection(surgeist_css::CssAnimationDirectionList)
+pub surgeist_css::CssValue::AnimationFillMode(surgeist_css::CssAnimationFillModeList)
+pub surgeist_css::CssValue::AnimationIterationCount(surgeist_css::CssAnimationIterationCountList)
+pub surgeist_css::CssValue::AnimationName(surgeist_css::CssAnimationNameList)
+pub surgeist_css::CssValue::AnimationPlayState(surgeist_css::CssAnimationPlayStateList)
+pub surgeist_css::CssValue::AspectRatio(surgeist_css::CssAspectRatio)
+pub surgeist_css::CssValue::BackgroundAttachment(surgeist_css::CssBackgroundAttachmentList)
+pub surgeist_css::CssValue::BackgroundBox(surgeist_css::CssBackgroundBox)
+pub surgeist_css::CssValue::BackgroundImage(surgeist_css::CssImageLayerList)
+pub surgeist_css::CssValue::BackgroundPosition(surgeist_css::CssPositionList)
+pub surgeist_css::CssValue::BackgroundRepeat(surgeist_css::CssBackgroundRepeatList)
+pub surgeist_css::CssValue::BackgroundSize(surgeist_css::CssBackgroundSizeList)
+pub surgeist_css::CssValue::Border(surgeist_css::CssBorder)
+pub surgeist_css::CssValue::BorderRadius(surgeist_css::CssBorderRadii)
+pub surgeist_css::CssValue::BorderStyle(surgeist_css::CssBorderStyle)
+pub surgeist_css::CssValue::BorderStyles(surgeist_css::CssBorderStyles)
+pub surgeist_css::CssValue::BoxDecorationBreak(surgeist_css::CssBoxDecorationBreak)
+pub surgeist_css::CssValue::BoxShadow(surgeist_css::CssBoxShadow)
 pub surgeist_css::CssValue::BoxSizing(surgeist_css::CssBoxSizing)
+pub surgeist_css::CssValue::Clear(surgeist_css::CssClear)
+pub surgeist_css::CssValue::ClipPath(surgeist_css::CssClipPath)
 pub surgeist_css::CssValue::Color(surgeist_css::CssColor)
+pub surgeist_css::CssValue::Content(surgeist_css::CssContent)
+pub surgeist_css::CssValue::ContentVisibility(surgeist_css::CssContentVisibility)
+pub surgeist_css::CssValue::CornerRadius(surgeist_css::CssCornerRadius)
+pub surgeist_css::CssValue::CounterChanges(surgeist_css::CssCounterChanges)
+pub surgeist_css::CssValue::Cursor(surgeist_css::CssCursor)
+pub surgeist_css::CssValue::CustomProperty(surgeist_css::CssCustomPropertyValue)
 pub surgeist_css::CssValue::Direction(surgeist_css::CssDirection)
 pub surgeist_css::CssValue::Display(surgeist_css::CssDisplay)
+pub surgeist_css::CssValue::EasingList(surgeist_css::CssEasingList)
 pub surgeist_css::CssValue::Edges(surgeist_css::CssEdges)
+pub surgeist_css::CssValue::Filter(surgeist_css::CssFilter)
+pub surgeist_css::CssValue::Flex(surgeist_css::CssFlex)
 pub surgeist_css::CssValue::FlexDirection(surgeist_css::CssFlexDirection)
+pub surgeist_css::CssValue::FlexGrow(surgeist_css::CssFlexFactor)
+pub surgeist_css::CssValue::FlexShrink(surgeist_css::CssFlexFactor)
 pub surgeist_css::CssValue::FlexWrap(surgeist_css::CssFlexWrap)
+pub surgeist_css::CssValue::Float(surgeist_css::CssFloat)
+pub surgeist_css::CssValue::Font(surgeist_css::CssFont)
+pub surgeist_css::CssValue::FontFamily(surgeist_css::CssFontFamilyList)
+pub surgeist_css::CssValue::FontFeatureSettings(surgeist_css::CssFontFeatureSettings)
+pub surgeist_css::CssValue::FontStretch(surgeist_css::CssFontStretch)
+pub surgeist_css::CssValue::FontStyle(surgeist_css::CssFontStyle)
+pub surgeist_css::CssValue::FontVariant(surgeist_css::CssFontVariant)
+pub surgeist_css::CssValue::FontWeight(surgeist_css::CssFontWeight)
 pub surgeist_css::CssValue::GlobalKeyword(surgeist_css::CssGlobalKeyword)
+pub surgeist_css::CssValue::Grid(surgeist_css::CssGrid)
+pub surgeist_css::CssValue::GridArea(surgeist_css::CssGridArea)
+pub surgeist_css::CssValue::GridAutoFlow(surgeist_css::CssGridAutoFlow)
 pub surgeist_css::CssValue::GridFlowTolerance(surgeist_css::CssGridFlowTolerance)
+pub surgeist_css::CssValue::GridLine(surgeist_css::CssGridLine)
+pub surgeist_css::CssValue::GridLineRange(surgeist_css::CssGridLineRange)
+pub surgeist_css::CssValue::GridTemplate(surgeist_css::CssGridTemplate)
+pub surgeist_css::CssValue::GridTemplateAreas(surgeist_css::CssGridTemplateAreas)
+pub surgeist_css::CssValue::GridTrackList(surgeist_css::CssGridTrackList)
 pub surgeist_css::CssValue::Length(surgeist_css::CssLength)
-pub surgeist_css::CssValue::Number(f32)
+pub surgeist_css::CssValue::LetterSpacing(surgeist_css::CssLetterSpacing)
+pub surgeist_css::CssValue::ListStyle(surgeist_css::CssListStyle)
+pub surgeist_css::CssValue::ListStyleImage(surgeist_css::CssListStyleImage)
+pub surgeist_css::CssValue::ListStylePosition(surgeist_css::CssListStylePosition)
+pub surgeist_css::CssValue::ListStyleType(surgeist_css::CssListStyleType)
+pub surgeist_css::CssValue::Mask(surgeist_css::CssMaskList)
+pub surgeist_css::CssValue::MaskImage(surgeist_css::CssImageLayerList)
+pub surgeist_css::CssValue::MaskPosition(surgeist_css::CssPositionList)
+pub surgeist_css::CssValue::MaskRepeat(surgeist_css::CssBackgroundRepeatList)
+pub surgeist_css::CssValue::MaskSize(surgeist_css::CssBackgroundSizeList)
+pub surgeist_css::CssValue::Opacity(surgeist_css::CssOpacity)
+pub surgeist_css::CssValue::Order(surgeist_css::CssOrder)
+pub surgeist_css::CssValue::Outline(surgeist_css::CssOutline)
+pub surgeist_css::CssValue::OutlineColor(surgeist_css::CssColor)
+pub surgeist_css::CssValue::OutlineStyle(surgeist_css::CssOutlineStyle)
+pub surgeist_css::CssValue::OutlineWidth(surgeist_css::CssOutlineWidth)
 pub surgeist_css::CssValue::Overflow(surgeist_css::CssOverflow)
 pub surgeist_css::CssValue::OverflowAxes(surgeist_css::CssOverflowAxes)
+pub surgeist_css::CssValue::OverflowWrap(surgeist_css::CssOverflowWrap)
+pub surgeist_css::CssValue::PlaceAlignment(surgeist_css::CssPlaceAlignment)
+pub surgeist_css::CssValue::PointerEvents(surgeist_css::CssPointerEvents)
 pub surgeist_css::CssValue::Position(surgeist_css::CssLayoutPosition)
+pub surgeist_css::CssValue::Rotate(surgeist_css::CssRotate)
+pub surgeist_css::CssValue::Scale(surgeist_css::CssScale)
+pub surgeist_css::CssValue::ScrollbarWidth(surgeist_css::CssScrollbarWidth)
+pub surgeist_css::CssValue::TextAlign(surgeist_css::CssTextAlign)
+pub surgeist_css::CssValue::TextAlignLast(surgeist_css::CssTextAlignLast)
+pub surgeist_css::CssValue::TextDecoration(surgeist_css::CssTextDecoration)
+pub surgeist_css::CssValue::TextDecorationColor(surgeist_css::CssColor)
+pub surgeist_css::CssValue::TextDecorationLine(surgeist_css::CssTextDecorationLine)
+pub surgeist_css::CssValue::TextDecorationStyle(surgeist_css::CssTextDecorationStyle)
+pub surgeist_css::CssValue::TextDecorationThickness(surgeist_css::CssTextDecorationThickness)
+pub surgeist_css::CssValue::TextIndent(surgeist_css::CssTextIndent)
+pub surgeist_css::CssValue::TextOverflow(surgeist_css::CssTextOverflow)
+pub surgeist_css::CssValue::TextTransform(surgeist_css::CssTextTransform)
+pub surgeist_css::CssValue::TextWrap(surgeist_css::CssTextWrap)
+pub surgeist_css::CssValue::TimeList(surgeist_css::CssTimeList)
+pub surgeist_css::CssValue::Transform(surgeist_css::CssTransform)
+pub surgeist_css::CssValue::TransformOrigin(surgeist_css::CssPosition)
+pub surgeist_css::CssValue::Transition(surgeist_css::CssTransitionList)
+pub surgeist_css::CssValue::TransitionProperty(surgeist_css::CssTransitionPropertyList)
+pub surgeist_css::CssValue::Translate(surgeist_css::CssTranslate)
+pub surgeist_css::CssValue::UserSelect(surgeist_css::CssUserSelect)
+pub surgeist_css::CssValue::VariableDependent(surgeist_css::CssVariableDependentValue)
+pub surgeist_css::CssValue::VerticalAlign(surgeist_css::CssVerticalAlign)
+pub surgeist_css::CssValue::Visibility(surgeist_css::CssVisibility)
+pub surgeist_css::CssValue::WhiteSpace(surgeist_css::CssWhiteSpace)
+pub surgeist_css::CssValue::WordBreak(surgeist_css::CssWordBreak)
+pub surgeist_css::CssValue::WritingMode(surgeist_css::CssWritingMode)
+pub surgeist_css::CssValue::ZIndex(surgeist_css::CssZIndex)
+pub enum surgeist_css::CssVerticalAlign
+pub surgeist_css::CssVerticalAlign::Baseline
+pub surgeist_css::CssVerticalAlign::Bottom
+pub surgeist_css::CssVerticalAlign::Length(surgeist_css::CssVerticalAlignLength)
+pub surgeist_css::CssVerticalAlign::Middle
+pub surgeist_css::CssVerticalAlign::Sub
+pub surgeist_css::CssVerticalAlign::Super
+pub surgeist_css::CssVerticalAlign::TextBottom
+pub surgeist_css::CssVerticalAlign::TextTop
+pub surgeist_css::CssVerticalAlign::Top
+pub enum surgeist_css::CssVerticalPositionKeyword
+pub surgeist_css::CssVerticalPositionKeyword::Bottom
+pub surgeist_css::CssVerticalPositionKeyword::Center
+pub surgeist_css::CssVerticalPositionKeyword::Top
+pub enum surgeist_css::CssVisibility
+pub surgeist_css::CssVisibility::Collapse
+pub surgeist_css::CssVisibility::Hidden
+pub surgeist_css::CssVisibility::Visible
+pub enum surgeist_css::CssWhiteSpace
+pub surgeist_css::CssWhiteSpace::BreakSpaces
+pub surgeist_css::CssWhiteSpace::NoWrap
+pub surgeist_css::CssWhiteSpace::Normal
+pub surgeist_css::CssWhiteSpace::Pre
+pub surgeist_css::CssWhiteSpace::PreLine
+pub surgeist_css::CssWhiteSpace::PreWrap
+pub enum surgeist_css::CssWordBreak
+pub surgeist_css::CssWordBreak::BreakAll
+pub surgeist_css::CssWordBreak::BreakWord
+pub surgeist_css::CssWordBreak::KeepAll
+pub surgeist_css::CssWordBreak::Normal
+pub enum surgeist_css::CssWritingMode
+pub surgeist_css::CssWritingMode::HorizontalTb
+pub surgeist_css::CssWritingMode::SidewaysLr
+pub surgeist_css::CssWritingMode::SidewaysRl
+pub surgeist_css::CssWritingMode::VerticalLr
+pub surgeist_css::CssWritingMode::VerticalRl
+pub enum surgeist_css::CssZIndex
+pub surgeist_css::CssZIndex::Auto
+pub surgeist_css::CssZIndex::Integer(i32)
 #[non_exhaustive] pub enum surgeist_css::ErrorKind
 pub surgeist_css::ErrorKind::InvalidColor
 pub surgeist_css::ErrorKind::InvalidColor::value: alloc::string::String
@@ -158,34 +1259,253 @@ pub surgeist_css::ErrorKind::UnsupportedProperty::name: alloc::string::String
 pub surgeist_css::ErrorKind::UnsupportedValue
 pub surgeist_css::ErrorKind::UnsupportedValue::property: core::option::Option<alloc::string::String>
 pub surgeist_css::ErrorKind::UnsupportedValue::reason: alloc::string::String
+pub struct surgeist_css::CssAnimation
+impl surgeist_css::CssAnimation
+pub const fn surgeist_css::CssAnimation::delay(&self) -> core::option::Option<surgeist_css::CssTime>
+pub const fn surgeist_css::CssAnimation::direction(&self) -> core::option::Option<surgeist_css::CssAnimationDirection>
+pub const fn surgeist_css::CssAnimation::duration(&self) -> core::option::Option<surgeist_css::CssTime>
+pub const fn surgeist_css::CssAnimation::fill_mode(&self) -> core::option::Option<surgeist_css::CssAnimationFillMode>
+pub const fn surgeist_css::CssAnimation::iteration_count(&self) -> core::option::Option<surgeist_css::CssAnimationIterationCount>
+pub const fn surgeist_css::CssAnimation::name(&self) -> core::option::Option<&surgeist_css::CssAnimationName>
+pub const fn surgeist_css::CssAnimation::play_state(&self) -> core::option::Option<surgeist_css::CssAnimationPlayState>
+pub const fn surgeist_css::CssAnimation::timing_function(&self) -> core::option::Option<&surgeist_css::CssEasing>
+pub fn surgeist_css::CssAnimation::try_new(components: surgeist_css::CssAnimationComponents) -> core::option::Option<Self>
+pub struct surgeist_css::CssAnimationComponents
+pub surgeist_css::CssAnimationComponents::delay: core::option::Option<surgeist_css::CssTime>
+pub surgeist_css::CssAnimationComponents::direction: core::option::Option<surgeist_css::CssAnimationDirection>
+pub surgeist_css::CssAnimationComponents::duration: core::option::Option<surgeist_css::CssTime>
+pub surgeist_css::CssAnimationComponents::fill_mode: core::option::Option<surgeist_css::CssAnimationFillMode>
+pub surgeist_css::CssAnimationComponents::iteration_count: core::option::Option<surgeist_css::CssAnimationIterationCount>
+pub surgeist_css::CssAnimationComponents::name: core::option::Option<surgeist_css::CssAnimationName>
+pub surgeist_css::CssAnimationComponents::play_state: core::option::Option<surgeist_css::CssAnimationPlayState>
+pub surgeist_css::CssAnimationComponents::timing_function: core::option::Option<surgeist_css::CssEasing>
+pub struct surgeist_css::CssAnimationDirectionList
+impl surgeist_css::CssAnimationDirectionList
+pub fn surgeist_css::CssAnimationDirectionList::try_new(directions: alloc::vec::Vec<surgeist_css::CssAnimationDirection>) -> core::option::Option<Self>
+pub struct surgeist_css::CssAnimationFillModeList
+impl surgeist_css::CssAnimationFillModeList
+pub fn surgeist_css::CssAnimationFillModeList::try_new(modes: alloc::vec::Vec<surgeist_css::CssAnimationFillMode>) -> core::option::Option<Self>
+pub struct surgeist_css::CssAnimationIterationCountList
+impl surgeist_css::CssAnimationIterationCountList
+pub fn surgeist_css::CssAnimationIterationCountList::counts(&self) -> &[surgeist_css::CssAnimationIterationCount]
+pub fn surgeist_css::CssAnimationIterationCountList::try_new(counts: alloc::vec::Vec<surgeist_css::CssAnimationIterationCount>) -> core::option::Option<Self>
+pub struct surgeist_css::CssAnimationIterationNumber
+impl surgeist_css::CssAnimationIterationNumber
+pub const fn surgeist_css::CssAnimationIterationNumber::try_new(value: f32) -> core::option::Option<Self>
+pub const fn surgeist_css::CssAnimationIterationNumber::value(self) -> f32
+pub struct surgeist_css::CssAnimationList
+impl surgeist_css::CssAnimationList
+pub fn surgeist_css::CssAnimationList::items(&self) -> &[surgeist_css::CssAnimation]
+pub fn surgeist_css::CssAnimationList::try_new(items: alloc::vec::Vec<surgeist_css::CssAnimation>) -> core::option::Option<Self>
+pub struct surgeist_css::CssAnimationNameList
+impl surgeist_css::CssAnimationNameList
+pub fn surgeist_css::CssAnimationNameList::names(&self) -> &[surgeist_css::CssAnimationName]
+pub fn surgeist_css::CssAnimationNameList::try_new(names: alloc::vec::Vec<surgeist_css::CssAnimationName>) -> core::option::Option<Self>
+pub struct surgeist_css::CssAnimationPlayStateList
+impl surgeist_css::CssAnimationPlayStateList
+pub fn surgeist_css::CssAnimationPlayStateList::try_new(states: alloc::vec::Vec<surgeist_css::CssAnimationPlayState>) -> core::option::Option<Self>
+pub struct surgeist_css::CssAspectRatio
+impl surgeist_css::CssAspectRatio
+pub fn surgeist_css::CssAspectRatio::try_new(value: f32) -> core::option::Option<Self>
+pub const fn surgeist_css::CssAspectRatio::value(self) -> f32
+pub struct surgeist_css::CssAttributeName
+impl surgeist_css::CssAttributeName
+pub fn surgeist_css::CssAttributeName::as_str(&self) -> &str
+pub fn surgeist_css::CssAttributeName::try_new(name: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssAttributeSelector
+impl surgeist_css::CssAttributeSelector
+pub const fn surgeist_css::CssAttributeSelector::case_sensitivity(&self) -> surgeist_css::CssAttributeCaseSensitivity
+pub const fn surgeist_css::CssAttributeSelector::matcher(&self) -> &surgeist_css::CssAttributeMatcher
+pub const fn surgeist_css::CssAttributeSelector::name(&self) -> &surgeist_css::CssAttributeName
+pub struct surgeist_css::CssAuthoredDeclarationValue
+impl surgeist_css::CssAuthoredDeclarationValue
+pub fn surgeist_css::CssAuthoredDeclarationValue::as_css(&self) -> &str
+pub fn surgeist_css::CssAuthoredDeclarationValue::try_new(css: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssAuthoredFunctionArguments
+impl surgeist_css::CssAuthoredFunctionArguments
+pub fn surgeist_css::CssAuthoredFunctionArguments::as_css(&self) -> &str
+pub struct surgeist_css::CssBackgroundAttachmentList
+impl surgeist_css::CssBackgroundAttachmentList
+pub fn surgeist_css::CssBackgroundAttachmentList::attachments(&self) -> &[surgeist_css::CssBackgroundAttachment]
+pub fn surgeist_css::CssBackgroundAttachmentList::try_new(attachments: alloc::vec::Vec<surgeist_css::CssBackgroundAttachment>) -> core::option::Option<Self>
+pub struct surgeist_css::CssBackgroundRepeatList
+impl surgeist_css::CssBackgroundRepeatList
+pub fn surgeist_css::CssBackgroundRepeatList::repeats(&self) -> &[surgeist_css::CssBackgroundRepeat]
+pub fn surgeist_css::CssBackgroundRepeatList::try_new(repeats: alloc::vec::Vec<surgeist_css::CssBackgroundRepeat>) -> core::option::Option<Self>
+pub struct surgeist_css::CssBackgroundSizeList
+impl surgeist_css::CssBackgroundSizeList
+pub fn surgeist_css::CssBackgroundSizeList::sizes(&self) -> &[surgeist_css::CssBackgroundSize]
+pub fn surgeist_css::CssBackgroundSizeList::try_new(sizes: alloc::vec::Vec<surgeist_css::CssBackgroundSize>) -> core::option::Option<Self>
+pub struct surgeist_css::CssBasicShapeArguments
+impl surgeist_css::CssBasicShapeArguments
+pub fn surgeist_css::CssBasicShapeArguments::as_css(&self) -> &str
+pub struct surgeist_css::CssBorder
+impl surgeist_css::CssBorder
+pub const fn surgeist_css::CssBorder::color(&self) -> core::option::Option<&surgeist_css::CssColor>
+pub const fn surgeist_css::CssBorder::style(&self) -> core::option::Option<surgeist_css::CssBorderStyle>
+pub fn surgeist_css::CssBorder::try_new(width: core::option::Option<surgeist_css::CssLength>, style: core::option::Option<surgeist_css::CssBorderStyle>, color: core::option::Option<surgeist_css::CssColor>) -> core::option::Option<Self>
+pub const fn surgeist_css::CssBorder::width(&self) -> core::option::Option<&surgeist_css::CssLength>
+pub struct surgeist_css::CssBorderRadii
+pub surgeist_css::CssBorderRadii::bottom_left: surgeist_css::CssCornerRadius
+pub surgeist_css::CssBorderRadii::bottom_right: surgeist_css::CssCornerRadius
+pub surgeist_css::CssBorderRadii::top_left: surgeist_css::CssCornerRadius
+pub surgeist_css::CssBorderRadii::top_right: surgeist_css::CssCornerRadius
+impl surgeist_css::CssBorderRadii
+pub const fn surgeist_css::CssBorderRadii::new(top_left: surgeist_css::CssCornerRadius, top_right: surgeist_css::CssCornerRadius, bottom_right: surgeist_css::CssCornerRadius, bottom_left: surgeist_css::CssCornerRadius) -> Self
+pub struct surgeist_css::CssBorderStyles
+pub surgeist_css::CssBorderStyles::bottom: surgeist_css::CssBorderStyle
+pub surgeist_css::CssBorderStyles::left: surgeist_css::CssBorderStyle
+pub surgeist_css::CssBorderStyles::right: surgeist_css::CssBorderStyle
+pub surgeist_css::CssBorderStyles::top: surgeist_css::CssBorderStyle
+impl surgeist_css::CssBorderStyles
+pub const fn surgeist_css::CssBorderStyles::all(value: surgeist_css::CssBorderStyle) -> Self
+pub const fn surgeist_css::CssBorderStyles::new(top: surgeist_css::CssBorderStyle, right: surgeist_css::CssBorderStyle, bottom: surgeist_css::CssBorderStyle, left: surgeist_css::CssBorderStyle) -> Self
+pub struct surgeist_css::CssBoxShadowList
+impl surgeist_css::CssBoxShadowList
+pub fn surgeist_css::CssBoxShadowList::shadows(&self) -> &[surgeist_css::CssShadow]
 pub struct surgeist_css::CssCalcLengthTerm
 impl surgeist_css::CssCalcLengthTerm
 pub const fn surgeist_css::CssCalcLengthTerm::add(value: surgeist_css::CssCalcLength) -> Self
 pub const fn surgeist_css::CssCalcLengthTerm::operator(&self) -> surgeist_css::CssCalcOperator
 pub const fn surgeist_css::CssCalcLengthTerm::sub(value: surgeist_css::CssCalcLength) -> Self
 pub const fn surgeist_css::CssCalcLengthTerm::value(&self) -> &surgeist_css::CssCalcLength
-pub struct surgeist_css::CssColor
-pub surgeist_css::CssColor::a: f32
-pub surgeist_css::CssColor::b: f32
-pub surgeist_css::CssColor::g: f32
-pub surgeist_css::CssColor::r: f32
-impl surgeist_css::CssColor
-pub const surgeist_css::CssColor::BLACK: Self
-pub const surgeist_css::CssColor::TRANSPARENT: Self
-pub const surgeist_css::CssColor::WHITE: Self
-pub const fn surgeist_css::CssColor::rgba(r: f32, g: f32, b: f32, a: f32) -> Self
+pub struct surgeist_css::CssColorComponentExpression
+impl surgeist_css::CssColorComponentExpression
+pub const fn surgeist_css::CssColorComponentExpression::authored(&self) -> &surgeist_css::CssAuthoredDeclarationValue
+pub fn surgeist_css::CssColorComponentExpression::new(authored: surgeist_css::CssAuthoredDeclarationValue, references: alloc::vec::Vec<surgeist_css::CssVariableReference>) -> Self
+pub fn surgeist_css::CssColorComponentExpression::references(&self) -> &[surgeist_css::CssVariableReference]
+pub struct surgeist_css::CssColorFunction
+impl surgeist_css::CssColorFunction
+pub const fn surgeist_css::CssColorFunction::alpha(&self) -> core::option::Option<f32>
+pub const fn surgeist_css::CssColorFunction::color_space(&self) -> surgeist_css::CssPredefinedColorSpace
+pub const fn surgeist_css::CssColorFunction::components(&self) -> &[core::option::Option<f32>; 3]
+pub fn surgeist_css::CssColorFunction::try_new(color_space: surgeist_css::CssPredefinedColorSpace, components: [core::option::Option<f32>; 3], alpha: core::option::Option<f32>) -> core::option::Option<Self>
+pub struct surgeist_css::CssColorInterpolationMethod
+impl surgeist_css::CssColorInterpolationMethod
+pub const fn surgeist_css::CssColorInterpolationMethod::hue(&self) -> core::option::Option<surgeist_css::CssHueInterpolationMethod>
+pub const fn surgeist_css::CssColorInterpolationMethod::new(space: surgeist_css::CssColorInterpolationSpace, hue: core::option::Option<surgeist_css::CssHueInterpolationMethod>) -> Self
+pub const fn surgeist_css::CssColorInterpolationMethod::space(&self) -> surgeist_css::CssColorInterpolationSpace
+pub struct surgeist_css::CssColorMix
+impl surgeist_css::CssColorMix
+pub const fn surgeist_css::CssColorMix::interpolation(&self) -> &surgeist_css::CssColorInterpolationMethod
+pub const fn surgeist_css::CssColorMix::left(&self) -> &surgeist_css::CssColorMixComponent
+pub const fn surgeist_css::CssColorMix::new(interpolation: surgeist_css::CssColorInterpolationMethod, left: surgeist_css::CssColorMixComponent, right: surgeist_css::CssColorMixComponent) -> Self
+pub const fn surgeist_css::CssColorMix::right(&self) -> &surgeist_css::CssColorMixComponent
+pub struct surgeist_css::CssColorMixComponent
+impl surgeist_css::CssColorMixComponent
+pub const fn surgeist_css::CssColorMixComponent::color(&self) -> &surgeist_css::CssColor
+pub const fn surgeist_css::CssColorMixComponent::percentage(&self) -> core::option::Option<f32>
+pub fn surgeist_css::CssColorMixComponent::try_new(color: surgeist_css::CssColor, percentage: core::option::Option<f32>) -> core::option::Option<Self>
+pub struct surgeist_css::CssComplexSelector
+impl surgeist_css::CssComplexSelector
+pub const fn surgeist_css::CssComplexSelector::first(&self) -> &surgeist_css::CssCompoundSelector
+pub fn surgeist_css::CssComplexSelector::has_pseudo_elements(&self) -> bool
+pub fn surgeist_css::CssComplexSelector::rest(&self) -> &[surgeist_css::CssComplexSelectorPart]
+pub fn surgeist_css::CssComplexSelector::try_new(first: surgeist_css::CssCompoundSelector, rest: alloc::vec::Vec<surgeist_css::CssComplexSelectorPart>) -> core::option::Option<Self>
+pub struct surgeist_css::CssComplexSelectorPart
+impl surgeist_css::CssComplexSelectorPart
+pub const fn surgeist_css::CssComplexSelectorPart::combinator(&self) -> surgeist_css::CssSelectorCombinator
+pub const fn surgeist_css::CssComplexSelectorPart::selector(&self) -> &surgeist_css::CssCompoundSelector
 pub struct surgeist_css::CssCompoundSelector
 impl surgeist_css::CssCompoundSelector
+pub fn surgeist_css::CssCompoundSelector::attributes(&self) -> &[surgeist_css::CssAttributeSelector]
 pub fn surgeist_css::CssCompoundSelector::classes(&self) -> &[alloc::string::String]
+pub const fn surgeist_css::CssCompoundSelector::has_pseudo_elements(&self) -> bool
+pub const fn surgeist_css::CssCompoundSelector::has_scope_anchor(&self) -> bool
 pub const fn surgeist_css::CssCompoundSelector::key(&self) -> core::option::Option<&alloc::string::String>
+pub fn surgeist_css::CssCompoundSelector::pseudo_classes(&self) -> &[surgeist_css::CssPseudoClass]
+pub const fn surgeist_css::CssCompoundSelector::pseudo_elements(&self) -> core::option::Option<&surgeist_css::CssPseudoElementSequence>
 pub const fn surgeist_css::CssCompoundSelector::tag(&self) -> core::option::Option<&alloc::string::String>
+pub struct surgeist_css::CssContainerConditionList
+impl surgeist_css::CssContainerConditionList
+pub fn surgeist_css::CssContainerConditionList::conditions(&self) -> &[surgeist_css::CssContainerCondition]
+pub fn surgeist_css::CssContainerConditionList::try_new(conditions: alloc::vec::Vec<surgeist_css::CssContainerCondition>) -> core::option::Option<Self>
+pub struct surgeist_css::CssContainerName
+impl surgeist_css::CssContainerName
+pub fn surgeist_css::CssContainerName::as_str(&self) -> &str
+pub fn surgeist_css::CssContainerName::try_new(name: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssContainerRule
+impl surgeist_css::CssContainerRule
+pub const fn surgeist_css::CssContainerRule::condition(&self) -> &surgeist_css::CssContainerCondition
+pub const fn surgeist_css::CssContainerRule::location(&self) -> surgeist_css::CssSourceLocation
+pub const fn surgeist_css::CssContainerRule::name(&self) -> core::option::Option<&surgeist_css::CssContainerName>
+pub fn surgeist_css::CssContainerRule::rules(&self) -> &[surgeist_css::CssRule]
+pub struct surgeist_css::CssContentList
+impl surgeist_css::CssContentList
+pub fn surgeist_css::CssContentList::items(&self) -> &[surgeist_css::CssContentItem]
+pub fn surgeist_css::CssContentList::try_new(items: alloc::vec::Vec<surgeist_css::CssContentItem>) -> core::option::Option<Self>
+pub struct surgeist_css::CssContentString
+impl surgeist_css::CssContentString
+pub fn surgeist_css::CssContentString::as_str(&self) -> &str
+pub fn surgeist_css::CssContentString::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssCornerRadius
+impl surgeist_css::CssCornerRadius
+pub const fn surgeist_css::CssCornerRadius::horizontal(&self) -> &surgeist_css::CssLength
+pub fn surgeist_css::CssCornerRadius::try_new(horizontal: surgeist_css::CssLength, vertical: surgeist_css::CssLength) -> core::option::Option<Self>
+pub const fn surgeist_css::CssCornerRadius::vertical(&self) -> &surgeist_css::CssLength
+pub struct surgeist_css::CssCounterChange
+impl surgeist_css::CssCounterChange
+pub const fn surgeist_css::CssCounterChange::name(&self) -> &surgeist_css::CssCounterName
+pub const fn surgeist_css::CssCounterChange::new(name: surgeist_css::CssCounterName, value: core::option::Option<i32>) -> Self
+pub const fn surgeist_css::CssCounterChange::value(&self) -> core::option::Option<i32>
+pub struct surgeist_css::CssCounterChangeList
+impl surgeist_css::CssCounterChangeList
+pub fn surgeist_css::CssCounterChangeList::changes(&self) -> &[surgeist_css::CssCounterChange]
+pub fn surgeist_css::CssCounterChangeList::try_new(changes: alloc::vec::Vec<surgeist_css::CssCounterChange>) -> core::option::Option<Self>
+pub struct surgeist_css::CssCounterFunction
+impl surgeist_css::CssCounterFunction
+pub const fn surgeist_css::CssCounterFunction::name(&self) -> &surgeist_css::CssCounterName
+pub const fn surgeist_css::CssCounterFunction::new(name: surgeist_css::CssCounterName, style: core::option::Option<surgeist_css::CssCounterStyle>) -> Self
+pub const fn surgeist_css::CssCounterFunction::style(&self) -> core::option::Option<&surgeist_css::CssCounterStyle>
+pub struct surgeist_css::CssCounterName
+impl surgeist_css::CssCounterName
+pub fn surgeist_css::CssCounterName::as_str(&self) -> &str
+pub fn surgeist_css::CssCounterName::try_new(name: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssCounterStyleName
+impl surgeist_css::CssCounterStyleName
+pub fn surgeist_css::CssCounterStyleName::as_str(&self) -> &str
+pub fn surgeist_css::CssCounterStyleName::try_new(name: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssCountersFunction
+impl surgeist_css::CssCountersFunction
+pub const fn surgeist_css::CssCountersFunction::name(&self) -> &surgeist_css::CssCounterName
+pub const fn surgeist_css::CssCountersFunction::new(name: surgeist_css::CssCounterName, separator: surgeist_css::CssContentString, style: core::option::Option<surgeist_css::CssCounterStyle>) -> Self
+pub const fn surgeist_css::CssCountersFunction::separator(&self) -> &surgeist_css::CssContentString
+pub const fn surgeist_css::CssCountersFunction::style(&self) -> core::option::Option<&surgeist_css::CssCounterStyle>
+pub struct surgeist_css::CssCursorUrlList
+impl surgeist_css::CssCursorUrlList
+pub fn surgeist_css::CssCursorUrlList::try_new(urls: alloc::vec::Vec<surgeist_css::CssUrl>) -> core::option::Option<Self>
+pub fn surgeist_css::CssCursorUrlList::urls(&self) -> &[surgeist_css::CssUrl]
+pub struct surgeist_css::CssCursorUrls
+impl surgeist_css::CssCursorUrls
+pub const fn surgeist_css::CssCursorUrls::fallback(&self) -> surgeist_css::CssCursorKeyword
+pub const fn surgeist_css::CssCursorUrls::new(urls: surgeist_css::CssCursorUrlList, fallback: surgeist_css::CssCursorKeyword) -> Self
+pub const fn surgeist_css::CssCursorUrls::urls(&self) -> &surgeist_css::CssCursorUrlList
+pub struct surgeist_css::CssCustomIdent
+impl surgeist_css::CssCustomIdent
+pub fn surgeist_css::CssCustomIdent::as_str(&self) -> &str
+pub fn surgeist_css::CssCustomIdent::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssCustomPropertyName
+impl surgeist_css::CssCustomPropertyName
+pub fn surgeist_css::CssCustomPropertyName::as_str(&self) -> &str
+pub fn surgeist_css::CssCustomPropertyName::try_new(name: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssCustomPropertyValue
+impl surgeist_css::CssCustomPropertyValue
+pub fn surgeist_css::CssCustomPropertyValue::as_css(&self) -> &str
+pub fn surgeist_css::CssCustomPropertyValue::references(&self) -> &[surgeist_css::CssVariableReference]
 pub struct surgeist_css::CssDeclaration
 impl surgeist_css::CssDeclaration
 pub const fn surgeist_css::CssDeclaration::column(&self) -> u32
 pub const fn surgeist_css::CssDeclaration::line(&self) -> u32
 pub const fn surgeist_css::CssDeclaration::location(&self) -> surgeist_css::CssSourceLocation
-pub const fn surgeist_css::CssDeclaration::property(&self) -> surgeist_css::CssProperty
+pub const fn surgeist_css::CssDeclaration::property(&self) -> &surgeist_css::CssProperty
 pub const fn surgeist_css::CssDeclaration::value(&self) -> &surgeist_css::CssValue
+pub struct surgeist_css::CssEasingArguments
+impl surgeist_css::CssEasingArguments
+pub fn surgeist_css::CssEasingArguments::as_css(&self) -> &str
+pub struct surgeist_css::CssEasingList
+impl surgeist_css::CssEasingList
+pub fn surgeist_css::CssEasingList::easings(&self) -> &[surgeist_css::CssEasing]
+pub fn surgeist_css::CssEasingList::try_new(easings: alloc::vec::Vec<surgeist_css::CssEasing>) -> core::option::Option<Self>
 pub struct surgeist_css::CssEdges
 pub surgeist_css::CssEdges::bottom: surgeist_css::CssLength
 pub surgeist_css::CssEdges::left: surgeist_css::CssLength
@@ -194,15 +1514,454 @@ pub surgeist_css::CssEdges::top: surgeist_css::CssLength
 impl surgeist_css::CssEdges
 pub fn surgeist_css::CssEdges::all(value: surgeist_css::CssLength) -> Self
 pub const fn surgeist_css::CssEdges::new(top: surgeist_css::CssLength, right: surgeist_css::CssLength, bottom: surgeist_css::CssLength, left: surgeist_css::CssLength) -> Self
+pub struct surgeist_css::CssFilterArguments
+impl surgeist_css::CssFilterArguments
+pub fn surgeist_css::CssFilterArguments::as_css(&self) -> &str
+pub struct surgeist_css::CssFilterFunctionList
+impl surgeist_css::CssFilterFunctionList
+pub fn surgeist_css::CssFilterFunctionList::functions(&self) -> &[surgeist_css::CssFilterFunction]
+pub fn surgeist_css::CssFilterFunctionList::try_new(functions: alloc::vec::Vec<surgeist_css::CssFilterFunction>) -> core::option::Option<Self>
+pub struct surgeist_css::CssFiniteNumber
+impl surgeist_css::CssFiniteNumber
+pub fn surgeist_css::CssFiniteNumber::try_new(value: f32) -> core::option::Option<Self>
+pub const fn surgeist_css::CssFiniteNumber::value(self) -> f32
+pub struct surgeist_css::CssFlexFactor
+impl surgeist_css::CssFlexFactor
+pub fn surgeist_css::CssFlexFactor::try_new(value: f32) -> core::option::Option<Self>
+pub const fn surgeist_css::CssFlexFactor::value(self) -> f32
+pub struct surgeist_css::CssFont
+impl surgeist_css::CssFont
+pub const fn surgeist_css::CssFont::families(&self) -> &surgeist_css::CssFontFamilyList
+pub const fn surgeist_css::CssFont::line_height(&self) -> core::option::Option<&surgeist_css::CssLength>
+pub const fn surgeist_css::CssFont::size(&self) -> &surgeist_css::CssLength
+pub const fn surgeist_css::CssFont::stretch(&self) -> core::option::Option<surgeist_css::CssFontStretch>
+pub const fn surgeist_css::CssFont::style(&self) -> core::option::Option<surgeist_css::CssFontStyle>
+pub fn surgeist_css::CssFont::try_new(style: core::option::Option<surgeist_css::CssFontStyle>, variant: core::option::Option<surgeist_css::CssFontVariant>, weight: core::option::Option<surgeist_css::CssFontWeight>, stretch: core::option::Option<surgeist_css::CssFontStretch>, size: surgeist_css::CssLength, line_height: core::option::Option<surgeist_css::CssLength>, families: surgeist_css::CssFontFamilyList) -> core::option::Option<Self>
+pub const fn surgeist_css::CssFont::variant(&self) -> core::option::Option<surgeist_css::CssFontVariant>
+pub const fn surgeist_css::CssFont::weight(&self) -> core::option::Option<surgeist_css::CssFontWeight>
+pub struct surgeist_css::CssFontFaceDescriptors
+impl surgeist_css::CssFontFaceDescriptors
+pub const fn surgeist_css::CssFontFaceDescriptors::font_display(&self) -> core::option::Option<surgeist_css::CssFontDisplay>
+pub const fn surgeist_css::CssFontFaceDescriptors::font_family(&self) -> &surgeist_css::CssFontFaceFamily
+pub const fn surgeist_css::CssFontFaceDescriptors::font_stretch(&self) -> core::option::Option<&surgeist_css::CssFontFaceStretch>
+pub const fn surgeist_css::CssFontFaceDescriptors::font_style(&self) -> core::option::Option<&surgeist_css::CssFontFaceStyle>
+pub const fn surgeist_css::CssFontFaceDescriptors::font_weight(&self) -> core::option::Option<&surgeist_css::CssFontFaceWeight>
+pub const fn surgeist_css::CssFontFaceDescriptors::src(&self) -> &surgeist_css::CssFontFaceSourceList
+pub fn surgeist_css::CssFontFaceDescriptors::try_new(font_family: core::option::Option<surgeist_css::CssFontFaceFamily>, src: core::option::Option<surgeist_css::CssFontFaceSourceList>, font_weight: core::option::Option<surgeist_css::CssFontFaceWeight>, font_style: core::option::Option<surgeist_css::CssFontFaceStyle>, font_stretch: core::option::Option<surgeist_css::CssFontFaceStretch>, font_display: core::option::Option<surgeist_css::CssFontDisplay>, unicode_range: core::option::Option<surgeist_css::CssUnicodeRangeList>) -> core::option::Option<Self>
+pub const fn surgeist_css::CssFontFaceDescriptors::unicode_range(&self) -> core::option::Option<&surgeist_css::CssUnicodeRangeList>
+pub struct surgeist_css::CssFontFaceFamily
+impl surgeist_css::CssFontFaceFamily
+pub fn surgeist_css::CssFontFaceFamily::as_str(&self) -> &str
+pub fn surgeist_css::CssFontFaceFamily::try_new(name: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssFontFaceObliqueRange
+impl surgeist_css::CssFontFaceObliqueRange
+pub const fn surgeist_css::CssFontFaceObliqueRange::end_degrees(self) -> core::option::Option<surgeist_css::CssFiniteNumber>
+pub const fn surgeist_css::CssFontFaceObliqueRange::start_degrees(self) -> surgeist_css::CssFiniteNumber
+pub fn surgeist_css::CssFontFaceObliqueRange::try_new(start_degrees: f32, end_degrees: core::option::Option<f32>) -> core::option::Option<Self>
+pub struct surgeist_css::CssFontFaceRule
+impl surgeist_css::CssFontFaceRule
+pub const fn surgeist_css::CssFontFaceRule::descriptors(&self) -> &surgeist_css::CssFontFaceDescriptors
+pub const fn surgeist_css::CssFontFaceRule::location(&self) -> surgeist_css::CssSourceLocation
+pub struct surgeist_css::CssFontFaceSourceList
+impl surgeist_css::CssFontFaceSourceList
+pub fn surgeist_css::CssFontFaceSourceList::sources(&self) -> &[surgeist_css::CssFontFaceSource]
+pub fn surgeist_css::CssFontFaceSourceList::try_new(sources: alloc::vec::Vec<surgeist_css::CssFontFaceSource>) -> core::option::Option<Self>
+pub struct surgeist_css::CssFontFaceStretch
+impl surgeist_css::CssFontFaceStretch
+pub const fn surgeist_css::CssFontFaceStretch::end(self) -> core::option::Option<surgeist_css::CssFontFaceStretchValue>
+pub const fn surgeist_css::CssFontFaceStretch::start(self) -> surgeist_css::CssFontFaceStretchValue
+pub fn surgeist_css::CssFontFaceStretch::try_range_percent(start: f32, end: f32) -> core::option::Option<Self>
+pub fn surgeist_css::CssFontFaceStretch::try_single_percent(percent: f32) -> core::option::Option<Self>
+pub struct surgeist_css::CssFontFaceStretchValue
+impl surgeist_css::CssFontFaceStretchValue
+pub const fn surgeist_css::CssFontFaceStretchValue::percent(self) -> surgeist_css::CssFiniteNumber
+pub fn surgeist_css::CssFontFaceStretchValue::try_new_percent(percent: f32) -> core::option::Option<Self>
+pub struct surgeist_css::CssFontFaceUrlSource
+impl surgeist_css::CssFontFaceUrlSource
+pub const fn surgeist_css::CssFontFaceUrlSource::format(&self) -> core::option::Option<&surgeist_css::CssFontFormatHint>
+pub fn surgeist_css::CssFontFaceUrlSource::tech(&self) -> &[surgeist_css::CssFontTechHint]
+pub fn surgeist_css::CssFontFaceUrlSource::try_new(url: impl core::convert::Into<alloc::string::String>, format: core::option::Option<surgeist_css::CssFontFormatHint>, tech: alloc::vec::Vec<surgeist_css::CssFontTechHint>) -> core::option::Option<Self>
+pub fn surgeist_css::CssFontFaceUrlSource::url(&self) -> &str
+pub struct surgeist_css::CssFontFaceWeight
+impl surgeist_css::CssFontFaceWeight
+pub const fn surgeist_css::CssFontFaceWeight::end(self) -> core::option::Option<surgeist_css::CssFontFaceWeightValue>
+pub const fn surgeist_css::CssFontFaceWeight::start(self) -> surgeist_css::CssFontFaceWeightValue
+pub fn surgeist_css::CssFontFaceWeight::try_range(start: f32, end: f32) -> core::option::Option<Self>
+pub fn surgeist_css::CssFontFaceWeight::try_single(value: f32) -> core::option::Option<Self>
+pub struct surgeist_css::CssFontFaceWeightValue
+impl surgeist_css::CssFontFaceWeightValue
+pub fn surgeist_css::CssFontFaceWeightValue::try_new(value: f32) -> core::option::Option<Self>
+pub const fn surgeist_css::CssFontFaceWeightValue::value(self) -> surgeist_css::CssFiniteNumber
+pub struct surgeist_css::CssFontFamilyList
+impl surgeist_css::CssFontFamilyList
+pub fn surgeist_css::CssFontFamilyList::families(&self) -> &[surgeist_css::CssFontFamilyName]
+pub fn surgeist_css::CssFontFamilyList::try_new(families: alloc::vec::Vec<surgeist_css::CssFontFamilyName>) -> core::option::Option<Self>
+pub struct surgeist_css::CssFontFamilyName
+impl surgeist_css::CssFontFamilyName
+pub fn surgeist_css::CssFontFamilyName::as_str(&self) -> &str
+pub const fn surgeist_css::CssFontFamilyName::kind(&self) -> surgeist_css::CssFontFamilyNameKind
+pub fn surgeist_css::CssFontFamilyName::try_ident_sequence(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub fn surgeist_css::CssFontFamilyName::try_quoted(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssFontFeature
+impl surgeist_css::CssFontFeature
+pub fn surgeist_css::CssFontFeature::tag(&self) -> &str
+pub fn surgeist_css::CssFontFeature::try_new(tag: impl core::convert::Into<alloc::string::String>, value: core::option::Option<surgeist_css::CssFontFeatureValue>) -> core::option::Option<Self>
+pub const fn surgeist_css::CssFontFeature::value(&self) -> core::option::Option<surgeist_css::CssFontFeatureValue>
+pub struct surgeist_css::CssFontFeatureList
+impl surgeist_css::CssFontFeatureList
+pub fn surgeist_css::CssFontFeatureList::features(&self) -> &[surgeist_css::CssFontFeature]
+pub fn surgeist_css::CssFontFeatureList::try_new(features: alloc::vec::Vec<surgeist_css::CssFontFeature>) -> core::option::Option<Self>
+pub struct surgeist_css::CssFontLocalName
+impl surgeist_css::CssFontLocalName
+pub fn surgeist_css::CssFontLocalName::as_str(&self) -> &str
+pub fn surgeist_css::CssFontLocalName::try_new(name: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssFontWeightNumber
+impl surgeist_css::CssFontWeightNumber
+pub const fn surgeist_css::CssFontWeightNumber::try_new(value: i32) -> core::option::Option<Self>
+pub const fn surgeist_css::CssFontWeightNumber::value(self) -> i32
+pub struct surgeist_css::CssGridArea
+impl surgeist_css::CssGridArea
+pub const fn surgeist_css::CssGridArea::column_end(&self) -> core::option::Option<&surgeist_css::CssGridLine>
+pub const fn surgeist_css::CssGridArea::column_start(&self) -> core::option::Option<&surgeist_css::CssGridLine>
+pub const fn surgeist_css::CssGridArea::new(row_start: surgeist_css::CssGridLine, column_start: core::option::Option<surgeist_css::CssGridLine>, row_end: core::option::Option<surgeist_css::CssGridLine>, column_end: core::option::Option<surgeist_css::CssGridLine>) -> Self
+pub const fn surgeist_css::CssGridArea::row_end(&self) -> core::option::Option<&surgeist_css::CssGridLine>
+pub const fn surgeist_css::CssGridArea::row_start(&self) -> &surgeist_css::CssGridLine
+pub struct surgeist_css::CssGridAutoFlow
+impl surgeist_css::CssGridAutoFlow
+pub const fn surgeist_css::CssGridAutoFlow::axis(self) -> surgeist_css::CssGridAutoFlowAxis
+pub const fn surgeist_css::CssGridAutoFlow::dense(self) -> bool
+pub const fn surgeist_css::CssGridAutoFlow::new(axis: surgeist_css::CssGridAutoFlowAxis, dense: bool) -> Self
+pub struct surgeist_css::CssGridLineInteger
+impl surgeist_css::CssGridLineInteger
+pub const fn surgeist_css::CssGridLineInteger::try_new(value: i32) -> core::option::Option<Self>
+pub const fn surgeist_css::CssGridLineInteger::value(self) -> i32
+pub struct surgeist_css::CssGridLineNames
+impl surgeist_css::CssGridLineNames
+pub fn surgeist_css::CssGridLineNames::names(&self) -> &[surgeist_css::CssCustomIdent]
+pub fn surgeist_css::CssGridLineNames::try_new(names: alloc::vec::Vec<surgeist_css::CssCustomIdent>) -> core::option::Option<Self>
+pub struct surgeist_css::CssGridLineRange
+impl surgeist_css::CssGridLineRange
+pub const fn surgeist_css::CssGridLineRange::end(&self) -> core::option::Option<&surgeist_css::CssGridLine>
+pub const fn surgeist_css::CssGridLineRange::new(start: surgeist_css::CssGridLine, end: core::option::Option<surgeist_css::CssGridLine>) -> Self
+pub const fn surgeist_css::CssGridLineRange::start(&self) -> &surgeist_css::CssGridLine
+pub struct surgeist_css::CssGridLineSpan
+impl surgeist_css::CssGridLineSpan
+pub const fn surgeist_css::CssGridLineSpan::integer(&self) -> core::option::Option<i32>
+pub const fn surgeist_css::CssGridLineSpan::name(&self) -> core::option::Option<&surgeist_css::CssCustomIdent>
+pub fn surgeist_css::CssGridLineSpan::try_new(integer: core::option::Option<i32>, name: core::option::Option<surgeist_css::CssCustomIdent>) -> core::option::Option<Self>
+pub struct surgeist_css::CssGridRepeat
+impl surgeist_css::CssGridRepeat
+pub const fn surgeist_css::CssGridRepeat::count(&self) -> surgeist_css::CssGridRepeatCount
+pub const fn surgeist_css::CssGridRepeat::tracks(&self) -> &surgeist_css::CssGridTrackList
+pub fn surgeist_css::CssGridRepeat::try_new(count: surgeist_css::CssGridRepeatCount, tracks: surgeist_css::CssGridTrackList) -> core::option::Option<Self>
+pub struct surgeist_css::CssGridRepeatInteger
+impl surgeist_css::CssGridRepeatInteger
+pub const fn surgeist_css::CssGridRepeatInteger::try_new(value: i32) -> core::option::Option<Self>
+pub const fn surgeist_css::CssGridRepeatInteger::value(self) -> i32
+pub struct surgeist_css::CssGridSpanInteger
+impl surgeist_css::CssGridSpanInteger
+pub const fn surgeist_css::CssGridSpanInteger::try_new(value: i32) -> core::option::Option<Self>
+pub const fn surgeist_css::CssGridSpanInteger::value(self) -> i32
+pub struct surgeist_css::CssGridTemplateAreaRow
+impl surgeist_css::CssGridTemplateAreaRow
+pub fn surgeist_css::CssGridTemplateAreaRow::cells(&self) -> &[surgeist_css::CssGridTemplateAreaCell]
+pub fn surgeist_css::CssGridTemplateAreaRow::try_new(cells: alloc::vec::Vec<surgeist_css::CssGridTemplateAreaCell>) -> core::option::Option<Self>
+pub struct surgeist_css::CssGridTemplateAreaRows
+impl surgeist_css::CssGridTemplateAreaRows
+pub fn surgeist_css::CssGridTemplateAreaRows::rows(&self) -> &[surgeist_css::CssGridTemplateAreaRow]
+pub fn surgeist_css::CssGridTemplateAreaRows::try_new(rows: alloc::vec::Vec<surgeist_css::CssGridTemplateAreaRow>) -> core::option::Option<Self>
+pub struct surgeist_css::CssGridTrackList
+impl surgeist_css::CssGridTrackList
+pub fn surgeist_css::CssGridTrackList::components(&self) -> &[surgeist_css::CssGridTrackComponent]
+pub fn surgeist_css::CssGridTrackList::try_new(components: alloc::vec::Vec<surgeist_css::CssGridTrackComponent>) -> core::option::Option<Self>
+pub struct surgeist_css::CssHslColor
+impl surgeist_css::CssHslColor
+pub const fn surgeist_css::CssHslColor::alpha(&self) -> core::option::Option<f32>
+pub const fn surgeist_css::CssHslColor::hue(&self) -> core::option::Option<f32>
+pub const fn surgeist_css::CssHslColor::lightness(&self) -> core::option::Option<f32>
+pub const fn surgeist_css::CssHslColor::saturation(&self) -> core::option::Option<f32>
+pub fn surgeist_css::CssHslColor::try_new(hue: core::option::Option<f32>, saturation: core::option::Option<f32>, lightness: core::option::Option<f32>, alpha: core::option::Option<f32>) -> core::option::Option<Self>
+pub struct surgeist_css::CssHwbColor
+impl surgeist_css::CssHwbColor
+pub const fn surgeist_css::CssHwbColor::alpha(&self) -> core::option::Option<f32>
+pub const fn surgeist_css::CssHwbColor::blackness(&self) -> core::option::Option<f32>
+pub const fn surgeist_css::CssHwbColor::hue(&self) -> core::option::Option<f32>
+pub fn surgeist_css::CssHwbColor::try_new(hue: core::option::Option<f32>, whiteness: core::option::Option<f32>, blackness: core::option::Option<f32>, alpha: core::option::Option<f32>) -> core::option::Option<Self>
+pub const fn surgeist_css::CssHwbColor::whiteness(&self) -> core::option::Option<f32>
+pub struct surgeist_css::CssImageLayerList
+impl surgeist_css::CssImageLayerList
+pub fn surgeist_css::CssImageLayerList::layers(&self) -> &[surgeist_css::CssImageLayer]
+pub fn surgeist_css::CssImageLayerList::try_new(layers: alloc::vec::Vec<surgeist_css::CssImageLayer>) -> core::option::Option<Self>
+pub struct surgeist_css::CssImportRule
+impl surgeist_css::CssImportRule
+pub const fn surgeist_css::CssImportRule::layer(&self) -> core::option::Option<&surgeist_css::CssImportLayer>
+pub const fn surgeist_css::CssImportRule::location(&self) -> surgeist_css::CssSourceLocation
+pub const fn surgeist_css::CssImportRule::media(&self) -> core::option::Option<&surgeist_css::CssMediaQueryList>
+pub const fn surgeist_css::CssImportRule::target(&self) -> &surgeist_css::CssImportTarget
+pub struct surgeist_css::CssImportString
+impl surgeist_css::CssImportString
+pub fn surgeist_css::CssImportString::as_str(&self) -> &str
+pub fn surgeist_css::CssImportString::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssImportUrl
+impl surgeist_css::CssImportUrl
+pub fn surgeist_css::CssImportUrl::as_str(&self) -> &str
+pub fn surgeist_css::CssImportUrl::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssKeyframeBlock
+impl surgeist_css::CssKeyframeBlock
+pub fn surgeist_css::CssKeyframeBlock::declarations(&self) -> &[surgeist_css::CssDeclaration]
+pub const fn surgeist_css::CssKeyframeBlock::location(&self) -> surgeist_css::CssSourceLocation
+pub const fn surgeist_css::CssKeyframeBlock::selectors(&self) -> &surgeist_css::CssKeyframeSelectorList
+pub fn surgeist_css::CssKeyframeBlock::try_new(selectors: surgeist_css::CssKeyframeSelectorList, declarations: alloc::vec::Vec<surgeist_css::CssDeclaration>, location: surgeist_css::CssSourceLocation) -> core::option::Option<Self>
+pub struct surgeist_css::CssKeyframePercent
+impl surgeist_css::CssKeyframePercent
+pub fn surgeist_css::CssKeyframePercent::try_new(value: f32) -> core::option::Option<Self>
+pub const fn surgeist_css::CssKeyframePercent::value(self) -> surgeist_css::CssFiniteNumber
+pub struct surgeist_css::CssKeyframeSelectorList
+impl surgeist_css::CssKeyframeSelectorList
+pub fn surgeist_css::CssKeyframeSelectorList::selectors(&self) -> &[surgeist_css::CssKeyframeSelector]
+pub fn surgeist_css::CssKeyframeSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssKeyframeSelector>) -> core::option::Option<Self>
+pub struct surgeist_css::CssKeyframesRule
+impl surgeist_css::CssKeyframesRule
+pub fn surgeist_css::CssKeyframesRule::blocks(&self) -> &[surgeist_css::CssKeyframeBlock]
+pub const fn surgeist_css::CssKeyframesRule::location(&self) -> surgeist_css::CssSourceLocation
+pub const fn surgeist_css::CssKeyframesRule::name(&self) -> &surgeist_css::CssKeyframesName
+pub fn surgeist_css::CssKeyframesRule::try_new(name: surgeist_css::CssKeyframesName, blocks: alloc::vec::Vec<surgeist_css::CssKeyframeBlock>, location: surgeist_css::CssSourceLocation) -> core::option::Option<Self>
+pub struct surgeist_css::CssKeyframesString
+impl surgeist_css::CssKeyframesString
+pub fn surgeist_css::CssKeyframesString::as_str(&self) -> &str
+pub fn surgeist_css::CssKeyframesString::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssLabColor
+impl surgeist_css::CssLabColor
+pub const fn surgeist_css::CssLabColor::a(&self) -> core::option::Option<f32>
+pub const fn surgeist_css::CssLabColor::alpha(&self) -> core::option::Option<f32>
+pub const fn surgeist_css::CssLabColor::b(&self) -> core::option::Option<f32>
+pub const fn surgeist_css::CssLabColor::lightness(&self) -> core::option::Option<f32>
+pub fn surgeist_css::CssLabColor::try_new(lightness: core::option::Option<f32>, a: core::option::Option<f32>, b: core::option::Option<f32>, alpha: core::option::Option<f32>) -> core::option::Option<Self>
+pub struct surgeist_css::CssLayerBlockRule
+impl surgeist_css::CssLayerBlockRule
+pub const fn surgeist_css::CssLayerBlockRule::location(&self) -> surgeist_css::CssSourceLocation
+pub const fn surgeist_css::CssLayerBlockRule::name(&self) -> core::option::Option<&surgeist_css::CssLayerName>
+pub fn surgeist_css::CssLayerBlockRule::rules(&self) -> &[surgeist_css::CssRule]
+pub struct surgeist_css::CssLayerName
+impl surgeist_css::CssLayerName
+pub fn surgeist_css::CssLayerName::components(&self) -> &[alloc::string::String]
+pub fn surgeist_css::CssLayerName::try_new(components: impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> core::option::Option<Self>
+pub struct surgeist_css::CssLayerNameList
+impl surgeist_css::CssLayerNameList
+pub fn surgeist_css::CssLayerNameList::names(&self) -> &[surgeist_css::CssLayerName]
+pub fn surgeist_css::CssLayerNameList::try_new(names: alloc::vec::Vec<surgeist_css::CssLayerName>) -> core::option::Option<Self>
+pub struct surgeist_css::CssLayerStatementRule
+impl surgeist_css::CssLayerStatementRule
+pub const fn surgeist_css::CssLayerStatementRule::location(&self) -> surgeist_css::CssSourceLocation
+pub const fn surgeist_css::CssLayerStatementRule::names(&self) -> &surgeist_css::CssLayerNameList
+pub struct surgeist_css::CssLchColor
+impl surgeist_css::CssLchColor
+pub const fn surgeist_css::CssLchColor::alpha(&self) -> core::option::Option<f32>
+pub const fn surgeist_css::CssLchColor::chroma(&self) -> core::option::Option<f32>
+pub const fn surgeist_css::CssLchColor::hue(&self) -> core::option::Option<f32>
+pub const fn surgeist_css::CssLchColor::lightness(&self) -> core::option::Option<f32>
+pub fn surgeist_css::CssLchColor::try_new(lightness: core::option::Option<f32>, chroma: core::option::Option<f32>, hue: core::option::Option<f32>, alpha: core::option::Option<f32>) -> core::option::Option<Self>
+pub struct surgeist_css::CssLengthDimension
+impl surgeist_css::CssLengthDimension
+pub fn surgeist_css::CssLengthDimension::to_css_string(self) -> alloc::string::String
+pub fn surgeist_css::CssLengthDimension::try_new(value: f32, unit: surgeist_css::CssLengthUnit) -> core::option::Option<Self>
+pub const fn surgeist_css::CssLengthDimension::unit(self) -> surgeist_css::CssLengthUnit
+pub const fn surgeist_css::CssLengthDimension::value(self) -> f32
+pub struct surgeist_css::CssLetterSpacingLength
+impl surgeist_css::CssLetterSpacingLength
+pub const fn surgeist_css::CssLetterSpacingLength::length(&self) -> &surgeist_css::CssLength
+pub fn surgeist_css::CssLetterSpacingLength::try_new(length: surgeist_css::CssLength) -> core::option::Option<Self>
+pub struct surgeist_css::CssListStyle
+impl surgeist_css::CssListStyle
+pub const fn surgeist_css::CssListStyle::image(&self) -> core::option::Option<&surgeist_css::CssListStyleImage>
+pub const fn surgeist_css::CssListStyle::position(&self) -> core::option::Option<surgeist_css::CssListStylePosition>
+pub const fn surgeist_css::CssListStyle::style_type(&self) -> core::option::Option<&surgeist_css::CssListStyleType>
+pub fn surgeist_css::CssListStyle::try_new(style_type: core::option::Option<surgeist_css::CssListStyleType>, position: core::option::Option<surgeist_css::CssListStylePosition>, image: core::option::Option<surgeist_css::CssListStyleImage>) -> core::option::Option<Self>
+pub struct surgeist_css::CssMaskLayer
+impl surgeist_css::CssMaskLayer
+pub fn surgeist_css::CssMaskLayer::try_new(image: core::option::Option<surgeist_css::CssImageLayer>, position: core::option::Option<surgeist_css::CssPosition>, size: core::option::Option<surgeist_css::CssBackgroundSize>, repeat: core::option::Option<surgeist_css::CssBackgroundRepeat>) -> core::option::Option<Self>
+pub struct surgeist_css::CssMaskList
+impl surgeist_css::CssMaskList
+pub fn surgeist_css::CssMaskList::layers(&self) -> &[surgeist_css::CssMaskLayer]
+pub fn surgeist_css::CssMaskList::try_new(layers: alloc::vec::Vec<surgeist_css::CssMaskLayer>) -> core::option::Option<Self>
+pub struct surgeist_css::CssMediaConditionList
+impl surgeist_css::CssMediaConditionList
+pub fn surgeist_css::CssMediaConditionList::conditions(&self) -> &[surgeist_css::CssMediaCondition]
+pub fn surgeist_css::CssMediaConditionList::try_new(conditions: alloc::vec::Vec<surgeist_css::CssMediaCondition>) -> core::option::Option<Self>
+pub struct surgeist_css::CssMediaQueryList
+impl surgeist_css::CssMediaQueryList
+pub fn surgeist_css::CssMediaQueryList::queries(&self) -> &[surgeist_css::CssMediaQuery]
+pub fn surgeist_css::CssMediaQueryList::try_new(queries: alloc::vec::Vec<surgeist_css::CssMediaQuery>) -> core::option::Option<Self>
+pub struct surgeist_css::CssMediaRule
+impl surgeist_css::CssMediaRule
+pub const fn surgeist_css::CssMediaRule::location(&self) -> surgeist_css::CssSourceLocation
+pub const fn surgeist_css::CssMediaRule::query(&self) -> &surgeist_css::CssMediaQueryList
+pub fn surgeist_css::CssMediaRule::rules(&self) -> &[surgeist_css::CssRule]
+pub struct surgeist_css::CssNonNegativeInteger
+impl surgeist_css::CssNonNegativeInteger
+pub const fn surgeist_css::CssNonNegativeInteger::new(value: u32) -> Self
+pub const fn surgeist_css::CssNonNegativeInteger::value(self) -> u32
+pub struct surgeist_css::CssNonNegativeNumber
+impl surgeist_css::CssNonNegativeNumber
+pub fn surgeist_css::CssNonNegativeNumber::try_new(value: f32) -> core::option::Option<Self>
+pub const fn surgeist_css::CssNonNegativeNumber::value(self) -> f32
+pub struct surgeist_css::CssNthAnPlusB
+impl surgeist_css::CssNthAnPlusB
+pub const fn surgeist_css::CssNthAnPlusB::a(self) -> i32
+pub const fn surgeist_css::CssNthAnPlusB::b(self) -> i32
+pub const fn surgeist_css::CssNthAnPlusB::new(a: i32, b: i32) -> Self
+pub struct surgeist_css::CssNthChildPattern
+impl surgeist_css::CssNthChildPattern
+pub fn surgeist_css::CssNthChildPattern::has_pseudo_elements(&self) -> bool
+pub const fn surgeist_css::CssNthChildPattern::new(pattern: surgeist_css::CssNthPattern, selector_list: core::option::Option<surgeist_css::CssPseudoSelectorList>) -> Self
+pub const fn surgeist_css::CssNthChildPattern::pattern(&self) -> surgeist_css::CssNthPattern
+pub const fn surgeist_css::CssNthChildPattern::selector_list(&self) -> core::option::Option<&surgeist_css::CssPseudoSelectorList>
+pub struct surgeist_css::CssOpacity
+impl surgeist_css::CssOpacity
+pub fn surgeist_css::CssOpacity::try_new(value: f32) -> core::option::Option<Self>
+pub const fn surgeist_css::CssOpacity::value(self) -> f32
+pub struct surgeist_css::CssOutline
+impl surgeist_css::CssOutline
+pub const fn surgeist_css::CssOutline::color(&self) -> core::option::Option<&surgeist_css::CssColor>
+pub const fn surgeist_css::CssOutline::style(&self) -> core::option::Option<surgeist_css::CssOutlineStyle>
+pub fn surgeist_css::CssOutline::try_new(width: core::option::Option<surgeist_css::CssOutlineWidth>, style: core::option::Option<surgeist_css::CssOutlineStyle>, color: core::option::Option<surgeist_css::CssColor>) -> core::option::Option<Self>
+pub const fn surgeist_css::CssOutline::width(&self) -> core::option::Option<&surgeist_css::CssOutlineWidth>
 pub struct surgeist_css::CssOverflowAxes
 pub surgeist_css::CssOverflowAxes::x: surgeist_css::CssOverflow
 pub surgeist_css::CssOverflowAxes::y: surgeist_css::CssOverflow
 impl surgeist_css::CssOverflowAxes
 pub const fn surgeist_css::CssOverflowAxes::new(x: surgeist_css::CssOverflow, y: surgeist_css::CssOverflow) -> Self
-pub struct surgeist_css::CssRule
-impl surgeist_css::CssRule
-pub fn surgeist_css::CssRule::declarations(&self) -> &[surgeist_css::CssDeclaration]
-pub const fn surgeist_css::CssRule::selector(&self) -> &surgeist_css::CssSelector
+pub struct surgeist_css::CssPlaceContentAlignment
+impl surgeist_css::CssPlaceContentAlignment
+pub const fn surgeist_css::CssPlaceContentAlignment::all(value: surgeist_css::CssAlignment) -> Self
+pub const fn surgeist_css::CssPlaceContentAlignment::first(self) -> surgeist_css::CssAlignment
+pub const fn surgeist_css::CssPlaceContentAlignment::new(first: surgeist_css::CssAlignment, second: surgeist_css::CssAlignment) -> Self
+pub const fn surgeist_css::CssPlaceContentAlignment::second(self) -> surgeist_css::CssAlignment
+pub struct surgeist_css::CssPlaceItemsAlignment
+impl surgeist_css::CssPlaceItemsAlignment
+pub const fn surgeist_css::CssPlaceItemsAlignment::all(value: surgeist_css::CssAlignItems) -> Self
+pub const fn surgeist_css::CssPlaceItemsAlignment::first(self) -> surgeist_css::CssAlignItems
+pub const fn surgeist_css::CssPlaceItemsAlignment::new(first: surgeist_css::CssAlignItems, second: surgeist_css::CssAlignItems) -> Self
+pub const fn surgeist_css::CssPlaceItemsAlignment::second(self) -> surgeist_css::CssAlignItems
+pub struct surgeist_css::CssPosition
+impl surgeist_css::CssPosition
+pub fn surgeist_css::CssPosition::components(&self) -> &[surgeist_css::CssPositionComponent]
+pub fn surgeist_css::CssPosition::try_new(components: alloc::vec::Vec<surgeist_css::CssPositionComponent>) -> core::option::Option<Self>
+pub struct surgeist_css::CssPositionList
+impl surgeist_css::CssPositionList
+pub fn surgeist_css::CssPositionList::positions(&self) -> &[surgeist_css::CssPosition]
+pub fn surgeist_css::CssPositionList::try_new(positions: alloc::vec::Vec<surgeist_css::CssPosition>) -> core::option::Option<Self>
+pub struct surgeist_css::CssPseudoElementSequence
+impl surgeist_css::CssPseudoElementSequence
+pub fn surgeist_css::CssPseudoElementSequence::pseudo_elements(&self) -> &[surgeist_css::CssPseudoElement]
+pub fn surgeist_css::CssPseudoElementSequence::try_new(pseudo_elements: alloc::vec::Vec<surgeist_css::CssPseudoElement>) -> core::option::Option<Self>
+pub struct surgeist_css::CssPseudoSelectorList
+impl surgeist_css::CssPseudoSelectorList
+pub fn surgeist_css::CssPseudoSelectorList::has_pseudo_elements(&self) -> bool
+pub fn surgeist_css::CssPseudoSelectorList::selectors(&self) -> &[surgeist_css::CssSelector]
+pub fn surgeist_css::CssPseudoSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssSelector>) -> core::option::Option<Self>
+pub struct surgeist_css::CssQueryLength
+impl surgeist_css::CssQueryLength
+pub fn surgeist_css::CssQueryLength::try_new(value: f32, unit: surgeist_css::CssLengthUnit) -> core::option::Option<Self>
+pub const fn surgeist_css::CssQueryLength::unit(self) -> surgeist_css::CssLengthUnit
+pub const fn surgeist_css::CssQueryLength::value(self) -> surgeist_css::CssFiniteNumber
+pub struct surgeist_css::CssRangeFeature<T>
+impl<T> surgeist_css::CssRangeFeature<T>
+pub const fn surgeist_css::CssRangeFeature<T>::comparison(&self) -> core::option::Option<surgeist_css::CssQueryComparison>
+pub const fn surgeist_css::CssRangeFeature<T>::value(&self) -> &T
+pub struct surgeist_css::CssRatio
+impl surgeist_css::CssRatio
+pub const fn surgeist_css::CssRatio::denominator(self) -> surgeist_css::CssFiniteNumber
+pub const fn surgeist_css::CssRatio::numerator(self) -> surgeist_css::CssFiniteNumber
+pub fn surgeist_css::CssRatio::try_new(numerator: f32, denominator: f32) -> core::option::Option<Self>
+pub struct surgeist_css::CssRelativeColor
+impl surgeist_css::CssRelativeColor
+pub const fn surgeist_css::CssRelativeColor::alpha(&self) -> core::option::Option<&surgeist_css::CssColorComponentExpression>
+pub fn surgeist_css::CssRelativeColor::components(&self) -> &[surgeist_css::CssColorComponentExpression]
+pub const fn surgeist_css::CssRelativeColor::function(&self) -> &surgeist_css::CssRelativeColorFunction
+pub const fn surgeist_css::CssRelativeColor::source(&self) -> &surgeist_css::CssColor
+pub fn surgeist_css::CssRelativeColor::try_new(function: surgeist_css::CssRelativeColorFunction, source: surgeist_css::CssColor, components: alloc::vec::Vec<surgeist_css::CssColorComponentExpression>, alpha: core::option::Option<surgeist_css::CssColorComponentExpression>) -> core::option::Option<Self>
+pub struct surgeist_css::CssRelativeSelector
+impl surgeist_css::CssRelativeSelector
+pub const fn surgeist_css::CssRelativeSelector::combinator(&self) -> surgeist_css::CssSelectorCombinator
+pub const fn surgeist_css::CssRelativeSelector::new(combinator: surgeist_css::CssSelectorCombinator, selector: surgeist_css::CssSelector) -> Self
+pub const fn surgeist_css::CssRelativeSelector::selector(&self) -> &surgeist_css::CssSelector
+pub struct surgeist_css::CssRelativeSelectorList
+impl surgeist_css::CssRelativeSelectorList
+pub fn surgeist_css::CssRelativeSelectorList::has_pseudo_elements(&self) -> bool
+pub fn surgeist_css::CssRelativeSelectorList::selectors(&self) -> &[surgeist_css::CssRelativeSelector]
+pub fn surgeist_css::CssRelativeSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssRelativeSelector>) -> core::option::Option<Self>
+pub struct surgeist_css::CssResolution
+impl surgeist_css::CssResolution
+pub fn surgeist_css::CssResolution::try_new(value: f32, unit: surgeist_css::CssResolutionUnit) -> core::option::Option<Self>
+pub const fn surgeist_css::CssResolution::unit(self) -> surgeist_css::CssResolutionUnit
+pub const fn surgeist_css::CssResolution::value(self) -> surgeist_css::CssFiniteNumber
+pub struct surgeist_css::CssRgbaColor
+impl surgeist_css::CssRgbaColor
+pub const fn surgeist_css::CssRgbaColor::alpha(&self) -> f32
+pub const fn surgeist_css::CssRgbaColor::blue(&self) -> u8
+pub const fn surgeist_css::CssRgbaColor::green(&self) -> u8
+pub const fn surgeist_css::CssRgbaColor::red(&self) -> u8
+pub fn surgeist_css::CssRgbaColor::try_new(red: u8, green: u8, blue: u8, alpha: f32) -> core::option::Option<Self>
+pub struct surgeist_css::CssScaleValues
+impl surgeist_css::CssScaleValues
+pub fn surgeist_css::CssScaleValues::try_new(values: alloc::vec::Vec<f32>) -> core::option::Option<Self>
+pub fn surgeist_css::CssScaleValues::values(&self) -> &[f32]
+pub struct surgeist_css::CssScopeRule
+impl surgeist_css::CssScopeRule
+pub const fn surgeist_css::CssScopeRule::limit(&self) -> core::option::Option<&surgeist_css::CssScopeSelectorList>
+pub const fn surgeist_css::CssScopeRule::location(&self) -> surgeist_css::CssSourceLocation
+pub const fn surgeist_css::CssScopeRule::root(&self) -> core::option::Option<&surgeist_css::CssScopeSelectorList>
+pub const fn surgeist_css::CssScopeRule::rules(&self) -> &surgeist_css::CssScopedRuleList
+pub struct surgeist_css::CssScopeSelectorList
+impl surgeist_css::CssScopeSelectorList
+pub fn surgeist_css::CssScopeSelectorList::selectors(&self) -> &[surgeist_css::CssSelector]
+pub fn surgeist_css::CssScopeSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssSelector>) -> core::option::Option<Self>
+pub struct surgeist_css::CssScopedContainerRule
+impl surgeist_css::CssScopedContainerRule
+pub const fn surgeist_css::CssScopedContainerRule::condition(&self) -> &surgeist_css::CssContainerCondition
+pub const fn surgeist_css::CssScopedContainerRule::location(&self) -> surgeist_css::CssSourceLocation
+pub const fn surgeist_css::CssScopedContainerRule::name(&self) -> core::option::Option<&surgeist_css::CssContainerName>
+pub const fn surgeist_css::CssScopedContainerRule::rules(&self) -> &surgeist_css::CssScopedRuleList
+pub struct surgeist_css::CssScopedLayerBlockRule
+impl surgeist_css::CssScopedLayerBlockRule
+pub const fn surgeist_css::CssScopedLayerBlockRule::location(&self) -> surgeist_css::CssSourceLocation
+pub const fn surgeist_css::CssScopedLayerBlockRule::name(&self) -> core::option::Option<&surgeist_css::CssLayerName>
+pub const fn surgeist_css::CssScopedLayerBlockRule::rules(&self) -> &surgeist_css::CssScopedRuleList
+pub struct surgeist_css::CssScopedLayerStatementRule
+impl surgeist_css::CssScopedLayerStatementRule
+pub const fn surgeist_css::CssScopedLayerStatementRule::location(&self) -> surgeist_css::CssSourceLocation
+pub const fn surgeist_css::CssScopedLayerStatementRule::names(&self) -> &surgeist_css::CssLayerNameList
+pub struct surgeist_css::CssScopedMediaRule
+impl surgeist_css::CssScopedMediaRule
+pub const fn surgeist_css::CssScopedMediaRule::location(&self) -> surgeist_css::CssSourceLocation
+pub const fn surgeist_css::CssScopedMediaRule::query(&self) -> &surgeist_css::CssMediaQueryList
+pub const fn surgeist_css::CssScopedMediaRule::rules(&self) -> &surgeist_css::CssScopedRuleList
+pub struct surgeist_css::CssScopedRuleList
+impl surgeist_css::CssScopedRuleList
+pub const fn surgeist_css::CssScopedRuleList::new() -> Self
+pub fn surgeist_css::CssScopedRuleList::rules(&self) -> &[surgeist_css::CssScopedRule]
+pub struct surgeist_css::CssScopedStyleRule
+impl surgeist_css::CssScopedStyleRule
+pub fn surgeist_css::CssScopedStyleRule::declarations(&self) -> &[surgeist_css::CssDeclaration]
+pub const fn surgeist_css::CssScopedStyleRule::selectors(&self) -> &surgeist_css::CssScopedStyleSelectorList
+pub struct surgeist_css::CssScopedStyleSelectorList
+impl surgeist_css::CssScopedStyleSelectorList
+pub fn surgeist_css::CssScopedStyleSelectorList::selectors(&self) -> &[surgeist_css::CssScopedStyleSelector]
+pub fn surgeist_css::CssScopedStyleSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssScopedStyleSelector>) -> core::option::Option<Self>
+pub struct surgeist_css::CssSelectorList
+impl surgeist_css::CssSelectorList
+pub fn surgeist_css::CssSelectorList::selectors(&self) -> &[surgeist_css::CssSelector]
+pub fn surgeist_css::CssSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssSelector>) -> core::option::Option<Self>
+pub struct surgeist_css::CssShadow
+impl surgeist_css::CssShadow
+pub const fn surgeist_css::CssShadow::blur_radius(&self) -> core::option::Option<&surgeist_css::CssLength>
+pub const fn surgeist_css::CssShadow::color(&self) -> core::option::Option<&surgeist_css::CssColor>
+pub const fn surgeist_css::CssShadow::inset(&self) -> bool
+pub const fn surgeist_css::CssShadow::offset_x(&self) -> &surgeist_css::CssLength
+pub const fn surgeist_css::CssShadow::offset_y(&self) -> &surgeist_css::CssLength
+pub const fn surgeist_css::CssShadow::spread_radius(&self) -> core::option::Option<&surgeist_css::CssLength>
+pub fn surgeist_css::CssShadow::try_new(inset: bool, offset_x: surgeist_css::CssLength, offset_y: surgeist_css::CssLength, blur_radius: core::option::Option<surgeist_css::CssLength>, spread_radius: core::option::Option<surgeist_css::CssLength>, color: core::option::Option<surgeist_css::CssColor>) -> core::option::Option<Self>
 pub struct surgeist_css::CssSheet
 impl surgeist_css::CssSheet
 pub const fn surgeist_css::CssSheet::new() -> Self
@@ -212,6 +1971,109 @@ impl surgeist_css::CssSourceLocation
 pub const fn surgeist_css::CssSourceLocation::column(self) -> u32
 pub const fn surgeist_css::CssSourceLocation::line(self) -> u32
 pub const fn surgeist_css::CssSourceLocation::new(line: u32, column: u32) -> Self
+pub struct surgeist_css::CssStyleRule
+impl surgeist_css::CssStyleRule
+pub fn surgeist_css::CssStyleRule::declarations(&self) -> &[surgeist_css::CssDeclaration]
+pub const fn surgeist_css::CssStyleRule::selector(&self) -> &surgeist_css::CssSelector
+pub struct surgeist_css::CssTextDecoration
+impl surgeist_css::CssTextDecoration
+pub const fn surgeist_css::CssTextDecoration::color(&self) -> core::option::Option<&surgeist_css::CssColor>
+pub const fn surgeist_css::CssTextDecoration::line(&self) -> core::option::Option<&surgeist_css::CssTextDecorationLine>
+pub const fn surgeist_css::CssTextDecoration::style(&self) -> core::option::Option<surgeist_css::CssTextDecorationStyle>
+pub const fn surgeist_css::CssTextDecoration::thickness(&self) -> core::option::Option<&surgeist_css::CssTextDecorationThickness>
+pub fn surgeist_css::CssTextDecoration::try_new(line: core::option::Option<surgeist_css::CssTextDecorationLine>, color: core::option::Option<surgeist_css::CssColor>, style: core::option::Option<surgeist_css::CssTextDecorationStyle>, thickness: core::option::Option<surgeist_css::CssTextDecorationThickness>) -> core::option::Option<Self>
+pub struct surgeist_css::CssTextDecorationLine
+impl surgeist_css::CssTextDecorationLine
+pub fn surgeist_css::CssTextDecorationLine::components(&self) -> &[surgeist_css::CssTextDecorationLineComponent]
+pub const fn surgeist_css::CssTextDecorationLine::is_none(&self) -> bool
+pub fn surgeist_css::CssTextDecorationLine::try_new(components: alloc::vec::Vec<surgeist_css::CssTextDecorationLineComponent>) -> core::option::Option<Self>
+pub struct surgeist_css::CssTextDecorationThicknessLength
+impl surgeist_css::CssTextDecorationThicknessLength
+pub const fn surgeist_css::CssTextDecorationThicknessLength::length(&self) -> &surgeist_css::CssLength
+pub fn surgeist_css::CssTextDecorationThicknessLength::try_new(length: surgeist_css::CssLength) -> core::option::Option<Self>
+pub struct surgeist_css::CssTextIndent
+impl surgeist_css::CssTextIndent
+pub const fn surgeist_css::CssTextIndent::each_line(&self) -> bool
+pub const fn surgeist_css::CssTextIndent::hanging(&self) -> bool
+pub const fn surgeist_css::CssTextIndent::length(&self) -> &surgeist_css::CssLength
+pub fn surgeist_css::CssTextIndent::try_new(length: surgeist_css::CssLength, hanging: bool, each_line: bool) -> core::option::Option<Self>
+pub struct surgeist_css::CssTime
+impl surgeist_css::CssTime
+pub const fn surgeist_css::CssTime::try_milliseconds(value: f32) -> core::option::Option<Self>
+pub const fn surgeist_css::CssTime::try_new(value: f32, unit: surgeist_css::CssTimeUnit) -> core::option::Option<Self>
+pub const fn surgeist_css::CssTime::try_seconds(value: f32) -> core::option::Option<Self>
+pub const fn surgeist_css::CssTime::unit(self) -> surgeist_css::CssTimeUnit
+pub const fn surgeist_css::CssTime::value(self) -> f32
+pub struct surgeist_css::CssTimeList
+impl surgeist_css::CssTimeList
+pub fn surgeist_css::CssTimeList::times(&self) -> &[surgeist_css::CssTime]
+pub fn surgeist_css::CssTimeList::try_new(times: alloc::vec::Vec<surgeist_css::CssTime>) -> core::option::Option<Self>
+pub struct surgeist_css::CssTransformArguments
+impl surgeist_css::CssTransformArguments
+pub fn surgeist_css::CssTransformArguments::as_css(&self) -> &str
+pub struct surgeist_css::CssTransformFunction
+impl surgeist_css::CssTransformFunction
+pub const fn surgeist_css::CssTransformFunction::arguments(&self) -> &surgeist_css::CssTransformArguments
+pub const fn surgeist_css::CssTransformFunction::kind(&self) -> surgeist_css::CssTransformFunctionKind
+pub const fn surgeist_css::CssTransformFunction::new(kind: surgeist_css::CssTransformFunctionKind, arguments: surgeist_css::CssTransformArguments) -> Self
+pub struct surgeist_css::CssTransformFunctionList
+impl surgeist_css::CssTransformFunctionList
+pub fn surgeist_css::CssTransformFunctionList::functions(&self) -> &[surgeist_css::CssTransformFunction]
+pub fn surgeist_css::CssTransformFunctionList::try_new(functions: alloc::vec::Vec<surgeist_css::CssTransformFunction>) -> core::option::Option<Self>
+pub struct surgeist_css::CssTransition
+impl surgeist_css::CssTransition
+pub const fn surgeist_css::CssTransition::delay(&self) -> core::option::Option<surgeist_css::CssTime>
+pub const fn surgeist_css::CssTransition::duration(&self) -> core::option::Option<surgeist_css::CssTime>
+pub const fn surgeist_css::CssTransition::property(&self) -> core::option::Option<&surgeist_css::CssTransitionProperty>
+pub const fn surgeist_css::CssTransition::timing_function(&self) -> core::option::Option<&surgeist_css::CssEasing>
+pub fn surgeist_css::CssTransition::try_new(property: core::option::Option<surgeist_css::CssTransitionProperty>, duration: core::option::Option<surgeist_css::CssTime>, delay: core::option::Option<surgeist_css::CssTime>, timing_function: core::option::Option<surgeist_css::CssEasing>) -> core::option::Option<Self>
+pub struct surgeist_css::CssTransitionList
+impl surgeist_css::CssTransitionList
+pub fn surgeist_css::CssTransitionList::items(&self) -> &[surgeist_css::CssTransition]
+pub fn surgeist_css::CssTransitionList::try_new(items: alloc::vec::Vec<surgeist_css::CssTransition>) -> core::option::Option<Self>
+pub struct surgeist_css::CssTransitionPropertyList
+impl surgeist_css::CssTransitionPropertyList
+pub fn surgeist_css::CssTransitionPropertyList::properties(&self) -> &[surgeist_css::CssTransitionProperty]
+pub fn surgeist_css::CssTransitionPropertyList::try_new(properties: alloc::vec::Vec<surgeist_css::CssTransitionProperty>) -> core::option::Option<Self>
+pub struct surgeist_css::CssTranslateValues
+impl surgeist_css::CssTranslateValues
+pub fn surgeist_css::CssTranslateValues::try_new(values: alloc::vec::Vec<surgeist_css::CssLength>) -> core::option::Option<Self>
+pub fn surgeist_css::CssTranslateValues::values(&self) -> &[surgeist_css::CssLength]
+pub struct surgeist_css::CssTypedMediaQuery
+impl surgeist_css::CssTypedMediaQuery
+pub const fn surgeist_css::CssTypedMediaQuery::condition(&self) -> core::option::Option<&surgeist_css::CssMediaCondition>
+pub const fn surgeist_css::CssTypedMediaQuery::media_type(&self) -> surgeist_css::CssMediaType
+pub const fn surgeist_css::CssTypedMediaQuery::modifier(&self) -> core::option::Option<surgeist_css::CssMediaQueryModifier>
+pub fn surgeist_css::CssTypedMediaQuery::new(modifier: core::option::Option<surgeist_css::CssMediaQueryModifier>, media_type: surgeist_css::CssMediaType, condition: core::option::Option<surgeist_css::CssMediaCondition>) -> Self
+pub struct surgeist_css::CssUnicodeRange
+impl surgeist_css::CssUnicodeRange
+pub const fn surgeist_css::CssUnicodeRange::end(self) -> u32
+pub const fn surgeist_css::CssUnicodeRange::start(self) -> u32
+pub const fn surgeist_css::CssUnicodeRange::try_new(start: u32, end: u32) -> core::option::Option<Self>
+pub struct surgeist_css::CssUnicodeRangeList
+impl surgeist_css::CssUnicodeRangeList
+pub fn surgeist_css::CssUnicodeRangeList::ranges(&self) -> &[surgeist_css::CssUnicodeRange]
+pub fn surgeist_css::CssUnicodeRangeList::try_new(ranges: alloc::vec::Vec<surgeist_css::CssUnicodeRange>) -> core::option::Option<Self>
+pub struct surgeist_css::CssUrl
+impl surgeist_css::CssUrl
+pub fn surgeist_css::CssUrl::as_str(&self) -> &str
+pub fn surgeist_css::CssUrl::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssVariableDependentValue
+impl surgeist_css::CssVariableDependentValue
+pub fn surgeist_css::CssVariableDependentValue::as_css(&self) -> &str
+pub fn surgeist_css::CssVariableDependentValue::references(&self) -> &[surgeist_css::CssVariableReference]
+pub struct surgeist_css::CssVariableFallback
+impl surgeist_css::CssVariableFallback
+pub fn surgeist_css::CssVariableFallback::as_css(&self) -> &str
+pub fn surgeist_css::CssVariableFallback::references(&self) -> &[surgeist_css::CssVariableReference]
+pub struct surgeist_css::CssVariableReference
+impl surgeist_css::CssVariableReference
+pub const fn surgeist_css::CssVariableReference::fallback(&self) -> core::option::Option<&surgeist_css::CssVariableFallback>
+pub const fn surgeist_css::CssVariableReference::name(&self) -> &surgeist_css::CssCustomPropertyName
+pub struct surgeist_css::CssVerticalAlignLength
+impl surgeist_css::CssVerticalAlignLength
+pub const fn surgeist_css::CssVerticalAlignLength::length(&self) -> &surgeist_css::CssLength
+pub fn surgeist_css::CssVerticalAlignLength::try_new(length: surgeist_css::CssLength) -> core::option::Option<Self>
 pub struct surgeist_css::Error
 impl surgeist_css::Error
 pub const fn surgeist_css::Error::column(&self) -> u32
