@@ -34,25 +34,7 @@ dialog-system = ["surgeist-dialog/system"]
 render-web = ["surgeist-render/render-web"]
 render-window = ["surgeist-render/render-window"]
 text-accessibility = ["surgeist-text/text-accessibility"]
-text-render = ["surgeist-text/text-render"]
 window-accessibility = ["surgeist-window/accessibility"]
-
-[dev-dependencies]
-pollster = "=0.4.0"
-proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
-
-[[example]]
-name = "hello-window"
-path = "examples/hello-window.rs"
-
-[[example]]
-name = "render-window"
-path = "examples/render-window.rs"
-required-features = ["render-window"]
-
-[[example]]
-name = "app-thumbnail-import"
-path = "examples/app-thumbnail-import.rs"
 
 [workspace.package]
 version = "0.1.0"
@@ -61,14 +43,10 @@ license = "MIT"
 repository = "https://github.com/bj-data-eng/surgeist"
 rust-version = "1.97"
 
-[workspace.dependencies]
-keyboard-types = "=0.7.0"
-pollster = "=0.4.0"
-surgeist = { path = ".", version = "=0.1.0" }
-
 [workspace]
 resolver = "3"
-members = [
+members = []
+exclude = [
     "crates/surgeist-animation",
     "crates/surgeist-css",
     "crates/surgeist-dialog",
@@ -83,6 +61,4 @@ members = [
     "crates/surgeist-test",
     "crates/surgeist-text",
     "crates/surgeist-window",
-    "dev",
-    "tools/surgeist-fixture-metadata",
 ]

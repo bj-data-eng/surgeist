@@ -6,7 +6,6 @@
 //! UIs: Rust-first dynamic structure, CSS styling, typed behavior intent, and
 //! host adapters that do not own app semantics.
 
-pub mod adapters;
 pub mod animation {
     pub use surgeist_animation::*;
 }
