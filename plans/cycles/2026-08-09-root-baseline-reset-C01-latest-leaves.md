@@ -4,15 +4,15 @@
 
 - Cycle ID: `C01`
 - Owning repository: root `surgeist`
-- Status: `in_progress`
+- Status: `reviewed`
 - Cycle base: `359322aae90afbaf68ba7c9afffd79fb57b383d6`
 - Reviewed specification:
   `plans/specs/2026-08-09-root-baseline-reset.md` at
-  `041ee42518ae2033c7d0ec80207161ca258f209e6a4acf1ae91043d5d311daa8`,
+  `d6197f4d9c722525642d87e69dd1880775a6284f22c78cc808ac2d341a0586ad`,
   sections S1–S11
 - Reviewed sequence:
   `plans/sequences/2026-08-09-root-baseline-reset.md` at
-  `0a4ab42a6718712117c80ce292812af14fed57fbc0245a2a621ea90b8073ee0f`,
+  `ea9301e718c6393845f9ad1b4735d30a5d67f6374bd9b5a80f1532a201cb60ed`,
   entry C01
 - Bounded outcome: publish one compileable root product-integration baseline
   containing the exact 38 authorized deletions, exact 14 frozen S4 gitlinks,
@@ -103,6 +103,7 @@
   `cargo check --offline -p surgeist --no-default-features --features dialog-system`;
   the same feature check for `render-web`, `render-window`,
   `text-accessibility`, `text-render`, and `window-accessibility`;
+  `cargo check --offline -p surgeist --no-default-features --features text-accessibility,window-accessibility`;
   `cargo clippy --offline -p surgeist --all-targets -- -F unsafe-code -D warnings`;
   `cargo fmt --check`; `git diff --check`.
 - Dependencies: T01.
@@ -168,6 +169,7 @@ cargo check --offline -p surgeist --no-default-features --features render-window
 cargo check --offline -p surgeist --no-default-features --features text-accessibility
 cargo check --offline -p surgeist --no-default-features --features text-render
 cargo check --offline -p surgeist --no-default-features --features window-accessibility
+cargo check --offline -p surgeist --no-default-features --features text-accessibility,window-accessibility
 cargo clippy --offline --workspace --all-targets -- -F unsafe-code -D warnings
 cargo fmt --check
 cargo run --offline --manifest-path api/generator/Cargo.toml -- --check

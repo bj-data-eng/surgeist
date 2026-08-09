@@ -4,7 +4,7 @@
 
 - Specification: `plans/specs/2026-08-09-root-baseline-reset.md`
 - Reviewed specification revision:
-  `041ee42518ae2033c7d0ec80207161ca258f209e6a4acf1ae91043d5d311daa8`
+  `d6197f4d9c722525642d87e69dd1880775a6284f22c78cc808ac2d341a0586ad`
 - Review verdict: clean
 - User objective: pin every configured submodule to the latest authoritative
   remote `main` tip and restore root to a compileable product-integration

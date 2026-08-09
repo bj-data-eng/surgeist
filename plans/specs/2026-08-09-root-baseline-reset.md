@@ -124,7 +124,7 @@ of the currently pinned revision:
 | `surgeist-task` | `9be361558f082dc2e3504863d5ed046daa490086` | `9356f27ee1bc0833fd0ce22e48fdbe75bb94ae1c` |
 | `surgeist-template` | `95e7a99f5fb324cb900a37fe8b9a442c9eb2eb45` | `2f48fe0af5771f0bfe361b7dd6098de763be55d7` |
 | `surgeist-test` | `7fb45149f0fbc4f6a8bd4b020c2a24d5f64adbda` | `e3ca756612679e4ee937e6cd7a3e76bd05228536` |
-| `surgeist-text` | `754707f27feb04fb7ff31e0574ff43ded552d360` | `0f9b5e6e5f3f112a2ac587439da03337aec008aa` |
+| `surgeist-text` | `754707f27feb04fb7ff31e0574ff43ded552d360` | `9109087d7f82d28b10c85e312b32a7a006cb0605` |
 | `surgeist-window` | `2d595222433e700a673673de2e9f1c9151e63bc2` | `92c4b250dd033ae83036ca877407f3cc7b2b1d68` |
 
 ## S5. Root Facade Contract
@@ -158,7 +158,9 @@ post-reset feature set is exactly:
 
 Removal of `surgeist::adapters` is the only intentional public facade break in
 this reset. Verification covers the default feature set and each forwarded
-feature individually; the full workspace gate covers default members, and no
+feature individually. It also checks `text-accessibility` and
+`window-accessibility` together to prove their shared exact AccessKit dependency
+resolves at 0.24.1. The full workspace gate covers default members, and no
 unsupported all-features promise is introduced.
 
 The workspace contains only the root package's 14 leaf submodules. Deleted local
@@ -218,6 +220,8 @@ The reset is accepted only when:
 
 - Cargo can load the complete workspace offline without missing local targets;
 - the complete workspace checks and tests successfully;
+- the root default, individual forwarded-feature, and combined text/window
+  accessibility checks succeed offline;
 - Clippy covers all workspace targets with warnings denied and unsafe code
   forbidden;
 - formatting is current;
