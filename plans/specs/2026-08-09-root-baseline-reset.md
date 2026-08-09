@@ -5,8 +5,8 @@
 Reset the root `surgeist` repository to a buildable product-integration baseline
 over exactly the 2026-08-09 remote-`main` candidate SHAs recorded in S4 for every
 configured `surgeist-*` submodule; later remote advances are not part of this
-cycle. The root keeps package composition, feature forwarding, gitlinks, the API
-generator, and whole-workspace verification. Legacy root adapters,
+cycle. The root keeps package composition, compatible feature forwarding,
+gitlinks, the API generator, and root-package verification. Legacy root adapters,
 integration tests, requirements, examples, the native development harness, and
 the fixture-metadata tool remain removed.
 
@@ -17,6 +17,11 @@ baseline from which those real integrations will be designed and implemented in
 root against current leaf contracts. It must compile without pretending that the
 removed adapter behavior is still available or transferring integration
 ownership into leaf crates.
+
+Here, “baseline” or “base/new crate” means a clean new-crate-style root state at
+the S4 candidate graph. It does not mean preserving or separately compiling the
+intake gitlink graph, which the user explicitly rejected as too far behind to
+serve as an integration base.
 
 ## S2. Ownership And Scope
 
@@ -45,6 +50,8 @@ initiative start.
 - Do not replace submodules with Cargo-registry dependencies in this reset; that
   is a separate integration change after the leaf packages are published.
 - Do not edit leaf repositories or infer new leaf behavior from their internals.
+- Do not restore, validate, or retain compatibility with the obsolete intake
+  gitlink graph.
 - Do not promise source or API compatibility for the removed adapter module.
 - Do not use `unsafe` in Surgeist-owned code.
 
@@ -60,6 +67,22 @@ root facts currently prevent even metadata loading:
 
 An offline `cargo metadata --no-deps` invocation fails while loading the missing
 `dev/Cargo.toml`. The root and every leaf were otherwise clean at intake.
+
+After selecting the S4 candidates, default root composition checks successfully,
+including both accessibility features together. Two surviving integration claims
+are not compatible with the selected leaves:
+
+- the root `text-render` feature activates text code that calls the pre-candidate
+  render API (`TextRun::try_new` without `TextRunBounds` and
+  `FontData::from_bytes` rather than `try_from_bytes`); and
+- treating all leaf repositories as root Cargo workspace members makes the
+  configured root Clippy gate lint leaf-owned code and fail on the selected CSS
+  candidate's `clippy::question_mark` warning.
+
+Root does not repair either leaf. The baseline removes the broken root feature
+forward and makes the root package the only Cargo workspace member while keeping
+all production leaves as exact path dependencies and all 14 submodules as pinned
+source/API inputs.
 
 The exact authorized deletion inventory is:
 
@@ -138,8 +161,8 @@ The deleted `surgeist::adapters` module is removed from the facade. This is an
 intentional breaking public API change. No compatibility shim or placeholder
 module is permitted because that would preserve a false integration contract.
 
-`surgeist-test` remains a workspace member but is not a production dependency or
-facade reexport.
+`surgeist-test` remains a pinned submodule and API-audit input but is not a Cargo
+workspace member, production dependency, or facade reexport.
 
 ## S6. Manifest Contract
 
@@ -153,20 +176,24 @@ post-reset feature set is exactly:
 | `render-web` | `surgeist-render/render-web` |
 | `render-window` | `surgeist-render/render-window` |
 | `text-accessibility` | `surgeist-text/text-accessibility` |
-| `text-render` | `surgeist-text/text-render` |
 | `window-accessibility` | `surgeist-window/accessibility` |
 
-Removal of `surgeist::adapters` is the only intentional public facade break in
-this reset. Verification covers the default feature set and each forwarded
-feature individually. It also checks `text-accessibility` and
+Removal of `surgeist::adapters` and removal of the incompatible root
+`text-render` feature are intentional public facade breaks in this reset. No
+replacement feature or compatibility shim is added. Verification covers the
+default feature set and each remaining forwarded feature individually. It also checks `text-accessibility` and
 `window-accessibility` together to prove their shared exact AccessKit dependency
-resolves at 0.24.1. The full workspace gate covers default members, and no
+resolves at 0.24.1. The root workspace gate covers the root package, and no
 unsupported all-features promise is introduced.
 
-The workspace contains only the root package's 14 leaf submodules. Deleted local
-crates and deleted explicit example targets are absent. Workspace and root
-development dependencies that served only deleted targets are absent. No new
-dependency or feature is introduced.
+The Cargo workspace contains only the root package. All 14 `crates/surgeist-*`
+submodules are explicitly excluded from workspace membership while the 13
+production leaves remain root path dependencies. This keeps leaf manifests and
+focused gates independently owned and prevents root Clippy from treating leaf
+warnings as root implementation failures. Deleted local crates and explicit
+example targets are absent. Workspace and root development dependencies that
+served only deleted targets are absent. No new dependency or feature is
+introduced.
 
 The root package and workspace keep Rust 2024, MSRV 1.97, version 0.1.0, and the
 existing repository/license metadata.
@@ -188,10 +215,11 @@ fetched object, authoritative URL, fresh remote-tip equality, descendant
 relationship from the old pin, committed leaf policy and manifest inspection,
 and successful root compatibility gates. No handoff is invented after the fact.
 
-Compatibility is established by composing all selected candidates in the root
-workspace. Leaf-private paths are never used. The latest candidate manifests
-remain independently owned; root changes only its own dependency and feature
-wiring when required by their public manifests.
+Compatibility is established by compiling the root package with all production
+path dependencies under its default and retained feature contracts. Leaf-private
+paths are never used. The latest candidate manifests and their focused gates
+remain independently owned; root does not claim that the removed `text-render`
+composition works or lint leaf source as root-owned implementation.
 
 ## S8. Generated Artifact Contract
 
@@ -209,17 +237,19 @@ adapters, integration tests and tools while clearly stating that the reset
 baseline does not yet provide those removed implementations. It must not claim
 that the deleted fixture-metadata tool currently exists. It continues to document
 cloning with submodules, the workspace check, and root-owned API artifact
-generation. Its framework description and crate inventory include
-`surgeist-runtime`, matching the authoritative workspace and both `app` and
-`runtime` facade modules. No replacement integration design, example, or roadmap
-is added.
+generation. It states that the root package is the only Cargo workspace member
+and that the pinned leaves remain path dependencies and API-audit inputs. Its
+framework description and submodule inventory include `surgeist-runtime`,
+matching both `app` and `runtime` facade modules. No replacement integration
+design, example, or roadmap is added.
 
 ## S10. Verification Contract
 
 The reset is accepted only when:
 
-- Cargo can load the complete workspace offline without missing local targets;
-- the complete workspace checks and tests successfully;
+- Cargo can load the root-only workspace offline without missing local targets;
+- the root-only workspace checks and tests successfully while compiling all
+  default production path dependencies;
 - the root default, individual forwarded-feature, and combined text/window
   accessibility checks succeed offline;
 - Clippy covers all workspace targets with warnings denied and unsafe code

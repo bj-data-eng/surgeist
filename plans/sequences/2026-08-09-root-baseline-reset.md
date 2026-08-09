@@ -4,7 +4,7 @@
 
 - Specification: `plans/specs/2026-08-09-root-baseline-reset.md`
 - Reviewed specification revision:
-  `d6197f4d9c722525642d87e69dd1880775a6284f22c78cc808ac2d341a0586ad`
+  `14a8ead7cf6d2c70deb93be645c7372ae99aed1c3e626daaac65160624fe60d4`
 - Review verdict: clean
 - User objective: pin every configured submodule to the latest authoritative
   remote `main` tip and restore root to a compileable product-integration
@@ -18,7 +18,7 @@
 - Specification sections: S1–S11.
 - Bounded outcome: the root cleanup, all 14 exact latest-remote gitlinks,
   repaired root manifest and facade, reconciled README, refreshed root-owned API
-  artifacts, and whole-workspace compatibility evidence form one published root
+  artifacts, and root-package compatibility evidence form one published root
   integration candidate.
 - Prerequisites: all candidates in specification S4 are locally fetchable from
   their `.gitmodules` URLs; each equaled the authoritative remote-`main` tip when
@@ -31,9 +31,10 @@
   specification is clean at the revision above.
 - Exit evidence: root source, manifest, docs, and generated artifacts match the
   specified baseline; all selected gitlinks equal the exact S4 candidates and
-  those commits remain available from the 14 authoritative repositories; the root workspace and feature matrix pass the
-  configured verification gates; task, root-integration, and holistic reviews
-  are clean; root `main` is published and remotely read back.
+  those commits remain available from the 14 authoritative repositories; the
+  root-only workspace and retained feature matrix pass the configured verification
+  gates; task, root-integration, and holistic reviews are clean; root `main` is
+  published and remotely read back.
 - Cross-repository handoff: none is created or consumed for this scoped reset,
   per specification S7 and the user's explicit waiver. The published root
   candidate and its exact gitlinks are the completion record.

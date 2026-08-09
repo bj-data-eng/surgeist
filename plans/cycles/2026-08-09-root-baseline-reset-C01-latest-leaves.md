@@ -4,15 +4,15 @@
 
 - Cycle ID: `C01`
 - Owning repository: root `surgeist`
-- Status: `in_progress`
+- Status: `reviewed`
 - Cycle base: `359322aae90afbaf68ba7c9afffd79fb57b383d6`
 - Reviewed specification:
   `plans/specs/2026-08-09-root-baseline-reset.md` at
-  `d6197f4d9c722525642d87e69dd1880775a6284f22c78cc808ac2d341a0586ad`,
+  `14a8ead7cf6d2c70deb93be645c7372ae99aed1c3e626daaac65160624fe60d4`,
   sections S1–S11
 - Reviewed sequence:
   `plans/sequences/2026-08-09-root-baseline-reset.md` at
-  `ea9301e718c6393845f9ad1b4735d30a5d67f6374bd9b5a80f1532a201cb60ed`,
+  `7b9fd0404b3889a4ae14b76239222560d69b41e56efd09ec20eb0fef76fda2ad`,
   entry C01
 - Bounded outcome: publish one compileable root product-integration baseline
   containing the exact 38 authorized deletions, exact 14 frozen S4 gitlinks,
@@ -43,12 +43,13 @@
 
 ## Impacts
 
-- Public API: intentional breaking removal of `surgeist::adapters`; all direct
-  leaf facade modules and `crate_name()` remain.
-- Dependencies/features: no production dependency or root feature is added;
-  stale root dev/workspace dependencies are removed only when no surviving
-  workspace manifest consumes them; all seven feature entries in specification
-  S6 remain exact.
+- Public API: intentional breaking removal of `surgeist::adapters` and the
+  incompatible root `text-render` feature; all direct leaf facade modules and
+  `crate_name()` remain.
+- Dependencies/features: all 13 production path dependencies remain; no
+  dependency or feature is added; stale root dev/workspace dependencies and the
+  broken feature forward are removed; the root becomes the sole Cargo workspace
+  member and all 14 leaf paths are explicitly excluded from membership.
 - Generated artifacts: root-owned `api/public-api.txt` and affected
   `api/crates/*.txt` are refreshed only by the configured generator.
 - Docs/examples: README is reconciled to the current product-integration
@@ -87,22 +88,26 @@
 
 - Files/area: root `Cargo.toml`, `src/lib.rs`, `README.md`, and the exact S4
   deletion paths.
-- Outcome: Cargo no longer references deleted targets; the facade no longer
-  declares the deleted adapter module; documentation matches the reset while
-  preserving root integration ownership; obsolete dependencies are absent only
-  when unused by every surviving manifest.
-- RED evidence: `cargo metadata --no-deps --offline --format-version 1` fails on
-  the missing `dev/Cargo.toml`, and `src/lib.rs` names the missing adapter module.
-- Acceptance: metadata loads offline; the root package checks and tests offline;
-  each S6 forwarded feature checks individually; manifest metadata, 13 production
-  path dependencies, 14 leaf workspace members, facade modules, and
-  `crate_name()` match the specification; the exact S4 deletions remain; README
-  includes runtime and makes no stale tool/adapter-implementation claim.
+- Outcome: Cargo no longer references deleted targets or exposes the incompatible
+  `text-render` forward; the root is the only Cargo workspace member while all 13
+  production leaf path dependencies remain; the facade no longer declares the
+  deleted adapter module; documentation matches the reset while preserving root
+  integration ownership.
+- RED evidence: metadata fails on missing `dev/Cargo.toml`; `src/lib.rs` names the
+  missing adapter module; `text-render` fails against the selected render API;
+  and root `--workspace` Clippy lints a leaf-owned CSS warning.
+- Acceptance: metadata loads offline; the root-only workspace checks, tests, and
+  strict Clippy gate pass; each retained S6 feature checks individually and the
+  two accessibility features check together; manifest metadata, 13 production
+  path dependencies, six exact S6 feature entries, explicit exclusion of all 14
+  leaf paths, facade modules, and `crate_name()` match the specification; the
+  exact S4 deletions remain; README explains workspace/path-dependency ownership,
+  includes runtime, and makes no stale tool/adapter-implementation claim.
 - Commands: `cargo metadata --no-deps --offline --format-version 1`;
   `cargo check --offline -p surgeist`; `cargo test --offline -p surgeist`;
   `cargo check --offline -p surgeist --no-default-features --features dialog-system`;
   the same feature check for `render-web`, `render-window`,
-  `text-accessibility`, `text-render`, and `window-accessibility`;
+  `text-accessibility`, and `window-accessibility`;
   `cargo check --offline -p surgeist --no-default-features --features text-accessibility,window-accessibility`;
   `cargo clippy --offline -p surgeist --all-targets -- -F unsafe-code -D warnings`;
   `cargo fmt --check`; `git diff --check`.
@@ -167,7 +172,6 @@ cargo check --offline -p surgeist --no-default-features --features dialog-system
 cargo check --offline -p surgeist --no-default-features --features render-web
 cargo check --offline -p surgeist --no-default-features --features render-window
 cargo check --offline -p surgeist --no-default-features --features text-accessibility
-cargo check --offline -p surgeist --no-default-features --features text-render
 cargo check --offline -p surgeist --no-default-features --features window-accessibility
 cargo check --offline -p surgeist --no-default-features --features text-accessibility,window-accessibility
 cargo clippy --offline --workspace --all-targets -- -F unsafe-code -D warnings
