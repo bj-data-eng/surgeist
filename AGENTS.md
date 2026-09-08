@@ -81,7 +81,7 @@ source establish current implementation facts and the actual dependency graph.
 | --- | --- |
 | Root `surgeist` | Thin facade, public composition, cross-crate adapters, and integration |
 | `surgeist-animation` | CSS animation and transition timing, easing, keyframes, interpolation, and sampled values |
-| `surgeist-css` | Strict CSS syntax parsing and authored CSS values |
+| `surgeist-css` | CSS syntax, authored values, browser recovery diagnostics, and optional strict validation |
 | `surgeist-dialog` | Dialog contracts and coordination primitives |
 | `surgeist-layout` | Layout algorithms and contracts, layout-ready fixtures, and parity/oracle tests |
 | `surgeist-render` | Rendering contracts and backend-facing draw data |

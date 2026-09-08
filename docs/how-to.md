@@ -44,9 +44,9 @@ changes and candidate publication remain with the owning leaf repository.
 ## Check Public API Audits
 
 The [API generator](../api/generator/Cargo.toml) is a separate Cargo workspace.
-It needs its own cached dependencies and the nightly toolchain selected by
-`public_api::MINIMUM_NIGHTLY_RUST_VERSION` in
-[generator source](../api/generator/src/lib.rs). Set up those prerequisites
+It needs its own cached dependencies and the nightly toolchain pinned by
+`generate_target_artifact` in [generator source](../api/generator/src/lib.rs).
+Set up those prerequisites
 before running it. The environment setting below also keeps the generator's
 nested Cargo operations offline.
 

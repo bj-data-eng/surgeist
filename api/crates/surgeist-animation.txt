@@ -198,8 +198,12 @@ pub struct surgeist_animation::interpolation::CompositeValue
 impl surgeist_animation::interpolation::CompositeValue
 pub fn surgeist_animation::interpolation::CompositeValue::kind(&self) -> &str
 pub fn surgeist_animation::interpolation::CompositeValue::unsupported(kind: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn surgeist_animation::interpolation::CompositeValue::unsupported_from_shared(kind: alloc::sync::Arc<str>) -> Self
+pub fn surgeist_animation::interpolation::CompositeValue::unsupported_from_text(kind: &str) -> Self
 pub struct surgeist_animation::interpolation::DiscreteValue
 impl surgeist_animation::interpolation::DiscreteValue
+pub fn surgeist_animation::interpolation::DiscreteValue::from_shared(token: alloc::sync::Arc<str>) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
+pub fn surgeist_animation::interpolation::DiscreteValue::from_text(token: &str) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
 pub fn surgeist_animation::interpolation::DiscreteValue::new(token: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
 pub fn surgeist_animation::interpolation::DiscreteValue::token(&self) -> &str
 pub struct surgeist_animation::interpolation::InterpolableColor
@@ -240,11 +244,15 @@ pub const fn surgeist_animation::interpolation::NonFiniteInterpolationResult::va
 pub struct surgeist_animation::interpolation::PropertyKey
 impl surgeist_animation::interpolation::PropertyKey
 pub fn surgeist_animation::interpolation::PropertyKey::as_str(&self) -> &str
+pub fn surgeist_animation::interpolation::PropertyKey::from_shared(name: alloc::sync::Arc<str>) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
+pub fn surgeist_animation::interpolation::PropertyKey::from_text(name: &str) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
 pub fn surgeist_animation::interpolation::PropertyKey::new(name: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
 pub struct surgeist_animation::interpolation::TransformValue
 impl surgeist_animation::interpolation::TransformValue
 pub fn surgeist_animation::interpolation::TransformValue::kind(&self) -> &str
 pub fn surgeist_animation::interpolation::TransformValue::unsupported(kind: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn surgeist_animation::interpolation::TransformValue::unsupported_from_shared(kind: alloc::sync::Arc<str>) -> Self
+pub fn surgeist_animation::interpolation::TransformValue::unsupported_from_text(kind: &str) -> Self
 pub mod surgeist_animation::keyframe
 pub enum surgeist_animation::keyframe::KeyframeError
 pub surgeist_animation::keyframe::KeyframeError::DegenerateSegment
@@ -300,6 +308,7 @@ impl surgeist_animation::keyframe::KeyframeTrack
 pub fn surgeist_animation::keyframe::KeyframeTrack::id(&self) -> &surgeist_animation::keyframe::KeyframeAnimationId
 pub fn surgeist_animation::keyframe::KeyframeTrack::new(id: surgeist_animation::keyframe::KeyframeAnimationId, timing: surgeist_animation::keyframe::KeyframeTiming, segments: alloc::vec::Vec<surgeist_animation::keyframe::KeyframeSegment>) -> core::result::Result<Self, surgeist_animation::keyframe::KeyframeError>
 pub fn surgeist_animation::keyframe::KeyframeTrack::sample(&self, elapsed: surgeist_animation::time::ElapsedTime, play_state: surgeist_animation::timing::AnimationPlayState) -> alloc::vec::Vec<surgeist_animation::sample::SampledPropertyResult>
+pub fn surgeist_animation::keyframe::KeyframeTrack::sample_into(&self, elapsed: surgeist_animation::time::ElapsedTime, play_state: surgeist_animation::timing::AnimationPlayState, output: &mut alloc::vec::Vec<surgeist_animation::sample::SampledPropertyResult>)
 pub fn surgeist_animation::keyframe::KeyframeTrack::segments(&self) -> &[surgeist_animation::keyframe::KeyframeSegment]
 pub const fn surgeist_animation::keyframe::KeyframeTrack::timing(&self) -> surgeist_animation::keyframe::KeyframeTiming
 pub mod surgeist_animation::progress
@@ -699,6 +708,8 @@ pub struct surgeist_animation::CompositeValue
 impl surgeist_animation::interpolation::CompositeValue
 pub fn surgeist_animation::interpolation::CompositeValue::kind(&self) -> &str
 pub fn surgeist_animation::interpolation::CompositeValue::unsupported(kind: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn surgeist_animation::interpolation::CompositeValue::unsupported_from_shared(kind: alloc::sync::Arc<str>) -> Self
+pub fn surgeist_animation::interpolation::CompositeValue::unsupported_from_text(kind: &str) -> Self
 pub struct surgeist_animation::CubicBezier
 impl surgeist_animation::easing::CubicBezier
 pub const fn surgeist_animation::easing::CubicBezier::control_points(self) -> (f64, f64, f64, f64)
@@ -711,6 +722,8 @@ pub const fn surgeist_animation::timing::CurrentIteration::finite_index(self) ->
 pub const fn surgeist_animation::timing::CurrentIteration::is_infinite(self) -> bool
 pub struct surgeist_animation::DiscreteValue
 impl surgeist_animation::interpolation::DiscreteValue
+pub fn surgeist_animation::interpolation::DiscreteValue::from_shared(token: alloc::sync::Arc<str>) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
+pub fn surgeist_animation::interpolation::DiscreteValue::from_text(token: &str) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
 pub fn surgeist_animation::interpolation::DiscreteValue::new(token: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
 pub fn surgeist_animation::interpolation::DiscreteValue::token(&self) -> &str
 pub struct surgeist_animation::EasedProgress
@@ -786,6 +799,7 @@ impl surgeist_animation::keyframe::KeyframeTrack
 pub fn surgeist_animation::keyframe::KeyframeTrack::id(&self) -> &surgeist_animation::keyframe::KeyframeAnimationId
 pub fn surgeist_animation::keyframe::KeyframeTrack::new(id: surgeist_animation::keyframe::KeyframeAnimationId, timing: surgeist_animation::keyframe::KeyframeTiming, segments: alloc::vec::Vec<surgeist_animation::keyframe::KeyframeSegment>) -> core::result::Result<Self, surgeist_animation::keyframe::KeyframeError>
 pub fn surgeist_animation::keyframe::KeyframeTrack::sample(&self, elapsed: surgeist_animation::time::ElapsedTime, play_state: surgeist_animation::timing::AnimationPlayState) -> alloc::vec::Vec<surgeist_animation::sample::SampledPropertyResult>
+pub fn surgeist_animation::keyframe::KeyframeTrack::sample_into(&self, elapsed: surgeist_animation::time::ElapsedTime, play_state: surgeist_animation::timing::AnimationPlayState, output: &mut alloc::vec::Vec<surgeist_animation::sample::SampledPropertyResult>)
 pub fn surgeist_animation::keyframe::KeyframeTrack::segments(&self) -> &[surgeist_animation::keyframe::KeyframeSegment]
 pub const fn surgeist_animation::keyframe::KeyframeTrack::timing(&self) -> surgeist_animation::keyframe::KeyframeTiming
 pub struct surgeist_animation::LinearControlPoint
@@ -834,6 +848,8 @@ pub const fn surgeist_animation::timing::PhaseProgress::value(self) -> f64
 pub struct surgeist_animation::PropertyKey
 impl surgeist_animation::interpolation::PropertyKey
 pub fn surgeist_animation::interpolation::PropertyKey::as_str(&self) -> &str
+pub fn surgeist_animation::interpolation::PropertyKey::from_shared(name: alloc::sync::Arc<str>) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
+pub fn surgeist_animation::interpolation::PropertyKey::from_text(name: &str) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
 pub fn surgeist_animation::interpolation::PropertyKey::new(name: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
 pub struct surgeist_animation::SampledProperty
 impl surgeist_animation::sample::SampledProperty
@@ -878,6 +894,8 @@ pub struct surgeist_animation::TransformValue
 impl surgeist_animation::interpolation::TransformValue
 pub fn surgeist_animation::interpolation::TransformValue::kind(&self) -> &str
 pub fn surgeist_animation::interpolation::TransformValue::unsupported(kind: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn surgeist_animation::interpolation::TransformValue::unsupported_from_shared(kind: alloc::sync::Arc<str>) -> Self
+pub fn surgeist_animation::interpolation::TransformValue::unsupported_from_text(kind: &str) -> Self
 pub struct surgeist_animation::TransitionTrack
 impl surgeist_animation::transition::TransitionTrack
 pub const fn surgeist_animation::transition::TransitionTrack::delay(&self) -> surgeist_animation::time::AnimationDelay

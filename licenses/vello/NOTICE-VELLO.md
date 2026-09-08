@@ -4,6 +4,9 @@
 Vello main crate described below. This notice records the source state before
 local adaptation; it is not a copy of Vello's public crate or API.
 
+The repository's [third-party notice](NOTICE.md) covers the direct dependencies
+and bundled test asset alongside this adaptation record.
+
 ## Pinned package
 
 - Package: `vello` 0.9.0.
@@ -23,7 +26,8 @@ local adaptation; it is not a copy of Vello's public crate or API.
 | `src/vello_engine/encoder.rs` | `vello-0.9.0/src/wgpu_engine.rs` | `d2bbb8151f27d7fd4ff82abaa1438e05cb45468dab36034f48e54eefba183e7c` | Realizes symbolic recordings, uploads, bind groups, and compute passes into a transaction-borrowed encoder; returns a lease and cannot submit command buffers or own a renderer. |
 | `src/vello_engine/resources.rs` | `vello-0.9.0/src/wgpu_engine.rs` | `d2bbb8151f27d7fd4ff82abaa1438e05cb45468dab36034f48e54eefba183e7c` | Replaces the upstream engine's resource ownership with checked per-device allocation and explicit lease commit, abort, and atlas-recovery state under Surgeist transaction control. |
 
-Every derived file listed above retains its upstream copyright and SPDX header.
+Every derived file listed above retains its upstream copyright and SPDX header
+and identifies its local modification with a reference to this record.
 `src/vello_engine/mod.rs` is Surgeist-owned composition that wires the derived
 private phases together, so it deliberately carries no upstream source header.
 

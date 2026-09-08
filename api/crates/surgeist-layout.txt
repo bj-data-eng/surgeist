@@ -300,6 +300,9 @@ pub surgeist_layout::LayoutInvalidInputOf::FloatExclusionProviderOutput
 pub surgeist_layout::LayoutInvalidInputOf::FloatExclusionProviderOutput::error: surgeist_layout::FloatExclusionIntervalErrorOf<S>
 pub surgeist_layout::LayoutInvalidInputOf::FloatExclusionRole
 pub surgeist_layout::LayoutInvalidInputOf::FloatExclusionRole::reason: surgeist_layout::FloatExclusionRoleError
+pub surgeist_layout::LayoutInvalidInputOf::InlineFlowMismatch
+pub surgeist_layout::LayoutInvalidInputOf::InlineFlowMismatch::actual: surgeist_layout::FlowAxes
+pub surgeist_layout::LayoutInvalidInputOf::InlineFlowMismatch::expected: surgeist_layout::FlowAxes
 pub surgeist_layout::LayoutInvalidInputOf::InlineText(surgeist_layout::InlineTextInputErrorOf<S>)
 pub surgeist_layout::LayoutInvalidInputOf::InvalidNumeric
 pub surgeist_layout::LayoutInvalidInputOf::InvalidNumeric::value: S

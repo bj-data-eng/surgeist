@@ -243,8 +243,9 @@ pub fn render_list_line(root: &Path, target: &ApiTarget) -> String {
 }
 
 pub fn generate_target_artifact(target: &ApiTarget) -> Result<String, String> {
+    // The parser's minimum nightly predates Surgeist's MSRV; pin a compatible rustdoc.
     let rustdoc_json = rustdoc_json::Builder::default()
-        .toolchain(public_api::MINIMUM_NIGHTLY_RUST_VERSION)
+        .toolchain("nightly-2026-05-28")
         .manifest_path(target.manifest_path())
         .build()
         .map_err(|error| format!("build rustdoc JSON for {}: {error}", target.name()))?;

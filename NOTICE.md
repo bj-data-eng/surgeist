@@ -9,9 +9,9 @@ Leaf versions below refer to the
 revisions selected by the root's committed Git submodule links; their source
 repositories are recorded in [.gitmodules](.gitmodules).
 
-The checkout also retains the existing notices for adapted source carried by
-the layout and render leaves. The copies linked below preserve their upstream
-legal text and modification notices. All 14 leaf `LICENSE` files contain
+The checkout also retains attribution for adapted source and bundled test assets
+carried by the CSS, layout, and render leaves. The copies linked below preserve
+their upstream legal text and modification notices. All 14 leaf `LICENSE` files contain
 identical text and share one copy here; the root project's own license remains
 separate.
 
@@ -26,6 +26,35 @@ with this checkout. Distribute this notice and its accompanying `licenses/`
 files together, retaining applicable leaf notices with redistributed leaf source.
 
 ## Dependencies
+
+### Ahem
+
+The layout and render leaves include Ahem test fonts. Layout embeds WOFF2 bytes
+retained from Taffy's browser-test support and credits Todd Fahrner and Paul
+Nelson through Kozea/Ahem. Render bundles a W3C-distributed TTF and credits Todd
+Fahrner and Myles C. Maxfield in the included upstream README.
+
+* License: [Public domain with the upstream Creative Commons Zero fallback](licenses/ahem/COPYING)
+* Homepages: [Kozea/Ahem](https://github.com/Kozea/Ahem) and [W3C Ahem](https://www.w3.org/Style/CSS/Test/Fonts/Ahem/)
+* Authorship and usage: [W3C upstream README](licenses/ahem/UPSTREAM-README)
+
+Both leaves carry byte-identical `COPYING` declarations, shared here. Layout's
+[source notice](https://github.com/bj-data-eng/surgeist-layout/blob/b65a18c042655f47d0870f712c7b5e647b5e28a6/NOTICE.md#ahem)
+identifies the declaration's Kozea revision; render's
+[fixture provenance](https://github.com/bj-data-eng/surgeist-render/blob/e44860e7df530795fef2d423024723d5fa5dc447/tests/fixtures/fonts/ahem/PROVENANCE.md)
+records its font and notice hashes. These fonts are test assets.
+
+### CSSTree
+
+The CSS leaf includes CSSTree test fixtures and derived neutral expectations
+from commit `88e3d965c0b1628642a30a841745b410d6835052`, distributed by Roman Dvornov.
+
+* License: [MIT](licenses/csstree/LICENSE)
+* Homepage: [CSSTree](https://github.com/csstree/csstree)
+
+The [pinned corpus README](https://github.com/bj-data-eng/surgeist-css/blob/14ff8f37b2417c5c836eb04986188aadbc9310f1/tests/corpus/csstree/README.md)
+records the source tree, import, and transformation provenance. The source
+license is included verbatim, retaining the 2016–2026 copyright attribution.
 
 ### public-api 0.50.0
 
@@ -82,10 +111,13 @@ The root facade depends on surgeist-layout, distributed by bj-data-eng.
 * Homepage: [surgeist-layout](https://github.com/bj-data-eng/surgeist-layout)
 
 The leaf records adaptation from Taffy 0.10.1 and continued use of Taffy layout
-fixtures. Its [original notice](licenses/taffy/NOTICE.md) and
-[Taffy MIT license](licenses/taffy/LICENSE-TAFFY.md) are included
-verbatim. The latter retains the original authors' copyright statement and the
-2018 Visly Inc. attribution for Stretch. Upstream:
+fixtures and browser-test support. The [retained adaptation notice](licenses/taffy/NOTICE.md)
+records that source lineage; the
+[current leaf notice](https://github.com/bj-data-eng/surgeist-layout/blob/b65a18c042655f47d0870f712c7b5e647b5e28a6/NOTICE.md#taffy)
+identifies the incorporated material and fixture pins. The current
+[Taffy MIT license](licenses/taffy/LICENSE.md) is included verbatim and retains
+the original authors' copyright statement and the 2018 Visly Inc. attribution
+for Stretch. Upstream:
 [Taffy](https://github.com/DioxusLabs/taffy).
 
 ### surgeist-render 0.1.0
@@ -167,3 +199,19 @@ The root facade depends on surgeist-window, distributed by bj-data-eng.
 
 * License: [MIT](licenses/surgeist/LICENSE)
 * Homepage: [surgeist-window](https://github.com/bj-data-eng/surgeist-window)
+
+### Web Platform Tests
+
+The layout leaf includes subgrid and grid-lanes browser fixtures adapted from
+Web Platform Tests (WPT), distributed by the web-platform-tests contributors,
+and generated expectations derived from those fixtures.
+
+* License: [BSD-3-Clause](licenses/web-platform-tests/LICENSE.md), with [CC0-1.0](licenses/web-platform-tests/legalcode.txt) for individually dedicated source material
+* Homepage: [Web Platform Tests](https://web-platform-tests.org)
+* Source authors and individual dedications: [upstream notices](licenses/web-platform-tests/NOTICE.md)
+
+The [current leaf notice](https://github.com/bj-data-eng/surgeist-layout/blob/b65a18c042655f47d0870f712c7b5e647b5e28a6/NOTICE.md#web-platform-tests)
+records revision `f01d00b6963a8374784e6aadc67e608b100069d0` for pinned source
+URLs. Some adapted fixtures record only an upstream path, so their exact
+adaptation revision remains unrecorded. The included license and source notices
+were checked by the leaf against the named files at the pinned revision.
