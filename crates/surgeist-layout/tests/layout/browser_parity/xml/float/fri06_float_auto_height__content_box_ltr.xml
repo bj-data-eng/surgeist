@@ -1,0 +1,19 @@
+<test name="fri06_float_auto_height__content_box_ltr" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" display="block" box-sizing="content-box" direction="ltr" overflow-x="auto" overflow-y="auto" scrollbar-width="15" width="160px">
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" float="left" width="40px" height="28px"/>
+      <div source-tag="div" display="block" box-sizing="content-box" direction="ltr" float="right" overflow-x="auto" overflow-y="auto" scrollbar-width="15" width="52px">
+        <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" float="left" width="24px" height="16px"/>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="160" height="28" scroll_width="0" scroll_height="0">
+      <node x="0" y="0" width="40" height="28"/>
+      <node x="108" y="0" width="52" height="16" scroll_width="0" scroll_height="0">
+        <node x="0" y="0" width="24" height="16"/>
+      </node>
+    </node>
+  </expectations>
+</test>

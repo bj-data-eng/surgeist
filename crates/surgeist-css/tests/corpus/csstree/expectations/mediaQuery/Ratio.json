@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/mediaQuery/Ratio.json",
+  "source_sha256": "f76d50c587cb053a60876ef57405c36c0178e5de0a8c38f68d70ca63544e5e1e",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "mediaQuery/Ratio.json#/basic ratio",
+      "context": "mediaQuery",
+      "label": "basic ratio",
+      "input": "(foo:1/2)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/error/0",
+      "context": "mediaQuery",
+      "input": "(foo: 1/)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/fractional/0",
+      "context": "mediaQuery",
+      "label": "fractional",
+      "input": "(foo:2.5/3)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/fractional/1",
+      "context": "mediaQuery",
+      "label": "fractional",
+      "input": "(foo:3/1.6)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/fractional/2",
+      "context": "mediaQuery",
+      "label": "fractional",
+      "input": "(foo:2.5/1.6)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/out of range/0",
+      "context": "mediaQuery",
+      "label": "out of range",
+      "input": "(foo:0/1)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/out of range/1",
+      "context": "mediaQuery",
+      "label": "out of range",
+      "input": "(foo:1e2/1)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/out of range/2",
+      "context": "mediaQuery",
+      "label": "out of range",
+      "input": "(foo:-1/5)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/out of range/3",
+      "context": "mediaQuery",
+      "label": "out of range",
+      "input": "(foo:2/0)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/out of range/4",
+      "context": "mediaQuery",
+      "label": "out of range",
+      "input": "(foo:1/1e2)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/out of range/5",
+      "context": "mediaQuery",
+      "label": "out of range",
+      "input": "(foo:1/-5)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/usingn with functions/0",
+      "context": "mediaQuery",
+      "label": "usingn with functions",
+      "input": "(foo:1/calc(2 + 3))",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/usingn with functions/1",
+      "context": "mediaQuery",
+      "label": "usingn with functions",
+      "input": "(foo:calc(2 + 3)/1)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/usingn with functions/2",
+      "context": "mediaQuery",
+      "label": "usingn with functions",
+      "input": "(foo:calc(2 + 3)/calc(2 + 3))",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/selector/functional-pseudo/lang.json",
+  "source_sha256": "7e4e7f105eba0cc2403fa40a9e4e7b376bb669c493ff12b3c44b556b0eec38e3",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "selector/functional-pseudo/lang.json#/error/0",
+      "context": "selector",
+      "input": ":lang(1)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/lang.json#/error/1",
+      "context": "selector",
+      "input": ":lang(var(--test)) {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/lang.json#/ident",
+      "context": "selector",
+      "label": "ident",
+      "input": ":lang(en)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/lang.json#/list",
+      "context": "selector",
+      "label": "list",
+      "input": ":lang( 'en', de-DE ,  \"es\" )",
+      "upstream_outcome": "parsed",
+      "canonical_css": ":lang(\"en\",de-DE,\"es\")",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/lang.json#/not an error",
+      "context": "selector",
+      "label": "not an error",
+      "input": ":lang(en en)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/lang.json#/should be case insensitive",
+      "context": "selector",
+      "label": "should be case insensitive",
+      "input": ":LanG(en-US)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/lang.json#/string",
+      "context": "selector",
+      "label": "string",
+      "input": ":lang('en')",
+      "upstream_outcome": "parsed",
+      "canonical_css": ":lang(\"en\")",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/lang.json#/with spaces and comments",
+      "context": "selector",
+      "label": "with spaces and comments",
+      "input": ":lang(  en /* test */ )",
+      "upstream_outcome": "parsed",
+      "canonical_css": ":lang(en)",
+      "status": "active"
+    }
+  ]
+}

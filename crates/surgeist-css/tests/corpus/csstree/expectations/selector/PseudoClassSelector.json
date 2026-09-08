@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/selector/PseudoClassSelector.json",
+  "source_sha256": "d9445890e94c0593d89aac9e98911f50698298cb48b9025ec8eb63292cf5d1cd",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "selector/PseudoClassSelector.json#/pseudo element :after",
+      "context": "selector",
+      "label": "pseudo element :after",
+      "input": ":after",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/PseudoClassSelector.json#/pseudo element :before",
+      "context": "selector",
+      "label": "pseudo element :before",
+      "input": ":before",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/PseudoClassSelector.json#/pseudo element :before case insesitive",
+      "context": "selector",
+      "label": "pseudo element :before case insesitive",
+      "input": ":bEfOrE",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/PseudoClassSelector.json#/pseudo element :first-letter",
+      "context": "selector",
+      "label": "pseudo element :first-letter",
+      "input": ":first-letter",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/PseudoClassSelector.json#/pseudo element :first-line",
+      "context": "selector",
+      "label": "pseudo element :first-line",
+      "input": ":first-line",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/PseudoClassSelector.json#/pseudoc.0",
+      "context": "selector",
+      "label": "pseudoc.0",
+      "input": ":test",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/PseudoClassSelector.json#/pseudoc.1",
+      "context": "selector",
+      "label": "pseudoc.1",
+      "input": ":test-test",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/PseudoClassSelector.json#/unknown function pseudo class",
+      "context": "selector",
+      "label": "unknown function pseudo class",
+      "input": ":unknown(1 + 2)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/PseudoClassSelector.json#/unknown function pseudo class with nested blocks",
+      "context": "selector",
+      "label": "unknown function pseudo class with nested blocks",
+      "input": ":unknown([{}()[{[()]}]])",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/PseudoClassSelector.json#/unknown function pseudo class with nested blocks (unbalanced parenthesis)",
+      "context": "selector",
+      "label": "unknown function pseudo class with nested blocks (unbalanced parenthesis)",
+      "input": ":unknown([{}()[{[)]}]])",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/PseudoClassSelector.json#/unknown function pseudo class with spaces and comments",
+      "context": "selector",
+      "label": "unknown function pseudo class with spaces and comments",
+      "input": ":unknown( 1 + 2 /* comment */ + 3 )",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

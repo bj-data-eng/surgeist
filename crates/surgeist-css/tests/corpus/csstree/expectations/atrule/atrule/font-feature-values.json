@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/atrule/atrule/font-feature-values.json",
+  "source_sha256": "0be7ff601176527199c4d880f7b6f3a157d121b235f34c4fc5d3bf47b72b6a40",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "atrule/atrule/font-feature-values.json#/with all feature types",
+      "context": "atrule",
+      "label": "with all feature types",
+      "input": "@font-feature-values \"Another Font\"{@annotation{circled:1}@ornaments{fleuron:1}@stylistic{alt-a:1}@swash{swash1:1}@historical-forms{hist:1}}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/font-feature-values.json#/with character-variant and styleset",
+      "context": "atrule",
+      "label": "with character-variant and styleset",
+      "input": "@font-feature-values InterVariable{@character-variant{cv01:1;cv02:2;cv03:3;alt-1:1;open-4:2;open-6:3}@styleset{ss01:1;ss02:2;ss03:3;open-digits:1;disambiguation:2;round-quotes-and-commas:3}}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

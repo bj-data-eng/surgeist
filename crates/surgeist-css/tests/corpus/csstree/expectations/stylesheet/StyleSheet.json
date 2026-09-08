@@ -1,0 +1,242 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/stylesheet/StyleSheet.json",
+  "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "stylesheet/StyleSheet.json#/BOM UTF-16BE",
+      "context": "stylesheet",
+      "label": "BOM UTF-16BE",
+      "input": "﻿",
+      "upstream_outcome": "parsed",
+      "canonical_css": "",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/BOM UTF-16BE #2",
+      "context": "stylesheet",
+      "label": "BOM UTF-16BE #2",
+      "input": "﻿@a;",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@a;",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/BOM UTF-16LE",
+      "context": "stylesheet",
+      "label": "BOM UTF-16LE",
+      "input": "￾",
+      "upstream_outcome": "parsed",
+      "canonical_css": "",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/BOM UTF-16LE #2",
+      "context": "stylesheet",
+      "label": "BOM UTF-16LE #2",
+      "input": "￾@a;",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@a;",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/CDC",
+      "context": "stylesheet",
+      "label": "CDC",
+      "input": "-->",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/CDO",
+      "context": "stylesheet",
+      "label": "CDO",
+      "input": "<!--",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/CDO~1CDC",
+      "context": "stylesheet",
+      "label": "CDO/CDC",
+      "input": "<!--a{}-->",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/comment and whitespaces only",
+      "context": "stylesheet",
+      "label": "comment and whitespaces only",
+      "input": "  /* no css */  ",
+      "upstream_outcome": "parsed",
+      "canonical_css": "",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/comment only",
+      "context": "stylesheet",
+      "label": "comment only",
+      "input": "/* no css */",
+      "upstream_outcome": "parsed",
+      "canonical_css": "",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/empty",
+      "context": "stylesheet",
+      "label": "empty",
+      "input": "",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/error/0",
+      "context": "stylesheet",
+      "input": "{}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/issue #250",
+      "context": "stylesheet",
+      "label": "issue #250",
+      "input": "@x {\n  unicode-range: U+2074, U+20AC, U+2212, U+2215, U+E0FF;\n}\n@x {\n  a: a();\n}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@x{unicode-range:U+2074,U+20AC,U+2212,U+2215,U+E0FF}@x{a:a()}",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/issue111.test1",
+      "context": "stylesheet",
+      "label": "issue111.test1",
+      "input": "body:not([x|x]) {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "body:not([x|x]){}",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/issue90.test1",
+      "context": "stylesheet",
+      "label": "issue90.test1",
+      "input": "@media test {\n    @page {\n        p: v;\n    }\n}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@media test{@page{p:v}}",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/issue90.test2",
+      "context": "stylesheet",
+      "label": "issue90.test2",
+      "input": "x {\n    p:v;\n}\n\n@media test {\n    a {\n        p:v;\n    }\n\n    /* comment */\n\n    @page {\n        p: v;\n    }\n\n    b {\n        p:v;\n    }\n}\n\ny {\n    p:v;\n}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "x{p:v}@media test{a{p:v}@page{p:v}b{p:v}}y{p:v}",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/rule with a bad-string token (issue #93)",
+      "context": "stylesheet",
+      "label": "rule with a bad-string token (issue #93)",
+      "input": ".first{color:red\"\n}.thisAndAllFollowingRulesGetSwallowed {\n  color: red\n}",
+      "upstream_outcome": "parsed",
+      "canonical_css": ".first{color:red\"\n}.thisAndAllFollowingRulesGetSwallowed{color:red}",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/stylesheet.0",
+      "context": "stylesheet",
+      "label": "stylesheet.0",
+      "input": "s{p:v}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/stylesheet.1",
+      "context": "stylesheet",
+      "label": "stylesheet.1",
+      "input": "s0{p0:v0}s1{p1:v1}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/stylesheet.2",
+      "context": "stylesheet",
+      "label": "stylesheet.2",
+      "input": "@test;",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/stylesheet.3",
+      "context": "stylesheet",
+      "label": "stylesheet.3",
+      "input": "@test0;@test1;",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/stylesheet.4",
+      "context": "stylesheet",
+      "label": "stylesheet.4",
+      "input": "s{p:v}@test;",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/stylesheet.c.0",
+      "context": "stylesheet",
+      "label": "stylesheet.c.0",
+      "input": "/* test */\ns {\n    p: v\n}\n/* test */",
+      "upstream_outcome": "parsed",
+      "canonical_css": "s{p:v}",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/stylesheet.s.0",
+      "context": "stylesheet",
+      "label": "stylesheet.s.0",
+      "input": "s {\n    p: v\n}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "s{p:v}",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/stylesheet.s.1",
+      "context": "stylesheet",
+      "label": "stylesheet.s.1",
+      "input": "s0 {\n    p0: v0\n}\n\ns1 {\n    p1: v1\n}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "s0{p0:v0}s1{p1:v1}",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/stylesheet.s.2",
+      "context": "stylesheet",
+      "label": "stylesheet.s.2",
+      "input": "@test0;\n@test1;",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@test0;@test1;",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/stylesheet.s.3",
+      "context": "stylesheet",
+      "label": "stylesheet.s.3",
+      "input": "s {\n    p:v\n}\n\n@test;",
+      "upstream_outcome": "parsed",
+      "canonical_css": "s{p:v}@test;",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/whitespace only",
+      "context": "stylesheet",
+      "label": "whitespace only",
+      "input": "  ",
+      "upstream_outcome": "parsed",
+      "canonical_css": "",
+      "status": "active"
+    }
+  ]
+}

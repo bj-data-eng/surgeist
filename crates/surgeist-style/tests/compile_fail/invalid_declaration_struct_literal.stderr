@@ -1,0 +1,9 @@
+error[E0451]: fields `property` and `value` of struct `Declaration` are private
+ --> tests/compile_fail/invalid_declaration_struct_literal.rs:5:9
+  |
+4 |     let _declaration = Declaration {
+  |                        ----------- in this type
+5 |         property: Property::Color,
+  |         ^^^^^^^^ private field
+6 |         value: Value::Color(Color::BLACK),
+  |         ^^^^^ private field

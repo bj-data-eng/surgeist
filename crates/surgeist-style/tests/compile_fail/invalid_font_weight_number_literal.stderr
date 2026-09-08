@@ -1,0 +1,19 @@
+error[E0423]: cannot initialize a tuple struct which contains private fields
+ --> tests/compile_fail/invalid_font_weight_number_literal.rs:4:19
+  |
+4 |     let _weight = FontWeightNumber(400);
+  |                   ^^^^^^^^^^^^^^^^
+  |
+note: constructor is not visible here due to private fields
+ --> src/value.rs
+  |
+  | pub struct FontWeightNumber(i32);
+  |                             ^^^ private field
+help: you might have meant to use an associated function to build this type
+  |
+4 -     let _weight = FontWeightNumber(400);
+4 +     let _weight = FontWeightNumber::normal();
+  |
+4 -     let _weight = FontWeightNumber(400);
+4 +     let _weight = FontWeightNumber::bold();
+  |

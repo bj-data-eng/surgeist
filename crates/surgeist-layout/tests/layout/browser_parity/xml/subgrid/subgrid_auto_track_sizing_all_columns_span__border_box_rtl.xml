@@ -1,0 +1,15 @@
+<test name="subgrid_auto_track_sizing_all_columns_span__border_box_rtl" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="article" display="grid" box-sizing="content-box" direction="ltr" font-family="monospace" font-size="16px" line-height="16px" max-width="260px" padding-top="1px" padding-left="5px" padding-bottom="1px" padding-right="5px" border-top="1px" border-left="1px" border-bottom="1px" border-right="1px" grid-template-columns="auto 100px auto">
+      <div source-tag="div" display="grid" box-sizing="content-box" direction="ltr" font-family="monospace" font-size="16px" line-height="16px" margin-top="7px" margin-left="5px" margin-bottom="3px" margin-right="11px" padding-top="3px" padding-left="11px" padding-bottom="7px" padding-right="5px" border-top="5px" border-left="3px" border-bottom="11px" border-right="7px" grid-template-rows="subgrid" grid-column-start="1" grid-column-end="span 3">
+        The cat can not be separated from milk
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="272" height="72">
+      <node x="11" y="9" width="244" height="58"/>
+    </node>
+  </expectations>
+</test>

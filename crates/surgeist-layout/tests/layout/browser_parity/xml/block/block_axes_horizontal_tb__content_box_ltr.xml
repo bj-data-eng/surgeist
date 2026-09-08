@@ -1,0 +1,15 @@
+<test name="block_axes_horizontal_tb__content_box_ltr" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" display="block" box-sizing="content-box" direction="ltr" width="100px" height="100px">
+      <div source-tag="div" display="block" box-sizing="content-box" direction="ltr" width="30px" height="20px" margin-left="13px"/>
+      <div source-tag="div" display="block" box-sizing="content-box" direction="ltr" width="20px" height="30px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="100" height="100">
+      <node x="13" y="0" width="30" height="20"/>
+      <node x="0" y="20" width="20" height="30"/>
+    </node>
+  </expectations>
+</test>

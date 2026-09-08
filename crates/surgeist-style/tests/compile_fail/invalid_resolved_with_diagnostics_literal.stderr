@@ -1,0 +1,9 @@
+error[E0451]: fields `resolved` and `diagnostics` of struct `ResolvedWithDiagnostics` are private
+ --> tests/compile_fail/invalid_resolved_with_diagnostics_literal.rs:5:9
+  |
+4 |     let _resolved = ResolvedWithDiagnostics {
+  |                     ----------------------- in this type
+5 |         resolved: Resolved::new(),
+  |         ^^^^^^^^ private field
+6 |         diagnostics: Vec::new(),
+  |         ^^^^^^^^^^^ private field

@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/value/function/expression.json",
+  "source_sha256": "b4cbd163c7c6552763fcfb009e4e56e2cc4bda429ad2495b37821bdb114d7c20",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "value/function/expression.json#/expression #0",
+      "context": "value",
+      "label": "expression #0",
+      "input": "expression()",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/function/expression.json#/expression #1",
+      "context": "value",
+      "label": "expression #1",
+      "input": "expression(())",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/function/expression.json#/expression #2",
+      "context": "value",
+      "label": "expression #2",
+      "input": "expression(expression())",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/function/expression.json#/expression #3",
+      "context": "value",
+      "label": "expression #3",
+      "input": "expression(/*)*/)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/function/expression.json#/expression #4",
+      "context": "value",
+      "label": "expression #4",
+      "input": "expression(\")\")",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/function/expression.json#/expression #5",
+      "context": "value",
+      "label": "expression #5",
+      "input": "expression(')')",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/function/expression.json#/expression #6",
+      "context": "value",
+      "label": "expression #6",
+      "input": "expression(()())",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/function/expression.json#/expression #8",
+      "context": "value",
+      "label": "expression #8",
+      "input": "expression(a = 5)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

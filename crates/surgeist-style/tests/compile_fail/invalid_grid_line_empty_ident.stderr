@@ -1,0 +1,13 @@
+error[E0308]: mismatched types
+ --> tests/compile_fail/invalid_grid_line_empty_ident.rs:4:37
+  |
+4 |     let _line = GridLine::BareIdent(String::new());
+  |                 ------------------- ^^^^^^^^^^^^^ expected `GridLineName`, found `String`
+  |                 |
+  |                 arguments to this enum variant are incorrect
+  |
+note: tuple variant defined here
+ --> src/value.rs
+  |
+  |     BareIdent(GridLineName),
+  |     ^^^^^^^^^

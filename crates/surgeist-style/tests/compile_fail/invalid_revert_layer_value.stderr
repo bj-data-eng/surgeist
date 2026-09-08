@@ -1,0 +1,5 @@
+error[E0599]: no variant, associated function, or constant named `RevertLayer` found for enum `surgeist_style::Keyword` in the current scope
+ --> tests/compile_fail/invalid_revert_layer_value.rs:4:42
+  |
+4 |     let _value = Value::Keyword(Keyword::RevertLayer);
+  |                                          ^^^^^^^^^^^ variant, associated function, or constant not found in `surgeist_style::Keyword`

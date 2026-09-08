@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/rule/nesting.json",
+  "source_sha256": "bec72e9adcea4c1a1e61f7cc34ae516852cdf2c862169961d55948146a4d0296",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "rule/nesting.json#/basic",
+      "context": "rule",
+      "label": "basic",
+      "input": ".foo{ color: blue; &:hover { color: green; } @nest :not(&) { color: red; } }",
+      "upstream_outcome": "parsed",
+      "canonical_css": ".foo{color:blue;&:hover{color:green}@nest :not(&){color:red}}",
+      "status": "active"
+    },
+    {
+      "id": "rule/nesting.json#/don't parse nested rule when it not started with &",
+      "context": "rule",
+      "label": "don't parse nested rule when it not started with &",
+      "input": ".foo{ .bar & { color: green; }; div:hover { color: red; } }",
+      "upstream_outcome": "parsed",
+      "canonical_css": ".foo{.bar & { color: green; };div:hover { color: red; }}",
+      "status": "active"
+    },
+    {
+      "id": "rule/nesting.json#/nested @container",
+      "context": "rule",
+      "label": "nested @container",
+      "input": "selector { @container card (inline-size > 30em) { @container style(--responsive: true) { color: green; } } }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "selector{@container card (inline-size>30em){@container style(--responsive: true){color:green}}}",
+      "status": "active"
+    },
+    {
+      "id": "rule/nesting.json#/nested @media",
+      "context": "rule",
+      "label": "nested @media",
+      "input": ".foo{ color: blue; @media (orientation: landscape) { color: red; @media (min-width: 1024px) { color: green; } } }",
+      "upstream_outcome": "parsed",
+      "canonical_css": ".foo{color:blue;@media (orientation:landscape){color:red;@media (min-width:1024px){color:green}}}",
+      "status": "active"
+    },
+    {
+      "id": "rule/nesting.json#/nested @starting-style",
+      "context": "rule",
+      "label": "nested @starting-style",
+      "input": "selector { @starting-style { color: red; } }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "selector{@starting-style{color:red}}",
+      "status": "active"
+    },
+    {
+      "id": "rule/nesting.json#/nested @supports",
+      "context": "rule",
+      "label": "nested @supports",
+      "input": ".foo{ color: blue; @supports (prop: value) { color: red; @supports (prop2: value2) { color: green; } } }",
+      "upstream_outcome": "parsed",
+      "canonical_css": ".foo{color:blue;@supports (prop:value){color:red;@supports (prop2:value2){color:green}}}",
+      "status": "active"
+    }
+  ]
+}

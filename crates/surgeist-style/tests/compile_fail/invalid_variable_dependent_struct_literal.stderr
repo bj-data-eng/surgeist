@@ -1,0 +1,13 @@
+error[E0451]: fields `property`, `authored`, `expression` and `dependencies` of struct `VariableDependentValue` are private
+  --> tests/compile_fail/invalid_variable_dependent_struct_literal.rs:8:9
+   |
+ 7 |     let _value = VariableDependentValue {
+   |                  ---------------------- in this type
+ 8 |         property: Property::Color,
+   |         ^^^^^^^^ private field
+ 9 |         authored: AuthoredTokens::new("var(--brand)"),
+   |         ^^^^^^^^ private field
+10 |         expression: VariableExpression::Value(Value::StyleColor(StyleColor::rgba(surgeist_style::Color::BLACK))),
+   |         ^^^^^^^^^^ private field
+11 |         dependencies: vec![CustomPropertyName::try_new("--brand").unwrap()],
+   |         ^^^^^^^^^^^^ private field

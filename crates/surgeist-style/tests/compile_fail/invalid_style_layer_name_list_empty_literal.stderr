@@ -1,0 +1,5 @@
+error[E0451]: field `names` of struct `StyleLayerNameList` is private
+ --> tests/compile_fail/invalid_style_layer_name_list_empty_literal.rs:4:38
+  |
+4 |     let _list = StyleLayerNameList { names: Vec::new() };
+  |                                      ^^^^^ private field

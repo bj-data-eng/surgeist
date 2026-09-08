@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/selector/functional-pseudo/slotted.json",
+  "source_sha256": "72fdfa040ee82abf0853a3ac281996fae0ccd435cf26c51c69423f939fdc5229",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "selector/functional-pseudo/slotted.json#/basic",
+      "context": "selector",
+      "label": "basic",
+      "input": "::slotted(test)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/slotted.json#/empty argument",
+      "context": "selector",
+      "label": "empty argument",
+      "input": "::slotted()",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/slotted.json#/error/0",
+      "context": "selector",
+      "input": "::slotted(.a{)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/slotted.json#/error/1",
+      "context": "selector",
+      "input": "::slotted(,.b)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/slotted.json#/error/2",
+      "context": "selector",
+      "input": "::slotted(.a,)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/slotted.json#/error/3",
+      "context": "selector",
+      "input": "::slotted(var(--test))",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/slotted.json#/error/4",
+      "context": "selector",
+      "input": "::slotted(foo,bar)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/slotted.json#/no argument",
+      "context": "selector",
+      "label": "no argument",
+      "input": "::slotted",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/slotted.json#/should be case insensitive",
+      "context": "selector",
+      "label": "should be case insensitive",
+      "input": "::SloTted(.a)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/slotted.json#/spaces around selector",
+      "context": "selector",
+      "label": "spaces around selector",
+      "input": "::slotted(  .a.b  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "::slotted(.a.b)",
+      "status": "active"
+    }
+  ]
+}

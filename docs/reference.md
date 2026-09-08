@@ -3,14 +3,21 @@
 ## Package And Workspace
 
 The root [Cargo.toml](../Cargo.toml) declares `surgeist` 0.1.0, Rust edition 2024,
-MSRV 1.97, and the MIT license. Root is the sole member of its Cargo workspace.
-All 14 leaf paths are excluded from workspace membership; 13 are exact
-`=0.1.0` production path dependencies. `surgeist-test` is a pinned API-audit
-input with no root production dependency or facade reexport.
+MSRV 1.97, and the MIT license. The product workspace contains root plus 15
+crates, with `default-members = ["."]` and one committed root
+[Cargo.lock](../Cargo.lock). Thirteen crates are exact `=0.1.0` production path
+dependencies of the facade. `surgeist-test` supplies verification support and
+`surgeist-generator` 0.2.0 supplies shared corpus tooling; both are workspace
+members and API-audit inputs with no facade dependency or reexport.
+
+The [API generator](../api/generator/Cargo.toml) and optional
+[layout Dylint catalog](../crates/surgeist-layout/tools/surgeist-layout-audits/Cargo.toml)
+are separate Cargo workspaces, outside the 16 product members. Crate manifests
+own their respective version, MSRV, dependencies, and features.
 
 ## Facade Modules
 
-The [public entry point](../src/lib.rs) reexports each production leaf's public
+The [public entry point](../src/lib.rs) reexports each production crate's public
 front door. It also exposes `crate_name() -> &'static str`, returning
 `"surgeist"`.
 
@@ -30,8 +37,13 @@ front door. It also exposes `crate_name() -> &'static str`, returning
 | `text` | [surgeist-text](../crates/surgeist-text/src/lib.rs) |
 | `window` | [surgeist-window](../crates/surgeist-window/src/lib.rs) |
 
-Shared verification contracts live in the independent
-[surgeist-test crate](../crates/surgeist-test/src/lib.rs).
+Shared verification contracts live in
+[surgeist-test](../crates/surgeist-test/src/lib.rs). Shared CSS and browser-corpus
+generation contracts live in
+[surgeist-generator](../crates/surgeist-generator/src/lib.rs), whose optional
+`css-corpus` feature exposes its CSS driver and whose `browser-corpus` feature
+enables browser infrastructure. Layout keeps its corpus adapter and semantic
+conversion in its own package.
 
 ## Root Features
 
@@ -52,24 +64,32 @@ Dependencies still retain their own manifest-defined defaults.
 | --- | --- |
 | Agent ownership and command discovery | [AGENTS.md](../AGENTS.md) |
 | Root package, dependencies, features, and workspace | [Cargo.toml](../Cargo.toml) |
-| Independent leaf paths and repository URLs | [.gitmodules](../.gitmodules) |
-| Selected leaf revisions | Committed Git submodule pointers; inspect with `git submodule status --recursive`. |
+| Product dependency resolution | [Cargo.lock](../Cargo.lock) |
+| Crate source and domain guides | [crates/](../crates/); each package's manifest, `AGENTS.md`, README, and `src/lib.rs` |
+| Snapshot origins and retained root history | [Explanation](explanation.md#snapshot-import-basis) |
+| Shared corpus tooling | [surgeist-generator](../crates/surgeist-generator/README.md) |
 | API-generator CLI and target discovery | [api/generator/src/lib.rs](../api/generator/src/lib.rs) |
 | Facade API audit | [api/public-api.txt](../api/public-api.txt) |
-| Leaf API audits | [api/crates/](../api/crates/) |
-| Source-checkout dependency attribution | [NOTICE.md](../NOTICE.md) and [licenses/](../licenses/) |
+| Crate API audits | [api/crates/](../api/crates/) |
+| Source-checkout attribution and crate notice index | [NOTICE.md](../NOTICE.md) and [licenses/](../licenses/) |
 
 The generator supports `--all`, `--root`, or `--crate` target selection and
 `--list` or `--check` actions. Without flags it generates all artifacts. Targets
 are root plus `crates/surgeist-*` directories containing a manifest, independent
 of Cargo workspace membership. Source is authoritative; the generated root
 audit retains wildcard reexport placeholders, and audit headers may report
-missing rustdoc item IDs. Consult the pinned public source for detailed APIs.
+missing rustdoc item IDs. Consult current public source for detailed APIs.
 
 ## Verification Scope
 
-The root guide lists workspace check/test/Clippy, formatting, and API-audit
-commands. Root has one library identity test. The API generator has its own unit
-tests in its separate workspace. Leaf guides own their focused feature,
-platform, and test commands. No root CI configuration, integration-test suite,
-examples, `dev/` harness, or `tools/` implementation is present in this baseline.
+The [root command inventory](../AGENTS.md#command-inventory) selects serial
+package check/test/Clippy commands, formatting, and explicit API auditing.
+Unqualified root Cargo commands select the facade by default; `--workspace`
+would explicitly expand selection to all 16 product packages. Broad workspace
+test runs and assumed all-feature combinations are not the verification policy.
+
+Root has one library identity test. The API generator has tests in its separate
+workspace. Crate supplements locate their focused feature, platform, and test
+commands. Native GPU, platform, browser, and corpus checks require the matching
+environment and selection. No root CI configuration, integration-test suite,
+examples, `dev/` harness, or root `tools/` implementation is present.

@@ -1,0 +1,13 @@
+<test name="grid_named_repeated_line_names__border_box_ltr" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" display="grid" direction="ltr" grid-template-rows="20px" grid-template-columns="[a] 20px [a] 30px [a] 40px [a]">
+      <div source-tag="div" display="flex" direction="ltr" grid-column-start="a 2" grid-column-end="a 4"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="90" height="20">
+      <node x="20" y="0" width="70" height="20"/>
+    </node>
+  </expectations>
+</test>

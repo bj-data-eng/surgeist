@@ -1,0 +1,192 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/stylesheet/errors.json",
+  "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "stylesheet/errors.json#/error/0",
+      "context": "stylesheet",
+      "input": "100 {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/1",
+      "context": "stylesheet",
+      "input": ". {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/10",
+      "context": "stylesheet",
+      "input": "a { color: # }",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/11",
+      "context": "stylesheet",
+      "input": ": {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/12",
+      "context": "stylesheet",
+      "input": ":{}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/13",
+      "context": "stylesheet",
+      "input": ":",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/14",
+      "context": "stylesheet",
+      "input": "::",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/15",
+      "context": "stylesheet",
+      "input": ": ",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/16",
+      "context": "stylesheet",
+      "input": ":pseudo({}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/17",
+      "context": "stylesheet",
+      "input": "[",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/18",
+      "context": "stylesheet",
+      "input": "]",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/19",
+      "context": "stylesheet",
+      "input": ")",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/2",
+      "context": "stylesheet",
+      "input": ".{}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/20",
+      "context": "stylesheet",
+      "input": "}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/21",
+      "context": "stylesheet",
+      "input": "a /foo/ b",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/22",
+      "context": "stylesheet",
+      "input": ".a",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/23",
+      "context": "stylesheet",
+      "input": ".a \n    ",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/24",
+      "context": "stylesheet",
+      "input": "  \n   \n.a \n    ",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/25",
+      "context": "stylesheet",
+      "input": ".foo { var(--side): 20px }",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/3",
+      "context": "stylesheet",
+      "input": ".",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/4",
+      "context": "stylesheet",
+      "input": ".1px {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/5",
+      "context": "stylesheet",
+      "input": "# {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/6",
+      "context": "stylesheet",
+      "input": "#{}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/7",
+      "context": "stylesheet",
+      "input": "#",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/8",
+      "context": "stylesheet",
+      "input": "a { color }",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/9",
+      "context": "stylesheet",
+      "input": "a { color: #}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    }
+  ]
+}

@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/declaration/filter.json",
+  "source_sha256": "98d7b2763a030655c02223923fcbdbd87b8700adf76b755be1ec679930b66af0",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "declaration/filter.json#/alpha()",
+      "context": "declaration",
+      "label": "alpha()",
+      "input": "filter: alpha(opacity=60)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "filter:alpha(opacity=60)",
+      "status": "active"
+    },
+    {
+      "id": "declaration/filter.json#/alpha() case insensetive",
+      "context": "declaration",
+      "label": "alpha() case insensetive",
+      "input": "filter: ALPHA(opacity=60)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "filter:ALPHA(opacity=60)",
+      "status": "active"
+    },
+    {
+      "id": "declaration/filter.json#/chroma()",
+      "context": "declaration",
+      "label": "chroma()",
+      "input": "filter: chroma(color=red)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "filter:chroma(color=red)",
+      "status": "active"
+    },
+    {
+      "id": "declaration/filter.json#/dropshadow()",
+      "context": "declaration",
+      "label": "dropshadow()",
+      "input": "filter: dropshadow(color=#000,offx=0,offy=-1)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "filter:dropshadow(color=#000,offx=0,offy=-1)",
+      "status": "active"
+    },
+    {
+      "id": "declaration/filter.json#/filter.0",
+      "context": "declaration",
+      "label": "filter.0",
+      "input": "filter:progid:DXImageTransform.Microsoft.AlphaImageLoader(src='images/transparent-border.png',sizingMethod='scale')",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/filter.json#/filter.1",
+      "context": "declaration",
+      "label": "filter.1",
+      "input": "filter:progid:DXImageTransform.Microsoft.AlphaImageLoader(src='images/transparent-border.png',sizingMethod='scale') progid:DXImageTransform.Microsoft.AlphaImageLoader(src='test.png',sizingMethod='something')",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/filter.json#/filter.2",
+      "context": "declaration",
+      "label": "filter.2",
+      "input": "*filter:progid:DXImageTransform.Microsoft.AlphaImageLoader(src='images/transparent-border.png',sizingMethod='scale')",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/filter.json#/filter.3",
+      "context": "declaration",
+      "label": "filter.3",
+      "input": "-filter:progid:DXImageTransform.Microsoft.AlphaImageLoader(src='images/transparent-border.png',sizingMethod='scale')",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/filter.json#/filter.4",
+      "context": "declaration",
+      "label": "filter.4",
+      "input": "_filter:progid:DXImageTransform.Microsoft.AlphaImageLoader(src='images/transparent-border.png',sizingMethod='scale')",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/filter.json#/filter.5",
+      "context": "declaration",
+      "label": "filter.5",
+      "input": "-ms-filter:progid:DXImageTransform.Microsoft.AlphaImageLoader(src='images/transparent-border.png',sizingMethod='scale')",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/filter.json#/filter.c.0",
+      "context": "declaration",
+      "label": "filter.c.0",
+      "input": "filter/*test*/:/*test*/progid:DXImageTransform.Microsoft.AlphaImageLoader(src='images/transparent-border.png',sizingMethod='scale')",
+      "upstream_outcome": "parsed",
+      "canonical_css": "filter:progid:DXImageTransform.Microsoft.AlphaImageLoader(src='images/transparent-border.png',sizingMethod='scale')",
+      "status": "active"
+    },
+    {
+      "id": "declaration/filter.json#/filter.c.1",
+      "context": "declaration",
+      "label": "filter.c.1",
+      "input": "filter/*test*/:/*test*/progid:DXImageTransform.Microsoft.AlphaImageLoader(/*)*/src='images/transparent-border.png'/*)*/,/*)*/sizingMethod='scale')",
+      "upstream_outcome": "parsed",
+      "canonical_css": "filter:progid:DXImageTransform.Microsoft.AlphaImageLoader(/*)*/src='images/transparent-border.png'/*)*/,/*)*/sizingMethod='scale')",
+      "status": "active"
+    },
+    {
+      "id": "declaration/filter.json#/filter.s.0",
+      "context": "declaration",
+      "label": "filter.s.0",
+      "input": "filter  :  progid:DXImageTransform.Microsoft.AlphaImageLoader(src='images/transparent-border.png',sizingMethod='scale')",
+      "upstream_outcome": "parsed",
+      "canonical_css": "filter:progid:DXImageTransform.Microsoft.AlphaImageLoader(src='images/transparent-border.png',sizingMethod='scale')",
+      "status": "active"
+    },
+    {
+      "id": "declaration/filter.json#/filter.s.1",
+      "context": "declaration",
+      "label": "filter.s.1",
+      "input": "filter:progid:DXImageTransform.Microsoft.AlphaImageLoader(src='images/transparent-border.png',sizingMethod='scale')\n       progid:DXImageTransform.Microsoft.AlphaImageLoader(src='test.png',sizingMethod='something')",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/filter.json#/filter.s.2",
+      "context": "declaration",
+      "label": "filter.s.2",
+      "input": "filter: progid: DXImageTransform.Microsoft.gradient(startColorstr='$start', endColorstr='$stop', GradientType=0)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "filter:progid: DXImageTransform.Microsoft.gradient(startColorstr='$start', endColorstr='$stop', GradientType=0)",
+      "status": "active"
+    },
+    {
+      "id": "declaration/filter.json#/unclosed functions should not be invalid per spec, not sure it's true for IE (need to be check and fail may be)",
+      "context": "declaration",
+      "label": "unclosed functions should not be invalid per spec, not sure it's true for IE (need to be check and fail may be)",
+      "input": "filter:alpha(opacity",
+      "upstream_outcome": "parsed",
+      "canonical_css": "filter:alpha(opacity)",
+      "status": "active"
+    }
+  ]
+}

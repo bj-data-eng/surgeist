@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/selector/functional-pseudo/is.json",
+  "source_sha256": "84e4a022c0c319b270cba14226b016acd42257501ad5adfa27ce6e73b8e30e95",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "selector/functional-pseudo/is.json#/basic",
+      "context": "selector",
+      "label": "basic",
+      "input": ":is(test)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/error/0",
+      "context": "selector",
+      "input": ":is(.a{)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/error/1",
+      "context": "selector",
+      "input": ":is(,.b)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/error/2",
+      "context": "selector",
+      "input": ":is(.a,)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/error/3",
+      "context": "selector",
+      "input": ":is(.a,,)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/error/4",
+      "context": "selector",
+      "input": ":is(.a,.b{)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/error/5",
+      "context": "selector",
+      "input": ":is(var(--test))",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/negation with selector group",
+      "context": "selector",
+      "label": "negation with selector group",
+      "input": ":is(.a,.b.c)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/selector group and spaces",
+      "context": "selector",
+      "label": "selector group and spaces",
+      "input": ":is(  .a  ,  .b  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": ":is(.a,.b)",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/should be case insensitive",
+      "context": "selector",
+      "label": "should be case insensitive",
+      "input": ":HaS(.a,.b)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/should support relative selectors",
+      "context": "selector",
+      "label": "should support relative selectors",
+      "input": ":is(>.a,+.b)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

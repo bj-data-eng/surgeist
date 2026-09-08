@@ -1,0 +1,17 @@
+<test name="block_margin_x_fixed_auto_left_and_right_with_br__content_box_rtl" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" display="block" box-sizing="content-box" direction="rtl" font-size="0px" line-height="0px" width="50px">
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-size="0px" line-height="0px" width="20px" height="10px" margin-left="auto" margin-right="auto"/>
+      <div source-tag="br" display="inline" box-sizing="content-box" direction="rtl" font-size="0px" line-height="0px" inline-baseline="0px" inline-line-height="0px"/>
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-size="0px" line-height="0px" height="10px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="50" height="20">
+      <node x="15" y="0" width="20" height="10"/>
+      <node x="50" y="10" width="0" height="0"/>
+      <node x="0" y="10" width="50" height="10"/>
+    </node>
+  </expectations>
+</test>

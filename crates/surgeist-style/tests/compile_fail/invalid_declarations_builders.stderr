@@ -1,0 +1,52 @@
+error[E0308]: mismatched types
+ --> tests/compile_fail/invalid_declarations_builders.rs:4:39
+  |
+4 |     let _ = Declarations::new().width(Length::px(-1.0));
+  |                                 ----- ^^^^^^^^^^^^^^^^ expected `DimensionLength`, found `Length`
+  |                                 |
+  |                                 arguments to this method are incorrect
+  |
+note: method defined here
+ --> src/declaration.rs
+  |
+  |     pub fn width(self, width: DimensionLength) -> Self {
+  |            ^^^^^
+
+error[E0308]: mismatched types
+ --> tests/compile_fail/invalid_declarations_builders.rs:5:41
+  |
+5 |     let _ = Declarations::new().opacity(2.0);
+  |                                 ------- ^^^ expected `Opacity`, found floating-point number
+  |                                 |
+  |                                 arguments to this method are incorrect
+  |
+note: method defined here
+ --> src/declaration.rs
+  |
+  |     pub fn opacity(self, opacity: Opacity) -> Self {
+  |            ^^^^^^^
+
+error[E0308]: mismatched types
+ --> tests/compile_fail/invalid_declarations_builders.rs:6:53
+  |
+6 |     let _ = Declarations::new().transition_duration(-0.25);
+  |                                 ------------------- ^^^^^ expected `TimeList`, found floating-point number
+  |                                 |
+  |                                 arguments to this method are incorrect
+  |
+note: method defined here
+ --> src/declaration.rs
+  |
+  |     pub fn transition_duration(self, durations: TimeList) -> Result<Self> {
+  |            ^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `grid_template_rows` found for struct `Declarations` in the current scope
+ --> tests/compile_fail/invalid_declarations_builders.rs:7:33
+  |
+7 |     let _ = Declarations::new().grid_template_rows(GridTrackList::new(Vec::new()));
+  |                                 ^^^^^^^^^^^^^^^^^^
+  |
+help: there is a method `try_grid_template_rows` with a similar name
+  |
+7 |     let _ = Declarations::new().try_grid_template_rows(GridTrackList::new(Vec::new()));
+  |                                 ++++

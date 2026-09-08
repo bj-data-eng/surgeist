@@ -1,0 +1,15 @@
+<test name="flex_axes_vertical_lr_column__content_box_rtl" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" writing-mode="vertical-lr" flex-direction="column" align-items="flex-end" justify-content="space-between" width="180px" height="140px">
+      <div source-tag="div" display="block" box-sizing="content-box" direction="rtl" writing-mode="vertical-lr" width="30px" height="20px" margin-bottom="13px" margin-right="11px"/>
+      <div source-tag="div" display="block" box-sizing="content-box" direction="rtl" writing-mode="vertical-lr" width="20px" height="35px" margin-top="7px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="180" height="140">
+      <node x="0" y="0" width="30" height="20"/>
+      <node x="160" y="7" width="20" height="35"/>
+    </node>
+  </expectations>
+</test>

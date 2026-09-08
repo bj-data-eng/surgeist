@@ -1,0 +1,10 @@
+error[E0624]: method `insert` is private
+ --> tests/compile_fail/property_value_mismatch.rs:5:26
+  |
+5 |     let _ = declarations.insert(Property::Width, Value::Color(Color::BLACK));
+  |                          ^^^^^^ private method
+  |
+ ::: src/declaration.rs
+  |
+  |     fn insert(&mut self, property: Property, value: Value) -> &mut Self {
+  |     ------------------------------------------------------------------- private method defined here

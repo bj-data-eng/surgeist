@@ -1,0 +1,218 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/value/Number.json",
+  "source_sha256": "4e31410b614adba3f3dbac1bcd82e0b31cb90e6b6d495df8171fc0cb272b5f0c",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "value/Number.json#/error #1",
+      "context": "value",
+      "label": "error #1",
+      "input": "20.",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/error #2",
+      "context": "value",
+      "label": "error #2",
+      "input": "1.2.",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/error #3",
+      "context": "value",
+      "label": "error #3",
+      "input": ".",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/error #4",
+      "context": "value",
+      "label": "error #4",
+      "input": "-.",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/error #5",
+      "context": "value",
+      "label": "error #5",
+      "input": "+.",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/not an error #1",
+      "context": "value",
+      "label": "not an error #1",
+      "input": "1e",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/not an error #2",
+      "context": "value",
+      "label": "not an error #2",
+      "input": "1e+",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/number.0",
+      "context": "value",
+      "label": "number.0",
+      "input": "10",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/number.1",
+      "context": "value",
+      "label": "number.1",
+      "input": ".10",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/number.2",
+      "context": "value",
+      "label": "number.2",
+      "input": "12.34",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/number.3",
+      "context": "value",
+      "label": "number.3",
+      "input": "0.1",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/number.4",
+      "context": "value",
+      "label": "number.4",
+      "input": "1.0",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/number.5",
+      "context": "value",
+      "label": "number.5",
+      "input": "0.0",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/number.6",
+      "context": "value",
+      "label": "number.6",
+      "input": ".0",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/number.7",
+      "context": "value",
+      "label": "number.7",
+      "input": "1.200000",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/with exponent #1",
+      "context": "value",
+      "label": "with exponent #1",
+      "input": "1.2e2",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/with exponent #2",
+      "context": "value",
+      "label": "with exponent #2",
+      "input": "1e2",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/with exponent #3",
+      "context": "value",
+      "label": "with exponent #3",
+      "input": ".2e2",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/with exponent #4",
+      "context": "value",
+      "label": "with exponent #4",
+      "input": "1.2E2",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/with exponent #5",
+      "context": "value",
+      "label": "with exponent #5",
+      "input": "1.2e+2",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/with exponent #6",
+      "context": "value",
+      "label": "with exponent #6",
+      "input": "1.2e-2",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/with sign #1",
+      "context": "value",
+      "label": "with sign #1",
+      "input": "-1",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/with sign #2",
+      "context": "value",
+      "label": "with sign #2",
+      "input": "-1.2",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/with sign #3",
+      "context": "value",
+      "label": "with sign #3",
+      "input": "-.2",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/with sign #4",
+      "context": "value",
+      "label": "with sign #4",
+      "input": "+.2",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Number.json#/with sign #5",
+      "context": "value",
+      "label": "with sign #5",
+      "input": "-1.2e3",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

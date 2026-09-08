@@ -1,0 +1,14 @@
+schema_version = 1
+
+[source]
+kind = "csstree"
+repository = "https://github.com/csstree/csstree.git"
+revision = "88e3d965c0b1628642a30a841745b410d6835052"
+fixture_root = "fixtures/ast"
+import_root = "source"
+expected_files = 74
+expected_cases = 935
+
+[artifacts]
+expectation_root = "expectations"
+report_file = "expectations/generation-reports/all.json"

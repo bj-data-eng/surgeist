@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/atrule/atrule/scope.json",
+  "source_sha256": "b3412cb8496073b8eab8df0755cabac8b4ca3706789a0e1b71a1ff7a1fc21ea3",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "atrule/atrule/scope.json#/bad selectors",
+      "context": "atrule",
+      "label": "bad selectors",
+      "input": "@scope ( .a. ) to ( .b. ) {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@scope (.a.) to (.b.){}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/scope.json#/base syntax",
+      "context": "atrule",
+      "label": "base syntax",
+      "input": "@scope (a) to (b) { c {} }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@scope (a) to (b){c{}}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/scope.json#/only limit",
+      "context": "atrule",
+      "label": "only limit",
+      "input": "@scope to (limit){}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/scope.json#/only root",
+      "context": "atrule",
+      "label": "only root",
+      "input": "@scope (root){}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

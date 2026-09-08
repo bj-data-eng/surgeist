@@ -141,7 +141,7 @@ pub fn discover_targets(root: &Path) -> Result<Vec<ApiTarget>, String> {
             let manifest = path.join("Cargo.toml");
             if !manifest.is_file() {
                 return Err(format!(
-                    "API target {name} is present under crates/ but missing {}; run `git submodule update --init` or fix the checkout",
+                    "API target {name} is present under crates/ but missing {}; restore the crate manifest in the source workspace",
                     manifest.display()
                 ));
             }
@@ -247,6 +247,7 @@ pub fn generate_target_artifact(target: &ApiTarget) -> Result<String, String> {
     let rustdoc_json = rustdoc_json::Builder::default()
         .toolchain("nightly-2026-05-28")
         .manifest_path(target.manifest_path())
+        .package(target.name())
         .build()
         .map_err(|error| format!("build rustdoc JSON for {}: {error}", target.name()))?;
 
@@ -400,7 +401,7 @@ mod tests {
     }
 
     #[test]
-    fn discovers_root_then_surgeist_submodules_sorted_by_name() {
+    fn discovers_root_then_surgeist_crates_sorted_by_name() {
         let fixture = TempFixture::new("surgeist-api-targets");
         fixture.file("Cargo.toml", "[package]\nname = \"surgeist\"\n");
         fixture.file(
@@ -454,16 +455,17 @@ mod tests {
     }
 
     #[test]
-    fn uninitialized_surgeist_submodule_reports_recovery_hint() {
-        let fixture = TempFixture::new("surgeist-api-uninitialized-submodule");
+    fn crate_directory_without_manifest_reports_missing_source_manifest() {
+        let fixture = TempFixture::new("surgeist-api-missing-crate-manifest");
         fixture.file("Cargo.toml", "[package]\nname = \"surgeist\"\n");
         std::fs::create_dir_all(fixture.path().join("crates/surgeist-css")).unwrap();
 
         let error = discover_targets(fixture.path()).unwrap_err();
+        let manifest = fixture.path().join("crates/surgeist-css/Cargo.toml");
 
         assert!(error.contains("surgeist-css"));
-        assert!(error.contains("git submodule update --init"));
-        assert!(error.contains("fix the checkout"));
+        assert!(error.contains(&manifest.display().to_string()));
+        assert!(error.contains("restore the crate manifest in the source workspace"));
     }
 
     #[test]

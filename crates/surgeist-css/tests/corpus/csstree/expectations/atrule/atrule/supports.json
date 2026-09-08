@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/atrule/atrule/supports.json",
+  "source_sha256": "95a1acb2aa236bec7dec45723e8737844b53eb7ef1a304e050e65441516ad489",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "atrule/atrule/supports.json#/@supports with no block",
+      "context": "atrule",
+      "label": "@supports with no block",
+      "input": "@supports (flex: 1)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@supports (flex:1);",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/supports.json#/@supports with no block is not an error",
+      "context": "atrule",
+      "label": "@supports with no block is not an error",
+      "input": "@supports;",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/supports.json#/@supports with no prelude is not an error",
+      "context": "atrule",
+      "label": "@supports with no prelude is not an error",
+      "input": "@supports {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@supports{}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/supports.json#/@supports with selector()",
+      "context": "atrule",
+      "label": "@supports with selector()",
+      "input": "@supports selector(.example) {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@supports selector(.example){}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/supports.json#/@supports with selector() case-insensitive",
+      "context": "atrule",
+      "label": "@supports with selector() case-insensitive",
+      "input": "@supports SELECTOR(.example) {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@supports SELECTOR(.example){}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/supports.json#/base test",
+      "context": "atrule",
+      "label": "base test",
+      "input": "@supports (flex:1){selector{color:green}}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/supports.json#/base test with comments",
+      "context": "atrule",
+      "label": "base test with comments",
+      "input": "@supports not /*0*/(/*1*/flex :/*3*/1/*4*/)/*5*/{}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@supports not (flex:1){}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/supports.json#/base test with spaces",
+      "context": "atrule",
+      "label": "base test with spaces",
+      "input": "@supports  (  flex  :  1  )  {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@supports (flex:1){}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/supports.json#/complex prelude",
+      "context": "atrule",
+      "label": "complex prelude",
+      "input": "@supports (not (flex: 1)) or (grid: support) {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@supports (not (flex:1)) or (grid:support){}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/supports.json#/custom property",
+      "context": "atrule",
+      "label": "custom property",
+      "input": "@supports (--custom: 1){}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/supports.json#/error/0",
+      "context": "atrule",
+      "input": "@supports '' {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/supports.json#/error/1",
+      "context": "atrule",
+      "input": "@supports 1 {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/supports.json#/error/2",
+      "context": "atrule",
+      "input": "@supports flex: 1 {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/supports.json#/should be case insensitive",
+      "context": "atrule",
+      "label": "should be case insensitive",
+      "input": "@SuppOrts (flex:1){}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/supports.json#/simple supports with negation",
+      "context": "atrule",
+      "label": "simple supports with negation",
+      "input": "@supports not (flex: 1) {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@supports not (flex:1){}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/supports.json#/using !important",
+      "context": "atrule",
+      "label": "using !important",
+      "input": "@supports (box-shadow: something var(--complex) !important) {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@supports (box-shadow:something var(--complex)!important){}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/supports.json#/using function",
+      "context": "atrule",
+      "label": "using function",
+      "input": "@supports func(flex: 1){}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/supports.json#/vendor property",
+      "context": "atrule",
+      "label": "vendor property",
+      "input": "@supports (-vendor-name:1){}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

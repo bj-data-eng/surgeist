@@ -1,0 +1,18 @@
+[package]
+name = "surgeist-style"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/bj-data-eng/surgeist"
+readme = "README.md"
+description = "Typed style cascade and resolution boundary for Surgeist."
+
+[lib]
+name = "surgeist_style"
+path = "src/lib.rs"
+
+[dependencies]
+peniko = "=0.6.1"
+
+[dev-dependencies]
+trybuild = "1"

@@ -1,0 +1,242 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/declaration/Declaration.json",
+  "source_sha256": "fa75a64c1469a9da8f3b566e301d6137bb1943209e429a8668a9c92b7cbb920c",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "declaration/Declaration.json#/declaration property with # hack",
+      "context": "declaration",
+      "label": "declaration property with # hack",
+      "input": "#property:value",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/declaration property with $ hack",
+      "context": "declaration",
+      "label": "declaration property with $ hack",
+      "input": "$property:value",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/declaration property with & hack",
+      "context": "declaration",
+      "label": "declaration property with & hack",
+      "input": "&property:value",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/declaration property with * hack",
+      "context": "declaration",
+      "label": "declaration property with * hack",
+      "input": "*property:value",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/declaration property with + hack",
+      "context": "declaration",
+      "label": "declaration property with + hack",
+      "input": "+property:value",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/declaration property with _ hack",
+      "context": "declaration",
+      "label": "declaration property with _ hack",
+      "input": "_property:value",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/declaration property with ~1 hack",
+      "context": "declaration",
+      "label": "declaration property with / hack",
+      "input": "/property:value",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/declaration property with ~1~1 hack",
+      "context": "declaration",
+      "label": "declaration property with // hack",
+      "input": "//property:value",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/declaration.0",
+      "context": "declaration",
+      "label": "declaration.0",
+      "input": "property:value",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/declaration.1",
+      "context": "declaration",
+      "label": "declaration.1",
+      "input": "-my-property:value",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/declaration.c.0",
+      "context": "declaration",
+      "label": "declaration.c.0",
+      "input": "property/*test*/:value",
+      "upstream_outcome": "parsed",
+      "canonical_css": "property:value",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/declaration.c.1",
+      "context": "declaration",
+      "label": "declaration.c.1",
+      "input": "property:/*test*/value",
+      "upstream_outcome": "parsed",
+      "canonical_css": "property:value",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/declaration.c.2",
+      "context": "declaration",
+      "label": "declaration.c.2",
+      "input": "property/*test*/:/*test*/value",
+      "upstream_outcome": "parsed",
+      "canonical_css": "property:value",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/declaration.c.3",
+      "context": "declaration",
+      "label": "declaration.c.3",
+      "input": "property  /*test*/  :  /*test*/  value",
+      "upstream_outcome": "parsed",
+      "canonical_css": "property:value",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/declaration.s.0",
+      "context": "declaration",
+      "label": "declaration.s.0",
+      "input": "property :value",
+      "upstream_outcome": "parsed",
+      "canonical_css": "property:value",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/declaration.s.1",
+      "context": "declaration",
+      "label": "declaration.s.1",
+      "input": "property: value",
+      "upstream_outcome": "parsed",
+      "canonical_css": "property:value",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/declaration.s.2",
+      "context": "declaration",
+      "label": "declaration.s.2",
+      "input": "property : value",
+      "upstream_outcome": "parsed",
+      "canonical_css": "property:value",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/declaration.s.3",
+      "context": "declaration",
+      "label": "declaration.s.3",
+      "input": "property   :   value",
+      "upstream_outcome": "parsed",
+      "canonical_css": "property:value",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/error/0",
+      "context": "declaration",
+      "input": "//: 1",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/error/1",
+      "context": "declaration",
+      "input": "$: 1",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/error/2",
+      "context": "declaration",
+      "input": "foo: ~",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/shouldn't include !important into a value when parseValue is false",
+      "context": "declaration",
+      "label": "shouldn't include !important into a value when parseValue is false",
+      "input": "property: value !important",
+      "options": {
+        "parseValue": false
+      },
+      "upstream_outcome": "parsed",
+      "canonical_css": "property:value!important",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/shouldn't include !important into a value when parseValue is false (brackets)",
+      "context": "declaration",
+      "label": "shouldn't include !important into a value when parseValue is false (brackets)",
+      "input": "property: [ value ] !important",
+      "options": {
+        "parseValue": false
+      },
+      "upstream_outcome": "parsed",
+      "canonical_css": "property:[ value ]!important",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/shouldn't include !important into a value when parseValue is false (function)",
+      "context": "declaration",
+      "label": "shouldn't include !important into a value when parseValue is false (function)",
+      "input": "property: calc(1px + 1%) !important",
+      "options": {
+        "parseValue": false
+      },
+      "upstream_outcome": "parsed",
+      "canonical_css": "property:calc(1px + 1%)!important",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/shouldn't include !important into a value when parseValue is false (w~1o whitespaces)",
+      "context": "declaration",
+      "label": "shouldn't include !important into a value when parseValue is false (w/o whitespaces)",
+      "input": "property:value!important",
+      "options": {
+        "parseValue": false
+      },
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Declaration.json#/shouldn't parse a value when parseValue is false",
+      "context": "declaration",
+      "label": "shouldn't parse a value when parseValue is false",
+      "input": "property: value",
+      "options": {
+        "parseValue": false
+      },
+      "upstream_outcome": "parsed",
+      "canonical_css": "property:value",
+      "status": "active"
+    }
+  ]
+}

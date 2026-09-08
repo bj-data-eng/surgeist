@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/mediaQuery/FeatureRange.json",
+  "source_sha256": "c583c8eed30fc4103ff6cec5858f618996a1c44eeaa8ca0eceb16afb1419c92b",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "mediaQuery/FeatureRange.json#/all three functions",
+      "context": "mediaQuery",
+      "label": "all three functions",
+      "input": "(calc(1   +   2) < calc() < max(1, 2))",
+      "upstream_outcome": "parsed",
+      "canonical_css": "(calc(1 + 2)<calc()<max(1,2))",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/all three numbers",
+      "context": "mediaQuery",
+      "label": "all three numbers",
+      "input": "(1 < 2 < 3)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "(1<2<3)",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/all three ratio",
+      "context": "mediaQuery",
+      "label": "all three ratio",
+      "input": "(1 / 2 < 1 /**/ / /**/ 3 < 1/**///**/4)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "(1/2<1/3<1/4)",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/basic",
+      "context": "mediaQuery",
+      "label": "basic",
+      "input": "(foo>1)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/dimension first",
+      "context": "mediaQuery",
+      "label": "dimension first",
+      "input": "(1px<foo)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/error/0",
+      "context": "mediaQuery",
+      "input": "(foo > 123 123)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/full form",
+      "context": "mediaQuery",
+      "label": "full form",
+      "input": "(100px<bar<200px)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/function first",
+      "context": "mediaQuery",
+      "label": "function first",
+      "input": "(calc(1 + 2)<foo)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/function in ratio/0",
+      "context": "mediaQuery",
+      "label": "function in ratio",
+      "input": "(2/calc(1 + 2)<foo)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/function in ratio/1",
+      "context": "mediaQuery",
+      "label": "function in ratio",
+      "input": "(calc(1 + 2)/2<foo)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/function in ratio/2",
+      "context": "mediaQuery",
+      "label": "function in ratio",
+      "input": "(calc(1 + 2)/calc(1 + 2)<foo)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/number first",
+      "context": "mediaQuery",
+      "label": "number first",
+      "input": "(1<foo)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/ratio first",
+      "context": "mediaQuery",
+      "label": "ratio first",
+      "input": "(1/2<foo)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

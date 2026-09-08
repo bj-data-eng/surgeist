@@ -1,0 +1,36 @@
+<test name="fri06_float_line_exclusion__border_box_ltr" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" layout-ready-inline-root="true" display="block" direction="ltr" font-family="monospace" font-size="16px" line-height="20px" width="180px">
+      <div source-tag="span" display="block" direction="ltr" float="left" font-family="monospace" font-size="16px" line-height="20px" width="42px" height="42px"/>
+      <div source-tag="span" display="block" direction="ltr" float="right" font-family="monospace" font-size="16px" line-height="20px" width="50px" height="62px"/>
+      <text layout-input="inline-text">
+        <segment id="4" inline-extent="38.53125" inline-baseline="14.8" inline-line-height="20" bidi-level="0" whitespace-edge="preserve" following-break="allowed"/>
+      </text>
+      <inline-boundary kind="start" inline-baseline="12" inline-line-height="20"/>
+      <div source-tag="span" display="inline-block" direction="ltr" font-family="monospace" font-size="16px" line-height="20px" width="28px" height="16px"/>
+      <div source-tag="span" display="inline-block" direction="ltr" font-family="monospace" font-size="16px" line-height="20px" width="32px" height="16px"/>
+      <div source-tag="span" display="inline-block" direction="ltr" font-family="monospace" font-size="16px" line-height="20px" width="36px" height="16px"/>
+      <div source-tag="span" display="inline-block" direction="ltr" font-family="monospace" font-size="16px" line-height="20px" width="40px" height="16px"/>
+      <atomic-placeholder child-index="4" bidi-level="0" following-break="allowed"/>
+      <atomic-placeholder child-index="5" bidi-level="0" following-break="allowed"/>
+      <atomic-placeholder child-index="6" bidi-level="0" following-break="allowed"/>
+      <atomic-placeholder child-index="7" bidi-level="0" following-break="prohibited"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="180" height="63">
+      <node x="0" y="0" width="42" height="42"/>
+      <node x="130" y="0" width="50" height="62"/>
+      <node>
+        <range-inks>
+          <range-ink source_segment_id="4" line_index="0" physical_start_edge="left" start="42" advance="38.53125"/>
+        </range-inks>
+      </node>
+      <node x="81" y="0" width="28" height="16"/>
+      <node x="42" y="21" width="32" height="16"/>
+      <node x="74" y="21" width="36" height="16"/>
+      <node x="0" y="42" width="40" height="16"/>
+    </node>
+  </expectations>
+</test>

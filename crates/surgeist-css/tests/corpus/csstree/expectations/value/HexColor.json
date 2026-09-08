@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/value/HexColor.json",
+  "source_sha256": "15030fcdd2d97df6cdbfc503e8ff9c9cace069cbc3056296330c1d78fd2b634a",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "value/HexColor.json#/basic/0",
+      "context": "value",
+      "label": "basic",
+      "input": "#100",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/HexColor.json#/basic/1",
+      "context": "value",
+      "label": "basic",
+      "input": "#123abc",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/HexColor.json#/basic/2",
+      "context": "value",
+      "label": "basic",
+      "input": "#abc123",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/HexColor.json#/basic/3",
+      "context": "value",
+      "label": "basic",
+      "input": "#a1b2c3d4",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/HexColor.json#/basic/4",
+      "context": "value",
+      "label": "basic",
+      "input": "#AaBbCc",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/HexColor.json#/edge cases/0",
+      "context": "value",
+      "label": "edge cases",
+      "input": "#1.2AaB",
+      "upstream_outcome": "parsed",
+      "canonical_css": "#1 .2AaB",
+      "status": "active"
+    },
+    {
+      "id": "value/HexColor.json#/edge cases/1",
+      "context": "value",
+      "label": "edge cases",
+      "input": "#a1.2AaB",
+      "upstream_outcome": "parsed",
+      "canonical_css": "#a1 .2AaB",
+      "status": "active"
+    },
+    {
+      "id": "value/HexColor.json#/edge cases/10",
+      "context": "value",
+      "label": "edge cases",
+      "input": "#id",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/HexColor.json#/edge cases/11",
+      "context": "value",
+      "label": "edge cases",
+      "input": "#-123",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/HexColor.json#/edge cases/2",
+      "context": "value",
+      "label": "edge cases",
+      "input": "#1e-2Aa",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/HexColor.json#/edge cases/3",
+      "context": "value",
+      "label": "edge cases",
+      "input": "#a1e-2Aa",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/HexColor.json#/edge cases/4",
+      "context": "value",
+      "label": "edge cases",
+      "input": "#123xxx",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/HexColor.json#/edge cases/5",
+      "context": "value",
+      "label": "edge cases",
+      "input": "#123azz",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/HexColor.json#/edge cases/6",
+      "context": "value",
+      "label": "edge cases",
+      "input": "#123\\9",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/HexColor.json#/edge cases/7",
+      "context": "value",
+      "label": "edge cases",
+      "input": "#123a\\9",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/HexColor.json#/edge cases/8",
+      "context": "value",
+      "label": "edge cases",
+      "input": "#abc\\0",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/HexColor.json#/edge cases/9",
+      "context": "value",
+      "label": "edge cases",
+      "input": "#1e57e9",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/HexColor.json#/error/0",
+      "context": "value",
+      "input": "#+123",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/HexColor.json#/error/1",
+      "context": "value",
+      "input": "#.123",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/HexColor.json#/error/2",
+      "context": "value",
+      "input": "#~123",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    }
+  ]
+}

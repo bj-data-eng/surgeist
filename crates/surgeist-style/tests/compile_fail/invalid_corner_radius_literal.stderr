@@ -1,0 +1,9 @@
+error[E0451]: fields `horizontal` and `vertical` of struct `surgeist_style::CornerRadius` are private
+ --> tests/compile_fail/invalid_corner_radius_literal.rs:5:9
+  |
+4 |     let _radius = CornerRadius {
+  |                   ------------ in this type
+5 |         horizontal: Length::Px(1.0),
+  |         ^^^^^^^^^^ private field
+6 |         vertical: Length::Px(1.0),
+  |         ^^^^^^^^ private field

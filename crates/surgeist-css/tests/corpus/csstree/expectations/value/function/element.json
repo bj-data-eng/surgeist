@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/value/function/element.json",
+  "source_sha256": "4534f695f8db5c2b65f39daa7ad9262a548fff46e41d2e6931a9957b64090bfb",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "value/function/element.json#/-moz-element",
+      "context": "value",
+      "label": "-moz-element",
+      "input": "-moz-element(#foo)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/function/element.json#/base test",
+      "context": "value",
+      "label": "base test",
+      "input": "element(#foo)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/function/element.json#/should be case insensitive",
+      "context": "value",
+      "label": "should be case insensitive",
+      "input": "ElemenT(#foo)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/function/element.json#/spaces and comment",
+      "context": "value",
+      "label": "spaces and comment",
+      "input": "element(  /*1*/  #foo  /*2*/  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "element(#foo)",
+      "status": "active"
+    }
+  ]
+}

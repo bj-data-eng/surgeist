@@ -1,0 +1,9 @@
+error[E0451]: fields `combinator` and `selector` of struct `ComplexSelectorPart` are private
+ --> tests/compile_fail/invalid_complex_selector_part_struct_literal.rs:5:9
+  |
+4 |     let _part = ComplexSelectorPart {
+  |                 ------------------- in this type
+5 |         combinator: None,
+  |         ^^^^^^^^^^ private field
+6 |         selector: Selector::compound(),
+  |         ^^^^^^^^ private field

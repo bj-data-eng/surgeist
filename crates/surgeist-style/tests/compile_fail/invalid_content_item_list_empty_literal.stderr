@@ -1,0 +1,5 @@
+error[E0451]: field `items` of struct `ContentItemList` is private
+ --> tests/compile_fail/invalid_content_item_list_empty_literal.rs:4:36
+  |
+4 |     let _items = ContentItemList { items: Vec::new() };
+  |                                    ^^^^^ private field

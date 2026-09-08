@@ -1,0 +1,19 @@
+[package]
+name = "surgeist-dialog"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/bj-data-eng/surgeist"
+readme = "README.md"
+description = "Native dialog services for Surgeist."
+
+[lib]
+name = "surgeist_dialog"
+path = "src/lib.rs"
+
+[dependencies]
+rfd = { version = "=0.17.2", optional = true }
+
+[features]
+default = []
+system = ["dep:rfd"]

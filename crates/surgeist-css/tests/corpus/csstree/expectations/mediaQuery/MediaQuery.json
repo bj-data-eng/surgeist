@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/mediaQuery/MediaQuery.json",
+  "source_sha256": "3b7a2c6012aca62f947c66104425d510d7829515e9acc44ff247c5f93f9285d7",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "mediaQuery/MediaQuery.json#/boolean media feature",
+      "context": "mediaQuery",
+      "label": "boolean media feature",
+      "input": "(foo)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/dashed name feature",
+      "context": "mediaQuery",
+      "label": "dashed name feature",
+      "input": "(--foo:2)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/error/0",
+      "context": "mediaQuery",
+      "input": "(foo 123)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/error/1",
+      "context": "mediaQuery",
+      "input": "(foo: bar baz)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/error/2",
+      "context": "mediaQuery",
+      "input": "(foo: 'foo')",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/error/3",
+      "context": "mediaQuery",
+      "input": "(fo",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/media feature with comments",
+      "context": "mediaQuery",
+      "label": "media feature with comments",
+      "input": "all /*0*/ (/*1*/foo/*2*/:/*3*/1/*4*/)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "all (foo:1)",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/media feature with dimension value",
+      "context": "mediaQuery",
+      "label": "media feature with dimension value",
+      "input": "(foo:2px)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/media feature with identifier value",
+      "context": "mediaQuery",
+      "label": "media feature with identifier value",
+      "input": "(foo:bar)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/media feature with number value",
+      "context": "mediaQuery",
+      "label": "media feature with number value",
+      "input": "(foo:1)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/media feature with ratio",
+      "context": "mediaQuery",
+      "label": "media feature with ratio",
+      "input": "(foo:3/4)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/media feature with ratio and spaces",
+      "context": "mediaQuery",
+      "label": "media feature with ratio and spaces",
+      "input": "(  foo  :  3  /  4  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "(foo:3/4)",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/media feature with spaces",
+      "context": "mediaQuery",
+      "label": "media feature with spaces",
+      "input": "(  foo  :  1  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "(foo:1)",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/number with \\0 hack",
+      "context": "mediaQuery",
+      "label": "number with \\0 hack",
+      "input": "(min-width:0\\0)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/vendor media feature",
+      "context": "mediaQuery",
+      "label": "vendor media feature",
+      "input": "(-webkit-min-device-pixel-ratio:2)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/with function",
+      "context": "mediaQuery",
+      "label": "with function",
+      "input": "(  foo  :  calc( 3  /  4 + 2)  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "(foo:calc(3/4 + 2))",
+      "status": "active"
+    }
+  ]
+}

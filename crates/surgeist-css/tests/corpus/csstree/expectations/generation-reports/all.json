@@ -1,0 +1,1050 @@
+{
+  "manifest_digest": "dc61d7c2cd387418e1a9b403e2aa71266abfdf291f95c7598688d48452cec96e",
+  "source_repository": "https://github.com/csstree/csstree.git",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "counts": {
+    "active": 935,
+    "expected_fail": 0,
+    "unsupported": 0,
+    "quarantined": 0,
+    "failed_to_generate": 0
+  },
+  "artifacts": [
+    {
+      "provenance": {
+        "source_path": "source/atrule/atrule/container.json",
+        "source_digest": "84eb9c9bb9c05b2171506ccda7f51682c2cd0f42ed8148407084cf59739c3805",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/atrule/atrule/container.json",
+      "output_digest": "7e030635dfda10b360a6567feb52d2862fcca860ebfd0de62ea78417a385fcf4",
+      "case_count": 10
+    },
+    {
+      "provenance": {
+        "source_path": "source/atrule/atrule/font-face.json",
+        "source_digest": "8ed697572a465ba61475752bceab9bf8de08f20563b3272bf9c043b635f0fc7a",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/atrule/atrule/font-face.json",
+      "output_digest": "f0a81e5a6400ec2fad1eba661c08da14233a615edf51eb2ed685c8d445dfe6ba",
+      "case_count": 6
+    },
+    {
+      "provenance": {
+        "source_path": "source/atrule/atrule/font-feature-values.json",
+        "source_digest": "0be7ff601176527199c4d880f7b6f3a157d121b235f34c4fc5d3bf47b72b6a40",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/atrule/atrule/font-feature-values.json",
+      "output_digest": "639da2bcdef001fa01667a49344bb0e0bdd19a46416380d5c0ee43602c3e6489",
+      "case_count": 2
+    },
+    {
+      "provenance": {
+        "source_path": "source/atrule/atrule/import.json",
+        "source_digest": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/atrule/atrule/import.json",
+      "output_digest": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
+      "case_count": 19
+    },
+    {
+      "provenance": {
+        "source_path": "source/atrule/atrule/layer.json",
+        "source_digest": "adb2a4b569a873179c4e1fdd042720170ae8eac0c1c2ddaca918d5dc797f55c6",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/atrule/atrule/layer.json",
+      "output_digest": "1e669fb7d1958b10bc9700a11a96b356c7475ef1b4437859efa2e66c552d4e55",
+      "case_count": 7
+    },
+    {
+      "provenance": {
+        "source_path": "source/atrule/atrule/media.json",
+        "source_digest": "502e8c3a1648931deaf6963049e87cdbe8e05d2fcf9d89e5f6c4f26ef6cba347",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/atrule/atrule/media.json",
+      "output_digest": "01586dd60f9cb2a51046cc25fa9da56fd063f2fd2a921b6c03dfcde34e45a920",
+      "case_count": 13
+    },
+    {
+      "provenance": {
+        "source_path": "source/atrule/atrule/nest.json",
+        "source_digest": "ad3c3726a94528640735f9cf345d2eb7af109ae9e99af312fe20e2d99b752456",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/atrule/atrule/nest.json",
+      "output_digest": "2b955d2752af54528afbd14e12a59ceb8f8fb39bff9d5f9ceda974f8181a80f2",
+      "case_count": 1
+    },
+    {
+      "provenance": {
+        "source_path": "source/atrule/atrule/scope.json",
+        "source_digest": "b3412cb8496073b8eab8df0755cabac8b4ca3706789a0e1b71a1ff7a1fc21ea3",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/atrule/atrule/scope.json",
+      "output_digest": "400dc85535d113e9a9f4a65f751160a710f1cdf00996b871744ab37820a1a9c5",
+      "case_count": 4
+    },
+    {
+      "provenance": {
+        "source_path": "source/atrule/atrule/starting-style.json",
+        "source_digest": "4ade42d2187ca680f3d48a250b45da741cb7d46555eb50cc243326a2aa530b9d",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/atrule/atrule/starting-style.json",
+      "output_digest": "eda1aecccedde005201e88d97b2adc197dfd1354644808b60cca50bd554adf93",
+      "case_count": 1
+    },
+    {
+      "provenance": {
+        "source_path": "source/atrule/atrule/supports.json",
+        "source_digest": "95a1acb2aa236bec7dec45723e8737844b53eb7ef1a304e050e65441516ad489",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/atrule/atrule/supports.json",
+      "output_digest": "f4cecaea08b5a88286e135ae09b91d40f47a04ab888db4de3a1d26739522464e",
+      "case_count": 18
+    },
+    {
+      "provenance": {
+        "source_path": "source/atrule/block.json",
+        "source_digest": "70af8879a35fbd9ef0082ea417ee6f8e779f188dcfde1f34b6d0c4b24cb6f729",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/atrule/block.json",
+      "output_digest": "a3bd9afe1dc5a111ad857c5da0c22bea760c9eb7bf99a362818a26f29f88723f",
+      "case_count": 15
+    },
+    {
+      "provenance": {
+        "source_path": "source/atrule/no-block.json",
+        "source_digest": "e0ffb02481d6b3603c12dc851bc4a09eda73021e4d52c21326275a2170a44393",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/atrule/no-block.json",
+      "output_digest": "fba114f32376821b09efa3072002ff3878ca698a31d52765c2f75f47eae84d74",
+      "case_count": 14
+    },
+    {
+      "provenance": {
+        "source_path": "source/atrule/stylesheet.json",
+        "source_digest": "9dea1b7a814b11b4c501bfe96bb4d80aecd5e65320e66dc04f283cb095c759fd",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/atrule/stylesheet.json",
+      "output_digest": "4a86ee4e3bf85a7eae06721008a4fe1383fe028121683355397e293e995555d8",
+      "case_count": 11
+    },
+    {
+      "provenance": {
+        "source_path": "source/atrule/tolerant.json",
+        "source_digest": "cf539182555382fceec25faf8f26f08a59d155dc093c8abf3d7c95b4b3352b67",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/atrule/tolerant.json",
+      "output_digest": "95ee984041fb97221a7c895098c6639c223f8deae74a676e3554cf5a89f03eb0",
+      "case_count": 9
+    },
+    {
+      "provenance": {
+        "source_path": "source/atrulePrelude/index.json",
+        "source_digest": "40b184cee42d8b8658ce9f7928f101c95c03614ad978b833e300de8e07910da5",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/atrulePrelude/index.json",
+      "output_digest": "7ba876207b24a0200f22e37e243edf4c3b880351ac60757762045425dd030f30",
+      "case_count": 2
+    },
+    {
+      "provenance": {
+        "source_path": "source/block/Block.json",
+        "source_digest": "c0cafec71e567dcd927a0c1e0b6db581ac906b027e052776aa0469c97225af1e",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/block/Block.json",
+      "output_digest": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
+      "case_count": 29
+    },
+    {
+      "provenance": {
+        "source_path": "source/declaration/Declaration.json",
+        "source_digest": "fa75a64c1469a9da8f3b566e301d6137bb1943209e429a8668a9c92b7cbb920c",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/declaration/Declaration.json",
+      "output_digest": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
+      "case_count": 26
+    },
+    {
+      "provenance": {
+        "source_path": "source/declaration/Important.json",
+        "source_digest": "b4169280b7f146c7090091a487e1d45007764ef4ec5c69dba821ad64541268fe",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/declaration/Important.json",
+      "output_digest": "2fa0d42eb9017133359b04e98a8035b4a2095c27ef77f040e69a4f579d6e64cd",
+      "case_count": 9
+    },
+    {
+      "provenance": {
+        "source_path": "source/declaration/custom-property.json",
+        "source_digest": "8549e85bee8fd4332594ac501b35aadfacd5cc6ce0a5321a9f0e2f8f999a1fa3",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/declaration/custom-property.json",
+      "output_digest": "360bce09f22dc5e243e364c97938253d4220b098f4136adbf8dec7aacc1ac205",
+      "case_count": 26
+    },
+    {
+      "provenance": {
+        "source_path": "source/declaration/filter.json",
+        "source_digest": "98d7b2763a030655c02223923fcbdbd87b8700adf76b755be1ec679930b66af0",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/declaration/filter.json",
+      "output_digest": "2baf759629af8b0690fd053b808b556ce341cbc3ddd1a9d7dca563916e7229b6",
+      "case_count": 16
+    },
+    {
+      "provenance": {
+        "source_path": "source/declarationList/DeclarationList.json",
+        "source_digest": "9aa4ac2021f7d6755434c6463ff7bb9d24c47b295ffaf86724eaeabf4ae427a1",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/declarationList/DeclarationList.json",
+      "output_digest": "88f0c3ed29bc4e2918d59313fe7aa7622658d42432564badd48877966a8ec6a8",
+      "case_count": 15
+    },
+    {
+      "provenance": {
+        "source_path": "source/declarationList/nesting.json",
+        "source_digest": "cfa16fba997275578506a80110f7365d2aaf74c170119ebfe05c1ab7fbf583d1",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/declarationList/nesting.json",
+      "output_digest": "5381dbc70bde7797db1c14cc517801ed31b787a20878499afe2bd0630f593bbf",
+      "case_count": 3
+    },
+    {
+      "provenance": {
+        "source_path": "source/declarationList/tolerant.json",
+        "source_digest": "91bf45e608575fb2fb27e4ff5f656f4b3c3ea5d48360123272ce14e78b2cb1ec",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/declarationList/tolerant.json",
+      "output_digest": "b7edb7d44fb38f0317a1814766af31ca0e9a2763d225c45bd6b6c3ccd2232856",
+      "case_count": 1
+    },
+    {
+      "provenance": {
+        "source_path": "source/mediaQuery/FeatureRange.json",
+        "source_digest": "c583c8eed30fc4103ff6cec5858f618996a1c44eeaa8ca0eceb16afb1419c92b",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/mediaQuery/FeatureRange.json",
+      "output_digest": "70fadb139452a724b3020f85073386e11a58318d90209ef6f9e30f9132b4a9d5",
+      "case_count": 13
+    },
+    {
+      "provenance": {
+        "source_path": "source/mediaQuery/GeneralEnclosed.json",
+        "source_digest": "bf204b31d82775114a6bad291ba2b444254986a1ed2839a8226acc78e55ee00e",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/mediaQuery/GeneralEnclosed.json",
+      "output_digest": "c98a9582873bb2e9c175d9c1a6501004d5e1b2a4a3e2eaf69e40e0521a355f19",
+      "case_count": 6
+    },
+    {
+      "provenance": {
+        "source_path": "source/mediaQuery/MediaQuery.json",
+        "source_digest": "3b7a2c6012aca62f947c66104425d510d7829515e9acc44ff247c5f93f9285d7",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/mediaQuery/MediaQuery.json",
+      "output_digest": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
+      "case_count": 16
+    },
+    {
+      "provenance": {
+        "source_path": "source/mediaQuery/Ratio.json",
+        "source_digest": "f76d50c587cb053a60876ef57405c36c0178e5de0a8c38f68d70ca63544e5e1e",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/mediaQuery/Ratio.json",
+      "output_digest": "d6665463c0672b78dc693dd6db85d559c0cb98369343fd3a2fb6b82c423b1649",
+      "case_count": 14
+    },
+    {
+      "provenance": {
+        "source_path": "source/rule/Rule.json",
+        "source_digest": "2d649a95e8999ba8aa7031c8fab31d7720597ac0f606b2969f0c59fbb6a5d7fb",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/rule/Rule.json",
+      "output_digest": "6a931934399378b82679b5ef4e7e8c91df82e880ec018dc12ec07f6f4b68558c",
+      "case_count": 18
+    },
+    {
+      "provenance": {
+        "source_path": "source/rule/legacy.json",
+        "source_digest": "fdab2fa0944a38da23a3d9898265bd5ea00295c3a1a925d97352fc8ce7b03666",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/rule/legacy.json",
+      "output_digest": "2733e4bc97e5595a9f2fdca3c611ea6c27d877de54cd3dda451fd16ca4d69b59",
+      "case_count": 4
+    },
+    {
+      "provenance": {
+        "source_path": "source/rule/nested-atrule.json",
+        "source_digest": "6ef6fa7a927de128586d96512ca550787199f9a03a4a8fc07459e6b3866e7106",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/rule/nested-atrule.json",
+      "output_digest": "de87801cd62884b13462f1c45e73c6001bbc2543da6ec730c2ae9e91d1b6ce69",
+      "case_count": 4
+    },
+    {
+      "provenance": {
+        "source_path": "source/rule/nesting.json",
+        "source_digest": "bec72e9adcea4c1a1e61f7cc34ae516852cdf2c862169961d55948146a4d0296",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/rule/nesting.json",
+      "output_digest": "bfa6c3129a3f9e476322a8c2cce9c1b88b6fd23f97d950e758a7d952c640af08",
+      "case_count": 6
+    },
+    {
+      "provenance": {
+        "source_path": "source/rule/tolerant.json",
+        "source_digest": "12139528f1a854578a60750e47e3a780daf989ebde6341462ad4d1aaa1ebba31",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/rule/tolerant.json",
+      "output_digest": "149098cf076e252bc6dcdfe5e9d68ccd22cb1b23b28b6fd002349720c1b67cab",
+      "case_count": 1
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/AttributeSelector.json",
+        "source_digest": "46c580e3f45c39a97cf3822a9b6c6a7fcba3aea6312e0822f4595d7eb33bba37",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/AttributeSelector.json",
+      "output_digest": "c5c964ef77cb661519db4e7b6b7ad305fa7a10de0c410adf89c2130bf05590d2",
+      "case_count": 47
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/ClassSelector.json",
+        "source_digest": "19976759bbda2e49c16eb74f7e789ce74dfd93f2ec8fb4b050174f41eb350ae1",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/ClassSelector.json",
+      "output_digest": "534155107e710590308cce0f3c2145144f06a370a83fb45127ffbe8c9c98f983",
+      "case_count": 7
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/Combinator.json",
+        "source_digest": "d16f5cb95369aa6e0bb1d842395d0d5c35604b65f58b7c931338465ef5dacda2",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/Combinator.json",
+      "output_digest": "2d3ed560ef573eb3180f9c0e0bdd0953cccdf183c0198b67297ed0c17edc444c",
+      "case_count": 17
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/IdSelector.json",
+        "source_digest": "c1db3a75a5a4c909848c88f91077b4d7804f25789d597ced99d5221da036089c",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/IdSelector.json",
+      "output_digest": "006e160d336722081e7fc12f6bf4fd4a6a2dd6e341437ddc211f349c2f2e1862",
+      "case_count": 2
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/Nth.json",
+        "source_digest": "d69f904de22159825e50775625e4783335907298f2d5beca2404373460eee8cf",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/Nth.json",
+      "output_digest": "c3362c98682a0524e8bc0636420529f40ebd6cd6a554e23b999fece8764e3416",
+      "case_count": 64
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/PseudoClassSelector.json",
+        "source_digest": "d9445890e94c0593d89aac9e98911f50698298cb48b9025ec8eb63292cf5d1cd",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/PseudoClassSelector.json",
+      "output_digest": "e30d97b73108f20ec9a51025cc91827befa433149a9be90fdec5688833e3c444",
+      "case_count": 11
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/PseudoElementSelector.json",
+        "source_digest": "0ad6903973e81d7aba090ab6a56650101e92029bf8d2795412d653422f02a01f",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/PseudoElementSelector.json",
+      "output_digest": "ed58200bc51e77ccad14bf7bb6bc435236fde9e6d3a69d65cfe49171abdcf6a1",
+      "case_count": 4
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/Selector.json",
+        "source_digest": "e95c2225e357915bb2676b837d030a29bf84828936ac00d74faeafacf1650be3",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/Selector.json",
+      "output_digest": "98e4d2e36738a38efc5db7a2a72b2f454643755825dbbf38621b430d0cab450f",
+      "case_count": 14
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/TypeSelector.json",
+        "source_digest": "a5792686994b9173296e8123f099fc0c1f47f358b071a9b9ebf40faf4f5eb0ea",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/TypeSelector.json",
+      "output_digest": "38649f1b63c0809d56449645f67bfc6b53070a57de412e028aa64ef50fb5293e",
+      "case_count": 31
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/functional-pseudo/-moz-any.json",
+        "source_digest": "6ed2831a551543f209e80f9e5deb8e69d16a42724b99dacb316db372c64c53f8",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/functional-pseudo/-moz-any.json",
+      "output_digest": "ce7e0a7e851a8726e113bf7bed831c6e859cfa0a47d1893e9a1282368506849a",
+      "case_count": 11
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/functional-pseudo/-webkit-any.json",
+        "source_digest": "f7ae083d0c67fd5aaa7982e4095b1c77b291897cf0a615f997fdbb9e9bddf46b",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/functional-pseudo/-webkit-any.json",
+      "output_digest": "b94a2bf577132e58acfe279a3aad4aa382349e0ff64b4a856e43928726eb3791",
+      "case_count": 11
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/functional-pseudo/dir.json",
+        "source_digest": "cc9275acdf1bde42fb2963acb72d04d4dc96593bfc286193ba83a3956fe42d2a",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/functional-pseudo/dir.json",
+      "output_digest": "f30b5c3096188c79c5b11ea8cb08a5f394643439e80a8a45bd1f8fdb839748e5",
+      "case_count": 5
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/functional-pseudo/has.json",
+        "source_digest": "e75766d59a4792e04492b82bfb3040fe7546ace3000e9eb116b64bc601e2afe7",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/functional-pseudo/has.json",
+      "output_digest": "6ad5da7d33d866f7034be05440b79e22122d79185e3dcc00da92c077c0456ac7",
+      "case_count": 13
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/functional-pseudo/host-context.json",
+        "source_digest": "7e2cb8c7fd01883c4797630f6e4e60188fd5616928d0961afc7bf87e4ddbe211",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/functional-pseudo/host-context.json",
+      "output_digest": "0b9c2d5db828347356718deb94bd4cec3c42c435966779f7ae01cf92692db41c",
+      "case_count": 10
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/functional-pseudo/host.json",
+        "source_digest": "a35c417df2b0c22e7052b75f2dc140b090e6716097ce16862d2eaeaddcb2c8a2",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/functional-pseudo/host.json",
+      "output_digest": "1fab85a4c757e42470f754cd3c3162a08e1331a2026573cc7df3c24880ad7b81",
+      "case_count": 10
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/functional-pseudo/is.json",
+        "source_digest": "84e4a022c0c319b270cba14226b016acd42257501ad5adfa27ce6e73b8e30e95",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/functional-pseudo/is.json",
+      "output_digest": "b83c826039585f0307c96bc08e776264bbb121403fab2edeae5e8e48b7f90f4e",
+      "case_count": 11
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/functional-pseudo/lang.json",
+        "source_digest": "7e4e7f105eba0cc2403fa40a9e4e7b376bb669c493ff12b3c44b556b0eec38e3",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/functional-pseudo/lang.json",
+      "output_digest": "9a4e2dc031780ae3daad1101baa265e7d5368d364465c7dc28e153575f917f4a",
+      "case_count": 8
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/functional-pseudo/matches.json",
+        "source_digest": "29bdde6a8472875c496e2a4d893ad42c93604e867dcb31904b835129711bc840",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/functional-pseudo/matches.json",
+      "output_digest": "f72b714f86d9ccaf08a400fb0a36483c89c4e1bfb56a4e49a53e6daa11a67715",
+      "case_count": 10
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/functional-pseudo/not.json",
+        "source_digest": "4f90347af6c69bcfae7594dfd1cbcdd15f47859e147113df5fa4dc8612672cd5",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/functional-pseudo/not.json",
+      "output_digest": "67335d0731319f4ed5902d8157990c1c05c169204c9a239ad61bf4a2131bb43f",
+      "case_count": 10
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/functional-pseudo/slotted.json",
+        "source_digest": "72fdfa040ee82abf0853a3ac281996fae0ccd435cf26c51c69423f939fdc5229",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/functional-pseudo/slotted.json",
+      "output_digest": "46156fe7135e8d0ea59d8f5848e8c0e9cbb94e96efd56be767f86cda74c03e59",
+      "case_count": 10
+    },
+    {
+      "provenance": {
+        "source_path": "source/selector/functional-pseudo/where.json",
+        "source_digest": "e07eaa47ef6ebfd36a5f26c43fcc141b33b208f2ad852b1951938384d29ed803",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selector/functional-pseudo/where.json",
+      "output_digest": "a4eefdd9e655c9290360b998c455c785f1f2f42fc3712aeb40cdf4a270924bd0",
+      "case_count": 11
+    },
+    {
+      "provenance": {
+        "source_path": "source/selectorList/Selector.json",
+        "source_digest": "71efd2e77f84f9de3b95f3c76a4427b1b123e10d4e1e4029a5c408f56886de29",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/selectorList/Selector.json",
+      "output_digest": "661e992bf12948c4ec5ad5138609d07660e07e7d493490ac01fabb2778b66eb7",
+      "case_count": 10
+    },
+    {
+      "provenance": {
+        "source_path": "source/stylesheet/StyleSheet.json",
+        "source_digest": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/stylesheet/StyleSheet.json",
+      "output_digest": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "case_count": 27
+    },
+    {
+      "provenance": {
+        "source_path": "source/stylesheet/comment.json",
+        "source_digest": "5288f6d90b9e06843588707838945e314cd6fe848264dcaff3902adcfbc6684c",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/stylesheet/comment.json",
+      "output_digest": "912d63de4186d82914c81986721ccf7be62c589047c416c4836fc4471da97575",
+      "case_count": 7
+    },
+    {
+      "provenance": {
+        "source_path": "source/stylesheet/errors.json",
+        "source_digest": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/stylesheet/errors.json",
+      "output_digest": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "case_count": 26
+    },
+    {
+      "provenance": {
+        "source_path": "source/stylesheet/tolerant.json",
+        "source_digest": "d4bf0daef501880d31c04ec525812fb20f446cd74d8147ed85fe2cda5306c8f6",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/stylesheet/tolerant.json",
+      "output_digest": "77ddb5a1dcdbea63fc142a402337780535907699619fe3c9407ff7e7fba208fc",
+      "case_count": 16
+    },
+    {
+      "provenance": {
+        "source_path": "source/value/Brackets.json",
+        "source_digest": "b55926ade5087ab5889d2792c718dc9264125cac01773838bd4c2cfaa58c6918",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/value/Brackets.json",
+      "output_digest": "84e8956b582ab4cd18b3ff8976945c2034552b94aa9a0aff47caaf347c5f8597",
+      "case_count": 4
+    },
+    {
+      "provenance": {
+        "source_path": "source/value/Dimension.json",
+        "source_digest": "f1fd0fca2048aaa6f17ae658d8545386edb6ee68f5522fccb4a7e050a133ecb1",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/value/Dimension.json",
+      "output_digest": "62510bcc75f37153d39ea3c45975ce0f2aaf399b256415e018fc84a9c8c6b00a",
+      "case_count": 5
+    },
+    {
+      "provenance": {
+        "source_path": "source/value/Function.json",
+        "source_digest": "3d1a4821d02d0b61af35eef2a407743762769e8c9f6d2cde9968999beb625598",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/value/Function.json",
+      "output_digest": "bbb19cab6f64c525731f4a992bc0e91512923e23fbeeff6833a321aa24d1f4b9",
+      "case_count": 22
+    },
+    {
+      "provenance": {
+        "source_path": "source/value/HexColor.json",
+        "source_digest": "15030fcdd2d97df6cdbfc503e8ff9c9cace069cbc3056296330c1d78fd2b634a",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/value/HexColor.json",
+      "output_digest": "7e0b7c92f81995425e63a7660d12bbe5dfb66c033e4c9b260322e70393509b92",
+      "case_count": 20
+    },
+    {
+      "provenance": {
+        "source_path": "source/value/Identifier.json",
+        "source_digest": "a58c62be5dce2d65f761eade9ae3fff0c1a6707999491626b2624c8c048e731e",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/value/Identifier.json",
+      "output_digest": "1ea70239bd9c7688e4adb47091f94785dc1e9cb1bdc70b88e495afe3f09dd0db",
+      "case_count": 2
+    },
+    {
+      "provenance": {
+        "source_path": "source/value/Number.json",
+        "source_digest": "4e31410b614adba3f3dbac1bcd82e0b31cb90e6b6d495df8171fc0cb272b5f0c",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/value/Number.json",
+      "output_digest": "e2bdaef4ef4632a895622879816eb9abc941ecb129fca66c2ce225fd12002fb1",
+      "case_count": 26
+    },
+    {
+      "provenance": {
+        "source_path": "source/value/Parentheses.json",
+        "source_digest": "8f96dbbf6f86f755e8a29984e0a08ad01d15e2d0880151e1087ab51c05d4c997",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/value/Parentheses.json",
+      "output_digest": "d6a1debc893ddfad2edb8e6fa6ee9d5b2fbfa898f2f50f1d2c8d825b19bcb8dd",
+      "case_count": 14
+    },
+    {
+      "provenance": {
+        "source_path": "source/value/Percentage.json",
+        "source_digest": "6cd577da0633f1fb201ddc2f0e35ba97cbaf8ec6c83a441e6155e5b61f120eda",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/value/Percentage.json",
+      "output_digest": "50fd83f9464fa3dbac831925dae460c6667b8bce4e4e60a1616deb5ab9c130c9",
+      "case_count": 4
+    },
+    {
+      "provenance": {
+        "source_path": "source/value/String.json",
+        "source_digest": "9c7d27f58b6e52ebc55c759af1f59aa6966891a3bc840a0eecef4256404abc69",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/value/String.json",
+      "output_digest": "5c8cec42a4004aea808b380a27fa67e128f01697800d9225b5e09c2ff413b77d",
+      "case_count": 7
+    },
+    {
+      "provenance": {
+        "source_path": "source/value/UnicodeRange.json",
+        "source_digest": "898d6c55453a7c3d5150761d23e9a9a8bbae50c448537d3a30b1db25360e363b",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/value/UnicodeRange.json",
+      "output_digest": "928904ab464533c4c483f1591eed4c447ba1944228acc8c1aec873dc1719c8f6",
+      "case_count": 30
+    },
+    {
+      "provenance": {
+        "source_path": "source/value/Url.json",
+        "source_digest": "e0e59ab27d1517c354403896b95060dd4130600e5b3ff870b8fa4e48ed3d71d4",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/value/Url.json",
+      "output_digest": "fe9b0dc51fd028f34261f851352c43609edfe3adb68f76107b1293c41c77c9c3",
+      "case_count": 12
+    },
+    {
+      "provenance": {
+        "source_path": "source/value/Value.json",
+        "source_digest": "8aa1e49367bdf01aa32edbd3b4eaa1929293aca098682ade7aee9e59f4cb0dec",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/value/Value.json",
+      "output_digest": "f8cc1b31fbfc93138e642d16cd7d1212e0f8ac5ca3cb3f98874407a2962ae6f3",
+      "case_count": 10
+    },
+    {
+      "provenance": {
+        "source_path": "source/value/function/calc.json",
+        "source_digest": "4bc384b2492aa06aec2f909bc2c24351731287d06e88d74c638023e488e5577a",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/value/function/calc.json",
+      "output_digest": "8ce205ce5e9d1ee74d1aa3a9776bd03b8a1e1b869e68fce48fe853ff491192f4",
+      "case_count": 4
+    },
+    {
+      "provenance": {
+        "source_path": "source/value/function/element.json",
+        "source_digest": "4534f695f8db5c2b65f39daa7ad9262a548fff46e41d2e6931a9957b64090bfb",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/value/function/element.json",
+      "output_digest": "ea6a0c4f758b272d15ffad1d1a0978a4a87a54ee509de79b17459c810ca08688",
+      "case_count": 4
+    },
+    {
+      "provenance": {
+        "source_path": "source/value/function/expression.json",
+        "source_digest": "b4cbd163c7c6552763fcfb009e4e56e2cc4bda429ad2495b37821bdb114d7c20",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/value/function/expression.json",
+      "output_digest": "a35fbf57e56955276035d037572fb626db514b7b89762a2f1fb0126120a97322",
+      "case_count": 8
+    },
+    {
+      "provenance": {
+        "source_path": "source/value/function/var.json",
+        "source_digest": "de25ae690d1548cda3040df0b26a0deee137a7077151459dff96d44b0a5dc4fb",
+        "generator": "surgeist-css-generate",
+        "schema_version": 1,
+        "domain_provenance": {
+          "csstree-import": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c"
+        }
+      },
+      "output_path": "expectations/value/function/var.json",
+      "output_digest": "1b288ed1494305d299f6c476754efcfb4a3516123d8bc88ab0b153f2aa5e5da6",
+      "case_count": 21
+    }
+  ]
+}

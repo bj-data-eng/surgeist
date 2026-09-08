@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/selector/ClassSelector.json",
+  "source_sha256": "19976759bbda2e49c16eb74f7e789ce74dfd93f2ec8fb4b050174f41eb350ae1",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "selector/ClassSelector.json#/basic class selector",
+      "context": "selector",
+      "label": "basic class selector",
+      "input": ".abc",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/ClassSelector.json#/escaped class selector #1",
+      "context": "selector",
+      "label": "escaped class selector #1",
+      "input": ".\\31 0\\+",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/ClassSelector.json#/escaped class selector #2",
+      "context": "selector",
+      "label": "escaped class selector #2",
+      "input": ".\\31 b",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/ClassSelector.json#/escaped class selector #3",
+      "context": "selector",
+      "label": "escaped class selector #3",
+      "input": ".\\31 \\ b",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/ClassSelector.json#/escaped class selector #4",
+      "context": "selector",
+      "label": "escaped class selector #4",
+      "input": ".\\30 \\30\r\\30\r\n\\30\n\\30\f",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/ClassSelector.json#/escaped class selector #5",
+      "context": "selector",
+      "label": "escaped class selector #5",
+      "input": ".test\\(1\\)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/ClassSelector.json#/start with dash",
+      "context": "selector",
+      "label": "start with dash",
+      "input": ".-abc",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

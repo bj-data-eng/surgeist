@@ -1,0 +1,27 @@
+error: cannot construct `RulePrecedence` with struct literal syntax due to private fields
+ --> tests/compile_fail/invalid_precedence_struct_literal.rs:4:23
+  |
+4 |     let _precedence = RulePrecedence {
+  |                       ^^^^^^^^^^^^^^
+5 |         layer_order: LayerOrder::new(1),
+  |         ------------------------------- private field
+6 |         source_order: SourceOrder::new(2),
+  |         --------------------------------- private field
+  |
+  = note: ...and other private field `specificity` that was not provided
+help: you might have meant to use the `new` associated function
+  |
+4 -     let _precedence = RulePrecedence {
+5 -         layer_order: LayerOrder::new(1),
+6 -         source_order: SourceOrder::new(2),
+7 -     };
+4 +     let _precedence = RulePrecedence::new(_, _);
+  |
+help: consider using the `Default` trait
+  |
+4 -     let _precedence = RulePrecedence {
+5 -         layer_order: LayerOrder::new(1),
+6 -         source_order: SourceOrder::new(2),
+7 -     };
+4 +     let _precedence = <RulePrecedence as std::default::Default>::default();
+  |

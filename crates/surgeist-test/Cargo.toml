@@ -1,0 +1,12 @@
+[package]
+name = "surgeist-test"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/bj-data-eng/surgeist"
+readme = "README.md"
+description = "Shared test infrastructure and integration fixtures for Surgeist."
+
+[lib]
+name = "surgeist_test"
+path = "src/lib.rs"

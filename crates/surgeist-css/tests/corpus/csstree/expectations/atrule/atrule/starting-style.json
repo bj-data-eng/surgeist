@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/atrule/atrule/starting-style.json",
+  "source_sha256": "4ade42d2187ca680f3d48a250b45da741cb7d46555eb50cc243326a2aa530b9d",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "atrule/atrule/starting-style.json#/base syntax",
+      "context": "atrule",
+      "label": "base syntax",
+      "input": "@starting-style { selector {} }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@starting-style{selector{}}",
+      "status": "active"
+    }
+  ]
+}

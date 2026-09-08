@@ -1,0 +1,19 @@
+error: cannot construct `AuthoredDeclaration` with struct literal syntax due to private fields
+  --> tests/compile_fail/invalid_authored_struct_literal.rs:7:24
+   |
+ 7 |     let _declaration = AuthoredDeclaration {
+   |                        ^^^^^^^^^^^^^^^^^^^
+ 8 |         property: AuthoredProperty::Property(Property::Color),
+   |         ----------------------------------------------------- private field
+ 9 |         value: AuthoredValue::Value(Value::StyleColor(StyleColor::rgba(Color::BLACK))),
+   |         ------------------------------------------------------------------------------ private field
+   |
+   = note: ...and other private field `source` that was not provided
+help: you might have meant to use the `css_wide` associated function
+   |
+ 7 -     let _declaration = AuthoredDeclaration {
+ 8 -         property: AuthoredProperty::Property(Property::Color),
+ 9 -         value: AuthoredValue::Value(Value::StyleColor(StyleColor::rgba(Color::BLACK))),
+10 -     };
+ 7 +     let _declaration = AuthoredDeclaration::css_wide(_, _);
+   |

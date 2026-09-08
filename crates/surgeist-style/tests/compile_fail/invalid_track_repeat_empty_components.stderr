@@ -1,0 +1,9 @@
+error[E0451]: fields `count` and `components` of struct `TrackRepeat` are private
+ --> tests/compile_fail/invalid_track_repeat_empty_components.rs:5:9
+  |
+4 |     let _repeat = TrackRepeat {
+  |                   ----------- in this type
+5 |         count: TrackRepeatCount::AutoFit,
+  |         ^^^^^ private field
+6 |         components: Vec::<GridTrackComponent>::new(),
+  |         ^^^^^^^^^^ private field

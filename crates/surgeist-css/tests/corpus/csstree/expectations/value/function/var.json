@@ -1,0 +1,207 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/value/function/var.json",
+  "source_sha256": "de25ae690d1548cda3040df0b26a0deee137a7077151459dff96d44b0a5dc4fb",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "value/function/var.json#/basic",
+      "context": "value",
+      "label": "basic",
+      "input": "var(--name)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/function/var.json#/complex balanced",
+      "context": "value",
+      "label": "complex balanced",
+      "input": "var(--name,{[({()})()()[({})]]}[{()}]([]))",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/function/var.json#/empty fallback",
+      "context": "value",
+      "label": "empty fallback",
+      "input": "var(--name,)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/function/var.json#/empty fallback (parseCustomProperty:true)",
+      "context": "value",
+      "label": "empty fallback (parseCustomProperty:true)",
+      "input": "var(--name,)",
+      "options": {
+        "parseCustomProperty": true
+      },
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/function/var.json#/error/0",
+      "context": "value",
+      "input": "var(-!)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/function/var.json#/error/1",
+      "context": "value",
+      "input": "var(--name, !important ())",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/function/var.json#/error/2",
+      "context": "value",
+      "input": "var(--name, foo; bar)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/function/var.json#/falback is {}-block",
+      "context": "value",
+      "label": "falback is {}-block",
+      "input": "var(--name,{foo:bar;baz:{}})",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/function/var.json#/only comments (parseCustomProperty:true)",
+      "context": "value",
+      "label": "only comments (parseCustomProperty:true)",
+      "input": "var(--name,/* 1 *//* 2 */)",
+      "options": {
+        "parseCustomProperty": true
+      },
+      "upstream_outcome": "parsed",
+      "canonical_css": "var(--name,)",
+      "status": "active"
+    },
+    {
+      "id": "value/function/var.json#/should be a error here (since unmatched tokens are disallowed), but ok for now",
+      "context": "value",
+      "label": "should be a error here (since unmatched tokens are disallowed), but ok for now",
+      "input": "var(--name, ()])",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/function/var.json#/should ignore everything inside falback's block",
+      "context": "value",
+      "label": "should ignore everything inside falback's block",
+      "input": "var(--name,{!important})",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/function/var.json#/should parse a fallback value when parseCustomProperty is true",
+      "context": "value",
+      "label": "should parse a fallback value when parseCustomProperty is true",
+      "input": "var(--foo, 1 foo)",
+      "options": {
+        "parseCustomProperty": true
+      },
+      "upstream_outcome": "parsed",
+      "canonical_css": "var(--foo,1 foo)",
+      "status": "active"
+    },
+    {
+      "id": "value/function/var.json#/should preserve single spaces",
+      "context": "value",
+      "label": "should preserve single spaces",
+      "input": "var(--name, )",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/function/var.json#/should preserve single spaces (parseCustomProperty:true)",
+      "context": "value",
+      "label": "should preserve single spaces (parseCustomProperty:true)",
+      "input": "var(--name, )",
+      "options": {
+        "parseCustomProperty": true
+      },
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/function/var.json#/spaces and comments",
+      "context": "value",
+      "label": "spaces and comments",
+      "input": "var( /* 1 */ --name /* 2 */ , /* 3 */ )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "var(--name, /* 3 */ )",
+      "status": "active"
+    },
+    {
+      "id": "value/function/var.json#/spaces and comments #2 (parseCustomProperty:true)",
+      "context": "value",
+      "label": "spaces and comments #2 (parseCustomProperty:true)",
+      "input": "var(--name, /* 1 *//* 2 */)",
+      "options": {
+        "parseCustomProperty": true
+      },
+      "upstream_outcome": "parsed",
+      "canonical_css": "var(--name, )",
+      "status": "active"
+    },
+    {
+      "id": "value/function/var.json#/spaces and comments #3 (parseCustomProperty:true)",
+      "context": "value",
+      "label": "spaces and comments #3 (parseCustomProperty:true)",
+      "input": "var(--name, /* 1 *//* 2 */ )",
+      "options": {
+        "parseCustomProperty": true
+      },
+      "upstream_outcome": "parsed",
+      "canonical_css": "var(--name, )",
+      "status": "active"
+    },
+    {
+      "id": "value/function/var.json#/spaces and comments #4 (parseCustomProperty:true)",
+      "context": "value",
+      "label": "spaces and comments #4 (parseCustomProperty:true)",
+      "input": "var(--name,/* 1 */ /* 2 */)",
+      "options": {
+        "parseCustomProperty": true
+      },
+      "upstream_outcome": "parsed",
+      "canonical_css": "var(--name, )",
+      "status": "active"
+    },
+    {
+      "id": "value/function/var.json#/spaces and comments (parseCustomProperty:true)",
+      "context": "value",
+      "label": "spaces and comments (parseCustomProperty:true)",
+      "input": "var( /* 1 */ --name /* 2 */ , /* 3 */ )",
+      "options": {
+        "parseCustomProperty": true
+      },
+      "upstream_outcome": "parsed",
+      "canonical_css": "var(--name, )",
+      "status": "active"
+    },
+    {
+      "id": "value/function/var.json#/unclosed var() is not an error",
+      "context": "value",
+      "label": "unclosed var() is not an error",
+      "input": "var(--name,([)])",
+      "upstream_outcome": "parsed",
+      "canonical_css": "var(--name,([)]))",
+      "status": "active"
+    },
+    {
+      "id": "value/function/var.json#/with fallback",
+      "context": "value",
+      "label": "with fallback",
+      "input": "var(--name,value)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

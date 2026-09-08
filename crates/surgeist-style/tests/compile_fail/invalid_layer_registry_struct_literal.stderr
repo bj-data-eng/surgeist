@@ -1,0 +1,9 @@
+error[E0451]: fields `named` and `next_order` of struct `LayerRegistry` are private
+ --> tests/compile_fail/invalid_layer_registry_struct_literal.rs:7:9
+  |
+6 |     let _registry = LayerRegistry {
+  |                     ------------- in this type
+7 |         named: BTreeMap::new(),
+  |         ^^^^^ private field
+8 |         next_order: 0,
+  |         ^^^^^^^^^^ private field

@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/selector/functional-pseudo/host.json",
+  "source_sha256": "a35c417df2b0c22e7052b75f2dc140b090e6716097ce16862d2eaeaddcb2c8a2",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "selector/functional-pseudo/host.json#/basic",
+      "context": "selector",
+      "label": "basic",
+      "input": ":host(test)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/host.json#/empty argument",
+      "context": "selector",
+      "label": "empty argument",
+      "input": ":host()",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/host.json#/error/0",
+      "context": "selector",
+      "input": ":host(.a{)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/host.json#/error/1",
+      "context": "selector",
+      "input": ":host(,.b)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/host.json#/error/2",
+      "context": "selector",
+      "input": ":host(.a,)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/host.json#/error/3",
+      "context": "selector",
+      "input": ":host(var(--test))",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/host.json#/error/4",
+      "context": "selector",
+      "input": ":host(foo,bar)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/host.json#/no argument",
+      "context": "selector",
+      "label": "no argument",
+      "input": ":host",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/host.json#/should be case insensitive",
+      "context": "selector",
+      "label": "should be case insensitive",
+      "input": ":hOsT(.a)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/host.json#/spaces around selector",
+      "context": "selector",
+      "label": "spaces around selector",
+      "input": ":host(  .a.b  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": ":host(.a.b)",
+      "status": "active"
+    }
+  ]
+}

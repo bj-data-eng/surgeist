@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/selector/functional-pseudo/dir.json",
+  "source_sha256": "cc9275acdf1bde42fb2963acb72d04d4dc96593bfc286193ba83a3956fe42d2a",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "selector/functional-pseudo/dir.json#/basic",
+      "context": "selector",
+      "label": "basic",
+      "input": ":dir(ltr)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/dir.json#/error/0",
+      "context": "selector",
+      "input": ":dir(1)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/dir.json#/error/1",
+      "context": "selector",
+      "input": ":dir(foo var)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/dir.json#/should be case insensitive",
+      "context": "selector",
+      "label": "should be case insensitive",
+      "input": ":DiR(ltr)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/dir.json#/with spaces and comments",
+      "context": "selector",
+      "label": "with spaces and comments",
+      "input": ":dir(  ltr /* test */ )",
+      "upstream_outcome": "parsed",
+      "canonical_css": ":dir(ltr)",
+      "status": "active"
+    }
+  ]
+}

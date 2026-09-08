@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/value/Parentheses.json",
+  "source_sha256": "8f96dbbf6f86f755e8a29984e0a08ad01d15e2d0880151e1087ab51c05d4c997",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "value/Parentheses.json#/parentheses.0",
+      "context": "value",
+      "label": "parentheses.0",
+      "input": "()",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Parentheses.json#/parentheses.1",
+      "context": "value",
+      "label": "parentheses.1",
+      "input": "(1)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Parentheses.json#/parentheses.2",
+      "context": "value",
+      "label": "parentheses.2",
+      "input": "(x)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Parentheses.json#/parentheses.3",
+      "context": "value",
+      "label": "parentheses.3",
+      "input": "(x+1)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Parentheses.json#/parentheses.9",
+      "context": "value",
+      "label": "parentheses.9",
+      "input": "(#123456\"string\")",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Parentheses.json#/parentheses.c.0",
+      "context": "value",
+      "label": "parentheses.c.0",
+      "input": "(/*test*/)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "()",
+      "status": "active"
+    },
+    {
+      "id": "value/Parentheses.json#/parentheses.c.1",
+      "context": "value",
+      "label": "parentheses.c.1",
+      "input": "(/*test*/1/*test*/)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "(1)",
+      "status": "active"
+    },
+    {
+      "id": "value/Parentheses.json#/parentheses.c.2",
+      "context": "value",
+      "label": "parentheses.c.2",
+      "input": "(/*test*/x/*test*/)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "(x)",
+      "status": "active"
+    },
+    {
+      "id": "value/Parentheses.json#/parentheses.c.3",
+      "context": "value",
+      "label": "parentheses.c.3",
+      "input": "(/*test*/x/*test*/+/*test*/1/*test*/)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "(x+ 1)",
+      "status": "active"
+    },
+    {
+      "id": "value/Parentheses.json#/parentheses.s.0",
+      "context": "value",
+      "label": "parentheses.s.0",
+      "input": "(  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "()",
+      "status": "active"
+    },
+    {
+      "id": "value/Parentheses.json#/parentheses.s.1",
+      "context": "value",
+      "label": "parentheses.s.1",
+      "input": "(  1  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "(1)",
+      "status": "active"
+    },
+    {
+      "id": "value/Parentheses.json#/parentheses.s.2",
+      "context": "value",
+      "label": "parentheses.s.2",
+      "input": "(  x  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "(x)",
+      "status": "active"
+    },
+    {
+      "id": "value/Parentheses.json#/parentheses.s.3",
+      "context": "value",
+      "label": "parentheses.s.3",
+      "input": "(  x  +  1  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "(x + 1)",
+      "status": "active"
+    },
+    {
+      "id": "value/Parentheses.json#/unclosed parentheses is not an error",
+      "context": "value",
+      "label": "unclosed parentheses is not an error",
+      "input": "( 123",
+      "upstream_outcome": "parsed",
+      "canonical_css": "(123)",
+      "status": "active"
+    }
+  ]
+}

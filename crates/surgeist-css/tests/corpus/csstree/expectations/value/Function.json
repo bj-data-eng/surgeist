@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/value/Function.json",
+  "source_sha256": "3d1a4821d02d0b61af35eef2a407743762769e8c9f6d2cde9968999beb625598",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "value/Function.json#/function.0",
+      "context": "value",
+      "label": "function.0",
+      "input": "test()",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/function.1",
+      "context": "value",
+      "label": "function.1",
+      "input": "test(n)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/function.2",
+      "context": "value",
+      "label": "function.2",
+      "input": "test-test(n)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/function.3",
+      "context": "value",
+      "label": "function.3",
+      "input": "test(x+y)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/function.4",
+      "context": "value",
+      "label": "function.4",
+      "input": "test(x,y)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/function.5",
+      "context": "value",
+      "label": "function.5",
+      "input": "test(10px,'test' test(x),89%)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "test(10px,\"test\"test(x),89%)",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/function.6",
+      "context": "value",
+      "label": "function.6",
+      "input": "rgb(-10, -20%, +89%)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "rgb(-10,-20%,+89%)",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/function.c.0",
+      "context": "value",
+      "label": "function.c.0",
+      "input": "test(/*test*/)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "test()",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/function.c.1",
+      "context": "value",
+      "label": "function.c.1",
+      "input": "test(/*test*/n/*test*/)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "test(n)",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/function.c.2",
+      "context": "value",
+      "label": "function.c.2",
+      "input": "test-test(/*test*/n/*test*/)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "test-test(n)",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/function.c.3",
+      "context": "value",
+      "label": "function.c.3",
+      "input": "test(/*test*/x/*test*/+/*test*/y/*test*/)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "test(x+y)",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/function.c.4",
+      "context": "value",
+      "label": "function.c.4",
+      "input": "test(/*test*/x/*test*/,/*test*/y/*test*/)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "test(x,y)",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/function.c.5",
+      "context": "value",
+      "label": "function.c.5",
+      "input": "test(/*test*/10px/*test*/,/*test*/'test'/*test*/test(/*test*/x/*test*/)/*test*/,/*test*/89%/*test*/)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "test(10px,\"test\"test(x),89%)",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/function.s.0",
+      "context": "value",
+      "label": "function.s.0",
+      "input": "test(  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "test()",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/function.s.1",
+      "context": "value",
+      "label": "function.s.1",
+      "input": "test(  n  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "test(n)",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/function.s.2",
+      "context": "value",
+      "label": "function.s.2",
+      "input": "test-test(  n  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "test-test(n)",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/function.s.3",
+      "context": "value",
+      "label": "function.s.3",
+      "input": "test(  x  +  y  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "test(x + y)",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/function.s.4",
+      "context": "value",
+      "label": "function.s.4",
+      "input": "test(  x  ,  y  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "test(x,y)",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/function.s.5",
+      "context": "value",
+      "label": "function.s.5",
+      "input": "test(  10px  ,  'test'  test(  x  )  ,  89%  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "test(10px,\"test\"test(x),89%)",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/should allow to use vendor prefix in function name",
+      "context": "value",
+      "label": "should allow to use vendor prefix in function name",
+      "input": "-webkit-func(n)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/shouldn't normalize function name",
+      "context": "value",
+      "label": "shouldn't normalize function name",
+      "input": "TesT(n)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Function.json#/unclosed parentheses is not an error",
+      "context": "value",
+      "label": "unclosed parentheses is not an error",
+      "input": "foo( 123",
+      "upstream_outcome": "parsed",
+      "canonical_css": "foo(123)",
+      "status": "active"
+    }
+  ]
+}

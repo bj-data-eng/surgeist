@@ -1,0 +1,9 @@
+error[E0451]: fields `selector` and `bucket` of struct `RuleTarget` are private
+ --> tests/compile_fail/invalid_rule_target_struct_literal.rs:5:9
+  |
+4 |     let _target = RuleTarget {
+  |                   ---------- in this type
+5 |         selector: Selector::tag("button")?,
+  |         ^^^^^^^^ private field
+6 |         bucket: StyleBucket::Before,
+  |         ^^^^^^ private field

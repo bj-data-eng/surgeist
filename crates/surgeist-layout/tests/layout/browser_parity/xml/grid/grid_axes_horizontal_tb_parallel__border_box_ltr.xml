@@ -1,0 +1,15 @@
+<test name="grid_axes_horizontal_tb_parallel__border_box_ltr" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" display="grid" direction="ltr" grid-template-rows="50px 60px" grid-template-columns="30px 40px">
+      <div source-tag="div" display="flex" direction="ltr" grid-row-start="1" grid-row-end="2" grid-column-start="1" grid-column-end="2"/>
+      <div source-tag="div" display="flex" direction="ltr" grid-row-start="2" grid-row-end="3" grid-column-start="2" grid-column-end="3"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="70" height="110">
+      <node x="0" y="0" width="30" height="50"/>
+      <node x="30" y="50" width="40" height="60"/>
+    </node>
+  </expectations>
+</test>

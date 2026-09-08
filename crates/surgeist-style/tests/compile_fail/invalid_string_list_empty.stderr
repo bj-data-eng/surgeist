@@ -1,0 +1,16 @@
+error[E0423]: cannot initialize a tuple struct which contains private fields
+ --> tests/compile_fail/invalid_string_list_empty.rs:4:42
+  |
+4 |     let _strings = Value::FontFamilyList(FontFamilyList(vec![String::new()]));
+  |                                          ^^^^^^^^^^^^^^
+  |
+note: constructor is not visible here due to private fields
+ --> src/value.rs
+  |
+  | pub struct FontFamilyList(StyleStringList);
+  |                           ^^^^^^^^^^^^^^^ private field
+help: you might have meant to use the `empty` associated function
+  |
+4 -     let _strings = Value::FontFamilyList(FontFamilyList(vec![String::new()]));
+4 +     let _strings = Value::FontFamilyList(FontFamilyList::empty());
+  |

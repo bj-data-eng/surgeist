@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/declarationList/tolerant.json",
+  "source_sha256": "91bf45e608575fb2fb27e4ff5f656f4b3c3ea5d48360123272ce14e78b2cb1ec",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "declarationList/tolerant.json#/no colon after a property name",
+      "context": "declarationList",
+      "label": "no colon after a property name",
+      "input": "foo;color:red",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/declaration/Important.json",
+  "source_sha256": "b4169280b7f146c7090091a487e1d45007764ef4ec5c69dba821ad64541268fe",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "declaration/Important.json#/!ie hack/0",
+      "context": "declaration",
+      "label": "!ie hack",
+      "input": "property:!ie",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Important.json#/!ie hack/1",
+      "context": "declaration",
+      "label": "!ie hack",
+      "input": "property:!IE7",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Important.json#/\\9 hack",
+      "context": "declaration",
+      "label": "\\9 hack",
+      "input": "property:!important\\9",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Important.json#/basic/0",
+      "context": "declaration",
+      "label": "basic",
+      "input": "property:!important",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Important.json#/basic/1",
+      "context": "declaration",
+      "label": "basic",
+      "input": "property:!ImpoRtant",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Important.json#/basic/2",
+      "context": "declaration",
+      "label": "basic",
+      "input": "property:!IMPORTANT",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Important.json#/divided by comment",
+      "context": "declaration",
+      "label": "divided by comment",
+      "input": "property:!/*test*/important",
+      "upstream_outcome": "parsed",
+      "canonical_css": "property:!important",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Important.json#/divided by spaces",
+      "context": "declaration",
+      "label": "divided by spaces",
+      "input": "property:!  important",
+      "upstream_outcome": "parsed",
+      "canonical_css": "property:!important",
+      "status": "active"
+    },
+    {
+      "id": "declaration/Important.json#/divided by spaces and comments",
+      "context": "declaration",
+      "label": "divided by spaces and comments",
+      "input": "property:! /**/ important",
+      "upstream_outcome": "parsed",
+      "canonical_css": "property:!important",
+      "status": "active"
+    }
+  ]
+}

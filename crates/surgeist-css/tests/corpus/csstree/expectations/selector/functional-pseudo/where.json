@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/selector/functional-pseudo/where.json",
+  "source_sha256": "e07eaa47ef6ebfd36a5f26c43fcc141b33b208f2ad852b1951938384d29ed803",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "selector/functional-pseudo/where.json#/basic",
+      "context": "selector",
+      "label": "basic",
+      "input": ":where(test)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/error/0",
+      "context": "selector",
+      "input": ":where(.a{)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/error/1",
+      "context": "selector",
+      "input": ":where(,.b)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/error/2",
+      "context": "selector",
+      "input": ":where(.a,)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/error/3",
+      "context": "selector",
+      "input": ":where(.a,,)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/error/4",
+      "context": "selector",
+      "input": ":where(.a,.b{)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/error/5",
+      "context": "selector",
+      "input": ":where(var(--test))",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/negation with selector group",
+      "context": "selector",
+      "label": "negation with selector group",
+      "input": ":where(.a,.b.c)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/selector group and spaces",
+      "context": "selector",
+      "label": "selector group and spaces",
+      "input": ":where(  .a  ,  .b  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": ":where(.a,.b)",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/should be case insensitive",
+      "context": "selector",
+      "label": "should be case insensitive",
+      "input": ":HaS(.a,.b)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/should support relative selectors",
+      "context": "selector",
+      "label": "should support relative selectors",
+      "input": ":where(>.a,+.b)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

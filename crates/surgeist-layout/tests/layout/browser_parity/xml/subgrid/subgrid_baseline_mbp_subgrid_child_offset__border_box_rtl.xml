@@ -1,0 +1,23 @@
+<test name="subgrid_baseline_mbp_subgrid_child_offset__border_box_rtl" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" display="grid" direction="rtl" font-size="16px" line-height="16px" border-top="1px" border-left="1px" border-bottom="1px" border-right="1px" grid-template-columns="auto auto">
+      <text source-tag="div" display="block" direction="rtl" font-size="16px" line-height="16px" align-self="baseline">
+        X
+      </text>
+      <div source-tag="div" display="grid" direction="rtl" font-size="16px" line-height="16px" margin-top="15px" padding-top="6px" border-top="9px" border-left="9px" border-bottom="9px" border-right="9px" grid-template-rows="subgrid">
+        <text source-tag="div" display="block" direction="rtl" font-size="16px" line-height="16px" align-self="baseline">
+          X
+        </text>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="52" height="57">
+      <node x="35" y="31" width="16" height="16"/>
+      <node x="1" y="16" width="34" height="40">
+        <node x="9" y="15" width="16" height="16"/>
+      </node>
+    </node>
+  </expectations>
+</test>

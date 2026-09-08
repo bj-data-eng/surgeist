@@ -1,0 +1,15 @@
+<test name="fri04_flex_basis_content__border_box_rtl" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" display="flex" direction="rtl" width="200px" height="20px">
+      <div source-tag="div" display="flex" direction="rtl" flex-shrink="0" flex-basis="content" width="90px" height="20px" min-width="0px"/>
+      <div source-tag="div" display="flex" direction="rtl" flex-shrink="0" width="40px" height="20px" min-width="0px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="200" height="20">
+      <node x="200" y="0" width="0" height="20"/>
+      <node x="160" y="0" width="40" height="20"/>
+    </node>
+  </expectations>
+</test>

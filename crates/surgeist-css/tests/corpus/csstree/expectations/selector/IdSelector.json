@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/selector/IdSelector.json",
+  "source_sha256": "c1db3a75a5a4c909848c88f91077b4d7804f25789d597ced99d5221da036089c",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "selector/IdSelector.json#/shash.0",
+      "context": "selector",
+      "label": "shash.0",
+      "input": "#id",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/IdSelector.json#/shash.1",
+      "context": "selector",
+      "label": "shash.1",
+      "input": "#-id",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/selectorList/Selector.json",
+  "source_sha256": "71efd2e77f84f9de3b95f3c76a4427b1b123e10d4e1e4029a5c408f56886de29",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "selectorList/Selector.json#/error/0",
+      "context": "selectorList",
+      "input": "a, ",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selectorList/Selector.json#/error/1",
+      "context": "selectorList",
+      "input": "a,, ",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selectorList/Selector.json#/error/2",
+      "context": "selectorList",
+      "input": "a,,b",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selectorList/Selector.json#/error/3",
+      "context": "selectorList",
+      "input": ",b",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selectorList/Selector.json#/error/4",
+      "context": "selectorList",
+      "input": ",,b",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selectorList/Selector.json#/error/5",
+      "context": "selectorList",
+      "input": ",",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selectorList/Selector.json#/error/6",
+      "context": "selectorList",
+      "input": ",,",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selectorList/Selector.json#/error/7",
+      "context": "selectorList",
+      "input": "a,{",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selectorList/Selector.json#/several selectors",
+      "context": "selectorList",
+      "label": "several selectors",
+      "input": "a+b,c",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selectorList/Selector.json#/single selector",
+      "context": "selectorList",
+      "label": "single selector",
+      "input": "test",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

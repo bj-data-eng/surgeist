@@ -1,0 +1,11 @@
+error[E0423]: cannot initialize a tuple struct which contains private fields
+ --> tests/compile_fail/invalid_text_decoration_thickness_length_literal.rs:4:22
+  |
+4 |     let _thickness = TextDecorationThicknessLength(Length::Px(1.0));
+  |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+note: constructor is not visible here due to private fields
+ --> src/value.rs
+  |
+  | pub struct TextDecorationThicknessLength(Length);
+  |                                          ^^^^^^ private field

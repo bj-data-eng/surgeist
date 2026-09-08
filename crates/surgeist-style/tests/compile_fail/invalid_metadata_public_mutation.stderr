@@ -1,0 +1,28 @@
+error[E0624]: associated function `new` is private
+ --> tests/compile_fail/invalid_metadata_public_mutation.rs:4:31
+  |
+4 |     let _metadata = Metadata::new(Value::Color(Color::BLACK));
+  |                               ^^^ private associated function
+  |
+ ::: src/property.rs
+  |
+  |     pub(crate) fn new(default: Value) -> Self {
+  |     ----------------------------------------- private associated function defined here
+
+error[E0616]: field `default` of struct `surgeist_style::Metadata` is private
+ --> tests/compile_fail/invalid_metadata_public_mutation.rs:7:14
+  |
+7 |     metadata.default = Value::Number(3.0);
+  |              ^^^^^^^ private field
+
+error[E0616]: field `inherited` of struct `surgeist_style::Metadata` is private
+ --> tests/compile_fail/invalid_metadata_public_mutation.rs:8:14
+  |
+8 |     metadata.inherited = false;
+  |              ^^^^^^^^^ private field
+
+error[E0616]: field `impact` of struct `surgeist_style::Metadata` is private
+ --> tests/compile_fail/invalid_metadata_public_mutation.rs:9:14
+  |
+9 |     metadata.impact.layout = false;
+  |              ^^^^^^ private field

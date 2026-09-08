@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/value/Url.json",
+  "source_sha256": "e0e59ab27d1517c354403896b95060dd4130600e5b3ff870b8fa4e48ed3d71d4",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "value/Url.json#/error/0",
+      "context": "value",
+      "input": "url(/*test*/'http://test.com'/*test*/)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/Url.json#/error/1",
+      "context": "value",
+      "input": "url(a(1).png)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/Url.json#/error/2",
+      "context": "value",
+      "input": "url(a - b.png)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/Url.json#/uri escaping",
+      "context": "value",
+      "label": "uri escaping",
+      "input": "url(  \\31 \\ \\(2\\)\\.png  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "url(1\\ \\(2\\).png)",
+      "status": "active"
+    },
+    {
+      "id": "value/Url.json#/uri with parentheses",
+      "context": "value",
+      "label": "uri with parentheses",
+      "input": "url(  p\\(1\\).png  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "url(p\\(1\\).png)",
+      "status": "active"
+    },
+    {
+      "id": "value/Url.json#/uri with parentheses in string",
+      "context": "value",
+      "label": "uri with parentheses in string",
+      "input": "url(  'p (1).png'  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "url(p\\ \\(1\\).png)",
+      "status": "active"
+    },
+    {
+      "id": "value/Url.json#/uri with special symbols",
+      "context": "value",
+      "label": "uri with special symbols",
+      "input": "url(  p{1};.png  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "url(p{1};.png)",
+      "status": "active"
+    },
+    {
+      "id": "value/Url.json#/uri.0",
+      "context": "value",
+      "label": "uri.0",
+      "input": "url(\"http://test.com\")",
+      "upstream_outcome": "parsed",
+      "canonical_css": "url(http://test.com)",
+      "status": "active"
+    },
+    {
+      "id": "value/Url.json#/uri.1",
+      "context": "value",
+      "label": "uri.1",
+      "input": "url(http://test.com)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Url.json#/uri.c.1",
+      "context": "value",
+      "label": "uri.c.1",
+      "input": "url(/*test*/http://test.com/*test*/)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Url.json#/uri.s.0",
+      "context": "value",
+      "label": "uri.s.0",
+      "input": "url(  'http://test.com'  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "url(http://test.com)",
+      "status": "active"
+    },
+    {
+      "id": "value/Url.json#/uri.s.1",
+      "context": "value",
+      "label": "uri.s.1",
+      "input": "url(  http://test.com  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": "url(http://test.com)",
+      "status": "active"
+    }
+  ]
+}

@@ -1,0 +1,490 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/selector/Nth.json",
+  "source_sha256": "d69f904de22159825e50775625e4783335907298f2d5beca2404373460eee8cf",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "selector/Nth.json#/+n",
+      "context": "selector",
+      "label": "+n",
+      "input": ":nth-last-child(+n - 2)",
+      "upstream_outcome": "parsed",
+      "canonical_css": ":nth-last-child(n-2)",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/big numbers",
+      "context": "selector",
+      "label": "big numbers",
+      "input": ":nth-last-child(123456n-12345678)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/0",
+      "context": "selector",
+      "input": ":nth-child(xxx)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/1",
+      "context": "selector",
+      "input": ":nth-child(--test) {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/10",
+      "context": "selector",
+      "input": ":nth-child(3n-2n)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/11",
+      "context": "selector",
+      "input": ":nth-child(3n + -6)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/12",
+      "context": "selector",
+      "input": ":nth-child(3n - 2n)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/13",
+      "context": "selector",
+      "input": ":nth-child(3n- 2n)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/14",
+      "context": "selector",
+      "input": ":nth-child(3n-x)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/15",
+      "context": "selector",
+      "input": ":nth-child(3n- 3.5)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/16",
+      "context": "selector",
+      "input": ":nth-child(3n 1)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/17",
+      "context": "selector",
+      "input": ":nth-child(3nn)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/18",
+      "context": "selector",
+      "input": ":nth-child(3n- n)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/19",
+      "context": "selector",
+      "input": ":nth-child(3n + -2)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/2",
+      "context": "selector",
+      "input": ":nth-child(var(--test)) {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/20",
+      "context": "selector",
+      "input": ":nth-child(3n+-2)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/21",
+      "context": "selector",
+      "input": ":nth-child(1.3n+2)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/22",
+      "context": "selector",
+      "input": ":nth-child(1e3n+2)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/23",
+      "context": "selector",
+      "input": ":nth-child(.3n+2)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/24",
+      "context": "selector",
+      "input": ":nth-child(3n+2.1)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/25",
+      "context": "selector",
+      "input": ":nth-child(3n+2e1)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/26",
+      "context": "selector",
+      "input": ":nth-child(3n+.1)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/27",
+      "context": "selector",
+      "input": ":nth-child(2.1)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/28",
+      "context": "selector",
+      "input": ":nth-child(2e1)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/29",
+      "context": "selector",
+      "input": ":nth-child(.1)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/3",
+      "context": "selector",
+      "input": ":nth-child(3 n)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/30",
+      "context": "selector",
+      "input": ":nth-child(+-n)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/31",
+      "context": "selector",
+      "input": ":nth-child(n -)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/32",
+      "context": "selector",
+      "input": ":nth-child(n +)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/33",
+      "context": "selector",
+      "input": ":nth-child(n+)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/34",
+      "context": "selector",
+      "input": ":nth-child(n-)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/35",
+      "context": "selector",
+      "input": ":nth-child(-n+)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/36",
+      "context": "selector",
+      "input": ":nth-child(-n-)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/37",
+      "context": "selector",
+      "input": ":nth-child(-n +)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/38",
+      "context": "selector",
+      "input": ":nth-child(-n -)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/4",
+      "context": "selector",
+      "input": ":nth-child(+ 2n)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/5",
+      "context": "selector",
+      "input": ":nth-child(+ 2)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/6",
+      "context": "selector",
+      "input": ":nth-child(3n - +1)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/7",
+      "context": "selector",
+      "input": ":nth-child(3n - -1)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/8",
+      "context": "selector",
+      "input": ":nth-child(3n- +1)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/error/9",
+      "context": "selector",
+      "input": ":nth-child(3n- -1)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/even keyword",
+      "context": "selector",
+      "label": "even keyword",
+      "input": ":nth-child(even)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/even keyword should be case insensitive",
+      "context": "selector",
+      "label": "even keyword should be case insensitive",
+      "input": ":nth-child(eVeN)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/nth-child",
+      "context": "selector",
+      "label": "nth-child",
+      "input": ":nth-child(2n+1)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/nth-child case insensetive",
+      "context": "selector",
+      "label": "nth-child case insensetive",
+      "input": ":Nth-Child(2n+1)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/nth-last-child",
+      "context": "selector",
+      "label": "nth-last-child",
+      "input": ":nth-last-child(2n+1)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/nth-last-child case insensetive",
+      "context": "selector",
+      "label": "nth-last-child case insensetive",
+      "input": ":Nth-last-Child(2n+1)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/nth-last-of-type",
+      "context": "selector",
+      "label": "nth-last-of-type",
+      "input": ":nth-last-of-type(2n+1)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/nth-last-of-type case insensetive",
+      "context": "selector",
+      "label": "nth-last-of-type case insensetive",
+      "input": ":Nth-Last-Of-Type(2n+1)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/nth-of-type",
+      "context": "selector",
+      "label": "nth-of-type",
+      "input": ":nth-of-type(2n+1)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/nth-of-type case insensetive",
+      "context": "selector",
+      "label": "nth-of-type case insensetive",
+      "input": ":Nth-Of-Type(2n+1)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/nth.0",
+      "context": "selector",
+      "label": "nth.0",
+      "input": ":nth-child(10)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/nth.1",
+      "context": "selector",
+      "label": "nth.1",
+      "input": ":nth-child(2n)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/nth.4",
+      "context": "selector",
+      "label": "nth.4",
+      "input": ":nth-child(n)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/nth.5",
+      "context": "selector",
+      "label": "nth.5",
+      "input": ":nth-child(-n)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/nthselector.0 case insensitive",
+      "context": "selector",
+      "label": "nthselector.0 case insensitive",
+      "input": ":nth-child(2N+1)",
+      "upstream_outcome": "parsed",
+      "canonical_css": ":nth-child(2n+1)",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/nthselector.1",
+      "context": "selector",
+      "label": "nthselector.1",
+      "input": ":nth-last-child(+3n-2)",
+      "upstream_outcome": "parsed",
+      "canonical_css": ":nth-last-child(3n-2)",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/nthselector.c.0",
+      "context": "selector",
+      "label": "nthselector.c.0",
+      "input": ":nth-child(/*test*/2n/*test*/+/*test*/1/*test*/)",
+      "upstream_outcome": "parsed",
+      "canonical_css": ":nth-child(2n+1)",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/nthselector.c.1",
+      "context": "selector",
+      "label": "nthselector.c.1",
+      "input": ":nth-last-child(/*test*/+3n/*test*/-/*test*/2/*test*/)",
+      "upstream_outcome": "parsed",
+      "canonical_css": ":nth-last-child(3n-2)",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/nthselector.s.0",
+      "context": "selector",
+      "label": "nthselector.s.0",
+      "input": ":nth-child(  2n  +  1  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": ":nth-child(2n+1)",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/nthselector.s.1",
+      "context": "selector",
+      "label": "nthselector.s.1",
+      "input": ":nth-last-child(  +3n  -  2  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": ":nth-last-child(3n-2)",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/odd keyword",
+      "context": "selector",
+      "label": "odd keyword",
+      "input": ":nth-child(odd)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/odd keyword be case insensitive",
+      "context": "selector",
+      "label": "odd keyword be case insensitive",
+      "input": ":nth-child(OdD)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Nth.json#/of clause",
+      "context": "selector",
+      "label": "of clause",
+      "input": ":nth-child(2n+1 of li,.test)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

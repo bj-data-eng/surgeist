@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/atrule/block.json",
+  "source_sha256": "70af8879a35fbd9ef0082ea417ee6f8e779f188dcfde1f34b6d0c4b24cb6f729",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "atrule/block.json#/@page",
+      "context": "atrule",
+      "label": "@page",
+      "input": "@page :left { margin: 5cm; }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@page :left{margin:5cm}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/block.json#/block at-rule #0",
+      "context": "atrule",
+      "label": "block at-rule #0",
+      "input": "@test{p:v}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/block.json#/block at-rule #1",
+      "context": "atrule",
+      "label": "block at-rule #1",
+      "input": "@test x y {p:v}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@test x y{p:v}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/block.json#/block at-rule #2",
+      "context": "atrule",
+      "label": "block at-rule #2",
+      "input": "@test x, y x(1+2) {p:v}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@test x,y x(1+2){p:v}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/block.json#/block at-rule #c.0",
+      "context": "atrule",
+      "label": "block at-rule #c.0",
+      "input": "@test/*test*/{/*test*/p/*test*/:/*test*/v/*test*/}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@test{p:v}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/block.json#/block at-rule #c.1",
+      "context": "atrule",
+      "label": "block at-rule #c.1",
+      "input": "@test/*test*/x/*test*/ y/*test*/{/*test*/p/*test*/:/*test*/v/*test*/}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@test x y{p:v}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/block.json#/block at-rule #c.2",
+      "context": "atrule",
+      "label": "block at-rule #c.2",
+      "input": "@test/*test*/x/*test*/,/*test*/y/*test*/ x(/*test*/1/*test*/+/*test*/2/*test*/)/*test*/{/*test*/p/*test*/:/*test*/v/*test*/}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@test x,y x(1+ 2){p:v}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/block.json#/block at-rule #s.0",
+      "context": "atrule",
+      "label": "block at-rule #s.0",
+      "input": "@test  {  p  :  v  }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@test{p:v}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/block.json#/block at-rule #s.1",
+      "context": "atrule",
+      "label": "block at-rule #s.1",
+      "input": "@test  x  y  {  p  :  v  }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@test x y{p:v}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/block.json#/block at-rule #s.2",
+      "context": "atrule",
+      "label": "block at-rule #s.2",
+      "input": "@test  x  ,  y  x(  1  +  2  )  {  p  :  v  }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@test x,y x(1+ 2){p:v}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/block.json#/empty block at-rule",
+      "context": "atrule",
+      "label": "empty block at-rule",
+      "input": "@test{}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/block.json#/error/0",
+      "context": "atrule",
+      "input": "@atrule { a: 1",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "atrule/block.json#/should turn empty prelude to null",
+      "context": "atrule",
+      "label": "should turn empty prelude to null",
+      "input": "@media{}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/block.json#/shouldn't create a raw node when no prelude and parseAtrulePrelude is false",
+      "context": "atrule",
+      "label": "shouldn't create a raw node when no prelude and parseAtrulePrelude is false",
+      "input": "@test {}",
+      "options": {
+        "parseAtrulePrelude": false
+      },
+      "upstream_outcome": "parsed",
+      "canonical_css": "@test{}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/block.json#/shouldn't parse a atrule prelude when parseAtrulePrelude is false",
+      "context": "atrule",
+      "label": "shouldn't parse a atrule prelude when parseAtrulePrelude is false",
+      "input": "@test a b {}",
+      "options": {
+        "parseAtrulePrelude": false
+      },
+      "upstream_outcome": "parsed",
+      "canonical_css": "@test a b{}",
+      "status": "active"
+    }
+  ]
+}

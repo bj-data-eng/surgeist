@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/stylesheet/tolerant.json",
+  "source_sha256": "d4bf0daef501880d31c04ec525812fb20f446cd74d8147ed85fe2cda5306c8f6",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "stylesheet/tolerant.json#/bad selector/0",
+      "context": "stylesheet",
+      "label": "bad selector",
+      "input": " ? {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "?{}",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/bad selector/1",
+      "context": "stylesheet",
+      "label": "bad selector",
+      "input": ".a! { } .a {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": ".a!{}.a{}",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/bad selector/2",
+      "context": "stylesheet",
+      "label": "bad selector",
+      "input": ".a! { } .a {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/correct fallback on error in at-rule block/0",
+      "context": "stylesheet",
+      "label": "correct fallback on error in at-rule block",
+      "input": "@media (max-width:1000px){top:0;left:0;width:100%;}*{color:red}",
+      "options": {
+        "parseAtrulePrelude": false
+      },
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/correct fallback on error in at-rule block/1",
+      "context": "stylesheet",
+      "label": "correct fallback on error in at-rule block",
+      "input": "@media (max-width:1000px){a{};b{}}",
+      "options": {
+        "parseAtrulePrelude": false
+      },
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/correct fallback on error in at-rule block/2",
+      "context": "stylesheet",
+      "label": "correct fallback on error in at-rule block",
+      "input": "@media (max-width:1000px){a{};@b{}}",
+      "options": {
+        "parseAtrulePrelude": false
+      },
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/no block",
+      "context": "stylesheet",
+      "label": "no block",
+      "input": " ? ",
+      "upstream_outcome": "parsed",
+      "canonical_css": "? ",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/parser should respect bracket balance over stop token",
+      "context": "stylesheet",
+      "label": "parser should respect bracket balance over stop token",
+      "input": ".a{--x:(;color:green;}.b{color:red;--y:);width:10px}",
+      "upstream_outcome": "parsed",
+      "canonical_css": ".a{--x:(;color:green;}.b{color:red;--y:);width:10px}}",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/parser should respect bracket balance over stop token #2",
+      "context": "stylesheet",
+      "label": "parser should respect bracket balance over stop token #2",
+      "input": ".a{--x:(;color:green;}.b{color:red;--y:});width:10px}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/rule with unclosed attribute selector/0",
+      "context": "stylesheet",
+      "label": "rule with unclosed attribute selector",
+      "input": "div[attr",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/rule with unclosed attribute selector/1",
+      "context": "stylesheet",
+      "label": "rule with unclosed attribute selector",
+      "input": "div[attr=",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/rule with unclosed attribute selector/2",
+      "context": "stylesheet",
+      "label": "rule with unclosed attribute selector",
+      "input": "div[attr=123",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/rule with unclosed pseudo selector",
+      "context": "stylesheet",
+      "label": "rule with unclosed pseudo selector",
+      "input": "div:not(a,",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/unclosed block",
+      "context": "stylesheet",
+      "label": "unclosed block",
+      "input": "foo {",
+      "upstream_outcome": "parsed",
+      "canonical_css": "foo{}",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/unclosed unknown functional-pseudo in selector",
+      "context": "stylesheet",
+      "label": "unclosed unknown functional-pseudo in selector",
+      "input": " foo:bar(x {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "foo:bar(x {}",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/uncomplete pseudo in selector",
+      "context": "stylesheet",
+      "label": "uncomplete pseudo in selector",
+      "input": " foo: {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "foo:{}",
+      "status": "active"
+    }
+  ]
+}

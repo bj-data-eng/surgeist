@@ -1,0 +1,13 @@
+<test name="fri04_sizing_math_functions__border_box_rtl" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" display="block" direction="rtl" width="240px">
+      <div source-tag="div" display="flex" direction="rtl" width="calc(50% - 10px)" height="20px" min-width="max(25%, min(72px, 30%))" max-width="clamp(35%, max(50%, 100px), 70%)"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="240" height="20">
+      <node x="130" y="0" width="110" height="20"/>
+    </node>
+  </expectations>
+</test>

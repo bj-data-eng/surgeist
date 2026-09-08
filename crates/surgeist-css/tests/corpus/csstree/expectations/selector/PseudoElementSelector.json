@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/selector/PseudoElementSelector.json",
+  "source_sha256": "0ad6903973e81d7aba090ab6a56650101e92029bf8d2795412d653422f02a01f",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "selector/PseudoElementSelector.json#/functional pseudo element",
+      "context": "selector",
+      "label": "functional pseudo element",
+      "input": "::test(1 + 2)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/PseudoElementSelector.json#/pseudo element #0",
+      "context": "selector",
+      "label": "pseudo element #0",
+      "input": "::test",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/PseudoElementSelector.json#/pseudo element #1",
+      "context": "selector",
+      "label": "pseudo element #1",
+      "input": "::test-test",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/PseudoElementSelector.json#/pseudo element ::before",
+      "context": "selector",
+      "label": "pseudo element ::before",
+      "input": "::before",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

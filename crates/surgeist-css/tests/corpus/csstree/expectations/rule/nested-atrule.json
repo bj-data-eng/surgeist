@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/rule/nested-atrule.json",
+  "source_sha256": "6ef6fa7a927de128586d96512ca550787199f9a03a4a8fc07459e6b3866e7106",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "rule/nested-atrule.json#/basic",
+      "context": "rule",
+      "label": "basic",
+      "input": ".test{@test;}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "rule/nested-atrule.json#/recursion",
+      "context": "rule",
+      "label": "recursion",
+      "input": ".test{@test foo{@test foo{}}}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "rule/nested-atrule.json#/with block",
+      "context": "rule",
+      "label": "with block",
+      "input": ".test{@test foo{a:1}}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "rule/nested-atrule.json#/with prelude",
+      "context": "rule",
+      "label": "with prelude",
+      "input": ".test{@test not(something);}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

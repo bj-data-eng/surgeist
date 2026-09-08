@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/atrule/atrule/container.json",
+  "source_sha256": "84eb9c9bb9c05b2171506ccda7f51682c2cd0f42ed8148407084cf59739c3805",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "atrule/atrule/container.json#/all together",
+      "context": "atrule",
+      "label": "all together",
+      "input": "@container card (inline-size > 30em) and style(--responsive: true) {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@container card (inline-size>30em) and style(--responsive: true){}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/container.json#/complex query",
+      "context": "atrule",
+      "label": "complex query",
+      "input": "@container not ( ( a : 500px) and ( not ( b : 500px) ) ) {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@container not ((a:500px) and (not (b:500px))){}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/container.json#/error/0",
+      "context": "atrule",
+      "input": "@container '' {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/container.json#/error/1",
+      "context": "atrule",
+      "input": "@container 1 {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/container.json#/error/2",
+      "context": "atrule",
+      "input": "@container flex: 1 {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/container.json#/query with a base feature",
+      "context": "atrule",
+      "label": "query with a base feature",
+      "input": "@container (min-inline-size: 150px) { selector {} }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@container (min-inline-size:150px){selector{}}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/container.json#/query with a range feature",
+      "context": "atrule",
+      "label": "query with a range feature",
+      "input": "@container (inline-size < 150px) { selector {} }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@container (inline-size<150px){selector{}}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/container.json#/style query",
+      "context": "atrule",
+      "label": "style query",
+      "input": "@container style(--cards: small){}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/container.json#/style query should case-insensitive",
+      "context": "atrule",
+      "label": "style query should case-insensitive",
+      "input": "@container STYLE(--cards: small){}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/container.json#/with a container name",
+      "context": "atrule",
+      "label": "with a container name",
+      "input": "@container my-layout (inline-size > 45em) { selector {} }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@container my-layout (inline-size>45em){selector{}}",
+      "status": "active"
+    }
+  ]
+}

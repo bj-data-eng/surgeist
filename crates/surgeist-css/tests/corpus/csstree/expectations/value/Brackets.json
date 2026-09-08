@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/value/Brackets.json",
+  "source_sha256": "b55926ade5087ab5889d2792c718dc9264125cac01773838bd4c2cfaa58c6918",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "value/Brackets.json#/empty",
+      "context": "value",
+      "label": "empty",
+      "input": "[]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Brackets.json#/multiple identifier",
+      "context": "value",
+      "label": "multiple identifier",
+      "input": "[foo bar]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Brackets.json#/single identifier",
+      "context": "value",
+      "label": "single identifier",
+      "input": "[foo]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Brackets.json#/unclosed brakets is not an error",
+      "context": "value",
+      "label": "unclosed brakets is not an error",
+      "input": "[ abc",
+      "upstream_outcome": "parsed",
+      "canonical_css": "[abc]",
+      "status": "active"
+    }
+  ]
+}

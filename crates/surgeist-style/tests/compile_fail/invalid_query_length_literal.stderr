@@ -1,0 +1,9 @@
+error[E0451]: fields `value` and `unit` of struct `QueryLength` are private
+ --> tests/compile_fail/invalid_query_length_literal.rs:5:9
+  |
+4 |     let _length = QueryLength {
+  |                   ----------- in this type
+5 |         value: 1.0,
+  |         ^^^^^ private field
+6 |         unit: QueryLengthUnit::Px,
+  |         ^^^^ private field

@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/value/function/calc.json",
+  "source_sha256": "4bc384b2492aa06aec2f909bc2c24351731287d06e88d74c638023e488e5577a",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "value/function/calc.json#/basic",
+      "context": "value",
+      "label": "basic",
+      "input": "calc(1 + 2 * 3 / 4 - 5)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "calc(1 + 2*3/4 - 5)",
+      "status": "active"
+    },
+    {
+      "id": "value/function/calc.json#/custom property",
+      "context": "value",
+      "label": "custom property",
+      "input": "calc(1% + var(--foo))",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/function/calc.json#/nested",
+      "context": "value",
+      "label": "nested",
+      "input": "calc(1% + (2 * (3em / 4)))",
+      "upstream_outcome": "parsed",
+      "canonical_css": "calc(1% + (2*(3em/4)))",
+      "status": "active"
+    },
+    {
+      "id": "value/function/calc.json#/with dimension and percentage",
+      "context": "value",
+      "label": "with dimension and percentage",
+      "input": "calc(1% + 2 * 3em)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "calc(1% + 2*3em)",
+      "status": "active"
+    }
+  ]
+}

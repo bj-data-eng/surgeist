@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/mediaQuery/GeneralEnclosed.json",
+  "source_sha256": "bf204b31d82775114a6bad291ba2b444254986a1ed2839a8226acc78e55ee00e",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "mediaQuery/GeneralEnclosed.json#/empty function",
+      "context": "mediaQuery",
+      "label": "empty function",
+      "input": "foo()",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/GeneralEnclosed.json#/empty parentheses",
+      "context": "mediaQuery",
+      "label": "empty parentheses",
+      "input": "()",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/GeneralEnclosed.json#/function",
+      "context": "mediaQuery",
+      "label": "function",
+      "input": "foo(1 2)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/GeneralEnclosed.json#/mixed",
+      "context": "mediaQuery",
+      "label": "mixed",
+      "input": "foo(1 2) and (1 2)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/GeneralEnclosed.json#/mixed empty",
+      "context": "mediaQuery",
+      "label": "mixed empty",
+      "input": "foo() and ()",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "mediaQuery/GeneralEnclosed.json#/parentheses",
+      "context": "mediaQuery",
+      "label": "parentheses",
+      "input": "(1 2)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

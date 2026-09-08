@@ -1,0 +1,11 @@
+error[E0423]: cannot initialize a tuple struct which contains private fields
+ --> tests/compile_fail/invalid_font_feature_tag_literal.rs:4:16
+  |
+4 |     let _tag = FontFeatureTag(String::from("kern"));
+  |                ^^^^^^^^^^^^^^
+  |
+note: constructor is not visible here due to private fields
+ --> src/value.rs
+  |
+  | pub struct FontFeatureTag(String);
+  |                           ^^^^^^ private field

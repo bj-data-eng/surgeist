@@ -1,0 +1,9 @@
+<test name="grid_lanes_empty_column_container_zero_block_size__border_box_rtl" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" display="grid-lanes" direction="rtl"/>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="0" height="0"/>
+  </expectations>
+</test>

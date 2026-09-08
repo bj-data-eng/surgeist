@@ -1,0 +1,41 @@
+[package]
+name = "surgeist-render"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/bj-data-eng/surgeist"
+readme = "README.md"
+description = "Vello-backed rendering boundary for Surgeist surfaces and scenes."
+
+[lib]
+name = "surgeist_render"
+path = "src/lib.rs"
+
+[[example]]
+name = "render_window_smoke"
+path = "examples/render_window_smoke.rs"
+required-features = ["render-window"]
+
+[dependencies]
+bytemuck = { version = "=1.25.0", default-features = false }
+kurbo = "=0.13.1"
+log = "=0.4.33"
+peniko = "=0.6.1"
+png = "=0.18.1"
+skrifa = { version = "=0.42.1", default-features = false, features = ["autohint_shaping", "std"] }
+surgeist-window = { path = "../surgeist-window", version = "=0.1.0", optional = true }
+vello_encoding = "=0.9.0"
+vello_shaders = { version = "=0.9.0", default-features = false, features = ["wgsl"] }
+wgpu = "=29.0.3"
+
+[features]
+default = []
+render-web = ["wgpu/webgpu"]
+render-window = ["dep:surgeist-window"]
+
+[dev-dependencies]
+pollster = "=0.4.0"
+proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
+
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dev-dependencies]
+getrandom = { version = "=0.3.4", default-features = false, features = ["wasm_js"] }

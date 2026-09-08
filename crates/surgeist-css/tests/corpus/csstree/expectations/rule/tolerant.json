@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/rule/tolerant.json",
+  "source_sha256": "12139528f1a854578a60750e47e3a780daf989ebde6341462ad4d1aaa1ebba31",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "rule/tolerant.json#/bad selector",
+      "context": "rule",
+      "label": "bad selector",
+      "input": "boom! {color:red}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "boom!{color:red}",
+      "status": "active"
+    }
+  ]
+}

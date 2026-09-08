@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/selector/functional-pseudo/-webkit-any.json",
+  "source_sha256": "f7ae083d0c67fd5aaa7982e4095b1c77b291897cf0a615f997fdbb9e9bddf46b",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "selector/functional-pseudo/-webkit-any.json#/basic",
+      "context": "selector",
+      "label": "basic",
+      "input": ":-webkit-any(test)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/-webkit-any.json#/error/0",
+      "context": "selector",
+      "input": ":-webkit-any(.a{)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/-webkit-any.json#/error/1",
+      "context": "selector",
+      "input": ":-webkit-any(,.b)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/-webkit-any.json#/error/2",
+      "context": "selector",
+      "input": ":-webkit-any(.a,)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/-webkit-any.json#/error/3",
+      "context": "selector",
+      "input": ":-webkit-any(.a,,)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/-webkit-any.json#/error/4",
+      "context": "selector",
+      "input": ":-webkit-any(.a,.b{)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/-webkit-any.json#/error/5",
+      "context": "selector",
+      "input": ":-webkit-any(var(--test))",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/-webkit-any.json#/negation with selector group",
+      "context": "selector",
+      "label": "negation with selector group",
+      "input": ":-webkit-any(.a,.b.c)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/-webkit-any.json#/selector group and spaces",
+      "context": "selector",
+      "label": "selector group and spaces",
+      "input": ":-webkit-any(  .a  ,  .b  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": ":-webkit-any(.a,.b)",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/-webkit-any.json#/should be case insensitive",
+      "context": "selector",
+      "label": "should be case insensitive",
+      "input": ":HaS(.a,.b)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/-webkit-any.json#/should support relative selectors",
+      "context": "selector",
+      "label": "should support relative selectors",
+      "input": ":-webkit-any(>.a,+.b)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

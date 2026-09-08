@@ -1,0 +1,15 @@
+[package]
+name = "surgeist-shape"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/bj-data-eng/surgeist"
+readme = "README.md"
+description = "Resolved geometry and shape boundary primitives for Surgeist."
+
+[lib]
+name = "surgeist_shape"
+path = "src/lib.rs"
+
+[dependencies]
+kurbo = "=0.13.1"

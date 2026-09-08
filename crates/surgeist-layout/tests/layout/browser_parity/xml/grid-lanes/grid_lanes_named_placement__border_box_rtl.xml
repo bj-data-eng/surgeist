@@ -1,0 +1,13 @@
+<test name="grid_lanes_named_placement__border_box_rtl" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" display="grid-lanes" direction="rtl" grid-template-columns="[lane] 20px [lane] 30px [lane] 40px [lane]">
+      <div source-tag="div" display="flex" direction="rtl" grid-column-start="lane 2" grid-column-end="lane 4"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="90" height="0">
+      <node x="0" y="0" width="70" height="0"/>
+    </node>
+  </expectations>
+</test>

@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/rule/Rule.json",
+  "source_sha256": "2d649a95e8999ba8aa7031c8fab31d7720597ac0f606b2969f0c59fbb6a5d7fb",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "rule/Rule.json#/declaration with ~1~1",
+      "context": "rule",
+      "label": "declaration with //",
+      "input": ".test{//color:red}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "rule/Rule.json#/rule.0",
+      "context": "rule",
+      "label": "rule.0",
+      "input": "s{p:v}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "rule/Rule.json#/rule.1",
+      "context": "rule",
+      "label": "rule.1",
+      "input": "s{p0:v0;p1:v1}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "rule/Rule.json#/rule.2",
+      "context": "rule",
+      "label": "rule.2",
+      "input": "s0,s1{p:v}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "rule/Rule.json#/rule.3",
+      "context": "rule",
+      "label": "rule.3",
+      "input": "s0,s1{p0:v0;p1:v1}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "rule/Rule.json#/rule.c.0",
+      "context": "rule",
+      "label": "rule.c.0",
+      "input": "s/*test*/{/*test*/p/*test*/:/*test*/v/*test*/}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "s{p:v}",
+      "status": "active"
+    },
+    {
+      "id": "rule/Rule.json#/rule.c.1",
+      "context": "rule",
+      "label": "rule.c.1",
+      "input": "s/*test*/{/*test*/p0/*test*/:/*test*/v0/*test*/;/*test*/p1/*test*/:/*test*/v1/*test*/}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "s{p0:v0;p1:v1}",
+      "status": "active"
+    },
+    {
+      "id": "rule/Rule.json#/rule.c.2",
+      "context": "rule",
+      "label": "rule.c.2",
+      "input": "s0/*test*/,/*test*/s1/*test*/{/*test*/p/*test*/:/*test*/v/*test*/}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "s0,s1{p:v}",
+      "status": "active"
+    },
+    {
+      "id": "rule/Rule.json#/rule.c.3",
+      "context": "rule",
+      "label": "rule.c.3",
+      "input": "s0/*test*/,/*test*/s1/*test*/{/*test*/p0/*test*/:/*test*/v0/*test*/;/*test*/p1/*test*/:/*test*/v1/*test*/}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "s0,s1{p0:v0;p1:v1}",
+      "status": "active"
+    },
+    {
+      "id": "rule/Rule.json#/rule.s.0",
+      "context": "rule",
+      "label": "rule.s.0",
+      "input": "s  {  p  :  v  }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "s{p:v}",
+      "status": "active"
+    },
+    {
+      "id": "rule/Rule.json#/rule.s.1",
+      "context": "rule",
+      "label": "rule.s.1",
+      "input": "s  {  p0  :  v0  ;  p1  :  v1  }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "s{p0:v0;p1:v1}",
+      "status": "active"
+    },
+    {
+      "id": "rule/Rule.json#/rule.s.2",
+      "context": "rule",
+      "label": "rule.s.2",
+      "input": "s0  ,  s1  {  p  :  v  }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "s0,s1{p:v}",
+      "status": "active"
+    },
+    {
+      "id": "rule/Rule.json#/rule.s.3",
+      "context": "rule",
+      "label": "rule.s.3",
+      "input": "s0  ,  s1  {  p0  :  v0  ;  p1  :  v1  }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "s0,s1{p0:v0;p1:v1}",
+      "status": "active"
+    },
+    {
+      "id": "rule/Rule.json#/rule.s.6",
+      "context": "rule",
+      "label": "rule.s.6",
+      "input": ".test\n{\rcolor:red;\r\n}",
+      "upstream_outcome": "parsed",
+      "canonical_css": ".test{color:red}",
+      "status": "active"
+    },
+    {
+      "id": "rule/Rule.json#/shouldn't parse a selector when parseRulePrelude is false",
+      "context": "rule",
+      "label": "shouldn't parse a selector when parseRulePrelude is false",
+      "input": ".foo, a:not(a = b) { foo: 1; }",
+      "options": {
+        "parseRulePrelude": false
+      },
+      "upstream_outcome": "parsed",
+      "canonical_css": ".foo, a:not(a = b){foo:1}",
+      "status": "active"
+    },
+    {
+      "id": "rule/Rule.json#/unclosed block",
+      "context": "rule",
+      "label": "unclosed block",
+      "input": "selector { ",
+      "upstream_outcome": "parsed",
+      "canonical_css": "selector{}",
+      "status": "active"
+    },
+    {
+      "id": "rule/Rule.json#/value.color.ident.0",
+      "context": "rule",
+      "label": "value.color.ident.0",
+      "input": "s{p:yellow}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "rule/Rule.json#/value.color.ident.1",
+      "context": "rule",
+      "label": "value.color.ident.1",
+      "input": "yellow{p:yellow}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/value/Value.json",
+  "source_sha256": "8aa1e49367bdf01aa32edbd3b4eaa1929293aca098682ade7aee9e59f4cb0dec",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "value/Value.json#/error/0",
+      "context": "value",
+      "input": "foo)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/Value.json#/should parse a custom property value when parseCustomProperty is true",
+      "context": "value",
+      "label": "should parse a custom property value when parseCustomProperty is true",
+      "input": "1 foo",
+      "options": {
+        "parseCustomProperty": true,
+        "property": "--var"
+      },
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Value.json#/should parse number with following \\0 or \\9 hack as Dimension/0",
+      "context": "value",
+      "label": "should parse number with following \\0 or \\9 hack as Dimension",
+      "input": "1\\0",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Value.json#/should parse number with following \\0 or \\9 hack as Dimension/1",
+      "context": "value",
+      "label": "should parse number with following \\0 or \\9 hack as Dimension",
+      "input": "1\\9",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Value.json#/value.1",
+      "context": "value",
+      "label": "value.1",
+      "input": "10",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Value.json#/value.2",
+      "context": "value",
+      "label": "value.2",
+      "input": "test(x)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Value.json#/value.4",
+      "context": "value",
+      "label": "value.4",
+      "input": "-100%",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Value.json#/value.rgb.0",
+      "context": "value",
+      "label": "value.rgb.0",
+      "input": "rgb(10, 10, 10)",
+      "upstream_outcome": "parsed",
+      "canonical_css": "rgb(10,10,10)",
+      "status": "active"
+    },
+    {
+      "id": "value/Value.json#/value.rgb.1",
+      "context": "value",
+      "label": "value.rgb.1",
+      "input": "rgb(255,0,0)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Value.json#/value.rgb.2",
+      "context": "value",
+      "label": "value.rgb.2",
+      "input": "rgb(10.0,00.00,10%)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

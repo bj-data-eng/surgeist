@@ -1,0 +1,17 @@
+<test name="subgrid_gap_empty_track_column_gap__content_box_rtl" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" display="grid" box-sizing="content-box" direction="ltr" font-size="16px" width="200px" grid-template-columns="auto 200px">
+      <div source-tag="div" display="grid" box-sizing="content-box" direction="ltr" font-size="16px" row-gap="100px" column-gap="100px" grid-template-columns="subgrid" grid-column-start="span 2">
+        <div source-tag="div" display="block" box-sizing="content-box" direction="ltr" font-size="16px" width="100px" height="100px" grid-column-start="2"/>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="200" height="100">
+      <node x="0" y="0" width="200" height="100">
+        <node x="50" y="0" width="100" height="100"/>
+      </node>
+    </node>
+  </expectations>
+</test>

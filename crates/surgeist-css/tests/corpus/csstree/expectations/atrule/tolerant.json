@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/atrule/tolerant.json",
+  "source_sha256": "cf539182555382fceec25faf8f26f08a59d155dc093c8abf3d7c95b4b3352b67",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "atrule/tolerant.json#/at-rule (known) may have any content in prelude",
+      "context": "atrule",
+      "label": "at-rule (known) may have any content in prelude",
+      "input": "@import boom!;",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/tolerant.json#/at-rule (known) may have no a semicolon",
+      "context": "atrule",
+      "label": "at-rule (known) may have no a semicolon",
+      "input": "@import boom!",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@import boom!;",
+      "status": "active"
+    },
+    {
+      "id": "atrule/tolerant.json#/at-rule (known) with custom prelude parser",
+      "context": "atrule",
+      "label": "at-rule (known) with custom prelude parser",
+      "input": "@page {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@page{}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/tolerant.json#/at-rule (known) with no block may be followed by block",
+      "context": "atrule",
+      "label": "at-rule (known) with no block may be followed by block",
+      "input": "@import {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@import{}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/tolerant.json#/at-rule (unknown) may have any content in prelude",
+      "context": "atrule",
+      "label": "at-rule (unknown) may have any content in prelude",
+      "input": "@bada boom!;",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/tolerant.json#/at-rule (unknown) may have no a semicolon",
+      "context": "atrule",
+      "label": "at-rule (unknown) may have no a semicolon",
+      "input": "@bada boom!",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@bada boom!;",
+      "status": "active"
+    },
+    {
+      "id": "atrule/tolerant.json#/unclosed block - known declaration at-rule",
+      "context": "atrule",
+      "label": "unclosed block - known declaration at-rule",
+      "input": "@font-face {",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@font-face{}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/tolerant.json#/unclosed block - known rule at-rule",
+      "context": "atrule",
+      "label": "unclosed block - known rule at-rule",
+      "input": "@media {",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@media{}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/tolerant.json#/unclosed block - unknown at-rule",
+      "context": "atrule",
+      "label": "unclosed block - unknown at-rule",
+      "input": "@atrule {",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@atrule{}",
+      "status": "active"
+    }
+  ]
+}

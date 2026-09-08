@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/stylesheet/comment.json",
+  "source_sha256": "5288f6d90b9e06843588707838945e314cd6fe848264dcaff3902adcfbc6684c",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "stylesheet/comment.json#/bad comment #1",
+      "context": "stylesheet",
+      "label": "bad comment #1",
+      "input": "/*! bad comment *",
+      "upstream_outcome": "parsed",
+      "canonical_css": "/*! bad comment **/",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/comment.json#/bad comment #2",
+      "context": "stylesheet",
+      "label": "bad comment #2",
+      "input": "/*! bad comment ",
+      "upstream_outcome": "parsed",
+      "canonical_css": "/*! bad comment */",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/comment.json#/comment.0",
+      "context": "stylesheet",
+      "label": "comment.0",
+      "input": "/*!test*/",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/comment.json#/comment.1",
+      "context": "stylesheet",
+      "label": "comment.1",
+      "input": "/*!te\nst*/",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/comment.json#/comment.2",
+      "context": "stylesheet",
+      "label": "comment.2",
+      "input": "/*!te\rst*/",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/comment.json#/comment.3",
+      "context": "stylesheet",
+      "label": "comment.3",
+      "input": "/*!te\r\nst*/",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "stylesheet/comment.json#/comment.4",
+      "context": "stylesheet",
+      "label": "comment.4",
+      "input": "/*!te**st*/",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

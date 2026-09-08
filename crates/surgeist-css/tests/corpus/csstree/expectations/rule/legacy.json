@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/rule/legacy.json",
+  "source_sha256": "fdab2fa0944a38da23a3d9898265bd5ea00295c3a1a925d97352fc8ce7b03666",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "rule/legacy.json#/rule.4",
+      "context": "rule",
+      "label": "rule.4",
+      "input": ".test{filter:progid:DXImageTransform.Microsoft.AlphaImageLoader(src='images/transparent-border.png',sizingMethod='scale');color:red}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "rule/legacy.json#/rule.5",
+      "context": "rule",
+      "label": "rule.5",
+      "input": ".test{color:red;filter:progid:DXImageTransform.Microsoft.AlphaImageLoader(src='images/transparent-border.png',sizingMethod='scale') progid:DXImageTransform.Microsoft.AlphaImageLoader(src='test.png',sizingMethod='test')}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "rule/legacy.json#/rule.s.4",
+      "context": "rule",
+      "label": "rule.s.4",
+      "input": ".test {\n    filter:progid:DXImageTransform.Microsoft.AlphaImageLoader(src='images/transparent-border.png',sizingMethod='scale');\n    color:red\n}",
+      "upstream_outcome": "parsed",
+      "canonical_css": ".test{filter:progid:DXImageTransform.Microsoft.AlphaImageLoader(src='images/transparent-border.png',sizingMethod='scale');color:red}",
+      "status": "active"
+    },
+    {
+      "id": "rule/legacy.json#/rule.s.5",
+      "context": "rule",
+      "label": "rule.s.5",
+      "input": ".test {\n    color:red;\n    filter:progid:DXImageTransform.Microsoft.AlphaImageLoader(src='images/transparent-border.png',sizingMethod='scale')\n           progid:DXImageTransform.Microsoft.AlphaImageLoader(src='test.png',sizingMethod='test')\n}",
+      "upstream_outcome": "parsed",
+      "canonical_css": ".test{color:red;filter:progid:DXImageTransform.Microsoft.AlphaImageLoader(src='images/transparent-border.png',sizingMethod='scale')\n           progid:DXImageTransform.Microsoft.AlphaImageLoader(src='test.png',sizingMethod='test')}",
+      "status": "active"
+    }
+  ]
+}

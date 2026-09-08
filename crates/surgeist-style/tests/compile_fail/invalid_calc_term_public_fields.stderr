@@ -1,0 +1,9 @@
+error[E0451]: fields `operator` and `value` of struct `CalcLengthTerm` are private
+ --> tests/compile_fail/invalid_calc_term_public_fields.rs:5:9
+  |
+4 |     let _term = CalcLengthTerm {
+  |                 -------------- in this type
+5 |         operator: surgeist_style::CalcOperator::Add,
+  |         ^^^^^^^^ private field
+6 |         value: Box::new(CalcLength::Px(1.0)),
+  |         ^^^^^ private field

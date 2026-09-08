@@ -1,5 +1,5 @@
 /target
-Cargo.lock
+/crates/*/Cargo.lock
 .DS_Store
 /api/generator/target/
 /api/generator/Cargo.lock

@@ -1,0 +1,381 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/selector/AttributeSelector.json",
+  "source_sha256": "46c580e3f45c39a97cf3822a9b6c6a7fcba3aea6312e0822f4595d7eb33bba37",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "selector/AttributeSelector.json#/attrib with dashmatch",
+      "context": "selector",
+      "label": "attrib with dashmatch",
+      "input": "[a|=\"b\"]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrib with dashmatch and spaces",
+      "context": "selector",
+      "label": "attrib with dashmatch and spaces",
+      "input": "[  a  |=  'b'  ]",
+      "upstream_outcome": "parsed",
+      "canonical_css": "[a|=\"b\"]",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrib with flags",
+      "context": "selector",
+      "label": "attrib with flags",
+      "input": "[a=\"b\"i]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrib with flags and comments",
+      "context": "selector",
+      "label": "attrib with flags and comments",
+      "input": "[/*1*/a/*2*/=/*3*/'b'/*4*/i/*5*/]",
+      "upstream_outcome": "parsed",
+      "canonical_css": "[a=\"b\"i]",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrib with flags and spaces",
+      "context": "selector",
+      "label": "attrib with flags and spaces",
+      "input": "[  a  =  'b'  i  ]",
+      "upstream_outcome": "parsed",
+      "canonical_css": "[a=\"b\"i]",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrib with namespace and dashmatch",
+      "context": "selector",
+      "label": "attrib with namespace and dashmatch",
+      "input": "[a|b|=\"c\"]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrib with namespace, dashmatch and spaces",
+      "context": "selector",
+      "label": "attrib with namespace, dashmatch and spaces",
+      "input": "[  a|b  |=  'c'  ]",
+      "upstream_outcome": "parsed",
+      "canonical_css": "[a|b|=\"c\"]",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrib.0",
+      "context": "selector",
+      "label": "attrib.0",
+      "input": "[a=b]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrib.1",
+      "context": "selector",
+      "label": "attrib.1",
+      "input": "[a=\"b\"]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrib.1 with flags",
+      "context": "selector",
+      "label": "attrib.1 with flags",
+      "input": "[a=\"b\"i]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrib.1 with flags and spaces",
+      "context": "selector",
+      "label": "attrib.1 with flags and spaces",
+      "input": "[  a  =  'b'  i  ]",
+      "upstream_outcome": "parsed",
+      "canonical_css": "[a=\"b\"i]",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrib.2",
+      "context": "selector",
+      "label": "attrib.2",
+      "input": "[b]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrib.2 with flags",
+      "context": "selector",
+      "label": "attrib.2 with flags",
+      "input": "[b i]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrib.c.0",
+      "context": "selector",
+      "label": "attrib.c.0",
+      "input": "[/*test*/a/*test*/=/*test*/b/*test*/]",
+      "upstream_outcome": "parsed",
+      "canonical_css": "[a=b]",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrib.c.1",
+      "context": "selector",
+      "label": "attrib.c.1",
+      "input": "[/*test*/a/*test*/=/*test*/'b'/*test*/]",
+      "upstream_outcome": "parsed",
+      "canonical_css": "[a=\"b\"]",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrib.c.1 with flags and comments",
+      "context": "selector",
+      "label": "attrib.c.1 with flags and comments",
+      "input": "[/*test*/a/*test*/=/*test*/'b'/*test*/i/*test*/]",
+      "upstream_outcome": "parsed",
+      "canonical_css": "[a=\"b\"i]",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrib.s.0",
+      "context": "selector",
+      "label": "attrib.s.0",
+      "input": "[  a  =  b  ]",
+      "upstream_outcome": "parsed",
+      "canonical_css": "[a=b]",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrib.s.1",
+      "context": "selector",
+      "label": "attrib.s.1",
+      "input": "[  a  =  'b'  ]",
+      "upstream_outcome": "parsed",
+      "canonical_css": "[a=\"b\"]",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrselector $=",
+      "context": "selector",
+      "label": "attrselector $=",
+      "input": "[a$=b]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrselector *=",
+      "context": "selector",
+      "label": "attrselector *=",
+      "input": "[a*=b]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrselector =",
+      "context": "selector",
+      "label": "attrselector =",
+      "input": "[a=b]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrselector ^=",
+      "context": "selector",
+      "label": "attrselector ^=",
+      "input": "[a^=b]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrselector |=",
+      "context": "selector",
+      "label": "attrselector |=",
+      "input": "[a|=b]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/attrselector ~0=",
+      "context": "selector",
+      "label": "attrselector ~=",
+      "input": "[a~=b]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/error/0",
+      "context": "selector",
+      "input": "[a|] {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/error/1",
+      "context": "selector",
+      "input": "[a| = b] {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/error/10",
+      "context": "selector",
+      "input": "[--test:=foo]{}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/error/11",
+      "context": "selector",
+      "input": "[:--test=foo]{}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/error/12",
+      "context": "selector",
+      "input": "[foo*bar]{}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/error/13",
+      "context": "selector",
+      "input": "[ng:cloak]{}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/error/14",
+      "context": "selector",
+      "input": "[ng:cloak=x]{}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/error/2",
+      "context": "selector",
+      "input": "[a|~=b] {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/error/3",
+      "context": "selector",
+      "input": "[*] {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/error/4",
+      "context": "selector",
+      "input": "[*=b] {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/error/5",
+      "context": "selector",
+      "input": "[*|=b] {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/error/6",
+      "context": "selector",
+      "input": "[ns|*] {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/error/7",
+      "context": "selector",
+      "input": "[ns|*=b] {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/error/8",
+      "context": "selector",
+      "input": "[a+=foo]{}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/error/9",
+      "context": "selector",
+      "input": "[var(--test)=foo]{}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/namespace",
+      "context": "selector",
+      "label": "namespace",
+      "input": "[xlink|href=\"#test\"]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/namespace unversal",
+      "context": "selector",
+      "label": "namespace unversal",
+      "input": "[*|href=\"#test\"]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/namespace unversal w~1o attrselector",
+      "context": "selector",
+      "label": "namespace unversal w/o attrselector",
+      "input": "[*|href]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/namespace w~1o attrselector",
+      "context": "selector",
+      "label": "namespace w/o attrselector",
+      "input": "[xlink|href]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/namespaced starting with dash",
+      "context": "selector",
+      "label": "namespaced starting with dash",
+      "input": "[*|-b]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/no namespace",
+      "context": "selector",
+      "label": "no namespace",
+      "input": "[|href=\"#test\"]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/no namespace w~1o attrselector",
+      "context": "selector",
+      "label": "no namespace w/o attrselector",
+      "input": "[|href]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/AttributeSelector.json#/starting with dash",
+      "context": "selector",
+      "label": "starting with dash",
+      "input": "[-b]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

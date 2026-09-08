@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/atrule/stylesheet.json",
+  "source_sha256": "9dea1b7a814b11b4c501bfe96bb4d80aecd5e65320e66dc04f283cb095c759fd",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "atrule/stylesheet.json#/atruler.0",
+      "context": "atrule",
+      "label": "atruler.0",
+      "input": "@atrule {s{p:v}}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@atrule{s{p:v}}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/stylesheet.json#/atruler.1",
+      "context": "atrule",
+      "label": "atruler.1",
+      "input": "@atrule x y {s{p:v}}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@atrule x y{s{p:v}}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/stylesheet.json#/atruler.3",
+      "context": "atrule",
+      "label": "atruler.3",
+      "input": "@atrule x, y f(1+2) {s{p:v}}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@atrule x,y f(1+2){s{p:v}}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/stylesheet.json#/atruler.4",
+      "context": "atrule",
+      "label": "atruler.4",
+      "input": "@atrule { .a { p: v; } .b { p: v } }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@atrule{.a{p:v}.b{p:v}}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/stylesheet.json#/atruler.c.0",
+      "context": "atrule",
+      "label": "atruler.c.0",
+      "input": "@atrule/*test*/{/*test*/s/*test*/{/*test*/p/*test*/:/*test*/v/*test*/}/*test*/}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@atrule{s{p:v}}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/stylesheet.json#/atruler.c.1",
+      "context": "atrule",
+      "label": "atruler.c.1",
+      "input": "@atrule/*test*/x/*test*/ y/*test*/{/*test*/s/*test*/{/*test*/p/*test*/:/*test*/v/*test*/}/*test*/}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@atrule x y{s{p:v}}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/stylesheet.json#/atruler.c.2",
+      "context": "atrule",
+      "label": "atruler.c.2",
+      "input": "@atrule/*test*/x/*test*/,/*test*/y/*test*/ f(/*test*/1/*test*/+/*test*/2/*test*/)/*test*/{/*test*/s/*test*/{/*test*/p/*test*/:/*test*/v/*test*/}/*test*/}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@atrule x,y f(1+ 2){s{p:v}}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/stylesheet.json#/atruler.s.0",
+      "context": "atrule",
+      "label": "atruler.s.0",
+      "input": "@atrule  {  s  {  p  :  v  }  }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@atrule{s{p:v}}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/stylesheet.json#/atruler.s.1",
+      "context": "atrule",
+      "label": "atruler.s.1",
+      "input": "@atrule  x  y  {  s  {  p  :  v  }  }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@atrule x y{s{p:v}}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/stylesheet.json#/atruler.s.2",
+      "context": "atrule",
+      "label": "atruler.s.2",
+      "input": "@atrule  x  ,  y  f(  1    2  )  {  s  {  p  :  v  }  }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@atrule x,y f(1 2){s{p:v}}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/stylesheet.json#/webkit.keyfraymes.0",
+      "context": "atrule",
+      "label": "webkit.keyfraymes.0",
+      "input": "@-webkit-keyframes pulsate {0% {opacity: .5}50% {opacity: 1}100% {opacity: .5}}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@-webkit-keyframes pulsate{0%{opacity:.5}50%{opacity:1}100%{opacity:.5}}",
+      "status": "active"
+    }
+  ]
+}

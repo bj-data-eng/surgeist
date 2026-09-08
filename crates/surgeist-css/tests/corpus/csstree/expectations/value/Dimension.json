@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/value/Dimension.json",
+  "source_sha256": "f1fd0fca2048aaa6f17ae658d8545386edb6ee68f5522fccb4a7e050a133ecb1",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "value/Dimension.json#/IE hack",
+      "context": "value",
+      "label": "IE hack",
+      "input": "1px\\9",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Dimension.json#/dimension #0",
+      "context": "value",
+      "label": "dimension #0",
+      "input": "10px",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Dimension.json#/dimension #1",
+      "context": "value",
+      "label": "dimension #1",
+      "input": ".10px",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Dimension.json#/dimension #2",
+      "context": "value",
+      "label": "dimension #2",
+      "input": "12.34px",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Dimension.json#/dimension #3",
+      "context": "value",
+      "label": "dimension #3",
+      "input": "0000.000px",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/value/Percentage.json",
+  "source_sha256": "6cd577da0633f1fb201ddc2f0e35ba97cbaf8ec6c83a441e6155e5b61f120eda",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "value/Percentage.json#/percentage.0",
+      "context": "value",
+      "label": "percentage.0",
+      "input": "10%",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Percentage.json#/percentage.1",
+      "context": "value",
+      "label": "percentage.1",
+      "input": ".10%",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Percentage.json#/percentage.2",
+      "context": "value",
+      "label": "percentage.2",
+      "input": "12.34%",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/Percentage.json#/percentage.3",
+      "context": "value",
+      "label": "percentage.3",
+      "input": "-50%",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

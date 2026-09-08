@@ -1,17 +1,18 @@
 # How-To
 
 These procedures assume the [first-success check](getting-started.md) passes.
-Run root commands from the repository root with the required tooling and
-dependencies already installed. The complete agent command inventory and
-ownership rules live in [AGENTS.md](../AGENTS.md).
+Run commands from the repository root with the required tooling and dependencies
+already installed. [AGENTS.md](../AGENTS.md#command-inventory) owns command
+selection and serial execution policy. Select each applicable package, feature,
+target, and suite deliberately, then run commands one at a time.
 
 ## Check A Forwarded Feature
 
-Choose a root feature from the [feature reference](reference.md). For example,
-to compile native dialog support:
+Choose a root feature from the [feature reference](reference.md#root-features).
+For example, to compile native dialog support:
 
 ```sh
-cargo check --offline -p surgeist --no-default-features --features dialog-system
+cargo check --offline --locked -j 1 -p surgeist --no-default-features --features dialog-system
 ```
 
 A successful exit verifies that feature's compilation on the current target.
@@ -19,64 +20,73 @@ It does not exercise a native dialog. For the shared text/window accessibility
 composition, use:
 
 ```sh
-cargo check --offline -p surgeist --no-default-features --features text-accessibility,window-accessibility
+cargo check --offline --locked -j 1 -p surgeist --no-default-features --features text-accessibility,window-accessibility
 ```
 
-The reset baseline's feature checks cover each forwarded feature individually
-and this accessibility pair. They do not establish every platform or feature
-combination; see the [recorded baseline scope](../plans/specs/2026-08-09-root-baseline-reset.md).
+These examples establish only their selected configuration. Read the affected
+crate manifests and supplements for other feature and platform checks. Do not
+infer support for every combination from workspace membership.
 
-## Inspect And Test A Leaf
+## Inspect And Test A Crate
 
-Use [.gitmodules](../.gitmodules) to identify its repository, then inspect the
-pinned leaf's `Cargo.toml`, `AGENTS.md`, `src/lib.rs`, and README for its contract
-and checks. For example, the task crate's focused tests run from its own root:
+Find the package in [Cargo.toml](../Cargo.toml), then inspect its manifest,
+`AGENTS.md`, `src/lib.rs`, and README. Crate guides supplement root policy with
+domain contracts and focused checks. For example, run the task library tests:
 
 ```sh
-cd crates/surgeist-task
-cargo test --offline -p surgeist-task
+cargo test --offline --locked -j 1 -p surgeist-task --lib -- --test-threads=1
 ```
 
-A successful exit reports that leaf's test results. Root `--workspace` commands
-cover the root package; they do not substitute for leaf verification. Source
-changes and candidate publication remain with the owning leaf repository.
+A successful exit reports that selected library suite's results. Choose
+integration tests, doctests, platform tests, or feature checks separately when
+the change requires them. Source changes across crates are made and reviewed
+in this repository with the root product lockfile.
 
 ## Check Public API Audits
 
 The [API generator](../api/generator/Cargo.toml) is a separate Cargo workspace.
 It needs its own cached dependencies and the nightly toolchain pinned by
 `generate_target_artifact` in [generator source](../api/generator/src/lib.rs).
-Set up those prerequisites
-before running it. The environment setting below also keeps the generator's
-nested Cargo operations offline.
+The environment settings below keep nested Cargo operations offline and limit
+them to one build job.
+
+For a focused check of the task crate's audit:
 
 ```sh
-CARGO_NET_OFFLINE=true cargo run --offline --manifest-path api/generator/Cargo.toml -- --check
+CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo run --offline -j 1 --manifest-path api/generator/Cargo.toml -- --check --crate surgeist-task
 ```
 
-Expect a `current` line for each selected artifact and a successful exit. A
+Expect a `current` line for the selected artifact and a successful exit. A
 `stale API artifacts` error identifies missing or different audit text. Check
-mode builds rustdoc data but does not rewrite the audit files. It is an explicit
-maintenance command, separate from normal `cargo test` runs.
+mode builds rustdoc data but does not rewrite audit files. Use `--list` to
+inspect targets; use `--check --all` only when the full audit set is in scope.
+API auditing is separate from normal `cargo test` runs.
 
 ## Refresh Audits After An Authorized Source Change
 
-For a leaf change, first satisfy the [root promotion rules](../AGENTS.md): the
-owning leaf source must be committed, published, and exposed at the selected
-root gitlink. Never repair an audit by editing its text manually.
-
-To refresh the task crate's audit only:
+Refresh from the changed source in this repository. External crate publication
+is no longer an intermediate step. Never repair an audit by editing its text
+manually. To refresh the task crate's audit:
 
 ```sh
-CARGO_NET_OFFLINE=true cargo run --offline --manifest-path api/generator/Cargo.toml -- --crate surgeist-task
+CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo run --offline -j 1 --manifest-path api/generator/Cargo.toml -- --crate surgeist-task
 ```
 
-To refresh the full facade and leaf audit set:
+Use `--root` for the facade or `--all` for an authorized complete refresh.
+Inspect the generated diff, explain each delta from its source change, and run
+the corresponding check. Keep the source and generated changes together in
+review. Missing prerequisites or an unexplained delta stop the refresh handoff.
 
-```sh
-CARGO_NET_OFFLINE=true cargo run --offline --manifest-path api/generator/Cargo.toml
-```
+## Locate Corpus And Audit Tooling
 
-Inspect the generated diff and run the check procedure above. Each delta must
-follow from its source change. Root owns the generator and all generated
-artifacts; leaf repositories do not carry copies.
+[surgeist-generator](../crates/surgeist-generator/README.md) supplies shared CSS
+and browser-corpus infrastructure; it is a product workspace member, with
+feature-gated tools. [Layout's guide](../crates/surgeist-layout/AGENTS.md) locates
+its domain adapter and parity checks. Follow the owning tool's documented
+verification mode; generation and browser/source acquisition are separate
+operations that need their own task scope.
+
+The [layout Dylint catalog](../crates/surgeist-layout/tools/surgeist-layout-audits/README.md)
+is an optional separate workspace with nightly compiler tooling. Its historical
+audit questions are selected explicitly, not included in ordinary product
+verification.

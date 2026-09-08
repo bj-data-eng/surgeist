@@ -1,0 +1,19 @@
+<test name="fri06_float_bfc_avoidance__content_box_rtl" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" display="block" box-sizing="content-box" direction="rtl" overflow-x="auto" overflow-y="auto" scrollbar-width="15" font-family="monospace" font-size="16px" line-height="20px" width="180px">
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" float="left" font-family="monospace" font-size="16px" line-height="20px" width="54px" height="64px"/>
+      <div source-tag="div" display="block" box-sizing="content-box" direction="rtl" overflow-x="auto" overflow-y="auto" scrollbar-width="15" font-family="monospace" font-size="16px" line-height="20px" height="24px"/>
+      <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" font-family="monospace" font-size="16px" line-height="20px" height="24px"/>
+      <div source-tag="div" display="block" box-sizing="content-box" direction="rtl" font-family="monospace" font-size="16px" line-height="20px" height="24px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="180" height="72" scroll_width="0" scroll_height="0">
+      <node x="0" y="0" width="54" height="64"/>
+      <node x="54" y="0" width="126" height="24" scroll_width="0" scroll_height="0"/>
+      <node x="54" y="24" width="126" height="24"/>
+      <node x="0" y="48" width="180" height="24"/>
+    </node>
+  </expectations>
+</test>

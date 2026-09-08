@@ -1,0 +1,5 @@
+error[E0451]: field `percent` of struct `KeyframeOffset` is private
+ --> tests/compile_fail/invalid_keyframe_offset_literal.rs:4:36
+  |
+4 |     let _offset = KeyframeOffset { percent: 50.0 };
+  |                                    ^^^^^^^ private field

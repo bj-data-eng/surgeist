@@ -1,0 +1,31 @@
+error[E0423]: cannot initialize a tuple struct which contains private fields
+ --> tests/compile_fail/invalid_precedence_newtype_literal.rs:4:18
+  |
+4 |     let _layer = LayerOrder(2);
+  |                  ^^^^^^^^^^
+  |
+note: constructor is not visible here due to private fields
+ --> src/precedence.rs
+  |
+  | pub struct LayerOrder(u32);
+  |                       ^^^ private field
+help: you might have meant to use the `new` associated function
+  |
+4 |     let _layer = LayerOrder::new(2);
+  |                            +++++
+
+error[E0423]: cannot initialize a tuple struct which contains private fields
+ --> tests/compile_fail/invalid_precedence_newtype_literal.rs:5:19
+  |
+5 |     let _source = SourceOrder(3);
+  |                   ^^^^^^^^^^^
+  |
+note: constructor is not visible here due to private fields
+ --> src/precedence.rs
+  |
+  | pub struct SourceOrder(u32);
+  |                        ^^^ private field
+help: you might have meant to use the `new` associated function
+  |
+5 |     let _source = SourceOrder::new(3);
+  |                              +++++

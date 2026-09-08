@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/selector/functional-pseudo/matches.json",
+  "source_sha256": "29bdde6a8472875c496e2a4d893ad42c93604e867dcb31904b835129711bc840",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "selector/functional-pseudo/matches.json#/basic",
+      "context": "selector",
+      "label": "basic",
+      "input": ":matches(test)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/matches.json#/error/0",
+      "context": "selector",
+      "input": ":matches(.a{)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/matches.json#/error/1",
+      "context": "selector",
+      "input": ":matches(,.b)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/matches.json#/error/2",
+      "context": "selector",
+      "input": ":matches(.a,)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/matches.json#/error/3",
+      "context": "selector",
+      "input": ":matches(.a,,)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/matches.json#/error/4",
+      "context": "selector",
+      "input": ":matches(.a,.b{)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/matches.json#/error/5",
+      "context": "selector",
+      "input": ":matches(var(--test))",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/matches.json#/selector group",
+      "context": "selector",
+      "label": "selector group",
+      "input": ":matches(.a,.b.c)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/matches.json#/selector group and spaces",
+      "context": "selector",
+      "label": "selector group and spaces",
+      "input": ":matches(  .a  ,  .b  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": ":matches(.a,.b)",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/matches.json#/should be case insensitive",
+      "context": "selector",
+      "label": "should be case insensitive",
+      "input": ":MatcheS(.a,.b)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

@@ -45,11 +45,12 @@ rust-version = "1.97"
 
 [workspace]
 resolver = "3"
-members = []
-exclude = [
+default-members = ["."]
+members = [
     "crates/surgeist-animation",
     "crates/surgeist-css",
     "crates/surgeist-dialog",
+    "crates/surgeist-generator",
     "crates/surgeist-layout",
     "crates/surgeist-render",
     "crates/surgeist-retained",
@@ -61,4 +62,8 @@ exclude = [
     "crates/surgeist-test",
     "crates/surgeist-text",
     "crates/surgeist-window",
+]
+exclude = [
+    "api/generator",
+    "crates/surgeist-layout/tools/surgeist-layout-audits",
 ]

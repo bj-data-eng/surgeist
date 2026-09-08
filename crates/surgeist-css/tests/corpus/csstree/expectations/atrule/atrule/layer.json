@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/atrule/atrule/layer.json",
+  "source_sha256": "adb2a4b569a873179c4e1fdd042720170ae8eac0c1c2ddaca918d5dc797f55c6",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "atrule/atrule/layer.json#/anonymous layer",
+      "context": "atrule",
+      "label": "anonymous layer",
+      "input": "@layer;",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/layer.json#/anonymous layer with block",
+      "context": "atrule",
+      "label": "anonymous layer with block",
+      "input": "@layer { selector {} }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@layer{selector{}}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/layer.json#/error/0",
+      "context": "atrule",
+      "input": "@layer foo . bar ;",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/layer.json#/layer name list",
+      "context": "atrule",
+      "label": "layer name list",
+      "input": "@layer foo, foo.bar , foo.bar.baz;",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@layer foo,foo.bar,foo.bar.baz;",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/layer.json#/layer name with fullstop",
+      "context": "atrule",
+      "label": "layer name with fullstop",
+      "input": "@layer foo.bar;",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/layer.json#/one layer name",
+      "context": "atrule",
+      "label": "one layer name",
+      "input": "@layer test;",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/layer.json#/with a block",
+      "context": "atrule",
+      "label": "with a block",
+      "input": "@layer test { selector {} }",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@layer test{selector{}}",
+      "status": "active"
+    }
+  ]
+}

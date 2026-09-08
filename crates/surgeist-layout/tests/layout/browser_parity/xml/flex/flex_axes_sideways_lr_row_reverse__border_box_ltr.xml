@@ -1,0 +1,15 @@
+<test name="flex_axes_sideways_lr_row_reverse__border_box_ltr" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" display="flex" direction="ltr" writing-mode="sideways-lr" flex-direction="row-reverse" align-items="flex-end" justify-content="space-between" width="180px" height="140px">
+      <div source-tag="div" display="block" direction="ltr" writing-mode="sideways-lr" width="30px" height="20px" margin-bottom="13px" margin-right="11px"/>
+      <div source-tag="div" display="block" direction="ltr" writing-mode="sideways-lr" width="20px" height="35px" margin-top="7px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="180" height="140">
+      <node x="139" y="0" width="30" height="20"/>
+      <node x="160" y="105" width="20" height="35"/>
+    </node>
+  </expectations>
+</test>

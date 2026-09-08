@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/selector/functional-pseudo/not.json",
+  "source_sha256": "4f90347af6c69bcfae7594dfd1cbcdd15f47859e147113df5fa4dc8612672cd5",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "selector/functional-pseudo/not.json#/basic",
+      "context": "selector",
+      "label": "basic",
+      "input": ":not(test)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/not.json#/error/0",
+      "context": "selector",
+      "input": ":not(.a{)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/not.json#/error/1",
+      "context": "selector",
+      "input": ":not(,.b)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/not.json#/error/2",
+      "context": "selector",
+      "input": ":not(.a,)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/not.json#/error/3",
+      "context": "selector",
+      "input": ":not(.a,,)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/not.json#/error/4",
+      "context": "selector",
+      "input": ":not(.a,.b{)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/not.json#/error/5",
+      "context": "selector",
+      "input": ":not(var(--test))",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/not.json#/selector group",
+      "context": "selector",
+      "label": "selector group",
+      "input": ":not(.a,.b.c)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/not.json#/selector group and spaces",
+      "context": "selector",
+      "label": "selector group and spaces",
+      "input": ":not(  .a  ,  .b  )",
+      "upstream_outcome": "parsed",
+      "canonical_css": ":not(.a,.b)",
+      "status": "active"
+    },
+    {
+      "id": "selector/functional-pseudo/not.json#/should be case insensitive",
+      "context": "selector",
+      "label": "should be case insensitive",
+      "input": ":NoT(.a,.b)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

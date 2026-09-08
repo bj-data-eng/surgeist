@@ -1,0 +1,13 @@
+<test name="grid_named_negative_occurrence__border_box_rtl" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" display="grid" direction="rtl" grid-template-rows="20px" grid-template-columns="[a] 20px [a] 30px [a] 40px [a]">
+      <div source-tag="div" display="flex" direction="rtl" grid-column-start="a -3" grid-column-end="a -1"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="90" height="20">
+      <node x="0" y="0" width="70" height="20"/>
+    </node>
+  </expectations>
+</test>

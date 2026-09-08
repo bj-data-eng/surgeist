@@ -1,0 +1,15 @@
+<test name="block_br_empty_lines_metrics__border_box_rtl" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" display="block" direction="rtl" font-size="20px" line-height="30px" width="120px">
+      <div source-tag="br" display="inline" direction="rtl" font-size="20px" line-height="30px" inline-baseline="21px" inline-line-height="30px"/>
+      <div source-tag="br" display="inline" direction="rtl" font-size="20px" line-height="30px" inline-baseline="21px" inline-line-height="30px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="120" height="60">
+      <node x="120" y="5" width="0" height="20"/>
+      <node x="120" y="35" width="0" height="20"/>
+    </node>
+  </expectations>
+</test>

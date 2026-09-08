@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/atrule/atrule/nest.json",
+  "source_sha256": "ad3c3726a94528640735f9cf345d2eb7af109ae9e99af312fe20e2d99b752456",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "atrule/atrule/nest.json#/single media type",
+      "context": "atrule",
+      "label": "single media type",
+      "input": "@nest .bar:not(&) {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@nest.bar:not(&){}",
+      "status": "active"
+    }
+  ]
+}

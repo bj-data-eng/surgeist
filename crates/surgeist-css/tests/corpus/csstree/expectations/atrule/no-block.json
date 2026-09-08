@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/atrule/no-block.json",
+  "source_sha256": "e0ffb02481d6b3603c12dc851bc4a09eda73021e4d52c21326275a2170a44393",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "atrule/no-block.json#/atkeyword.1",
+      "context": "atrule",
+      "label": "atkeyword.1",
+      "input": "@atrule;",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/no-block.json#/atrules.0",
+      "context": "atrule",
+      "label": "atrules.0",
+      "input": "@test;",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/no-block.json#/atrules.1",
+      "context": "atrule",
+      "label": "atrules.1",
+      "input": "@test x y;",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/no-block.json#/atrules.2",
+      "context": "atrule",
+      "label": "atrules.2",
+      "input": "@test \"blah\";",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/no-block.json#/atrules.3",
+      "context": "atrule",
+      "label": "atrules.3",
+      "input": "@import url(http://example.com);",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/no-block.json#/atrules.c.0",
+      "context": "atrule",
+      "label": "atrules.c.0",
+      "input": "@test/*test*/;",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@test;",
+      "status": "active"
+    },
+    {
+      "id": "atrule/no-block.json#/atrules.c.1",
+      "context": "atrule",
+      "label": "atrules.c.1",
+      "input": "@test/*test*/x/*test*/ y;",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@test x y;",
+      "status": "active"
+    },
+    {
+      "id": "atrule/no-block.json#/atrules.s.0",
+      "context": "atrule",
+      "label": "atrules.s.0",
+      "input": "@test  ;",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@test;",
+      "status": "active"
+    },
+    {
+      "id": "atrule/no-block.json#/atrules.s.1",
+      "context": "atrule",
+      "label": "atrules.s.1",
+      "input": "@test  x  y;",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@test x y;",
+      "status": "active"
+    },
+    {
+      "id": "atrule/no-block.json#/error/0",
+      "context": "atrule",
+      "input": "@atrule!;",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "atrule/no-block.json#/no at-rule ending on eof is not an error",
+      "context": "atrule",
+      "label": "no at-rule ending on eof is not an error",
+      "input": "@atrule url('..')",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@atrule url(..);",
+      "status": "active"
+    },
+    {
+      "id": "atrule/no-block.json#/should turn empty prelude to null",
+      "context": "atrule",
+      "label": "should turn empty prelude to null",
+      "input": "@import;",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/no-block.json#/shouldn't create a raw node when no prelude and parseAtrulePrelude is false",
+      "context": "atrule",
+      "label": "shouldn't create a raw node when no prelude and parseAtrulePrelude is false",
+      "input": "@test ;",
+      "options": {
+        "parseAtrulePrelude": false
+      },
+      "upstream_outcome": "parsed",
+      "canonical_css": "@test;",
+      "status": "active"
+    },
+    {
+      "id": "atrule/no-block.json#/shouldn't parse a atrule prelude when parseAtrulePrelude is false",
+      "context": "atrule",
+      "label": "shouldn't parse a atrule prelude when parseAtrulePrelude is false",
+      "input": "@test a b;",
+      "options": {
+        "parseAtrulePrelude": false
+      },
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

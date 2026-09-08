@@ -1,0 +1,64 @@
+# Explanation
+
+## Authored syntax and browser recovery
+
+`surgeist-css` owns authored CSS syntax and its diagnostics. Root-owned Surgeist
+adapters lower parsed syntax into typed style data. The parser preserves the
+information downstream consumers need without performing their processing.
+
+The ordinary `parse_sheet` and `parse_style_attribute` entry points use browser recovery: each returns a report containing valid retained syntax and every structured recovery diagnostic in source order. Unsupported or malformed source units are dropped, replaced, retained with an implicit closure, ignored, or stopped at the documented boundary; valid siblings remain eligible. A clean report means that no recovery diagnostic was produced. An empty retained tree alone does not establish that the source was clean, so consumers should inspect `is_clean()` or `diagnostics()` rather than infer validity from syntax length.
+
+The [report API](../src/report.rs) keeps syntax and diagnostics together.
+Application-strict validation is a decision about accepting the same report,
+not a second grammar. It returns retained syntax only for a clean report and
+otherwise returns every diagnostic in unchanged order.
+
+## Symbolic values and compatibility
+
+CSS custom properties preserve case-sensitive names and authored value text, including interior trivia. Known-property values whose grammar depends on `var(...)` remain substitution-dependent authored values. The crate recognizes terminal `!important` but does not apply cascade or perform custom-property substitution or post-substitution validation.
+
+Variable references and their fallback token text remain symbolic.
+
+`i01_subset()` names a frozen earlier representation retained for compatibility.
+A current property value can be valid and fully inspectable while that projection
+is `None`. Consumers should use current typed accessors for newly represented
+syntax. The projection is not a support or validity test. The [inspection guide](how-to.md#inspect-a-known-declaration)
+shows the distinction.
+
+## Support metadata describes a selected surface
+
+The independent support catalog reports an exact support status for each declared conformance production: `Complete`, `Partial`, or `RecognizedUnsupported`. Partial records document both the accepted subset and valid-but-unsupported remainder. A clean use of a partial production's supported subset is accepted; status is metadata about the whole named production, not a parse-result validity flag.
+
+The catalog records named productions and their source provenance. It is not a
+claim that all CSS, every module at a given stability tier, or every valid future
+spelling is implemented. The [reference](reference.md) describes current families
+and their explicit limits; the [source registry](../src/conformance.rs) owns the
+exact IDs, statuses, subsets, and exclusions.
+
+## Selector recovery and downstream matching
+
+Pseudo-classes for UI interaction, form state, structure, selector-list filtering, and overlay state are parsed as authored selector syntax. This crate does not evaluate pseudo-class matches; runtime matching belongs to downstream Surgeist layers with node and interaction state.
+
+Selector-list pseudo-class arguments are parsed as authored selector syntax with bounded recovery. In recognized `:is()` and `:where()` lists, an invalid member is dropped with `DropSelectorListItem` while the other members remain in authored order. Other selector lists are unforgiving: `:not()` preserves supported complex selector lists, `:has()` preserves supported relative selector lists including leading child and sibling combinators, and `:nth-child()` / `:nth-last-child()` preserve optional `of` selector filters, but an invalid member causes the containing qualified rule to be dropped with `DropQualifiedRule`. Later sibling rules remain eligible for parsing.
+
+## Downstream ownership
+
+This crate owns authored CSS syntax, intrinsic grammar validation, recovery boundaries, diagnostics, and support metadata. It does not apply cascade or inheritance, substitute or resolve variables, evaluate queries, match selectors, resolve URLs or resources, perform layout or painting, serialize a CSSOM, or lower CSS into sibling Surgeist types. Root-owned integration owns cross-crate lowering and generated API audit artifacts.
+
+Container queries are parsed as authored conditions on `@container` group rules. `surgeist-css` does not evaluate container query matches; container-dependent matching belongs to downstream Surgeist layers.
+
+Imports are parsed as authored `@import` contracts only. `surgeist-css` preserves import targets, layer clauses, supports conditions, and media conditions, but does not resolve paths, load files, or merge imported sheets; root/style-owned Surgeist integration performs loading and composition.
+
+Cascade layers are parsed as authored `@layer` statements and blocks, including named and anonymous layer blocks. `surgeist-css` records layer names and layer-contained rules, but does not compute cascade order, declaration precedence, or runtime cascade effects.
+
+Scoped styles are parsed as authored `@scope` rules with optional roots, limits, scoped style selectors, and scoped nested group rules. Relative scoped selectors remain structurally distinct from ordinary selectors. `surgeist-css` does not perform scope matching, selector matching, or scoping proximity calculations.
+
+Pseudo-elements are parsed as terminal authored selector syntax for the supported `::before`, `::after`, `::first-line`, `::first-letter`, `::marker`, `::selection`, and `::backdrop` forms. The Selectors 3 legacy single-colon spellings map to the same typed before, after, first-line, and first-letter values. The parser records pseudo-elements on selector compounds, but does not filter declarations by pseudo-element or perform generated box/layout behavior.
+
+Generated content, list markers, and counters are parsed as typed authored property values for `content`, list-style longhands and shorthand, and counter change properties. Strings, URLs, attribute references, quote keywords, counter functions, list-style slots, and counter change lists remain symbolic. `surgeist-css` does not lay out generated content or list markers, resolve marker images, or evaluate/reset/increment counters.
+
+Font faces are parsed as authored `@font-face` descriptor blocks only. `surgeist-css` validates supported descriptors and preserves font source hints, unicode ranges, and variation ranges, but does not perform font lookup, loading, matching, or resource validation; downstream Surgeist layers own those steps.
+
+Keyframes are parsed as authored `@keyframes` rules. `surgeist-css` validates keyframe names, selector offsets, and declarations, but does not evaluate animations, match animation names to rules, interpolate values, or run animation timelines.
+
+CSS nesting is parsed as syntax sugar and flattened into ordinary style and conditional group rules while preserving source order. `surgeist-css` does not evaluate selector matches or cascade results during flattening.

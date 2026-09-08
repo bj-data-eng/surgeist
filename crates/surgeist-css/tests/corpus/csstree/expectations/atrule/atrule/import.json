@@ -1,0 +1,176 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/atrule/atrule/import.json",
+  "source_sha256": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "atrule/atrule/import.json#/@import with block is not an error",
+      "context": "atrule",
+      "label": "@import with block is not an error",
+      "input": "@import 'test' {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@import \"test\"{}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/import.json#/@import with no prelude is not an error/0",
+      "context": "atrule",
+      "label": "@import with no prelude is not an error",
+      "input": "@import;",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/import.json#/@import with no prelude is not an error/1",
+      "context": "atrule",
+      "label": "@import with no prelude is not an error",
+      "input": "@import  ;",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@import;",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/import.json#/error/0",
+      "context": "atrule",
+      "input": "@import 'test' 'asd' ;",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/import.json#/should be case insensetive",
+      "context": "atrule",
+      "label": "should be case insensetive",
+      "input": "@ImpOrt 'test' all;",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@ImpOrt \"test\"all;",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/import.json#/white spaces and comment should not affect prelude consuming",
+      "context": "atrule",
+      "label": "white spaces and comment should not affect prelude consuming",
+      "input": "@import 'test' /* comment */ {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@import \"test\"{}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/import.json#/with anonymous layer",
+      "context": "atrule",
+      "label": "with anonymous layer",
+      "input": "@import url(test) layer;",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@import url(test)layer;",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/import.json#/with bad layer()/0",
+      "context": "atrule",
+      "label": "with bad layer()",
+      "input": "@import url(test) layer();",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@import url(test)layer();",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/import.json#/with bad layer()/1",
+      "context": "atrule",
+      "label": "with bad layer()",
+      "input": "@import url(test) layer( 2px );",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@import url(test)layer(2px);",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/import.json#/with bad supports()/0",
+      "context": "atrule",
+      "label": "with bad supports()",
+      "input": "@import url(test) supports();",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@import url(test)supports();",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/import.json#/with bad supports()/1",
+      "context": "atrule",
+      "label": "with bad supports()",
+      "input": "@import url(test) supports(  2px  );",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@import url(test)supports(2px);",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/import.json#/with layer & supports",
+      "context": "atrule",
+      "label": "with layer & supports",
+      "input": "@import url(test) layer(name) supports(foo:1);",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@import url(test)layer(name) supports(foo:1);",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/import.json#/with layer & supports & media",
+      "context": "atrule",
+      "label": "with layer & supports & media",
+      "input": "@import url(test) layer(name) supports(foo:1) screen and (min-width: 100px);",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@import url(test)layer(name) supports(foo:1) screen and (min-width:100px);",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/import.json#/with layer()",
+      "context": "atrule",
+      "label": "with layer()",
+      "input": "@import url(test) layer(foo);",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@import url(test)layer(foo);",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/import.json#/with media",
+      "context": "atrule",
+      "label": "with media",
+      "input": "@import 'test' all, screen and (min-width: 600px);",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@import \"test\"all,screen and (min-width:600px);",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/import.json#/with string",
+      "context": "atrule",
+      "label": "with string",
+      "input": "@import \"test\";",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/import.json#/with supports(condition)",
+      "context": "atrule",
+      "label": "with supports(condition)",
+      "input": "@import url(test) supports(not (foo:1));",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@import url(test)supports(not (foo:1));",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/import.json#/with supports(declaration)",
+      "context": "atrule",
+      "label": "with supports(declaration)",
+      "input": "@import url(test) supports(foo:1);",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@import url(test)supports(foo:1);",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/import.json#/with url",
+      "context": "atrule",
+      "label": "with url",
+      "input": "@import url(test);",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

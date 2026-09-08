@@ -1,0 +1,8 @@
+error[E0308]: mismatched types
+ --> tests/compile_fail/invalid_subgrid_line_name_repeat_empty_sets.rs:6:25
+  |
+6 |         line_name_sets: vec![],
+  |                         ^^^^^^ expected `SubgridLineNameSets`, found `Vec<_>`
+  |
+  = note: expected struct `surgeist_style::value::SubgridLineNameSets`
+             found struct `Vec<_>`

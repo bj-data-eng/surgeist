@@ -1,0 +1,5 @@
+error[E0451]: field `layers` of struct `surgeist_style::ImageLayerList` is private
+ --> tests/compile_fail/invalid_image_layer_list_empty.rs:4:36
+  |
+4 |     let _layers = ImageLayerList { layers: Vec::new() };
+  |                                    ^^^^^^ private field

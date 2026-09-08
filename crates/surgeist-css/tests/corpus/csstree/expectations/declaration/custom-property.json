@@ -1,0 +1,252 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/declaration/custom-property.json",
+  "source_sha256": "8549e85bee8fd4332594ac501b35aadfacd5cc6ce0a5321a9f0e2f8f999a1fa3",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "declaration/custom-property.json#/basic",
+      "context": "declaration",
+      "label": "basic",
+      "input": "--var:value",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/complex balanced",
+      "context": "declaration",
+      "label": "complex balanced",
+      "input": "--var:{[({()})()()[({})]]}[{()}]([])",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/double dash is a valid property name",
+      "context": "declaration",
+      "label": "double dash is a valid property name",
+      "input": "--:value",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/empty",
+      "context": "declaration",
+      "label": "empty",
+      "input": "--var:",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/empty (parseCustomProperty:true)",
+      "context": "declaration",
+      "label": "empty (parseCustomProperty:true)",
+      "input": "--var:",
+      "options": {
+        "parseCustomProperty": true
+      },
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/empty with important",
+      "context": "declaration",
+      "label": "empty with important",
+      "input": "--var:!important",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/empty with important (parseCustomProperty:true)",
+      "context": "declaration",
+      "label": "empty with important (parseCustomProperty:true)",
+      "input": "--var:!important",
+      "options": {
+        "parseCustomProperty": true
+      },
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/error/0",
+      "context": "declaration",
+      "input": "--var: !important ()",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/only a comment",
+      "context": "declaration",
+      "label": "only a comment",
+      "input": "--var:/* 1 */",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/only a comment (parseCustomProperty:true)",
+      "context": "declaration",
+      "label": "only a comment (parseCustomProperty:true)",
+      "input": "--var:/* 1 */",
+      "options": {
+        "parseCustomProperty": true
+      },
+      "upstream_outcome": "parsed",
+      "canonical_css": "--var:",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/should ignore everything inside block",
+      "context": "declaration",
+      "label": "should ignore everything inside block",
+      "input": "--var:{!important}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/should parse a custom property value when parseCustomProperty is true",
+      "context": "declaration",
+      "label": "should parse a custom property value when parseCustomProperty is true",
+      "input": "--var:1 foo",
+      "options": {
+        "parseCustomProperty": true
+      },
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/should preserve single spaces",
+      "context": "declaration",
+      "label": "should preserve single spaces",
+      "input": "--var: ",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/should preserve single spaces (parseCustomProperty:true)",
+      "context": "declaration",
+      "label": "should preserve single spaces (parseCustomProperty:true)",
+      "input": "--var: ",
+      "options": {
+        "parseCustomProperty": true
+      },
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/should preserve single spaces with important",
+      "context": "declaration",
+      "label": "should preserve single spaces with important",
+      "input": "--var: !important",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/should preserve single spaces with important (parseCustomProperty:true)",
+      "context": "declaration",
+      "label": "should preserve single spaces with important (parseCustomProperty:true)",
+      "input": "--var: !important",
+      "options": {
+        "parseCustomProperty": true
+      },
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/spaces and comments",
+      "context": "declaration",
+      "label": "spaces and comments",
+      "input": "--var: /* 1 */ ",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/spaces and comments #2 (parseCustomProperty:true)",
+      "context": "declaration",
+      "label": "spaces and comments #2 (parseCustomProperty:true)",
+      "input": "--var: /* 1 */",
+      "options": {
+        "parseCustomProperty": true
+      },
+      "upstream_outcome": "parsed",
+      "canonical_css": "--var: ",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/spaces and comments #3 (parseCustomProperty:true)",
+      "context": "declaration",
+      "label": "spaces and comments #3 (parseCustomProperty:true)",
+      "input": "--var:/* 1 */ ",
+      "options": {
+        "parseCustomProperty": true
+      },
+      "upstream_outcome": "parsed",
+      "canonical_css": "--var: ",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/spaces and comments (parseCustomProperty:true)",
+      "context": "declaration",
+      "label": "spaces and comments (parseCustomProperty:true)",
+      "input": "--var: /* 1 */ ",
+      "options": {
+        "parseCustomProperty": true
+      },
+      "upstream_outcome": "parsed",
+      "canonical_css": "--var: ",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/value is {}-block",
+      "context": "declaration",
+      "label": "value is {}-block",
+      "input": "--var:{foo:bar;baz:{}}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/value should be parsed as balanced Raw/0",
+      "context": "declaration",
+      "label": "value should be parsed as balanced Raw",
+      "input": "--var: ([)]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/value should be parsed as balanced Raw/1",
+      "context": "declaration",
+      "label": "value should be parsed as balanced Raw",
+      "input": "--var: ()]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/whitespace beetween comments (parseCustomProperty:true)",
+      "context": "declaration",
+      "label": "whitespace beetween comments (parseCustomProperty:true)",
+      "input": "--var:/* 1 */ /* 2 */",
+      "options": {
+        "parseCustomProperty": true
+      },
+      "upstream_outcome": "parsed",
+      "canonical_css": "--var: ",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/with important",
+      "context": "declaration",
+      "label": "with important",
+      "input": "--var:value!important",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "declaration/custom-property.json#/with parentheses and important",
+      "context": "declaration",
+      "label": "with parentheses and important",
+      "input": "--var:calc(1)!important",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

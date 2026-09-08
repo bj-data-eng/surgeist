@@ -1,0 +1,256 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/selector/TypeSelector.json",
+  "source_sha256": "a5792686994b9173296e8123f099fc0c1f47f358b071a9b9ebf40faf4f5eb0ea",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "selector/TypeSelector.json#/base test",
+      "context": "selector",
+      "label": "base test",
+      "input": "x",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/error/0",
+      "context": "selector",
+      "input": "a| {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/error/1",
+      "context": "selector",
+      "input": "*| {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/escaping/0",
+      "context": "selector",
+      "label": "escaping",
+      "input": "x\\:y",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/escaping/1",
+      "context": "selector",
+      "label": "escaping",
+      "input": "\\1 ",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/escaping/10",
+      "context": "selector",
+      "label": "escaping",
+      "input": "\\-\\30 -",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/escaping/11",
+      "context": "selector",
+      "label": "escaping",
+      "input": "\\30 123",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/escaping/12",
+      "context": "selector",
+      "label": "escaping",
+      "input": "\\--\\+\\a \\d \\30 asd",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/escaping/13",
+      "context": "selector",
+      "label": "escaping",
+      "input": "�asd",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/escaping/14",
+      "context": "selector",
+      "label": "escaping",
+      "input": "asd\\30 \\a -asd",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/escaping/15",
+      "context": "selector",
+      "label": "escaping",
+      "input": "\\20 123",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/escaping/16",
+      "context": "selector",
+      "label": "escaping",
+      "input": "\\123456 123",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/escaping/17",
+      "context": "selector",
+      "label": "escaping",
+      "input": "\\123456zzz",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/escaping/2",
+      "context": "selector",
+      "label": "escaping",
+      "input": "\\a ",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/escaping/3",
+      "context": "selector",
+      "label": "escaping",
+      "input": "\\d ",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/escaping/4",
+      "context": "selector",
+      "label": "escaping",
+      "input": "\\7f ",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/escaping/5",
+      "context": "selector",
+      "label": "escaping",
+      "input": "\\30 ",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/escaping/6",
+      "context": "selector",
+      "label": "escaping",
+      "input": "\\35 ",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/escaping/7",
+      "context": "selector",
+      "label": "escaping",
+      "input": "\\39 ",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/escaping/8",
+      "context": "selector",
+      "label": "escaping",
+      "input": "\\-",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/escaping/9",
+      "context": "selector",
+      "label": "escaping",
+      "input": "\\-\\30 ",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/starting with dash",
+      "context": "selector",
+      "label": "starting with dash",
+      "input": "-x",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/starting with dash #2",
+      "context": "selector",
+      "label": "starting with dash #2",
+      "input": "-x-test",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/starting with underscore",
+      "context": "selector",
+      "label": "starting with underscore",
+      "input": "_0",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/type with namespace/0",
+      "context": "selector",
+      "label": "type with namespace",
+      "input": "ns|E",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/type with namespace/1",
+      "context": "selector",
+      "label": "type with namespace",
+      "input": "*|E",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/type with namespace/2",
+      "context": "selector",
+      "label": "type with namespace",
+      "input": "|E",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/universal",
+      "context": "selector",
+      "label": "universal",
+      "input": "*",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/universal with namespace/0",
+      "context": "selector",
+      "label": "universal with namespace",
+      "input": "ns|*",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/universal with namespace/1",
+      "context": "selector",
+      "label": "universal with namespace",
+      "input": "*|*",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/TypeSelector.json#/universal with namespace/2",
+      "context": "selector",
+      "label": "universal with namespace",
+      "input": "|*",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

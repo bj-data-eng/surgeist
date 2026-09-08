@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/atrule/atrule/media.json",
+  "source_sha256": "502e8c3a1648931deaf6963049e87cdbe8e05d2fcf9d89e5f6c4f26ef6cba347",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "atrule/atrule/media.json#/@media with no block is not an error",
+      "context": "atrule",
+      "label": "@media with no block is not an error",
+      "input": "@media;",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/media.json#/@media with no prelude is not an error",
+      "context": "atrule",
+      "label": "@media with no prelude is not an error",
+      "input": "@media {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@media{}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/media.json#/@media with unclosed parentheses is not an error",
+      "context": "atrule",
+      "label": "@media with unclosed parentheses is not an error",
+      "input": "@media (foo:1",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@media (foo:1);",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/media.json#/a list of conditions",
+      "context": "atrule",
+      "label": "a list of conditions",
+      "input": "@media all and (min-width: 500px), only screen, (200px < width) and ((foo: 1/2) or (100px > width > 200px)) {}",
+      "upstream_outcome": "parsed",
+      "canonical_css": "@media all and (min-width:500px),only screen,(200px<width) and ((foo:1/2) or (100px>width>200px)){}",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/media.json#/error/0",
+      "context": "atrule",
+      "input": "@media foo screen {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/media.json#/error/1",
+      "context": "atrule",
+      "input": "@media (foo:1) ~",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/media.json#/error/2",
+      "context": "atrule",
+      "input": "@media ! {}",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/media.json#/missed 'and' keyword",
+      "context": "atrule",
+      "label": "missed 'and' keyword",
+      "input": "@media screen (feature:1){}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/media.json#/should be case insensitive",
+      "context": "atrule",
+      "label": "should be case insensitive",
+      "input": "@mEdiA screen{}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/media.json#/shouldn't parse an at-rule prelude when parseAtrulePrelude is false",
+      "context": "atrule",
+      "label": "shouldn't parse an at-rule prelude when parseAtrulePrelude is false",
+      "input": "@media screen and (feature: 1){}",
+      "options": {
+        "parseAtrulePrelude": false
+      },
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/media.json#/single media type",
+      "context": "atrule",
+      "label": "single media type",
+      "input": "@media screen{}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/media.json#/single media type with negation",
+      "context": "atrule",
+      "label": "single media type with negation",
+      "input": "@media not screen{}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "atrule/atrule/media.json#/single media type with only",
+      "context": "atrule",
+      "label": "single media type with only",
+      "input": "@media only screen{}",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

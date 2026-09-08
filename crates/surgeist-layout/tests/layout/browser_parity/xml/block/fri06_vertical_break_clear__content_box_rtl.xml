@@ -1,0 +1,25 @@
+<test name="fri06_vertical_break_clear__content_box_rtl" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" layout-ready-inline-root="true" display="block" box-sizing="content-box" direction="rtl" writing-mode="vertical-rl" overflow-x="auto" overflow-y="auto" scrollbar-width="15" font-family="monospace" font-size="16px" line-height="24px" width="96px" height="140px">
+      <div source-tag="span" display="block" box-sizing="content-box" direction="rtl" writing-mode="vertical-rl" float="inline-start" font-family="monospace" font-size="16px" line-height="24px" width="28px" height="36px"/>
+      <div source-tag="span" display="inline-block" box-sizing="content-box" direction="rtl" writing-mode="vertical-rl" font-family="monospace" font-size="16px" line-height="24px" width="18px" height="42px"/>
+      <div source-tag="br" line-control="forced-break" display="inline" box-sizing="content-box" direction="rtl" writing-mode="vertical-rl" font-family="monospace" font-size="16px" line-height="24px" inline-baseline="12px" inline-line-height="24px"/>
+      <div source-tag="span" display="inline-block" box-sizing="content-box" direction="rtl" writing-mode="vertical-rl" font-family="monospace" font-size="16px" line-height="24px" width="18px" height="30px"/>
+      <div source-tag="span" display="block" box-sizing="content-box" direction="rtl" writing-mode="vertical-rl" clear="inline-start" font-family="monospace" font-size="16px" line-height="24px" width="18px" height="18px"/>
+      <atomic-placeholder child-index="1" bidi-level="0" following-break="prohibited"/>
+      <atomic-placeholder child-index="3" bidi-level="0" following-break="prohibited"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="96" height="140" scroll_width="0" scroll_height="0">
+      <node x="68" y="104" width="28" height="36"/>
+      <node x="75" y="62" width="18" height="42"/>
+      <node>
+        <browser-control source_index="2" terminal_visual_slot="2" previous_line="same" next_line="later"/>
+      </node>
+      <node x="51" y="74" width="18" height="30"/>
+      <node x="30" y="122" width="18" height="18"/>
+    </node>
+  </expectations>
+</test>

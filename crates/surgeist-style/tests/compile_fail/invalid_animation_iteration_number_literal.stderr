@@ -1,0 +1,5 @@
+error[E0451]: field `value` of struct `AnimationIterationNumber` is private
+ --> tests/compile_fail/invalid_animation_iteration_number_literal.rs:4:45
+  |
+4 |     let _count = AnimationIterationNumber { value: 1.0 };
+  |                                             ^^^^^ private field

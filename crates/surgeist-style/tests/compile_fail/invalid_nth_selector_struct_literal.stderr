@@ -1,0 +1,9 @@
+error[E0451]: fields `pattern` and `filter` of struct `NthSelector` are private
+ --> tests/compile_fail/invalid_nth_selector_struct_literal.rs:5:9
+  |
+4 |     let _selector = NthSelector {
+  |                     ----------- in this type
+5 |         pattern: NthPattern::odd(),
+  |         ^^^^^^^ private field
+6 |         filter: None,
+  |         ^^^^^^ private field

@@ -1,0 +1,250 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/value/UnicodeRange.json",
+  "source_sha256": "898d6c55453a7c3d5150761d23e9a9a8bbae50c448537d3a30b1db25360e363b",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "value/UnicodeRange.json#/a number ends with a minus",
+      "context": "value",
+      "label": "a number ends with a minus",
+      "input": "u+12-",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/a number with a negative exponent",
+      "context": "value",
+      "label": "a number with a negative exponent",
+      "input": "u+12e-130",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/a single question mark",
+      "context": "value",
+      "label": "a single question mark",
+      "input": "u+?",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/errors/0",
+      "context": "value",
+      "label": "errors",
+      "input": "U+",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/errors/1",
+      "context": "value",
+      "label": "errors",
+      "input": "U+-123",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/errors/10",
+      "context": "value",
+      "label": "errors",
+      "input": "u+.200",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/errors/11",
+      "context": "value",
+      "label": "errors",
+      "input": "u+12-.34",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/errors/12",
+      "context": "value",
+      "label": "errors",
+      "input": "u+12-3e-4",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/errors/13",
+      "context": "value",
+      "label": "errors",
+      "input": "u+12-3e+4",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/errors/14",
+      "context": "value",
+      "label": "errors",
+      "input": "u+12e+12",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/errors/15",
+      "context": "value",
+      "label": "errors",
+      "input": "u+12+22",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/errors/16",
+      "context": "value",
+      "label": "errors",
+      "input": "u+12+1e",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/errors/17",
+      "context": "value",
+      "label": "errors",
+      "input": "u+0.200",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/errors/2",
+      "context": "value",
+      "label": "errors",
+      "input": "u+123????",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/errors/3",
+      "context": "value",
+      "label": "errors",
+      "input": "u+1234567",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/errors/4",
+      "context": "value",
+      "label": "errors",
+      "input": "u+123456z",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/errors/5",
+      "context": "value",
+      "label": "errors",
+      "input": "u+123456z",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/errors/6",
+      "context": "value",
+      "label": "errors",
+      "input": "u+123456-x",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/errors/7",
+      "context": "value",
+      "label": "errors",
+      "input": "u+123456-1234567",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/errors/8",
+      "context": "value",
+      "label": "errors",
+      "input": "u+123456-123456z",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/errors/9",
+      "context": "value",
+      "label": "errors",
+      "input": "u+123456-123???",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/not an unicode range",
+      "context": "value",
+      "label": "not an unicode range",
+      "input": "u",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/unicode range hex pair",
+      "context": "value",
+      "label": "unicode range hex pair",
+      "input": "U+0F00-0FFF",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/unicode range hex pair #2",
+      "context": "value",
+      "label": "unicode range hex pair #2",
+      "input": "u+0025-00FF",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/unicode range hex pair number~1letters",
+      "context": "value",
+      "label": "unicode range hex pair number/letters",
+      "input": "U+1234-abcd",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/unicode range hex pair only numbers",
+      "context": "value",
+      "label": "unicode range hex pair only numbers",
+      "input": "U+1234-2345",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/unicode range hex pair starts with letters",
+      "context": "value",
+      "label": "unicode range hex pair starts with letters",
+      "input": "U+FF00-FF10",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/unicode range hex with ?",
+      "context": "value",
+      "label": "unicode range hex with ?",
+      "input": "u+0f00??",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/unicode range one hex",
+      "context": "value",
+      "label": "unicode range one hex",
+      "input": "U+0F00",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/UnicodeRange.json#/unicode range short hex pair",
+      "context": "value",
+      "label": "unicode range short hex pair",
+      "input": "U+0-7F",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

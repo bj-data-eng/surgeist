@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/value/String.json",
+  "source_sha256": "9c7d27f58b6e52ebc55c759af1f59aa6966891a3bc840a0eecef4256404abc69",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "value/String.json#/string with escaped \\n",
+      "context": "value",
+      "label": "string with escaped \\n",
+      "input": "\"te\\\nst\"",
+      "upstream_outcome": "parsed",
+      "canonical_css": "\"test\"",
+      "status": "active"
+    },
+    {
+      "id": "value/String.json#/string with escaped \\r",
+      "context": "value",
+      "label": "string with escaped \\r",
+      "input": "\"te\\\rst\"",
+      "upstream_outcome": "parsed",
+      "canonical_css": "\"test\"",
+      "status": "active"
+    },
+    {
+      "id": "value/String.json#/string with escaped \\r\\n",
+      "context": "value",
+      "label": "string with escaped \\r\\n",
+      "input": "\"te\\\r\nst\"",
+      "upstream_outcome": "parsed",
+      "canonical_css": "\"test\"",
+      "status": "active"
+    },
+    {
+      "id": "value/String.json#/string.0",
+      "context": "value",
+      "label": "string.0",
+      "input": "'test'",
+      "upstream_outcome": "parsed",
+      "canonical_css": "\"test\"",
+      "status": "active"
+    },
+    {
+      "id": "value/String.json#/string.1",
+      "context": "value",
+      "label": "string.1",
+      "input": "\"test\"",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "value/String.json#/string.2",
+      "context": "value",
+      "label": "string.2",
+      "input": "'te\\'st'",
+      "upstream_outcome": "parsed",
+      "canonical_css": "\"te'st\"",
+      "status": "active"
+    },
+    {
+      "id": "value/String.json#/string.3",
+      "context": "value",
+      "label": "string.3",
+      "input": "\"te\\\"st\"",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

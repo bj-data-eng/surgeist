@@ -1,0 +1,9 @@
+error[E0451]: fields `components` and `none` of struct `surgeist_style::TextDecorationLine` are private
+ --> tests/compile_fail/invalid_text_decoration_line_literal.rs:5:9
+  |
+4 |     let _line = TextDecorationLine {
+  |                 ------------------ in this type
+5 |         components: Vec::new(),
+  |         ^^^^^^^^^^ private field
+6 |         none: true,
+  |         ^^^^ private field

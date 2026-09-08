@@ -1,0 +1,16 @@
+error[E0599]: no associated function or constant named `Features` found for struct `surgeist_style::FontFeatureSettings` in the current scope
+ --> tests/compile_fail/invalid_font_feature_settings_empty_literal.rs:4:42
+  |
+4 |     let _settings = FontFeatureSettings::Features(Vec::new());
+  |                                          ^^^^^^^^ associated function or constant not found in `surgeist_style::FontFeatureSettings`
+  |
+note: if you're trying to build a new `surgeist_style::FontFeatureSettings`, consider using `surgeist_style::FontFeatureSettings::features` which returns `Result<surgeist_style::FontFeatureSettings, surgeist_style::Error>`
+ --> src/value.rs
+  |
+  |     pub fn features(features: impl IntoIterator<Item = FontFeature>) -> Result<Self> {
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: there is an associated function `features` with a similar name (notice the capitalization)
+  |
+4 -     let _settings = FontFeatureSettings::Features(Vec::new());
+4 +     let _settings = FontFeatureSettings::features(Vec::new());
+  |

@@ -1,0 +1,39 @@
+<test name="subgrid_baseline_standalone_axis_second_item__border_box_rtl" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" layout-ready-inline-root="true" display="grid" direction="rtl" font-size="15px" line-height="15px" align-items="baseline" grid-template-rows="30px" grid-template-columns="60px">
+      <div source-tag="div" display="grid" direction="rtl" font-size="15px" line-height="15px" align-items="baseline" grid-template-rows="subgrid" grid-template-columns="repeat(2, 30px)">
+        <div source-tag="div" layout-ready-anonymous-grid-text-wrapper="true" display="grid" direction="rtl" font-size="15px" line-height="15px" align-items="baseline" grid-template-rows="auto" grid-template-columns="subgrid">
+          <text layout-input="inline-text">
+            <segment id="0" inline-extent="15" inline-baseline="12" inline-line-height="15" bidi-level="0" whitespace-edge="preserve" following-break="prohibited"/>
+          </text>
+        </div>
+        <div source-tag="div" layout-ready-anonymous-grid-text-wrapper="true" display="grid" direction="rtl" font-size="30px" line-height="30px" align-items="baseline" grid-template-rows="auto" grid-template-columns="subgrid">
+          <text layout-input="inline-text">
+            <segment id="0" inline-extent="30" inline-baseline="24" inline-line-height="30" bidi-level="0" whitespace-edge="preserve" following-break="prohibited"/>
+          </text>
+        </div>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="60" height="30">
+      <node x="0" y="0" width="60" height="30">
+        <node x="30" y="12" width="30" height="15">
+          <node>
+            <range-inks>
+              <range-ink source_segment_id="0" line_index="0" physical_start_edge="right" start="60" advance="15"/>
+            </range-inks>
+          </node>
+        </node>
+        <node x="0" y="0" width="30" height="30">
+          <node>
+            <range-inks>
+              <range-ink source_segment_id="0" line_index="1" physical_start_edge="right" start="30" advance="30"/>
+            </range-inks>
+          </node>
+        </node>
+      </node>
+    </node>
+  </expectations>
+</test>

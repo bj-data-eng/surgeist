@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/selector/Selector.json",
+  "source_sha256": "e95c2225e357915bb2676b837d030a29bf84828936ac00d74faeafacf1650be3",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "selector/Selector.json#/error/0",
+      "context": "selector",
+      "input": "foo,",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Selector.json#/error/1",
+      "context": "selector",
+      "input": "foo)",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Selector.json#/error/2",
+      "context": "selector",
+      "input": "foo{",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Selector.json#/negation with identifier and attribute selector",
+      "context": "selector",
+      "label": "negation with identifier and attribute selector",
+      "input": "x:not([ABC])",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Selector.json#/negation with namespaced identifier",
+      "context": "selector",
+      "label": "negation with namespaced identifier",
+      "input": "*|*:not(*)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Selector.json#/simpleselector.0",
+      "context": "selector",
+      "label": "simpleselector.0",
+      "input": "test",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Selector.json#/simpleselector.1",
+      "context": "selector",
+      "label": "simpleselector.1",
+      "input": ".test",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Selector.json#/simpleselector.16",
+      "context": "selector",
+      "label": "simpleselector.16",
+      "input": ".\\31  b",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Selector.json#/simpleselector.18",
+      "context": "selector",
+      "label": "simpleselector.18",
+      "input": ":lang(nl-be)",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Selector.json#/simpleselector.2",
+      "context": "selector",
+      "label": "simpleselector.2",
+      "input": "#test",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Selector.json#/simpleselector.3",
+      "context": "selector",
+      "label": "simpleselector.3",
+      "input": "[a=b]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Selector.json#/simpleselector.4",
+      "context": "selector",
+      "label": "simpleselector.4",
+      "input": "[a=b][c=\"d\"]",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Selector.json#/spaces",
+      "context": "selector",
+      "label": "spaces",
+      "input": "a  +  b  c  ~  d  e",
+      "upstream_outcome": "parsed",
+      "canonical_css": "a+b c~d e",
+      "status": "active"
+    },
+    {
+      "id": "selector/Selector.json#/type & id",
+      "context": "selector",
+      "label": "type & id",
+      "input": "a#test",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}

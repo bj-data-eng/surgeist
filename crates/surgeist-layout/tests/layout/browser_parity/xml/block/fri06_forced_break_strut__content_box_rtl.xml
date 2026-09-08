@@ -1,0 +1,25 @@
+<test name="fri06_forced_break_strut__content_box_rtl" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" layout-ready-inline-root="true" display="block" box-sizing="content-box" direction="rtl" font-family="monospace" font-size="16px" line-height="24px" width="140px">
+      <div source-tag="span" display="inline-block" box-sizing="content-box" direction="rtl" font-family="monospace" font-size="16px" line-height="24px" width="32px" height="12px"/>
+      <div source-tag="br" line-control="forced-break" display="inline" box-sizing="content-box" direction="rtl" font-family="monospace" font-size="16px" line-height="24px" inline-baseline="17px" inline-line-height="24px"/>
+      <div source-tag="br" line-control="forced-break" display="inline" box-sizing="content-box" direction="rtl" font-family="monospace" font-size="16px" line-height="24px" inline-baseline="17px" inline-line-height="24px"/>
+      <div source-tag="span" display="inline-block" box-sizing="content-box" direction="rtl" font-family="monospace" font-size="16px" line-height="24px" width="48px" height="12px"/>
+      <atomic-placeholder child-index="0" bidi-level="0" following-break="prohibited"/>
+      <atomic-placeholder child-index="3" bidi-level="0" following-break="prohibited"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="140" height="72">
+      <node x="108" y="5" width="32" height="12"/>
+      <node>
+        <browser-control source_index="1" terminal_visual_slot="1" previous_line="same" next_line="later"/>
+      </node>
+      <node>
+        <browser-control source_index="2" terminal_visual_slot="0" previous_line="earlier" next_line="later"/>
+      </node>
+      <node x="92" y="53" width="48" height="12"/>
+    </node>
+  </expectations>
+</test>

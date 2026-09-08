@@ -1,0 +1,42 @@
+# Pinned CSSTree corpus
+
+This directory adopts the neutral CSS fixture corpus generated from CSSTree
+commit `88e3d965c0b1628642a30a841745b410d6835052`. The pinned
+`fixtures/ast` tree is `bfadc7a7a8d93dce59a27fa7df3bb0f6f6a623d8` and contains
+935 cases across 74 fixture files (721 upstream-parsed and 214
+upstream-rejected cases).
+
+CSSTree is distributed under the MIT License. `LICENSE` is the unchanged
+license notice copied from that pinned checkout.
+
+The source sidecar, imported fixtures, neutral expectations, generation report,
+and manifest were produced by the published `surgeist-generator` candidate
+`83a216880884a5a364258ffaaeaf93d228c0bc53`. They are an indivisible generated
+artifact set and must not be edited by hand.
+
+Future corpus maintenance uses the local workspace `surgeist-generator` CLI.
+The historical generator revision above remains the provenance of the committed
+set. In a prepared disposable owner root, use the corpus manifest's pinned
+CSSTree checkout; then adopt only the generated manifest, source, expectations,
+and report with the unchanged license.
+
+From the Surgeist product root, set `CORPUS_OWNER`, `CORPUS_ROOT`, and
+`CSSTREE_SOURCE` to those existing absolute paths; `CORPUS_ROOT` must be contained
+by `CORPUS_OWNER`. Run the selected maintenance operation:
+
+```sh
+cargo run --offline --locked -p surgeist-generator --features css-corpus --bin surgeist-css-generate -- --owner-root "$CORPUS_OWNER" --corpus-root "$CORPUS_ROOT" import-csstree --source-root "$CSSTREE_SOURCE"
+cargo run --offline --locked -p surgeist-generator --features css-corpus --bin surgeist-css-generate -- --owner-root "$CORPUS_OWNER" --corpus-root "$CORPUS_ROOT" generate
+cargo run --offline --locked -p surgeist-generator --features css-corpus --bin surgeist-css-generate -- --owner-root "$CORPUS_OWNER" --corpus-root "$CORPUS_ROOT" check-corpus
+```
+
+Mutation requires Apple-Silicon macOS and the maintenance scope selected by the
+caller. Ordinary `surgeist-css` tests consume committed artifacts and do not
+invoke the generator or access an upstream checkout.
+
+The CSS-owned `tests/csstree/oracle.json` is reviewed with this neutral artifact
+set. Every oracle record repeats its generation-report expectation digest and
+exact source path, expectation path, context, options, and input. A provider
+maintenance change that alters any of those bindings must update the oracle in
+the same reviewed change; the ordinary offline tests validate the complete
+935-record contract without running the parser or generator.

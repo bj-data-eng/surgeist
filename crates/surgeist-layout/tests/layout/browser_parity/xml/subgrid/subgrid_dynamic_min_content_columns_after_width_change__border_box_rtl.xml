@@ -1,0 +1,17 @@
+<test name="subgrid_dynamic_min_content_columns_after_width_change__border_box_rtl" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" display="grid" direction="rtl" width="min-content" height="100px">
+      <div source-tag="div" display="grid" direction="rtl" grid-template-columns="subgrid">
+        <div source-tag="div" display="flex" direction="rtl" width="100px"/>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="100" height="100">
+      <node x="0" y="0" width="100" height="100">
+        <node x="0" y="0" width="100" height="100"/>
+      </node>
+    </node>
+  </expectations>
+</test>

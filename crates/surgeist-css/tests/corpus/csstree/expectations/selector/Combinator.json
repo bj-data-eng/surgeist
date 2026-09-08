@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "generator": "surgeist-css-generate",
+  "source": "source/selector/Combinator.json",
+  "source_sha256": "d16f5cb95369aa6e0bb1d842395d0d5c35604b65f58b7c931338465ef5dacda2",
+  "source_revision": "88e3d965c0b1628642a30a841745b410d6835052",
+  "import_provenance_sha256": "f4f2957f38bf42d052a2593b94f853b6f17255eadd2ac26928c8bebe6bb3423c",
+  "cases": [
+    {
+      "id": "selector/Combinator.json#/all selectors",
+      "context": "selector",
+      "label": "all selectors",
+      "input": "a b+c>d~e",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Combinator.json#/child combinator",
+      "context": "selector",
+      "label": "child combinator",
+      "input": "a>b",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Combinator.json#/combinator with comments around #0",
+      "context": "selector",
+      "label": "combinator with comments around #0",
+      "input": "a/*test*/ /*test*/b",
+      "upstream_outcome": "parsed",
+      "canonical_css": "a b",
+      "status": "active"
+    },
+    {
+      "id": "selector/Combinator.json#/combinator with comments around #1",
+      "context": "selector",
+      "label": "combinator with comments around #1",
+      "input": "a/*test*/+/*test*/b",
+      "upstream_outcome": "parsed",
+      "canonical_css": "a+b",
+      "status": "active"
+    },
+    {
+      "id": "selector/Combinator.json#/combinator with comments around #2",
+      "context": "selector",
+      "label": "combinator with comments around #2",
+      "input": "a/*test*/>/*test*/b",
+      "upstream_outcome": "parsed",
+      "canonical_css": "a>b",
+      "status": "active"
+    },
+    {
+      "id": "selector/Combinator.json#/combinator with comments around #3",
+      "context": "selector",
+      "label": "combinator with comments around #3",
+      "input": "a/*test*/~/*test*/b",
+      "upstream_outcome": "parsed",
+      "canonical_css": "a~b",
+      "status": "active"
+    },
+    {
+      "id": "selector/Combinator.json#/combinator with comments around #4",
+      "context": "selector",
+      "label": "combinator with comments around #4",
+      "input": "a/*test*/ /deep/ /*test*/b",
+      "upstream_outcome": "parsed",
+      "canonical_css": "a/deep/b",
+      "status": "active"
+    },
+    {
+      "id": "selector/Combinator.json#/combinator with spaces around #0",
+      "context": "selector",
+      "label": "combinator with spaces around #0",
+      "input": "a    b",
+      "upstream_outcome": "parsed",
+      "canonical_css": "a b",
+      "status": "active"
+    },
+    {
+      "id": "selector/Combinator.json#/combinator with spaces around #1",
+      "context": "selector",
+      "label": "combinator with spaces around #1",
+      "input": "a  +  b",
+      "upstream_outcome": "parsed",
+      "canonical_css": "a+b",
+      "status": "active"
+    },
+    {
+      "id": "selector/Combinator.json#/combinator with spaces around #2",
+      "context": "selector",
+      "label": "combinator with spaces around #2",
+      "input": "a  >  b",
+      "upstream_outcome": "parsed",
+      "canonical_css": "a>b",
+      "status": "active"
+    },
+    {
+      "id": "selector/Combinator.json#/combinator with spaces around #3",
+      "context": "selector",
+      "label": "combinator with spaces around #3",
+      "input": "a  ~  b",
+      "upstream_outcome": "parsed",
+      "canonical_css": "a~b",
+      "status": "active"
+    },
+    {
+      "id": "selector/Combinator.json#/combinator with spaces around #4",
+      "context": "selector",
+      "label": "combinator with spaces around #4",
+      "input": "a  /deep/  b",
+      "upstream_outcome": "parsed",
+      "canonical_css": "a/deep/b",
+      "status": "active"
+    },
+    {
+      "id": "selector/Combinator.json#/descendant combinator",
+      "context": "selector",
+      "label": "descendant combinator",
+      "input": "a b",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Combinator.json#/errors/0",
+      "context": "selector",
+      "label": "errors",
+      "input": "a /deep b",
+      "upstream_outcome": "rejected",
+      "status": "active"
+    },
+    {
+      "id": "selector/Combinator.json#/following-sibling combinator",
+      "context": "selector",
+      "label": "following-sibling combinator",
+      "input": "a~b",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Combinator.json#/legacy shadow-piercing descendant combinator",
+      "context": "selector",
+      "label": "legacy shadow-piercing descendant combinator",
+      "input": "a/deep/b",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    },
+    {
+      "id": "selector/Combinator.json#/next-sibling combinator",
+      "context": "selector",
+      "label": "next-sibling combinator",
+      "input": "a+b",
+      "upstream_outcome": "parsed",
+      "status": "active"
+    }
+  ]
+}
