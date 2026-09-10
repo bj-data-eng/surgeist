@@ -195,9 +195,11 @@ fn authored_whitespace_and_comments_already_separate_cdc() {
             right.view(),
             CssComponentValueRef::Token(CssValueTokenRef::Cdc)
         ));
-        assert!(output.segments().iter().all(|segment| matches!(
-            segment.origin(),
-            CssSerializedOrigin::Token(_)
-        )));
+        assert!(
+            output
+                .segments()
+                .iter()
+                .all(|segment| matches!(segment.origin(), CssSerializedOrigin::Token(_)))
+        );
     }
 }

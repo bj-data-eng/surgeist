@@ -78,7 +78,17 @@ impl Emitter {
         }
         // The category table handles pairs. CDO also has a three-token hazard:
         // delimiter '<', delimiter '!', then an identifier starting with '--'.
+        // The table omits CDC after these four categories: its leading '--'
+        // would be consumed as part of an identifier, at-keyword, hash, or dimension.
         if self.previous.needs_separator_when_before(kind)
+            || (kind == TokenSerializationType::CDC
+                && matches!(
+                    self.previous,
+                    TokenSerializationType::DelimMinus
+                        | TokenSerializationType::DelimAt
+                        | TokenSerializationType::DelimHash
+                        | TokenSerializationType::Number
+                ))
             || (self.cdo_prefix == 2 && spelling.text.starts_with("--"))
             || (self.previous_hex_escape && kind == TokenSerializationType::WhiteSpace)
         {
