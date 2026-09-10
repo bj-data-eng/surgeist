@@ -574,12 +574,12 @@
 //! ));
 //! ```
 //!
-//! The top-level phase machine is `Initial`, `InitialLayers`, `Imports`,
-//! `ImportsAfterInitialLayers`, `Namespaces`, and `Body`. Initial layers still admit imports but
-//! permanently prohibit namespaces. Only `Initial` and `Imports` admit a namespace; after that,
-//! only consecutive namespaces remain valid until a layer or body transition. Invalid or ignored
-//! rules do not change the phase or active bindings. Malformed, block-form, nested, or late
-//! namespaces recover as one [`CssRecoveryAction::DropAtRule`].
+//! Initial layer statements may precede imports and namespaces, as specified by
+//! [Cascade 5](https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/#layer-empty).
+//! Imports precede namespaces. A layer statement after either import or namespace
+//! declarations, or a body rule, closes both prelude sequences. Invalid or ignored
+//! rules do not change the phase or active bindings. Malformed, block-form, nested,
+//! or late namespaces recover as one [`CssRecoveryAction::DropAtRule`].
 //!
 //! Complete Selectors 3 syntax includes all attribute matchers and four combinators, ordered
 //! repeated IDs and classes, the structural/UI/dynamic pseudo-class families, `:lang()`, and

@@ -243,7 +243,7 @@ fn late_namespace_is_a_placement_error_not_an_unsupported_rule() {
     assert_eq!(detail.name().as_str(), "namespace");
     assert_eq!(
         detail.expected_context().as_str(),
-        "after imports and before every layer or body rule"
+        "after initial layer statements and imports, before later layers or body rules"
     );
 }
 
@@ -328,7 +328,7 @@ fn malformed_late_and_nested_namespace_rules_drop_one_at_rule_and_keep_siblings(
         if source.starts_with(".body") {
             assert_eq!(
                 detail.expected_context().as_str(),
-                "after imports and before every layer or body rule"
+                "after initial layer statements and imports, before later layers or body rules"
             );
         } else {
             assert_eq!(

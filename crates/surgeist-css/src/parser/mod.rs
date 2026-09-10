@@ -1533,37 +1533,28 @@ struct StrictRuleParser<'s> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TopLevelPreludePhase {
     Initial,
-    InitialLayers,
     Imports,
-    ImportsAfterInitialLayers,
     Namespaces,
     Body,
 }
 
 impl TopLevelPreludePhase {
     const fn accepts_import(self) -> bool {
-        matches!(
-            self,
-            Self::Initial | Self::InitialLayers | Self::Imports | Self::ImportsAfterInitialLayers
-        )
+        matches!(self, Self::Initial | Self::Imports)
     }
 
     const fn after_import(self) -> Self {
         match self {
             Self::Initial | Self::Imports => Self::Imports,
-            Self::InitialLayers | Self::ImportsAfterInitialLayers => {
-                Self::ImportsAfterInitialLayers
-            }
             Self::Namespaces | Self::Body => self,
         }
     }
 
     const fn after_layer_statement(self) -> Self {
         match self {
-            Self::Initial | Self::InitialLayers => Self::InitialLayers,
-            Self::Imports | Self::ImportsAfterInitialLayers | Self::Namespaces | Self::Body => {
-                Self::Body
-            }
+            // Cascade 5 permits initial layer statements before imports and namespaces.
+            Self::Initial => Self::Initial,
+            Self::Imports | Self::Namespaces | Self::Body => Self::Body,
         }
     }
 
@@ -1574,7 +1565,7 @@ impl TopLevelPreludePhase {
     const fn after_namespace(self) -> Option<Self> {
         match self {
             Self::Initial | Self::Imports | Self::Namespaces => Some(Self::Namespaces),
-            Self::InitialLayers | Self::ImportsAfterInitialLayers | Self::Body => None,
+            Self::Body => None,
         }
     }
 }
@@ -1849,7 +1840,7 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                     return Err(invalid_at_rule_placement(
                         input.current_source_location(),
                         "namespace",
-                        "after imports and before every layer or body rule",
+                        "after initial layer statements and imports, before later layers or body rules",
                     ));
                 }
                 let prelude = parse_namespace_prelude(self.source, input).map_err(|error| {

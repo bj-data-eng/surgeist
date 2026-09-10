@@ -232,7 +232,7 @@ fn encoding_is_independent_from_import_phase_and_imports_remain_top_level_only()
 }
 
 #[test]
-fn namespace_and_import_preludes_follow_the_six_state_ordering_contract() {
+fn namespace_and_import_preludes_follow_cascade_layer_ordering() {
     let namespace_path = parse_sheet(concat!(
         "@charset \"UTF-8\"; ",
         "@import 'theme.css'; ",
@@ -263,7 +263,7 @@ fn namespace_and_import_preludes_follow_the_six_state_ordering_contract() {
         "@layer reset; ",
         "@layer tokens; ",
         "@import 'first.css'; ",
-        "@namespace blocked \"urn:blocked\"; ",
+        "@namespace kept \"urn:kept\"; ",
         "@import 'second.css'; ",
         "@layer theme; ",
         "@import 'late.css';",
@@ -274,7 +274,7 @@ fn namespace_and_import_preludes_follow_the_six_state_ordering_contract() {
             CssRule::LayerStatement(_),
             CssRule::LayerStatement(_),
             CssRule::Import(_),
-            CssRule::Import(_),
+            CssRule::Namespace(_),
             CssRule::LayerStatement(_),
         ]
     ));

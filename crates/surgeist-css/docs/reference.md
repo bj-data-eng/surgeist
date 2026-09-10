@@ -723,15 +723,12 @@ assert!(matches!(
 ));
 ```
 
-The top-level parser distinguishes six authored phases. `Initial` admits imports
-and namespaces. An initial layer statement enters `InitialLayers`, which still
-admits imports but permanently prohibits namespaces. An import enters `Imports`
-from `Initial` or `ImportsAfterInitialLayers` from `InitialLayers`; only the
-former admits namespaces. A namespace enters `Namespaces`, where only further
-namespaces remain valid before a layer or body transition. A successful layer
-after an import or namespace, or any successful body rule, enters `Body`.
-Malformed, ignored, nested, or misplaced rules never change the phase or active
-bindings.
+Initial layer statements may precede both imports and namespaces, after any
+encoding declaration. Imports must precede namespaces. A layer statement after
+either imports or namespaces, or a body rule, prevents subsequent imports and
+namespaces. This follows the placement extension in
+[Cascade 5 §6.4.4.2](https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/#layer-empty).
+Malformed, ignored, nested, or misplaced rules never change the phase or active bindings.
 
 Declarations and active bindings remain in authored order; the last declaration
 for an exact named prefix or the default affects following selectors. An

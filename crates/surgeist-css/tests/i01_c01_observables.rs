@@ -12,6 +12,8 @@ const FIXTURE: &str = include_str!("fixtures/i01-c01-observables.tsv");
 // matching descriptors do not invalidate an authored font face) and the authored
 // child/declaration-run model introduced by 54a4f4e4b21a3bb506bc4e37adb6c724fb69e773.
 // https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-rule
+// The late-namespace diagnostic describes the initial-layer exception defined
+// by https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/#layer-empty.
 // Deep style inputs retain each authored ancestor through parse_sheet's public
 // depth-256 boundary; dropping level 257 does not flatten its retained parents.
 const HEADER: &str =
