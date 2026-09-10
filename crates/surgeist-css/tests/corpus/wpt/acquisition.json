@@ -1,0 +1,184 @@
+{
+  "schema_version": 1,
+  "purpose": "Reviewed acquisition evidence for an explicit WPT CSS source subset; not a Git tree attestation.",
+  "repository": "https://github.com/web-platform-tests/wpt.git",
+  "revision": "ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "commit_url": "https://github.com/web-platform-tests/wpt/commit/ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "commit_api_url": "https://api.github.com/repos/web-platform-tests/wpt/commits/ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "commit_committer_date": "2026-09-10T01:09:39Z",
+  "selection_cutoff": "2026-09-10T02:16:24Z",
+  "declared_git_tree": "c86ffada3bb6b36203cbb7ea66d59fb0c93a3aa6",
+  "retrieval": "Installed curl over HTTPS with certificate validation; per-file immutable raw URL; no JavaScript/browser execution.",
+  "license": {
+    "path": "LICENSE.md",
+    "spdx": "BSD-3-Clause",
+    "copyright": "Copyright © web-platform-tests contributors",
+    "ancestor_directories_checked": [
+      "/",
+      "css",
+      "css/css-variables",
+      "css/css-nesting",
+      "css/css-fonts",
+      "css/css-fonts/parsing",
+      "css/css-syntax",
+      "css/cssom"
+    ],
+    "other_applicable_legal_files_found": []
+  },
+  "files": [
+    {
+      "path": "LICENSE.md",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/LICENSE.md",
+      "sha256": "5fac07febb0e2a97fb0d7b0def149ec08b642e1ba4b9c345283ab1cbd2af6570",
+      "bytes": 1500,
+      "kind": "license",
+      "licenses": [],
+      "explicit_authors": []
+    },
+    {
+      "path": "css/css-fonts/parsing/font-face-src-format.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-fonts/parsing/font-face-src-format.html",
+      "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+      "bytes": 3922,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": []
+    },
+    {
+      "path": "css/css-fonts/parsing/font-face-src-list.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-fonts/parsing/font-face-src-list.html",
+      "sha256": "06ff20ce492ef9101bb37957310b036add910c820331a1f17a00a6fa36c91deb",
+      "bytes": 2394,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": []
+    },
+    {
+      "path": "css/css-fonts/parsing/font-face-src-local.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-fonts/parsing/font-face-src-local.html",
+      "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+      "bytes": 1873,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": []
+    },
+    {
+      "path": "css/css-fonts/parsing/font-face-src-tech.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-fonts/parsing/font-face-src-tech.html",
+      "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+      "bytes": 5456,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": []
+    },
+    {
+      "path": "css/css-nesting/nested-declarations-cssom.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-nesting/nested-declarations-cssom.html",
+      "sha256": "b5fd9a2966af5885834d4356ab08ce519744fe93147f1bd31230aa49f0d928c9",
+      "bytes": 7588,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": []
+    },
+    {
+      "path": "css/css-nesting/parsing.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-nesting/parsing.html",
+      "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+      "bytes": 3184,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": [
+        {
+          "title": "Adam Argyle",
+          "href": "mailto:argyle@google.com"
+        },
+        {
+          "title": "Tab Atkins-Bittner",
+          "href": "https://tabatkins.com/contact/"
+        }
+      ]
+    },
+    {
+      "path": "css/css-syntax/serialize-consecutive-tokens.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/serialize-consecutive-tokens.html",
+      "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+      "bytes": 4748,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": [
+        {
+          "title": "Tab Atkins-Bittner"
+        }
+      ]
+    },
+    {
+      "path": "css/css-variables/variable-definition-border-shorthand-serialize.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-variables/variable-definition-border-shorthand-serialize.html",
+      "sha256": "b8c85608f299156936733c4e4c9fe8bc45ffba7174323a6f3a24ee431c78e25f",
+      "bytes": 933,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": [
+        {
+          "title": "Kevin Babbitt"
+        },
+        {
+          "title": "Greg Whitworth"
+        },
+        {
+          "title": "Microsoft Corporation",
+          "href": "http://microsoft.com"
+        }
+      ]
+    },
+    {
+      "path": "css/css-variables/variable-reference-shorthands-cssom.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-variables/variable-reference-shorthands-cssom.html",
+      "sha256": "ba34ab033063fd8ca11418ab92fc862ab1308b5695d1c1aa0a90040b38f9f3e0",
+      "bytes": 1301,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": [
+        {
+          "title": "Kevin Babbitt"
+        },
+        {
+          "title": "Greg Whitworth"
+        },
+        {
+          "title": "Microsoft Corporation",
+          "href": "http://microsoft.com"
+        }
+      ]
+    },
+    {
+      "path": "css/cssom/serialize-variable-reference.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/cssom/serialize-variable-reference.html",
+      "sha256": "dfbcaf82e4d5a88a425d325968f5e512e7ff39f828c21c17a495b55326a7b925",
+      "bytes": 1643,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": []
+    }
+  ]
+}

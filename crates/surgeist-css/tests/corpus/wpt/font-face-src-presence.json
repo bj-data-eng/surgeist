@@ -1,0 +1,1206 @@
+{
+  "schema_version": 1,
+  "source_revision": "ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "assertion_kind": "recovering-font-face-src-presence",
+  "cases": [
+    {
+      "id": "font-src-local-001",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 12,
+        "case": "{ src:'local(A) dummy()', valid:false},"
+      },
+      "src": "local(A) dummy()",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-local-002",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 14,
+        "case": "{ src:'dummy() local(A)', valid:false},"
+      },
+      "src": "dummy() local(A)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-local-003",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 16,
+        "case": "{ src:'local(  A  )', valid:true },"
+      },
+      "src": "local(  A  )",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-local-004",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 17,
+        "case": "{ src:'local(A B)', valid:true },"
+      },
+      "src": "local(A B)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-local-005",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 18,
+        "case": "{ src:'local(A    B)', valid:true },"
+      },
+      "src": "local(A    B)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-local-006",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 19,
+        "case": "{ src:'local(   A  B   )', valid:true },"
+      },
+      "src": "local(   A  B   )",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-local-007",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 21,
+        "case": "{ src:'local(default)', valid:false },"
+      },
+      "src": "local(default)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-local-008",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 22,
+        "case": "{ src:'local(inherit)', valid:false },"
+      },
+      "src": "local(inherit)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-local-009",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 23,
+        "case": "{ src:'local(revert)', valid:false },"
+      },
+      "src": "local(revert)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-local-010",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 24,
+        "case": "{ src:'local(unset)', valid:false },"
+      },
+      "src": "local(unset)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-local-011",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 26,
+        "case": "{ src:'local(default A)', valid:true },"
+      },
+      "src": "local(default A)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-local-012",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 27,
+        "case": "{ src:'local(inherit A)', valid:true },"
+      },
+      "src": "local(inherit A)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-local-013",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 28,
+        "case": "{ src:'local(revert A)', valid:true },"
+      },
+      "src": "local(revert A)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-local-014",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 29,
+        "case": "{ src:'local(unset A)', valid:true },"
+      },
+      "src": "local(unset A)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-local-015",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 31,
+        "case": "{ src:'local(\"default\")', valid:true },"
+      },
+      "src": "local(\"default\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-local-016",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 32,
+        "case": "{ src:'local(\"inherit\")', valid:true },"
+      },
+      "src": "local(\"inherit\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-local-017",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 33,
+        "case": "{ src:'local(\"revert\")', valid:true },"
+      },
+      "src": "local(\"revert\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-local-018",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 34,
+        "case": "{ src:'local(\"unset\")', valid:true }"
+      },
+      "src": "local(\"unset\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-list-001",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-list.html",
+        "sha256": "06ff20ce492ef9101bb37957310b036add910c820331a1f17a00a6fa36c91deb",
+        "line": 14,
+        "case": "{ src: 'local(inherit), url(foo.ttf)', valid: true },"
+      },
+      "src": "local(inherit), url(foo.ttf)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-list-002",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-list.html",
+        "sha256": "06ff20ce492ef9101bb37957310b036add910c820331a1f17a00a6fa36c91deb",
+        "line": 15,
+        "case": "{ src: 'local(\"myfont\"), local(unset)', valid: true },"
+      },
+      "src": "local(\"myfont\"), local(unset)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-list-003",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-list.html",
+        "sha256": "06ff20ce492ef9101bb37957310b036add910c820331a1f17a00a6fa36c91deb",
+        "line": 16,
+        "case": "{ src: 'local(), url(foo.ttf)', valid: true },"
+      },
+      "src": "local(), url(foo.ttf)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-list-004",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-list.html",
+        "sha256": "06ff20ce492ef9101bb37957310b036add910c820331a1f17a00a6fa36c91deb",
+        "line": 17,
+        "case": "{ src: 'local(12px monospace), url(foo.ttf)', valid: true },"
+      },
+      "src": "local(12px monospace), url(foo.ttf)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-list-005",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-list.html",
+        "sha256": "06ff20ce492ef9101bb37957310b036add910c820331a1f17a00a6fa36c91deb",
+        "line": 18,
+        "case": "{ src: 'local(\"myfont\") format(opentype), url(foo.ttf)', valid: true },"
+      },
+      "src": "local(\"myfont\") format(opentype), url(foo.ttf)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-list-006",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-list.html",
+        "sha256": "06ff20ce492ef9101bb37957310b036add910c820331a1f17a00a6fa36c91deb",
+        "line": 19,
+        "case": "{ src: 'url(not a valid url/bar.ttf), url(foo.ttf)', valid: true },"
+      },
+      "src": "url(not a valid url/bar.ttf), url(foo.ttf)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-list-007",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-list.html",
+        "sha256": "06ff20ce492ef9101bb37957310b036add910c820331a1f17a00a6fa36c91deb",
+        "line": 20,
+        "case": "{ src: 'url(foo.ttf) format(bad), url(foo.ttf)', valid: true },"
+      },
+      "src": "url(foo.ttf) format(bad), url(foo.ttf)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-list-008",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-list.html",
+        "sha256": "06ff20ce492ef9101bb37957310b036add910c820331a1f17a00a6fa36c91deb",
+        "line": 21,
+        "case": "{ src: 'url(foo.ttf) tech(unknown), url(foo.ttf)', valid: true },"
+      },
+      "src": "url(foo.ttf) tech(unknown), url(foo.ttf)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-list-009",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-list.html",
+        "sha256": "06ff20ce492ef9101bb37957310b036add910c820331a1f17a00a6fa36c91deb",
+        "line": 22,
+        "case": "{ src: 'url(foo.ttf) tech(color-COLRv0) otherfunc(othervalue), url(foo.ttf)', valid: true },"
+      },
+      "src": "url(foo.ttf) tech(color-COLRv0) otherfunc(othervalue), url(foo.ttf)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-list-010",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-list.html",
+        "sha256": "06ff20ce492ef9101bb37957310b036add910c820331a1f17a00a6fa36c91deb",
+        "line": 23,
+        "case": "{ src: 'url(foo.ttf), url(something.ttf) format(broken)', valid: true },"
+      },
+      "src": "url(foo.ttf), url(something.ttf) format(broken)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-list-011",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-list.html",
+        "sha256": "06ff20ce492ef9101bb37957310b036add910c820331a1f17a00a6fa36c91deb",
+        "line": 24,
+        "case": "{ src: '/* an empty component */, url(foo.ttf)', valid: true },"
+      },
+      "src": "/* an empty component */, url(foo.ttf)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-list-012",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-list.html",
+        "sha256": "06ff20ce492ef9101bb37957310b036add910c820331a1f17a00a6fa36c91deb",
+        "line": 25,
+        "case": "{ src: 'local(\"\"), url(foo.ttf), unparseable-garbage, local(\"another font name\")', valid: true },"
+      },
+      "src": "local(\"\"), url(foo.ttf), unparseable-garbage, local(\"another font name\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-list-013",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-list.html",
+        "sha256": "06ff20ce492ef9101bb37957310b036add910c820331a1f17a00a6fa36c91deb",
+        "line": 27,
+        "case": "{ src: 'local(), local(initial)', valid: false },"
+      },
+      "src": "local(), local(initial)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-list-014",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-list.html",
+        "sha256": "06ff20ce492ef9101bb37957310b036add910c820331a1f17a00a6fa36c91deb",
+        "line": 28,
+        "case": "{ src: 'local(\"textfont\") format(opentype), local(\"emoji\") tech(color-COLRv0)', valid: false },"
+      },
+      "src": "local(\"textfont\") format(opentype), local(\"emoji\") tech(color-COLRv0)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-list-015",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-list.html",
+        "sha256": "06ff20ce492ef9101bb37957310b036add910c820331a1f17a00a6fa36c91deb",
+        "line": 29,
+        "case": "{ src: 'local(), /*empty*/, url(should be quoted.ttf), junk', valid: false },"
+      },
+      "src": "local(), /*empty*/, url(should be quoted.ttf), junk",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-list-016",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-list.html",
+        "sha256": "06ff20ce492ef9101bb37957310b036add910c820331a1f17a00a6fa36c91deb",
+        "line": 30,
+        "case": "{ src: 'url(foo.ttf) format(unknown), url(bar.ttf) tech(broken)', valid: false },"
+      },
+      "src": "url(foo.ttf) format(unknown), url(bar.ttf) tech(broken)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-list-017",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-list.html",
+        "sha256": "06ff20ce492ef9101bb37957310b036add910c820331a1f17a00a6fa36c91deb",
+        "line": 31,
+        "case": "{ src: 'url(foo.ttf) tech(color-COLRv0) otherfunc(othervalue), junk', valid: false },"
+      },
+      "src": "url(foo.ttf) tech(color-COLRv0) otherfunc(othervalue), junk",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-format-001",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 12,
+        "case": "{ src: 'url(\"foo.ttf\")', valid: true },"
+      },
+      "src": "url(\"foo.ttf\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-format-002",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 13,
+        "case": "{ src: 'url(\"foo.ttf\"), url(\"bar.ttf\")', valid: true },"
+      },
+      "src": "url(\"foo.ttf\"), url(\"bar.ttf\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-format-003",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 15,
+        "case": "{ src: 'url(\"foo.ttf\") format()', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") format()",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-format-004",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 17,
+        "case": "{ src: 'url(\"foo.ttf\") dummy()', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") dummy()",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-format-005",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 19,
+        "case": "{ src: 'url(\"foo.ttf\") format(\"woff\") dummy()', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") format(\"woff\") dummy()",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-format-006",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 21,
+        "case": "{ src: 'url(\"foo.ttf\") dummy() format(\"woff\")', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") dummy() format(\"woff\")",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-format-007",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 23,
+        "case": "{ src: 'url(\"foo.ttf\") format(\"collection\")', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") format(\"collection\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-format-008",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 24,
+        "case": "{ src: 'url(\"foo.ttf\") format(\"opentype\")', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") format(\"opentype\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-format-009",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 25,
+        "case": "{ src: 'url(\"foo.ttf\") format(\"truetype\")', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") format(\"truetype\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-format-010",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 26,
+        "case": "{ src: 'url(\"foo.ttf\") format(\"woff\")', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") format(\"woff\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-format-011",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 27,
+        "case": "{ src: 'url(\"foo.ttf\") format(\"woff2\")', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") format(\"woff2\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-format-012",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 29,
+        "case": "{ src: 'url(\"foo.ttf\") format(\"opentype\", \"truetype\")', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") format(\"opentype\", \"truetype\")",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-format-013",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 31,
+        "case": "{ src: 'url(\"foo.ttf\") format(collection)', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") format(collection)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-format-014",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 32,
+        "case": "{ src: 'url(\"foo.ttf\") format(opentype)', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") format(opentype)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-format-015",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 33,
+        "case": "{ src: 'url(\"foo.ttf\") format(truetype)', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") format(truetype)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-format-016",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 34,
+        "case": "{ src: 'url(\"foo.ttf\") format(woff)', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") format(woff)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-format-017",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 35,
+        "case": "{ src: 'url(\"foo.ttf\") format(woff2)', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") format(woff2)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-format-018",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 37,
+        "case": "{ src: 'url(\"foo.ttf\") format(opentype, truetype)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") format(opentype, truetype)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-format-019",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 38,
+        "case": "{ src: 'url(\"foo.ttf\") format(opentype truetype)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") format(opentype truetype)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-format-020",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 40,
+        "case": "{ src: 'url(\"foo.ttf\") format(auto)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") format(auto)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-format-021",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 41,
+        "case": "{ src: 'url(\"foo.ttf\") format(default)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") format(default)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-format-022",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 42,
+        "case": "{ src: 'url(\"foo.ttf\") format(inherit)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") format(inherit)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-format-023",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 43,
+        "case": "{ src: 'url(\"foo.ttf\") format(initial)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") format(initial)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-format-024",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 44,
+        "case": "{ src: 'url(\"foo.ttf\") format(none)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") format(none)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-format-025",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 45,
+        "case": "{ src: 'url(\"foo.ttf\") format(normal)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") format(normal)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-format-026",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 46,
+        "case": "{ src: 'url(\"foo.ttf\") format(xyzzy)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") format(xyzzy)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-format-027",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 51,
+        "case": "{ src: 'url(\"foo.ttf\") format(\"embedded-opentype\"), url(\"bar.html\")', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") format(\"embedded-opentype\"), url(\"bar.html\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-format-028",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 52,
+        "case": "{ src: 'url(\"foo.ttf\") format(embedded-opentype), url(\"bar.html\")', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") format(embedded-opentype), url(\"bar.html\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-format-029",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 53,
+        "case": "{ src: 'url(\"foo.ttf\") format(\"svg\"), url(\"bar.html\")', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") format(\"svg\"), url(\"bar.html\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-format-030",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 54,
+        "case": "{ src: 'url(\"foo.ttf\") format(svg), url(\"bar.html\")', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") format(svg), url(\"bar.html\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-format-031",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 56,
+        "case": "{ src: 'url(\"foo.ttf\") format(xyzz 200px), url(\"bar.html\")', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") format(xyzz 200px), url(\"bar.html\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-format-032",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 57,
+        "case": "{ src: 'url(\"foo.ttf\") format(xyzz), url(\"bar.html\")', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") format(xyzz), url(\"bar.html\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-format-033",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 58,
+        "case": "{ src: 'url(\"foo.ttf\") dummy(xyzzy), url(\"bar.html\")', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") dummy(xyzzy), url(\"bar.html\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-format-034",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 59,
+        "case": "{ src: 'url(\"foo.ttf\") format(), url(\"bar.html\")', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") format(), url(\"bar.html\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-format-035",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-format.html",
+        "sha256": "ad0a89db038793db06132bb0ce73ef8f87f6a685886f1389596444ca05295711",
+        "line": 60,
+        "case": "{ src: 'url(\"foo.ttf\") format(none), url(\"bar.html\")', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") format(none), url(\"bar.html\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-tech-001",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 12,
+        "case": "{ src: 'url(\"foo.ttf\")', valid: true },"
+      },
+      "src": "url(\"foo.ttf\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-tech-002",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 14,
+        "case": "{ src: 'url(\"foo.ttf\") tech()', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") tech()",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-003",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 16,
+        "case": "{ src: 'url(\"foo.ttf\") tech(features-opentype)', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") tech(features-opentype)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-tech-004",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 17,
+        "case": "{ src: 'url(\"foo.ttf\") tech(features-aat)', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") tech(features-aat)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-tech-005",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 18,
+        "case": "{ src: 'url(\"foo.ttf\") tech(color-COLRv0)', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") tech(color-COLRv0)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-tech-006",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 19,
+        "case": "{ src: 'url(\"foo.ttf\") tech(color-COLRv1)', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") tech(color-COLRv1)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-tech-007",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 20,
+        "case": "{ src: 'url(\"foo.ttf\") tech(color-sbix)', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") tech(color-sbix)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-tech-008",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 21,
+        "case": "{ src: 'url(\"foo.ttf\") tech(color-CBDT)', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") tech(color-CBDT)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-tech-009",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 22,
+        "case": "{ src: 'url(\"foo.ttf\") tech(variations)', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") tech(variations)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-tech-010",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 23,
+        "case": "{ src: 'url(\"foo.ttf\") tech(palettes)', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") tech(palettes)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-tech-011",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 25,
+        "case": "{ src: 'url(\"foo.ttf\") tech(\"features-opentype\")', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") tech(\"features-opentype\")",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-012",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 26,
+        "case": "{ src: 'url(\"foo.ttf\") tech(\"color-COLRv0\")', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") tech(\"color-COLRv0\")",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-013",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 27,
+        "case": "{ src: 'url(\"foo.ttf\") tech(\"variations\")', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") tech(\"variations\")",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-014",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 29,
+        "case": "{ src: 'url(\"foo.ttf\") tech(features-opentype, color-COLRv0, variations, palettes)', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") tech(features-opentype, color-COLRv0, variations, palettes)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-tech-015",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 30,
+        "case": "{ src: 'url(\"foo.ttf\") tech(features-opentype color-COLRv0 variations palettes)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") tech(features-opentype color-COLRv0 variations palettes)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-016",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 32,
+        "case": "{ src: 'url(\"foo.ttf\") tech(feature-opentype)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") tech(feature-opentype)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-017",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 33,
+        "case": "{ src: 'url(\"foo.ttf\") tech(feature-aat)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") tech(feature-aat)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-018",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 34,
+        "case": "{ src: 'url(\"foo.ttf\") tech(feature-graphite)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") tech(feature-graphite)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-019",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 35,
+        "case": "{ src: 'url(\"foo.ttf\") tech(auto)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") tech(auto)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-020",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 36,
+        "case": "{ src: 'url(\"foo.ttf\") tech(default)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") tech(default)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-021",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 37,
+        "case": "{ src: 'url(\"foo.ttf\") tech(inherit)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") tech(inherit)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-022",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 38,
+        "case": "{ src: 'url(\"foo.ttf\") tech(initial)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") tech(initial)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-023",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 39,
+        "case": "{ src: 'url(\"foo.ttf\") tech(none)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") tech(none)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-024",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 40,
+        "case": "{ src: 'url(\"foo.ttf\") tech(normal)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") tech(normal)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-025",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 41,
+        "case": "{ src: 'url(\"foo.ttf\") tech(xyzzy)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") tech(xyzzy)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-026",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 42,
+        "case": "{ src: 'url(\"foo.ttf\") tech(xyzzy, features-opentype)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") tech(xyzzy, features-opentype)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-027",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 43,
+        "case": "{ src: 'url(\"foo.ttf\") tech(features-opentype, xyzzy)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") tech(features-opentype, xyzzy)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-028",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 45,
+        "case": "{ src: 'url(\"foo.ttf\") format(opentype) tech(features-opentype)', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") format(opentype) tech(features-opentype)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-tech-029",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 46,
+        "case": "{ src: 'url(\"foo.ttf\") tech(features-opentype) format(opentype)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") tech(features-opentype) format(opentype)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-030",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 49,
+        "case": "{ src: 'url(\"foo.ttf\") tech(incremental), url(\"bar.html\")', dontcomparetech: true, valid: true },"
+      },
+      "src": "url(\"foo.ttf\") tech(incremental), url(\"bar.html\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-tech-031",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 50,
+        "case": "{ src: 'url(\"foo.ttf\") tech(incremental, color-SVG, features-graphite, features-aat), url(\"bar.html\")', dontcomparetech: true, valid: true },"
+      },
+      "src": "url(\"foo.ttf\") tech(incremental, color-SVG, features-graphite, features-aat), url(\"bar.html\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-tech-032",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 51,
+        "case": "{ src: 'url(\"foo.ttf\") tech(color-SVG, features-graphite), url(\"bar.html\")', dontcomparetech: true, valid: true },"
+      },
+      "src": "url(\"foo.ttf\") tech(color-SVG, features-graphite), url(\"bar.html\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-tech-033",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 52,
+        "case": "{ src: 'url(\"foo.ttf\") tech(color-SVG), url(\"bar.html\")', dontcomparetech: true, valid: true },"
+      },
+      "src": "url(\"foo.ttf\") tech(color-SVG), url(\"bar.html\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-tech-034",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 53,
+        "case": "{ src: 'url(\"foo.ttf\") tech(features-graphite), url(\"bar.html\")', dontcomparetech: true, valid: true },"
+      },
+      "src": "url(\"foo.ttf\") tech(features-graphite), url(\"bar.html\")",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-tech-035",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 55,
+        "case": "{ src: 'url(\"foo.ttf\") dummy(\"opentype\") tech(variations)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") dummy(\"opentype\") tech(variations)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-036",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 56,
+        "case": "{ src: 'url(\"foo.ttf\") dummy(\"opentype\") dummy(variations)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") dummy(\"opentype\") dummy(variations)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-037",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 57,
+        "case": "{ src: 'url(\"foo.ttf\") format(opentype) tech(features-opentype) dummy(something)', valid: false },"
+      },
+      "src": "url(\"foo.ttf\") format(opentype) tech(features-opentype) dummy(something)",
+      "expected_src_present": false
+    },
+    {
+      "id": "font-src-tech-038",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 59,
+        "case": "{ src: 'url(\"foo.ttf\") format(dummy), url(\"foo.ttf\") tech(variations)', valid: true },"
+      },
+      "src": "url(\"foo.ttf\") format(dummy), url(\"foo.ttf\") tech(variations)",
+      "expected_src_present": true
+    },
+    {
+      "id": "font-src-tech-039",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 61,
+        "case": "{ src: 'url(\"foo.ttf\") tech(color), url(\"bar.html\")', dontcomparetech: true, valid: true },"
+      },
+      "src": "url(\"foo.ttf\") tech(color), url(\"bar.html\")",
+      "expected_src_present": true
+    }
+  ]
+}

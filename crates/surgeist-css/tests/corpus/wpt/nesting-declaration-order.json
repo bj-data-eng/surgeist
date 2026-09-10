@@ -1,0 +1,214 @@
+{
+  "schema_version": 1,
+  "source_revision": "ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "assertion_kind": "authored-nested-rule-declaration-order",
+  "cases": [
+    {
+      "id": "nesting-order-001",
+      "source": {
+        "path": "css/css-nesting/nested-declarations-cssom.html",
+        "sha256": "b5fd9a2966af5885834d4356ab08ce519744fe93147f1bd31230aa49f0d928c9",
+        "line": 20,
+        "case": "}, 'Trailing declarations');"
+      },
+      "input": "\n      .a {\n        & { --x:1; }\n        --x:2;\n      }\n    ",
+      "expected": {
+        "kind": "style",
+        "declarations": [],
+        "rules": [
+          {
+            "kind": "style",
+            "declarations": [
+              "--x"
+            ],
+            "rules": []
+          },
+          {
+            "kind": "declarations",
+            "declarations": [
+              "--x"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "nesting-order-002",
+      "source": {
+        "path": "css/css-nesting/nested-declarations-cssom.html",
+        "sha256": "b5fd9a2966af5885834d4356ab08ce519744fe93147f1bd31230aa49f0d928c9",
+        "line": 49,
+        "case": "}, 'Mixed declarations');"
+      },
+      "input": "\n      .a {\n        --a:1;\n        --b:1;\n        & { --c:1; }\n        --d:1;\n        --e:1;\n        & { --f:1; }\n        --g:1;\n        --h:1;\n        --i:1;\n        & { --j:1; }\n        --k:1;\n        --l:1;\n      }\n    ",
+      "expected": {
+        "kind": "style",
+        "declarations": [
+          "--a",
+          "--b"
+        ],
+        "rules": [
+          {
+            "kind": "style",
+            "declarations": [
+              "--c"
+            ],
+            "rules": []
+          },
+          {
+            "kind": "declarations",
+            "declarations": [
+              "--d",
+              "--e"
+            ]
+          },
+          {
+            "kind": "style",
+            "declarations": [
+              "--f"
+            ],
+            "rules": []
+          },
+          {
+            "kind": "declarations",
+            "declarations": [
+              "--g",
+              "--h",
+              "--i"
+            ]
+          },
+          {
+            "kind": "style",
+            "declarations": [
+              "--j"
+            ],
+            "rules": []
+          },
+          {
+            "kind": "declarations",
+            "declarations": [
+              "--k",
+              "--l"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "nesting-order-003",
+      "source": {
+        "path": "css/css-nesting/nested-declarations-cssom.html",
+        "sha256": "b5fd9a2966af5885834d4356ab08ce519744fe93147f1bd31230aa49f0d928c9",
+        "line": 69,
+        "case": "}, 'CSSNestedDeclarations.style');"
+      },
+      "input": "\n      .a {\n        & { --x:1; }\n        --y:2;\n        --z:3;\n      }\n    ",
+      "expected": {
+        "kind": "style",
+        "declarations": [],
+        "rules": [
+          {
+            "kind": "style",
+            "declarations": [
+              "--x"
+            ],
+            "rules": []
+          },
+          {
+            "kind": "declarations",
+            "declarations": [
+              "--y",
+              "--z"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "nesting-order-004",
+      "source": {
+        "path": "css/css-nesting/nested-declarations-cssom.html",
+        "sha256": "b5fd9a2966af5885834d4356ab08ce519744fe93147f1bd31230aa49f0d928c9",
+        "line": 99,
+        "case": "}, 'Nested group rule');"
+      },
+      "input": "\n      .a {\n        @media (width > 100px) {\n          --x:1;\n          --y:1;\n          .b { }\n          --z:1;\n        }\n        --w:1;\n      }\n    ",
+      "expected": {
+        "kind": "style",
+        "declarations": [],
+        "rules": [
+          {
+            "kind": "media",
+            "rules": [
+              {
+                "kind": "declarations",
+                "declarations": [
+                  "--x",
+                  "--y"
+                ]
+              },
+              {
+                "kind": "style",
+                "declarations": [],
+                "rules": []
+              },
+              {
+                "kind": "declarations",
+                "declarations": [
+                  "--z"
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "declarations",
+            "declarations": [
+              "--w"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "nesting-order-005",
+      "source": {
+        "path": "css/css-nesting/nested-declarations-cssom.html",
+        "sha256": "b5fd9a2966af5885834d4356ab08ce519744fe93147f1bd31230aa49f0d928c9",
+        "line": 154,
+        "case": "}, 'Inner rule starting with an ident');"
+      },
+      "input": "\n      a {\n        & { --x:1; }\n        width: 100px;\n        height: 200px;\n        color:hover {}\n        --y: 2;\n      }\n    ",
+      "expected": {
+        "kind": "style",
+        "declarations": [],
+        "rules": [
+          {
+            "kind": "style",
+            "declarations": [
+              "--x"
+            ],
+            "rules": []
+          },
+          {
+            "kind": "declarations",
+            "declarations": [
+              "width",
+              "height"
+            ]
+          },
+          {
+            "kind": "style",
+            "declarations": [],
+            "rules": []
+          },
+          {
+            "kind": "declarations",
+            "declarations": [
+              "--y"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

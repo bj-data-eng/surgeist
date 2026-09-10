@@ -4,7 +4,7 @@ The project's own license is in [LICENSE](LICENSE).
 
 ## Dependencies
 
-This notice covers the bundled CSSTree fixtures and the 23 registry crates in
+This notice covers the bundled CSSTree and Web Platform Tests fixtures and the 23 registry crates in
 the local Cargo resolution of `surgeist-css` 0.1.0 with default features,
 including development and build dependencies.
 The Cargo dependencies are not vendored in this repository. The roles below
@@ -117,3 +117,14 @@ distributed by David Tolnay, with Unicode data from Unicode, Inc.:
 
 * License: ([MIT](licenses/unicode-ident/LICENSE-MIT) OR [Apache-2.0](licenses/unicode-ident/LICENSE-APACHE)) AND [Unicode-3.0](licenses/unicode-ident/LICENSE-UNICODE)
 * Homepage: [unicode-ident](https://github.com/dtolnay/unicode-ident)
+
+This product includes a selected Web Platform Tests CSS source bundle from commit
+`ddcca5943fd41232d42149aaa19d9a04c5651b18`, distributed by the web-platform-tests
+contributors. Preserved upstream source and reviewed parsing/serialization data
+adaptations live in `tests/corpus/wpt/`. The [acquisition record](tests/corpus/wpt/acquisition.json)
+binds each source to its immutable URL, SHA-256 digest, license, and any explicit
+author declarations. The [corpus guide](tests/corpus/wpt/README.md) describes the
+adaptations and their distinction from browser execution.
+
+* License: [BSD-3-Clause](tests/corpus/wpt/source/LICENSE.md)
+* Homepage: [Web Platform Tests](https://web-platform-tests.org)

@@ -1,0 +1,391 @@
+{
+  "schema_version": 1,
+  "source_revision": "ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "assertion_kind": "recovering-nested-style-rule-presence",
+  "cases": [
+    {
+      "id": "nesting-selector-001",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 43,
+        "case": "testNestedSelector(\"&\");"
+      },
+      "parent": ".foo",
+      "selector": "&",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-002",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 44,
+        "case": "testNestedSelector(\"&.bar\");"
+      },
+      "parent": ".foo",
+      "selector": "&.bar",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-003",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 45,
+        "case": "testNestedSelector(\"& .bar\");"
+      },
+      "parent": ".foo",
+      "selector": "& .bar",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-004",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 46,
+        "case": "testNestedSelector(\"& > .bar\");"
+      },
+      "parent": ".foo",
+      "selector": "& > .bar",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-005",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 49,
+        "case": "testNestedSelector(\"> .bar\", {expected:\"& > .bar\"});"
+      },
+      "parent": ".foo",
+      "selector": "> .bar",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-006",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 50,
+        "case": "testNestedSelector(\"> & .bar\", {expected:\"& > & .bar\"});"
+      },
+      "parent": ".foo",
+      "selector": "> & .bar",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-007",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 51,
+        "case": "testNestedSelector(\"+ .bar &\", {expected:\"& + .bar &\"});"
+      },
+      "parent": ".foo",
+      "selector": "+ .bar &",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-008",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 52,
+        "case": "testNestedSelector(\"+ .bar, .foo, > .baz\", {expected:\"& + .bar, & .foo, & > .baz\"});"
+      },
+      "parent": ".foo",
+      "selector": "+ .bar, .foo, > .baz",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-009",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 55,
+        "case": "testNestedSelector(\".foo\", {expected:\"& .foo\"});"
+      },
+      "parent": ".foo",
+      "selector": ".foo",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-010",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 56,
+        "case": "testNestedSelector(\".test > & .bar\");"
+      },
+      "parent": ".foo",
+      "selector": ".test > & .bar",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-011",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 57,
+        "case": "testNestedSelector(\".foo, .foo &\", {expected:\"& .foo, .foo &\"});"
+      },
+      "parent": ".foo",
+      "selector": ".foo, .foo &",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-012",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 58,
+        "case": "testNestedSelector(\".foo, .bar\", {expected:\"& .foo, & .bar\"});"
+      },
+      "parent": ".foo",
+      "selector": ".foo, .bar",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-013",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 59,
+        "case": "testNestedSelector(\":is(.bar, .baz)\", {expected:\"& :is(.bar, .baz)\"});"
+      },
+      "parent": ".foo",
+      "selector": ":is(.bar, .baz)",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-014",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 60,
+        "case": "testNestedSelector(\"&:is(.bar, .baz)\");"
+      },
+      "parent": ".foo",
+      "selector": "&:is(.bar, .baz)",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-015",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 61,
+        "case": "testNestedSelector(\":is(.bar, &.baz)\");"
+      },
+      "parent": ".foo",
+      "selector": ":is(.bar, &.baz)",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-016",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 62,
+        "case": "testNestedSelector(\"&:is(.bar, &.baz)\");"
+      },
+      "parent": ".foo",
+      "selector": "&:is(.bar, &.baz)",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-017",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 65,
+        "case": "testNestedSelector(\"div&\");"
+      },
+      "parent": ".foo",
+      "selector": "div&",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-018",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 66,
+        "case": "testInvalidNestingSelector(\"&div\"); // type selector must be first"
+      },
+      "parent": ".foo",
+      "selector": "&div",
+      "expected_inner_present": false
+    },
+    {
+      "id": "nesting-selector-019",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 67,
+        "case": "testNestedSelector(\".class&\");"
+      },
+      "parent": ".foo",
+      "selector": ".class&",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-020",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 68,
+        "case": "testNestedSelector(\"&.class\");"
+      },
+      "parent": ".foo",
+      "selector": "&.class",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-021",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 69,
+        "case": "testNestedSelector(\"[attr]&\");"
+      },
+      "parent": ".foo",
+      "selector": "[attr]&",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-022",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 70,
+        "case": "testNestedSelector(\"&[attr]\");"
+      },
+      "parent": ".foo",
+      "selector": "&[attr]",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-023",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 71,
+        "case": "testNestedSelector(\"#id&\");"
+      },
+      "parent": ".foo",
+      "selector": "#id&",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-024",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 72,
+        "case": "testNestedSelector(\"&#id\");"
+      },
+      "parent": ".foo",
+      "selector": "&#id",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-025",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 73,
+        "case": "testNestedSelector(\":hover&\");"
+      },
+      "parent": ".foo",
+      "selector": ":hover&",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-026",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 74,
+        "case": "testNestedSelector(\"&:hover\");"
+      },
+      "parent": ".foo",
+      "selector": "&:hover",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-027",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 75,
+        "case": "testNestedSelector(\":is(div)&\");"
+      },
+      "parent": ".foo",
+      "selector": ":is(div)&",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-028",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 76,
+        "case": "testNestedSelector(\"&:is(div)\");"
+      },
+      "parent": ".foo",
+      "selector": "&:is(div)",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-029",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 79,
+        "case": "testNestedSelector(\"& .bar & .baz & .qux\");"
+      },
+      "parent": ".foo",
+      "selector": "& .bar & .baz & .qux",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-030",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 80,
+        "case": "testNestedSelector(\"&&\");"
+      },
+      "parent": ".foo",
+      "selector": "&&",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-031",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 83,
+        "case": "testNestedSelector(\"& > section, & > article\");"
+      },
+      "parent": ".foo",
+      "selector": "& > section, & > article",
+      "expected_inner_present": true
+    },
+    {
+      "id": "nesting-selector-032",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 86,
+        "case": "testNestedSelector(\"& + .baz, &.qux\", {parent:\".foo, .bar\"});"
+      },
+      "parent": ".foo, .bar",
+      "selector": "& + .baz, &.qux",
+      "expected_inner_present": true
+    }
+  ]
+}

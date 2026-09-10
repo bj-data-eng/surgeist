@@ -1,0 +1,2421 @@
+{
+  "schema_version": 1,
+  "source_revision": "ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "assertion_kind": "source-only-cssom-and-execution",
+  "cases": [
+    {
+      "id": "nesting-selector-001-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 43,
+        "case": "testNestedSelector(\"&\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "&"
+      },
+      "expectation": {
+        "selector_text": "&"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-002-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 44,
+        "case": "testNestedSelector(\"&.bar\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "&.bar"
+      },
+      "expectation": {
+        "selector_text": "&.bar"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-003-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 45,
+        "case": "testNestedSelector(\"& .bar\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "& .bar"
+      },
+      "expectation": {
+        "selector_text": "& .bar"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-004-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 46,
+        "case": "testNestedSelector(\"& > .bar\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "& > .bar"
+      },
+      "expectation": {
+        "selector_text": "& > .bar"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-005-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 49,
+        "case": "testNestedSelector(\"> .bar\", {expected:\"& > .bar\"});"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "> .bar"
+      },
+      "expectation": {
+        "selector_text": "& > .bar"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-006-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 50,
+        "case": "testNestedSelector(\"> & .bar\", {expected:\"& > & .bar\"});"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "> & .bar"
+      },
+      "expectation": {
+        "selector_text": "& > & .bar"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-007-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 51,
+        "case": "testNestedSelector(\"+ .bar &\", {expected:\"& + .bar &\"});"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "+ .bar &"
+      },
+      "expectation": {
+        "selector_text": "& + .bar &"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-008-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 52,
+        "case": "testNestedSelector(\"+ .bar, .foo, > .baz\", {expected:\"& + .bar, & .foo, & > .baz\"});"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "+ .bar, .foo, > .baz"
+      },
+      "expectation": {
+        "selector_text": "& + .bar, & .foo, & > .baz"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-009-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 55,
+        "case": "testNestedSelector(\".foo\", {expected:\"& .foo\"});"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": ".foo"
+      },
+      "expectation": {
+        "selector_text": "& .foo"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-010-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 56,
+        "case": "testNestedSelector(\".test > & .bar\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": ".test > & .bar"
+      },
+      "expectation": {
+        "selector_text": ".test > & .bar"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-011-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 57,
+        "case": "testNestedSelector(\".foo, .foo &\", {expected:\"& .foo, .foo &\"});"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": ".foo, .foo &"
+      },
+      "expectation": {
+        "selector_text": "& .foo, .foo &"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-012-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 58,
+        "case": "testNestedSelector(\".foo, .bar\", {expected:\"& .foo, & .bar\"});"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": ".foo, .bar"
+      },
+      "expectation": {
+        "selector_text": "& .foo, & .bar"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-013-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 59,
+        "case": "testNestedSelector(\":is(.bar, .baz)\", {expected:\"& :is(.bar, .baz)\"});"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": ":is(.bar, .baz)"
+      },
+      "expectation": {
+        "selector_text": "& :is(.bar, .baz)"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-014-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 60,
+        "case": "testNestedSelector(\"&:is(.bar, .baz)\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "&:is(.bar, .baz)"
+      },
+      "expectation": {
+        "selector_text": "&:is(.bar, .baz)"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-015-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 61,
+        "case": "testNestedSelector(\":is(.bar, &.baz)\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": ":is(.bar, &.baz)"
+      },
+      "expectation": {
+        "selector_text": ":is(.bar, &.baz)"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-016-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 62,
+        "case": "testNestedSelector(\"&:is(.bar, &.baz)\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "&:is(.bar, &.baz)"
+      },
+      "expectation": {
+        "selector_text": "&:is(.bar, &.baz)"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-017-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 65,
+        "case": "testNestedSelector(\"div&\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "div&"
+      },
+      "expectation": {
+        "selector_text": "div&"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-019-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 67,
+        "case": "testNestedSelector(\".class&\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": ".class&"
+      },
+      "expectation": {
+        "selector_text": ".class&"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-020-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 68,
+        "case": "testNestedSelector(\"&.class\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "&.class"
+      },
+      "expectation": {
+        "selector_text": "&.class"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-021-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 69,
+        "case": "testNestedSelector(\"[attr]&\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "[attr]&"
+      },
+      "expectation": {
+        "selector_text": "[attr]&"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-022-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 70,
+        "case": "testNestedSelector(\"&[attr]\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "&[attr]"
+      },
+      "expectation": {
+        "selector_text": "&[attr]"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-023-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 71,
+        "case": "testNestedSelector(\"#id&\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "#id&"
+      },
+      "expectation": {
+        "selector_text": "#id&"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-024-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 72,
+        "case": "testNestedSelector(\"&#id\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "&#id"
+      },
+      "expectation": {
+        "selector_text": "&#id"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-025-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 73,
+        "case": "testNestedSelector(\":hover&\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": ":hover&"
+      },
+      "expectation": {
+        "selector_text": ":hover&"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-026-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 74,
+        "case": "testNestedSelector(\"&:hover\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "&:hover"
+      },
+      "expectation": {
+        "selector_text": "&:hover"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-027-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 75,
+        "case": "testNestedSelector(\":is(div)&\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": ":is(div)&"
+      },
+      "expectation": {
+        "selector_text": ":is(div)&"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-028-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 76,
+        "case": "testNestedSelector(\"&:is(div)\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "&:is(div)"
+      },
+      "expectation": {
+        "selector_text": "&:is(div)"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-029-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 79,
+        "case": "testNestedSelector(\"& .bar & .baz & .qux\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "& .bar & .baz & .qux"
+      },
+      "expectation": {
+        "selector_text": "& .bar & .baz & .qux"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-030-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 80,
+        "case": "testNestedSelector(\"&&\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "&&"
+      },
+      "expectation": {
+        "selector_text": "&&"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-031-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 83,
+        "case": "testNestedSelector(\"& > section, & > article\");"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo",
+        "selector": "& > section, & > article"
+      },
+      "expectation": {
+        "selector_text": "& > section, & > article"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-selector-032-cssom",
+      "source": {
+        "path": "css/css-nesting/parsing.html",
+        "sha256": "2b784f7e36843182870f441962414e51cf68c105aaa28617549e155280dce22b",
+        "line": 86,
+        "case": "testNestedSelector(\"& + .baz, &.qux\", {parent:\".foo, .bar\"});"
+      },
+      "disposition": "deferred-contextual-cssom-serialization",
+      "input": {
+        "parent": ".foo, .bar",
+        "selector": "& + .baz, &.qux"
+      },
+      "expectation": {
+        "selector_text": "& + .baz, &.qux"
+      },
+      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+    },
+    {
+      "id": "nesting-cssom-001",
+      "source": {
+        "path": "css/css-nesting/nested-declarations-cssom.html",
+        "sha256": "b5fd9a2966af5885834d4356ab08ce519744fe93147f1bd31230aa49f0d928c9",
+        "line": 20,
+        "case": "}, 'Trailing declarations');"
+      },
+      "disposition": "deferred-cssom-object-projection",
+      "input": "\n      .a {\n        & { --x:1; }\n        --x:2;\n      }\n    ",
+      "expectation": {
+        "assertions": [
+          {
+            "line": 15,
+            "upstream_assertion": "assert_equals(s.cssRules.length, 1);"
+          },
+          {
+            "line": 17,
+            "upstream_assertion": "assert_equals(outer.cssRules.length, 2);"
+          },
+          {
+            "line": 18,
+            "upstream_assertion": "assert_equals(outer.cssRules[0].cssText, `& { --x: 1; }`);"
+          },
+          {
+            "line": 19,
+            "upstream_assertion": "assert_equals(outer.cssRules[1].cssText, `--x: 2;`);"
+          }
+        ]
+      },
+      "reason": "Ordered declarations/rules are tested now; CSSOM class identities and exact cssText formatting require corresponding APIs."
+    },
+    {
+      "id": "nesting-cssom-002",
+      "source": {
+        "path": "css/css-nesting/nested-declarations-cssom.html",
+        "sha256": "b5fd9a2966af5885834d4356ab08ce519744fe93147f1bd31230aa49f0d928c9",
+        "line": 49,
+        "case": "}, 'Mixed declarations');"
+      },
+      "disposition": "deferred-cssom-object-projection",
+      "input": "\n      .a {\n        --a:1;\n        --b:1;\n        & { --c:1; }\n        --d:1;\n        --e:1;\n        & { --f:1; }\n        --g:1;\n        --h:1;\n        --i:1;\n        & { --j:1; }\n        --k:1;\n        --l:1;\n      }\n    ",
+      "expectation": {
+        "assertions": [
+          {
+            "line": 40,
+            "upstream_assertion": "assert_equals(s.cssRules.length, 1);"
+          },
+          {
+            "line": 42,
+            "upstream_assertion": "assert_equals(outer.cssRules.length, 6);"
+          },
+          {
+            "line": 43,
+            "upstream_assertion": "assert_equals(outer.cssRules[0].cssText, `& { --c: 1; }`);"
+          },
+          {
+            "line": 44,
+            "upstream_assertion": "assert_equals(outer.cssRules[1].cssText, `--d: 1; --e: 1;`);"
+          },
+          {
+            "line": 45,
+            "upstream_assertion": "assert_equals(outer.cssRules[2].cssText, `& { --f: 1; }`);"
+          },
+          {
+            "line": 46,
+            "upstream_assertion": "assert_equals(outer.cssRules[3].cssText, `--g: 1; --h: 1; --i: 1;`);"
+          },
+          {
+            "line": 47,
+            "upstream_assertion": "assert_equals(outer.cssRules[4].cssText, `& { --j: 1; }`);"
+          },
+          {
+            "line": 48,
+            "upstream_assertion": "assert_equals(outer.cssRules[5].cssText, `--k: 1; --l: 1;`);"
+          }
+        ]
+      },
+      "reason": "Ordered declarations/rules are tested now; CSSOM class identities and exact cssText formatting require corresponding APIs."
+    },
+    {
+      "id": "nesting-cssom-003",
+      "source": {
+        "path": "css/css-nesting/nested-declarations-cssom.html",
+        "sha256": "b5fd9a2966af5885834d4356ab08ce519744fe93147f1bd31230aa49f0d928c9",
+        "line": 69,
+        "case": "}, 'CSSNestedDeclarations.style');"
+      },
+      "disposition": "deferred-cssom-object-projection",
+      "input": "\n      .a {\n        & { --x:1; }\n        --y:2;\n        --z:3;\n      }\n    ",
+      "expectation": {
+        "assertions": [
+          {
+            "line": 60,
+            "upstream_assertion": "assert_equals(s.cssRules.length, 1);"
+          },
+          {
+            "line": 62,
+            "upstream_assertion": "assert_equals(outer.cssRules.length, 2);"
+          },
+          {
+            "line": 64,
+            "upstream_assertion": "assert_true(nested_declarations instanceof CSSNestedDeclarations);"
+          },
+          {
+            "line": 65,
+            "upstream_assertion": "assert_equals(nested_declarations.style.length, 2);"
+          },
+          {
+            "line": 66,
+            "upstream_assertion": "assert_equals(nested_declarations.style.getPropertyValue('--x'), '');"
+          },
+          {
+            "line": 67,
+            "upstream_assertion": "assert_equals(nested_declarations.style.getPropertyValue('--y'), '2');"
+          },
+          {
+            "line": 68,
+            "upstream_assertion": "assert_equals(nested_declarations.style.getPropertyValue('--z'), '3');"
+          }
+        ]
+      },
+      "reason": "Ordered declarations/rules are tested now; CSSOM class identities and exact cssText formatting require corresponding APIs."
+    },
+    {
+      "id": "nesting-cssom-004",
+      "source": {
+        "path": "css/css-nesting/nested-declarations-cssom.html",
+        "sha256": "b5fd9a2966af5885834d4356ab08ce519744fe93147f1bd31230aa49f0d928c9",
+        "line": 99,
+        "case": "}, 'Nested group rule');"
+      },
+      "disposition": "deferred-cssom-object-projection",
+      "input": "\n      .a {\n        @media (width > 100px) {\n          --x:1;\n          --y:1;\n          .b { }\n          --z:1;\n        }\n        --w:1;\n      }\n    ",
+      "expectation": {
+        "assertions": [
+          {
+            "line": 84,
+            "upstream_assertion": "assert_equals(s.cssRules.length, 1);"
+          },
+          {
+            "line": 86,
+            "upstream_assertion": "assert_equals(outer.cssRules.length, 2);"
+          },
+          {
+            "line": 90,
+            "upstream_assertion": "assert_equals(media.cssRules.length, 3);"
+          },
+          {
+            "line": 91,
+            "upstream_assertion": "assert_true(media.cssRules[0] instanceof CSSNestedDeclarations);"
+          },
+          {
+            "line": 92,
+            "upstream_assertion": "assert_equals(media.cssRules[0].cssText, `--x: 1; --y: 1;`);"
+          },
+          {
+            "line": 93,
+            "upstream_assertion": "assert_equals(media.cssRules[1].cssText, `& .b { }`);"
+          },
+          {
+            "line": 94,
+            "upstream_assertion": "assert_true(media.cssRules[2] instanceof CSSNestedDeclarations);"
+          },
+          {
+            "line": 95,
+            "upstream_assertion": "assert_equals(media.cssRules[2].cssText, `--z: 1;`);"
+          },
+          {
+            "line": 97,
+            "upstream_assertion": "assert_true(outer.cssRules[1] instanceof CSSNestedDeclarations);"
+          },
+          {
+            "line": 98,
+            "upstream_assertion": "assert_equals(outer.cssRules[1].cssText, `--w: 1;`);"
+          }
+        ]
+      },
+      "reason": "Ordered declarations/rules are tested now; CSSOM class identities and exact cssText formatting require corresponding APIs."
+    },
+    {
+      "id": "nesting-cssom-005",
+      "source": {
+        "path": "css/css-nesting/nested-declarations-cssom.html",
+        "sha256": "b5fd9a2966af5885834d4356ab08ce519744fe93147f1bd31230aa49f0d928c9",
+        "line": 154,
+        "case": "}, 'Inner rule starting with an ident');"
+      },
+      "disposition": "deferred-cssom-object-projection",
+      "input": "\n      a {\n        & { --x:1; }\n        width: 100px;\n        height: 200px;\n        color:hover {}\n        --y: 2;\n      }\n    ",
+      "expectation": {
+        "assertions": [
+          {
+            "line": 147,
+            "upstream_assertion": "assert_equals(s.cssRules.length, 1);"
+          },
+          {
+            "line": 149,
+            "upstream_assertion": "assert_equals(outer.cssRules.length, 4);"
+          },
+          {
+            "line": 150,
+            "upstream_assertion": "assert_equals(outer.cssRules[0].cssText, `& { --x: 1; }`);"
+          },
+          {
+            "line": 151,
+            "upstream_assertion": "assert_equals(outer.cssRules[1].cssText, `width: 100px; height: 200px;`);"
+          },
+          {
+            "line": 152,
+            "upstream_assertion": "assert_equals(outer.cssRules[2].cssText, `& color:hover { }`);"
+          },
+          {
+            "line": 153,
+            "upstream_assertion": "assert_equals(outer.cssRules[3].cssText, `--y: 2;`);"
+          }
+        ]
+      },
+      "reason": "Ordered declarations/rules are tested now; CSSOM class identities and exact cssText formatting require corresponding APIs."
+    },
+    {
+      "id": "pending-margin-getter",
+      "source": {
+        "path": "css/css-variables/variable-reference-shorthands-cssom.html",
+        "sha256": "ba34ab033063fd8ca11418ab92fc862ab1308b5695d1c1aa0a90040b38f9f3e0",
+        "line": 25,
+        "case": "assert_equals(target.style.margin, \"var(--prop)\", \"margin property value after calling setProperty\");"
+      },
+      "disposition": "deferred-cssom-shorthand-getter",
+      "input": {
+        "property": "margin",
+        "value": "var(--prop)"
+      },
+      "expectation": {
+        "property_value": "var(--prop)"
+      },
+      "reason": "Requires shorthand getter semantics; does not resolve var()."
+    },
+    {
+      "id": "removed-margin-getter",
+      "source": {
+        "path": "css/css-variables/variable-reference-shorthands-cssom.html",
+        "sha256": "ba34ab033063fd8ca11418ab92fc862ab1308b5695d1c1aa0a90040b38f9f3e0",
+        "line": 29,
+        "case": "assert_equals(target.style.margin, \"\", \"margin property value after calling removeProperty\");"
+      },
+      "disposition": "deferred-cssom-mutation",
+      "input": {
+        "set": {
+          "margin": "var(--prop)"
+        },
+        "remove": "margin"
+      },
+      "expectation": {
+        "property_value": ""
+      },
+      "reason": "Requires CSSOM set/remove semantics."
+    },
+    {
+      "id": "pending-border-color-getter",
+      "source": {
+        "path": "css/css-variables/variable-definition-border-shorthand-serialize.html",
+        "sha256": "b8c85608f299156936733c4e4c9fe8bc45ffba7174323a6f3a24ee431c78e25f",
+        "line": 22,
+        "case": "assert_equals(target.style.getPropertyValue(\"border-color\"), \"\");"
+      },
+      "disposition": "deferred-cssom-derived-shorthand-getter",
+      "input": {
+        "border": "var(--borderwidth) solid black",
+        "get_property": "border-color"
+      },
+      "expectation": {
+        "property_value": ""
+      },
+      "reason": "Pending substitution makes the derived getter empty; this does not reject the authored border declaration or choose a computed color."
+    },
+    {
+      "id": "pending-declaration-cssom-001",
+      "source": {
+        "path": "css/cssom/serialize-variable-reference.html",
+        "sha256": "dfbcaf82e4d5a88a425d325968f5e512e7ff39f828c21c17a495b55326a7b925",
+        "line": 16,
+        "case": "assert_equals(elem.style.cssText, 'font-size: var(--a);');"
+      },
+      "disposition": "deferred-cssom-declaration-serialization",
+      "input": {
+        "style_attribute": "font-size: var(--a);"
+      },
+      "expectation": {
+        "css_text": "font-size: var(--a);"
+      },
+      "reason": "Exact CSSOM cssText expectation; authored value preservation has a different formatting boundary."
+    },
+    {
+      "id": "pending-declaration-cssom-002",
+      "source": {
+        "path": "css/cssom/serialize-variable-reference.html",
+        "sha256": "dfbcaf82e4d5a88a425d325968f5e512e7ff39f828c21c17a495b55326a7b925",
+        "line": 22,
+        "case": "assert_equals(elem.style.cssText, 'font: var(--a);');"
+      },
+      "disposition": "deferred-cssom-declaration-serialization",
+      "input": {
+        "style_attribute": "font: var(--a);"
+      },
+      "expectation": {
+        "css_text": "font: var(--a);"
+      },
+      "reason": "Exact CSSOM cssText expectation; authored value preservation has a different formatting boundary."
+    },
+    {
+      "id": "pending-declaration-cssom-003",
+      "source": {
+        "path": "css/cssom/serialize-variable-reference.html",
+        "sha256": "dfbcaf82e4d5a88a425d325968f5e512e7ff39f828c21c17a495b55326a7b925",
+        "line": 28,
+        "case": "assert_equals(elem.style.cssText, 'font-size: var(--a);');"
+      },
+      "disposition": "deferred-cssom-declaration-serialization",
+      "input": {
+        "style_attribute": "font-size:var(--a);"
+      },
+      "expectation": {
+        "css_text": "font-size: var(--a);"
+      },
+      "reason": "Exact CSSOM cssText expectation; authored value preservation has a different formatting boundary."
+    },
+    {
+      "id": "pending-declaration-cssom-004",
+      "source": {
+        "path": "css/cssom/serialize-variable-reference.html",
+        "sha256": "dfbcaf82e4d5a88a425d325968f5e512e7ff39f828c21c17a495b55326a7b925",
+        "line": 34,
+        "case": "assert_equals(elem.style.cssText, 'font: var(--a);');"
+      },
+      "disposition": "deferred-cssom-declaration-serialization",
+      "input": {
+        "style_attribute": "font:var(--a);"
+      },
+      "expectation": {
+        "css_text": "font: var(--a);"
+      },
+      "reason": "Exact CSSOM cssText expectation; authored value preservation has a different formatting boundary."
+    },
+    {
+      "id": "computed-token-pair-001",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 31,
+        "case": "testTokenPairs(\"foo\", \"bar\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "foo",
+        "right": "bar",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "foo",
+        "ends_with": "bar",
+        "not_equals": "foobar"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-002",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 32,
+        "case": "testTokenPairs(\"foo\", \"bar()\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "foo",
+        "right": "bar()",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "foo",
+        "ends_with": "bar()",
+        "not_equals": "foobar()"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-003",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 33,
+        "case": "testTokenPairs(\"foo\", \"url(bar)\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "foo",
+        "right": "url(bar)",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "foo",
+        "ends_with": "url(bar)",
+        "not_equals": "foourl(bar)"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-004",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 34,
+        "case": "testTokenPairs(\"foo\", \"-\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "foo",
+        "right": "-",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "foo",
+        "ends_with": "-",
+        "not_equals": "foo-"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-005",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 35,
+        "case": "testTokenPairs(\"foo\", \"123\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "foo",
+        "right": "123",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "foo",
+        "ends_with": "123",
+        "not_equals": "foo123"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-006",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 36,
+        "case": "testTokenPairs(\"foo\", \"123%\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "foo",
+        "right": "123%",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "foo",
+        "ends_with": "123%",
+        "not_equals": "foo123%"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-007",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 37,
+        "case": "testTokenPairs(\"foo\", \"123em\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "foo",
+        "right": "123em",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "foo",
+        "ends_with": "123em",
+        "not_equals": "foo123em"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-008",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 38,
+        "case": "testTokenPairs(\"foo\", \"-->\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "foo",
+        "right": "-->",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "foo",
+        "ends_with": "-->",
+        "not_equals": "foo-->"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-009",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 39,
+        "case": "testTokenPairs(\"foo\", \"()\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "foo",
+        "right": "()",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "foo",
+        "ends_with": "()",
+        "not_equals": "foo()"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-010",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 41,
+        "case": "testTokenPairs(\"@foo\", \"bar\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "@foo",
+        "right": "bar",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "@foo",
+        "ends_with": "bar",
+        "not_equals": "@foobar"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-011",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 42,
+        "case": "testTokenPairs(\"@foo\", \"bar()\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "@foo",
+        "right": "bar()",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "@foo",
+        "ends_with": "bar()",
+        "not_equals": "@foobar()"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-012",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 43,
+        "case": "testTokenPairs(\"@foo\", \"url(bar)\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "@foo",
+        "right": "url(bar)",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "@foo",
+        "ends_with": "url(bar)",
+        "not_equals": "@foourl(bar)"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-013",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 44,
+        "case": "testTokenPairs(\"@foo\", \"-\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "@foo",
+        "right": "-",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "@foo",
+        "ends_with": "-",
+        "not_equals": "@foo-"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-014",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 45,
+        "case": "testTokenPairs(\"@foo\", \"123\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "@foo",
+        "right": "123",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "@foo",
+        "ends_with": "123",
+        "not_equals": "@foo123"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-015",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 46,
+        "case": "testTokenPairs(\"@foo\", \"123%\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "@foo",
+        "right": "123%",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "@foo",
+        "ends_with": "123%",
+        "not_equals": "@foo123%"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-016",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 47,
+        "case": "testTokenPairs(\"@foo\", \"123em\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "@foo",
+        "right": "123em",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "@foo",
+        "ends_with": "123em",
+        "not_equals": "@foo123em"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-017",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 48,
+        "case": "testTokenPairs(\"@foo\", \"-->\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "@foo",
+        "right": "-->",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "@foo",
+        "ends_with": "-->",
+        "not_equals": "@foo-->"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-018",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 50,
+        "case": "testTokenPairs(\"#foo\", \"bar\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "#foo",
+        "right": "bar",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "#foo",
+        "ends_with": "bar",
+        "not_equals": "#foobar"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-019",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 51,
+        "case": "testTokenPairs(\"#foo\", \"bar()\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "#foo",
+        "right": "bar()",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "#foo",
+        "ends_with": "bar()",
+        "not_equals": "#foobar()"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-020",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 52,
+        "case": "testTokenPairs(\"#foo\", \"url(bar)\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "#foo",
+        "right": "url(bar)",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "#foo",
+        "ends_with": "url(bar)",
+        "not_equals": "#foourl(bar)"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-021",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 53,
+        "case": "testTokenPairs(\"#foo\", \"-\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "#foo",
+        "right": "-",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "#foo",
+        "ends_with": "-",
+        "not_equals": "#foo-"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-022",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 54,
+        "case": "testTokenPairs(\"#foo\", \"123\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "#foo",
+        "right": "123",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "#foo",
+        "ends_with": "123",
+        "not_equals": "#foo123"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-023",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 55,
+        "case": "testTokenPairs(\"#foo\", \"123%\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "#foo",
+        "right": "123%",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "#foo",
+        "ends_with": "123%",
+        "not_equals": "#foo123%"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-024",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 56,
+        "case": "testTokenPairs(\"#foo\", \"123em\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "#foo",
+        "right": "123em",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "#foo",
+        "ends_with": "123em",
+        "not_equals": "#foo123em"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-025",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 57,
+        "case": "testTokenPairs(\"#foo\", \"-->\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "#foo",
+        "right": "-->",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "#foo",
+        "ends_with": "-->",
+        "not_equals": "#foo-->"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-026",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 59,
+        "case": "testTokenPairs(\"123foo\", \"bar\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "123foo",
+        "right": "bar",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "123foo",
+        "ends_with": "bar",
+        "not_equals": "123foobar"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-027",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 60,
+        "case": "testTokenPairs(\"123foo\", \"bar()\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "123foo",
+        "right": "bar()",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "123foo",
+        "ends_with": "bar()",
+        "not_equals": "123foobar()"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-028",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 61,
+        "case": "testTokenPairs(\"123foo\", \"url(bar)\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "123foo",
+        "right": "url(bar)",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "123foo",
+        "ends_with": "url(bar)",
+        "not_equals": "123foourl(bar)"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-029",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 62,
+        "case": "testTokenPairs(\"123foo\", \"-\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "123foo",
+        "right": "-",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "123foo",
+        "ends_with": "-",
+        "not_equals": "123foo-"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-030",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 63,
+        "case": "testTokenPairs(\"123foo\", \"123\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "123foo",
+        "right": "123",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "123foo",
+        "ends_with": "123",
+        "not_equals": "123foo123"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-031",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 64,
+        "case": "testTokenPairs(\"123foo\", \"123%\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "123foo",
+        "right": "123%",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "123foo",
+        "ends_with": "123%",
+        "not_equals": "123foo123%"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-032",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 65,
+        "case": "testTokenPairs(\"123foo\", \"123em\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "123foo",
+        "right": "123em",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "123foo",
+        "ends_with": "123em",
+        "not_equals": "123foo123em"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-033",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 66,
+        "case": "testTokenPairs(\"123foo\", \"-->\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "123foo",
+        "right": "-->",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "123foo",
+        "ends_with": "-->",
+        "not_equals": "123foo-->"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-034",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 68,
+        "case": "testTokenPairs(\"#\", \"bar\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "#",
+        "right": "bar",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "#",
+        "ends_with": "bar",
+        "not_equals": "#bar"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-035",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 69,
+        "case": "testTokenPairs(\"#\", \"bar()\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "#",
+        "right": "bar()",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "#",
+        "ends_with": "bar()",
+        "not_equals": "#bar()"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-036",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 70,
+        "case": "testTokenPairs(\"#\", \"url(bar)\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "#",
+        "right": "url(bar)",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "#",
+        "ends_with": "url(bar)",
+        "not_equals": "#url(bar)"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-037",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 71,
+        "case": "testTokenPairs(\"#\", \"-\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "#",
+        "right": "-",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "#",
+        "ends_with": "-",
+        "not_equals": "#-"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-038",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 72,
+        "case": "testTokenPairs(\"#\", \"123\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "#",
+        "right": "123",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "#",
+        "ends_with": "123",
+        "not_equals": "#123"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-039",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 73,
+        "case": "testTokenPairs(\"#\", \"123%\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "#",
+        "right": "123%",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "#",
+        "ends_with": "123%",
+        "not_equals": "#123%"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-040",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 74,
+        "case": "testTokenPairs(\"#\", \"123em\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "#",
+        "right": "123em",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "#",
+        "ends_with": "123em",
+        "not_equals": "#123em"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-041",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 76,
+        "case": "testTokenPairs(\"-\", \"bar\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "-",
+        "right": "bar",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "-",
+        "ends_with": "bar",
+        "not_equals": "-bar"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-042",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 77,
+        "case": "testTokenPairs(\"-\", \"bar()\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "-",
+        "right": "bar()",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "-",
+        "ends_with": "bar()",
+        "not_equals": "-bar()"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-043",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 78,
+        "case": "testTokenPairs(\"-\", \"url(bar)\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "-",
+        "right": "url(bar)",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "-",
+        "ends_with": "url(bar)",
+        "not_equals": "-url(bar)"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-044",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 79,
+        "case": "testTokenPairs(\"-\", \"-\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "-",
+        "right": "-",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "-",
+        "ends_with": "-",
+        "not_equals": "--"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-045",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 80,
+        "case": "testTokenPairs(\"-\", \"123\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "-",
+        "right": "123",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "-",
+        "ends_with": "123",
+        "not_equals": "-123"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-046",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 81,
+        "case": "testTokenPairs(\"-\", \"123%\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "-",
+        "right": "123%",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "-",
+        "ends_with": "123%",
+        "not_equals": "-123%"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-047",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 82,
+        "case": "testTokenPairs(\"-\", \"123em\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "-",
+        "right": "123em",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "-",
+        "ends_with": "123em",
+        "not_equals": "-123em"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-048",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 84,
+        "case": "testTokenPairs(\"123\", \"bar\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "123",
+        "right": "bar",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "123",
+        "ends_with": "bar",
+        "not_equals": "123bar"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-049",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 85,
+        "case": "testTokenPairs(\"123\", \"bar()\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "123",
+        "right": "bar()",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "123",
+        "ends_with": "bar()",
+        "not_equals": "123bar()"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-050",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 86,
+        "case": "testTokenPairs(\"123\", \"url(bar)\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "123",
+        "right": "url(bar)",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "123",
+        "ends_with": "url(bar)",
+        "not_equals": "123url(bar)"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-051",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 87,
+        "case": "testTokenPairs(\"123\", \"123\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "123",
+        "right": "123",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "123",
+        "ends_with": "123",
+        "not_equals": "123123"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-052",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 88,
+        "case": "testTokenPairs(\"123\", \"123%\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "123",
+        "right": "123%",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "123",
+        "ends_with": "123%",
+        "not_equals": "123123%"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-053",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 89,
+        "case": "testTokenPairs(\"123\", \"123em\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "123",
+        "right": "123em",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "123",
+        "ends_with": "123em",
+        "not_equals": "123123em"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-054",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 90,
+        "case": "testTokenPairs(\"123\", \"%\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "123",
+        "right": "%",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "123",
+        "ends_with": "%",
+        "not_equals": "123%"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-055",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 92,
+        "case": "testTokenPairs(\"@\", \"bar\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "@",
+        "right": "bar",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "@",
+        "ends_with": "bar",
+        "not_equals": "@bar"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-056",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 93,
+        "case": "testTokenPairs(\"@\", \"bar()\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "@",
+        "right": "bar()",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "@",
+        "ends_with": "bar()",
+        "not_equals": "@bar()"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-057",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 94,
+        "case": "testTokenPairs(\"@\", \"url(bar)\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "@",
+        "right": "url(bar)",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "@",
+        "ends_with": "url(bar)",
+        "not_equals": "@url(bar)"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-058",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 95,
+        "case": "testTokenPairs(\"@\", \"-\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "@",
+        "right": "-",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "@",
+        "ends_with": "-",
+        "not_equals": "@-"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-059",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 97,
+        "case": "testTokenPairs(\".\", \"123\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": ".",
+        "right": "123",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": ".",
+        "ends_with": "123",
+        "not_equals": ".123"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-060",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 98,
+        "case": "testTokenPairs(\".\", \"123%\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": ".",
+        "right": "123%",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": ".",
+        "ends_with": "123%",
+        "not_equals": ".123%"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-061",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 99,
+        "case": "testTokenPairs(\".\", \"123em\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": ".",
+        "right": "123em",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": ".",
+        "ends_with": "123em",
+        "not_equals": ".123em"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-062",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 101,
+        "case": "testTokenPairs(\"+\", \"123\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "+",
+        "right": "123",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "+",
+        "ends_with": "123",
+        "not_equals": "+123"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-063",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 102,
+        "case": "testTokenPairs(\"+\", \"123%\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "+",
+        "right": "123%",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "+",
+        "ends_with": "123%",
+        "not_equals": "+123%"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-064",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 103,
+        "case": "testTokenPairs(\"+\", \"123em\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "+",
+        "right": "123em",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "+",
+        "ends_with": "123em",
+        "not_equals": "+123em"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-token-pair-065",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 105,
+        "case": "testTokenPairs(\"/\", \"*\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "left": "/",
+        "right": "*",
+        "value": "var(--t1)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "/",
+        "ends_with": "*",
+        "not_equals": "/*"
+      },
+      "reason": "Upstream reads computed custom properties and specifies relations, not an exact separator string."
+    },
+    {
+      "id": "computed-comment-001",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 117,
+        "case": "testComments(\"a/* comment */b\", \"\", \"a/* comment */b\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "value": "a/* comment */b",
+        "t1": ""
+      },
+      "expectation": {
+        "computed_value": "a/* comment */b"
+      },
+      "reason": "Exact upstream result belongs to computed substitution; it is not authored-source normalization."
+    },
+    {
+      "id": "computed-comment-002",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 118,
+        "case": "testComments(\"a/* comment */var(--t1)\", \"b\", \"a/**/b\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "value": "a/* comment */var(--t1)",
+        "t1": "b"
+      },
+      "expectation": {
+        "computed_value": "a/**/b"
+      },
+      "reason": "Exact upstream result belongs to computed substitution; it is not authored-source normalization."
+    },
+    {
+      "id": "computed-comment-003",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 119,
+        "case": "testComments(\"var(--t1)b\", \"a/* comment */\", \"a/**/b\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "value": "var(--t1)b",
+        "t1": "a/* comment */"
+      },
+      "expectation": {
+        "computed_value": "a/**/b"
+      },
+      "reason": "Exact upstream result belongs to computed substitution; it is not authored-source normalization."
+    },
+    {
+      "id": "computed-comment-004",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 122,
+        "case": "testComments(\"var(--t1)b\", \"'a/* unfinished '\", \"'a/* unfinished 'b\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "value": "var(--t1)b",
+        "t1": "'a/* unfinished '"
+      },
+      "expectation": {
+        "computed_value": "'a/* unfinished 'b"
+      },
+      "reason": "Exact upstream result belongs to computed substitution; it is not authored-source normalization."
+    },
+    {
+      "id": "computed-comment-005",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 123,
+        "case": "testComments(\"var(--t1)b\", \"\\\"a/* unfinished \\\"\", \"\\\"a/* unfinished \\\"b\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "value": "var(--t1)b",
+        "t1": "\"a/* unfinished \""
+      },
+      "expectation": {
+        "computed_value": "\"a/* unfinished \"b"
+      },
+      "reason": "Exact upstream result belongs to computed substitution; it is not authored-source normalization."
+    },
+    {
+      "id": "computed-comment-006",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 124,
+        "case": "testComments(\"var(--t1)b\", \"'a \\\" '/* comment */\", \"'a \\\" 'b\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "value": "var(--t1)b",
+        "t1": "'a \" '/* comment */"
+      },
+      "expectation": {
+        "computed_value": "'a \" 'b"
+      },
+      "reason": "Exact upstream result belongs to computed substitution; it is not authored-source normalization."
+    },
+    {
+      "id": "computed-empty-fallback-boundary",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 130,
+        "case": "b.style.setProperty(\"--result\", \"var(--t1)var(--does-not-exist,)var(--t2)\");"
+      },
+      "disposition": "deferred-custom-property-substitution",
+      "input": {
+        "t1": "a",
+        "t2": "b",
+        "value": "var(--t1)var(--does-not-exist,)var(--t2)"
+      },
+      "expectation": {
+        "starts_with": "a",
+        "ends_with": "b",
+        "not_equals": "ab"
+      },
+      "reason": "Requires custom-property substitution and guaranteed-invalid fallback handling."
+    },
+    {
+      "id": "font-tech-keyword-set-serialization",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-tech.html",
+        "sha256": "26f19c2bf73735921d03ea30561b01eda186fda84add06a343965eb8e2a1a200",
+        "line": 77,
+        "case": "assert_equals(serialized_techs, specified_techs.toLowerCase(), \"expected matching tech() lists\");"
+      },
+      "disposition": "deferred-cssom-font-src-serialization",
+      "input": {
+        "scope": "accepted source rows without dontcomparetech"
+      },
+      "expectation": {
+        "technology_set": "ASCII-lowercase input keywords",
+        "order": "not constrained"
+      },
+      "reason": "The helper compares sets, not exact whole-value text; six source rows explicitly skip technology-set comparison."
+    }
+  ]
+}

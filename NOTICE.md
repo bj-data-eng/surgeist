@@ -229,6 +229,13 @@ The layout crate includes subgrid and grid-lanes browser fixtures adapted from
 Web Platform Tests (WPT), distributed by the web-platform-tests contributors,
 and generated expectations derived from those fixtures.
 
+The CSS crate also includes an explicit CSS source subset at revision
+`ddcca5943fd41232d42149aaa19d9a04c5651b18` and reviewed data adaptations. Its
+[corpus guide](crates/surgeist-css/tests/corpus/wpt/README.md) and
+[acquisition record](crates/surgeist-css/tests/corpus/wpt/acquisition.json)
+identify the selected files and retained authorship. This subset uses the
+preserved [BSD-3-Clause license](crates/surgeist-css/tests/corpus/wpt/source/LICENSE.md).
+
 * License: [BSD-3-Clause](licenses/web-platform-tests/LICENSE.md), with [CC0-1.0](licenses/web-platform-tests/legalcode.txt) for individually dedicated source material
 * Homepage: [Web Platform Tests](https://web-platform-tests.org)
 * Source authors and individual dedications: [upstream notices](licenses/web-platform-tests/NOTICE.md)
