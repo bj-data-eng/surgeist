@@ -346,10 +346,11 @@ fn parse_font_family_name_with_generics<'i, 't>(
         return Ok(CssFontFamilyName::generic(generic, parts.remove(0)));
     }
 
-    if parts
-        .iter()
-        .any(|part| generic_font_family(part).is_some() || is_css_wide_keyword(part))
-    {
+    if parts.iter().any(|part| {
+        generic_font_family(part).is_some()
+            || is_css_wide_keyword(part)
+            || part.eq_ignore_ascii_case("default")
+    }) {
         return Err(unsupported_value(
             input,
             None,

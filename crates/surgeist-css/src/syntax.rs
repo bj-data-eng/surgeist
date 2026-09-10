@@ -7825,11 +7825,19 @@ impl std::fmt::Debug for CssFontFamilyName {
 }
 
 impl CssFontFamilyName {
+    /// Constructs a quoted-form name from its decoded string content.
     #[must_use]
     pub fn try_quoted(value: impl Into<String>) -> Option<Self> {
         Self::try_new(CssFontFamilyNameKind::Quoted, value)
     }
 
+    /// Constructs an identifier-form name from its decoded value.
+    ///
+    /// CSS escapes must already be decoded. Spaces do not preserve the original
+    /// token boundaries, so this constructor does not reparse or split the value.
+    /// Empty values and the reserved whole-name `default`, in any ASCII case,
+    /// are rejected.
+    /// Use [`Self::try_quoted`] to construct that literal font name.
     #[must_use]
     pub fn try_ident_sequence(value: impl Into<String>) -> Option<Self> {
         Self::try_new(CssFontFamilyNameKind::IdentSequence, value)
@@ -7856,7 +7864,10 @@ impl CssFontFamilyName {
 
     fn try_new(kind: CssFontFamilyNameKind, value: impl Into<String>) -> Option<Self> {
         let value = value.into();
-        if value.is_empty() {
+        if value.is_empty()
+            || (kind == CssFontFamilyNameKind::IdentSequence
+                && value.eq_ignore_ascii_case("default"))
+        {
             None
         } else {
             Some(Self::new(kind, value))
