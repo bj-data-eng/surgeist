@@ -2,7 +2,8 @@
 //!
 //! The property schema selects the supported physical box and border slice and
 //! owns its longhand types, initial values, shorthand members and reset-only
-//! members. Unselected properties return an explicit capability error.
+//! members. Custom declarations retain their symbolic specified values.
+//! Unselected known properties return an explicit capability error.
 
 use std::fmt;
 use std::sync::Arc;
@@ -20,8 +21,6 @@ use crate::{
 pub enum CssExpansionErrorKind {
     /// The known property is outside the currently selected expansion slice.
     UnsupportedProperty(CssKnownProperty),
-    /// Custom properties are unsupported by this selected expansion interface.
-    UnsupportedCustomProperty(CssCustomPropertyName),
     /// Strict reentry still contains a decoded `var()` function.
     ResidualSubstitution,
     /// Replacement components failed serialization or the original property grammar.
@@ -54,13 +53,6 @@ impl fmt::Display for CssExpansionError {
                     formatter,
                     "intrinsic expansion does not support {}",
                     property.canonical_name()
-                )
-            }
-            CssExpansionErrorKind::UnsupportedCustomProperty(name) => {
-                write!(
-                    formatter,
-                    "this expansion interface does not support custom property {}",
-                    name.as_str()
                 )
             }
             CssExpansionErrorKind::ResidualSubstitution => {
@@ -349,12 +341,39 @@ impl CssUniversalReset {
     }
 }
 
-/// Completed contributions, with a universal reset kept symbolic.
+/// One symbolic custom-property contribution before cascade and substitution.
+///
+/// Private construction guarantees a custom declaration. The original occurrence
+/// supplies its case-sensitive name, token value or CSS-wide keyword, importance,
+/// and provenance without copying a second representation of those semantics.
+#[derive(Clone, Debug)]
+pub struct CssCustomPropertyContribution {
+    source: CssDeclaration,
+}
+
+impl CssCustomPropertyContribution {
+    /// Returns the unchanged authored declaration and its occurrence identity.
+    #[must_use]
+    pub const fn source(&self) -> &CssDeclaration {
+        &self.source
+    }
+
+    /// Borrows the validated custom name and symbolic specified value.
+    #[must_use]
+    pub fn declaration(&self) -> &CssCustomDeclaration {
+        self.source
+            .custom()
+            .expect("custom contributions are constructed only from custom declarations")
+    }
+}
+
+/// Completed intrinsic contributions; custom values and universal resets stay symbolic.
 #[non_exhaustive]
 #[derive(Clone, Debug)]
 pub enum CssContributions {
     Longhands(CssLonghandContributions),
     UniversalReset(CssUniversalReset),
+    Custom(CssCustomPropertyContribution),
 }
 
 /// An intrinsic expansion result, possibly awaiting external substitution.
@@ -420,22 +439,26 @@ impl CssPendingSubstitution {
     }
 }
 
-/// Expands the selected physical margin, padding and border declarations.
+/// Expands custom declarations and the selected physical box and border declarations.
 ///
 /// Ordinary shorthands contribute every member, applying intrinsic initial
 /// values to omissions. `border` also resets the five border-image longhands;
 /// CSS-wide keywords propagate to ordinary and reset-only members alike. `all`
 /// remains a symbolic reset. Substitution-dependent supported declarations
-/// return a pending handle, and unselected known/custom properties return typed
-/// errors. This operation does not choose cascade winners, substitute variables,
+/// return a pending handle, and unselected known properties return typed errors.
+/// Custom declarations return one completed symbolic contribution even when their
+/// tokens contain `var()`; their values are not substituted or computed here.
+/// This operation does not choose cascade winners, substitute variables,
 /// resolve writing modes, evaluate lengths or colors, or load images.
 pub fn expand_declaration(source: &CssDeclaration) -> Result<CssExpansion, CssExpansionError> {
     let known = match source.body() {
         CssDeclarationBody::Known(known) => known,
-        CssDeclarationBody::Custom(custom) => {
-            return Err(CssExpansionError::new(
-                CssExpansionErrorKind::UnsupportedCustomProperty(custom.name().clone()),
-            ));
+        CssDeclarationBody::Custom(_) => {
+            return Ok(CssExpansion::Contributions(CssContributions::Custom(
+                CssCustomPropertyContribution {
+                    source: source.clone(),
+                },
+            )));
         }
     };
     let shape = expansion_shape(known.property())?;

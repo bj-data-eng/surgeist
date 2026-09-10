@@ -515,6 +515,7 @@ pub surgeist_css::CssContrastPreference::NoPreference
 pub surgeist_css::CssContributionValueRef::Global(surgeist_css::CssGlobalKeyword)
 pub surgeist_css::CssContributionValueRef::Ordinary(surgeist_css::CssLonghandValueRef<'a>)
 #[non_exhaustive] pub enum surgeist_css::CssContributions
+pub surgeist_css::CssContributions::Custom(surgeist_css::CssCustomPropertyContribution)
 pub surgeist_css::CssContributions::Longhands(surgeist_css::CssLonghandContributions)
 pub surgeist_css::CssContributions::UniversalReset(surgeist_css::CssUniversalReset)
 #[non_exhaustive] pub enum surgeist_css::CssCounterChanges
@@ -713,7 +714,6 @@ pub surgeist_css::CssExpansion::Pending(surgeist_css::CssPendingSubstitution)
 #[non_exhaustive] pub enum surgeist_css::CssExpansionErrorKind
 pub surgeist_css::CssExpansionErrorKind::InvalidReplacement(surgeist_css::CssPropertyValueParseError)
 pub surgeist_css::CssExpansionErrorKind::ResidualSubstitution
-pub surgeist_css::CssExpansionErrorKind::UnsupportedCustomProperty(surgeist_css::CssCustomPropertyName)
 pub surgeist_css::CssExpansionErrorKind::UnsupportedProperty(surgeist_css::CssKnownProperty)
 #[non_exhaustive] pub enum surgeist_css::CssFeatureKind
 pub surgeist_css::CssFeatureKind::ContainerQuery
@@ -3534,6 +3534,10 @@ pub struct surgeist_css::CssCustomIdent
 impl surgeist_css::CssCustomIdent
 pub fn surgeist_css::CssCustomIdent::as_str(&self) -> &str
 pub fn surgeist_css::CssCustomIdent::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssCustomPropertyContribution
+impl surgeist_css::CssCustomPropertyContribution
+pub fn surgeist_css::CssCustomPropertyContribution::declaration(&self) -> &surgeist_css::CssCustomDeclaration
+pub const fn surgeist_css::CssCustomPropertyContribution::source(&self) -> &surgeist_css::CssDeclaration
 pub struct surgeist_css::CssCustomPropertyName
 impl surgeist_css::CssCustomPropertyName
 pub fn surgeist_css::CssCustomPropertyName::as_str(&self) -> &str

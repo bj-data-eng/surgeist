@@ -1066,9 +1066,9 @@ pub use component_values::{
 pub use conformance::*;
 pub use error::*;
 pub use expansion::{
-    CssContributionValueRef, CssContributions, CssExpansion, CssExpansionError,
-    CssExpansionErrorKind, CssLonghandContribution, CssLonghandContributions, CssLonghandValueRef,
-    CssPendingSubstitution, CssUniversalReset, expand_declaration,
+    CssContributionValueRef, CssContributions, CssCustomPropertyContribution, CssExpansion,
+    CssExpansionError, CssExpansionErrorKind, CssLonghandContribution, CssLonghandContributions,
+    CssLonghandValueRef, CssPendingSubstitution, CssUniversalReset, expand_declaration,
 };
 pub use parser::{parse_sheet, parse_style_attribute};
 pub use properties::*;

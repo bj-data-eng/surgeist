@@ -121,12 +121,21 @@ keyframe-declaration position APIs retain their existing contracts.
 
 ## Intrinsic declaration expansion
 
-`expand_declaration` currently covers physical margin and padding, border width,
-style and color, the four side-border shorthands, `border`, the five border-image
-longhands, and `all`. The shared property schema owns their member lists, initial
-values and reset-only components. Other known properties and custom properties
+`expand_declaration` currently covers custom declarations, physical margin and
+padding, border width, style and color, the four side-border shorthands, `border`,
+the five border-image longhands, and `all`. The shared property schema owns their
+member lists, initial values and reset-only components. Other known properties
 return typed unsupported errors preserving their identity; complete stylesheet
 normalization remains unfinished.
+
+Custom declarations produce `CssContributions::Custom`. Its `declaration()` view
+retains the case-sensitive name and either authored token text or a whole-value
+CSS-wide keyword. `source()` retains the original components, importance and
+occurrence identity. Even values containing `var()` remain completed symbolic
+custom contributions; variable substitution and cycle handling belong to style.
+Migration: replace matches on the removed `UnsupportedCustomProperty` error with
+the custom contribution branch. Custom computed values remain unresolved until
+style supplies the required context.
 
 Completed longhand contributions expose a property-coupled `CssLonghandValueRef`
 or a symbolic CSS-wide keyword. Omitted border components use `medium`, `none`
