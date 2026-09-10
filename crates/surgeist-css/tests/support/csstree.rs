@@ -2038,10 +2038,19 @@ fn observation_from_report(
                 span_start,
                 span_end,
             );
+            let recovery_ends_at = payload_relation_holds(
+                PayloadRelation::RecoveryEndsAt,
+                payload_span.clone(),
+                byte_offset,
+                span_start,
+                span_end,
+            );
             let payload_relation = if intersects {
                 PayloadRelation::Intersects
             } else if ends_at {
                 PayloadRelation::EndsAt
+            } else if recovery_ends_at {
+                PayloadRelation::RecoveryEndsAt
             } else {
                 return Err(format!(
                     "no closed payload relation holds for payload span {payload_span:?}: \
@@ -2512,6 +2521,12 @@ fn payload_relation_holds(
                 && span_start == payload_span.end
                 && span_end == payload_span.end
         }
+        PayloadRelation::RecoveryEndsAt => {
+            payload_span.start < payload_span.end
+                && byte_offset == payload_span.end
+                && span_start < payload_span.end
+                && span_end == payload_span.end
+        }
     }
 }
 
@@ -2525,6 +2540,7 @@ pub(crate) fn expected_payload_relation_holds(
     let relation = match relation {
         "intersects" => PayloadRelation::Intersects,
         "ends_at" => PayloadRelation::EndsAt,
+        "recovery_ends_at" => PayloadRelation::RecoveryEndsAt,
         _ => return false,
     };
     payload_relation_holds(relation, payload_span, byte_offset, span_start, span_end)
@@ -2813,6 +2829,9 @@ enum CssRecoveryActionName {
 enum PayloadRelation {
     Intersects,
     EndsAt,
+    /// A nonempty recovery unit overlaps the payload and ends at its error,
+    /// exactly at the payload end. No suffix bytes belong to the recovery unit.
+    RecoveryEndsAt,
 }
 
 fn set_mismatch(label: &str, expected: &BTreeSet<String>, actual: &BTreeSet<String>) -> String {
@@ -3727,14 +3746,48 @@ mod tests {
 
     #[test]
     fn oracle_loader_rejects_stale_payload_length() {
-        let mut artifacts = committed_artifacts();
-        mutate_canonical_oracle(&mut artifacts, |oracle| {
-            let length = oracle["records"][0]["probe"]["payload"]["input_byte_length"]
-                .as_u64()
-                .expect("input byte length");
-            oracle["records"][0]["probe"]["payload"]["input_byte_length"] = Value::from(length + 1);
-        });
-        assert_rejected(artifacts, "input byte length mismatch");
+        let registry = REGISTRY
+            .iter()
+            .find(|entry| entry.fixture_path() == "expectations/stylesheet/StyleSheet.json")
+            .copied()
+            .expect("stylesheet registry entry");
+        let mut record = RawOracleRecord {
+            id: "stylesheet/StyleSheet.json#/payload-length".into(),
+            path: "expectations/stylesheet/StyleSheet.json".into(),
+            expectation_sha256: "0".repeat(64),
+            source: "source/stylesheet/StyleSheet.json".into(),
+            context: Context::Stylesheet,
+            input: ".é{}".into(),
+            options: Options::default(),
+            probe: Probe::Active {
+                entry_point: EntryPoint::Sheet,
+                adapter: Adapter::Stylesheet,
+                extractor: Extractor::SheetRules,
+                property_or_descriptor: NullableString(None),
+                options: Options::default(),
+                payload: Payload {
+                    prefix: String::new(),
+                    suffix: String::new(),
+                    input_byte_length: 5,
+                },
+            },
+            outcome: Outcome::Clean,
+            observation: NullableObservation(Some(Observation {
+                extractor: Extractor::SheetRules,
+                syntax_count: 1,
+                is_clean: true,
+                diagnostics: Vec::new(),
+            })),
+        };
+        validate_probe(&record, registry).expect("the independently authored probe is valid");
+        let Probe::Active { payload, .. } = &mut record.probe else {
+            panic!("the fixture uses an active stylesheet probe");
+        };
+        payload.input_byte_length = 6;
+        assert_eq!(
+            validate_probe(&record, registry).expect_err("stale byte length must be rejected"),
+            "CSS oracle input byte length mismatch for stylesheet/StyleSheet.json#/payload-length: oracle 6, input 5"
+        );
     }
 
     #[test]

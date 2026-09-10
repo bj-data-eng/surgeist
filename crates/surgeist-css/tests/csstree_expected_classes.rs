@@ -338,7 +338,7 @@ fn assert_diagnostic_predicates(value: &Value, allow_empty: bool) {
         assert!(diagnostic["action"].is_string());
         assert!(matches!(
             diagnostic["payload_relation"].as_str(),
-            Some("intersects" | "ends_at")
+            Some("intersects" | "ends_at" | "recovery_ends_at")
         ));
     }
 }
