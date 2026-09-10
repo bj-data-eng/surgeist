@@ -3152,6 +3152,171 @@ mod tests {
         read_artifact_set(&root).expect("committed artifacts should be readable")
     }
 
+    fn oracle_record_test_artifacts(expected_classes: &[u8]) -> ArtifactSet {
+        let mut artifacts = committed_artifacts();
+        artifacts.expected_classes = expected_classes.to_vec();
+        artifacts
+    }
+
+    fn expected_classes_with_one_media_rule(bytes: &[u8]) -> Vec<u8> {
+        const ID: &str = "atrule/atrule/media.json#/single media type";
+        let neutral: Value = serde_json::from_str(include_str!(
+            "../corpus/csstree/expectations/atrule/atrule/media.json"
+        ))
+        .expect("pinned neutral media fixture");
+        let case = neutral["cases"]
+            .as_array()
+            .expect("neutral media cases")
+            .iter()
+            .find(|case| case["id"] == ID)
+            .expect("single media rule fixture");
+        assert_eq!(case["input"], "@media screen{}");
+
+        // Conditional 3's @media grammar retains this single authored rule,
+        // including its empty rule list. The expected count is independent of
+        // the copied oracle and the Supports/Scope extractor migration.
+        let report = parse_sheet("@media screen{}");
+        assert!(report.is_clean(), "{:?}", report.diagnostics());
+        assert!(matches!(
+            report.syntax().rules(),
+            [surgeist_css::CssRule::Media(_)]
+        ));
+
+        let mut expected: RawExpectedClasses =
+            serde_json::from_slice(bytes).expect("typed expected-class registry");
+        let record = expected
+            .records
+            .iter_mut()
+            .find(|record| record.id == ID)
+            .expect("single media rule expected class");
+        let ExpectedClass::Clean { retained_syntax } = &mut record.expected_class else {
+            panic!("the single media rule must have a clean expected class");
+        };
+        assert_eq!(
+            retained_syntax.extractor,
+            Extractor::TopLevelRuleKind {
+                rule_kind: "media".into(),
+            }
+        );
+        assert!(matches!(retained_syntax.predicate, SyntaxCount::Nonempty));
+        retained_syntax.predicate = SyntaxCount::Exact { value: 1 };
+
+        let variant = format!(
+            "{}\n",
+            serde_json::to_string_pretty(&expected).expect("canonical expected-class variant")
+        )
+        .into_bytes();
+        assert_ne!(variant.as_slice(), bytes);
+        validate_csstree_expected_classes_contract(&variant)
+            .expect("the independently specified exact count retains the registry contract");
+        variant
+    }
+
+    #[test]
+    fn oracle_record_fixture_binds_supplied_expected_bytes_without_other_changes() {
+        let original = committed_artifacts();
+        let expected = expected_classes_with_one_media_rule(&original.expected_classes);
+        let expected_before = expected.clone();
+        let artifacts = oracle_record_test_artifacts(&expected);
+        assert_eq!(
+            expected, expected_before,
+            "caller bytes must remain unchanged"
+        );
+        assert_eq!(artifacts.expected_classes, expected);
+        assert_eq!(artifacts.report, original.report);
+        assert_eq!(artifacts.expectations, original.expectations);
+        assert_eq!(artifacts.sources, original.sources);
+        load_csstree_oracle_schema(&artifacts.oracle)
+            .expect("the copied oracle must retain canonical closed-schema bytes");
+
+        let mut original_oracle: Value =
+            serde_json::from_slice(&original.oracle).expect("original oracle JSON");
+        let original_digest = original_oracle
+            .as_object_mut()
+            .expect("original oracle object")
+            .remove("expected_class_registry_sha256")
+            .expect("original expected-class digest");
+        let mut copied_oracle: Value =
+            serde_json::from_slice(&artifacts.oracle).expect("copied oracle JSON");
+        let copied_digest = copied_oracle
+            .as_object_mut()
+            .expect("copied oracle object")
+            .remove("expected_class_registry_sha256")
+            .expect("copied expected-class digest");
+        assert_eq!(copied_oracle, original_oracle, "all other oracle fields");
+
+        let unchanged = committed_artifacts();
+        assert_eq!(unchanged.oracle, original.oracle, "persisted oracle bytes");
+        assert_eq!(
+            unchanged.expected_classes, original.expected_classes,
+            "persisted expected-class bytes"
+        );
+        assert_eq!(unchanged.report, original.report, "persisted report bytes");
+        assert_eq!(
+            unchanged.expectations, original.expectations,
+            "persisted neutral expectation bytes"
+        );
+        assert_eq!(
+            unchanged.sources, original.sources,
+            "persisted source bytes"
+        );
+        let expected_digest = Value::from(sha256_hex(&expected));
+        assert_ne!(
+            original_digest, expected_digest,
+            "independent digest stimulus"
+        );
+        assert_eq!(
+            copied_digest, expected_digest,
+            "the document fixture must bind the supplied expected-class bytes"
+        );
+    }
+
+    #[test]
+    fn oracle_record_fixture_stale_header_is_rejected_before_record_validation() {
+        let original = committed_artifacts();
+        let expected = expected_classes_with_one_media_rule(&original.expected_classes);
+        let expected_digest = sha256_hex(&expected);
+        let mut artifacts = oracle_record_test_artifacts(&expected);
+
+        // Establish this guard's header precondition independently of the
+        // fixture helper. The copied record semantics remain unresolved.
+        mutate_canonical_oracle(&mut artifacts, |oracle| {
+            oracle["expected_class_registry_sha256"] = Value::from(expected_digest.clone());
+        });
+        let inventory = validate_neutral_artifact_set(NeutralArtifactSet {
+            report: artifacts.report.clone(),
+            expected_classes: artifacts.expected_classes.clone(),
+            expectations: artifacts.expectations.clone(),
+            sources: artifacts.sources.clone(),
+        })
+        .expect("the supplied neutral artifact set must validate");
+        if let Err(error) = validate_oracle(
+            &artifacts.oracle,
+            &inventory.report_digest,
+            &inventory.expected_classes_digest,
+            &inventory.cases,
+        ) {
+            assert!(
+                error.starts_with("CSS oracle contract failures:\n"),
+                "a correctly bound header must reach record validation: {error}"
+            );
+        }
+
+        let stale_digest = "0".repeat(64);
+        assert_ne!(stale_digest, expected_digest);
+        mutate_canonical_oracle(&mut artifacts, |oracle| {
+            oracle["expected_class_registry_sha256"] = Value::from(stale_digest.clone());
+        });
+        let error = validate_artifact_set(artifacts)
+            .expect_err("a stale fixture header must fail the unchanged document guard");
+        assert_eq!(
+            error,
+            format!(
+                "CSS oracle expected-class registry digest mismatch: oracle {stale_digest}, actual {expected_digest}"
+            )
+        );
+    }
+
     fn mutate_first_expectation(artifacts: &mut ArtifactSet, edit: impl FnOnce(&mut Value)) {
         let path = artifacts
             .expectations
