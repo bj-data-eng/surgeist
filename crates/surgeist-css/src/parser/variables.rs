@@ -86,7 +86,7 @@ fn consume_authored_value_tokens_with_restrictions<'i, 't>(
             return Err(token_location.new_unexpected_token_error(token));
         }
         if token.is_parse_error() {
-            return Err(input.new_unexpected_token_error(token));
+            return Err(token_location.new_unexpected_token_error(token));
         }
         if let Token::Function(name) = &token
             && name.eq_ignore_ascii_case("var")

@@ -931,7 +931,7 @@ focused.structured-errors.15	sheet	both	.panel { WIDTH: n\\6f pe; }	false	rule:b
 focused.structured-errors.16	sheet	both	.panel { width:	false	rule:baseline.rule.style	-	-	InvalidPropertyValue/InvalidPropertyValue:baseline.property.width:a value accepted by the property's grammar:-/DropDeclaration@15:0:15>9:0:9-15:0:15:15~UnexpectedEnd/UnexpectedEnd:valid CSS syntax/RetainWithImplicitClosure@15:0:15>15:0:15-15:0:15:15
 focused.structured-errors.17	sheet	both	.panel { width 1px; }	false	rule:baseline.rule.style	-	-	UnexpectedToken/UnexpectedToken:valid CSS syntax:Dimension:1px/DropDeclaration@15:0:15>9:0:9-19:0:19:19
 focused.structured-errors.18	sheet	both	??? { width: 1px; }	false	-	-	-	InvalidSelector/InvalidSelector:baseline.selector.complex:a supported selector:Delim:?/DropQualifiedRule@0:0:0>0:0:0-19:0:19:19
-focused.style-attribute.bad-url	style	both	background-image: url(bad url	false	-	-	-	InvalidPropertyValue/InvalidPropertyValue:baseline.property.background-image:a value accepted by the property's grammar:BadUrl:url(bad url)/DropDeclaration@29:0:29>0:0:0-29:0:29:29
+focused.style-attribute.bad-url	style	both	background-image: url(bad url	false	-	-	-	InvalidPropertyValue/InvalidPropertyValue:baseline.property.background-image:a value accepted by the property's grammar:BadUrl:url(bad url/DropDeclaration@18:0:18>0:0:0-29:0:29:29
 focused.style-attribute.clean.00	style	both		true	-	-	-	-
 focused.style-attribute.clean.01	style	both	 \t/**/\n	true	-	-	-	-
 focused.style-attribute.clean.02	style	both	color: red	true	property:baseline.property.color	baseline.property.color=typed:Rgba(CssRgbaColor { red: 255, green: 0, blue: 0, alpha: 1.0 })@normal	baseline.property.color=deferred-i01:red@public:normal	-
