@@ -170,6 +170,15 @@ pub(crate) fn parse_media_query_list_for_test(
 pub(crate) fn parse_container_condition<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssContainerCondition, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("not"))
+        .is_ok()
+    {
+        return Ok(CssContainerCondition::Not(Box::new(
+            parse_container_condition_atom(input)?,
+        )));
+    }
+
     let first = parse_container_condition_atom(input)?;
 
     if input
@@ -230,21 +239,18 @@ pub(crate) fn parse_container_condition_for_test(
 fn parse_container_condition_atom<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssContainerCondition, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("not"))
-        .is_ok()
-    {
-        return Ok(CssContainerCondition::Not(Box::new(
-            parse_container_condition_atom(input)?,
-        )));
-    }
-
     if let Ok(style) = input.try_parse(parse_container_style_query) {
         return Ok(CssContainerCondition::Style(style));
     }
 
     input.expect_parenthesis_block().map_err(basic)?;
-    let feature = input.parse_nested_block(|input| {
+    input.parse_nested_block(|input| {
+        if let Ok(condition) =
+            input.try_parse(|input| input.parse_entirely(parse_container_condition))
+        {
+            return Ok(condition);
+        }
+
         let feature = parse_container_feature_query(input)?;
         if !input.is_exhausted() {
             return Err(invalid_syntax(
@@ -252,9 +258,8 @@ fn parse_container_condition_atom<'i, 't>(
                 "unexpected token in container feature query",
             ));
         }
-        Ok(feature)
-    })?;
-    Ok(CssContainerCondition::Feature(feature))
+        Ok(CssContainerCondition::Feature(feature))
+    })
 }
 
 fn parse_container_feature_query<'i, 't>(

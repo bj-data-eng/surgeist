@@ -76,8 +76,9 @@ use crate::error::{
     invalid_at_rule_body, invalid_at_rule_placement, invalid_custom_declaration_annotation,
     invalid_descriptor_annotation, invalid_encoding_declaration,
     invalid_known_declaration_annotation, invalid_root_syntax, invalid_syntax,
-    normalize_encoding_error, property_name_error, unsupported_value, with_at_rule_prelude_context,
-    with_encoding_declaration_context, with_media_query_context, with_property_context,
+    is_nesting_limit_error, normalize_encoding_error, property_name_error, unsupported_value,
+    with_at_rule_prelude_context, with_encoding_declaration_context, with_media_query_context,
+    with_property_context,
 };
 use crate::properties::*;
 use crate::syntax::*;
@@ -1995,14 +1996,8 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                 Ok(StrictAtRulePrelude::Supports(condition))
             },
             "container" => {
-                let prelude = parse_container_prelude(input).map_err(|error| {
-                    with_at_rule_prelude_context(
-                        error,
-                        "container",
-                        "baseline.rule.container",
-                        "a supported @container prelude",
-                    )
-                })?;
+                let prelude = parse_container_prelude(self.source, input, &self.recovery)
+                    .map_err(with_container_prelude_context)?;
                 if !input.is_exhausted() {
                     return Err(with_at_rule_prelude_context(
                         invalid_syntax(
@@ -2453,8 +2448,12 @@ fn skip_import_clause_scan_block<'i, 't>(
 }
 
 fn parse_container_prelude<'i, 't>(
+    source: &str,
     input: &mut Parser<'i, 't>,
+    recovery: &RecoveryState,
 ) -> std::result::Result<CssContainerPrelude, ParseError<'i, Error>> {
+    let implicit =
+        recovery.check_specialized_components(source, input, "baseline.rule.container")?;
     let state = input.state();
     let name = if let Ok(name) = input.try_parse(Parser::expect_ident_cloned) {
         if let Some(name) = CssContainerName::try_new(name.to_string()) {
@@ -2468,7 +2467,24 @@ fn parse_container_prelude<'i, 't>(
     };
     let condition = parse_container_condition(input)?;
 
+    if input.is_exhausted() {
+        recovery.retain_component_closures(implicit);
+    }
+
     Ok(CssContainerPrelude { name, condition })
+}
+
+fn with_container_prelude_context<'i>(error: ParseError<'i, Error>) -> ParseError<'i, Error> {
+    if is_nesting_limit_error(&error) {
+        error
+    } else {
+        with_at_rule_prelude_context(
+            error,
+            "container",
+            "baseline.rule.container",
+            "a supported @container prelude",
+        )
+    }
 }
 
 fn parse_nested_group_rules<'i, 't>(
@@ -2817,14 +2833,8 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                 Ok(ScopedAtRulePrelude::Supports(condition))
             },
             "container" => {
-                let prelude = parse_container_prelude(input).map_err(|error| {
-                    with_at_rule_prelude_context(
-                        error,
-                        "container",
-                        "baseline.rule.container",
-                        "a supported @container prelude",
-                    )
-                })?;
+                let prelude = parse_container_prelude(self.source, input, &self.recovery)
+                    .map_err(with_container_prelude_context)?;
                 if !input.is_exhausted() {
                     return Err(with_at_rule_prelude_context(
                         invalid_syntax(

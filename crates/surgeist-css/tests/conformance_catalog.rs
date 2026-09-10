@@ -1048,7 +1048,7 @@ const EXPECTED: &[ExpectedFeature] = &[
         id: "baseline.rule.container",
         kind: CssFeatureKind::Rule,
         spelling: "@container",
-        source: ExpectedSource::Id("X-CONTAIN3"),
+        source: ExpectedSource::Id("X-CONDITIONAL5"),
         production: "#container-rule",
         status: CssSupportStatus::Partial,
         supported_subset: Some(BASELINE_RULE_SUBSET),
@@ -1555,11 +1555,11 @@ const EXPECTED: &[ExpectedFeature] = &[
         id: "baseline.container.condition",
         kind: CssFeatureKind::ContainerQuery,
         spelling: "and/or/not, size features, and custom-property style existence/equality",
-        source: ExpectedSource::Id("X-CONTAIN3"),
+        source: ExpectedSource::Id("X-CONDITIONAL5"),
         production: "#container-rule",
         status: CssSupportStatus::Partial,
         supported_subset: Some(
-            "The exact baseline-recognized container-condition spelling group is supported.",
+            "Recursive grouped and/or/not conditions over the supported size and custom-property style features are retained; ungrouped negation is limited to a complete query.",
         ),
         unsupported_remainder: Some(QUERY_REMAINDER),
         recognized_code: None,
@@ -1575,7 +1575,7 @@ const EXPECTED: &[ExpectedFeature] = &[
         id: "baseline.container.size-feature",
         kind: CssFeatureKind::ContainerQuery,
         spelling: "width, height, inline-size, block-size, aspect-ratio, orientation and applicable min-/max- names",
-        source: ExpectedSource::Id("X-CONTAIN3"),
+        source: ExpectedSource::Id("X-CONDITIONAL5"),
         production: "#size-container",
         status: CssSupportStatus::Partial,
         supported_subset: Some(
@@ -3901,7 +3901,7 @@ fn preserved_i01_catalog_exposes_dated_atomic_provenance_and_alias_targets() {
         "baseline.container.size-feature",
     ] {
         let feature = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}`"));
-        assert_eq!(feature.source().id().as_str(), "X-CONTAIN3", "{id}");
+        assert_eq!(feature.source().id().as_str(), "X-CONDITIONAL5", "{id}");
         assert_eq!(
             feature.source().tier(),
             CssSpecificationTier::SurgeistExtension

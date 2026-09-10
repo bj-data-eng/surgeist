@@ -972,7 +972,23 @@ The crate still stops at strict authored syntax. Cascade, substitution,
 selector matching, query evaluation, resource loading, layout, pagination,
 painting, serialization, and cross-crate lowering remain downstream concerns.
 
-## Media, supports, and import preludes
+## Conditional rules and import preludes
+
+Container conditions retain recursive grouping and homogeneous `and` or `or`
+lists over supported size and custom-property style features. For example,
+`((width > 1px) or (height > 2px)) and (inline-size > 3px)` retains the disjunction
+as one conjunction operand. `not` prefixes one complete query operand;
+`not not (width > 1px)` and `(width > 1px) and not (height > 2px)` are invalid.
+Group the negated operand to include it in a list. Invalid outer conditions drop
+their container rule while later siblings remain eligible. Prelude components
+use the shared nesting ceiling, with typed limit diagnostics.
+
+The container records use the selected
+[Conditional Rules 5 edition](https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule),
+which supersedes the overlapping Containment 3 grammar. Their coverage remains
+partial: general-enclosed conditions, complete size/style/scroll-state features,
+name-only queries, and query lists still need authored support. Container
+selection and condition evaluation belong to style.
 
 Media Queries 3 types and features are retained as authored query syntax.
 Supported unknown-type, unknown-feature, and unknown-value forms use

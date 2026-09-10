@@ -12,6 +12,7 @@ use super::{
     block_item_diagnostic, consume_failed_rule_block, is_declaration_recovery_unit,
     parse_container_prelude, parse_layer_prelude, parse_scope_prelude, parse_scoped_rule_list,
     structural_recovery_action, structural_recovery_production, structural_rule_diagnostic,
+    with_container_prelude_context,
 };
 use crate::error::{
     CssFeatureId, Error, invalid_at_rule_block, invalid_at_rule_placement, invalid_syntax,
@@ -234,14 +235,8 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
                 Ok(NestedStyleAtRulePrelude::Supports(condition))
             },
             "container" => {
-                let prelude = parse_container_prelude(input).map_err(|error| {
-                    with_at_rule_prelude_context(
-                        error,
-                        "container",
-                        "baseline.rule.container",
-                        "a supported @container prelude",
-                    )
-                })?;
+                let prelude = parse_container_prelude(self.source, input, &self.recovery)
+                    .map_err(with_container_prelude_context)?;
                 if !input.is_exhausted() {
                     return Err(with_at_rule_prelude_context(
                         invalid_syntax(
