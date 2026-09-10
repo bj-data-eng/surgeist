@@ -422,6 +422,12 @@ declaration annotation, the descriptor receives one `DropDescriptor` diagnostic;
 earlier valid descriptor occurrences remain available. Any such recovery makes
 the report unclean, so `validate_sheet` rejects it.
 
+Empty URL strings remain valid authored sources. `url()` and `url("")`
+retain the empty string, while `url("  ")` preserves its quoted whitespace.
+`CssFontFaceUrlSource::try_new` accepts these strings as well; its existing
+optional return type is retained. Whether a source identifies a usable font
+resource is decided by the downstream resource owner.
+
 Each `format()` hint accepts exactly one recognized keyword or one quoted
 string under the selected Fonts 4 edition. Empty and unrecognized strings are
 valid authored values; resource support is determined later. Multiple quoted

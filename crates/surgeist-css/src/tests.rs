@@ -5023,8 +5023,18 @@ fn font_face_descriptor_collection_preserves_optional_matching_fields() {
     assert!(empty.font_family().is_none());
     assert!(empty.src().is_none());
     assert_eq!(empty.occurrences().len(), 0);
-    assert!(CssFontFaceUrlSource::try_new("", None, Vec::new()).is_none());
-    assert!(CssFontFaceUrlSource::try_new("   ", None, Vec::new()).is_none());
+    assert_eq!(
+        CssFontFaceUrlSource::try_new("", None, Vec::new())
+            .unwrap()
+            .url(),
+        ""
+    );
+    assert_eq!(
+        CssFontFaceUrlSource::try_new("   ", None, Vec::new())
+            .unwrap()
+            .url(),
+        "   "
+    );
 
     let family = CssFontFaceFamily::try_new("Avenir Next").unwrap();
     let src = CssFontFaceSourceList::try_new(vec![CssFontFaceSource::Local(
@@ -5109,7 +5119,7 @@ fn font_face_descriptor_collection_preserves_optional_matching_fields() {
 }
 
 #[test]
-fn font_face_string_constructors_reject_empty_values() {
+fn font_face_names_require_content_while_urls_preserve_authored_strings() {
     assert_eq!(
         CssFontFaceFamily::try_new("Avenir Next").unwrap().as_str(),
         "Avenir Next"
@@ -5132,7 +5142,12 @@ fn font_face_string_constructors_reject_empty_values() {
     for value in ["", " \t\n "] {
         assert_eq!(CssFontFaceFamily::try_new(value), None);
         assert_eq!(CssFontLocalName::try_new(value), None);
-        assert_eq!(CssFontFaceUrlSource::try_new(value, None, Vec::new()), None);
+        assert_eq!(
+            CssFontFaceUrlSource::try_new(value, None, Vec::new())
+                .unwrap()
+                .url(),
+            value
+        );
     }
 }
 

@@ -349,9 +349,9 @@ fn parse_font_face_source<'i, 't>(
         }
     }
 
-    CssFontFaceUrlSource::try_new_with_formats(url, formats, tech)
-        .map(CssFontFaceSource::Url)
-        .ok_or_else(|| unsupported_value(input, None, "font source URL is empty"))
+    Ok(CssFontFaceSource::Url(
+        CssFontFaceUrlSource::new_with_formats(url, formats, tech),
+    ))
 }
 
 fn parse_font_source_url<'i, 't>(

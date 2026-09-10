@@ -1533,44 +1533,35 @@ pub struct CssFontFaceUrlSource {
 }
 
 impl CssFontFaceUrlSource {
+    /// Preserves an authored URL string and its format and technology hints.
+    ///
+    /// Every URL string is accepted, including empty and whitespace-only strings.
+    /// Resource resolution and loading belong to a later phase. The optional return
+    /// retains the existing signature after removal of the nonempty restriction.
     #[must_use]
     pub fn try_new(
         url: impl Into<String>,
         format: Option<CssFontFormatHint>,
         tech: Vec<CssFontTechHint>,
     ) -> Option<Self> {
-        let url = url.into();
-        if url.trim().is_empty() {
-            None
-        } else {
-            let formats = format
-                .map(|format| CssFontFormatList::new(CssFontFormatString::new(format.as_str())));
-            Some(Self {
-                url,
-                format,
-                formats,
-                tech,
-            })
-        }
+        let formats =
+            format.map(|format| CssFontFormatList::new(CssFontFormatString::new(format.as_str())));
+        Some(Self::new_with_formats(url, formats, tech))
     }
 
     #[must_use]
-    pub(crate) fn try_new_with_formats(
+    pub(crate) fn new_with_formats(
         url: impl Into<String>,
         formats: Option<CssFontFormatList>,
         tech: Vec<CssFontTechHint>,
-    ) -> Option<Self> {
-        let url = url.into();
-        if url.trim().is_empty() {
-            return None;
-        }
+    ) -> Self {
         let format = formats.as_ref().and_then(CssFontFormatList::recognized);
-        Some(Self {
-            url,
+        Self {
+            url: url.into(),
             format,
             formats,
             tech,
-        })
+        }
     }
 
     #[must_use]
