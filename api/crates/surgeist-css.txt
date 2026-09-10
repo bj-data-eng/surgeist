@@ -835,6 +835,8 @@ pub surgeist_css::CssFontFormatHint::Svg
 pub surgeist_css::CssFontFormatHint::TrueType
 pub surgeist_css::CssFontFormatHint::Woff
 pub surgeist_css::CssFontFormatHint::Woff2
+impl surgeist_css::CssFontFormatHint
+pub fn surgeist_css::CssFontFormatHint::is_equivalent_to(self, other: Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssFontKerning
 pub surgeist_css::CssFontKerning::Auto
 pub surgeist_css::CssFontKerning::None
@@ -3770,6 +3772,8 @@ pub struct surgeist_css::CssFontFaceUrlSource
 impl surgeist_css::CssFontFaceUrlSource
 pub const fn surgeist_css::CssFontFaceUrlSource::format(&self) -> core::option::Option<&surgeist_css::CssFontFormatHint>
 pub const fn surgeist_css::CssFontFaceUrlSource::formats(&self) -> core::option::Option<&surgeist_css::CssFontFormatList>
+pub fn surgeist_css::CssFontFaceUrlSource::new_with_formats(url: impl core::convert::Into<alloc::string::String>, formats: core::option::Option<surgeist_css::CssFontFormatList>, tech: alloc::vec::Vec<surgeist_css::CssFontTechHint>) -> Self
+pub fn surgeist_css::CssFontFaceUrlSource::required_technologies(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_css::CssFontTechHint> + '_
 pub fn surgeist_css::CssFontFaceUrlSource::tech(&self) -> &[surgeist_css::CssFontTechHint]
 pub fn surgeist_css::CssFontFaceUrlSource::try_new(url: impl core::convert::Into<alloc::string::String>, format: core::option::Option<surgeist_css::CssFontFormatHint>, tech: alloc::vec::Vec<surgeist_css::CssFontTechHint>) -> core::option::Option<Self>
 pub fn surgeist_css::CssFontFaceUrlSource::url(&self) -> &str

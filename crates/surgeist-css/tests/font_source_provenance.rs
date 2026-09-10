@@ -1,8 +1,8 @@
 //! The selected published Fonts4 grammar replaces the earlier source-list
 //! production; immutable source identities must keep their original edition.
-//! Complete support is still unjustified: selected font-face descriptors remain
-//! missing, and legacy variation format strings lack their specified equivalent
-//! format/technology projection (Fonts4 section 4.3.1's compatibility table).
+//! The format/technology-hint subproduction includes the legacy equivalents.
+//! Broader font-face/source support remains Partial: selected descriptors and
+//! unquoted local-name keyword exclusions remain incomplete.
 
 use surgeist_css::{CssSupportStatus, feature_metadata, specification_source};
 
@@ -11,22 +11,36 @@ const SELECTED_URL: &str = "https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/"
 
 #[test]
 fn selected_font_source_records_reference_the_pinned_published_edition() {
-    for (id, production) in [
-        ("baseline.rule.font-face", "#font-face-rule"),
-        ("baseline.descriptor.src", "#font-face-src-parsing"),
-        ("official.value.font-source", "#font-face-src-parsing"),
+    for (id, production, status) in [
+        (
+            "baseline.rule.font-face",
+            "#font-face-rule",
+            CssSupportStatus::Partial,
+        ),
+        (
+            "baseline.descriptor.src",
+            "#font-face-src-parsing",
+            CssSupportStatus::Partial,
+        ),
+        (
+            "official.value.font-source",
+            "#font-face-src-parsing",
+            CssSupportStatus::Partial,
+        ),
         (
             "ext.value.font-source-modern-hints",
             "#font-face-src-parsing",
+            CssSupportStatus::Complete,
         ),
     ] {
         let feature = feature_metadata(id).expect("existing conformance identity");
         assert_eq!(feature.source().id().as_str(), SELECTED_ID, "{id}");
         assert_eq!(feature.source().url(), Some(SELECTED_URL), "{id}");
         assert_eq!(feature.production(), production, "{id}");
-        assert_eq!(feature.status(), CssSupportStatus::Partial, "{id}");
-        assert!(feature.supported_subset().is_some(), "{id}");
-        assert!(feature.unsupported_remainder().is_some(), "{id}");
+        assert_eq!(feature.status(), status, "{id}");
+        let partial = status == CssSupportStatus::Partial;
+        assert_eq!(feature.supported_subset().is_some(), partial, "{id}");
+        assert_eq!(feature.unsupported_remainder().is_some(), partial, "{id}");
     }
 }
 

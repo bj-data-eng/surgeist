@@ -2216,11 +2216,9 @@ const FONT_FACE_STRETCH_RANGE_SUBSET: &str = "Font-face non-negative percentage 
 const FONT_FACE_STRETCH_RANGE_REMAINDER: &str =
     "Other unselected Fonts 4 font-stretch descriptor grammar remains unsupported.";
 const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, stretch, display, unicode-range and feature-settings descriptors have typed representations; invalid descriptors recover independently.";
-const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-width, font-variation-settings, font-named-instance and metric overrides remain unsupported; source-list compatibility projections also remain incomplete.";
-const FONT_SOURCE_SUBSET: &str = "URL and local sources preserve authored order, including empty URL strings, a single format hint and technology hints. Invalid source members recover independently, while invalid descriptor annotations or all-invalid lists discard the descriptor.";
-const FONT_SOURCE_REMAINDER: &str = "Legacy variation format strings are retained but are not yet projected to their equivalent format keyword and variations technology.";
-const FONT_SOURCE_HINTS_SUBSET: &str = "A single format() string, including empty or unrecognized strings, or a woff, woff2, truetype, opentype, collection, embedded-opentype, or svg keyword is supported. The variations, palettes, color-colrv0, color-colrv1, color-svg, color-sbix, color-cbdt, features-opentype, features-aat, features-graphite, and incremental tech() hints preserve authored order and repetition.";
-const FONT_SOURCE_HINTS_REMAINDER: &str = FONT_SOURCE_REMAINDER;
+const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-width, font-variation-settings, font-named-instance and metric overrides remain unsupported.";
+const FONT_SOURCE_SUBSET: &str = "URL and local sources preserve authored order, including empty URL strings, a single format hint and technology hints. Invalid source members recover independently, while invalid descriptor annotations or all-invalid lists discard the descriptor. The four legacy variation strings project to base formats and required variations without changing authored hints; TrueType and OpenType have explicit format equivalence.";
+const FONT_SOURCE_REMAINDER: &str = "Unquoted local() names do not yet enforce every generic and system font keyword exclusion in the selected Fonts 4 grammar.";
 
 const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
     match property {
@@ -3925,14 +3923,12 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 487] = [
         FONT_FACE_STRETCH_RANGE_SUBSET,
         FONT_FACE_STRETCH_RANGE_REMAINDER,
     ),
-    CssFeatureMetadata::partial(
+    CssFeatureMetadata::complete(
         "ext.value.font-source-modern-hints",
         CssFeatureKind::Value,
         "format() keyword and tech() font-source hints",
         I_FONTS4_20260907,
         "#font-face-src-parsing",
-        FONT_SOURCE_HINTS_SUBSET,
-        FONT_SOURCE_HINTS_REMAINDER,
     ),
     CssFeatureMetadata::partial(
         "baseline.selector.complex",

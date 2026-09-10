@@ -89,11 +89,9 @@ const FONT_FACE_STRETCH_RANGE_SUBSET: &str = "Font-face non-negative percentage 
 const FONT_FACE_STRETCH_RANGE_REMAINDER: &str =
     "Other unselected Fonts 4 font-stretch descriptor grammar remains unsupported.";
 const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, stretch, display, unicode-range and feature-settings descriptors have typed representations; invalid descriptors recover independently.";
-const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-width, font-variation-settings, font-named-instance and metric overrides remain unsupported; source-list compatibility projections also remain incomplete.";
-const FONT_SOURCE_SUBSET: &str = "URL and local sources preserve authored order, including empty URL strings, a single format hint and technology hints. Invalid source members recover independently, while invalid descriptor annotations or all-invalid lists discard the descriptor.";
-const FONT_SOURCE_REMAINDER: &str = "Legacy variation format strings are retained but are not yet projected to their equivalent format keyword and variations technology.";
-const FONT_SOURCE_HINTS_SUBSET: &str = "A single format() string, including empty or unrecognized strings, or a woff, woff2, truetype, opentype, collection, embedded-opentype, or svg keyword is supported. The variations, palettes, color-colrv0, color-colrv1, color-svg, color-sbix, color-cbdt, features-opentype, features-aat, features-graphite, and incremental tech() hints preserve authored order and repetition.";
-const FONT_SOURCE_HINTS_REMAINDER: &str = FONT_SOURCE_REMAINDER;
+const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-width, font-variation-settings, font-named-instance and metric overrides remain unsupported.";
+const FONT_SOURCE_SUBSET: &str = "URL and local sources preserve authored order, including empty URL strings, a single format hint and technology hints. Invalid source members recover independently, while invalid descriptor annotations or all-invalid lists discard the descriptor. The four legacy variation strings project to base formats and required variations without changing authored hints; TrueType and OpenType have explicit format equivalence.";
+const FONT_SOURCE_REMAINDER: &str = "Unquoted local() names do not yet enforce every generic and system font keyword exclusion in the selected Fonts 4 grammar.";
 
 fn assert_complete_fonts3_feature(
     id: &str,
@@ -124,12 +122,7 @@ fn assert_partial_fonts4_feature(
     let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing metadata for {id}"));
     assert_eq!(metadata.kind(), kind, "{id}");
     assert_eq!(metadata.spelling(), spelling, "{id}");
-    let source = if id == "ext.value.font-source-modern-hints" {
-        "I-FONTS4-20260907"
-    } else {
-        "I-FONTS4"
-    };
-    assert_eq!(metadata.source().id().as_str(), source, "{id}");
+    assert_eq!(metadata.source().id().as_str(), "I-FONTS4", "{id}");
     assert_eq!(metadata.production(), production, "{id}");
     assert_eq!(metadata.status(), CssSupportStatus::Partial, "{id}");
     assert_eq!(metadata.supported_subset(), Some(subset), "{id}");
@@ -415,14 +408,19 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
         "src: url(demo.woff2) format(woff2) tech(variations, color-colrv1); }"
     ));
     assert!(modern_hints.is_clean(), "{:?}", modern_hints.diagnostics());
-    assert_partial_fonts4_feature(
-        "ext.value.font-source-modern-hints",
-        CssFeatureKind::Value,
-        "format() keyword and tech() font-source hints",
-        "#font-face-src-parsing",
-        FONT_SOURCE_HINTS_SUBSET,
-        FONT_SOURCE_HINTS_REMAINDER,
+    let hints = feature_metadata("ext.value.font-source-modern-hints").unwrap();
+    assert_eq!(hints.kind(), CssFeatureKind::Value);
+    assert_eq!(
+        hints.spelling(),
+        "format() keyword and tech() font-source hints"
     );
+    assert_eq!(hints.source().id().as_str(), "I-FONTS4-20260907");
+    assert_eq!(hints.production(), "#font-face-src-parsing");
+    assert_eq!(hints.status(), CssSupportStatus::Complete);
+    assert_eq!(hints.supported_subset(), None);
+    assert_eq!(hints.unsupported_remainder(), None);
+    assert_eq!(hints.recognized_unsupported_code(), None);
+    assert!(hints.baseline_alias_targets().is_empty());
     let unknown_hint = parse_sheet(
         "@font-face { font-family: Demo; src: url(demo.woff2) format(woff3) tech(unknown); }",
     );
@@ -1636,6 +1634,7 @@ fn c14_amended_ledger_public_metadata_is_reconciled() {
         "official.value.string",
         "official.value.url",
         "official.value.url-modifier",
+        "ext.value.font-source-modern-hints",
     ] {
         let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
         assert_eq!(metadata.id().as_str(), id, "{id} identity");
@@ -1670,7 +1669,6 @@ fn c14_amended_ledger_public_metadata_is_reconciled() {
         "ext.descriptor.font-weight-range",
         "ext.descriptor.font-style-oblique-range",
         "ext.descriptor.font-stretch-range",
-        "ext.value.font-source-modern-hints",
         "ext.property.font-weight-range",
         "ext.supports.selector",
         "ext.media.range.width",
@@ -2113,13 +2111,6 @@ fn c14_retained_partial_extensions_have_direct_public_evidence() {
             CssFeatureKind::Descriptor,
             Input::Sheet(
                 "@font-face { font-family: Demo; src: url(demo.woff2); font-stretch: 75% 125%; }",
-            ),
-        ),
-        (
-            "ext.value.font-source-modern-hints",
-            CssFeatureKind::Value,
-            Input::Sheet(
-                "@font-face { font-family: Demo; src: url(demo.woff2) format(woff2) tech(variations, color-colrv1); }",
             ),
         ),
         (
@@ -3765,8 +3756,23 @@ fn conformance_catalog_vectors_cover_each_supported_and_unsupported_boundary() {
         match expected.status {
             CssSupportStatus::Complete => assert!(expected.negative.is_none()),
             CssSupportStatus::Partial if expected.id == "baseline.descriptor.src" => {
-                // This remainder concerns the typed compatibility projection,
-                // not authored acceptance. A rejection vector would be false.
+                // The legacy compatibility remainder is closed. The broader src
+                // grammar remains Partial because selected Fonts4 generic names
+                // such as unquoted system-ui are still accepted as local names.
+                // https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-src-parsing
+                for name in ["system-ui", "\"system-ui\""] {
+                    let report = parse_sheet(&format!("@font-face {{ src: local({name}); }}"));
+                    assert!(report.is_clean());
+                    let [CssRule::FontFace(face)] = report.syntax().rules() else {
+                        panic!("expected a retained font face");
+                    };
+                    let [surgeist_css::CssFontFaceSource::Local(local)] =
+                        face.descriptors().src().unwrap().sources()
+                    else {
+                        panic!("expected the local name");
+                    };
+                    assert_eq!(local.as_str(), "system-ui");
+                }
                 let report = parse_sheet(
                     "@font-face { src: url(demo.woff2) format(\"woff2-variations\"); }",
                 );
@@ -3783,8 +3789,15 @@ fn conformance_catalog_vectors_cover_each_supported_and_unsupported_boundary() {
                     source.formats().unwrap().formats()[0].as_str(),
                     "woff2-variations"
                 );
-                assert_eq!(source.format(), None);
+                assert_eq!(
+                    source.format(),
+                    Some(&surgeist_css::CssFontFormatHint::Woff2)
+                );
                 assert!(source.tech().is_empty());
+                assert_eq!(
+                    source.required_technologies().collect::<Vec<_>>(),
+                    [surgeist_css::CssFontTechHint::Variations]
+                );
             }
             CssSupportStatus::Partial | CssSupportStatus::RecognizedUnsupported => {
                 let (input, code) = expected

@@ -1552,8 +1552,13 @@ impl CssFontFaceUrlSource {
         Some(Self::new_with_formats(url, formats, tech))
     }
 
+    /// Preserves an authored URL, a checked single format argument, and technologies.
+    ///
+    /// Construction is infallible because the format wrapper already enforces its
+    /// cardinality. Empty URLs and empty or unrecognized format strings are valid
+    /// authored values. Strings are decoded values, not CSS source to parse again.
     #[must_use]
-    pub(crate) fn new_with_formats(
+    pub fn new_with_formats(
         url: impl Into<String>,
         formats: Option<CssFontFormatList>,
         tech: Vec<CssFontTechHint>,
@@ -1572,6 +1577,12 @@ impl CssFontFaceUrlSource {
         &self.url
     }
 
+    /// Returns the recognized base format, including the four legacy variation strings.
+    ///
+    /// `None` can mean either an absent hint or an unrecognized string; use
+    /// [`Self::formats`] to distinguish them. Format recognition does not determine
+    /// resource support. TrueType and OpenType retain distinct authored identities;
+    /// [`CssFontFormatHint::is_equivalent_to`] compares their compatibility meaning.
     #[must_use]
     pub const fn format(&self) -> Option<&CssFontFormatHint> {
         self.format.as_ref()
@@ -1587,9 +1598,40 @@ impl CssFontFaceUrlSource {
         self.formats.as_ref()
     }
 
+    /// Returns technology hints in authored order, including repetitions.
+    ///
+    /// A legacy format string's implied technology is exposed separately by
+    /// [`Self::required_technologies`].
     #[must_use]
     pub fn tech(&self) -> &[CssFontTechHint] {
         &self.tech
+    }
+
+    /// Returns the distinct technologies that the source requires together.
+    ///
+    /// Authored technologies retain first-occurrence order. The `variations`
+    /// requirement implied by a legacy variation format string follows them when
+    /// it was not already authored. This projection leaves [`Self::tech`] unchanged
+    /// and does not decide whether a resource loader supports those technologies.
+    pub fn required_technologies(&self) -> impl Iterator<Item = CssFontTechHint> + '_ {
+        let implied = self.formats.as_ref().and_then(|formats| {
+            formats.formats[0]
+                .legacy_variation_format()
+                .map(|_| CssFontTechHint::Variations)
+        });
+        let mut seen = Vec::new();
+        self.tech
+            .iter()
+            .copied()
+            .chain(implied)
+            .filter(move |hint| {
+                if seen.contains(hint) {
+                    false
+                } else {
+                    seen.push(*hint);
+                    true
+                }
+            })
     }
 }
 
@@ -1626,6 +1668,23 @@ impl CssFontFormatString {
 
     fn recognized(&self) -> Option<CssFontFormatHint> {
         CssFontFormatHint::from_ascii_name(self.value.as_bytes())
+            .or_else(|| self.legacy_variation_format())
+    }
+
+    fn legacy_variation_format(&self) -> Option<CssFontFormatHint> {
+        // Fonts4 section 4.3.1 defines these string equivalents. Keep this table
+        // separate from the keyword grammar: bare legacy names are not keywords.
+        if self.value.eq_ignore_ascii_case("woff2-variations") {
+            Some(CssFontFormatHint::Woff2)
+        } else if self.value.eq_ignore_ascii_case("woff-variations") {
+            Some(CssFontFormatHint::Woff)
+        } else if self.value.eq_ignore_ascii_case("truetype-variations") {
+            Some(CssFontFormatHint::TrueType)
+        } else if self.value.eq_ignore_ascii_case("opentype-variations") {
+            Some(CssFontFormatHint::OpenType)
+        } else {
+            None
+        }
     }
 }
 
@@ -2086,6 +2145,20 @@ pub enum CssFontFormatHint {
 }
 
 impl CssFontFormatHint {
+    /// Compares format compatibility without changing authored equality.
+    ///
+    /// Fonts4 section 11.2 makes TrueType and OpenType synonymous. Other formats
+    /// are equivalent only to themselves. This does not compare technology hints
+    /// or determine resource support.
+    #[must_use]
+    pub fn is_equivalent_to(self, other: Self) -> bool {
+        self == other
+            || matches!(
+                (self, other),
+                (Self::TrueType, Self::OpenType) | (Self::OpenType, Self::TrueType)
+            )
+    }
+
     #[must_use]
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
@@ -2099,7 +2172,7 @@ impl CssFontFormatHint {
         }
     }
 
-    fn from_ascii_name(value: &[u8]) -> Option<Self> {
+    pub(crate) fn from_ascii_name(value: &[u8]) -> Option<Self> {
         if value.eq_ignore_ascii_case(b"woff") {
             Some(Self::Woff)
         } else if value.eq_ignore_ascii_case(b"woff2") {

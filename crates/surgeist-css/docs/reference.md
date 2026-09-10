@@ -489,17 +489,30 @@ remain available with this single-item invariant. `tech(palettes)` has the
 typed `CssFontTechHint::Palettes` representation, and technology order and
 repeated entries remain authored.
 
+`CssFontFaceUrlSource::new_with_formats` accepts a checked single-argument wrapper
+without another fallible validation step. `formats()` preserves the decoded
+authored string. `format()` projects the four legacy strings `woff2-variations`,
+`woff-variations`, `truetype-variations`, and `opentype-variations` to their base
+formats using ASCII-insensitive matching, without trimming or interpreting other
+suffixes. `required_technologies()` yields distinct authored technologies in
+first-occurrence order, followed by implied `variations` when absent. Every yielded
+technology is required together. `tech()` retains its exact authored order and
+repetitions. `CssFontFormatHint::is_equivalent_to` recognizes TrueType/OpenType
+compatibility while ordinary equality keeps their identities distinct.
+
 The `@font-face`, `src`, font-source and modern-source-hint records cite the
-September 7, 2026 edition as `I-FONTS4-20260907` and remain `Partial`.
+September 7, 2026 edition as `I-FONTS4-20260907`. The narrowly named modern-source-hint
+record is `Complete`; the rule and source-list records remain `Partial`.
 The older `I-FONTS4` identity keeps its April 22 edition; `O-FONTS3` also
 remains available for historical source records. These immutable identities
 must not be repointed when adopting a newer production.
 
 Selected descriptors including `font-width`, `font-variation-settings`,
-`font-named-instance` and metric overrides remain unfinished. Legacy strings
-such as `format("woff2-variations")` are retained but do not yet expose their
-specified equivalent format and `variations` technology. These are CSS
-implementation gaps. Other historical Fonts 3 and Fonts 4 support records
+`font-named-instance` and metric overrides remain unfinished. Unquoted `local()`
+names do not yet enforce every selected Fonts 4 generic and system font keyword
+exclusion. Decoded-name constructors can represent quoted reserved names; this
+does not establish universal constructor/parser parity for identifier sequences.
+These are CSS implementation gaps. Other historical Fonts 3 and Fonts 4 support records
 retain their existing classifications pending reconciliation with the complete
 selected profile; their dates bound those claims. These authored models do
 not load or match fonts, resolve fallback or feature application, shape glyphs,
@@ -904,7 +917,7 @@ records for `dimension`, `angle`, `angle-percentage`, `time-percentage`,
 The preserved extension records `ext.value.relative-color`,
 `ext.value.color-mix`, `ext.value.grid-repeat`, `ext.value.basic-shape`,
 `ext.descriptor.font-weight-range`, `ext.descriptor.font-style-oblique-range`,
-`ext.descriptor.font-stretch-range`, `ext.value.font-source-modern-hints`,
+`ext.descriptor.font-stretch-range`,
 `ext.property.font-weight-range`, `ext.supports.selector`,
 `ext.media.range.width`, `ext.media.range.height`,
 `ext.media.range.resolution`, `ext.media.range.color`, and

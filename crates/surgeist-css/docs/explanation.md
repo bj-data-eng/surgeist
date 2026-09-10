@@ -64,6 +64,12 @@ Generated content, list markers, and counters are parsed as typed authored prope
 
 Font faces are parsed as authored `@font-face` descriptor blocks only. `surgeist-css` validates supported descriptors and preserves font source hints, unicode ranges, and variation ranges, but does not perform font lookup, loading, matching, or resource validation; downstream Surgeist layers own those steps.
 
+Font-source compatibility has a context-independent projection: legacy variation
+format strings expose their base format and implied technology, and TrueType and
+OpenType hints have an explicit equivalence check. Authored strings and technology
+order remain available separately. Resource owners consume these requirements
+alongside their own capabilities when deciding whether to load a source.
+
 Keyframes are parsed as authored `@keyframes` rules. `surgeist-css` validates keyframe names, selector offsets, and declarations, but does not evaluate animations, match animation names to rules, interpolate values, or run animation timelines.
 
 CSS nesting retains the authored rule tree. One style rule owns its complete selector list,

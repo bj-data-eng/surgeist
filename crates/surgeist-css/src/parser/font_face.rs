@@ -373,7 +373,7 @@ fn parse_font_format_list<'i, 't>(
 ) -> std::result::Result<CssFontFormatList, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let format = if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        let hint = font_format_hint_from_str(ident.as_ref()).ok_or_else(|| {
+        let hint = CssFontFormatHint::from_ascii_name(ident.as_bytes()).ok_or_else(|| {
             unsupported_value_at(
                 location,
                 None,
@@ -388,19 +388,6 @@ fn parse_font_format_list<'i, 't>(
     input.expect_exhausted().map_err(basic)?;
 
     Ok(CssFontFormatList::new(format))
-}
-
-fn font_format_hint_from_str(value: &str) -> Option<CssFontFormatHint> {
-    match value.to_ascii_lowercase().as_str() {
-        "woff" => Some(CssFontFormatHint::Woff),
-        "woff2" => Some(CssFontFormatHint::Woff2),
-        "truetype" => Some(CssFontFormatHint::TrueType),
-        "opentype" => Some(CssFontFormatHint::OpenType),
-        "collection" => Some(CssFontFormatHint::Collection),
-        "embedded-opentype" => Some(CssFontFormatHint::EmbeddedOpenType),
-        "svg" => Some(CssFontFormatHint::Svg),
-        _ => None,
-    }
 }
 
 fn parse_font_tech_hints<'i, 't>(
