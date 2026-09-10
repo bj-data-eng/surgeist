@@ -93,10 +93,20 @@ pub fn parse_property_value(
     value: CssComponentValues,
     importance: CssImportance,
 ) -> Result<CssDeclaration, CssPropertyValueParseError> {
+    let body = checked_property_value_body(property, &value)?;
+    Ok(CssDeclaration::new_constructed(body, importance, value))
+}
+
+// Declaration construction and strict expansion reentry share both the checked
+// grammar and its original-component error mapping. Reentry retains the original
+// occurrence and therefore must not manufacture a replacement declaration.
+pub(crate) fn checked_property_value_body(
+    property: CssPropertyNameRef<'_>,
+    value: &CssComponentValues,
+) -> Result<crate::CssDeclarationBody, CssPropertyValueParseError> {
     let serialized = value
         .serialize()
         .map_err(CssPropertyValueParseError::from_component)?;
-    let body = crate::parser::parse_property_value_body(property, serialized.as_css())
-        .map_err(|error| CssPropertyValueParseError::from_grammar(error, &serialized))?;
-    Ok(CssDeclaration::new_constructed(body, importance, value))
+    crate::parser::parse_property_value_body(property, serialized.as_css())
+        .map_err(|error| CssPropertyValueParseError::from_grammar(error, &serialized))
 }

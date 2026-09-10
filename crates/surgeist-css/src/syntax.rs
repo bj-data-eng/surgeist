@@ -2,12 +2,12 @@
 //!
 //! Property-coupled declarations represent CSS-owned authored syntax without a
 //! broad property/value cross product. Property-specific parsers decide which
-//! value forms are accepted, while downstream crates own normalization,
-//! substitution, cascade, and contextual resolution.
+//! value forms are accepted. CSS owns intrinsic declaration expansion; downstream
+//! crates own substitution environments, cascade, and contextual resolution.
 //!
-//! Successful declarations carry their authored source location so downstream
-//! adapters can report validation failures at the declaration site without
-//! depending on parser implementation types.
+//! Parsed declarations retain authored source locations, while checked Rust
+//! construction preserves supplied token origins without inventing coordinates.
+//! Downstream adapters can inspect either without depending on parser internals.
 
 use std::collections::HashMap;
 use std::sync::Arc;

@@ -301,10 +301,11 @@ macro_rules! define_property_dispatch {
     ($input:ident;
         All, $all_canonical:literal, [$($all_alias:literal),*], $all_stable_id:literal,
         $all_value:ty, $all_wrapper:ident, $all_representation:ident,
-        $all_parser:ident, $all_dispatch:block;
+        $all_parser:ident, $all_dispatch:block $(, expansion = $all_expansion:ident { $($all_metadata:tt)* })?;
         $(
         $variant:ident, $canonical:literal, [$($alias:literal),*], $stable_id:literal,
-        $value:ty, $wrapper:ident, $representation:ident, $parser:ident, $dispatch:block;
+        $value:ty, $wrapper:ident, $representation:ident, $parser:ident, $dispatch:block
+        $(, expansion = $expansion:ident { $($metadata:tt)* })?;
     )*) => {
         fn parse_known_property_value<'i, 't>(
             property: crate::CssKnownProperty,

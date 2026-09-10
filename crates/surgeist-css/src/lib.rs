@@ -1044,6 +1044,7 @@ mod box_values;
 mod component_values;
 mod conformance;
 mod error;
+mod expansion;
 mod parser;
 mod properties;
 mod property_value;
@@ -1064,6 +1065,11 @@ pub use component_values::{
 };
 pub use conformance::*;
 pub use error::*;
+pub use expansion::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssExpansionError,
+    CssExpansionErrorKind, CssLonghandContribution, CssLonghandContributions, CssLonghandValueRef,
+    CssPendingSubstitution, CssUniversalReset, expand_declaration,
+};
 pub use parser::{parse_sheet, parse_style_attribute};
 pub use properties::*;
 pub use property_value::{

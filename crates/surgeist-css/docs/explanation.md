@@ -15,9 +15,16 @@ otherwise returns every diagnostic in unchanged order.
 
 ## Symbolic values and compatibility
 
-CSS custom properties preserve case-sensitive names and authored value text, including interior trivia. Known-property values whose grammar depends on `var(...)` remain substitution-dependent authored values. The crate recognizes terminal `!important` but does not apply cascade or perform custom-property substitution or post-substitution validation.
+CSS custom properties preserve case-sensitive names and authored value text, including interior trivia. Known-property values whose grammar depends on `var(...)` remain substitution-dependent authored values. The crate recognizes terminal `!important`; style owns custom-property environments, substitution and cascade.
 
 Variable references and their fallback token text remain symbolic.
+
+For the implemented [declaration expansion slice](reference.md#intrinsic-declaration-expansion),
+CSS rechecks a caller-supplied replacement against the original property grammar
+and produces complete contributions atomically. This intrinsic grammar reentry
+retains token origins and the original declaration occurrence. It does not find
+variables or decide invalid-at-computed-value behavior. Whole-sheet normalization
+and expansion of the remaining properties are still being implemented.
 
 `i01_subset()` names a frozen earlier representation retained for compatibility.
 A current property value can be valid and fully inspectable while that projection

@@ -17,6 +17,7 @@ subset; it does not establish complete support for all CSS syntax.
 | `validate_style_attribute(&str)` | Default features | `Result<CssDeclarationList, CssValidationFailure>` |
 | `parse_component_values(&str)` | Default features | `Result<CssComponentValues, CssComponentValueError>` |
 | `parse_property_value(name, components, importance)` | Default features | `Result<CssDeclaration, CssPropertyValueParseError>` |
+| `expand_declaration(&declaration)` | Default features | `Result<CssExpansion, CssExpansionError>` |
 
 The [manifest](../Cargo.toml) declares package `surgeist-css`, library
 `surgeist_css`, version `0.1.0`, Rust edition 2024, and no default features.
@@ -117,6 +118,39 @@ Code inspecting a parsed declaration can require `Some`; constructed declaration
 have no invented coordinates. Declaration accessors are no longer `const fn`
 because their shared occurrence storage is allocated. Rule, descriptor and
 keyframe-declaration position APIs retain their existing contracts.
+
+## Intrinsic declaration expansion
+
+`expand_declaration` currently covers physical margin and padding, border width,
+style and color, the four side-border shorthands, `border`, the five border-image
+longhands, and `all`. The shared property schema owns their member lists, initial
+values and reset-only components. Other known properties and custom properties
+return typed unsupported errors preserving their identity; complete stylesheet
+normalization remains unfinished.
+
+Completed longhand contributions expose a property-coupled `CssLonghandValueRef`
+or a symbolic CSS-wide keyword. Omitted border components use `medium`, `none`
+and `currentcolor`; the specified width remains `medium` even when the style is
+`none`. The `border` shorthand also resets all five border-image longhands.
+CSS-wide shorthand keywords propagate to those reset-only components too.
+`all` remains a `CssUniversalReset`, excluding custom properties, `direction`
+and `unicode-bidi`. Its `excludes()` method reports those explicit exclusions;
+it does not select cascade targets.
+
+A substitution-dependent declaration returns `CssExpansion::Pending`. Once the
+downstream substitution owner supplies complete replacement components,
+`CssPendingSubstitution::reenter` returns `CssContributions` or a typed error,
+never another pending result. It rejects residual `var()` at any nesting depth
+before applying the original property grammar. Grammar and component failures
+retain the same origin mapping as `parse_property_value`. Failure publishes no
+partial contributions, and the pending handle remains available for another
+attempt.
+
+Every contribution retains the original declaration occurrence and importance
+through `source()`. Contributions from reentry share one replacement component
+tree, available through `replacement_components()`, including its original token
+origins. These operations preserve symbolic lengths, colors and images; style
+owns variable environments, invalid-at-computed-value handling and cascade.
 
 ## Authored property inspection
 

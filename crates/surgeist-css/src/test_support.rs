@@ -63,7 +63,8 @@ impl<T> CssParseReportTestExt<T> for CssParseReport<T> {
 macro_rules! define_test_property {
     ($input:ident; $(
         $variant:ident, $canonical:literal, [$($alias:literal),*], $stable_id:literal,
-        $value:ty, $wrapper:ident, $representation:ident, $parser:ident, $dispatch:block;
+        $value:ty, $wrapper:ident, $representation:ident, $parser:ident, $dispatch:block
+        $(, expansion = $expansion:ident { $($metadata:tt)* })?;
     )*) => {
         #[derive(Clone, Debug, Eq, Hash, PartialEq)]
         pub(crate) enum CssProperty {
