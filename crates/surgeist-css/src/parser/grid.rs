@@ -179,10 +179,9 @@ fn parse_integer_grid_repeat<'i, 't>(
             fixed_components.push(CssAuthoredGridFixedRepeatComponent::LineNames(
                 names.clone(),
             ));
-            legacy_components
-                .as_mut()
-                .expect("line names preserve projection")
-                .push(CssGridTrackComponent::LineNames(names));
+            if let Some(components) = legacy_components.as_mut() {
+                components.push(CssGridTrackComponent::LineNames(names));
+            }
             continue;
         }
         input.reset(&state);
@@ -245,10 +244,9 @@ fn parse_auto_grid_repeat<'i, 't>(
             components.push(CssAuthoredGridFixedRepeatComponent::LineNames(
                 names.clone(),
             ));
-            legacy_components
-                .as_mut()
-                .expect("line names preserve projection")
-                .push(CssGridTrackComponent::LineNames(names));
+            if let Some(components) = legacy_components.as_mut() {
+                components.push(CssGridTrackComponent::LineNames(names));
+            }
             continue;
         }
         input.reset(&state);
