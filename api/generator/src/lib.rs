@@ -424,6 +424,54 @@ mod tests {
     }
 
     #[test]
+    fn generator_selection_includes_default_and_css_corpus_artifacts() {
+        let fixture = TempFixture::new("surgeist-api-generator-profiles");
+        fixture.file("Cargo.toml", "[package]\nname = \"surgeist\"\n");
+        fixture.file(
+            "crates/surgeist-generator/Cargo.toml",
+            concat!(
+                "[package]\nname = \"surgeist-generator\"\n",
+                "[features]\ndefault = []\ncss-corpus = []\nbrowser-corpus = []\n",
+            ),
+        );
+        fixture.file(
+            "crates/surgeist-task/Cargo.toml",
+            "[package]\nname = \"surgeist-task\"\n",
+        );
+
+        for selection in [
+            TargetSelection::Crate("surgeist-generator".to_owned()),
+            TargetSelection::All,
+        ] {
+            let targets = select_targets(fixture.path(), selection).unwrap();
+            let generator_targets = targets
+                .iter()
+                .filter(|target| target.name() == "surgeist-generator")
+                .collect::<Vec<_>>();
+            let artifacts = generator_targets
+                .iter()
+                .map(|target| target.artifact_path())
+                .collect::<Vec<_>>();
+
+            assert_eq!(
+                artifacts,
+                [
+                    fixture.path().join("api/crates/surgeist-generator.txt"),
+                    fixture
+                        .path()
+                        .join("api/crates/surgeist-generator.css-corpus.txt"),
+                ],
+                "generator selection must retain its default audit and include its CSS feature audit",
+            );
+            assert_ne!(
+                render_list_line(fixture.path(), generator_targets[0]),
+                render_list_line(fixture.path(), generator_targets[1]),
+                "listed generator profiles must be distinguishable",
+            );
+        }
+    }
+
+    #[test]
     fn ignores_matching_files_under_crates_directory() {
         let fixture = TempFixture::new("surgeist-api-target-files");
         fixture.file("Cargo.toml", "[package]\nname = \"surgeist\"\n");
