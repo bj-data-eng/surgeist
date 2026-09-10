@@ -44,7 +44,7 @@ use grid::*;
 use keyframes::{parse_keyframes_name, parse_keyframes_rule};
 use layout::*;
 use multicolumn::*;
-use nesting::parse_style_rule_block;
+use nesting::{parse_style_contents, parse_style_rule_block};
 use page::{parse_page_rule, parse_page_selector};
 #[cfg(test)]
 pub(crate) use queries::parse_container_condition_for_test;
@@ -464,32 +464,9 @@ fn parse_style_attribute_inner(source: &str) -> crate::CssParseReport<CssDeclara
     let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
     let mut input = ParserInput::new(source);
     let mut parser = Parser::new(&mut input);
-    let recovered = parse_declaration_list(
-        source,
-        &mut parser,
-        recovery.clone(),
-        DeclarationListContext::StyleAttribute,
-    );
-    let (syntax, mut diagnostics) = match recovered {
-        Ok(recovered) => (recovered.syntax, recovered.diagnostics),
-        Err(error) => {
-            let error = from_parse_error(source, error);
-            let diagnostics = crate::CssSourceSpan::new(
-                crate::CssSourcePosition::from_byte_offset_in(source, 0),
-                crate::CssSourcePosition::from_byte_offset_in(source, source.len()),
-            )
-            .and_then(|span| {
-                crate::CssRecoveryDiagnostic::new(
-                    error,
-                    span,
-                    crate::CssRecoveryAction::DropDeclaration,
-                )
-            })
-            .into_iter()
-            .collect();
-            (CssDeclarationList::new(Vec::new()), diagnostics)
-        }
-    };
+    let recovered = parse_style_attribute_declarations(source, &mut parser, recovery.clone());
+    let syntax = recovered.syntax;
+    let mut diagnostics = recovered.diagnostics;
     diagnostics.extend(recovery.take_implicit_closure_diagnostics(source));
     crate::CssParseReport::new(syntax, diagnostics)
 }
@@ -497,15 +474,13 @@ fn parse_style_attribute_inner(source: &str) -> crate::CssParseReport<CssDeclara
 #[derive(Clone)]
 enum BoundedParseContext {
     Sheet,
-    Style {
-        selectors: Vec<CssSelector>,
-        position: crate::CssSourcePosition,
-    },
+    Style,
+    Scoped,
 }
 
 impl BoundedParseContext {
     fn is_style(&self) -> bool {
-        matches!(self, Self::Style { .. })
+        matches!(self, Self::Style)
     }
 }
 
@@ -570,10 +545,8 @@ fn parse_sheet_bounded_with_captures(
         let recovery = RecoveryState::at_depth(source, base_depth, style_context_captures);
         return match context {
             BoundedParseContext::Sheet => parse_sheet_inner(source, recovery),
-            BoundedParseContext::Style {
-                selectors,
-                position,
-            } => parse_style_context_inner(source, selectors, position, recovery),
+            BoundedParseContext::Style => parse_style_context_inner(source, recovery),
+            BoundedParseContext::Scoped => parse_scoped_context_inner(source, recovery),
         };
     };
     if matches!(&preflight.outcome, StructuralPreflightOutcome::Split) {
@@ -585,6 +558,7 @@ fn parse_sheet_bounded_with_captures(
     // Parse at most one bounded structural chunk at a time. Same-length masks
     // retain original byte/line coordinates, and the completed child syntax is
     // spliced back into its parser-produced enclosing groups.
+    let scoped_context = matches!(context, BoundedParseContext::Scoped);
     let outer = parse_sheet_bounded_with_captures(
         &masked,
         base_depth,
@@ -596,17 +570,22 @@ fn parse_sheet_bounded_with_captures(
     match preflight.outcome {
         StructuralPreflightOutcome::Split => {
             let isolated = isolate_source_span(source, preflight.unit_start, preflight.unit_end);
-            let child_context = preflight
+            let child_context = if preflight
                 .style_context_starts
                 .last()
-                .copied()
-                .and_then(|content_start| style_context_captures.context(content_start))
-                .map_or(BoundedParseContext::Sheet, |(selectors, position)| {
-                    BoundedParseContext::Style {
-                        selectors,
-                        position,
-                    }
-                });
+                .is_some_and(|&content_start| style_context_captures.contains_parsed(content_start))
+            {
+                BoundedParseContext::Style
+            } else if scoped_context
+                || preflight
+                    .parents
+                    .iter()
+                    .any(|parent| matches!(parent.kind, GroupKind::Scope))
+            {
+                BoundedParseContext::Scoped
+            } else {
+                BoundedParseContext::Sheet
+            };
             let child = parse_sheet_bounded(
                 &isolated,
                 preflight.parent_depth,
@@ -662,18 +641,15 @@ fn parse_sheet_bounded_with_captures(
 
 fn parse_style_context_inner(
     source: &str,
-    selectors: Vec<CssSelector>,
-    position: crate::CssSourcePosition,
     recovery: RecoveryState,
 ) -> crate::CssParseReport<CssSheet> {
     let mut input = ParserInput::new(source);
     let mut parser = Parser::new(&mut input);
-    let recovered =
-        parse_style_rule_block(source, selectors, position, &mut parser, recovery.clone());
+    let recovered = parse_style_contents(source, &mut parser, recovery.clone());
     match recovered {
         Ok(recovered) => {
             let mut sheet = CssSheet::new();
-            for rule in recovered.syntax {
+            for rule in recovered.syntax.into_nested_rules() {
                 sheet.push_rule(rule);
             }
             let mut diagnostics = recovered.diagnostics;
@@ -693,6 +669,111 @@ fn parse_style_context_inner(
             .collect();
             crate::CssParseReport::new(CssSheet::new(), diagnostics)
         }
+    }
+}
+
+fn parse_scoped_context_inner(
+    source: &str,
+    recovery: RecoveryState,
+) -> crate::CssParseReport<CssSheet> {
+    let mut input = ParserInput::new(source);
+    let mut parser = Parser::new(&mut input);
+    match parse_scoped_rule_list(source, &mut parser, recovery.clone()) {
+        Ok(recovered) => {
+            let mut sheet = CssSheet::new();
+            for rule in recovered.syntax.rules().iter().cloned() {
+                sheet.push_rule(scoped_rule_into_chunk_rule(rule));
+            }
+            let mut diagnostics = recovered.diagnostics;
+            diagnostics.extend(recovery.take_implicit_closure_diagnostics(source));
+            crate::CssParseReport::new(sheet, diagnostics)
+        }
+        Err(error) => {
+            let action =
+                recovery_action_for_error(&error, crate::CssRecoveryAction::DropQualifiedRule);
+            let error = from_parse_error(source, error);
+            let diagnostics = crate::CssSourceSpan::new(
+                crate::CssSourcePosition::from_byte_offset_in(source, 0),
+                crate::CssSourcePosition::from_byte_offset_in(source, source.len()),
+            )
+            .and_then(|span| crate::CssRecoveryDiagnostic::new(error, span, action))
+            .into_iter()
+            .collect();
+            crate::CssParseReport::new(CssSheet::new(), diagnostics)
+        }
+    }
+}
+
+// The bounded parser's internal carrier holds already-validated chunks. Scoped selector
+// context remains in the selector model; splicing restores scoped rule-list wrappers.
+// This conversion never reparses a scoped prelude as an ordinary stylesheet selector.
+fn scoped_rule_into_chunk_rule(rule: CssScopedRule) -> CssRule {
+    match rule {
+        CssScopedRule::Style(rule) => CssRule::Style(CssStyleRule::new(
+            CssStyleSelectorList::new(
+                rule.selectors()
+                    .selectors()
+                    .iter()
+                    .map(|selector| match selector {
+                        CssScopedStyleSelector::Selector(selector) => {
+                            CssStyleSelector::Selector(selector.clone())
+                        }
+                        CssScopedStyleSelector::Relative(relative) => {
+                            CssStyleSelector::Relative(relative.clone())
+                        }
+                    })
+                    .collect(),
+            ),
+            rule.declarations().clone(),
+            rule.rules().to_vec(),
+            rule.position(),
+        )),
+        CssScopedRule::Media(rule) => CssRule::Media(CssMediaRule::new(
+            rule.query().clone(),
+            rule.rules()
+                .rules()
+                .iter()
+                .cloned()
+                .map(scoped_rule_into_chunk_rule)
+                .collect(),
+            rule.position(),
+        )),
+        CssScopedRule::Supports(rule) => CssRule::Supports(CssSupportsRule::new(
+            rule.condition().clone(),
+            rule.rules()
+                .rules()
+                .iter()
+                .cloned()
+                .map(scoped_rule_into_chunk_rule)
+                .collect(),
+            rule.position(),
+        )),
+        CssScopedRule::Container(rule) => CssRule::Container(CssContainerRule::new(
+            rule.name().cloned(),
+            rule.condition().clone(),
+            rule.rules()
+                .rules()
+                .iter()
+                .cloned()
+                .map(scoped_rule_into_chunk_rule)
+                .collect(),
+            rule.position(),
+        )),
+        CssScopedRule::LayerBlock(rule) => CssRule::LayerBlock(CssLayerBlockRule::new(
+            rule.name().cloned(),
+            rule.rules()
+                .rules()
+                .iter()
+                .cloned()
+                .map(scoped_rule_into_chunk_rule)
+                .collect(),
+            rule.position(),
+        )),
+        CssScopedRule::LayerStatement(rule) => CssRule::LayerStatement(CssLayerStatementRule::new(
+            rule.names().clone(),
+            rule.position(),
+        )),
+        CssScopedRule::Scope(rule) => CssRule::Scope(rule),
     }
 }
 
@@ -767,22 +848,32 @@ fn splice_rule_list(
             if matches!(parent.kind, GroupKind::Scope)
                 && let CssRule::Scope(scope) = rule
             {
-                let scoped_children = child_rules
-                    .clone()
-                    .into_iter()
-                    .filter_map(into_scoped_rule)
-                    .collect();
                 let rebuilt = splice_scoped_rule_list(
                     scope.rules().rules(),
                     &parents[1..],
                     child_start,
-                    scoped_children,
+                    child_rules.clone(),
                 );
                 return CssRule::Scope(CssScopeRule::new(
                     scope.root().cloned(),
                     scope.limit().cloned(),
                     CssScopedRuleList::from_rules(rebuilt),
                     scope.position(),
+                ));
+            }
+            if let CssRule::Style(style) = rule {
+                let (declarations, rules) = splice_style_body(
+                    style.declarations(),
+                    style.rules(),
+                    &parents[1..],
+                    child_start,
+                    child_rules.clone(),
+                );
+                return CssRule::Style(CssStyleRule::new(
+                    style.selectors().clone(),
+                    declarations,
+                    rules,
+                    style.position(),
                 ));
             }
             let nested = group_rules(&rule).unwrap_or_default();
@@ -792,23 +883,49 @@ fn splice_rule_list(
         .collect()
 }
 
+fn splice_style_body(
+    leading: &CssDeclarationList,
+    rules: &[CssRule],
+    parents: &[StructuralParent],
+    child_start: usize,
+    child_rules: Vec<CssRule>,
+) -> (CssDeclarationList, Vec<CssRule>) {
+    let mut declarations = leading.as_slice().to_vec();
+    let mut nested = rules.to_vec();
+    if parents.is_empty() && !child_rules.is_empty() {
+        let split = declarations.partition_point(|declaration| {
+            declaration.position().byte_offset().value() < child_start
+        });
+        let trailing = declarations.split_off(split);
+        if !trailing.is_empty() {
+            nested.insert(
+                0,
+                CssRule::NestedDeclarations(CssNestedDeclarationsRule::new(
+                    CssDeclarationList::new(trailing),
+                )),
+            );
+        }
+    }
+    let rebuilt = splice_rule_list(&nested, parents, child_start, child_rules);
+    (CssDeclarationList::new(declarations), rebuilt)
+}
+
 fn splice_scoped_rule_list(
     rules: &[CssScopedRule],
     parents: &[StructuralParent],
     child_start: usize,
-    child_rules: Vec<CssScopedRule>,
+    child_rules: Vec<CssRule>,
 ) -> Vec<CssScopedRule> {
     if parents.is_empty() {
-        let mut combined = rules
-            .iter()
-            .cloned()
-            .flat_map(|rule| split_scoped_style_declaration_run(rule, child_start))
-            .collect::<Vec<_>>();
+        let mut combined = rules.to_vec();
         let insertion = combined
             .iter()
             .position(|rule| scoped_rule_start(rule) > child_start)
             .unwrap_or(combined.len());
-        combined.splice(insertion..insertion, child_rules);
+        combined.splice(
+            insertion..insertion,
+            child_rules.into_iter().filter_map(into_scoped_rule),
+        );
         return combined;
     }
     let parent = &parents[0];
@@ -819,6 +936,21 @@ fn splice_scoped_rule_list(
             if scoped_rule_start(&rule) != parent.start {
                 return rule;
             }
+            if let CssScopedRule::Style(style) = rule {
+                let (declarations, nested) = splice_style_body(
+                    style.declarations(),
+                    style.rules(),
+                    &parents[1..],
+                    child_start,
+                    child_rules.clone(),
+                );
+                return CssScopedRule::Style(CssScopedStyleRule::new(
+                    style.selectors().clone(),
+                    declarations,
+                    nested,
+                    style.position(),
+                ));
+            }
             let nested = scoped_group_rules(&rule).unwrap_or_default();
             let rebuilt =
                 splice_scoped_rule_list(nested, &parents[1..], child_start, child_rules.clone());
@@ -828,53 +960,22 @@ fn splice_scoped_rule_list(
 }
 
 fn split_style_declaration_run(rule: CssRule, child_start: usize) -> Vec<CssRule> {
-    let CssRule::Style(style) = rule else {
+    let CssRule::NestedDeclarations(run) = rule else {
         return vec![rule];
     };
-    let declarations = style.declarations().as_slice();
+    let declarations = run.declarations().as_slice();
     let split = declarations
         .partition_point(|declaration| declaration.position().byte_offset().value() < child_start);
     if split == 0 || split == declarations.len() {
-        return vec![CssRule::Style(style)];
+        return vec![CssRule::NestedDeclarations(run)];
     }
     vec![
-        CssRule::Style(CssStyleRule::new(
-            style.selector().clone(),
-            CssDeclarationList::new(declarations[..split].to_vec()),
-            style.position(),
-        )),
-        CssRule::Style(CssStyleRule::new(
-            style.selector().clone(),
-            CssDeclarationList::new(declarations[split..].to_vec()),
-            style.position(),
-        )),
-    ]
-}
-
-fn split_scoped_style_declaration_run(
-    rule: CssScopedRule,
-    child_start: usize,
-) -> Vec<CssScopedRule> {
-    let CssScopedRule::Style(style) = rule else {
-        return vec![rule];
-    };
-    let declarations = style.declarations().as_slice();
-    let split = declarations
-        .partition_point(|declaration| declaration.position().byte_offset().value() < child_start);
-    if split == 0 || split == declarations.len() {
-        return vec![CssScopedRule::Style(style)];
-    }
-    vec![
-        CssScopedRule::Style(CssScopedStyleRule::new(
-            style.selectors().clone(),
-            CssDeclarationList::new(declarations[..split].to_vec()),
-            style.position(),
-        )),
-        CssScopedRule::Style(CssScopedStyleRule::new(
-            style.selectors().clone(),
-            CssDeclarationList::new(declarations[split..].to_vec()),
-            style.position(),
-        )),
+        CssRule::NestedDeclarations(CssNestedDeclarationsRule::new(CssDeclarationList::new(
+            declarations[..split].to_vec(),
+        ))),
+        CssRule::NestedDeclarations(CssNestedDeclarationsRule::new(CssDeclarationList::new(
+            declarations[split..].to_vec(),
+        ))),
     ]
 }
 
@@ -926,13 +1027,24 @@ fn rebuild_scoped_group_rule(rule: CssScopedRule, rules: Vec<CssScopedRule>) -> 
 fn into_scoped_rule(rule: CssRule) -> Option<CssScopedRule> {
     match rule {
         CssRule::Style(rule) => {
-            let selectors =
-                CssScopedStyleSelectorList::try_new(vec![CssScopedStyleSelector::Selector(
-                    rule.selector().clone(),
-                )])?;
+            let selectors = CssScopedStyleSelectorList::try_new(
+                rule.selectors()
+                    .selectors()
+                    .iter()
+                    .map(|selector| match selector {
+                        CssStyleSelector::Selector(selector) => {
+                            CssScopedStyleSelector::Selector(selector.clone())
+                        }
+                        CssStyleSelector::Relative(relative) => {
+                            CssScopedStyleSelector::Relative(relative.clone())
+                        }
+                    })
+                    .collect(),
+            )?;
             Some(CssScopedRule::Style(CssScopedStyleRule::new(
                 selectors,
                 rule.declarations().clone(),
+                rule.rules().to_vec(),
                 rule.position(),
             )))
         }
@@ -985,7 +1097,8 @@ fn into_scoped_rule(rule: CssRule) -> Option<CssScopedRule> {
             rule.position(),
         ))),
         CssRule::Scope(rule) => Some(CssScopedRule::Scope(rule)),
-        CssRule::Import(_)
+        CssRule::NestedDeclarations(_)
+        | CssRule::Import(_)
         | CssRule::Namespace(_)
         | CssRule::CounterStyle(_)
         | CssRule::Page(_)
@@ -996,12 +1109,7 @@ fn into_scoped_rule(rule: CssRule) -> Option<CssScopedRule> {
 
 fn scoped_rule_start(rule: &CssScopedRule) -> usize {
     match rule {
-        CssScopedRule::Style(rule) => {
-            return rule.declarations().first().map_or_else(
-                || rule.position().byte_offset().value(),
-                |declaration| declaration.position().byte_offset().value(),
-            );
-        }
+        CssScopedRule::Style(rule) => rule.position(),
         CssScopedRule::Media(rule) => rule.position(),
         CssScopedRule::Supports(rule) => rule.position(),
         CssScopedRule::Container(rule) => rule.position(),
@@ -1060,12 +1168,8 @@ fn rule_start(rule: &CssRule) -> usize {
         CssRule::LayerBlock(rule) => rule.position(),
         CssRule::FontFace(rule) => rule.position(),
         CssRule::Keyframes(rule) => rule.position(),
-        CssRule::Style(rule) => {
-            return rule.declarations().first().map_or_else(
-                || rule.position().byte_offset().value(),
-                |declaration| declaration.position().byte_offset().value(),
-            );
-        }
+        CssRule::Style(rule) => rule.position(),
+        CssRule::NestedDeclarations(rule) => rule.position(),
         CssRule::Media(rule) => rule.position(),
         CssRule::Supports(rule) => rule.position(),
         CssRule::Container(rule) => rule.position(),
@@ -2149,7 +2253,7 @@ impl<'i> QualifiedRuleParser<'i> for StrictRuleParser<'i> {
                 .enter_rule_block(self.source, input, "baseline.rule.style")?;
         let recovered = parse_style_rule_block(
             self.source,
-            selectors,
+            CssStyleSelectorList::absolute(selectors),
             crate::source::CssSourcePosition::from_cssparser(
                 start.position(),
                 start.source_location(),
@@ -2875,13 +2979,13 @@ impl<'i> QualifiedRuleParser<'i> for ScopedRuleParser<'i> {
         let mut depth =
             self.recovery
                 .enter_rule_block(self.source, input, "baseline.rule.style")?;
-        let recovered = parse_declaration_block(self.source, input, self.recovery.clone())?;
+        let recovered = parse_style_contents(self.source, input, self.recovery.clone())?;
         self.diagnostics.extend(recovered.diagnostics);
-        let declarations = recovered.syntax;
         depth.retain();
         Ok(vec![CssScopedRule::Style(CssScopedStyleRule::new(
             selectors,
-            declarations,
+            recovered.syntax.declarations,
+            recovered.syntax.rules,
             crate::source::CssSourcePosition::from_cssparser(
                 start.position(),
                 start.source_location(),
@@ -2905,40 +3009,19 @@ impl<'i> RuleBodyItemParser<'i, Vec<CssScopedRule>, Error> for ScopedRuleParser<
     }
 }
 
-fn parse_declaration_block<'i, 't>(
+fn parse_style_attribute_declarations<'i, 't>(
     source: &'i str,
     input: &mut Parser<'i, 't>,
     recovery: RecoveryState,
-) -> std::result::Result<Recovered<CssDeclarationList>, ParseError<'i, Error>> {
-    parse_declaration_list(source, input, recovery, DeclarationListContext::Block)
-}
-
-#[derive(Clone, Copy, Eq, PartialEq)]
-enum DeclarationListContext {
-    Block,
-    StyleAttribute,
-}
-
-fn parse_declaration_list<'i, 't>(
-    source: &'i str,
-    input: &mut Parser<'i, 't>,
-    recovery: RecoveryState,
-    context: DeclarationListContext,
-) -> std::result::Result<Recovered<CssDeclarationList>, ParseError<'i, Error>> {
+) -> Recovered<CssDeclarationList> {
     let mut declarations = Vec::new();
     let mut diagnostics = Vec::new();
-    let mut declaration_parser = StrictDeclarationParser::new(
-        source,
-        recovery.clone(),
-        context == DeclarationListContext::StyleAttribute,
-    );
+    let mut declaration_parser = StrictDeclarationParser::new(source, recovery.clone(), true);
     let mut items = RuleBodyParser::new(input, &mut declaration_parser);
     let mut previous_end = items.input.position().byte_index();
     loop {
         let progress = RecoveryProgress::record(items.input);
-        if context == DeclarationListContext::StyleAttribute
-            && let Some(diagnostic) = discard_malformed_style_attribute_token(source, items.input)
-        {
+        if let Some(diagnostic) = discard_malformed_style_attribute_token(source, items.input) {
             previous_end = diagnostic.span().end().byte_offset().value();
             diagnostics.push(diagnostic);
             if progress.finish(items.input, false) == RecoveryLoopOutcome::Terminated {
@@ -2949,23 +3032,13 @@ fn parse_declaration_list<'i, 't>(
         let Some(item) = items.next() else {
             break;
         };
-        let (failed_at_block, failed_block_error) =
-            if context == DeclarationListContext::StyleAttribute {
-                item.as_ref()
-                    .err()
-                    .map(|(_, _)| {
-                        consume_failed_rule_block(
-                            source,
-                            items.input,
-                            true,
-                            &recovery,
-                            "css.declaration",
-                        )
-                    })
-                    .unwrap_or((false, None))
-            } else {
-                (false, None)
-            };
+        let (failed_at_block, failed_block_error) = item
+            .as_ref()
+            .err()
+            .map(|(_, _)| {
+                consume_failed_rule_block(source, items.input, true, &recovery, "css.declaration")
+            })
+            .unwrap_or((false, None));
         let retained = item.is_ok();
         let progress_outcome = progress.finish(items.input, retained);
         let unit_end = items.input.position().byte_index();
@@ -2984,7 +3057,7 @@ fn parse_declaration_list<'i, 't>(
                     diagnostics.push(diagnostic);
                 }
             }
-            Err((error, failed_unit)) if context == DeclarationListContext::StyleAttribute => {
+            Err((error, failed_unit)) => {
                 let error = failed_block_error.unwrap_or(error);
                 let unit_start = recovery_unit_start(source, previous_end, unit_end, failed_unit);
                 if let Some(diagnostic) = block_item_diagnostic_from_start(
@@ -2997,17 +3070,16 @@ fn parse_declaration_list<'i, 't>(
                     diagnostics.push(diagnostic);
                 }
             }
-            Err((error, _)) => return Err(error),
         }
         previous_end = unit_end;
         if progress_outcome == RecoveryLoopOutcome::Terminated {
             break;
         }
     }
-    Ok(Recovered {
+    Recovered {
         syntax: CssDeclarationList::new(declarations),
         diagnostics,
-    })
+    }
 }
 
 pub(super) struct StrictDeclarationParser<'s> {
@@ -3326,7 +3398,11 @@ mod splice_tests {
             ],
             &[],
             recovered.position().byte_offset().value(),
-            vec![CssScopedRule::LayerBlock(recovered.clone())],
+            vec![CssRule::LayerBlock(CssLayerBlockRule::new(
+                recovered.name().cloned(),
+                Vec::new(),
+                recovered.position(),
+            ))],
         );
         assert_eq!(spliced, scope.rules().rules());
 
@@ -3337,7 +3413,11 @@ mod splice_tests {
             ],
             &[],
             before.position().byte_offset().value(),
-            vec![CssScopedRule::LayerBlock(recovered.clone())],
+            vec![CssRule::LayerBlock(CssLayerBlockRule::new(
+                recovered.name().cloned(),
+                Vec::new(),
+                recovered.position(),
+            ))],
         );
         assert_eq!(
             stable_tie,

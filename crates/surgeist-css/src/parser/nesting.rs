@@ -28,21 +28,54 @@ pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] =
 
 pub(super) fn parse_style_rule_block<'i, 't>(
     source: &'i str,
-    parent_selectors: Vec<CssSelector>,
+    selectors: CssStyleSelectorList,
     position: crate::CssSourcePosition,
     input: &mut Parser<'i, 't>,
     recovery: RecoveryState,
 ) -> std::result::Result<Recovered<Vec<CssRule>>, ParseError<'i, Error>> {
-    let content_start = input.position().byte_index();
-    let suppress_preflight_placeholder =
-        recovery.record_style_context(content_start, &parent_selectors, position);
+    recovery.record_style_context(input.position().byte_index());
+    let recovered = parse_style_contents(source, input, recovery)?;
+    Ok(Recovered {
+        syntax: vec![CssRule::Style(CssStyleRule::new(
+            selectors,
+            recovered.syntax.declarations,
+            recovered.syntax.rules,
+            position,
+        ))],
+        diagnostics: recovered.diagnostics,
+    })
+}
+
+pub(super) struct StyleContents {
+    pub(super) declarations: CssDeclarationList,
+    pub(super) rules: Vec<CssRule>,
+}
+
+impl StyleContents {
+    pub(super) fn into_nested_rules(self) -> Vec<CssRule> {
+        let mut rules = Vec::new();
+        if !self.declarations.is_empty() {
+            rules.push(CssRule::NestedDeclarations(CssNestedDeclarationsRule::new(
+                self.declarations,
+            )));
+        }
+        rules.extend(self.rules);
+        rules
+    }
+}
+
+pub(super) fn parse_style_contents<'i, 't>(
+    source: &'i str,
+    input: &mut Parser<'i, 't>,
+    recovery: RecoveryState,
+) -> std::result::Result<Recovered<StyleContents>, ParseError<'i, Error>> {
+    recovery.record_style_context(input.position().byte_index());
     let mut body_parser = NestedStyleRuleParser {
         source,
-        parent_selectors,
         diagnostics: Vec::new(),
         recovery,
     };
-    let parent_selectors = body_parser.parent_selectors.clone();
+    let mut declarations = Vec::new();
     let mut rules = Vec::new();
     let mut declaration_buffer = Vec::new();
     let mut previous_end = input.position().byte_index();
@@ -66,20 +99,14 @@ pub(super) fn parse_style_rule_block<'i, 't>(
                 )
             })
             .unwrap_or((false, None));
-        let retained = item.is_ok();
-        let progress_outcome = progress.finish(items.input, retained);
+        let progress_outcome = progress.finish(items.input, item.is_ok());
         let unit_end = items.input.position().byte_index();
         match item {
             Ok(StyleBlockItem::Declaration(declaration)) => {
                 declaration_buffer.push(*declaration);
             }
             Ok(StyleBlockItem::NestedRules(nested_rules)) => {
-                flush_declarations(
-                    &parent_selectors,
-                    position,
-                    &mut declaration_buffer,
-                    &mut rules,
-                );
+                flush_declarations(&mut declaration_buffer, &mut declarations, &mut rules);
                 rules.extend(nested_rules);
             }
             Err((error, failed_unit))
@@ -97,20 +124,13 @@ pub(super) fn parse_style_rule_block<'i, 't>(
             }
             Err((error, failed_unit)) => {
                 let error = failed_block_error.unwrap_or(error);
-                flush_declarations(
-                    &parent_selectors,
-                    position,
-                    &mut declaration_buffer,
-                    &mut rules,
-                );
-                let action = structural_recovery_action(failed_unit);
                 if let Some(diagnostic) = structural_rule_diagnostic(
                     source,
                     error,
                     failed_unit,
                     previous_end,
                     unit_end,
-                    action,
+                    structural_recovery_action(failed_unit),
                 ) {
                     items.parser.diagnostics.push(diagnostic);
                 }
@@ -121,52 +141,35 @@ pub(super) fn parse_style_rule_block<'i, 't>(
             break;
         }
     }
-
-    flush_declarations(
-        &parent_selectors,
-        position,
-        &mut declaration_buffer,
-        &mut rules,
-    );
-    if rules.is_empty() && !suppress_preflight_placeholder {
-        for selector in &parent_selectors {
-            rules.push(CssRule::Style(CssStyleRule::new(
-                selector.clone(),
-                CssDeclarationList::new(Vec::new()),
-                position,
-            )));
-        }
-    }
-
+    flush_declarations(&mut declaration_buffer, &mut declarations, &mut rules);
     Ok(Recovered {
-        syntax: rules,
+        syntax: StyleContents {
+            declarations: CssDeclarationList::new(declarations),
+            rules,
+        },
         diagnostics: body_parser.diagnostics,
     })
 }
 
 fn flush_declarations(
-    parent_selectors: &[CssSelector],
-    position: crate::CssSourcePosition,
-    declaration_buffer: &mut Vec<CssDeclaration>,
+    buffer: &mut Vec<CssDeclaration>,
+    leading: &mut Vec<CssDeclaration>,
     rules: &mut Vec<CssRule>,
 ) {
-    if declaration_buffer.is_empty() {
+    if buffer.is_empty() {
         return;
     }
-
-    for selector in parent_selectors {
-        rules.push(CssRule::Style(CssStyleRule::new(
-            selector.clone(),
-            CssDeclarationList::new(declaration_buffer.clone()),
-            position,
+    if rules.is_empty() {
+        leading.append(buffer);
+    } else {
+        rules.push(CssRule::NestedDeclarations(CssNestedDeclarationsRule::new(
+            CssDeclarationList::new(std::mem::take(buffer)),
         )));
     }
-    declaration_buffer.clear();
 }
 
 struct NestedStyleRuleParser<'s> {
     source: &'s str,
-    parent_selectors: Vec<CssSelector>,
     diagnostics: Vec<crate::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 }
@@ -336,39 +339,21 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
         );
         let rule = match prelude {
             NestedStyleAtRulePrelude::Media(query) => {
-                let recovered = parse_style_rule_block(
-                    self.source,
-                    self.parent_selectors.clone(),
-                    position,
-                    input,
-                    self.recovery.clone(),
-                )?;
+                let recovered = parse_style_contents(self.source, input, self.recovery.clone())?;
                 self.diagnostics.extend(recovered.diagnostics);
-                let rules = recovered.syntax;
+                let rules = recovered.syntax.into_nested_rules();
                 CssRule::Media(CssMediaRule::new(query, rules, position))
             }
             NestedStyleAtRulePrelude::Supports(condition) => {
-                let recovered = parse_style_rule_block(
-                    self.source,
-                    self.parent_selectors.clone(),
-                    position,
-                    input,
-                    self.recovery.clone(),
-                )?;
+                let recovered = parse_style_contents(self.source, input, self.recovery.clone())?;
                 self.diagnostics.extend(recovered.diagnostics);
-                let rules = recovered.syntax;
+                let rules = recovered.syntax.into_nested_rules();
                 CssRule::Supports(CssSupportsRule::new(condition, rules, position))
             }
             NestedStyleAtRulePrelude::Container(prelude) => {
-                let recovered = parse_style_rule_block(
-                    self.source,
-                    self.parent_selectors.clone(),
-                    position,
-                    input,
-                    self.recovery.clone(),
-                )?;
+                let recovered = parse_style_contents(self.source, input, self.recovery.clone())?;
                 self.diagnostics.extend(recovered.diagnostics);
-                let rules = recovered.syntax;
+                let rules = recovered.syntax.into_nested_rules();
                 CssRule::Container(CssContainerRule::new(
                     prelude.name,
                     prelude.condition,
@@ -385,15 +370,9 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
                         "at most one layer name before a block",
                     ));
                 }
-                let recovered = parse_style_rule_block(
-                    self.source,
-                    self.parent_selectors.clone(),
-                    position,
-                    input,
-                    self.recovery.clone(),
-                )?;
+                let recovered = parse_style_contents(self.source, input, self.recovery.clone())?;
                 self.diagnostics.extend(recovered.diagnostics);
-                let rules = recovered.syntax;
+                let rules = recovered.syntax.into_nested_rules();
                 CssRule::LayerBlock(CssLayerBlockRule::new(
                     names.into_iter().next(),
                     rules,
@@ -440,16 +419,13 @@ impl<'i> QualifiedRuleParser<'i> for NestedStyleRuleParser<'i> {
         let mut depth =
             self.recovery
                 .enter_rule_block(self.source, input, "baseline.rule.style")?;
-        let mut flattened_selectors = Vec::new();
-        for parent_selector in &self.parent_selectors {
-            for nested_selector in &nested_selectors {
-                flattened_selectors.push(nested_selector.flatten(parent_selector.clone(), input)?);
-            }
-        }
-
+        let selectors = nested_selectors
+            .into_iter()
+            .map(|selector| selector.into_authored(input))
+            .collect::<std::result::Result<Vec<_>, _>>()?;
         let recovered = parse_style_rule_block(
             self.source,
-            flattened_selectors,
+            CssStyleSelectorList::new(selectors),
             crate::source::CssSourcePosition::from_cssparser(
                 start.position(),
                 start.source_location(),
@@ -501,38 +477,47 @@ enum NestedSelector {
 }
 
 impl NestedSelector {
-    fn flatten<'i, 't>(
-        &self,
-        parent: CssSelector,
+    fn into_authored<'i, 't>(
+        self,
         input: &Parser<'i, 't>,
-    ) -> std::result::Result<CssSelector, ParseError<'i, Error>> {
+    ) -> std::result::Result<CssStyleSelector, ParseError<'i, Error>> {
         match self {
-            Self::Descendant(child) => CssSelector::combine_descendant(parent, child.clone())
-                .ok_or_else(|| invalid_selector(input, "invalid nested descendant selector")),
+            Self::Descendant(child) => Ok(CssStyleSelector::Selector(child)),
             Self::Relative(parts) => {
-                let mut parts = parts.iter();
+                let mut parts = parts.into_iter();
                 let Some(first) = parts.next() else {
-                    return Ok(parent);
+                    return Err(invalid_selector(input, "nested relative selector is empty"));
                 };
-                let mut combined = CssSelector::combine_with_combinator(
-                    parent,
-                    first.combinator(),
-                    first.selector().clone(),
-                )
-                .ok_or_else(|| invalid_selector(input, "invalid nested relative selector"))?;
-                for part in parts {
-                    combined = CssSelector::combine_with_combinator(
-                        combined,
-                        part.combinator(),
-                        part.selector().clone(),
+                let rest: Vec<_> = parts.collect();
+                let selector = if rest.is_empty() {
+                    CssSelector::Compound(first.selector().clone())
+                } else {
+                    CssSelector::Complex(
+                        CssComplexSelector::try_new(first.selector().clone(), rest).ok_or_else(
+                            || invalid_selector(input, "invalid nested relative selector"),
+                        )?,
                     )
-                    .ok_or_else(|| invalid_selector(input, "invalid nested relative selector"))?;
-                }
-                Ok(combined)
+                };
+                Ok(CssStyleSelector::Relative(CssRelativeSelector::new(
+                    first.combinator(),
+                    selector,
+                )))
             }
-            Self::Parent => Ok(parent),
-            Self::Append(suffix) => CssSelector::append_to_subject(parent, suffix.clone())
-                .ok_or_else(|| invalid_selector(input, "invalid nested selector suffix")),
+            Self::Parent => Ok(CssStyleSelector::Selector(CssSelector::Compound(
+                CssCompoundSelector::new(None, None, Vec::new(), Vec::new(), Vec::new())
+                    .with_nesting_selectors(1),
+            ))),
+            Self::Append(suffix) => {
+                if suffix.type_selector().is_some() {
+                    return Err(invalid_selector(
+                        input,
+                        "a type selector cannot follow a nesting selector",
+                    ));
+                }
+                Ok(CssStyleSelector::Selector(CssSelector::Compound(
+                    suffix.with_nesting_selectors(1),
+                )))
+            }
         }
     }
 }

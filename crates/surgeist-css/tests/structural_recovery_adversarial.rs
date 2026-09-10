@@ -2,7 +2,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use surgeist_css::{
     CssErrorCode, CssNamespaceConstraint, CssRecoveryAction, CssRule, CssScopedRule, CssSelector,
-    CssSelectorCombinator, CssSourcePosition, ErrorKind, parse_sheet,
+    CssSelectorCombinator, CssSourcePosition, CssStyleSelector, ErrorKind, parse_sheet,
 };
 
 fn nested_layers(depth: usize, tail: &str) -> String {
@@ -94,6 +94,7 @@ fn nested_empty_rule_order(depth: usize, scoped: bool) -> String {
 fn selector_classes(selector: &CssSelector) -> Vec<&str> {
     match selector {
         CssSelector::Class(name) => vec![name],
+        CssSelector::Compound(selector) => selector.classes().iter().map(String::as_str).collect(),
         CssSelector::Complex(selector) => std::iter::once(selector.first())
             .chain(selector.rest().iter().map(|part| part.selector()))
             .map(|compound| {
@@ -113,20 +114,39 @@ fn assert_ascii_position(position: CssSourcePosition, offset: usize) {
     assert_eq!(position.column().value(), offset as u32);
 }
 
-fn style_rules(
-    report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>,
-) -> Vec<&surgeist_css::CssStyleRule> {
-    report
-        .syntax()
-        .rules()
+fn style_chain(mut style: &surgeist_css::CssStyleRule) -> Vec<&surgeist_css::CssStyleRule> {
+    let mut chain = Vec::new();
+    loop {
+        chain.push(style);
+        match style.rules().first() {
+            Some(CssRule::Style(child)) => style = child,
+            None => break,
+            unexpected => {
+                panic!("expected first child to continue the style chain: {unexpected:?}")
+            }
+        }
+    }
+    chain
+}
+
+fn ordered_declaration_offsets(rule: &surgeist_css::CssStyleRule) -> Vec<usize> {
+    let mut offsets = rule
+        .declarations()
         .iter()
-        .map(|rule| {
-            let CssRule::Style(rule) = rule else {
-                panic!("expected flattened style rule, got {rule:?}");
-            };
-            rule
-        })
-        .collect()
+        .map(|declaration| declaration.position().byte_offset().value())
+        .collect::<Vec<_>>();
+    for child in rule.rules() {
+        match child {
+            CssRule::Style(style) => offsets.extend(ordered_declaration_offsets(style)),
+            CssRule::NestedDeclarations(run) => offsets.extend(
+                run.declarations()
+                    .iter()
+                    .map(|declaration| declaration.position().byte_offset().value()),
+            ),
+            unexpected => panic!("unexpected child in style-only fixture: {unexpected:?}"),
+        }
+    }
+    offsets
 }
 
 fn nesting_detail(
@@ -234,7 +254,7 @@ fn structural_split_preserves_namespace_bindings_through_the_256_level_boundary(
         let [CssRule::Style(leaf)] = layer.rules() else {
             panic!("expected retained namespace-qualified child at depth {depth}: {layer:#?}");
         };
-        let CssSelector::Compound(selector) = leaf.selector() else {
+        let CssSelector::Compound(selector) = leaf.selectors().selectors()[0].selector() else {
             panic!("expected namespace-qualified compound selector at depth {depth}");
         };
         assert!(matches!(
@@ -518,18 +538,22 @@ fn structural_preflight_accepts_256_nested_style_blocks_without_losing_declarati
     let source = format!(
         "{}color:red{}}}.after{{color:blue}}",
         ".x{".repeat(256),
-        "}".repeat(255),
+        "}".repeat(255)
     );
     let report = parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    assert_eq!(report.syntax().rules().len(), 2);
+    let [CssRule::Style(root), CssRule::Style(after)] = report.syntax().rules() else {
+        panic!("expected nested root and sibling");
+    };
+    let chain = style_chain(root);
+    assert_eq!(chain.len(), 256);
     assert!(
-        report
-            .syntax()
-            .rules()
+        chain[..255]
             .iter()
-            .all(|rule| matches!(rule, CssRule::Style(rule) if rule.declarations().len() == 1))
+            .all(|rule| rule.declarations().is_empty())
     );
+    assert_eq!(chain[255].declarations().len(), 1);
+    assert_eq!(after.declarations().len(), 1);
 }
 
 #[test]
@@ -537,107 +561,75 @@ fn structural_preflight_at_64_preserves_nested_style_context_and_exact_empty_sib
     let source = distinct_nested_styles(64, &[62], true);
     let report = parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-
-    let styles = style_rules(&report);
-    assert_eq!(styles.len(), 4, "{styles:#?}");
-    assert_eq!(
-        styles
-            .iter()
-            .map(|rule| selector_classes(rule.selector()).len())
-            .collect::<Vec<_>>(),
-        [63, 64, 63, 1],
-    );
-    assert_eq!(
-        selector_classes(styles[1].selector()),
-        (0..64)
-            .map(|level| format!("n{level:03}"))
-            .collect::<Vec<_>>(),
-    );
-    let CssSelector::Complex(final_selector) = styles[1].selector() else {
-        panic!("expected composed complex selector");
+    let [CssRule::Style(root), CssRule::Style(after)] = report.syntax().rules() else {
+        panic!("expected nested root and sibling");
     };
-    assert!(
-        final_selector
-            .rest()
-            .iter()
-            .all(|part| part.combinator() == CssSelectorCombinator::Child)
-    );
-    assert_eq!(selector_classes(styles[3].selector()), ["unrelated-empty"]);
-    assert!(styles[3].declarations().is_empty());
-
-    let declaration_offsets = styles[..3]
-        .iter()
-        .map(|rule| {
-            rule.declarations().as_slice()[0]
-                .position()
-                .byte_offset()
-                .value()
-        })
-        .collect::<Vec<_>>();
+    let chain = style_chain(root);
+    assert_eq!(chain.len(), 64);
+    for (level, style) in chain.iter().enumerate() {
+        assert_eq!(style.selectors().selectors().len(), 1);
+        assert_eq!(
+            selector_classes(style.selectors().selectors()[0].selector()),
+            [format!("n{level:03}")]
+        );
+        if level > 0 {
+            let CssStyleSelector::Relative(relative) = &style.selectors().selectors()[0] else {
+                panic!("expected relative child at {level}");
+            };
+            assert_eq!(relative.combinator(), CssSelectorCombinator::Child);
+        }
+    }
     assert_eq!(
-        declaration_offsets,
-        [
-            source.find("color:red").expect("before declaration"),
-            source.find("display:block").expect("deep declaration"),
-            source.find("opacity:1").expect("after declaration"),
-        ],
+        selector_classes(after.selectors().selectors()[0].selector()),
+        ["unrelated-empty"]
     );
+    assert!(after.declarations().is_empty());
+    assert_eq!(
+        ordered_declaration_offsets(root),
+        [
+            source.find("color:red").unwrap(),
+            source.find("display:block").unwrap(),
+            source.find("opacity:1").unwrap(),
+        ]
+    );
+    let [CssRule::Style(_), CssRule::NestedDeclarations(_)] = chain[62].rules() else {
+        panic!("expected declaration after the recovered child");
+    };
 }
 
 #[test]
 fn structural_preflight_at_256_preserves_every_style_chunk_context_and_source_order() {
-    let declaration_levels = [62, 125, 188, 251];
-    let source = distinct_nested_styles(256, &declaration_levels, false);
+    let source = distinct_nested_styles(256, &[62, 125, 188, 251], false);
     let report = parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-
-    let styles = style_rules(&report);
-    assert_eq!(styles.len(), 10, "{styles:#?}");
+    let [CssRule::Style(root), CssRule::Style(after)] = report.syntax().rules() else {
+        panic!("expected root and sibling");
+    };
+    let chain = style_chain(root);
+    assert_eq!(chain.len(), 256);
+    for (level, style) in chain.iter().enumerate() {
+        assert_eq!(style.selectors().selectors().len(), 1);
+        assert_eq!(
+            selector_classes(style.selectors().selectors()[0].selector()),
+            [format!("n{level:03}")]
+        );
+        assert_ascii_position(
+            style.position(),
+            source.find(&format!(".n{level:03}")).unwrap(),
+        );
+    }
     assert_eq!(
-        styles
-            .iter()
-            .map(|rule| selector_classes(rule.selector()).len())
-            .collect::<Vec<_>>(),
-        [63, 126, 189, 252, 256, 252, 189, 126, 63, 1],
+        selector_classes(after.selectors().selectors()[0].selector()),
+        ["unrelated-empty"]
     );
-    assert_eq!(
-        selector_classes(styles[4].selector()),
-        (0..256)
-            .map(|level| format!("n{level:03}"))
-            .collect::<Vec<_>>(),
-    );
-    assert_eq!(selector_classes(styles[9].selector()), ["unrelated-empty"]);
-    assert!(styles[9].declarations().is_empty());
-
-    let declaration_offsets = styles[..9]
-        .iter()
-        .map(|rule| {
-            rule.declarations().as_slice()[0]
-                .position()
-                .byte_offset()
-                .value()
-        })
+    assert!(after.declarations().is_empty());
+    let mut expected = source
+        .match_indices("color:red")
+        .map(|(offset, _)| offset)
         .collect::<Vec<_>>();
-    let mut expected_offsets = Vec::new();
-    let mut cursor = 0;
-    for _ in declaration_levels {
-        let relative = source[cursor..]
-            .find("color:red")
-            .expect("before declaration");
-        cursor += relative;
-        expected_offsets.push(cursor);
-        cursor += "color:red".len();
-    }
-    expected_offsets.push(source.find("display:block").expect("deep declaration"));
-    cursor = 0;
-    let mut after_offsets = Vec::new();
-    while let Some(relative) = source[cursor..].find("opacity:1") {
-        cursor += relative;
-        after_offsets.push(cursor);
-        cursor += "opacity:1".len();
-    }
-    expected_offsets.extend(after_offsets);
-    assert_eq!(declaration_offsets, expected_offsets);
+    expected.push(source.find("display:block").unwrap());
+    expected.extend(source.match_indices("opacity:1").map(|(offset, _)| offset));
+    assert_eq!(ordered_declaration_offsets(root), expected);
 }
 
 #[test]
@@ -662,24 +654,31 @@ fn structural_preflight_orders_empty_ordinary_styles_around_recovered_chunks() {
                 report.syntax().rules()
             );
         };
-        assert_eq!(selector_classes(before.selector()), ["before-empty"]);
+        assert_eq!(
+            selector_classes(before.selectors().selectors()[0].selector()),
+            ["before-empty"]
+        );
         assert_ascii_position(
             before.position(),
             source.find(".before-empty").expect("before style start"),
         );
+        let chain = style_chain(recovered);
+        assert_eq!(chain.len(), depth);
+        for (level, style) in chain.iter().enumerate() {
+            assert_eq!(
+                selector_classes(style.selectors().selectors()[0].selector()),
+                [format!("n{level:03}")]
+            );
+            assert_ascii_position(
+                style.position(),
+                source.find(&format!(".n{level:03}")).unwrap(),
+            );
+            assert!(style.declarations().is_empty());
+        }
         assert_eq!(
-            selector_classes(recovered.selector()),
-            (0..depth)
-                .map(|level| format!("n{level:03}"))
-                .collect::<Vec<_>>()
+            selector_classes(after.selectors().selectors()[0].selector()),
+            ["after-empty"]
         );
-        assert_ascii_position(
-            recovered.position(),
-            source
-                .find(&format!(".n{:03}", depth - 1))
-                .expect("recovered style start"),
-        );
-        assert_eq!(selector_classes(after.selector()), ["after-empty"]);
         assert_ascii_position(
             after.position(),
             source.find(".after-empty").expect("after style start"),
@@ -758,31 +757,28 @@ fn structural_preflight_drops_only_style_level_257_with_exact_parent_order() {
     let source = distinct_nested_styles(257, &[255], false);
     let report = parse_sheet(&source);
 
-    let styles = style_rules(&report);
-    assert_eq!(styles.len(), 3, "{styles:#?}");
+    let [CssRule::Style(root), CssRule::Style(after)] = report.syntax().rules() else {
+        panic!("expected retained root and sibling");
+    };
+    let chain = style_chain(root);
+    assert_eq!(chain.len(), 256);
+    for (level, style) in chain.iter().enumerate() {
+        assert_eq!(
+            selector_classes(style.selectors().selectors()[0].selector()),
+            [format!("n{level:03}")]
+        );
+    }
     assert_eq!(
-        styles
-            .iter()
-            .map(|rule| selector_classes(rule.selector()).len())
-            .collect::<Vec<_>>(),
-        [256, 256, 1],
+        selector_classes(after.selectors().selectors()[0].selector()),
+        ["unrelated-empty"]
     );
-    assert_eq!(selector_classes(styles[2].selector()), ["unrelated-empty"]);
-    assert!(styles[2].declarations().is_empty());
+    assert!(after.declarations().is_empty());
     assert_eq!(
-        styles[..2]
-            .iter()
-            .map(|rule| {
-                rule.declarations().as_slice()[0]
-                    .position()
-                    .byte_offset()
-                    .value()
-            })
-            .collect::<Vec<_>>(),
+        ordered_declaration_offsets(root),
         [
-            source.find("color:red").expect("before declaration"),
-            source.find("opacity:1").expect("after declaration"),
-        ],
+            source.find("color:red").unwrap(),
+            source.find("opacity:1").unwrap()
+        ]
     );
 
     let (detail, span) = nesting_detail(&report);

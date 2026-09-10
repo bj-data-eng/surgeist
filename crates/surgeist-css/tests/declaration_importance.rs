@@ -169,12 +169,20 @@ fn declaration_importance_font_face_occurrences_retain_positions_and_reject_anno
         panic!("expected font-face");
     };
     let descriptors = rule.descriptors();
-    assert_eq!(descriptors.font_family().value().as_str(), "Inter");
+    assert_eq!(descriptors.font_family().unwrap().value().as_str(), "Inter");
     assert_eq!(
-        descriptors.font_family().position().byte_offset().value(),
+        descriptors
+            .font_family()
+            .unwrap()
+            .position()
+            .byte_offset()
+            .value(),
         13
     );
-    assert_eq!(descriptors.src().position().byte_offset().value(), 33);
+    assert_eq!(
+        descriptors.src().unwrap().position().byte_offset().value(),
+        33
+    );
     assert_eq!(
         descriptors
             .font_display()

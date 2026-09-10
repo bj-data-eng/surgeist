@@ -76,7 +76,7 @@ fn c14_remaining_shared_values_are_typed() {
     let [CssRule::Style(rule)] = nth.syntax().rules() else {
         panic!("expected nth-child style rule");
     };
-    let CssSelector::Compound(selector) = rule.selector() else {
+    let CssSelector::Compound(selector) = rule.selectors().selectors()[0].selector() else {
         panic!("expected compound selector");
     };
     assert!(matches!(

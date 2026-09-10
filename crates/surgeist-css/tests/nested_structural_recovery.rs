@@ -7,8 +7,11 @@ fn style_name(rule: &CssRule) -> &str {
     let CssRule::Style(rule) = rule else {
         panic!("expected style rule, got {rule:?}");
     };
-    let CssSelector::Class(name) = rule.selector() else {
-        panic!("expected class selector, got {:?}", rule.selector());
+    let CssSelector::Class(name) = rule.selectors().selectors()[0].selector() else {
+        panic!(
+            "expected class selector, got {:?}",
+            rule.selectors().selectors()[0].selector()
+        );
     };
     name
 }
@@ -146,14 +149,18 @@ fn nested_structural_qualified_failures_recover_in_group_scope_and_style_context
         ".host {{ color: red; & .before {{ width: 1px; }} {failed} & .after {{ height: 2px; }} opacity: 1; }}"
     );
     let style = parse_sheet(&style_source);
-    assert_eq!(style.syntax().rules().len(), 4);
-    assert!(
-        style
-            .syntax()
-            .rules()
-            .iter()
-            .all(|rule| matches!(rule, CssRule::Style(_)))
-    );
+    let [CssRule::Style(parent)] = style.syntax().rules() else {
+        panic!("expected authored parent");
+    };
+    assert_eq!(parent.declarations().len(), 1);
+    assert!(matches!(
+        parent.rules(),
+        [
+            CssRule::Style(_),
+            CssRule::Style(_),
+            CssRule::NestedDeclarations(_)
+        ]
+    ));
     let style_start = style_source.find(failed).unwrap();
     assert_drop(
         &style_source,
@@ -240,7 +247,17 @@ fn nested_structural_style_and_scope_at_rule_failures_keep_authored_siblings() {
         ".host {{ color: red; & .before {{ width: 1px; }} {failed} & .after {{ height: 2px; }} opacity: 1; }}"
     );
     let style = parse_sheet(&style_source);
-    assert_eq!(style.syntax().rules().len(), 4);
+    let [CssRule::Style(parent)] = style.syntax().rules() else {
+        panic!("expected authored parent");
+    };
+    assert!(matches!(
+        parent.rules(),
+        [
+            CssRule::Style(_),
+            CssRule::Style(_),
+            CssRule::NestedDeclarations(_)
+        ]
+    ));
     let style_start = style_source.find(failed).unwrap();
     assert_drop(
         &style_source,

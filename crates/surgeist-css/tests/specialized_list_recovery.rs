@@ -34,7 +34,7 @@ fn media_rule(
 fn forgiving_selectors(
     report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>,
 ) -> &[CssSelector] {
-    let pseudo = match style_rule(report).selector() {
+    let pseudo = match style_rule(report).selectors().selectors()[0].selector() {
         CssSelector::PseudoClass(pseudo) => pseudo,
         CssSelector::Compound(selector) => selector
             .pseudo_classes()

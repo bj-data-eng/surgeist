@@ -19,6 +19,11 @@ fn missing_matching_descriptors_preserves_clean_authored_font_face() {
             panic!("expected the authored font-face for {source}");
         };
         assert_eq!(rule.descriptors().occurrences().len(), occurrences);
+        assert_eq!(
+            rule.descriptors().font_family().is_some(),
+            source.contains("font-family")
+        );
+        assert_eq!(rule.descriptors().src().is_some(), source.contains("src:"));
         assert_eq!(rule.position().byte_offset().value(), 0);
     }
 }
@@ -31,6 +36,8 @@ fn invalid_descriptor_does_not_discard_accepted_font_face() {
         panic!("descriptor recovery must retain the accepted outer rule");
     };
     assert_eq!(rule.descriptors().occurrences().len(), 2);
+    assert_eq!(rule.descriptors().font_family().unwrap().as_str(), "Demo");
+    assert!(rule.descriptors().src().is_none());
     let [diagnostic] = report.diagnostics() else {
         panic!("expected exactly the invalid src descriptor diagnostic");
     };

@@ -6,7 +6,7 @@ fn style_rule_names(report: &surgeist_css::CssParseReport<surgeist_css::CssSheet
         .rules()
         .iter()
         .filter_map(|rule| match rule {
-            CssRule::Style(rule) => match rule.selector() {
+            CssRule::Style(rule) => match rule.selectors().selectors()[0].selector() {
                 surgeist_css::CssSelector::Class(name) => Some(name.as_str()),
                 _ => None,
             },

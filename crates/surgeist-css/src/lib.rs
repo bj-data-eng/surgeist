@@ -45,6 +45,27 @@ let _ = validate_style_attribute("color: red");
 //! assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
 //! ```
 //!
+//! # Authored nesting
+//!
+//! A style rule owns its complete selector list, leading declarations, and ordered child
+//! rules. Later declaration runs use [`CssRule::NestedDeclarations`], preserving their place
+//! after a nested rule without selecting cascade winners or expanding parent selectors.
+//!
+//! ```
+//! use surgeist_css::{CssRule, parse_sheet};
+//!
+//! let report = parse_sheet(".card, #featured { color: red; &:hover { opacity: 1; } color: blue; }");
+//! assert!(report.is_clean());
+//! let [CssRule::Style(parent)] = report.syntax().rules() else { unreachable!() };
+//! assert_eq!(parent.selectors().selectors().len(), 2);
+//! assert_eq!(parent.declarations().len(), 1);
+//! let [CssRule::Style(child), CssRule::NestedDeclarations(after)] = parent.rules() else {
+//!     unreachable!()
+//! };
+//! assert_eq!(child.declarations().len(), 1);
+//! assert_eq!(after.declarations().len(), 1);
+//! ```
+//!
 //! # Style attributes and declarations
 //!
 //! Style attributes share the ordinary declaration grammar used by style-rule
@@ -541,7 +562,7 @@ let _ = validate_style_attribute("color: red");
 //! assert_eq!(namespace.prefix().expect("named prefix").as_str(), "svg");
 //! assert_eq!(namespace.name().as_str(), "urn:svg");
 //!
-//! let CssSelector::Compound(selector) = style.selector() else {
+//! let CssSelector::Compound(selector) = style.selectors().selectors()[0].selector() else {
 //!     panic!("expected compound selector");
 //! };
 //! let qualified = selector.type_selector().expect("qualified type selector");

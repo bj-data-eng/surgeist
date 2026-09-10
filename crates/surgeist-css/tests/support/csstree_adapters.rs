@@ -317,7 +317,7 @@ impl Extractor {
                 .iter()
                 .find_map(|rule| match rule {
                     CssRule::Style(rule) => {
-                        let _ = rule.selector();
+                        let _ = rule.selectors();
                         Some(1)
                     }
                     _ => None,

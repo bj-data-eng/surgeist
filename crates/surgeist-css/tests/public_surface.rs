@@ -86,7 +86,7 @@ fn public_surface_exposes_namespace_qualified_selector_accessors_and_id_projecti
     let [CssRule::Namespace(_), CssRule::Style(rule)] = report.syntax().rules() else {
         panic!("expected namespace and qualified style rules")
     };
-    let CssSelector::Compound(selector) = rule.selector() else {
+    let CssSelector::Compound(selector) = rule.selectors().selectors()[0].selector() else {
         panic!("expected qualified compound selector")
     };
 
@@ -117,7 +117,7 @@ fn public_surface_exposes_checked_selectors3_language_pseudos_and_ordered_ids() 
     let [CssRule::Style(rule)] = report.syntax().rules() else {
         panic!("expected one retained style rule")
     };
-    let CssSelector::Compound(selector) = rule.selector() else {
+    let CssSelector::Compound(selector) = rule.selectors().selectors()[0].selector() else {
         panic!("expected compound selector")
     };
 

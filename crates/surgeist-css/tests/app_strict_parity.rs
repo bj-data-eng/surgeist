@@ -182,15 +182,16 @@ fn app_strict_namespace_qualified_selectors_match_ordinary_results() {
             CssRule::Namespace(_),
             CssRule::Namespace(_),
             CssRule::Style(_),
-            CssRule::Style(_),
-            CssRule::Style(_),
-            CssRule::Style(_),
-            CssRule::Style(_),
             CssRule::Media(_),
             CssRule::Supports(_),
             CssRule::Scope(_),
         ]
     ));
+
+    let CssRule::Style(style) = &clean.syntax().rules()[2] else {
+        panic!("expected the complete authored selector list");
+    };
+    assert_eq!(style.selectors().selectors().len(), 5);
 
     let recovered = assert_sheet_parity(concat!(
         "@namespace svg \"urn:svg\";",

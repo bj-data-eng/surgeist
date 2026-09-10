@@ -36,7 +36,7 @@ fn font_sources_preserve_fonts3_formats_and_selected_fonts4_hints() {
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("expected one retained font-face rule");
     };
-    let sources = rule.descriptors().src().sources();
+    let sources = rule.descriptors().src().unwrap().sources();
     assert_eq!(sources.len(), 4);
     let CssFontFaceSource::Local(local) = &sources[0] else {
         panic!("expected local source");
@@ -88,12 +88,12 @@ fn font_face_family_and_local_names_distinguish_quoted_reserved_names() {
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("expected font-face");
     };
-    assert_eq!(rule.descriptors().font_family().as_str(), "serif");
+    assert_eq!(rule.descriptors().font_family().unwrap().as_str(), "serif");
     let [
         CssFontFaceSource::Local(global),
         CssFontFaceSource::Local(sequence),
         _,
-    ] = rule.descriptors().src().sources()
+    ] = rule.descriptors().src().unwrap().sources()
     else {
         panic!("expected two local names and a URL");
     };
@@ -106,17 +106,17 @@ fn font_face_family_and_local_names_distinguish_quoted_reserved_names() {
         "@font-face{font-family:Demo;src:local(sans-serif)}.after{color:red}",
     ] {
         let report = parse_sheet(source);
-        assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
+        assert!(matches!(
+            report.syntax().rules(),
+            [CssRule::FontFace(_), CssRule::Style(_)]
+        ));
         assert_eq!(
             report
                 .diagnostics()
                 .iter()
                 .map(|diagnostic| diagnostic.action())
                 .collect::<Vec<_>>(),
-            [
-                CssRecoveryAction::DropDescriptor,
-                CssRecoveryAction::DropAtRule
-            ]
+            [CssRecoveryAction::DropDescriptor]
         );
         assert_strict_parity(source);
     }
@@ -139,8 +139,12 @@ fn font_source_lists_reject_empty_items_and_invalid_hint_order() {
     ];
     for source in cases {
         let report = parse_sheet(source);
-        assert!(report.syntax().rules().is_empty(), "{source}");
-        assert_eq!(report.diagnostics().len(), 2, "{source}");
+        let [CssRule::FontFace(rule)] = report.syntax().rules() else {
+            panic!("invalid src must not discard its accepted outer rule: {source}");
+        };
+        assert!(rule.descriptors().src().is_none());
+        assert_eq!(rule.descriptors().font_family().unwrap().as_str(), "Demo");
+        assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
             report.diagnostics()[0].error().code(),
             CssErrorCode::InvalidDescriptorValue,
@@ -149,11 +153,6 @@ fn font_source_lists_reject_empty_items_and_invalid_hint_order() {
         assert_eq!(
             report.diagnostics()[0].action(),
             CssRecoveryAction::DropDescriptor,
-            "{source}"
-        );
-        assert_eq!(
-            report.diagnostics()[1].action(),
-            CssRecoveryAction::DropAtRule,
             "{source}"
         );
         assert_strict_parity(source);
@@ -184,7 +183,7 @@ fn selected_fonts4_format_and_technology_keywords_remain_ordered() {
         CssFontFormatHint::EmbeddedOpenType,
         CssFontFormatHint::Svg,
     ];
-    for (source, expected) in rule.descriptors().src().sources()[..7]
+    for (source, expected) in rule.descriptors().src().unwrap().sources()[..7]
         .iter()
         .zip(expected_formats)
     {
@@ -193,7 +192,7 @@ fn selected_fonts4_format_and_technology_keywords_remain_ordered() {
         };
         assert_eq!(source.format(), Some(&expected));
     }
-    let CssFontFaceSource::Url(technology) = &rule.descriptors().src().sources()[7] else {
+    let CssFontFaceSource::Url(technology) = &rule.descriptors().src().unwrap().sources()[7] else {
         panic!("expected technology URL source");
     };
     assert_eq!(
@@ -230,9 +229,9 @@ fn font_face_preserves_occurrences_and_uses_last_valid_descriptor() {
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("expected one retained font-face rule");
     };
-    assert_eq!(rule.descriptors().font_family().as_str(), "Two");
+    assert_eq!(rule.descriptors().font_family().unwrap().as_str(), "Two");
     assert_eq!(
-        rule.descriptors().src().sources()[0],
+        rule.descriptors().src().unwrap().sources()[0],
         CssFontFaceSource::Url(
             surgeist_css::CssFontFaceUrlSource::try_new("two.woff2", None, Vec::new()).unwrap(),
         )
@@ -394,8 +393,9 @@ fn invalid_descriptor_occurrences_do_not_erase_valid_neighbors() {
     let CssRule::FontFace(rule) = &report.syntax().rules()[0] else {
         panic!("expected font-face");
     };
-    assert_eq!(rule.descriptors().font_family().as_str(), "Two");
-    let CssFontFaceSource::Url(effective_source) = &rule.descriptors().src().sources()[0] else {
+    assert_eq!(rule.descriptors().font_family().unwrap().as_str(), "Two");
+    let CssFontFaceSource::Url(effective_source) = &rule.descriptors().src().unwrap().sources()[0]
+    else {
         panic!("expected URL source");
     };
     assert_eq!(effective_source.url(), "two");

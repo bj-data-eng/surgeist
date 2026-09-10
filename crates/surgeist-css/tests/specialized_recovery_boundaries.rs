@@ -278,7 +278,9 @@ fn specialized_boundary_legacy_tokens_have_exact_nonempty_spans_and_keep_rule_or
             let CssRule::Style(style) = rule else {
                 panic!("expected style rule")
             };
-            let surgeist_css::CssSelector::Class(name) = style.selector() else {
+            let surgeist_css::CssSelector::Class(name) =
+                style.selectors().selectors()[0].selector()
+            else {
                 panic!("expected class selector")
             };
             name.as_str()

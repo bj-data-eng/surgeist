@@ -364,9 +364,10 @@ source, weight, style, stretch, unicode-range, and feature-settings grammar is
 catalogued separately from the selected Fonts 4 additions: `font-display`,
 numeric property weight, descriptor weight/style/stretch ranges, and keyword
 `format()`/`tech()` source hints. An invalid or unknown descriptor is dropped
-with a `DropDescriptor` diagnostic without erasing valid neighbors. A rule is
-retained only when a valid effective `font-family` and `src` remain, and parent
-loss follows child diagnostics.
+with a `DropDescriptor` diagnostic without erasing valid neighbors. Empty rules
+and rules missing `font-family` or `src` remain valid authored syntax. Those two
+accessors return `Option`; their absence excludes the face from downstream font
+matching under the pinned Fonts 4 §4.1, rather than causing a grammar error.
 
 Fonts 3 rows cite the dated `O-FONTS3` source and are `Complete`. The five
 selected atomic Fonts 4 deltas cite `I-FONTS4` and remain `Partial` with explicit
@@ -463,7 +464,7 @@ else {
 assert_eq!(namespace.prefix().expect("named prefix").as_str(), "svg");
 assert_eq!(namespace.name().as_str(), "urn:svg");
 
-let CssSelector::Compound(selector) = style.selector() else {
+let CssSelector::Compound(selector) = style.selectors().selectors()[0].selector() else {
     panic!("expected compound selector");
 };
 let qualified = selector.type_selector().expect("qualified type selector");
@@ -504,6 +505,22 @@ undeclared named prefix invalidates its selector. Forgiving `:is()` and
 style, scope, nesting, `:not()`, `:has()`, and nth `of` consumers drop their
 established containing unit. Malformed, block-form, nested, or late namespace
 rules recover as one `DropAtRule` and leave later siblings eligible.
+
+Style rules preserve one authored node for their complete selector list.
+`CssStyleRule::selectors()` returns `CssStyleSelectorList`; its `selectors()` slice contains
+`CssStyleSelector::Selector` or, in nested contexts, `CssStyleSelector::Relative` with its
+leading combinator. This replaces the former singular `CssStyleRule::selector()` accessor.
+Read each list member explicitly instead of assuming a separate rule for each selector.
+
+`CssStyleRule::declarations()` contains only leading declarations. `rules()` preserves child
+rules and later `CssRule::NestedDeclarations` runs in source order. A nested declarations
+rule exposes its validated nonempty `declarations()` and the first declaration's `position()`;
+it inherits the containing style rule's selector context without inventing an `&` selector.
+`CssCompoundSelector::nesting_selectors()` records symbolic parent anchors independently of
+`has_scope_anchor()`. No parent selector list is expanded during parsing. `CssScopedStyleRule` follows the same
+leading-declarations and ordered-child contract: its `rules()` returns ordinary `CssRule`
+nesting children relative to the scoped style parent, while the enclosing `@scope` keeps its
+scoped rule-list grammar.
 
 The authored selector model covers complete Selectors 3, including universal
 and type selectors, all attribute matchers, repeated IDs and classes in order,

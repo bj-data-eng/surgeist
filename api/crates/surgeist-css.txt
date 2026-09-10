@@ -1995,6 +1995,7 @@ pub surgeist_css::CssRule::LayerBlock(surgeist_css::CssLayerBlockRule)
 pub surgeist_css::CssRule::LayerStatement(surgeist_css::CssLayerStatementRule)
 pub surgeist_css::CssRule::Media(surgeist_css::CssMediaRule)
 pub surgeist_css::CssRule::Namespace(surgeist_css::CssNamespaceRule)
+pub surgeist_css::CssRule::NestedDeclarations(surgeist_css::CssNestedDeclarationsRule)
 pub surgeist_css::CssRule::Page(surgeist_css::CssPageRule)
 pub surgeist_css::CssRule::Scope(surgeist_css::CssScopeRule)
 pub surgeist_css::CssRule::Style(surgeist_css::CssStyleRule)
@@ -2048,6 +2049,11 @@ pub surgeist_css::CssStepPosition::JumpEnd
 pub surgeist_css::CssStepPosition::JumpNone
 pub surgeist_css::CssStepPosition::JumpStart
 pub surgeist_css::CssStepPosition::Start
+#[non_exhaustive] pub enum surgeist_css::CssStyleSelector
+pub surgeist_css::CssStyleSelector::Relative(surgeist_css::CssRelativeSelector)
+pub surgeist_css::CssStyleSelector::Selector(surgeist_css::CssSelector)
+impl surgeist_css::CssStyleSelector
+pub const fn surgeist_css::CssStyleSelector::selector(&self) -> &surgeist_css::CssSelector
 pub enum surgeist_css::CssSupportStatus
 pub surgeist_css::CssSupportStatus::Complete
 pub surgeist_css::CssSupportStatus::Partial
@@ -3171,6 +3177,7 @@ pub const fn surgeist_css::CssCompoundSelector::has_pseudo_elements(&self) -> bo
 pub const fn surgeist_css::CssCompoundSelector::has_scope_anchor(&self) -> bool
 pub fn surgeist_css::CssCompoundSelector::ids(&self) -> &[alloc::string::String]
 pub fn surgeist_css::CssCompoundSelector::key(&self) -> core::option::Option<&alloc::string::String>
+pub const fn surgeist_css::CssCompoundSelector::nesting_selectors(&self) -> usize
 pub fn surgeist_css::CssCompoundSelector::pseudo_classes(&self) -> &[surgeist_css::CssPseudoClass]
 pub const fn surgeist_css::CssCompoundSelector::pseudo_elements(&self) -> core::option::Option<&surgeist_css::CssPseudoElementSequence>
 pub const fn surgeist_css::CssCompoundSelector::tag(&self) -> core::option::Option<&alloc::string::String>
@@ -3597,13 +3604,13 @@ pub const fn surgeist_css::CssFont::weight(&self) -> core::option::Option<surgei
 pub struct surgeist_css::CssFontFaceDescriptors
 impl surgeist_css::CssFontFaceDescriptors
 pub const fn surgeist_css::CssFontFaceDescriptors::font_display(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontDisplay>>
-pub const fn surgeist_css::CssFontFaceDescriptors::font_family(&self) -> &surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontFaceFamily>
+pub const fn surgeist_css::CssFontFaceDescriptors::font_family(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontFaceFamily>>
 pub const fn surgeist_css::CssFontFaceDescriptors::font_feature_settings(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssAuthoredFontFeatureSettings>>
 pub const fn surgeist_css::CssFontFaceDescriptors::font_stretch(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontFaceStretch>>
 pub const fn surgeist_css::CssFontFaceDescriptors::font_style(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontFaceStyle>>
 pub const fn surgeist_css::CssFontFaceDescriptors::font_weight(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontFaceWeight>>
 pub fn surgeist_css::CssFontFaceDescriptors::occurrences(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_css::CssFontFaceDescriptorRef<'_>>
-pub const fn surgeist_css::CssFontFaceDescriptors::src(&self) -> &surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontFaceSourceList>
+pub const fn surgeist_css::CssFontFaceDescriptors::src(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontFaceSourceList>>
 pub const fn surgeist_css::CssFontFaceDescriptors::unicode_range(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssUnicodeRangeList>>
 pub struct surgeist_css::CssFontFaceFamily
 impl surgeist_css::CssFontFaceFamily
@@ -4321,6 +4328,10 @@ impl surgeist_css::CssNamespaceRule
 pub const fn surgeist_css::CssNamespaceRule::name(&self) -> &surgeist_css::CssNamespaceName
 pub const fn surgeist_css::CssNamespaceRule::position(&self) -> surgeist_css::CssSourcePosition
 pub const fn surgeist_css::CssNamespaceRule::prefix(&self) -> core::option::Option<&surgeist_css::CssNamespacePrefix>
+pub struct surgeist_css::CssNestedDeclarationsRule
+impl surgeist_css::CssNestedDeclarationsRule
+pub const fn surgeist_css::CssNestedDeclarationsRule::declarations(&self) -> &surgeist_css::CssDeclarationList
+pub fn surgeist_css::CssNestedDeclarationsRule::position(&self) -> surgeist_css::CssSourcePosition
 pub struct surgeist_css::CssNestingLimitError
 impl surgeist_css::CssNestingLimitError
 pub const fn surgeist_css::CssNestingLimitError::enclosing_production(&self) -> surgeist_css::CssProductionId
@@ -4755,6 +4766,7 @@ pub struct surgeist_css::CssScopedStyleRule
 impl surgeist_css::CssScopedStyleRule
 pub const fn surgeist_css::CssScopedStyleRule::declarations(&self) -> &surgeist_css::CssDeclarationList
 pub const fn surgeist_css::CssScopedStyleRule::position(&self) -> surgeist_css::CssSourcePosition
+pub fn surgeist_css::CssScopedStyleRule::rules(&self) -> &[surgeist_css::CssRule]
 pub const fn surgeist_css::CssScopedStyleRule::selectors(&self) -> &surgeist_css::CssScopedStyleSelectorList
 pub struct surgeist_css::CssScopedStyleSelectorList
 impl surgeist_css::CssScopedStyleSelectorList
@@ -4847,7 +4859,11 @@ pub struct surgeist_css::CssStyleRule
 impl surgeist_css::CssStyleRule
 pub const fn surgeist_css::CssStyleRule::declarations(&self) -> &surgeist_css::CssDeclarationList
 pub const fn surgeist_css::CssStyleRule::position(&self) -> surgeist_css::CssSourcePosition
-pub const fn surgeist_css::CssStyleRule::selector(&self) -> &surgeist_css::CssSelector
+pub fn surgeist_css::CssStyleRule::rules(&self) -> &[surgeist_css::CssRule]
+pub const fn surgeist_css::CssStyleRule::selectors(&self) -> &surgeist_css::CssStyleSelectorList
+pub struct surgeist_css::CssStyleSelectorList
+impl surgeist_css::CssStyleSelectorList
+pub fn surgeist_css::CssStyleSelectorList::selectors(&self) -> &[surgeist_css::CssStyleSelector]
 pub struct surgeist_css::CssSubstitutionDependentValue
 impl surgeist_css::CssSubstitutionDependentValue
 pub fn surgeist_css::CssSubstitutionDependentValue::as_css(&self) -> &str

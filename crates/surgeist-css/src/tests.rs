@@ -619,8 +619,9 @@ fn layer_rule_models_preserve_authored_statement_and_block_shapes() {
 
     let nested_location = source_position(4, 1);
     let nested = CssRule::Style(CssStyleRule::new(
-        CssSelector::Class("button".to_owned()),
+        CssStyleSelectorList::absolute(vec![CssSelector::Class("button".to_owned())]),
         CssDeclarationList::new(Vec::new()),
+        Vec::new(),
         nested_location,
     ));
     let block_location = source_position(4, 5);
@@ -669,6 +670,7 @@ fn scope_rule_model_keeps_scoped_selectors_and_rules_separate() {
     let style = CssScopedStyleRule::new(
         selectors.clone(),
         CssDeclarationList::new(vec![declaration.clone()]),
+        Vec::new(),
         source_position(5, 3),
     );
     let scoped_rules = CssScopedRuleList::from_rules(vec![CssScopedRule::Style(style.clone())]);
@@ -750,6 +752,7 @@ fn scoped_group_rule_models_keep_scoped_children() {
     let child = CssScopedRule::Style(CssScopedStyleRule::new(
         child_selector,
         CssDeclarationList::new(Vec::new()),
+        Vec::new(),
         location,
     ));
     let scoped_children = CssScopedRuleList::from_rules(vec![child.clone()]);
@@ -1251,7 +1254,8 @@ fn public_api_exposes_layer_scope_and_scoped_rule_structure() {
     let [CssRule::Style(before_rule), CssRule::Style(backdrop_rule)] = layer.rules() else {
         panic!("expected ordinary style rules inside layer block");
     };
-    let CssSelector::Compound(before_selector) = before_rule.selector() else {
+    let CssSelector::Compound(before_selector) = before_rule.selectors().selectors()[0].selector()
+    else {
         panic!("expected compound pseudo-element selector");
     };
     assert_eq!(before_selector.pseudo_classes(), &[CssPseudoClass::Hover]);
@@ -1260,7 +1264,9 @@ fn public_api_exposes_layer_scope_and_scoped_rule_structure() {
         &[CssPseudoElement::Before]
     );
 
-    let CssSelector::Complex(backdrop_selector) = backdrop_rule.selector() else {
+    let CssSelector::Complex(backdrop_selector) =
+        backdrop_rule.selectors().selectors()[0].selector()
+    else {
         panic!("expected complex pseudo-element selector");
     };
     let [backdrop_part] = backdrop_selector.rest() else {
@@ -1336,13 +1342,15 @@ fn nested_style_rule_parser_accepts_layer_and_scope_groups() {
     )
     .unwrap();
 
-    assert!(matches!(
-        sheet.rules(),
-        [CssRule::Style(_), CssRule::LayerBlock(_), CssRule::Scope(_)]
-    ));
-    let layer = layer_block_rule(&sheet.rules()[1]);
+    let [CssRule::Style(parent)] = sheet.rules() else {
+        panic!("expected authored parent");
+    };
+    let [layer, scope] = parent.rules() else {
+        panic!("expected nested layer and scope");
+    };
+    let layer = layer_block_rule(layer);
     assert!(matches!(layer.rules(), [CssRule::Style(_)]));
-    let scope = scope_rule(&sheet.rules()[2]);
+    let scope = scope_rule(scope);
     assert!(matches!(scope.rules().rules(), [CssScopedRule::Style(_)]));
 }
 
@@ -1378,7 +1386,7 @@ fn parsed_style_rule_is_explicit_rule_variant() {
     let style_rule = style_rule(rule);
 
     assert_eq!(
-        style_rule.selector(),
+        style_rule.selectors().selectors()[0].selector(),
         &CssSelector::Class("panel".to_owned())
     );
     assert_eq!(style_rule.declarations().len(), 1);
@@ -1837,7 +1845,7 @@ fn public_api_exposes_generated_content_list_style_and_counter_values() {
     ));
     assert_eq!(attribute.as_str(), "data-label");
 
-    let CssSelector::Compound(selector) = style.selector() else {
+    let CssSelector::Compound(selector) = style.selectors().selectors()[0].selector() else {
         panic!("expected compound pseudo-element selector");
     };
     assert_eq!(
@@ -2063,7 +2071,7 @@ fn root_selector_carries_root_pseudo_class_structurally() {
     let sheet = parse_sheet(":root { --space: 8px; }").unwrap();
 
     assert_eq!(
-        style_rule(&sheet.rules()[0]).selector(),
+        style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector(),
         &CssSelector::PseudoClass(CssPseudoClass::Root)
     );
 }
@@ -2071,7 +2079,9 @@ fn root_selector_carries_root_pseudo_class_structurally() {
 #[test]
 fn compound_root_selector_carries_root_pseudo_class_structurally() {
     let sheet = parse_sheet("html:root { --space: 8px; }").unwrap();
-    let CssSelector::Compound(selector) = style_rule(&sheet.rules()[0]).selector() else {
+    let CssSelector::Compound(selector) =
+        style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
+    else {
         panic!("expected compound selector");
     };
 
@@ -2109,7 +2119,7 @@ fn parses_tier_1_state_pseudo_classes_as_authored_selectors() {
     for (css, expected) in cases {
         let sheet = parse_sheet(css).unwrap();
         assert_eq!(
-            style_rule(&sheet.rules()[0]).selector(),
+            style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector(),
             &CssSelector::PseudoClass(expected)
         );
     }
@@ -2118,7 +2128,9 @@ fn parses_tier_1_state_pseudo_classes_as_authored_selectors() {
 #[test]
 fn parses_compound_tier_1_state_pseudo_classes() {
     let sheet = parse_sheet(".button:hover { color: black; }").unwrap();
-    let CssSelector::Compound(selector) = style_rule(&sheet.rules()[0]).selector() else {
+    let CssSelector::Compound(selector) =
+        style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
+    else {
         panic!("expected compound selector");
     };
     assert_eq!(selector.classes(), &["button".to_owned()]);
@@ -2155,7 +2167,7 @@ fn parses_tier_2_structural_simple_pseudo_classes() {
     for (css, expected) in cases {
         let sheet = parse_sheet(css).unwrap();
         assert_eq!(
-            style_rule(&sheet.rules()[0]).selector(),
+            style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector(),
             &CssSelector::PseudoClass(expected)
         );
     }
@@ -2164,7 +2176,9 @@ fn parses_tier_2_structural_simple_pseudo_classes() {
 #[test]
 fn parses_compound_structural_simple_pseudo_classes() {
     let sheet = parse_sheet("button:first-child { color: black; }").unwrap();
-    let CssSelector::Compound(selector) = style_rule(&sheet.rules()[0]).selector() else {
+    let CssSelector::Compound(selector) =
+        style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
+    else {
         panic!("expected compound selector");
     };
     assert_eq!(selector.tag().map(String::as_str), Some("button"));
@@ -2189,7 +2203,9 @@ fn parses_requested_double_colon_pseudo_elements() {
 
     for (css, expected) in cases {
         let sheet = parse_sheet(css).unwrap_or_else(|error| panic!("{css}: {error:?}"));
-        let CssSelector::Compound(selector) = style_rule(&sheet.rules()[0]).selector() else {
+        let CssSelector::Compound(selector) =
+            style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
+        else {
             panic!("expected compound selector for {css}");
         };
         assert_eq!(
@@ -2210,7 +2226,9 @@ fn parses_compound_and_complex_terminal_pseudo_element_selectors() {
     )
     .unwrap();
 
-    let CssSelector::Compound(button) = style_rule(&sheet.rules()[0]).selector() else {
+    let CssSelector::Compound(button) =
+        style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
+    else {
         panic!("expected compound button selector");
     };
     assert_eq!(
@@ -2223,7 +2241,9 @@ fn parses_compound_and_complex_terminal_pseudo_element_selectors() {
         &[CssPseudoElement::Before]
     );
 
-    let CssSelector::Compound(marker) = style_rule(&sheet.rules()[1]).selector() else {
+    let CssSelector::Compound(marker) =
+        style_rule(&sheet.rules()[1]).selectors().selectors()[0].selector()
+    else {
         panic!("expected compound marker selector");
     };
     assert_eq!(marker.tag().map(String::as_str), Some("li"));
@@ -2232,7 +2252,9 @@ fn parses_compound_and_complex_terminal_pseudo_element_selectors() {
         &[CssPseudoElement::Marker]
     );
 
-    let CssSelector::Complex(backdrop) = style_rule(&sheet.rules()[2]).selector() else {
+    let CssSelector::Complex(backdrop) =
+        style_rule(&sheet.rules()[2]).selectors().selectors()[0].selector()
+    else {
         panic!("expected complex backdrop selector");
     };
     assert_eq!(backdrop.first().classes(), &["card".to_owned()]);
@@ -2253,7 +2275,9 @@ fn parses_supported_generated_marker_pseudo_element_chains() {
         ".item::after::marker { color: black; }",
     ] {
         let sheet = parse_sheet(css).unwrap_or_else(|error| panic!("{css}: {error:?}"));
-        let CssSelector::Compound(selector) = style_rule(&sheet.rules()[0]).selector() else {
+        let CssSelector::Compound(selector) =
+            style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
+        else {
             panic!("expected compound selector for {css}");
         };
         assert_eq!(
@@ -2445,7 +2469,7 @@ fn parses_nth_child_patterns() {
     for (css, expected) in cases {
         let sheet = parse_sheet(css).unwrap_or_else(|error| panic!("{css}: {error:?}"));
         let CssSelector::PseudoClass(CssPseudoClass::NthChild(pattern)) =
-            style_rule(&sheet.rules()[0]).selector()
+            style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
         else {
             panic!("expected nth-child selector");
         };
@@ -2484,12 +2508,12 @@ fn parses_all_nth_structural_pseudo_classes() {
     for (css, expected) in cases {
         let sheet = parse_sheet(css).unwrap();
         assert_eq!(
-            style_rule(&sheet.rules()[0]).selector(),
+            style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector(),
             &CssSelector::PseudoClass(expected)
         );
         if let CssSelector::PseudoClass(
             CssPseudoClass::NthChild(pattern) | CssPseudoClass::NthLastChild(pattern),
-        ) = style_rule(&sheet.rules()[0]).selector()
+        ) = style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
         {
             assert!(pattern.selector_list().is_none());
         }
@@ -2500,7 +2524,9 @@ fn parses_all_nth_structural_pseudo_classes() {
 fn nth_child_accepts_strict_of_selector_lists() {
     let sheet =
         parse_sheet("li:nth-child(2n+1 of li.important, .row[hidden]) { color: black; }").unwrap();
-    let CssSelector::Compound(selector) = style_rule(&sheet.rules()[0]).selector() else {
+    let CssSelector::Compound(selector) =
+        style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
+    else {
         panic!("expected compound selector");
     };
     let [CssPseudoClass::NthChild(pattern)] = selector.pseudo_classes() else {
@@ -2522,7 +2548,9 @@ fn nth_child_accepts_strict_of_selector_lists() {
 
     let sheet =
         parse_sheet(".item:nth-last-child(even of .selected ~ .tail) { color: black; }").unwrap();
-    let CssSelector::Compound(selector) = style_rule(&sheet.rules()[0]).selector() else {
+    let CssSelector::Compound(selector) =
+        style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
+    else {
         panic!("expected compound selector");
     };
     let [CssPseudoClass::NthLastChild(pattern)] = selector.pseudo_classes() else {
@@ -2564,7 +2592,7 @@ fn rejects_trailing_tokens_in_nth_functions() {
 fn nth_pseudo_class_arguments_are_publicly_inspectable() {
     let sheet = parse_sheet(":nth-child(2n+1) { color: black; }").unwrap();
     let CssSelector::PseudoClass(CssPseudoClass::NthChild(pattern)) =
-        style_rule(&sheet.rules()[0]).selector()
+        style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
     else {
         panic!("expected nth-child an+b selector");
     };
@@ -2579,7 +2607,9 @@ fn nth_pseudo_class_arguments_are_publicly_inspectable() {
 #[test]
 fn parses_selector_list_functional_pseudo_classes() {
     let sheet = parse_sheet(".button:not(.disabled, .loading) { color: black; }").unwrap();
-    let CssSelector::Compound(selector) = style_rule(&sheet.rules()[0]).selector() else {
+    let CssSelector::Compound(selector) =
+        style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
+    else {
         panic!("expected compound selector");
     };
     let [CssPseudoClass::Not(list)] = selector.pseudo_classes() else {
@@ -2595,18 +2625,20 @@ fn parses_selector_list_functional_pseudo_classes() {
 
     let sheet = parse_sheet(":is(.primary, .secondary) { color: black; }").unwrap();
     assert!(matches!(
-        style_rule(&sheet.rules()[0]).selector(),
+        style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector(),
         CssSelector::PseudoClass(CssPseudoClass::Is(_))
     ));
 
     let sheet = parse_sheet(":where(button, .link) { color: black; }").unwrap();
     assert!(matches!(
-        style_rule(&sheet.rules()[0]).selector(),
+        style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector(),
         CssSelector::PseudoClass(CssPseudoClass::Where(_))
     ));
 
     let sheet = parse_sheet(".field:has(.error) { color: black; }").unwrap();
-    let CssSelector::Compound(selector) = style_rule(&sheet.rules()[0]).selector() else {
+    let CssSelector::Compound(selector) =
+        style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
+    else {
         panic!("expected compound selector");
     };
     assert!(matches!(
@@ -2618,7 +2650,9 @@ fn parses_selector_list_functional_pseudo_classes() {
 #[test]
 fn parses_compound_selector_list_functional_pseudo_classes() {
     let sheet = parse_sheet(".field:not(:disabled, :focus) { color: black; }").unwrap();
-    let CssSelector::Compound(selector) = style_rule(&sheet.rules()[0]).selector() else {
+    let CssSelector::Compound(selector) =
+        style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
+    else {
         panic!("expected compound selector");
     };
     let [CssPseudoClass::Not(list)] = selector.pseudo_classes() else {
@@ -2639,7 +2673,9 @@ fn functional_selector_lists_accept_supported_complex_selectors() {
         ".scope:is(.card > .title, button.primary:hover, [data-state=\"open\"].active) { color: black; }",
     )
     .unwrap();
-    let CssSelector::Compound(selector) = style_rule(&sheet.rules()[0]).selector() else {
+    let CssSelector::Compound(selector) =
+        style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
+    else {
         panic!("expected compound selector");
     };
     let [CssPseudoClass::Is(list)] = selector.pseudo_classes() else {
@@ -2652,7 +2688,7 @@ fn functional_selector_lists_accept_supported_complex_selectors() {
 
     let sheet = parse_sheet(":not(.field .icon, button.primary:hover) { color: black; }").unwrap();
     let CssSelector::PseudoClass(CssPseudoClass::Not(list)) =
-        style_rule(&sheet.rules()[0]).selector()
+        style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
     else {
         panic!("expected :not selector list");
     };
@@ -2662,7 +2698,7 @@ fn functional_selector_lists_accept_supported_complex_selectors() {
 
     let sheet = parse_sheet(":where(.toolbar + .panel, .stack ~ .item) { color: black; }").unwrap();
     let CssSelector::PseudoClass(CssPseudoClass::Where(list)) =
-        style_rule(&sheet.rules()[0]).selector()
+        style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
     else {
         panic!("expected :where selector list");
     };
@@ -2732,7 +2768,9 @@ fn selector_argument_surface_rejects_invalid_entries_without_recovery() {
 #[test]
 fn has_accepts_strict_relative_selector_lists() {
     let sheet = parse_sheet(".card:has(.field > .icon) { color: black; }").unwrap();
-    let CssSelector::Compound(selector) = style_rule(&sheet.rules()[0]).selector() else {
+    let CssSelector::Compound(selector) =
+        style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
+    else {
         panic!("expected compound selector");
     };
     let [CssPseudoClass::Has(list)] = selector.pseudo_classes() else {
@@ -2749,7 +2787,9 @@ fn has_accepts_strict_relative_selector_lists() {
     ));
 
     let sheet = parse_sheet(".card:has(> .icon, + .error, ~ .warning) { color: black; }").unwrap();
-    let CssSelector::Compound(selector) = style_rule(&sheet.rules()[0]).selector() else {
+    let CssSelector::Compound(selector) =
+        style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
+    else {
         panic!("expected compound selector");
     };
     let [CssPseudoClass::Has(list)] = selector.pseudo_classes() else {
@@ -2785,7 +2825,9 @@ fn has_rejects_invalid_relative_selector_entries_strictly() {
 #[test]
 fn functional_pseudo_class_arguments_are_publicly_inspectable() {
     let sheet = parse_sheet(".button:not(.disabled) { color: black; }").unwrap();
-    let CssSelector::Compound(selector) = style_rule(&sheet.rules()[0]).selector() else {
+    let CssSelector::Compound(selector) =
+        style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
+    else {
         panic!("expected compound selector");
     };
     let [CssPseudoClass::Not(list)] = selector.pseudo_classes() else {
@@ -2831,7 +2873,7 @@ fn parses_tier_4_runtime_state_pseudo_classes() {
     for (css, expected) in cases {
         let sheet = parse_sheet(css).unwrap();
         assert_eq!(
-            style_rule(&sheet.rules()[0]).selector(),
+            style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector(),
             &CssSelector::PseudoClass(expected)
         );
     }
@@ -2840,7 +2882,9 @@ fn parses_tier_4_runtime_state_pseudo_classes() {
 #[test]
 fn parses_compound_runtime_state_pseudo_classes() {
     let sheet = parse_sheet(".dialog:modal:fullscreen { color: black; }").unwrap();
-    let CssSelector::Compound(selector) = style_rule(&sheet.rules()[0]).selector() else {
+    let CssSelector::Compound(selector) =
+        style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
+    else {
         panic!("expected compound selector");
     };
     assert_eq!(selector.classes(), &["dialog".to_owned()]);
@@ -2876,7 +2920,7 @@ fn parses_combinator_selectors() {
     ] {
         let sheet = parse_sheet(css).unwrap_or_else(|error| panic!("{css}: {error:?}"));
         assert!(matches!(
-            style_rule(&sheet.rules()[0]).selector(),
+            style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector(),
             CssSelector::Complex(_)
         ));
     }
@@ -2886,7 +2930,7 @@ fn parses_combinator_selectors() {
 fn combinator_selectors_are_structurally_inspectable() {
     let sheet = parse_sheet(".toolbar > button { color: black; }").unwrap();
     let rule = style_rule(&sheet.rules()[0]);
-    let CssSelector::Complex(selector) = rule.selector() else {
+    let CssSelector::Complex(selector) = rule.selectors().selectors()[0].selector() else {
         panic!("expected complex selector");
     };
     assert_eq!(
@@ -3074,371 +3118,250 @@ fn nesting_selector_composition_preserves_complex_chains() {
 }
 
 #[test]
-fn nesting_flattens_descendant_and_parent_selectors_in_source_order() {
-    let sheet = parse_sheet(
-        r#".card {
-            color: black;
-            .title { color: white; }
-            background-color: white;
-            &:hover { opacity: 0.8; }
-        }"#,
-    )
-    .unwrap();
-
-    let [base_before, title, base_after, hover] = sheet.rules() else {
-        panic!("expected four flattened rules");
+fn nesting_retains_descendant_and_parent_selectors_in_source_order() {
+    let sheet = parse_sheet(".card { color: black; .title { color: white; } background-color: white; &:hover { opacity: 0.8; } }").unwrap();
+    let [parent] = sheet.rules() else {
+        panic!("expected one authored parent");
     };
-
+    let parent = style_rule(parent);
     assert_eq!(
-        style_rule(base_before).selector(),
+        parent.selectors().selectors()[0].selector(),
         &CssSelector::Class("card".to_owned())
     );
-    assert_eq!(
-        style_rule(base_before).declarations()[0].property(),
-        &CssProperty::Color
-    );
-
-    let CssSelector::Complex(title_selector) = style_rule(title).selector() else {
-        panic!("expected descendant selector");
+    assert_eq!(parent.declarations()[0].property(), &CssProperty::Color);
+    let [title, CssRule::NestedDeclarations(after), hover] = parent.rules() else {
+        panic!("expected child, declarations, child");
     };
-    assert_eq!(title_selector.first().classes(), &["card".to_owned()]);
     assert_eq!(
-        title_selector.rest()[0].combinator(),
-        CssSelectorCombinator::Descendant
+        style_rule(title).selectors().selectors()[0].selector(),
+        &CssSelector::Class("title".to_owned())
     );
     assert_eq!(
-        title_selector.rest()[0].selector().classes(),
-        &["title".to_owned()]
-    );
-
-    assert_eq!(
-        style_rule(base_after).selector(),
-        &CssSelector::Class("card".to_owned())
-    );
-    assert_eq!(
-        style_rule(base_after).declarations()[0].property(),
+        after.declarations()[0].property(),
         &CssProperty::BackgroundColor
     );
-
-    let CssSelector::Compound(hover_selector) = style_rule(hover).selector() else {
-        panic!("expected compound hover selector");
+    let CssSelector::Compound(hover) = style_rule(hover).selectors().selectors()[0].selector()
+    else {
+        panic!("expected anchored hover selector");
     };
-    assert_eq!(hover_selector.classes(), &["card".to_owned()]);
-    assert_eq!(hover_selector.pseudo_classes(), &[CssPseudoClass::Hover]);
+    assert_eq!(hover.nesting_selectors(), 1);
+    assert!(hover.classes().is_empty());
+    assert_eq!(hover.pseudo_classes(), &[CssPseudoClass::Hover]);
 }
 
 #[test]
-fn nesting_flattens_selector_lists_and_relative_combinators() {
+fn nesting_retains_selector_lists_and_relative_combinators() {
     let sheet = parse_sheet(
-        r#".button, .link {
-            &.active[aria-current=true] { color: black; }
-            > .icon { opacity: 1; }
-        }"#,
+        ".button, .link { &.active[aria-current=true] { color: black; } > .icon { opacity: 1; } }",
     )
     .unwrap();
-
-    let [button_active, link_active, button_icon, link_icon] = sheet.rules() else {
-        panic!("expected four flattened rules");
+    let [parent] = sheet.rules() else {
+        panic!("expected one authored parent");
     };
-    for rule in sheet.rules() {
-        assert!(matches!(rule, CssRule::Style(_)));
-    }
-
-    for (rule, parent_class) in [(button_active, "button"), (link_active, "link")] {
-        let CssSelector::Compound(selector) = style_rule(rule).selector() else {
-            panic!("expected appended compound selector");
-        };
-        assert_eq!(
-            selector.classes(),
-            &[parent_class.to_owned(), "active".to_owned()]
-        );
-        let [attribute] = selector.attributes() else {
-            panic!("expected appended attribute selector");
-        };
-        assert_eq!(attribute.name().as_str(), "aria-current");
-        assert_eq!(
-            attribute.matcher(),
-            &CssAttributeMatcher::Equals("true".to_owned())
-        );
-    }
-
-    for (rule, parent_class) in [(button_icon, "button"), (link_icon, "link")] {
-        let CssSelector::Complex(selector) = style_rule(rule).selector() else {
-            panic!("expected relative child selector");
-        };
-        assert_eq!(selector.first().classes(), &[parent_class.to_owned()]);
-        let [part] = selector.rest() else {
-            panic!("expected one child selector part");
-        };
-        assert_eq!(part.combinator(), CssSelectorCombinator::Child);
-        assert_eq!(part.selector().classes(), &["icon".to_owned()]);
-    }
-}
-
-#[test]
-fn nesting_flattens_ampersand_combinator_chain_and_suffixes() {
-    let sheet = parse_sheet(
-        r#".tabs {
-            & > .tab { color: black; }
-        }
-        .button {
-            &.active[aria-current=true]:hover { opacity: 1; }
-        }"#,
-    )
-    .unwrap();
-
-    let [tab, button] = sheet.rules() else {
-        panic!("expected two flattened rules");
-    };
-
-    let CssSelector::Complex(tab_selector) = style_rule(tab).selector() else {
-        panic!("expected ampersand child selector");
-    };
-    assert_eq!(tab_selector.first().classes(), &["tabs".to_owned()]);
-    let [part] = tab_selector.rest() else {
-        panic!("expected one child selector part");
-    };
-    assert_eq!(part.combinator(), CssSelectorCombinator::Child);
-    assert_eq!(part.selector().classes(), &["tab".to_owned()]);
-
-    let CssSelector::Compound(button_selector) = style_rule(button).selector() else {
-        panic!("expected appended compound selector");
-    };
+    let parent = style_rule(parent);
+    assert_eq!(parent.selectors().selectors().len(), 2);
     assert_eq!(
-        button_selector.classes(),
-        &["button".to_owned(), "active".to_owned()]
+        parent.selectors().selectors()[0].selector(),
+        &CssSelector::Class("button".to_owned())
     );
-    let [attribute] = button_selector.attributes() else {
-        panic!("expected appended attribute selector");
+    assert_eq!(
+        parent.selectors().selectors()[1].selector(),
+        &CssSelector::Class("link".to_owned())
+    );
+    let [active, icon] = parent.rules() else {
+        panic!("expected two children without multiplication");
+    };
+    let CssSelector::Compound(active) = style_rule(active).selectors().selectors()[0].selector()
+    else {
+        panic!("expected anchored compound");
+    };
+    assert_eq!(active.nesting_selectors(), 1);
+    assert_eq!(active.classes(), &["active".to_owned()]);
+    let [attribute] = active.attributes() else {
+        panic!("expected attribute");
     };
     assert_eq!(attribute.name().as_str(), "aria-current");
-    assert_eq!(button_selector.pseudo_classes(), &[CssPseudoClass::Hover]);
+    assert_eq!(
+        attribute.matcher(),
+        &CssAttributeMatcher::Equals("true".to_owned())
+    );
+    let [CssStyleSelector::Relative(icon)] = style_rule(icon).selectors().selectors() else {
+        panic!("expected relative child");
+    };
+    assert_eq!(icon.combinator(), CssSelectorCombinator::Child);
+    let CssSelector::Compound(icon) = icon.selector() else {
+        panic!("expected child compound");
+    };
+    assert_eq!(icon.classes(), &["icon".to_owned()]);
 }
 
 #[test]
-fn nesting_flattens_style_rules_inside_conditional_groups() {
-    let sheet = parse_sheet(
-        r#"@media screen {
-            .card { .title { color: white; } }
-        }
-        @container sidebar (inline-size > 30rem) {
-            .tabs { & > .tab { color: black; } }
-        }"#,
-    )
-    .unwrap();
+fn nesting_retains_ampersand_combinator_chain_and_suffixes() {
+    let sheet = parse_sheet(".tabs { & > .tab { color: black; } } .button { &.active[aria-current=true]:hover { opacity: 1; } }").unwrap();
+    let [tabs, button] = sheet.rules() else {
+        panic!("expected two authored parents");
+    };
+    let [tab] = style_rule(tabs).rules() else {
+        panic!("expected nested tab");
+    };
+    let [CssStyleSelector::Relative(tab)] = style_rule(tab).selectors().selectors() else {
+        panic!("expected relative tab");
+    };
+    assert_eq!(tab.combinator(), CssSelectorCombinator::Child);
+    let CssSelector::Compound(tab) = tab.selector() else {
+        panic!("expected tab compound");
+    };
+    assert_eq!(tab.classes(), &["tab".to_owned()]);
+    let [active] = style_rule(button).rules() else {
+        panic!("expected active child");
+    };
+    let CssSelector::Compound(active) = style_rule(active).selectors().selectors()[0].selector()
+    else {
+        panic!("expected anchored suffix");
+    };
+    assert_eq!(active.nesting_selectors(), 1);
+    assert_eq!(active.classes(), &["active".to_owned()]);
+    assert_eq!(active.attributes()[0].name().as_str(), "aria-current");
+    assert_eq!(active.pseudo_classes(), &[CssPseudoClass::Hover]);
+}
 
+#[test]
+fn nesting_retains_style_rules_inside_conditional_groups() {
+    let sheet = parse_sheet("@media screen { .card { .title { color: white; } } } @container sidebar (inline-size > 30rem) { .tabs { & > .tab { color: black; } } }").unwrap();
     let [media, container] = sheet.rules() else {
-        panic!("expected media and container rules");
+        panic!("expected media and container");
     };
-
-    let [media_title] = media_rule(media).rules() else {
-        panic!("expected one flattened media rule");
+    let [card] = media_rule(media).rules() else {
+        panic!("expected authored card");
     };
-    let CssSelector::Complex(title_selector) = style_rule(media_title).selector() else {
-        panic!("expected descendant selector inside media");
+    let [title] = style_rule(card).rules() else {
+        panic!("expected nested title");
     };
-    assert_eq!(title_selector.first().classes(), &["card".to_owned()]);
     assert_eq!(
-        title_selector.rest()[0].combinator(),
-        CssSelectorCombinator::Descendant
+        style_rule(title).selectors().selectors()[0].selector(),
+        &CssSelector::Class("title".to_owned())
     );
-    assert_eq!(
-        title_selector.rest()[0].selector().classes(),
-        &["title".to_owned()]
-    );
-
-    let [container_tab] = container_rule(container).rules() else {
-        panic!("expected one flattened container rule");
+    let [tabs] = container_rule(container).rules() else {
+        panic!("expected authored tabs");
     };
-    let CssSelector::Complex(tab_selector) = style_rule(container_tab).selector() else {
-        panic!("expected child selector inside container");
+    let [tab] = style_rule(tabs).rules() else {
+        panic!("expected nested tab");
     };
-    assert_eq!(tab_selector.first().classes(), &["tabs".to_owned()]);
-    assert_eq!(
-        tab_selector.rest()[0].combinator(),
-        CssSelectorCombinator::Child
-    );
-    assert_eq!(
-        tab_selector.rest()[0].selector().classes(),
-        &["tab".to_owned()]
-    );
+    let [CssStyleSelector::Relative(tab)] = style_rule(tab).selectors().selectors() else {
+        panic!("expected relative tab");
+    };
+    assert_eq!(tab.combinator(), CssSelectorCombinator::Child);
 }
 
 #[test]
-fn nesting_flattens_media_and_container_inside_style_rules() {
-    let sheet = parse_sheet(
-        r#".card {
-            color: black;
-            @media (min-width: 600px) {
-                background-color: white;
-                > .title { color: black; }
-            }
-            @container sidebar (inline-size > 30rem) {
-                &:hover { opacity: 0.9; }
-            }
-        }"#,
-    )
-    .unwrap();
-
-    let [base, media, container] = sheet.rules() else {
-        panic!("expected base, media, and container rules");
+fn nesting_retains_media_and_container_inside_style_rules() {
+    let sheet = parse_sheet(".card { color: black; @media (min-width: 600px) { background-color: white; > .title { color: black; } } @container sidebar (inline-size > 30rem) { &:hover { opacity: 0.9; } } }").unwrap();
+    let [card] = sheet.rules() else {
+        panic!("expected authored card");
+    };
+    let card = style_rule(card);
+    assert_eq!(card.declarations()[0].property(), &CssProperty::Color);
+    let [media, container] = card.rules() else {
+        panic!("expected nested conditionals");
+    };
+    let [CssRule::NestedDeclarations(background), title] = media_rule(media).rules() else {
+        panic!("expected declarations then style");
     };
     assert_eq!(
-        style_rule(base).selector(),
-        &CssSelector::Class("card".to_owned())
-    );
-    assert_eq!(
-        style_rule(base).declarations()[0].property(),
-        &CssProperty::Color
-    );
-
-    let media = media_rule(media);
-    let [media_base, media_title] = media.rules() else {
-        panic!("expected two flattened media rules");
-    };
-    assert_eq!(
-        style_rule(media_base).selector(),
-        &CssSelector::Class("card".to_owned())
-    );
-    assert_eq!(
-        style_rule(media_base).declarations()[0].property(),
+        background.declarations()[0].property(),
         &CssProperty::BackgroundColor
     );
-    let CssSelector::Complex(title_selector) = style_rule(media_title).selector() else {
-        panic!("expected complex title selector");
+    let [CssStyleSelector::Relative(title)] = style_rule(title).selectors().selectors() else {
+        panic!("expected relative title");
     };
-    assert_eq!(title_selector.first().classes(), &["card".to_owned()]);
-    assert_eq!(
-        title_selector.rest()[0].combinator(),
-        CssSelectorCombinator::Child
-    );
-    assert_eq!(
-        title_selector.rest()[0].selector().classes(),
-        &["title".to_owned()]
-    );
-
-    let container = container_rule(container);
-    let [container_hover] = container.rules() else {
-        panic!("expected one flattened container rule");
+    assert_eq!(title.combinator(), CssSelectorCombinator::Child);
+    let [hover] = container_rule(container).rules() else {
+        panic!("expected hover child");
     };
-    let CssSelector::Compound(hover_selector) = style_rule(container_hover).selector() else {
-        panic!("expected hover compound selector");
+    let CssSelector::Compound(hover) = style_rule(hover).selectors().selectors()[0].selector()
+    else {
+        panic!("expected anchored hover");
     };
-    assert_eq!(hover_selector.classes(), &["card".to_owned()]);
-    assert_eq!(hover_selector.pseudo_classes(), &[CssPseudoClass::Hover]);
+    assert_eq!(hover.nesting_selectors(), 1);
+    assert_eq!(hover.pseudo_classes(), &[CssPseudoClass::Hover]);
 }
 
 #[test]
-fn nesting_preserves_terminal_pseudo_elements_on_appended_selectors() {
+fn nesting_preserves_terminal_pseudo_elements_on_anchored_selectors() {
     let sheet = parse_sheet(".card { &::before { color: red; } }").unwrap();
-    let [rule] = sheet.rules() else {
-        panic!("expected flattened pseudo-element rule");
+    let [card] = sheet.rules() else {
+        panic!("expected authored parent");
     };
-    let CssSelector::Compound(selector) = style_rule(rule).selector() else {
-        panic!("expected compound selector");
+    let [before] = style_rule(card).rules() else {
+        panic!("expected pseudo-element child");
     };
-
-    assert_eq!(selector.classes(), &["card".to_owned()]);
+    let CssSelector::Compound(before) = style_rule(before).selectors().selectors()[0].selector()
+    else {
+        panic!("expected anchored compound");
+    };
+    assert_eq!(before.nesting_selectors(), 1);
+    assert!(before.classes().is_empty());
     assert_eq!(
-        selector.pseudo_elements().unwrap().pseudo_elements(),
+        before.pseudo_elements().unwrap().pseudo_elements(),
         &[CssPseudoElement::Before]
     );
 }
 
 #[test]
-fn nesting_rejects_selector_parts_after_pseudo_elements() {
-    for css in [
-        ".card::before { .icon { color: red; } }",
-        ".card { &::before .icon { color: red; } }",
-    ] {
-        assert!(parse_sheet(css).is_err(), "{css} should reject");
-    }
+fn nesting_validates_each_authored_selector_without_combining_pseudo_elements() {
+    assert!(parse_sheet(".card::before { .icon { color: red; } }").is_clean());
+    assert!(parse_sheet(".card { &::before .icon { color: red; } }").is_err());
 }
 
 #[test]
-fn nesting_flattens_media_before_later_declaration_run_in_source_order() {
-    let sheet = parse_sheet(
-        r#".card {
-            color: black;
-            @media (min-width: 600px) { opacity: 0.8; }
-            background-color: white;
-        }"#,
-    )
-    .unwrap();
-
-    let [base_before, media, base_after] = sheet.rules() else {
-        panic!("expected parent declaration, media, parent declaration");
+fn nesting_retains_media_before_later_declaration_run_in_source_order() {
+    let sheet = parse_sheet(".card { color: black; @media (min-width: 600px) { opacity: 0.8; } background-color: white; }").unwrap();
+    let [card] = sheet.rules() else {
+        panic!("expected authored parent");
     };
-
-    assert_eq!(
-        style_rule(base_before).selector(),
-        &CssSelector::Class("card".to_owned())
-    );
-    assert_eq!(
-        style_rule(base_before).declarations()[0].property(),
-        &CssProperty::Color
-    );
-
-    let [media_base] = media_rule(media).rules() else {
-        panic!("expected one flattened media rule");
+    let card = style_rule(card);
+    assert_eq!(card.declarations()[0].property(), &CssProperty::Color);
+    let [media, CssRule::NestedDeclarations(after)] = card.rules() else {
+        panic!("expected media then declarations");
     };
+    let [CssRule::NestedDeclarations(opacity)] = media_rule(media).rules() else {
+        panic!("expected nested declarations");
+    };
+    assert_eq!(opacity.declarations()[0].property(), &CssProperty::Opacity);
     assert_eq!(
-        style_rule(media_base).selector(),
-        &CssSelector::Class("card".to_owned())
-    );
-    assert_eq!(
-        style_rule(media_base).declarations()[0].property(),
-        &CssProperty::Opacity
-    );
-
-    assert_eq!(
-        style_rule(base_after).selector(),
-        &CssSelector::Class("card".to_owned())
-    );
-    assert_eq!(
-        style_rule(base_after).declarations()[0].property(),
+        after.declarations()[0].property(),
         &CssProperty::BackgroundColor
     );
 }
 
 #[test]
 fn nesting_inside_media_and_container_stays_inside_group() {
-    let sheet = parse_sheet(
-        r#"@media (prefers-color-scheme: dark) {
-            .card { .title { color: white; } }
-        }
-        @container sidebar (inline-size > 30rem) {
-            .card { &:hover { opacity: 0.9; } }
-        }"#,
-    )
-    .unwrap();
-
+    let sheet = parse_sheet("@media (prefers-color-scheme: dark) { .card { .title { color: white; } } } @container sidebar (inline-size > 30rem) { .card { &:hover { opacity: 0.9; } } }").unwrap();
     let [media, container] = sheet.rules() else {
         panic!("expected media and container");
     };
-    assert!(matches!(media, CssRule::Media(_)));
-    assert!(matches!(container, CssRule::Container(_)));
-
-    let [media_title] = media_rule(media).rules() else {
-        panic!("expected nested media style rule");
+    let [card] = media_rule(media).rules() else {
+        panic!("expected authored card");
     };
-    let CssSelector::Complex(title_selector) = style_rule(media_title).selector() else {
-        panic!("expected descendant selector inside media");
+    let [title] = style_rule(card).rules() else {
+        panic!("expected child title");
     };
-    assert_eq!(title_selector.first().classes(), &["card".to_owned()]);
     assert_eq!(
-        title_selector.rest()[0].selector().classes(),
-        &["title".to_owned()]
+        style_rule(title).selectors().selectors()[0].selector(),
+        &CssSelector::Class("title".to_owned())
     );
-
-    let [container_hover] = container_rule(container).rules() else {
-        panic!("expected nested container style rule");
+    let [card] = container_rule(container).rules() else {
+        panic!("expected authored card");
     };
-    let CssSelector::Compound(hover_selector) = style_rule(container_hover).selector() else {
-        panic!("expected hover selector inside container");
+    let [hover] = style_rule(card).rules() else {
+        panic!("expected child hover");
     };
-    assert_eq!(hover_selector.classes(), &["card".to_owned()]);
-    assert_eq!(hover_selector.pseudo_classes(), &[CssPseudoClass::Hover]);
+    let CssSelector::Compound(hover) = style_rule(hover).selectors().selectors()[0].selector()
+    else {
+        panic!("expected anchored hover");
+    };
+    assert_eq!(hover.nesting_selectors(), 1);
+    assert_eq!(hover.pseudo_classes(), &[CssPseudoClass::Hover]);
 }
 
 #[test]
@@ -3556,7 +3479,9 @@ fn parses_attribute_selector_matcher_forms() {
 
     for (css, expected) in cases {
         let sheet = parse_sheet(css).unwrap();
-        let CssSelector::Compound(selector) = style_rule(&sheet.rules()[0]).selector() else {
+        let CssSelector::Compound(selector) =
+            style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
+        else {
             panic!("{css} should parse as a compound selector");
         };
         let [attribute] = selector.attributes() else {
@@ -3574,7 +3499,7 @@ fn parses_attribute_selector_matcher_forms() {
 fn attribute_selectors_are_structurally_inspectable() {
     let sheet = parse_sheet(r#"[data-state="open" i] { color: black; }"#).unwrap();
     let rule = style_rule(&sheet.rules()[0]);
-    let CssSelector::Compound(selector) = rule.selector() else {
+    let CssSelector::Compound(selector) = rule.selectors().selectors()[0].selector() else {
         panic!("expected compound selector");
     };
     let [attribute] = selector.attributes() else {
@@ -3594,7 +3519,9 @@ fn attribute_selectors_are_structurally_inspectable() {
 #[test]
 fn parses_attribute_selector_case_modifiers_and_compound_position() {
     let insensitive = parse_sheet(r#"[data-state="OPEN" i] { color: black; }"#).unwrap();
-    let CssSelector::Compound(selector) = style_rule(&insensitive.rules()[0]).selector() else {
+    let CssSelector::Compound(selector) =
+        style_rule(&insensitive.rules()[0]).selectors().selectors()[0].selector()
+    else {
         panic!("expected compound selector");
     };
     assert_eq!(
@@ -3603,7 +3530,9 @@ fn parses_attribute_selector_case_modifiers_and_compound_position() {
     );
 
     let sensitive = parse_sheet(r#"[data-state="open" s] { color: black; }"#).unwrap();
-    let CssSelector::Compound(selector) = style_rule(&sensitive.rules()[0]).selector() else {
+    let CssSelector::Compound(selector) =
+        style_rule(&sensitive.rules()[0]).selectors().selectors()[0].selector()
+    else {
         panic!("expected compound selector");
     };
     assert_eq!(
@@ -3612,7 +3541,9 @@ fn parses_attribute_selector_case_modifiers_and_compound_position() {
     );
 
     let mixed = parse_sheet("button.primary[aria-expanded=true]:hover { color: black; }").unwrap();
-    let CssSelector::Compound(selector) = style_rule(&mixed.rules()[0]).selector() else {
+    let CssSelector::Compound(selector) =
+        style_rule(&mixed.rules()[0]).selectors().selectors()[0].selector()
+    else {
         panic!("expected compound selector");
     };
     assert_eq!(selector.tag().map(String::as_str), Some("button"));
@@ -5078,8 +5009,11 @@ fn container_condition_list_constructor_requires_at_least_two_conditions() {
 }
 
 #[test]
-fn font_face_descriptor_collection_requires_family_and_src() {
-    assert!(CssFontFaceDescriptors::try_new(None, None, None, None, None, None, None).is_none());
+fn font_face_descriptor_collection_preserves_optional_matching_fields() {
+    let empty = CssFontFaceDescriptors::new(None, None, None, None, None, None, None);
+    assert!(empty.font_family().is_none());
+    assert!(empty.src().is_none());
+    assert_eq!(empty.occurrences().len(), 0);
     assert!(CssFontFaceUrlSource::try_new("", None, Vec::new()).is_none());
     assert!(CssFontFaceUrlSource::try_new("   ", None, Vec::new()).is_none());
 
@@ -5089,32 +5023,32 @@ fn font_face_descriptor_collection_requires_family_and_src() {
     )])
     .unwrap();
 
-    assert!(
-        CssFontFaceDescriptors::try_new(
-            Some(descriptor_occurrence(family.clone())),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
-        .is_none()
+    let family_only = CssFontFaceDescriptors::new(
+        Some(descriptor_occurrence(family.clone())),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
     );
-    assert!(
-        CssFontFaceDescriptors::try_new(
-            None,
-            Some(descriptor_occurrence(src.clone())),
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
-        .is_none()
+    assert_eq!(family_only.font_family().unwrap().value(), &family);
+    assert!(family_only.src().is_none());
+    assert_eq!(family_only.occurrences().len(), 1);
+    let source_only = CssFontFaceDescriptors::new(
+        None,
+        Some(descriptor_occurrence(src.clone())),
+        None,
+        None,
+        None,
+        None,
+        None,
     );
+    assert!(source_only.font_family().is_none());
+    assert_eq!(source_only.src().unwrap().value(), &src);
+    assert_eq!(source_only.occurrences().len(), 1);
 
-    let descriptors = CssFontFaceDescriptors::try_new(
+    let descriptors = CssFontFaceDescriptors::new(
         Some(descriptor_occurrence(family.clone())),
         Some(descriptor_occurrence(src.clone())),
         Some(descriptor_occurrence(
@@ -5130,11 +5064,10 @@ fn font_face_descriptor_collection_requires_family_and_src() {
         Some(descriptor_occurrence(
             CssUnicodeRangeList::try_new(vec![CssUnicodeRange::try_new(0, 0x7f).unwrap()]).unwrap(),
         )),
-    )
-    .unwrap();
+    );
 
-    assert_eq!(descriptors.font_family().value(), &family);
-    assert_eq!(descriptors.src().value(), &src);
+    assert_eq!(descriptors.font_family().unwrap().value(), &family);
+    assert_eq!(descriptors.src().unwrap().value(), &src);
     assert_eq!(
         descriptors.font_weight().unwrap().start().value().value(),
         400.0
@@ -5291,7 +5224,7 @@ fn font_face_numeric_descriptors_enforce_invariants() {
 
 #[test]
 fn font_face_rule_accessors_expose_authored_structure() {
-    let descriptors = CssFontFaceDescriptors::try_new(
+    let descriptors = CssFontFaceDescriptors::new(
         Some(descriptor_occurrence(
             CssFontFaceFamily::try_new("Avenir Next").unwrap(),
         )),
@@ -5306,8 +5239,7 @@ fn font_face_rule_accessors_expose_authored_structure() {
         None,
         Some(descriptor_occurrence(CssFontDisplay::Auto)),
         None,
-    )
-    .unwrap();
+    );
     let location = source_position(9, 5);
     let rule = CssFontFaceRule::new(descriptors.clone(), location);
 
@@ -5334,8 +5266,8 @@ fn font_face_rule_parser_accepts_descriptor_block() {
     };
 
     let descriptors = font_face_rule(rule).descriptors();
-    assert_eq!(descriptors.font_family().as_str(), "Inter");
-    let [CssFontFaceSource::Url(source)] = descriptors.src().sources() else {
+    assert_eq!(descriptors.font_family().unwrap().as_str(), "Inter");
+    let [CssFontFaceSource::Url(source)] = descriptors.src().unwrap().sources() else {
         panic!("expected one URL font source");
     };
     assert_eq!(source.url(), "inter.woff2");
@@ -5388,12 +5320,12 @@ fn font_face_rule_parser_accepts_source_list_forms() {
     };
 
     let descriptors = font_face_rule(rule).descriptors();
-    assert_eq!(descriptors.font_family().as_str(), "Avenir Next");
+    assert_eq!(descriptors.font_family().unwrap().as_str(), "Avenir Next");
     let [
         CssFontFaceSource::Local(local),
         CssFontFaceSource::Url(woff2),
         CssFontFaceSource::Url(variable),
-    ] = descriptors.src().sources()
+    ] = descriptors.src().unwrap().sources()
     else {
         panic!("expected local source and two URL sources");
     };
@@ -5453,8 +5385,6 @@ fn font_face_rule_parser_accepts_strict_numeric_ranges() {
 #[test]
 fn font_face_rule_parser_rejects_invalid_descriptor_blocks() {
     for css in [
-        "@font-face { font-family: Inter; }",
-        "@font-face { src: url(a.woff2); }",
         "@font-face { font-family: Inter; src: url(a.woff2); unknown: x; }",
         "@font-face { font-family: Inter; src: url(a.woff2); @media screen {} }",
         "@font-face { font-family: Inter; src: url(a.woff2); .nested {} }",
@@ -5582,8 +5512,9 @@ fn container_rule_accessors_expose_authored_structure() {
         parse_container_condition_for_test("(inline-size > 30rem)").expect("condition parses");
     let location = source_position(4, 9);
     let nested = CssRule::Style(CssStyleRule::new(
-        CssSelector::Class("card".to_owned()),
+        CssStyleSelectorList::absolute(vec![CssSelector::Class("card".to_owned())]),
         CssDeclarationList::new(Vec::new()),
+        Vec::new(),
         location,
     ));
     let rule = CssContainerRule::new(
@@ -5621,7 +5552,7 @@ fn container_rule_parser_accepts_unnamed_named_and_style_conditions() {
         panic!("expected one nested style rule");
     };
     assert_eq!(
-        style_rule(nested).selector(),
+        style_rule(nested).selectors().selectors()[0].selector(),
         &CssSelector::Class("card".to_owned())
     );
 
@@ -5673,7 +5604,7 @@ fn nested_conditional_rules_allow_media_and_container_in_either_direction() {
         panic!("expected one nested style rule");
     };
     assert_eq!(
-        style_rule(style).selector(),
+        style_rule(style).selectors().selectors()[0].selector(),
         &CssSelector::Class("panel".to_owned())
     );
 
@@ -5692,7 +5623,7 @@ fn nested_conditional_rules_allow_media_and_container_in_either_direction() {
         panic!("expected one nested style rule");
     };
     assert_eq!(
-        style_rule(style).selector(),
+        style_rule(style).selectors().selectors()[0].selector(),
         &CssSelector::Class("panel".to_owned())
     );
 }
@@ -5726,7 +5657,7 @@ fn media_rule_parser_accepts_style_rule_body() {
         panic!("expected one nested style rule");
     };
     assert_eq!(
-        style_rule(nested).selector(),
+        style_rule(nested).selectors().selectors()[0].selector(),
         &CssSelector::Class("panel".to_owned())
     );
 }
@@ -5749,7 +5680,7 @@ fn media_rule_parser_accepts_nested_media_rule() {
     };
 
     assert_eq!(
-        style_rule(nested).selector(),
+        style_rule(nested).selectors().selectors()[0].selector(),
         &CssSelector::Class("panel".to_owned())
     );
 }
@@ -5791,7 +5722,6 @@ fn advanced_css_surface_matrix_rejects_unsupported_forms() {
     let rejected = [
         r#"@import url("late.css"); .panel { color: black; } @import url("later.css");"#,
         r#"@import url("theme.css") supports(display: grid) layer(theme);"#,
-        "@font-face { font-family: Inter; }",
         ".field:has(::before) { color: black; }",
         "[svg|href] { color: black; }",
         ".col || .cell { color: black; }",
@@ -5851,8 +5781,8 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
     assert_eq!(width.value().unit(), CssLengthUnit::Px);
 
     let descriptors = font_face.descriptors();
-    assert_eq!(descriptors.font_family().as_str(), "Inter");
-    let [CssFontFaceSource::Url(source)] = descriptors.src().sources() else {
+    assert_eq!(descriptors.font_family().unwrap().as_str(), "Inter");
+    let [CssFontFaceSource::Url(source)] = descriptors.src().unwrap().sources() else {
         panic!("expected one font-face URL source");
     };
     assert_eq!(source.url(), "inter.woff2");
@@ -5871,7 +5801,7 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
         panic!("expected one nested media rule");
     };
     assert_eq!(
-        style_rule(media_nested).selector(),
+        style_rule(media_nested).selectors().selectors()[0].selector(),
         &CssSelector::Class("panel".to_owned())
     );
 
@@ -5893,7 +5823,9 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
     let [container_nested] = container.rules() else {
         panic!("expected one nested container rule");
     };
-    let CssSelector::Complex(selector) = style_rule(container_nested).selector() else {
+    let CssSelector::Complex(selector) =
+        style_rule(container_nested).selectors().selectors()[0].selector()
+    else {
         panic!("expected complex selector");
     };
     assert_eq!(selector.first().classes(), &["toolbar".to_owned()]);
@@ -5917,28 +5849,10 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
 }
 
 #[test]
-fn keyframes_and_flattened_nesting_are_structurally_accessible() {
-    let sheet = parse_sheet(
-        r#"@keyframes fade {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        .card {
-            color: black;
-            &:hover { opacity: 0.9; }
-            @media (min-width: 600px) {
-                > .title { color: white; }
-            }
-        }"#,
-    )
-    .unwrap();
-
-    let [keyframes, base, hover, media] = sheet.rules() else {
-        panic!("expected keyframes and flattened style output");
-    };
-
-    let CssRule::Keyframes(keyframes) = keyframes else {
-        panic!("expected keyframes rule");
+fn keyframes_and_authored_nesting_are_structurally_accessible() {
+    let sheet = parse_sheet("@keyframes fade { from { opacity: 0; } to { opacity: 1; } } .card { color: black; &:hover { opacity: 0.9; } @media (min-width: 600px) { > .title { color: white; } } }").unwrap();
+    let [CssRule::Keyframes(keyframes), card] = sheet.rules() else {
+        panic!("expected keyframes and authored card");
     };
     assert_eq!(
         keyframes.name(),
@@ -5951,39 +5865,30 @@ fn keyframes_and_flattened_nesting_are_structurally_accessible() {
     assert_eq!(from.declarations()[0].property(), &CssProperty::Opacity);
     assert_eq!(to.selectors().selectors(), &[CssKeyframeSelector::To]);
     assert_eq!(to.declarations()[0].property(), &CssProperty::Opacity);
-
+    let card = style_rule(card);
+    assert_eq!(card.declarations()[0].property(), &CssProperty::Color);
+    let [hover, media] = card.rules() else {
+        panic!("expected hover then media");
+    };
+    let CssSelector::Compound(hover) = style_rule(hover).selectors().selectors()[0].selector()
+    else {
+        panic!("expected anchored hover");
+    };
+    assert_eq!(hover.nesting_selectors(), 1);
+    assert_eq!(hover.pseudo_classes(), &[CssPseudoClass::Hover]);
+    let [title] = media_rule(media).rules() else {
+        panic!("expected nested title");
+    };
+    let [CssStyleSelector::Relative(relative)] = style_rule(title).selectors().selectors() else {
+        panic!("expected relative child");
+    };
+    assert_eq!(relative.combinator(), CssSelectorCombinator::Child);
+    let CssSelector::Compound(selector) = relative.selector() else {
+        panic!("expected compound title");
+    };
+    assert_eq!(selector.classes(), &["title".to_owned()]);
     assert_eq!(
-        style_rule(base).selector(),
-        &CssSelector::Class("card".to_owned())
-    );
-    assert_eq!(
-        style_rule(base).declarations()[0].property(),
-        &CssProperty::Color
-    );
-
-    let CssSelector::Compound(hover_selector) = style_rule(hover).selector() else {
-        panic!("expected flattened hover selector");
-    };
-    assert_eq!(hover_selector.classes(), &["card".to_owned()]);
-    assert_eq!(hover_selector.pseudo_classes(), &[CssPseudoClass::Hover]);
-
-    let CssRule::Media(media) = media else {
-        panic!("expected media rule");
-    };
-    let [nested] = media.rules() else {
-        panic!("expected one nested flattened rule");
-    };
-    let CssSelector::Complex(selector) = style_rule(nested).selector() else {
-        panic!("expected complex nested title selector");
-    };
-    assert_eq!(selector.first().classes(), &["card".to_owned()]);
-    let [part] = selector.rest() else {
-        panic!("expected one child selector part");
-    };
-    assert_eq!(part.combinator(), CssSelectorCombinator::Child);
-    assert_eq!(part.selector().classes(), &["title".to_owned()]);
-    assert_eq!(
-        style_rule(nested).declarations()[0].property(),
+        style_rule(title).declarations()[0].property(),
         &CssProperty::Color
     );
 }

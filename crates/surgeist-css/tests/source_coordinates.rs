@@ -408,8 +408,11 @@ fn font_source_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
         ".after{color:blue}",
     );
     let report = parse_sheet(source);
-    assert_eq!(report.syntax().rules().len(), 2);
-    assert_eq!(report.diagnostics().len(), 2);
+    assert!(matches!(
+        report.syntax().rules(),
+        [CssRule::Style(_), CssRule::FontFace(_), CssRule::Style(_)]
+    ));
+    assert_eq!(report.diagnostics().len(), 1);
     let diagnostic = &report.diagnostics()[0];
     let responsible = source.find("woff3").unwrap();
     let descriptor_start = source.find("src:").unwrap();

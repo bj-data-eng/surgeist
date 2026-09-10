@@ -9,7 +9,7 @@ fn compound_selector(rule: &CssRule) -> &CssCompoundSelector {
     let CssRule::Style(rule) = rule else {
         panic!("expected style rule")
     };
-    let CssSelector::Compound(selector) = rule.selector() else {
+    let CssSelector::Compound(selector) = rule.selectors().selectors()[0].selector() else {
         panic!("expected namespace-aware compound selector")
     };
     selector
@@ -119,7 +119,7 @@ fn selectors3_pseudos_legacy_forms_and_repeated_ids_are_typed() {
     let CssRule::Style(complex) = &report.syntax().rules()[8] else {
         panic!("expected complex selector style rule")
     };
-    let CssSelector::Complex(complex) = complex.selector() else {
+    let CssSelector::Complex(complex) = complex.selectors().selectors()[0].selector() else {
         panic!("expected preserved child combinator")
     };
     assert_eq!(complex.first().ids(), ["first", "second"]);
@@ -159,12 +159,13 @@ fn selectors3_official_pseudo_matrix_and_escaped_language_identifier_are_clean()
     ));
 
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    assert_eq!(report.syntax().rules().len(), 28);
-    let CssRule::Style(escaped) = &report.syntax().rules()[4] else {
-        panic!("expected escaped language style rule")
+    assert_eq!(report.syntax().rules().len(), 5);
+    let CssRule::Style(pseudos) = &report.syntax().rules()[0] else {
+        panic!("expected the authored pseudo-selector list")
     };
+    assert_eq!(pseudos.selectors().selectors().len(), 24);
     assert!(matches!(
-        escaped.selector(),
+        pseudos.selectors().selectors()[4].selector(),
         CssSelector::PseudoClass(CssPseudoClass::Lang(range)) if range.as_str() == "en"
     ));
 }
@@ -432,18 +433,23 @@ fn namespace_prefix_escapes_redeclarations_and_case_remain_exact() {
         "s\\76 g|\\61 ,SVG|a,*|*,|* { color: red; }",
     ));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    assert_eq!(report.syntax().rules().len(), 7);
-
-    for (index, expected) in [(3, Some("svg")), (4, Some("SVG")), (5, None), (6, None)] {
-        let type_selector = compound_selector(&report.syntax().rules()[index])
-            .type_selector()
-            .expect("qualified selector");
+    assert_eq!(report.syntax().rules().len(), 4);
+    let CssRule::Style(style) = &report.syntax().rules()[3] else {
+        panic!("expected one authored qualified selector list")
+    };
+    assert_eq!(style.selectors().selectors().len(), 4);
+    for (index, expected) in [(0, Some("svg")), (1, Some("SVG")), (2, None), (3, None)] {
+        let CssSelector::Compound(compound) = style.selectors().selectors()[index].selector()
+        else {
+            panic!("expected qualified selector compound")
+        };
+        let type_selector = compound.type_selector().expect("qualified selector");
         match expected {
             Some(prefix) => assert!(matches!(
                 type_selector.namespace(),
                 CssNamespaceConstraint::Named(active) if active.as_str() == prefix
             )),
-            None if index == 5 => {
+            None if index == 2 => {
                 assert_eq!(type_selector.namespace(), &CssNamespaceConstraint::Any)
             }
             None => assert_eq!(
@@ -474,15 +480,17 @@ fn default_namespace_applies_to_universal_types_but_not_omitted_types_or_attribu
         panic!("expected namespace and three style rules")
     };
 
-    let CssSelector::Compound(universal) = universal.selector() else {
+    let CssSelector::Compound(universal) = universal.selectors().selectors()[0].selector() else {
         panic!("expected universal compound selector")
     };
     let universal = universal.type_selector().expect("universal type selector");
     assert_eq!(universal.namespace(), &CssNamespaceConstraint::Default);
     assert!(universal.is_universal());
 
-    assert!(matches!(class.selector(), CssSelector::Class(name) if name == "class"));
-    let CssSelector::Compound(attribute) = attribute.selector() else {
+    assert!(
+        matches!(class.selectors().selectors()[0].selector(), CssSelector::Class(name) if name == "class")
+    );
+    let CssSelector::Compound(attribute) = attribute.selectors().selectors()[0].selector() else {
         panic!("expected attribute compound selector")
     };
     assert!(attribute.type_selector().is_none());

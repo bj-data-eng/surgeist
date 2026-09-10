@@ -50,3 +50,110 @@ fn nested_conditional_remains_in_its_authored_parent() {
     );
     assert!(matches!(report.syntax().rules()[0], CssRule::Style(_)));
 }
+
+#[test]
+fn nested_selector_context_preserves_the_entire_parent_list_without_multiplication() {
+    let source = ".card, #featured { &:hover, &.selected { .title, .subtitle { color: red; } } }";
+    let report = parse_sheet(source);
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    let [CssRule::Style(parent)] = report.syntax().rules() else {
+        panic!("expected one authored parent");
+    };
+    assert_eq!(parent.selectors().selectors().len(), 2);
+    assert!(
+        matches!(parent.selectors().selectors()[0].selector(), surgeist_css::CssSelector::Class(name) if name == "card")
+    );
+    assert!(
+        matches!(parent.selectors().selectors()[1].selector(), surgeist_css::CssSelector::Key(name) if name == "featured")
+    );
+    let [CssRule::Style(child)] = parent.rules() else {
+        panic!("the nested selector list remains one child");
+    };
+    assert_eq!(child.selectors().selectors().len(), 2);
+    for selector in child.selectors().selectors() {
+        let surgeist_css::CssSelector::Compound(compound) = selector.selector() else {
+            panic!("expected symbolic parent anchor");
+        };
+        assert_eq!(compound.nesting_selectors(), 1);
+        assert!(!compound.has_scope_anchor());
+        assert!(
+            compound.ids().is_empty(),
+            "the parent ID stays on the parent list"
+        );
+    }
+    let [CssRule::Style(grandchild)] = child.rules() else {
+        panic!("the descendant selector list remains one grandchild");
+    };
+    assert_eq!(grandchild.selectors().selectors().len(), 2);
+    assert_eq!(grandchild.declarations().len(), 1);
+    assert_eq!(
+        child.position().byte_offset().value(),
+        source.find("&:hover").unwrap()
+    );
+    assert_eq!(
+        grandchild.position().byte_offset().value(),
+        source.find(".title").unwrap()
+    );
+}
+
+#[test]
+fn declaration_runs_preserve_parent_pseudo_elements_order_importance_and_provenance() {
+    let source = "a, a::before { color: red; & .title { color: blue; } color: green !important; @media screen { color: black; } color: white; }";
+    let report = parse_sheet(source);
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    let [CssRule::Style(parent)] = report.syntax().rules() else {
+        panic!("expected authored parent");
+    };
+    assert_eq!(parent.selectors().selectors().len(), 2);
+    assert!(
+        parent.selectors().selectors()[1]
+            .selector()
+            .has_pseudo_elements()
+    );
+    assert_eq!(parent.declarations().len(), 1);
+    let [
+        CssRule::Style(child),
+        CssRule::NestedDeclarations(green),
+        CssRule::Media(media),
+        CssRule::NestedDeclarations(white),
+    ] = parent.rules()
+    else {
+        panic!("expected nested style, declaration run, media, declaration run");
+    };
+    assert_eq!(child.declarations().len(), 1);
+    assert_eq!(
+        green.declarations()[0].importance(),
+        surgeist_css::CssImportance::Important
+    );
+    assert_eq!(
+        green.position().byte_offset().value(),
+        source.find("color: green").unwrap()
+    );
+    assert_eq!(
+        white.position().byte_offset().value(),
+        source.find("color: white").unwrap()
+    );
+    let [CssRule::NestedDeclarations(black)] = media.rules() else {
+        panic!("conditional declarations inherit the same parent context");
+    };
+    assert_eq!(
+        black.position().byte_offset().value(),
+        source.find("color: black").unwrap()
+    );
+}
+
+#[test]
+fn invalid_nested_rules_do_not_hide_valid_declarations_or_later_children() {
+    let source = ".card { color: red; .bad, { color: blue; } color: green; .child { opacity: 1; } color: black; }";
+    let report = parse_sheet(source);
+    assert_eq!(report.diagnostics().len(), 1);
+    let [CssRule::Style(parent)] = report.syntax().rules() else {
+        panic!("expected retained authored parent");
+    };
+    assert_eq!(parent.declarations().len(), 2);
+    let [CssRule::Style(child), CssRule::NestedDeclarations(after)] = parent.rules() else {
+        panic!("expected valid child and trailing declaration run");
+    };
+    assert_eq!(child.declarations().len(), 1);
+    assert_eq!(after.declarations().len(), 1);
+}

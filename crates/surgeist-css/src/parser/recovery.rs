@@ -5,7 +5,7 @@ use cssparser::{ParseError, Parser, ParserInput, Token};
 
 use crate::error::{Error, is_nesting_limit_error, nesting_limit};
 use crate::source::CssSourcePosition;
-use crate::syntax::{CssNamespaceName, CssNamespacePrefix, CssSelector};
+use crate::syntax::{CssNamespaceName, CssNamespacePrefix};
 
 use super::CssNamespaceBindings;
 
@@ -257,14 +257,8 @@ impl RecoveryState {
             .cloned()
     }
 
-    pub(super) fn record_style_context(
-        &self,
-        content_start: usize,
-        selectors: &[CssSelector],
-        position: CssSourcePosition,
-    ) -> bool {
-        self.style_context_captures
-            .record(content_start, selectors, position)
+    pub(super) fn record_style_context(&self, content_start: usize) {
+        self.style_context_captures.record(content_start);
     }
 
     pub(super) fn enter_rule_block<'i>(
@@ -447,8 +441,7 @@ pub(super) struct StyleContextCaptures {
 
 struct StyleContextCapture {
     content_start: usize,
-    selectors: Option<Vec<CssSelector>>,
-    position: Option<CssSourcePosition>,
+    parsed: bool,
 }
 
 impl StyleContextCaptures {
@@ -460,41 +453,27 @@ impl StyleContextCaptures {
         {
             entries.push(StyleContextCapture {
                 content_start,
-                selectors: None,
-                position: None,
+                parsed: false,
             });
         }
     }
 
-    fn record(
-        &self,
-        content_start: usize,
-        selectors: &[CssSelector],
-        position: CssSourcePosition,
-    ) -> bool {
-        let mut entries = self.entries.borrow_mut();
-        let Some(entry) = entries
+    fn record(&self, content_start: usize) {
+        if let Some(entry) = self
+            .entries
+            .borrow_mut()
             .iter_mut()
             .find(|entry| entry.content_start == content_start)
-        else {
-            return false;
-        };
-        if entry.selectors.is_none() {
-            entry.selectors = Some(selectors.to_vec());
-            entry.position = Some(position);
+        {
+            entry.parsed = true;
         }
-        true
     }
 
-    pub(super) fn context(
-        &self,
-        content_start: usize,
-    ) -> Option<(Vec<CssSelector>, CssSourcePosition)> {
+    pub(super) fn contains_parsed(&self, content_start: usize) -> bool {
         self.entries
             .borrow()
             .iter()
-            .find(|entry| entry.content_start == content_start)
-            .and_then(|entry| Some((entry.selectors.clone()?, entry.position?)))
+            .any(|entry| entry.content_start == content_start && entry.parsed)
     }
 }
 
@@ -668,7 +647,6 @@ pub(super) fn preflight_structural_nesting(
                     unit_end: source.len(),
                     parents: groups
                         .iter()
-                        .filter(|parent| !matches!(parent.kind, GroupKind::Style))
                         .map(|parent| StructuralParent {
                             start: parent.start,
                             kind: parent.kind,

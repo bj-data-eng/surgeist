@@ -51,7 +51,12 @@ Imports are parsed as authored `@import` contracts only. `surgeist-css` preserve
 
 Cascade layers are parsed as authored `@layer` statements and blocks, including named and anonymous layer blocks. `surgeist-css` records layer names and layer-contained rules, but does not compute cascade order, declaration precedence, or runtime cascade effects.
 
-Scoped styles are parsed as authored `@scope` rules with optional roots, limits, scoped style selectors, and scoped nested group rules. Relative scoped selectors remain structurally distinct from ordinary selectors. `surgeist-css` does not perform scope matching, selector matching, or scoping proximity calculations.
+Scoped styles are parsed as authored `@scope` rules with optional roots, limits, scoped style
+selectors, and scoped nested group rules. A scoped style rule also retains leading declarations
+and ordered nesting children, including declarations after a nested rule. These children use
+the containing scoped style rule as their parent selector context. Relative scoped selectors
+remain structurally distinct from ordinary selectors. `surgeist-css` does not perform scope
+matching, selector matching, or scoping proximity calculations.
 
 Pseudo-elements are parsed as terminal authored selector syntax for the supported `::before`, `::after`, `::first-line`, `::first-letter`, `::marker`, `::selection`, and `::backdrop` forms. The Selectors 3 legacy single-colon spellings map to the same typed before, after, first-line, and first-letter values. The parser records pseudo-elements on selector compounds, but does not filter declarations by pseudo-element or perform generated box/layout behavior.
 
@@ -61,4 +66,12 @@ Font faces are parsed as authored `@font-face` descriptor blocks only. `surgeist
 
 Keyframes are parsed as authored `@keyframes` rules. `surgeist-css` validates keyframe names, selector offsets, and declarations, but does not evaluate animations, match animation names to rules, interpolate values, or run animation timelines.
 
-CSS nesting is parsed as syntax sugar and flattened into ordinary style and conditional group rules while preserving source order. `surgeist-css` does not evaluate selector matches or cascade results during flattening.
+CSS nesting retains the authored rule tree. One style rule owns its complete selector list,
+leading declarations, and ordered child rules. Declaration runs after a retained child and
+inside nested conditional groups use `CssRule::NestedDeclarations`; they inherit the owning
+style rule's selector context, including pseudo-elements. Nested selectors retain relative
+combinators and symbolic parent anchors without copying or multiplying parent selectors.
+Downstream matching can therefore apply the parent list's maximum specificity to `&`, as
+required by CSS Nesting, while preserving the source order of every declaration. The current
+nested-selector grammar and separate scoped-style model remain bounded by their registered
+support; preserving structure does not imply complete nesting grammar or live CSSOM support.

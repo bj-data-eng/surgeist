@@ -8,8 +8,8 @@ use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
 use super::typography::{parse_font_feature_settings, parse_non_generic_font_family_name};
 use super::{block_item_diagnostic, is_declaration_recovery_unit, parse_descriptor_boundary};
 use crate::error::{
-    CssFeatureId, Error, basic, descriptor_name_error, invalid_at_rule_body, unsupported_value,
-    unsupported_value_at, with_descriptor_context,
+    CssFeatureId, Error, basic, descriptor_name_error, unsupported_value, unsupported_value_at,
+    with_descriptor_context,
 };
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
@@ -77,14 +77,7 @@ pub(super) fn parse_font_face_rule<'i, 't>(
         }
     }
 
-    let descriptors = CssFontFaceDescriptors::from_occurrences(descriptors).ok_or_else(|| {
-        invalid_at_rule_body(
-            input,
-            "font-face",
-            "baseline.rule.font-face",
-            "font-family and src descriptors",
-        )
-    })?;
+    let descriptors = CssFontFaceDescriptors::from_occurrences(descriptors);
 
     Ok(CssFontFaceRule::new(
         descriptors,

@@ -120,6 +120,7 @@ pub enum CssRule {
     FontFace(CssFontFaceRule),
     Keyframes(CssKeyframesRule),
     Style(CssStyleRule),
+    NestedDeclarations(CssNestedDeclarationsRule),
     Media(CssMediaRule),
     Supports(CssSupportsRule),
     Container(CssContainerRule),
@@ -1283,12 +1284,13 @@ impl CssKeyframePercent {
 ///
 /// Every valid occurrence retains its authored order, typed value, and descriptor-name position.
 /// Typed accessors expose the effective last valid occurrence of each descriptor. Construction is
-/// crate-private, so callers cannot forge descriptor provenance or omit the required effective
-/// `font-family` and `src` slots. This aggregate does not match or load fonts.
+/// crate-private, so callers cannot forge descriptor provenance. Every descriptor is optional
+/// in authored syntax. Font matching later requires effective `font-family` and `src` values;
+/// this aggregate does not match or load fonts.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFaceDescriptors {
-    font_family: CssDescriptorOccurrence<CssFontFaceFamily>,
-    src: CssDescriptorOccurrence<CssFontFaceSourceList>,
+    font_family: Option<CssDescriptorOccurrence<CssFontFaceFamily>>,
+    src: Option<CssDescriptorOccurrence<CssFontFaceSourceList>>,
     font_weight: Option<CssDescriptorOccurrence<CssFontFaceWeight>>,
     font_style: Option<CssDescriptorOccurrence<CssFontFaceStyle>>,
     font_stretch: Option<CssDescriptorOccurrence<CssFontFaceStretch>>,
@@ -1301,7 +1303,7 @@ pub struct CssFontFaceDescriptors {
 impl CssFontFaceDescriptors {
     #[must_use]
     #[cfg(test)]
-    pub(crate) fn try_new(
+    pub(crate) fn new(
         font_family: Option<CssDescriptorOccurrence<CssFontFaceFamily>>,
         src: Option<CssDescriptorOccurrence<CssFontFaceSourceList>>,
         font_weight: Option<CssDescriptorOccurrence<CssFontFaceWeight>>,
@@ -1309,10 +1311,14 @@ impl CssFontFaceDescriptors {
         font_stretch: Option<CssDescriptorOccurrence<CssFontFaceStretch>>,
         font_display: Option<CssDescriptorOccurrence<CssFontDisplay>>,
         unicode_range: Option<CssDescriptorOccurrence<CssUnicodeRangeList>>,
-    ) -> Option<Self> {
+    ) -> Self {
         let mut occurrences = Vec::new();
-        occurrences.push(CssFontFaceDescriptor::FontFamily(font_family?));
-        occurrences.push(CssFontFaceDescriptor::Src(src?));
+        if let Some(value) = font_family {
+            occurrences.push(CssFontFaceDescriptor::FontFamily(value));
+        }
+        if let Some(value) = src {
+            occurrences.push(CssFontFaceDescriptor::Src(value));
+        }
         if let Some(value) = font_weight {
             occurrences.push(CssFontFaceDescriptor::FontWeight(value));
         }
@@ -1332,7 +1338,7 @@ impl CssFontFaceDescriptors {
     }
 
     #[must_use]
-    pub(crate) fn from_occurrences(occurrences: Vec<CssFontFaceDescriptor>) -> Option<Self> {
+    pub(crate) fn from_occurrences(occurrences: Vec<CssFontFaceDescriptor>) -> Self {
         let mut font_family = None;
         let mut src = None;
         let mut font_weight = None;
@@ -1357,9 +1363,9 @@ impl CssFontFaceDescriptors {
             }
         }
 
-        Some(Self {
-            font_family: font_family?,
-            src: src?,
+        Self {
+            font_family,
+            src,
             font_weight,
             font_style,
             font_stretch,
@@ -1367,19 +1373,19 @@ impl CssFontFaceDescriptors {
             unicode_range,
             font_feature_settings,
             occurrences,
-        })
+        }
     }
 
     #[must_use]
-    /// Returns the effective last valid authored `font-family` occurrence.
-    pub const fn font_family(&self) -> &CssDescriptorOccurrence<CssFontFaceFamily> {
-        &self.font_family
+    /// Returns the effective last valid authored `font-family` occurrence, if present.
+    pub const fn font_family(&self) -> Option<&CssDescriptorOccurrence<CssFontFaceFamily>> {
+        self.font_family.as_ref()
     }
 
     #[must_use]
-    /// Returns the effective last valid authored `src` occurrence.
-    pub const fn src(&self) -> &CssDescriptorOccurrence<CssFontFaceSourceList> {
-        &self.src
+    /// Returns the effective last valid authored `src` occurrence, if present.
+    pub const fn src(&self) -> Option<&CssDescriptorOccurrence<CssFontFaceSourceList>> {
+        self.src.as_ref()
     }
 
     #[must_use]
@@ -2672,6 +2678,7 @@ pub enum CssScopedRule {
 pub struct CssScopedStyleRule {
     selectors: CssScopedStyleSelectorList,
     declarations: CssDeclarationList,
+    rules: Vec<CssRule>,
     position: CssSourcePosition,
 }
 
@@ -2681,11 +2688,13 @@ impl CssScopedStyleRule {
     pub(crate) fn new(
         selectors: CssScopedStyleSelectorList,
         declarations: CssDeclarationList,
+        rules: Vec<CssRule>,
         position: CssSourcePosition,
     ) -> Self {
         Self {
             selectors,
             declarations,
+            rules,
             position,
         }
     }
@@ -2695,9 +2704,19 @@ impl CssScopedStyleRule {
         &self.selectors
     }
 
+    /// Returns leading declarations before the first retained child rule.
     #[must_use]
     pub const fn declarations(&self) -> &CssDeclarationList {
         &self.declarations
+    }
+
+    /// Returns nested rules and subsequent declaration runs in authored order.
+    ///
+    /// These children use ordinary nesting semantics relative to this scoped style rule.
+    /// They preserve the parent context without replacing its scoped selectors.
+    #[must_use]
+    pub fn rules(&self) -> &[CssRule] {
+        &self.rules
     }
 
     /// Returns the semantic source position at the authored scoped selector-list start.
@@ -3802,36 +3821,121 @@ impl CssQueryLength {
     }
 }
 
-/// An authored style rule with an ordered validated ordinary declaration collection.
+/// One authored style rule with a complete selector list and ordered children.
 ///
-/// The parser-produced position identifies the authored rule syntax that produced this node;
-/// callers cannot forge it. Declarations retain their importance and their own semantic positions.
-/// This syntax node does not match selectors, apply cascade, substitute variables, or resolve
-/// contextual values.
+/// Leading declarations belong to this rule. Declaration runs after its first retained child
+/// appear as [`CssRule::NestedDeclarations`] in [`Self::rules`]. Nested selectors retain symbolic
+/// parent references; this tree does not expand selectors or select cascade winners.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssStyleRule {
-    selector: CssSelector,
+    selectors: CssStyleSelectorList,
     declarations: CssDeclarationList,
+    rules: Vec<CssRule>,
     position: CssSourcePosition,
 }
 
 impl CssStyleRule {
-    #[must_use]
     pub(crate) fn new(
-        selector: CssSelector,
+        selectors: CssStyleSelectorList,
         declarations: CssDeclarationList,
+        rules: Vec<CssRule>,
         position: CssSourcePosition,
     ) -> Self {
         Self {
-            selector,
+            selectors,
             declarations,
+            rules,
             position,
         }
     }
 
+    /// Returns the complete authored selector list, without parent-selector expansion.
+    #[must_use]
+    pub const fn selectors(&self) -> &CssStyleSelectorList {
+        &self.selectors
+    }
+
+    /// Returns the leading declarations, before the first retained child rule.
+    #[must_use]
+    pub const fn declarations(&self) -> &CssDeclarationList {
+        &self.declarations
+    }
+
+    /// Returns nested rules and subsequent declaration runs in authored order.
+    #[must_use]
+    pub fn rules(&self) -> &[CssRule] {
+        &self.rules
+    }
+
+    /// Returns the source position of the authored selector-list start.
+    #[must_use]
+    pub const fn position(&self) -> CssSourcePosition {
+        self.position
+    }
+}
+
+/// A nonempty parser-validated selector list for an authored style rule.
+///
+/// Ordinary stylesheet contexts accept only non-relative selectors. Nested style contexts also
+/// accept relative selectors; their relationship to the parent stays symbolic until matching.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssStyleSelectorList {
+    selectors: Vec<CssStyleSelector>,
+}
+
+impl CssStyleSelectorList {
+    pub(crate) fn new(selectors: Vec<CssStyleSelector>) -> Self {
+        debug_assert!(!selectors.is_empty());
+        Self { selectors }
+    }
+
+    pub(crate) fn absolute(selectors: Vec<CssSelector>) -> Self {
+        Self::new(
+            selectors
+                .into_iter()
+                .map(CssStyleSelector::Selector)
+                .collect(),
+        )
+    }
+
+    #[must_use]
+    pub fn selectors(&self) -> &[CssStyleSelector] {
+        &self.selectors
+    }
+}
+
+/// An authored selector, or an explicitly relative selector in a nested rule.
+#[non_exhaustive]
+#[derive(Clone, Debug, PartialEq)]
+pub enum CssStyleSelector {
+    Selector(CssSelector),
+    Relative(CssRelativeSelector),
+}
+
+impl CssStyleSelector {
+    /// Returns the selector itself; [`Self::Relative`] also retains its leading combinator.
     #[must_use]
     pub const fn selector(&self) -> &CssSelector {
-        &self.selector
+        match self {
+            Self::Selector(selector) => selector,
+            Self::Relative(relative) => relative.selector(),
+        }
+    }
+}
+
+/// A nonempty declaration run in a style rule's child list or a nested conditional group.
+///
+/// It inherits the enclosing style rule's selector context, including pseudo-elements, rather
+/// than synthesizing an `&` selector. Declaration positions preserve its original provenance.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssNestedDeclarationsRule {
+    declarations: CssDeclarationList,
+}
+
+impl CssNestedDeclarationsRule {
+    pub(crate) fn new(declarations: CssDeclarationList) -> Self {
+        debug_assert!(!declarations.is_empty());
+        Self { declarations }
     }
 
     #[must_use]
@@ -3839,13 +3943,10 @@ impl CssStyleRule {
         &self.declarations
     }
 
-    /// Returns the semantic source position of the authored rule syntax that produced this node.
-    ///
-    /// This parser-produced position is diagnostic and ordering provenance only; it does not
-    /// perform selector matching or participate in cascade.
+    /// Returns the position of the first declaration in this nonempty run.
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
-        self.position
+    pub fn position(&self) -> CssSourcePosition {
+        self.declarations[0].position()
     }
 }
 
@@ -16591,6 +16692,7 @@ impl CssNthAnPlusB {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssCompoundSelector {
     scope_anchor: bool,
+    nesting_selectors: usize,
     type_selector: Option<Box<(CssQualifiedSelectorName, bool)>>,
     tag: Option<String>,
     ids: Vec<String>,
@@ -16676,6 +16778,7 @@ impl CssCompoundSelector {
             .cloned();
         Self {
             scope_anchor,
+            nesting_selectors: 0,
             type_selector: type_selector.map(Box::new),
             tag,
             ids,
@@ -16684,6 +16787,20 @@ impl CssCompoundSelector {
             pseudo_classes,
             pseudo_elements,
         }
+    }
+
+    pub(crate) fn with_nesting_selectors(mut self, count: usize) -> Self {
+        self.nesting_selectors = count;
+        self
+    }
+
+    /// Returns the number of symbolic nesting selectors in this compound.
+    ///
+    /// Every anchor refers to the entire nearest parent selector list. Matching uses that
+    /// list's maximum specificity, rather than the specificity of one matching parent.
+    #[must_use]
+    pub const fn nesting_selectors(&self) -> usize {
+        self.nesting_selectors
     }
 
     #[must_use]

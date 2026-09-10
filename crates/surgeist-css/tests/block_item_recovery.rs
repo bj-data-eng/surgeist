@@ -1,6 +1,7 @@
 use surgeist_css::{
     CssDeclarationContextRef, CssErrorCode, CssPropertyNameRef, CssRecoveryAction, CssRule,
-    CssScopedRule, CssSelector, CssSelectorCombinator, CssTokenKind, ErrorKind, parse_sheet,
+    CssScopedRule, CssSelector, CssSelectorCombinator, CssStyleSelector, CssTokenKind, ErrorKind,
+    parse_sheet,
 };
 
 fn property_names(declarations: &surgeist_css::CssDeclarationList) -> Vec<&str> {
@@ -196,11 +197,20 @@ fn block_item_recovery_all_invalid_declarations_retain_empty_ordinary_style_in_o
     else {
         panic!("expected the empty owning style between its retained siblings");
     };
-    assert_eq!(before.selector(), &CssSelector::Class("before".to_owned()));
+    assert_eq!(
+        before.selectors().selectors()[0].selector(),
+        &CssSelector::Class("before".to_owned())
+    );
     assert_eq!(property_names(before.declarations()), ["color"]);
-    assert_eq!(empty.selector(), &CssSelector::Class("x".to_owned()));
+    assert_eq!(
+        empty.selectors().selectors()[0].selector(),
+        &CssSelector::Class("x".to_owned())
+    );
     assert!(empty.declarations().is_empty());
-    assert_eq!(after.selector(), &CssSelector::Class("after".to_owned()));
+    assert_eq!(
+        after.selectors().selectors()[0].selector(),
+        &CssSelector::Class("after".to_owned())
+    );
     assert_eq!(property_names(after.declarations()), ["height"]);
 
     let [diagnostic] = report.diagnostics() else {
@@ -228,30 +238,31 @@ fn block_item_recovery_all_invalid_declarations_retain_empty_nested_style_in_ord
     );
     let report = parse_sheet(&source);
 
-    let [
-        CssRule::Style(before),
-        CssRule::Style(empty),
-        CssRule::Style(after),
-        CssRule::Style(sibling),
-    ] = report.syntax().rules()
-    else {
-        panic!("expected the empty nested style between retained parent segments and sibling");
+    let [CssRule::Style(parent), CssRule::Style(sibling)] = report.syntax().rules() else {
+        panic!("expected authored parent and following sibling");
     };
-    assert_eq!(before.selector(), &CssSelector::Class("host".to_owned()));
-    assert_eq!(property_names(before.declarations()), ["color"]);
-    let CssSelector::Complex(empty_selector) = empty.selector() else {
-        panic!("expected flattened descendant selector for the empty nested style");
+    let [CssRule::Style(empty), CssRule::NestedDeclarations(after)] = parent.rules() else {
+        panic!("expected empty nested style then trailing declarations");
     };
-    assert_eq!(empty_selector.first().classes(), &["host".to_owned()]);
-    let [child] = empty_selector.rest() else {
-        panic!("expected exactly one descendant selector part");
+    assert_eq!(
+        parent.selectors().selectors()[0].selector(),
+        &CssSelector::Class("host".to_owned())
+    );
+    assert_eq!(property_names(parent.declarations()), ["color"]);
+    let [CssStyleSelector::Relative(relative)] = empty.selectors().selectors() else {
+        panic!("expected relative selector for the empty nested style");
     };
-    assert_eq!(child.combinator(), CssSelectorCombinator::Descendant);
-    assert_eq!(child.selector().classes(), &["child".to_owned()]);
+    assert_eq!(relative.combinator(), CssSelectorCombinator::Descendant);
+    let CssSelector::Compound(child) = relative.selector() else {
+        panic!("expected child compound");
+    };
+    assert_eq!(child.classes(), &["child".to_owned()]);
     assert!(empty.declarations().is_empty());
-    assert_eq!(after.selector(), &CssSelector::Class("host".to_owned()));
     assert_eq!(property_names(after.declarations()), ["opacity"]);
-    assert_eq!(sibling.selector(), &CssSelector::Class("after".to_owned()));
+    assert_eq!(
+        sibling.selectors().selectors()[0].selector(),
+        &CssSelector::Class("after".to_owned())
+    );
     assert_eq!(property_names(sibling.declarations()), ["height"]);
 
     let [diagnostic] = report.diagnostics() else {
@@ -291,19 +302,15 @@ fn block_item_recovery_nested_and_scoped_style_lists_own_declaration_recovery() 
         panic!("expected nested unknown-property detail");
     };
     assert_eq!(nested_detail.name().as_str(), "bad");
-    let nested_declarations: Vec<Vec<&str>> = nested
-        .syntax()
-        .rules()
-        .iter()
-        .filter_map(|rule| match rule {
-            CssRule::Style(rule) => Some(property_names(rule.declarations())),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(
-        nested_declarations,
-        [vec!["color"], vec!["width", "height"], vec!["opacity"]]
-    );
+    let [CssRule::Style(parent)] = nested.syntax().rules() else {
+        panic!("expected retained authored parent");
+    };
+    let [CssRule::Style(child), CssRule::NestedDeclarations(after)] = parent.rules() else {
+        panic!("expected retained child and trailing declaration run");
+    };
+    assert_eq!(property_names(parent.declarations()), ["color"]);
+    assert_eq!(property_names(child.declarations()), ["width", "height"]);
+    assert_eq!(property_names(after.declarations()), ["opacity"]);
 
     let scoped_source = "@scope { :scope { color: red; bad: x; width: 2px; } }";
     let scoped = parse_sheet(scoped_source);
@@ -393,9 +400,9 @@ fn block_item_recovery_font_face_drops_bad_and_retains_duplicate_optional_descri
         panic!("expected retained font face");
     };
     let descriptors = rule.descriptors();
-    assert_eq!(descriptors.font_family().value().as_str(), "Inter");
+    assert_eq!(descriptors.font_family().unwrap().value().as_str(), "Inter");
     assert_eq!(
-        descriptors.src().position().byte_offset().value(),
+        descriptors.src().unwrap().position().byte_offset().value(),
         source.find("src").unwrap()
     );
     assert_eq!(
@@ -425,15 +432,18 @@ fn block_item_recovery_font_face_drops_bad_and_retains_duplicate_optional_descri
 }
 
 #[test]
-fn block_item_recovery_font_face_required_loss_emits_child_before_parent_drop() {
+fn block_item_recovery_font_face_source_loss_preserves_authored_rule() {
     let source =
         "@font-face { font-family: Inter; src: nope; font-display: swap; } .after { color: blue; }";
     let report = parse_sheet(source);
-    let [CssRule::Style(after)] = report.syntax().rules() else {
-        panic!("unrepresentable font face must not survive and later rule must remain");
+    let [CssRule::FontFace(face), CssRule::Style(after)] = report.syntax().rules() else {
+        panic!("descriptor recovery must retain the font face and later rule");
     };
+    assert!(face.descriptors().src().is_none());
+    assert_eq!(face.descriptors().font_family().unwrap().as_str(), "Inter");
+    assert!(face.descriptors().font_display().is_some());
     assert_eq!(property_names(after.declarations()), ["color"]);
-    assert_eq!(report.diagnostics().len(), 2);
+    assert_eq!(report.diagnostics().len(), 1);
     assert_drop(
         source,
         &report.diagnostics()[0],
@@ -442,37 +452,21 @@ fn block_item_recovery_font_face_required_loss_emits_child_before_parent_drop() 
         CssRecoveryAction::DropDescriptor,
         source.find("nope").unwrap(),
     );
-    assert_eq!(
-        report.diagnostics()[1].error().code(),
-        CssErrorCode::InvalidAtRuleBody
-    );
-    assert_eq!(
-        report.diagnostics()[1].action(),
-        CssRecoveryAction::DropAtRule
-    );
-    assert_eq!(
-        report.diagnostics()[1].span().start().byte_offset().value(),
-        0
-    );
-    assert_eq!(
-        report.diagnostics()[1].span().end().byte_offset().value(),
-        source.find(" .after").unwrap()
-    );
 }
 
 #[test]
 fn block_item_recovery_each_font_face_descriptor_value_failure_has_exact_scope() {
     let cases = [
-        ("font-family: ;", "font-family", true),
-        ("src: nope;", "src", true),
-        ("font-weight: nope;", "font-weight", false),
-        ("font-style: nope;", "font-style", false),
-        ("font-stretch: nope;", "font-stretch", false),
-        ("font-display: nope;", "font-display", false),
-        ("unicode-range: nope;", "unicode-range", false),
+        ("font-family: ;", "font-family"),
+        ("src: nope;", "src"),
+        ("font-weight: nope;", "font-weight"),
+        ("font-style: nope;", "font-style"),
+        ("font-stretch: nope;", "font-stretch"),
+        ("font-display: nope;", "font-display"),
+        ("unicode-range: nope;", "unicode-range"),
     ];
 
-    for (unit, name, required) in cases {
+    for (unit, name) in cases {
         let mut required_descriptors = "font-family: Inter; src: url(i);".to_owned();
         if name == "font-family" {
             required_descriptors = "src: url(i);".to_owned();
@@ -498,26 +492,11 @@ fn block_item_recovery_each_font_face_descriptor_value_failure_has_exact_scope()
             responsible,
         );
 
-        if required {
-            assert_eq!(report.diagnostics().len(), 2, "{name}");
-            assert_eq!(
-                report.diagnostics()[1].error().code(),
-                CssErrorCode::InvalidAtRuleBody,
-                "{name}"
-            );
-            assert_eq!(
-                report.diagnostics()[1].action(),
-                CssRecoveryAction::DropAtRule,
-                "{name}"
-            );
-            assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
-        } else {
-            assert_eq!(report.diagnostics().len(), 1, "{name}");
-            assert!(matches!(
-                report.syntax().rules(),
-                [CssRule::FontFace(_), CssRule::Style(_)]
-            ));
-        }
+        assert_eq!(report.diagnostics().len(), 1, "{name}");
+        assert!(matches!(
+            report.syntax().rules(),
+            [CssRule::FontFace(_), CssRule::Style(_)]
+        ));
     }
 }
 
@@ -551,7 +530,10 @@ fn block_item_recovery_repeated_descriptor_failures_progress_to_required_sibling
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("later required descriptors must retain font face");
     };
-    assert_eq!(rule.descriptors().font_family().value().as_str(), "Inter");
+    assert_eq!(
+        rule.descriptors().font_family().unwrap().value().as_str(),
+        "Inter"
+    );
     assert_eq!(report.diagnostics().len(), 3);
     assert_eq!(
         report
