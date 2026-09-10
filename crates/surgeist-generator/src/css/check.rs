@@ -37,6 +37,9 @@ fn inspect_current(request: &CssRequest) -> Result<()> {
     let manifest_path = location.corpus_root().join(MANIFEST_FILE);
     let manifest_bytes = super::importer::read_manifest_file(&manifest_path)?;
     super::importer::revalidate_manifest(&rooted, &manifest_bytes)?;
+    if super::wpt::is_manifest(&manifest_bytes, &manifest_path)? {
+        return super::wpt::check(&rooted, &manifest_bytes, &manifest_path);
+    }
     let manifest = super::manifest::parse(&manifest_bytes, &manifest_path)?;
     let imported = super::fixture::inspect(&rooted, &manifest)?;
     let expectations = super::expectation::derive(&imported, &manifest)?;

@@ -174,7 +174,7 @@ fn positive_count(value: u64, label: &str) -> Result<usize> {
     usize::try_from(value).map_err(|_| invalid_manifest(format!("source.{label} overflows")))
 }
 
-fn require_root(path: &RelativePath, label: &str) -> Result<()> {
+pub(super) fn require_root(path: &RelativePath, label: &str) -> Result<()> {
     let value = path.as_str();
     if value.contains('/')
         || matches!(value, "corpus.toml" | ".surgeist-generator" | SIDECAR_FILE)

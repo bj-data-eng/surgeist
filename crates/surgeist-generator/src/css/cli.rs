@@ -50,6 +50,9 @@ fn run_from_args(arguments: impl IntoIterator<Item = OsString>) -> Result<()> {
             Some("import-csstree") => {
                 set_once(&mut command, CssCommand::ImportCsstree, "CSS command")?;
             }
+            Some("import-wpt") => {
+                set_once(&mut command, CssCommand::ImportWpt, "CSS command")?;
+            }
             Some("generate") => {
                 set_once(&mut command, CssCommand::Generate, "CSS command")?;
             }
@@ -65,12 +68,13 @@ fn run_from_args(arguments: impl IntoIterator<Item = OsString>) -> Result<()> {
     let corpus_root = required_path(corpus_root, "--corpus-root")?;
     let command = command.ok_or_else(|| cli_error("missing CSS command"))?;
     match command {
-        CssCommand::ImportCsstree => {
+        CssCommand::ImportCsstree | CssCommand::ImportWpt => {
+            let name = command.name();
             if filter.is_some() {
-                return Err(cli_error("import-csstree forbids --filter"));
+                return Err(cli_error(format!("{name} forbids --filter")));
             }
             if source_root.as_ref().is_none_or(|value| value.is_empty()) {
-                return Err(cli_error("import-csstree requires --source-root"));
+                return Err(cli_error(format!("{name} requires --source-root")));
             }
         }
         CssCommand::Generate => {

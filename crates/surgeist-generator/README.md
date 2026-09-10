@@ -1,8 +1,9 @@
 # surgeist-generator
 
 Shared corpus generation infrastructure for Surgeist tooling authors. The CSS
-adapter imports CSSTree fixtures and creates neutral expectations; the browser
-engine runs caller-prepared jobs and publishes caller-produced artifact bytes.
+adapter imports CSSTree fixtures and creates neutral expectations, and imports
+explicit WPT source and license bundles for consumer-owned adaptation. The
+browser engine runs caller-prepared jobs and publishes caller-produced artifact bytes.
 
 Version 0.2.0 uses Rust 2024 with MSRV 1.97. Default features are empty, keeping
 shared value/read contracts native/wasm portable. Mutation is supported on

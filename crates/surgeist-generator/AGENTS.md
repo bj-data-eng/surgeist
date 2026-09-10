@@ -16,6 +16,14 @@ roots; explicit acquisition uses owner-local `tmp/surgeist-sources` and
 acquire software. Manifests/caller declarations own pins, paths, counts, and
 browser settings. Production corpora belong to the consuming crates.
 
+The CSS API imports either a pinned CSSTree checkout or a reviewed explicit WPT
+source/license bundle. WPT import and checking remain offline and browser-free;
+the consuming CSS corpus owns acquisition provenance and adaptation evidence.
+`tests/wpt_import.rs` exercises the WPT CLI, manifest/license binding, exact
+inventory ownership, and no-write failures. Select it with
+`--no-default-features --features css-corpus --test wpt_import` under the root's
+serial Cargo limits. The importer does not provide a WPT generation transform.
+
 Consume sibling public front doors. Cross-crate lowering and composition remain
 at the root boundary defined by the root guide.
 

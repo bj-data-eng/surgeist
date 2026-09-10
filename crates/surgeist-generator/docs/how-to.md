@@ -27,6 +27,44 @@ Filtered generation updates matching expectations already owned by the historica
 full report and preserves the report and other expectations. Run full generation
 before expecting a current full-corpus check to pass after changed outputs.
 
+## Import an explicit WPT bundle
+
+Prepare a reviewed WPT manifest using the [reference schema](reference.md#wpt-manifest-and-receipt).
+Choose a full immutable commit and an explicit file allowlist, including each
+file's applicable license material. During separately authorized acquisition,
+retrieve each path from
+`https://raw.githubusercontent.com/web-platform-tests/wpt/<revision>/<path>`
+and bind its SHA-256 to that exact URL in the acquisition record. A local digest
+alone does not establish which upstream commit supplied the bytes.
+
+Keep this existing bundle under the caller's owner-local
+`tmp/surgeist-sources/wpt/<revision>/` directory, outside corpus output and
+coordination roots. Preserve upstream relative paths and bytes. A full checkout,
+browser, Node installation, and JavaScript execution are unnecessary. The
+manifest, acquisition record, preserved source/license inventory, and adaptation
+vectors belong to the consuming corpus.
+
+From the Surgeist root, set `CORPUS_OWNER`, `CORPUS_ROOT`, and `WPT_SOURCE_BUNDLE`
+to existing absolute paths, then run the selected commands serially:
+
+```sh
+cargo run --offline --locked -j 1 -p surgeist-generator --no-default-features --features css-corpus --bin surgeist-css-generate -- --owner-root "$CORPUS_OWNER" --corpus-root "$CORPUS_ROOT" import-wpt --source-root "$WPT_SOURCE_BUNDLE"
+cargo run --offline --locked -j 1 -p surgeist-generator --no-default-features --features css-corpus --bin surgeist-css-generate -- --owner-root "$CORPUS_OWNER" --corpus-root "$CORPUS_ROOT" check-corpus
+```
+
+Import verifies the file/license hashes and publishes their exact bytes together
+with a canonical receipt. It does not fetch or execute source. Checking remains
+offline after the bundle is removed and verifies that imported inventory and
+receipt. Run the consuming CSS corpus's separate binding and behavioral tests
+for grammar, construction, normalization, and serialization evidence. WPT
+`generate` is unsupported and returns an error before publication.
+
+To update a selection, acquire and review the replacement declarations and
+bundle, then import again. The prior receipt must still account for every
+existing output byte; import rejects unknown or tampered output instead of
+deleting it. A valid replacement removes only obsolete files owned by that
+prior receipt. Source/license verification failures leave existing output intact.
+
 ## Integrate a browser host
 
 Enable `browser-corpus` and supply an existing browser and checked corpus, case,

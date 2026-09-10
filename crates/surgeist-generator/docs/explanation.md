@@ -1,7 +1,8 @@
 # Architecture and trust
 
 The crate separates shared corpus infrastructure from fixture semantics. Its
-CSS adapter owns CSSTree import and neutral expectations. Its browser engine
+CSS adapter owns CSSTree import and neutral expectations and explicit WPT source
+bundle import. Its browser engine
 executes caller-prepared jobs and publishes caller-produced bytes. Callers own
 fixture semantics, measurement protocols, and serialization; the engine owns
 its runtime, browser, processes, and publication transactions.
@@ -30,6 +31,23 @@ paths and hashes are independently verified and protected through publication.
 They cannot authorize filtered migration or pass current-report verification.
 
 ## Roots, acquisition, and recovery
+
+WPT import deliberately separates source acquisition from local publication.
+A reviewed manifest binds explicit source and license digests to a declared
+full commit. The importer checks only these files in an existing bundle and
+publishes their exact bytes; it never discovers a whole tree or runs upstream
+JavaScript. Its `manifest-file-digests` receipt records that declaration and
+verification method, without claiming Git object or tree attestation. The
+acquisition record must establish each digest's immutable upstream URL.
+
+The WPT receipt also bounds publication ownership. A populated destination must
+have a canonical receipt whose exact source/license inventory still matches;
+unknown or changed entries stop the import. Shared rooted filesystem checks,
+namespace separation, revalidation, leases, and atomic artifact transactions
+protect both first import and replacement. Corpus checking verifies the receipt
+and imported bytes offline. Adaptation vectors, source-to-vector bindings, and
+parser/typed-value behavioral checks belong to the consuming CSS corpus. This
+source importer makes no style-execution or renderer-conformance claim.
 
 `CorpusLocation` retains its contained-owner invariant. `BrowserLocation` binds
 an exact browser owner and exact corpus separately, supporting caller-owned

@@ -37,6 +37,13 @@ fn run_impl(
     let location = request.location();
     let manifest_path = location.corpus_root().join(MANIFEST_FILE);
     let manifest_bytes = super::importer::read_manifest_file(&manifest_path)?;
+    if super::wpt::is_manifest(&manifest_bytes, &manifest_path)? {
+        return Err(crate::GeneratorError::new(
+            crate::GeneratorErrorKind::Generation,
+            "generate CSS corpus",
+            "WPT source bundles have no supported generation transformation; use import-wpt and check-corpus",
+        ));
+    }
     let manifest = super::manifest::parse(&manifest_bytes, &manifest_path)?;
 
     let reservation = ArtifactReservation::new(Domain::Css)?;

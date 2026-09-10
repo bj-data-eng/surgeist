@@ -1,13 +1,13 @@
-//! Synchronous CSSTree corpus operations over caller-supplied roots.
+//! Synchronous CSS corpus operations over caller-supplied roots.
 //!
 //! `surgeist-css-generate` is built only with `css-corpus` and accepts exactly
-//! `import-csstree`, `generate`, and `check-corpus`. Every command requires
+//! `import-csstree`, `import-wpt`, `generate`, and `check-corpus`. Every command requires
 //! explicit `--owner-root` and `--corpus-root` values. Import alone requires a
 //! caller-supplied `--source-root`; generation alone permits `--filter`.
 //! The corpus manifest owns the mutable CSSTree pin, expected file/case counts,
 //! import root, expectation root, and report path.
 //!
-//! Import uses an existing, clean checkout at the manifest's exact pin; this
+//! CSSTree import uses an existing, clean checkout at the manifest's exact pin; this
 //! interface never downloads or installs the source:
 //!
 //! ```no_run
@@ -46,6 +46,14 @@
 //! )?)
 //! # }
 //! ```
+//!
+//! `import-wpt` copies an explicit file and license allowlist from an existing
+//! source bundle, verifying the manifest's SHA-256 digests. Its receipt records
+//! the declared full WPT commit and reviewed manifest; it is not a Git tree
+//! attestation. Acquisition must bind the manifest to immutable upstream URLs.
+//! For WPT, `check-corpus` verifies that exact imported inventory and receipt
+//! without the bundle. CSS consumers own adaptation and behavioral evidence.
+//! WPT generation is unsupported; these operations never execute JavaScript.
 
 use std::path::{Path, PathBuf};
 
@@ -63,6 +71,7 @@ mod importer;
 mod manifest;
 mod report;
 mod sidecar;
+mod wpt;
 
 #[cfg(test)]
 mod tests;
@@ -73,12 +82,14 @@ mod tests;
 pub enum CssCommand {
     /// Import the manifest-pinned `fixtures/ast` tree from an existing checkout.
     ImportCsstree,
+    /// Import the explicit WPT file and license allowlist from an existing bundle.
+    ImportWpt,
     /// Generate neutral expectations from the current import, optionally filtered.
     ///
     /// Filtered generation updates only matching expectations already owned by the
     /// historical full report and preserves every other expectation and report.
     Generate,
-    /// Verify the current import and expectation corpus without changing it.
+    /// Verify the current CSSTree expectations or WPT source inventory without changing it.
     CheckCorpus,
 }
 
@@ -105,20 +116,21 @@ impl CssRequest {
         filter: Option<RelativePath>,
     ) -> Result<Self> {
         match command {
-            CssCommand::ImportCsstree => {
+            CssCommand::ImportCsstree | CssCommand::ImportWpt => {
+                let name = command.name();
                 if source_root
                     .as_ref()
                     .is_none_or(|root| root.as_os_str().is_empty())
                 {
                     return Err(cli_error(
                         "construct CSS request",
-                        "import-csstree requires a nonempty source root",
+                        format!("{name} requires a nonempty source root"),
                     ));
                 }
                 if filter.is_some() {
                     return Err(cli_error(
                         "construct CSS request",
-                        "import-csstree forbids a filter",
+                        format!("{name} forbids a filter"),
                     ));
                 }
             }
@@ -168,7 +180,7 @@ impl CssRequest {
         self.command
     }
 
-    /// Returns the source checkout supplied by import operations.
+    /// Returns the source checkout or bundle supplied by import operations.
     #[must_use]
     pub fn source_root(&self) -> Option<&Path> {
         self.source_root.as_deref()
@@ -185,8 +197,20 @@ impl CssRequest {
 pub fn run(request: CssRequest) -> Result<()> {
     match request.command() {
         CssCommand::ImportCsstree => importer::run(&request),
+        CssCommand::ImportWpt => wpt::import(&request),
         CssCommand::Generate => full_generation::run(&request),
         CssCommand::CheckCorpus => check::run(&request),
+    }
+}
+
+impl CssCommand {
+    fn name(self) -> &'static str {
+        match self {
+            Self::ImportCsstree => "import-csstree",
+            Self::ImportWpt => "import-wpt",
+            Self::Generate => "generate",
+            Self::CheckCorpus => "check-corpus",
+        }
     }
 }
 

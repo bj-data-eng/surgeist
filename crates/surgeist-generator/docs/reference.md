@@ -27,13 +27,52 @@ Owned Rust forbids unsafe code at the [library front door](../src/lib.rs).
 | Browser declarations | [src/browser/model.rs](../src/browser/model.rs) | Corpus, fixture/case, launch/settings, resources, requests, prior ownership, adapter errors |
 | Browser reports | [src/browser/report.rs](../src/browser/report.rs) | Schema-4 executable/engine identity, inputs, attestations, settings, artifact hashes, outcome accounting |
 
-CSS accepts `import-csstree`, `generate`, and `check-corpus`. All require explicit
-`--owner-root` and `--corpus-root`; only import requires `--source-root`, and only
-generation permits `--filter`. CSS report schemas and serialization remain
-unchanged by the browser-engine migration.
+CSS accepts `import-csstree`, `import-wpt`, `generate`, and `check-corpus`. All
+require explicit `--owner-root` and `--corpus-root`; both import operations
+require `--source-root` and forbid `--filter`. Generation permits `--filter`.
+`check-corpus` dispatches on `source.kind`: CSSTree checks source attestation,
+neutral expectations, and report; WPT checks its imported inventory and receipt.
+`generate` rejects WPT because no source transformation is implemented. These
+operations do not acquire sources or execute JavaScript.
 
 Manifests and caller declarations own pins, counts, paths, browser settings,
 and artifact formats. This crate does not prescribe a fixture-domain serializer.
+
+## WPT manifest and receipt
+
+The CSS-only WPT importer reads `corpus.toml` with exactly these schema-1 fields:
+
+| Declaration | Contract |
+| --- | --- |
+| `source.kind` | `"wpt"` |
+| `source.repository` | `"https://github.com/web-platform-tests/wpt.git"` |
+| `source.revision` | Full lowercase Git object ID accepted by `SourceRevision` |
+| `source.import_root` | One non-reserved relative component |
+| `[[files]]` | Nonempty explicit list of `path`, canonical `sha256`, and nonempty `licenses` path references |
+| `[[licenses]]` | Nonempty explicit list of `path` and canonical `sha256` |
+
+Unknown fields, duplicate paths or bindings, case-aliased path components,
+file/directory prefix collisions, traversal, and generator-reserved path
+components are rejected. Each file's license references must identify entries
+in `[[licenses]]`. Source and license bytes must be regular, single-link files
+with mode 0644; the shared rooted filesystem rejects symlinks and mount changes.
+Only declared files are read and copied. Unlisted bundle files have no effect.
+
+`<import_root>/.surgeist-source.json` is canonical compact JSON with one final
+newline. It records `schema_version = 1`, `generator = "surgeist-css-generate"`,
+`verification = "manifest-file-digests"`, declared `source` identity, SHA-256 of
+the exact manifest bytes, sorted `files` with sorted license references, and
+sorted `licenses`. It declares reviewed source identity; it does not attest a
+Git tree. Acquisition review must bind every digest to its immutable upstream
+URL at the declared revision.
+
+Import permits an empty destination or replaces the exact inventory authenticated
+by an existing canonical receipt. It rejects unknown files, unknown directories,
+missing owned files, and changed bytes. Source, manifest, namespaces, and prior
+inventory are revalidated before atomic publication. `check-corpus` requires the
+receipt to match the current manifest and verifies the exact imported inventory
+without the original bundle. Consumer-owned adaptation vectors and behavioral
+checks are outside this receipt and belong beside the consuming CSS tests.
 
 ## Storage locations
 

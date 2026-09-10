@@ -691,17 +691,14 @@ fn css_public_request_matrix_is_io_free_and_accessors_are_exact() {
     assert_clone_debug_eq::<CssRequest>();
     let _: fn(CssRequest) -> surgeist_generator::Result<()> = surgeist_generator::css::run;
     let _: fn() -> surgeist_generator::Result<()> = surgeist_generator::css::run_from_env;
-    let request = CssRequest::new(
-        location.clone(),
-        CssCommand::ImportCsstree,
-        Some(source.clone()),
-        None,
-    )
-    .expect("I/O-free import request");
-    assert_eq!(request.location(), &location);
-    assert_eq!(request.command(), CssCommand::ImportCsstree);
-    assert_eq!(request.source_root(), Some(source.as_path()));
-    assert_eq!(request.filter(), None);
+    for command in [CssCommand::ImportCsstree, CssCommand::ImportWpt] {
+        let request = CssRequest::new(location.clone(), command, Some(source.clone()), None)
+            .expect("I/O-free import request");
+        assert_eq!(request.location(), &location);
+        assert_eq!(request.command(), command);
+        assert_eq!(request.source_root(), Some(source.as_path()));
+        assert_eq!(request.filter(), None);
+    }
 
     let generate = CssRequest::new(location.clone(), CssCommand::Generate, None, None)
         .expect("I/O-free unfiltered generation request");
@@ -736,14 +733,16 @@ fn css_public_request_matrix_is_io_free_and_accessors_are_exact() {
         (Some(PathBuf::new()), Some(filter.clone())),
         (Some(source.clone()), Some(filter.clone())),
     ] {
-        let error = CssRequest::new(
-            location.clone(),
-            CssCommand::ImportCsstree,
-            source_root,
-            filter,
-        )
-        .expect_err("invalid import payload");
-        assert_eq!(error.kind(), GeneratorErrorKind::Cli);
+        for command in [CssCommand::ImportCsstree, CssCommand::ImportWpt] {
+            let error = CssRequest::new(
+                location.clone(),
+                command,
+                source_root.clone(),
+                filter.clone(),
+            )
+            .expect_err("invalid import payload");
+            assert_eq!(error.kind(), GeneratorErrorKind::Cli);
+        }
     }
 
     for (source_root, filter) in [
