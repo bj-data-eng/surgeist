@@ -7,7 +7,7 @@ use adapters::{
     EntryPoint, Extractor, FontFaceDescriptorKind, OptionsProfile, PropertyOrDescriptor,
     TopLevelRuleKind, UnsupportedPolicy, UnsupportedReason,
 };
-use surgeist_css::{CssDeclarationList, CssSheet};
+use surgeist_css::{CssDeclarationList, CssRule, CssSheet, parse_sheet};
 
 #[test]
 fn registry_covers_every_fixture_path() {
@@ -214,4 +214,187 @@ fn extractor_inventory_uses_only_public_accessors() {
             ))
             || entry.entry_point() == EntryPoint::Sheet
     }));
+}
+
+struct GroupFixture {
+    path: &'static str,
+    rule_kind: TopLevelRuleKind,
+    source: &'static str,
+    neutral: &'static str,
+    cases: &'static [(&'static str, &'static str, usize)],
+}
+
+// Conditional 3 section 6 and Cascade 6 section 2.5.2 accept a <rule-list>;
+// Syntax 3 section 5.4.1 permits that list to be empty. Conditional 4 section 2
+// supplies selector() in the two supports cases. These are the catalog's pinned
+// 2024-08-15, 2024-09-06, 2021-12-24, and 2025-09-04 publications, respectively.
+// The case labels, inputs, and child counts below come from the independently
+// imported CSSTree fixtures, not from the Surgeist parser or captured oracle.
+const GROUP_FIXTURES: [GroupFixture; 2] = [
+    GroupFixture {
+        path: "expectations/atrule/atrule/supports.json",
+        rule_kind: TopLevelRuleKind::Supports,
+        source: include_str!("corpus/csstree/source/atrule/atrule/supports.json"),
+        neutral: include_str!("corpus/csstree/expectations/atrule/atrule/supports.json"),
+        cases: &[
+            (
+                "@supports with selector()",
+                "@supports selector(.example) {}",
+                0,
+            ),
+            (
+                "@supports with selector() case-insensitive",
+                "@supports SELECTOR(.example) {}",
+                0,
+            ),
+            (
+                "base test with comments",
+                "@supports not /*0*/(/*1*/flex :/*3*/1/*4*/)/*5*/{}",
+                0,
+            ),
+            (
+                "base test with spaces",
+                "@supports  (  flex  :  1  )  {}",
+                0,
+            ),
+            (
+                "complex prelude",
+                "@supports (not (flex: 1)) or (grid: support) {}",
+                0,
+            ),
+            ("custom property", "@supports (--custom: 1){}", 0),
+            ("should be case insensitive", "@SuppOrts (flex:1){}", 0),
+            (
+                "simple supports with negation",
+                "@supports not (flex: 1) {}",
+                0,
+            ),
+            (
+                "using !important",
+                "@supports (box-shadow: something var(--complex) !important) {}",
+                0,
+            ),
+            ("using function", "@supports func(flex: 1){}", 0),
+            ("vendor property", "@supports (-vendor-name:1){}", 0),
+            ("base test", "@supports (flex:1){selector{color:green}}", 1),
+        ],
+    },
+    GroupFixture {
+        path: "expectations/atrule/atrule/scope.json",
+        rule_kind: TopLevelRuleKind::Scope,
+        source: include_str!("corpus/csstree/source/atrule/atrule/scope.json"),
+        neutral: include_str!("corpus/csstree/expectations/atrule/atrule/scope.json"),
+        cases: &[
+            ("only limit", "@scope to (limit){}", 0),
+            ("only root", "@scope (root){}", 0),
+            ("base syntax", "@scope (a) to (b) { c {} }", 1),
+        ],
+    },
+];
+
+fn group_case_id(fixture: &GroupFixture, label: &str) -> String {
+    let path = fixture
+        .path
+        .strip_prefix("expectations/")
+        .expect("neutral expectation path");
+    format!("{path}#/{label}")
+}
+
+#[test]
+fn csstree_group_rules_retain_empty_and_nonempty_blocks() {
+    for fixture in &GROUP_FIXTURES {
+        let source: serde_json::Value =
+            serde_json::from_str(fixture.source).expect("imported fixture source");
+        let neutral: serde_json::Value =
+            serde_json::from_str(fixture.neutral).expect("neutral fixture");
+        let neutral_cases = neutral["cases"].as_array().expect("neutral cases");
+
+        for &(label, input, child_count) in fixture.cases {
+            let id = group_case_id(fixture, label);
+            let case = neutral_cases
+                .iter()
+                .find(|case| case["id"] == id)
+                .unwrap_or_else(|| panic!("missing neutral case {id}"));
+            assert_eq!(case["input"], input, "{id}: frozen neutral input");
+            assert_eq!(source[label]["source"], input, "{id}: imported input");
+            assert_eq!(
+                source[label]["ast"]["block"]["children"]
+                    .as_array()
+                    .expect("imported block children")
+                    .len(),
+                child_count,
+                "{id}: independently frozen child count"
+            );
+
+            let report = parse_sheet(input);
+            assert!(report.is_clean(), "{id}: {:?}", report.diagnostics());
+            let [rule] = report.syntax().rules() else {
+                panic!("{id}: expected exactly one retained outer rule");
+            };
+            let actual_children = match (fixture.rule_kind, rule) {
+                (TopLevelRuleKind::Supports, CssRule::Supports(rule)) => rule.rules().len(),
+                (TopLevelRuleKind::Scope, CssRule::Scope(rule)) => rule.rules().rules().len(),
+                _ => panic!("{id}: incorrect retained outer rule: {rule:?}"),
+            };
+            assert_eq!(actual_children, child_count, "{id}: retained children");
+        }
+    }
+}
+
+#[test]
+fn csstree_group_registry_counts_retained_outer_rules() {
+    for fixture in &GROUP_FIXTURES {
+        let entry = adapters::REGISTRY
+            .iter()
+            .find(|entry| entry.fixture_path() == fixture.path)
+            .expect("group fixture registry entry");
+        assert_eq!(
+            entry.extractor(),
+            Extractor::TopLevelRuleKind(fixture.rule_kind),
+            "{}: empty group blocks still retain their outer rule",
+            fixture.path
+        );
+        for &(label, input, _) in fixture.cases {
+            let report = parse_sheet(input);
+            assert_eq!(
+                entry.extractor().extract_sheet(report.syntax()),
+                Ok(1),
+                "{}: registry must observe the outer rule",
+                group_case_id(fixture, label)
+            );
+        }
+    }
+}
+
+#[test]
+fn csstree_group_expected_classes_bind_retained_outer_rules() {
+    let expected: serde_json::Value =
+        serde_json::from_str(include_str!("csstree/expected-classes.json"))
+            .expect("CSS-owned expected-class registry");
+    let records = expected["records"]
+        .as_array()
+        .expect("expected-class records");
+    for fixture in &GROUP_FIXTURES {
+        let expected_class = serde_json::json!({
+            "kind": "clean",
+            "retained_syntax": {
+                "extractor": {
+                    "kind": "top_level_rule_kind",
+                    "rule_kind": fixture.rule_kind.name(),
+                },
+                "predicate": { "relation": "nonempty" },
+            },
+        });
+        for &(label, _, _) in fixture.cases {
+            let id = group_case_id(fixture, label);
+            let record = records
+                .iter()
+                .find(|record| record["id"] == id)
+                .unwrap_or_else(|| panic!("missing expected class {id}"));
+            assert_eq!(
+                record["class"], expected_class,
+                "{id}: cleanliness and outer-rule retention are independent of child count"
+            );
+        }
+    }
 }
