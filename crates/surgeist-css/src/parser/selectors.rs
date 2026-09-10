@@ -214,10 +214,17 @@ fn parse_style_selector_with_options<'i, 't>(
             recovery,
         )
         .map(CssStyleSelector::Relative),
-        Ok(Token::Delim('|')) => Err(invalid_selector(
-            input,
-            "unsupported selector combinator `||`",
-        )),
+        Ok(Token::Delim('|')) => {
+            if matches!(input.next_including_whitespace(), Ok(Token::Delim('|'))) {
+                return Err(invalid_selector(
+                    input,
+                    "unsupported selector combinator `||`",
+                ));
+            }
+            input.reset(&state);
+            parse_rule_selector_with_options(input, options, recovery)
+                .map(CssStyleSelector::Selector)
+        }
         Ok(_) => {
             input.reset(&state);
             parse_rule_selector_with_options(input, options, recovery)
