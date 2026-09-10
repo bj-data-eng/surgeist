@@ -252,7 +252,7 @@ fn selectors3_pseudos_preserve_forgiving_and_unforgiving_list_recovery() {
         CssRecoveryAction::DropSelectorListItem,
         start,
         start + ":marker".len(),
-        start + ":marker".len(),
+        start + ":".len(),
     );
 
     let unforgiving = parse_sheet(":not(:target,:marker,:visited) { color: red; }");

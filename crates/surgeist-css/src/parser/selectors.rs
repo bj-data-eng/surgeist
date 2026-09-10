@@ -1,6 +1,6 @@
 use cssparser::{
-    BasicParseErrorKind, Delimiter, ParseError, Parser, ToCss, Token, match_ignore_ascii_case,
-    parse_nth,
+    BasicParseErrorKind, Delimiter, ParseError, Parser, ParserState, ToCss, Token,
+    match_ignore_ascii_case, parse_nth,
 };
 
 use super::recovery::{RecoveryState, comma_member_span, recovery_action_for_error};
@@ -849,6 +849,7 @@ fn parse_pseudo_element<'i, 't>(
             "backdrop" => Ok(CssPseudoElement::Backdrop),
             _ => {
                 let message = format!("unsupported pseudo-element `::{name}`");
+                input.reset(&state);
                 Err(invalid_selector(input, message))
             }
         },
@@ -1097,7 +1098,7 @@ fn parse_pseudo_class_with_options<'i, 't>(
     match input.next() {
         Ok(Token::Ident(name)) => {
             let name = name.clone();
-            parse_named_pseudo_class(name.as_ref(), input)
+            parse_named_pseudo_class(name.as_ref(), input, &state)
         }
         Ok(Token::Function(name)) => {
             let name = name.clone();
@@ -1129,7 +1130,8 @@ fn parse_pseudo_class_with_options<'i, 't>(
 #[inline(never)]
 fn parse_named_pseudo_class<'i>(
     name: &str,
-    input: &Parser<'i, '_>,
+    input: &mut Parser<'i, '_>,
+    name_start: &ParserState,
 ) -> std::result::Result<CssPseudoClass, ParseError<'i, Error>> {
     match_ignore_ascii_case! { name,
         "root" => Ok(CssPseudoClass::Root),
@@ -1166,7 +1168,10 @@ fn parse_named_pseudo_class<'i>(
         "read-write" => Ok(CssPseudoClass::ReadWrite),
         "in-range" => Ok(CssPseudoClass::InRange),
         "out-of-range" => Ok(CssPseudoClass::OutOfRange),
-        _ => Err(invalid_selector(input, format!("unsupported pseudo-class `:{name}`"))),
+        _ => {
+            input.reset(name_start);
+            Err(invalid_selector(input, format!("unsupported pseudo-class `:{name}`")))
+        },
     }
 }
 
