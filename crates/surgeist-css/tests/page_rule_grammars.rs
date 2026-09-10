@@ -343,13 +343,11 @@ fn page_rules_preserve_non_bmp_source_coordinates_for_rules_and_declarations() {
 
     let declaration = &rule.declarations()[0];
     let declaration_offset = source.find("margin-left").unwrap();
+    let position = declaration.position().expect("parsed declaration position");
+    assert_eq!(position.byte_offset().value(), declaration_offset);
+    assert_eq!(position.line().value(), 1);
     assert_eq!(
-        declaration.position().byte_offset().value(),
-        declaration_offset
-    );
-    assert_eq!(declaration.position().line().value(), 1);
-    assert_eq!(
-        declaration.position().column().value() as usize,
+        position.column().value() as usize,
         source[source.rfind('\n').unwrap() + 1..declaration_offset]
             .encode_utf16()
             .count()

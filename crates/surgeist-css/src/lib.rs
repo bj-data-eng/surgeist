@@ -90,9 +90,9 @@
 //!
 //! # Declaration inspection and API evolution
 //!
-//! [`CssKnownDeclaration`] is parser-owned and has private fields. Its
-//! [`CssKnownDeclaration::property`] identity is derived from the active coupled
-//! value, so callers cannot create a property/value mismatch.
+//! Parsing and [`parse_property_value`] construct [`CssKnownDeclaration`] through the same
+//! property grammar. Its fields are private, and [`CssKnownDeclaration::property`] derives
+//! identity from the active coupled value, so callers cannot create a property/value mismatch.
 //! [`CssKnownDeclaration::declared_value`] returns exactly one of the
 //! [`CssKnownDeclaredValueRef::Property`], [`CssKnownDeclaredValueRef::Global`],
 //! or [`CssKnownDeclaredValueRef::SubstitutionDependent`] branches. The
@@ -134,7 +134,9 @@
 //! Each of the 179 property-schema rows generates one private-field
 //! `Css<SchemaVariant>PropertyValue` wrapper. Its `as_css()` method returns the
 //! exact authored ordinary value, preserving interior spelling and trivia while
-//! excluding parser-owned boundary trivia and the terminal importance annotation.
+//! excluding boundary trivia and the terminal importance annotation. For checked construction,
+//! this text comes from token-preserving serialization of the supplied components; their original
+//! or programmatic provenance remains available through [`CssDeclaration::value_components`].
 //! Its `i01_subset()` method is a compatibility view: every I01 input retains its
 //! exact `Some` projection, while newly accepted I02 syntax returns `None` when
 //! the frozen I01 representation cannot carry it.
@@ -1044,6 +1046,7 @@ mod conformance;
 mod error;
 mod parser;
 mod properties;
+mod property_value;
 mod report;
 mod source;
 mod syntax;
@@ -1063,6 +1066,9 @@ pub use conformance::*;
 pub use error::*;
 pub use parser::{parse_sheet, parse_style_attribute};
 pub use properties::*;
+pub use property_value::{
+    CssPropertyValueErrorKind, CssPropertyValueParseError, parse_property_value,
+};
 pub use report::*;
 pub use source::*;
 pub use syntax::*;

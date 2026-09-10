@@ -316,8 +316,13 @@ impl<'i> DeclarationParser<'i> for KeyframeDeclarationParser<'i> {
         let implicit_closures =
             self.recovery
                 .check_component_values(self.source, input, "css.declaration")?;
-        let parsed =
-            parse_declaration_core(DeclarationMode::Keyframe, name, input, declaration_start)?;
+        let parsed = parse_declaration_core(
+            DeclarationMode::Keyframe,
+            name,
+            input,
+            declaration_start,
+            self.recovery.source_snapshot(),
+        )?;
         self.recovery.retain_component_closures(implicit_closures);
         Ok(CssKeyframeDeclaration::new(parsed.body, parsed.position))
     }

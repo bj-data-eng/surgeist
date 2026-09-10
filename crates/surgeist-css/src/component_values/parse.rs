@@ -16,16 +16,24 @@ pub(super) fn parse(
             },
         ));
     }
-    let snapshot = CssSourceSnapshot(Arc::from(source));
+    let snapshot = CssSourceSnapshot::new(source);
     let mut input = ParserInput::new(source);
     let mut parser = Parser::new(&mut input);
+    collect(&mut parser, &snapshot, limits)
+}
+
+pub(super) fn collect(
+    parser: &mut Parser<'_, '_>,
+    snapshot: &CssSourceSnapshot,
+    limits: CssComponentValueLimits,
+) -> Result<CssComponentValues, CssComponentValueError> {
     let mut count = 0;
-    let result = consume_values(&mut parser, &snapshot, limits, 0, &mut count);
+    let result = consume_values(parser, snapshot, limits, 0, &mut count);
     let (items, _) = result.map_err(|error| match error.kind {
         ParseErrorKind::Custom(error) => error,
         ParseErrorKind::Basic(_) => CssComponentValueError::new(
             CssComponentValueErrorKind::InvalidToken,
-            CssValueOrigin::Parsed(parsed_origin(&snapshot, &parser.state(), &parser.state())),
+            CssValueOrigin::Parsed(parsed_origin(snapshot, &parser.state(), &parser.state())),
         ),
     })?;
     let values = CssComponentValues::from_items(items, limits)?;
@@ -169,13 +177,11 @@ fn parsed_origin(
     start: &ParserState,
     end: &ParserState,
 ) -> CssParsedOrigin {
-    let start = CssSourcePosition::from_cssparser(start.position(), start.source_location());
-    let end = CssSourcePosition::from_cssparser(end.position(), end.source_location());
-    CssParsedOrigin {
-        source: source.clone(),
-        span: CssSourceSpan::new(start, end)
-            .expect("tokenizer source positions advance monotonically"),
-    }
+    CssParsedOrigin::from_range(
+        source,
+        start.position().byte_index()..end.position().byte_index(),
+    )
+    .expect("tokenizer positions are ordered UTF-8 boundaries in the original source")
 }
 
 fn token_data(token: &Token<'_>, representation: &str) -> Option<TokenData> {

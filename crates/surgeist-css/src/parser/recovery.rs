@@ -184,6 +184,7 @@ fn url_token_is_closed(spelling: &str) -> bool {
 #[derive(Clone)]
 pub(crate) struct RecoveryState {
     depth: Rc<Cell<u32>>,
+    source_snapshot: crate::CssSourceSnapshot,
     style_context_captures: StyleContextCaptures,
     namespace_bindings: Rc<RefCell<CssNamespaceBindings>>,
     implicit_openings: Rc<Vec<usize>>,
@@ -196,14 +197,33 @@ impl RecoveryState {
         depth: u32,
         style_context_captures: StyleContextCaptures,
     ) -> Self {
+        Self::at_depth_with_snapshot(
+            source,
+            depth,
+            style_context_captures,
+            crate::CssSourceSnapshot::new(source),
+        )
+    }
+
+    pub(super) fn at_depth_with_snapshot(
+        source: &str,
+        depth: u32,
+        style_context_captures: StyleContextCaptures,
+        source_snapshot: crate::CssSourceSnapshot,
+    ) -> Self {
         let namespace_bindings = Rc::clone(&style_context_captures.namespace_bindings);
         Self {
             depth: Rc::new(Cell::new(depth)),
+            source_snapshot,
             style_context_captures,
             namespace_bindings,
             implicit_openings: Rc::new(unclosed_openings(source)),
             retained_implicit_openings: Rc::new(RefCell::new(Vec::new())),
         }
+    }
+
+    pub(super) fn source_snapshot(&self) -> &crate::CssSourceSnapshot {
+        &self.source_snapshot
     }
 
     pub(super) fn activate_namespace(

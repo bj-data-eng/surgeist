@@ -237,8 +237,13 @@ fn parse_known_declaration(authored: &str) -> (Option<CssKnownDeclaration>, Opti
     if parser.expect_colon().is_err() {
         return (None, None);
     }
-    let Ok(parsed) = parse_declaration_core(DeclarationMode::Ordinary, name, &mut parser, &start)
-    else {
+    let Ok(parsed) = parse_declaration_core(
+        DeclarationMode::Ordinary,
+        name,
+        &mut parser,
+        &start,
+        &crate::CssSourceSnapshot::new(authored),
+    ) else {
         return (None, None);
     };
     if !parser.is_exhausted() {

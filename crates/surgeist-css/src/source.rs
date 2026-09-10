@@ -71,6 +71,40 @@ pub struct CssSourcePosition {
 }
 
 impl CssSourcePosition {
+    /// Advances a parser-owned checkpoint over original source text. Checkpoints
+    /// never split CRLF; the final requested position may stop between its bytes.
+    pub(crate) fn advanced_by(self, source: &str) -> Self {
+        let mut line = self.line.value();
+        let mut column = self.column.value();
+        let mut characters = source.chars().peekable();
+        while let Some(character) = characters.next() {
+            match character {
+                '\r' => {
+                    if characters.peek() == Some(&'\n') {
+                        characters.next();
+                    }
+                    line = line.saturating_add(1);
+                    column = 0;
+                }
+                '\n' | '\u{000c}' => {
+                    line = line.saturating_add(1);
+                    column = 0;
+                }
+                _ => column = column.saturating_add(character.len_utf16() as u32),
+            }
+        }
+        Self {
+            byte_offset: CssByteOffset::new(
+                self.byte_offset
+                    .value()
+                    .checked_add(source.len())
+                    .expect("source checkpoint plus its suffix fits the original input"),
+            ),
+            line: CssLineIndex::new(line),
+            column: CssUtf16ColumnIndex::new(column),
+        }
+    }
+
     pub(crate) fn from_cssparser(
         position: cssparser::SourcePosition,
         location: cssparser::SourceLocation,

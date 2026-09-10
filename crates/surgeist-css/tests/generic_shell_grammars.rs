@@ -35,7 +35,11 @@ fn c14_generic_authored_shells_retain_structure() {
     );
     assert_eq!(inside.declarations().len(), 1);
     assert_eq!(
-        inside.declarations()[0].position().byte_offset().value(),
+        inside.declarations()[0]
+            .position()
+            .expect("parsed declaration position")
+            .byte_offset()
+            .value(),
         source.find("color").expect("nested declaration")
     );
 

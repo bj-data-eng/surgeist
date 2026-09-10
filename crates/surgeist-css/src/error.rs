@@ -45,6 +45,8 @@ pub enum CssErrorCode {
     UnsupportedProperty,
     /// An authored value did not satisfy its known property's grammar.
     InvalidPropertyValue,
+    /// A retained declaration value exceeded component limits or contained invalid tokens.
+    InvalidComponentValue,
     /// An authored declaration annotation was malformed or misplaced.
     InvalidDeclarationAnnotation,
     /// The authored descriptor name is not recognized for its owning at-rule.
@@ -914,6 +916,8 @@ pub enum ErrorKind {
     UnsupportedProperty(CssUnsupportedPropertyError),
     /// An authored property value was invalid.
     InvalidPropertyValue(CssPropertyValueError),
+    /// A retained declaration value could not form a checked component sequence.
+    InvalidComponentValue(Box<crate::CssComponentValueError>),
     /// An authored declaration annotation was malformed or misplaced.
     InvalidDeclarationAnnotation(CssDeclarationAnnotationError),
     /// An authored descriptor name was not recognized for its at-rule.
@@ -978,6 +982,7 @@ impl Error {
             ErrorKind::UnknownProperty(_) => CssErrorCode::UnknownProperty,
             ErrorKind::UnsupportedProperty(_) => CssErrorCode::UnsupportedProperty,
             ErrorKind::InvalidPropertyValue(_) => CssErrorCode::InvalidPropertyValue,
+            ErrorKind::InvalidComponentValue(_) => CssErrorCode::InvalidComponentValue,
             ErrorKind::InvalidDeclarationAnnotation(_) => {
                 CssErrorCode::InvalidDeclarationAnnotation
             }
@@ -999,6 +1004,11 @@ impl Error {
     }
 
     fn resolve_source(mut self, source: &str) -> Self {
+        // Component origins already refer to the shared original snapshot, which
+        // may differ from this parser's same-length masked working source.
+        if matches!(self.kind, ErrorKind::InvalidComponentValue(_)) {
+            return self;
+        }
         // Location-only errors carry byte zero until they can be resolved against
         // the authored source. Body-parser errors retain their exact nonzero cursor.
         self.position = if self.position.byte_offset().value() != 0 {
@@ -1294,6 +1304,26 @@ pub(crate) fn selector_basic<'i>(error: BasicParseError<'i>) -> ParseError<'i, E
             encountered,
         }),
     )
+}
+
+pub(crate) fn invalid_component_value<'i>(
+    location: cssparser::SourceLocation,
+    detail: crate::CssComponentValueError,
+) -> ParseError<'i, Error> {
+    let position = match detail.origin() {
+        crate::CssValueOrigin::Parsed(origin) => origin.span().start(),
+        crate::CssValueOrigin::ImplicitClosure { opening, .. } => opening.span().start(),
+        crate::CssValueOrigin::Programmatic | crate::CssValueOrigin::UnretainedInput { .. } => {
+            CssSourcePosition::from_source_location(location)
+        }
+    };
+    ParseError {
+        location,
+        kind: ParseErrorKind::Custom(Error {
+            kind: ErrorKind::InvalidComponentValue(Box::new(detail)),
+            position,
+        }),
+    }
 }
 
 pub(crate) fn invalid_syntax<'i>(

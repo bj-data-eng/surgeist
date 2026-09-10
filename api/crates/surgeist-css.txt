@@ -679,6 +679,7 @@ pub surgeist_css::CssErrorCode::InvalidAtRuleBody
 pub surgeist_css::CssErrorCode::InvalidAtRulePlacement
 pub surgeist_css::CssErrorCode::InvalidAtRulePrelude
 pub surgeist_css::CssErrorCode::InvalidColorSyntax
+pub surgeist_css::CssErrorCode::InvalidComponentValue
 pub surgeist_css::CssErrorCode::InvalidDeclarationAnnotation
 pub surgeist_css::CssErrorCode::InvalidDescriptorCombination
 pub surgeist_css::CssErrorCode::InvalidDescriptorValue
@@ -1866,6 +1867,9 @@ pub surgeist_css::CssPredefinedColorSpace::XyzD65
 #[non_exhaustive] pub enum surgeist_css::CssPropertyNameRef<'a>
 pub surgeist_css::CssPropertyNameRef::Custom(&'a surgeist_css::CssCustomPropertyName)
 pub surgeist_css::CssPropertyNameRef::Known(surgeist_css::CssKnownProperty)
+#[non_exhaustive] pub enum surgeist_css::CssPropertyValueErrorKind
+pub surgeist_css::CssPropertyValueErrorKind::Component(surgeist_css::CssComponentValueErrorKind)
+pub surgeist_css::CssPropertyValueErrorKind::Grammar(surgeist_css::ErrorKind)
 #[non_exhaustive] pub enum surgeist_css::CssPseudoClass
 pub surgeist_css::CssPseudoClass::Active
 pub surgeist_css::CssPseudoClass::Checked
@@ -2404,6 +2408,7 @@ pub surgeist_css::ErrorKind::InvalidAtRuleBody(surgeist_css::CssAtRuleSyntaxErro
 pub surgeist_css::ErrorKind::InvalidAtRulePlacement(surgeist_css::CssAtRulePlacementError)
 pub surgeist_css::ErrorKind::InvalidAtRulePrelude(surgeist_css::CssAtRuleSyntaxError)
 pub surgeist_css::ErrorKind::InvalidColorSyntax(surgeist_css::CssColorSyntaxError)
+pub surgeist_css::ErrorKind::InvalidComponentValue(alloc::boxed::Box<surgeist_css::CssComponentValueError>)
 pub surgeist_css::ErrorKind::InvalidDeclarationAnnotation(surgeist_css::CssDeclarationAnnotationError)
 pub surgeist_css::ErrorKind::InvalidDescriptorCombination(surgeist_css::CssDescriptorCombinationError)
 pub surgeist_css::ErrorKind::InvalidDescriptorValue(surgeist_css::CssDescriptorValueError)
@@ -3477,12 +3482,18 @@ pub fn surgeist_css::CssCustomPropertyValue::as_css(&self) -> &str
 pub fn surgeist_css::CssCustomPropertyValue::is_empty(&self) -> bool
 pub struct surgeist_css::CssDeclaration
 impl surgeist_css::CssDeclaration
-pub const fn surgeist_css::CssDeclaration::body(&self) -> &surgeist_css::CssDeclarationBody
-pub const fn surgeist_css::CssDeclaration::custom(&self) -> core::option::Option<&surgeist_css::CssCustomDeclaration>
-pub const fn surgeist_css::CssDeclaration::importance(&self) -> surgeist_css::CssImportance
-pub const fn surgeist_css::CssDeclaration::known(&self) -> core::option::Option<&surgeist_css::CssKnownDeclaration>
-pub const fn surgeist_css::CssDeclaration::position(&self) -> surgeist_css::CssSourcePosition
-pub const fn surgeist_css::CssDeclaration::property_name(&self) -> surgeist_css::CssPropertyNameRef<'_>
+pub fn surgeist_css::CssDeclaration::body(&self) -> &surgeist_css::CssDeclarationBody
+pub fn surgeist_css::CssDeclaration::custom(&self) -> core::option::Option<&surgeist_css::CssCustomDeclaration>
+pub fn surgeist_css::CssDeclaration::importance(&self) -> surgeist_css::CssImportance
+pub fn surgeist_css::CssDeclaration::known(&self) -> core::option::Option<&surgeist_css::CssKnownDeclaration>
+pub fn surgeist_css::CssDeclaration::parsed_name(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
+pub fn surgeist_css::CssDeclaration::parsed_value(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
+pub fn surgeist_css::CssDeclaration::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub fn surgeist_css::CssDeclaration::property_name(&self) -> surgeist_css::CssPropertyNameRef<'_>
+pub fn surgeist_css::CssDeclaration::same_occurrence(&self, other: &Self) -> bool
+pub fn surgeist_css::CssDeclaration::value_components(&self) -> &surgeist_css::CssComponentValues
+impl core::cmp::PartialEq for surgeist_css::CssDeclaration
+pub fn surgeist_css::CssDeclaration::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssDeclarationAnnotationError
 impl surgeist_css::CssDeclarationAnnotationError
 pub const fn surgeist_css::CssDeclarationAnnotationError::context(&self) -> surgeist_css::CssDeclarationContextRef<'_>
@@ -4730,6 +4741,13 @@ impl surgeist_css::CssPropertyValueError
 pub const fn surgeist_css::CssPropertyValueError::encountered(&self) -> core::option::Option<&surgeist_css::CssTokenSummary>
 pub const fn surgeist_css::CssPropertyValueError::expectation(&self) -> surgeist_css::CssGrammarExpectation
 pub const fn surgeist_css::CssPropertyValueError::property(&self) -> surgeist_css::CssKnownProperty
+pub struct surgeist_css::CssPropertyValueParseError
+impl surgeist_css::CssPropertyValueParseError
+pub fn surgeist_css::CssPropertyValueParseError::kind(&self) -> &surgeist_css::CssPropertyValueErrorKind
+pub fn surgeist_css::CssPropertyValueParseError::origin(&self) -> &surgeist_css::CssSerializedOrigin
+impl core::error::Error for surgeist_css::CssPropertyValueParseError
+impl core::fmt::Display for surgeist_css::CssPropertyValueParseError
+pub fn surgeist_css::CssPropertyValueParseError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssPseudoElementSequence
 impl surgeist_css::CssPseudoElementSequence
 pub fn surgeist_css::CssPseudoElementSequence::pseudo_elements(&self) -> &[surgeist_css::CssPseudoElement]
@@ -4978,6 +4996,8 @@ pub fn surgeist_css::CssSourceSnapshot::same_snapshot(&self, other: &Self) -> bo
 impl core::cmp::Eq for surgeist_css::CssSourceSnapshot
 impl core::cmp::PartialEq for surgeist_css::CssSourceSnapshot
 pub fn surgeist_css::CssSourceSnapshot::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_css::CssSourceSnapshot
+pub fn surgeist_css::CssSourceSnapshot::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssSourceSpan
 impl surgeist_css::CssSourceSpan
 pub const fn surgeist_css::CssSourceSpan::end(self) -> surgeist_css::CssSourcePosition
@@ -5444,6 +5464,7 @@ pub fn surgeist_css::feature_catalog() -> &'static [surgeist_css::CssFeatureMeta
 pub fn surgeist_css::feature_metadata(id: &str) -> core::option::Option<&'static surgeist_css::CssFeatureMetadata>
 pub fn surgeist_css::parse_component_values(source: &str) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::parse_component_values_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::parse_property_value(property: surgeist_css::CssPropertyNameRef<'_>, value: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
 pub fn surgeist_css::parse_sheet(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssSheet>
 pub fn surgeist_css::parse_style_attribute(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssDeclarationList>
 pub fn surgeist_css::property_metadata(name: &str) -> core::option::Option<surgeist_css::CssPropertyMetadata>

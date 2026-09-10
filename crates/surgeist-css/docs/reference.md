@@ -16,6 +16,7 @@ subset; it does not establish complete support for all CSS syntax.
 | `validate_sheet(&str)` | Default features | `Result<CssSheet, CssValidationFailure>` |
 | `validate_style_attribute(&str)` | Default features | `Result<CssDeclarationList, CssValidationFailure>` |
 | `parse_component_values(&str)` | Default features | `Result<CssComponentValues, CssComponentValueError>` |
+| `parse_property_value(name, components, importance)` | Default features | `Result<CssDeclaration, CssPropertyValueParseError>` |
 
 The [manifest](../Cargo.toml) declares package `surgeist-css`, library
 `surgeist_css`, version `0.1.0`, Rust edition 2024, and no default features.
@@ -66,6 +67,56 @@ delimiters, and unrepresentable token boundaries return typed errors. Explicit
 the shared structural ceiling is 256. Input exceeding the byte limit is rejected
 before copying or tokenizing it, with `UnretainedInput` provenance and its UTF-8
 length. These syntax limits do not promise a global memory budget.
+
+## Checked declaration construction
+
+`parse_property_value` validates owned components against one property grammar.
+It accepts a canonical known-property identity or a checked custom-property name;
+importance is supplied separately. Top-level annotations, declaration separators
+and trailing grammar tokens are errors. The result retains ordinary, CSS-wide
+and substitution-dependent values without resolving them.
+
+```rust
+use surgeist_css::{
+    CssComponentValue, CssComponentValues, CssImportance, CssKnownProperty,
+    CssPropertyNameRef, parse_property_value,
+};
+
+let value = CssComponentValues::try_new(vec![
+    CssComponentValue::try_dimension("2", "px").unwrap(),
+]).unwrap();
+let declaration = parse_property_value(
+    CssPropertyNameRef::Known(CssKnownProperty::Margin),
+    value,
+    CssImportance::Important,
+).unwrap();
+assert_eq!(declaration.position(), None);
+assert!(declaration.same_occurrence(&declaration.clone()));
+```
+
+Factory-created declarations have no parsed property-name position. Their
+`value_components()` preserve the supplied token origins, including components
+combined from separate parsed inputs. `CssPropertyValueParseError` carries a typed
+grammar or component error and a `CssSerializedOrigin`; generated parsing offsets
+are mapped back to those original tokens or to programmatic provenance.
+
+Declarations read by `parse_sheet` and `parse_style_attribute` expose
+`parsed_name()` and `parsed_value()` with original spans and a shared input
+snapshot. The value span excludes the importance annotation and declaration
+delimiter. Structural recovery preserves that original snapshot even when it
+uses temporary masked input. Empty custom values retain a zero-width value span.
+
+Cloning a declaration preserves its immutable occurrence identity;
+`same_occurrence()` distinguishes it from a separately parsed or constructed
+declaration. Declaration equality continues comparing body, importance and
+optional position, while authored-value equality continues comparing its exact
+retained CSS text. Neither equality operation compares occurrence identity.
+
+Migration: `CssDeclaration::position()` now returns `Option<CssSourcePosition>`.
+Code inspecting a parsed declaration can require `Some`; constructed declarations
+have no invented coordinates. Declaration accessors are no longer `const fn`
+because their shared occurrence storage is allocated. Rule, descriptor and
+keyframe-declaration position APIs retain their existing contracts.
 
 ## Authored property inspection
 

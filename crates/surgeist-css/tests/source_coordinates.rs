@@ -1123,7 +1123,9 @@ fn first_declaration_position(source: &str) -> CssSourcePosition {
     let CssRule::Style(rule) = &sheet.rules()[0] else {
         panic!("expected style rule");
     };
-    rule.declarations().as_slice()[0].position()
+    rule.declarations().as_slice()[0]
+        .position()
+        .expect("parsed declaration position")
 }
 
 #[test]

@@ -84,20 +84,71 @@ impl Default for CssComponentValueLimits {
 ///
 /// [`Self::same_snapshot`] separately compares parse-input identity. Neither
 /// operation represents a mutable stylesheet revision or CSSOM object handle.
-#[derive(Clone, Debug)]
-pub struct CssSourceSnapshot(Arc<str>);
+#[derive(Clone)]
+pub struct CssSourceSnapshot(Arc<SourceSnapshotData>);
+
+struct SourceSnapshotData {
+    text: Box<str>,
+    checkpoints: Box<[CssSourcePosition]>,
+}
 
 impl CssSourceSnapshot {
+    pub(crate) fn new(source: &str) -> Self {
+        let mut position = CssSourcePosition::from_byte_offset_in("", 0);
+        let mut checkpoints = vec![position];
+        let mut start = 0;
+        let mut characters = source.char_indices().peekable();
+        while let Some((offset, character)) = characters.next() {
+            let mut end = offset + character.len_utf8();
+            if character == '\r' && characters.peek().is_some_and(|(_, next)| *next == '\n') {
+                let (offset, character) = characters.next().expect("peeked LF");
+                end = offset + character.len_utf8();
+            }
+            if end - start >= 64 {
+                position = position.advanced_by(&source[start..end]);
+                checkpoints.push(position);
+                start = end;
+            }
+        }
+        Self(Arc::new(SourceSnapshotData {
+            text: source.into(),
+            checkpoints: checkpoints.into_boxed_slice(),
+        }))
+    }
+
+    pub(crate) fn position_at(&self, byte_offset: usize) -> Option<CssSourcePosition> {
+        if !self.as_str().is_char_boundary(byte_offset) {
+            return None;
+        }
+        let index = self
+            .0
+            .checkpoints
+            .partition_point(|position| position.byte_offset().value() <= byte_offset);
+        let checkpoint = self.0.checkpoints[index - 1];
+        self.as_str()
+            .get(checkpoint.byte_offset().value()..byte_offset)
+            .map(|suffix| checkpoint.advanced_by(suffix))
+    }
+
     /// Returns the complete original UTF-8 parse input.
     #[must_use]
     pub fn as_str(&self) -> &str {
-        &self.0
+        &self.0.text
     }
 
     /// Reports whether two origins refer to the same immutable parse input.
     #[must_use]
     pub fn same_snapshot(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl fmt::Debug for CssSourceSnapshot {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("CssSourceSnapshot")
+            .field(&self.as_str())
+            .finish()
     }
 }
 
@@ -117,6 +168,16 @@ pub struct CssParsedOrigin {
 }
 
 impl CssParsedOrigin {
+    pub(crate) fn from_range(source: &CssSourceSnapshot, range: Range<usize>) -> Option<Self> {
+        Some(Self {
+            source: source.clone(),
+            span: CssSourceSpan::new(
+                source.position_at(range.start)?,
+                source.position_at(range.end)?,
+            )?,
+        })
+    }
+
     /// Returns the source snapshot that owns this span.
     #[must_use]
     pub const fn source(&self) -> &CssSourceSnapshot {
@@ -767,6 +828,13 @@ pub struct CssComponentValues {
 }
 
 impl CssComponentValues {
+    pub(crate) fn collect_from_parser(
+        input: &mut cssparser::Parser<'_, '_>,
+        source: &CssSourceSnapshot,
+    ) -> Result<Self, CssComponentValueError> {
+        parse::collect(input, source, CssComponentValueLimits::default())
+    }
+
     /// Joins components without merging tokens or changing their origins.
     pub fn try_new(items: Vec<CssComponentValue>) -> Result<Self, CssComponentValueError> {
         Self::try_new_with_limits(items, CssComponentValueLimits::default())

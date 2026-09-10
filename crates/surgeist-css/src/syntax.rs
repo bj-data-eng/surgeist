@@ -10,6 +10,9 @@
 //! depending on parser implementation types.
 
 use std::collections::HashMap;
+use std::sync::Arc;
+
+use crate::component_values::{CssComponentValues, CssParsedOrigin};
 
 pub(crate) use crate::properties::CssKnownDeclaration;
 use crate::properties::CssKnownProperty;
@@ -3940,7 +3943,9 @@ impl CssNestedDeclarationsRule {
     /// Returns the position of the first declaration in this nonempty run.
     #[must_use]
     pub fn position(&self) -> CssSourcePosition {
-        self.declarations[0].position()
+        self.declarations[0]
+            .position()
+            .expect("a parsed nested declaration run contains parsed declarations")
     }
 }
 
@@ -4120,23 +4125,25 @@ impl CssKeyframeDeclaration {
 
 /// The complete importance state of an ordinary authored declaration.
 ///
-/// Importance is syntactically recognized at the declaration boundary and is not part of the
-/// property value. Its two states deliberately form a closed, exhaustively matchable set.
+/// Importance is recognized at a parsed declaration boundary or supplied separately to
+/// [`crate::parse_property_value`]; it is not part of the property value. Its two states form
+/// a closed, exhaustively matchable set.
 /// Downstream cascade policy may consume it, but this crate does not apply cascade.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum CssImportance {
-    /// No terminal importance annotation was authored.
+    /// Normal importance; parsed declarations have no terminal importance annotation.
     #[default]
     Normal,
-    /// Exactly one valid terminal `!important` annotation was authored.
+    /// Important precedence; parsed declarations have one valid terminal `!important` annotation.
     Important,
 }
 
-/// A parser-produced declaration in the authored CSS syntax phase.
+/// A checked declaration occurrence in the authored CSS syntax phase.
 ///
 /// Its private fields couple a known property to its schema-selected value type, or a custom name
-/// to its authored custom value, and retain the semantic start position. Construction is
-/// parser-owned: callers cannot forge a source position or create a property/value mismatch.
+/// to its authored custom value. Parsed declarations retain original name and value origins;
+/// [`crate::parse_property_value`] constructs declarations from checked components without
+/// manufacturing a property-name position. Callers cannot create a property/value mismatch.
 ///
 /// ```compile_fail
 /// use surgeist_css::{
@@ -4163,37 +4170,83 @@ pub enum CssImportance {
 ///
 /// This authored node records importance but does not apply cascade, substitution, or contextual
 /// resolution.
-#[derive(Clone, Debug, PartialEq)]
+/// Clones refer to the same immutable occurrence. Structural equality compares the body,
+/// importance, and optional name position; it does not compare token provenance or occurrence
+/// identity. Use [`Self::same_occurrence`] when that identity matters.
+#[derive(Clone, Debug)]
 pub struct CssDeclaration {
+    occurrence: Arc<DeclarationOccurrence>,
+}
+
+#[derive(Debug)]
+struct DeclarationOccurrence {
     body: CssDeclarationBody,
     importance: CssImportance,
-    position: CssSourcePosition,
+    components: CssComponentValues,
+    provenance: DeclarationProvenance,
+}
+
+#[derive(Debug)]
+enum DeclarationProvenance {
+    Parsed {
+        name: CssParsedOrigin,
+        value: CssParsedOrigin,
+    },
+    Constructed,
+}
+
+impl PartialEq for CssDeclaration {
+    fn eq(&self, other: &Self) -> bool {
+        self.body() == other.body()
+            && self.importance() == other.importance()
+            && self.position() == other.position()
+    }
 }
 
 impl CssDeclaration {
     #[must_use]
-    pub(crate) const fn new_with_importance(
+    pub(crate) fn new_parsed(
         body: CssDeclarationBody,
         importance: CssImportance,
-        position: CssSourcePosition,
+        components: CssComponentValues,
+        name: CssParsedOrigin,
+        value: CssParsedOrigin,
     ) -> Self {
         Self {
-            body,
-            importance,
-            position,
+            occurrence: Arc::new(DeclarationOccurrence {
+                body,
+                importance,
+                components,
+                provenance: DeclarationProvenance::Parsed { name, value },
+            }),
+        }
+    }
+
+    pub(crate) fn new_constructed(
+        body: CssDeclarationBody,
+        importance: CssImportance,
+        components: CssComponentValues,
+    ) -> Self {
+        Self {
+            occurrence: Arc::new(DeclarationOccurrence {
+                body,
+                importance,
+                components,
+                provenance: DeclarationProvenance::Constructed,
+            }),
         }
     }
 
     /// Returns the property-coupled authored body.
     #[must_use]
-    pub const fn body(&self) -> &CssDeclarationBody {
-        &self.body
+    pub fn body(&self) -> &CssDeclarationBody {
+        &self.occurrence.body
     }
 
     /// Returns the known-property declaration, or `None` for a custom declaration.
     #[must_use]
-    pub const fn known(&self) -> Option<&CssKnownDeclaration> {
-        match &self.body {
+    pub fn known(&self) -> Option<&CssKnownDeclaration> {
+        match self.body() {
             CssDeclarationBody::Known(known) => Some(known),
             CssDeclarationBody::Custom(_) => None,
         }
@@ -4201,8 +4254,8 @@ impl CssDeclaration {
 
     /// Returns the custom declaration, or `None` for a known declaration.
     #[must_use]
-    pub const fn custom(&self) -> Option<&CssCustomDeclaration> {
-        match &self.body {
+    pub fn custom(&self) -> Option<&CssCustomDeclaration> {
+        match self.body() {
             CssDeclarationBody::Known(_) => None,
             CssDeclarationBody::Custom(custom) => Some(custom),
         }
@@ -4210,23 +4263,56 @@ impl CssDeclaration {
 
     /// Returns a borrowed semantic property-name view derived from the active body.
     #[must_use]
-    pub const fn property_name(&self) -> CssPropertyNameRef<'_> {
-        match &self.body {
+    pub fn property_name(&self) -> CssPropertyNameRef<'_> {
+        match self.body() {
             CssDeclarationBody::Known(known) => CssPropertyNameRef::Known(known.property()),
             CssDeclarationBody::Custom(custom) => CssPropertyNameRef::Custom(custom.name()),
         }
     }
 
-    /// Returns the syntactically recognized importance annotation state.
+    /// Returns importance recognized from source or supplied to checked construction.
     #[must_use]
-    pub const fn importance(&self) -> CssImportance {
-        self.importance
+    pub fn importance(&self) -> CssImportance {
+        self.occurrence.importance
     }
 
-    /// Returns the semantic source position at the authored property-name start.
+    /// Returns the original property-name start, or `None` for checked construction.
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
-        self.position
+    pub fn position(&self) -> Option<CssSourcePosition> {
+        self.parsed_name().map(|origin| origin.span().start())
+    }
+
+    /// Returns the consumed property-name token's original source span.
+    #[must_use]
+    pub fn parsed_name(&self) -> Option<&CssParsedOrigin> {
+        match &self.occurrence.provenance {
+            DeclarationProvenance::Parsed { name, .. } => Some(name),
+            DeclarationProvenance::Constructed => None,
+        }
+    }
+
+    /// Returns the parsed value region, excluding its annotation and declaration delimiter.
+    ///
+    /// Checked construction has no single declaration-source region, even when individual
+    /// supplied tokens have parsed origins. Empty parsed custom values retain a zero-width span.
+    #[must_use]
+    pub fn parsed_value(&self) -> Option<&CssParsedOrigin> {
+        match &self.occurrence.provenance {
+            DeclarationProvenance::Parsed { value, .. } => Some(value),
+            DeclarationProvenance::Constructed => None,
+        }
+    }
+
+    /// Returns the owned value components with their original or programmatic provenance.
+    #[must_use]
+    pub fn value_components(&self) -> &CssComponentValues {
+        &self.occurrence.components
+    }
+
+    /// Reports whether both handles refer to the same immutable declaration occurrence.
+    #[must_use]
+    pub fn same_occurrence(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.occurrence, &other.occurrence)
     }
 
     #[cfg(test)]
@@ -4238,7 +4324,8 @@ impl CssDeclaration {
 /// The authored body of a declaration, split between known and custom property invariants.
 ///
 /// Known values are coupled to their schema identity; custom values remain attached to their
-/// case-sensitive custom name. This syntax does not perform cascade or substitution.
+/// case-sensitive custom name. Parsing and [`crate::parse_property_value`] construct these
+/// checked bodies without performing cascade or substitution.
 #[non_exhaustive]
 #[expect(
     clippy::large_enum_variant,
@@ -4252,11 +4339,11 @@ pub enum CssDeclarationBody {
     Custom(CssCustomDeclaration),
 }
 
-/// A parser-produced authored custom-property declaration.
+/// A checked authored custom-property declaration.
 ///
-/// Its private fields prevent attaching the custom value to a known property name. The parser
-/// retains authored syntax without substituting references, computing cascade, or validating a
-/// post-substitution value.
+/// Its private fields prevent attaching the custom value to a known property name. Parsing and
+/// [`crate::parse_property_value`] preserve custom syntax without substituting references,
+/// computing cascade, or validating a post-substitution value.
 ///
 /// ```compile_fail
 /// use surgeist_css::CssCustomDeclaration;

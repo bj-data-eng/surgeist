@@ -205,6 +205,7 @@ impl<'i> DeclarationParser<'i> for PageBodyParser<'i> {
             name.clone(),
             input,
             declaration_start,
+            self.recovery.source_snapshot(),
         )?;
         if !is_css2_page_margin_value(&parsed) {
             return Err(with_property_context(
@@ -213,11 +214,7 @@ impl<'i> DeclarationParser<'i> for PageBodyParser<'i> {
             ));
         }
         self.recovery.retain_component_closures(implicit_closures);
-        Ok(CssDeclaration::new_with_importance(
-            parsed.body,
-            parsed.importance,
-            parsed.position,
-        ))
+        Ok(parsed.into_declaration())
     }
 }
 

@@ -7489,13 +7489,15 @@ fn successful_declarations_expose_authored_source_position() {
     let input = ".panel {\n  height: 20px;\n  width: calc(100% - 4px);\n}\n";
     let height = declaration(input, CssProperty::Height);
     let width = declaration(input, CssProperty::Width);
+    let height_position = height.position().expect("parsed declaration position");
+    let width_position = width.position().expect("parsed declaration position");
 
-    assert_eq!(height.position().byte_offset().value(), 11);
-    assert_eq!(height.position().line().value(), 1);
-    assert_eq!(height.position().column().value(), 2);
-    assert_eq!(width.position().byte_offset().value(), 27);
-    assert_eq!(width.position().line().value(), 2);
-    assert_eq!(width.position().column().value(), 2);
+    assert_eq!(height_position.byte_offset().value(), 11);
+    assert_eq!(height_position.line().value(), 1);
+    assert_eq!(height_position.column().value(), 2);
+    assert_eq!(width_position.byte_offset().value(), 27);
+    assert_eq!(width_position.line().value(), 2);
+    assert_eq!(width_position.column().value(), 2);
 }
 
 #[test]

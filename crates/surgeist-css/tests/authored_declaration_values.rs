@@ -126,9 +126,12 @@ fn authored_declaration_parser_and_public_custom_names_share_decoded_identity() 
         assert_eq!(declaration.custom().unwrap().name(), &expected);
     }
 
-    assert_eq!(declarations[0].position().byte_offset().value(), 5);
-    assert_eq!(declarations[0].position().line().value(), 0);
-    assert_eq!(declarations[0].position().column().value(), 5);
+    let position = declarations[0]
+        .position()
+        .expect("parsed declaration position");
+    assert_eq!(position.byte_offset().value(), 5);
+    assert_eq!(position.line().value(), 0);
+    assert_eq!(position.column().value(), 5);
 }
 
 #[test]

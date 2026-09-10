@@ -122,7 +122,9 @@ fn coupled_identity_is_derived_and_lookup_is_case_insensitive() {
 #[test]
 fn coupled_declaration_position_is_property_name_start() {
     let declarations = declarations("\n  .x {\n    width: 1px;\n  }");
-    let position = declarations[0].position();
+    let position = declarations[0]
+        .position()
+        .expect("parsed declaration position");
     assert_eq!(position.byte_offset().value(), 12);
     assert_eq!(position.line().value(), 2);
     assert_eq!(position.column().value(), 4);

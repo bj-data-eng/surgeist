@@ -736,7 +736,11 @@ fn public_surface_style_attributes_preserve_importance_custom_and_substitution_s
     let width = &report.syntax()[2];
     assert_eq!(width.importance(), CssImportance::Important);
     assert_eq!(
-        width.position().byte_offset().value(),
+        width
+            .position()
+            .expect("parsed declaration position")
+            .byte_offset()
+            .value(),
         source.find("width").expect("width declaration")
     );
     assert!(matches!(

@@ -560,7 +560,7 @@ macro_rules! define_current_property_value {
             i01_subset: Option<$i01>,
         }
 
-        #[doc = concat!("A parser-produced authored ordinary value for `", $canonical, "`.")]
+        #[doc = concat!("A grammar-checked authored ordinary value for `", $canonical, "`.")]
         #[derive(Clone, Debug, PartialEq)]
         pub struct $wrapper {
             authored: CssAuthoredDeclarationValue,
@@ -608,7 +608,7 @@ macro_rules! define_additive_current_property_value {
             current: $current,
         }
 
-        #[doc = concat!("A parser-produced current authored value for `", $canonical, "`.")]
+        #[doc = concat!("A grammar-checked current authored value for `", $canonical, "`.")]
         #[derive(Clone, Debug, PartialEq)]
         pub struct $wrapper {
             authored: CssAuthoredDeclarationValue,
@@ -648,7 +648,7 @@ macro_rules! define_easing_property_value {
             i01_subset: Option<CssEasingList>,
         }
 
-        #[doc = concat!("A parser-produced authored ordinary value for `", $canonical, "`.")]
+        #[doc = concat!("A grammar-checked authored ordinary value for `", $canonical, "`.")]
         #[derive(Clone, Debug, PartialEq)]
         pub struct $wrapper {
             authored: CssAuthoredDeclarationValue,
@@ -699,7 +699,7 @@ macro_rules! define_color_property_value {
             i01_subset: Option<CssColor>,
         }
 
-        #[doc = concat!("A parser-produced authored ordinary value for `", $canonical, "`.")]
+        #[doc = concat!("A grammar-checked authored ordinary value for `", $canonical, "`.")]
         #[derive(Clone, Debug, PartialEq)]
         pub struct $wrapper {
             authored: CssAuthoredDeclarationValue,
@@ -750,7 +750,7 @@ macro_rules! define_authored_color_aggregate_property_value {
             current: $value,
         }
 
-        #[doc = concat!("A parser-produced authored ordinary value for `", $canonical, "`.")]
+        #[doc = concat!("A grammar-checked authored ordinary value for `", $canonical, "`.")]
         #[derive(Clone, Debug, PartialEq)]
         pub struct $wrapper {
             authored: CssAuthoredDeclarationValue,
@@ -804,7 +804,7 @@ macro_rules! define_grid_property_value {
             i01_subset: Option<$i01>,
         }
 
-        #[doc = concat!("A parser-produced current authored value for `", $canonical, "`.")]
+        #[doc = concat!("A grammar-checked current authored value for `", $canonical, "`.")]
         #[derive(Clone, Debug, PartialEq)]
         pub struct $wrapper {
             authored: CssAuthoredDeclarationValue,
@@ -829,7 +829,7 @@ macro_rules! define_grid_property_value {
                 self.authored.as_css()
             }
 
-            /// Returns the parser-owned current authored Grid value.
+            /// Returns the grammar-checked current authored Grid value.
             #[must_use]
             pub const fn current(&self) -> &$current {
                 &self.representation.current
@@ -1523,7 +1523,7 @@ macro_rules! define_property_value {
             i01_subset: Option<CssColor>,
         }
 
-        /// A parser-produced authored ordinary value for `background`.
+        /// A grammar-checked authored ordinary value for `background`.
         #[derive(Clone, Debug, PartialEq)]
         pub struct $wrapper {
             authored: CssAuthoredDeclarationValue,
@@ -1595,7 +1595,7 @@ macro_rules! define_property_value {
             i01_subset: Option<CssColor>,
         }
 
-        #[doc = concat!("A parser-produced authored ordinary value for `", $canonical, "`.")]
+        #[doc = concat!("A grammar-checked authored ordinary value for `", $canonical, "`.")]
         #[derive(Clone, Debug, PartialEq)]
         pub struct $wrapper {
             authored: CssAuthoredDeclarationValue,
@@ -1760,7 +1760,7 @@ macro_rules! define_property_value {
             has_i01_subset: bool,
         }
 
-        /// A parser-produced authored ordinary `box-shadow` value.
+        /// A grammar-checked authored ordinary `box-shadow` value.
         #[derive(Clone, Debug, PartialEq)]
         pub struct $wrapper {
             authored: CssAuthoredDeclarationValue,
@@ -1819,7 +1819,7 @@ macro_rules! define_property_value {
             current: Box<CssBorderImage>,
         }
 
-        /// A parser-produced authored ordinary value for `border-image`.
+        /// A grammar-checked authored ordinary value for `border-image`.
         #[derive(Clone, Debug, PartialEq)]
         pub struct $wrapper {
             authored: CssAuthoredDeclarationValue,
@@ -1975,7 +1975,7 @@ macro_rules! define_property_value {
             i01_subset: Option<CssClipPath>,
         }
 
-        /// A parser-produced authored ordinary `clip-path` value.
+        /// A grammar-checked authored ordinary `clip-path` value.
         #[derive(Clone, Debug, PartialEq)]
         pub struct $wrapper {
             authored: CssAuthoredDeclarationValue,
@@ -2026,7 +2026,7 @@ macro_rules! define_property_value {
             i01_subset: CssTransform,
         }
 
-        /// A parser-produced authored ordinary value for `transform`.
+        /// A grammar-checked authored ordinary value for `transform`.
         #[derive(Clone, Debug, PartialEq)]
         pub struct $wrapper {
             authored: CssAuthoredDeclarationValue,
@@ -2076,7 +2076,7 @@ macro_rules! define_property_value {
             current: CssObjectPosition,
         }
 
-        /// A parser-produced authored ordinary value for `object-position`.
+        /// A grammar-checked authored ordinary value for `object-position`.
         #[derive(Clone, Debug, PartialEq)]
         pub struct $wrapper {
             authored: CssAuthoredDeclarationValue,
@@ -2455,7 +2455,7 @@ macro_rules! define_property_value {
             }
         }
 
-        /// A parser-produced authored ordinary value for `grid-flow-tolerance`.
+        /// A grammar-checked authored ordinary value for `grid-flow-tolerance`.
         ///
         /// The current checked value remains distinct from the frozen I01 compatibility payload.
         #[derive(Clone, Debug, PartialEq)]
@@ -2506,7 +2506,7 @@ macro_rules! define_property_value {
             I01($value),
         }
 
-        #[doc = concat!("A parser-produced authored ordinary value for `", $canonical, "`.")]
+        #[doc = concat!("A grammar-checked authored ordinary value for `", $canonical, "`.")]
         ///
         /// The private representation preserves property coupling while `as_css()` retains the
         /// exact authored slice and `i01_subset()` exposes only the frozen I01 payload.
@@ -2552,7 +2552,7 @@ macro_rules! define_filter_property_value {
             i01_subset: Option<CssFilter>,
         }
 
-        #[doc = concat!("A parser-produced authored ordinary value for `", $canonical, "`.")]
+        #[doc = concat!("A grammar-checked authored ordinary value for `", $canonical, "`.")]
         #[derive(Clone, Debug, PartialEq)]
         pub struct $wrapper {
             authored: CssAuthoredDeclarationValue,
@@ -2603,7 +2603,7 @@ macro_rules! define_image_property_value {
             i01_subset: Option<CssImageLayerList>,
         }
 
-        #[doc = concat!("A parser-produced authored ordinary value for `", $canonical, "`.")]
+        #[doc = concat!("A grammar-checked authored ordinary value for `", $canonical, "`.")]
         #[derive(Clone, Debug, PartialEq)]
         pub struct $wrapper {
             authored: CssAuthoredDeclarationValue,
@@ -2781,10 +2781,11 @@ macro_rules! define_property_identity {
             $($variant(CssDeclaredValue<$wrapper>),)*
         }
 
-        /// A parser-owned property-coupled known declaration in the authored syntax phase.
+        /// A grammar-checked property-coupled known declaration in the authored syntax phase.
         ///
-        /// Its private field is the sole property identity and value discriminator. Callers can
-        /// inspect, but cannot construct or mutate, a property/value mismatch.
+        /// Parsing and [`crate::parse_property_value`] construct this value through the same
+        /// property grammar. Its private field is the sole property identity and value
+        /// discriminator, so callers cannot construct or mutate a property/value mismatch.
         ///
         /// ```compile_fail
         /// use surgeist_css::CssKnownDeclaration;

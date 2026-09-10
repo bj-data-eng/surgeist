@@ -133,16 +133,26 @@ fn ordered_declaration_offsets(rule: &surgeist_css::CssStyleRule) -> Vec<usize> 
     let mut offsets = rule
         .declarations()
         .iter()
-        .map(|declaration| declaration.position().byte_offset().value())
+        .map(|declaration| {
+            declaration
+                .position()
+                .expect("parsed declaration position")
+                .byte_offset()
+                .value()
+        })
         .collect::<Vec<_>>();
     for child in rule.rules() {
         match child {
             CssRule::Style(style) => offsets.extend(ordered_declaration_offsets(style)),
-            CssRule::NestedDeclarations(run) => offsets.extend(
-                run.declarations()
-                    .iter()
-                    .map(|declaration| declaration.position().byte_offset().value()),
-            ),
+            CssRule::NestedDeclarations(run) => {
+                offsets.extend(run.declarations().iter().map(|declaration| {
+                    declaration
+                        .position()
+                        .expect("parsed declaration position")
+                        .byte_offset()
+                        .value()
+                }))
+            }
             unexpected => panic!("unexpected child in style-only fixture: {unexpected:?}"),
         }
     }

@@ -48,14 +48,14 @@ importance to a cascade.
 
 ## Inspect a known declaration
 
-Start with a parsed declaration and call `known()`. For ordinary values, use the
+Start with a parsed or checked declaration and call `known()`. For ordinary values, use the
 property-specific wrapper; keep global and substitution-dependent branches
 separate. The assertions below check authored width text and its compatibility
 projection.
 
-`CssKnownDeclaration` is a parser-owned, private-field value. Its `property()`
-identity is derived from the active coupled value, so callers cannot construct or
-mutate a property/value mismatch. `declared_value()` returns exactly one
+Parsing and `parse_property_value` construct `CssKnownDeclaration` through the
+same property grammar. Its fields are private and its `property()` identity is
+derived from the active coupled value, preventing a property/value mismatch. `declared_value()` returns exactly one
 `CssKnownDeclaredValueRef` branch: `Property`, `Global`, or
 `SubstitutionDependent`. The convenience accessors `property_value()`,
 `global()`, and `substitution_dependent()` are mutually exclusive views of those
@@ -95,7 +95,9 @@ match known.declared_value() {
 Each row in the [property schema](../src/properties.rs) has a generated
 `Css<SchemaVariant>PropertyValue` wrapper. `as_css()` returns the exact authored
 ordinary value, preserving its interior spelling and trivia while excluding
-parser-owned boundary trivia and the terminal importance annotation.
+boundary trivia and the terminal importance annotation. For checked construction,
+this text comes from token-preserving serialization of the supplied components;
+`value_components()` retains their original or programmatic provenance.
 `i01_subset()` exposes the compatibility payload only when the value belongs to
 the frozen I01 representation. Every I01 input retains its exact `Some`
 projection; newly accepted syntax returns `None` when the I01 payload cannot

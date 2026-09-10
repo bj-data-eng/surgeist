@@ -47,8 +47,17 @@ fn style_attribute_ordinary_custom_global_substitution_and_importance_match_styl
         assert_eq!(attribute.body(), block.body());
         assert_eq!(attribute.importance(), block.importance());
         assert_eq!(
-            attribute.position().byte_offset().value() + 5,
-            block.position().byte_offset().value()
+            attribute
+                .position()
+                .expect("parsed declaration position")
+                .byte_offset()
+                .value()
+                + 5,
+            block
+                .position()
+                .expect("parsed declaration position")
+                .byte_offset()
+                .value()
         );
     }
     assert_eq!(attribute.syntax()[3].importance(), CssImportance::Important);

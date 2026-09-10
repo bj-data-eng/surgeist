@@ -70,6 +70,7 @@ use variables::{
     collect_authored_declaration_value, parse_custom_property_name, parse_custom_property_value,
 };
 
+use crate::component_values::{CssComponentValues, CssParsedOrigin, CssSourceSnapshot};
 use crate::error::{
     CssFeatureId, Error, basic, from_parse_error, from_rule_parse_error, invalid_at_rule_block,
     invalid_at_rule_body, invalid_at_rule_placement, invalid_custom_declaration_annotation,
@@ -380,6 +381,7 @@ fn parse_overflow_property<'i, 't>(
 /// ));
 /// ```
 pub fn parse_sheet(source: &str) -> crate::CssParseReport<CssSheet> {
+    let source_snapshot = CssSourceSnapshot::new(source);
     if recovery::maximum_nested_depth(source) > recovery::DIRECT_PARSE_DEPTH {
         // The public limit is intentionally higher than the platform's small
         // default test-thread stack. A bounded parser thread preserves the exact
@@ -391,6 +393,7 @@ pub fn parse_sheet(source: &str) -> crate::CssParseReport<CssSheet> {
                 .spawn_scoped(scope, || {
                     parse_sheet_bounded(
                         source,
+                        &source_snapshot,
                         0,
                         BoundedParseContext::Sheet,
                         StyleContextCaptures::default(),
@@ -403,6 +406,7 @@ pub fn parse_sheet(source: &str) -> crate::CssParseReport<CssSheet> {
                 },
                 Err(_) => parse_sheet_bounded(
                     source,
+                    &source_snapshot,
                     0,
                     BoundedParseContext::Sheet,
                     StyleContextCaptures::default(),
@@ -412,6 +416,7 @@ pub fn parse_sheet(source: &str) -> crate::CssParseReport<CssSheet> {
     }
     parse_sheet_bounded(
         source,
+        &source_snapshot,
         0,
         BoundedParseContext::Sheet,
         StyleContextCaptures::default(),
@@ -486,12 +491,18 @@ impl BoundedParseContext {
 
 fn parse_sheet_bounded(
     source: &str,
+    source_snapshot: &CssSourceSnapshot,
     base_depth: u32,
     context: BoundedParseContext,
     style_context_captures: StyleContextCaptures,
 ) -> crate::CssParseReport<CssSheet> {
-    let report =
-        parse_sheet_bounded_with_captures(source, base_depth, context, style_context_captures);
+    let report = parse_sheet_bounded_with_captures(
+        source,
+        source_snapshot,
+        base_depth,
+        context,
+        style_context_captures,
+    );
     let (sheet, mut diagnostics) = report.into_parts();
     let eof_limit = diagnostics.iter().any(|diagnostic| {
         diagnostic.action() == crate::CssRecoveryAction::StopAtNestingLimit
@@ -507,14 +518,20 @@ fn parse_sheet_bounded(
 
 fn parse_sheet_bounded_with_captures(
     source: &str,
+    source_snapshot: &CssSourceSnapshot,
     base_depth: u32,
     context: BoundedParseContext,
     style_context_captures: StyleContextCaptures,
 ) -> crate::CssParseReport<CssSheet> {
     if let Some(limit) = preflight_specialized_eof_limit(source, base_depth) {
         let masked = mask_source_span(source, limit.unit_start, source.len());
-        let outer =
-            parse_sheet_bounded_with_captures(&masked, base_depth, context, style_context_captures);
+        let outer = parse_sheet_bounded_with_captures(
+            &masked,
+            source_snapshot,
+            base_depth,
+            context,
+            style_context_captures,
+        );
         let (sheet, mut diagnostics) = outer.into_parts();
         diagnostics.retain(|diagnostic| {
             diagnostic.action() != crate::CssRecoveryAction::RetainWithImplicitClosure
@@ -542,7 +559,12 @@ fn parse_sheet_bounded_with_captures(
     }
     let Some(preflight) = preflight_structural_nesting(source, base_depth, context.is_style())
     else {
-        let recovery = RecoveryState::at_depth(source, base_depth, style_context_captures);
+        let recovery = RecoveryState::at_depth_with_snapshot(
+            source,
+            base_depth,
+            style_context_captures,
+            source_snapshot.clone(),
+        );
         return match context {
             BoundedParseContext::Sheet => parse_sheet_inner(source, recovery),
             BoundedParseContext::Style => parse_style_context_inner(source, recovery),
@@ -561,6 +583,7 @@ fn parse_sheet_bounded_with_captures(
     let scoped_context = matches!(context, BoundedParseContext::Scoped);
     let outer = parse_sheet_bounded_with_captures(
         &masked,
+        source_snapshot,
         base_depth,
         context,
         style_context_captures.clone(),
@@ -588,6 +611,7 @@ fn parse_sheet_bounded_with_captures(
             };
             let child = parse_sheet_bounded(
                 &isolated,
+                source_snapshot,
                 preflight.parent_depth,
                 child_context,
                 style_context_captures,
@@ -894,7 +918,12 @@ fn splice_style_body(
     let mut nested = rules.to_vec();
     if parents.is_empty() && !child_rules.is_empty() {
         let split = declarations.partition_point(|declaration| {
-            declaration.position().byte_offset().value() < child_start
+            declaration
+                .position()
+                .expect("parsed declarations have source positions")
+                .byte_offset()
+                .value()
+                < child_start
         });
         let trailing = declarations.split_off(split);
         if !trailing.is_empty() {
@@ -964,8 +993,14 @@ fn split_style_declaration_run(rule: CssRule, child_start: usize) -> Vec<CssRule
         return vec![rule];
     };
     let declarations = run.declarations().as_slice();
-    let split = declarations
-        .partition_point(|declaration| declaration.position().byte_offset().value() < child_start);
+    let split = declarations.partition_point(|declaration| {
+        declaration
+            .position()
+            .expect("parsed declarations have source positions")
+            .byte_offset()
+            .value()
+            < child_start
+    });
     if split == 0 || split == declarations.len() {
         return vec![CssRule::NestedDeclarations(run)];
     }
@@ -3137,14 +3172,15 @@ impl<'i> DeclarationParser<'i> for StrictDeclarationParser<'i> {
         let implicit_closures =
             self.recovery
                 .check_component_values(self.source, input, "css.declaration")?;
-        let parsed =
-            parse_declaration_core(DeclarationMode::Ordinary, name, input, declaration_start)?;
+        let parsed = parse_declaration_core(
+            DeclarationMode::Ordinary,
+            name,
+            input,
+            declaration_start,
+            self.recovery.source_snapshot(),
+        )?;
         self.recovery.retain_component_closures(implicit_closures);
-        Ok(CssDeclaration::new_with_importance(
-            parsed.body,
-            parsed.importance,
-            parsed.position,
-        ))
+        Ok(parsed.into_declaration())
     }
 }
 
@@ -3158,6 +3194,21 @@ pub(super) struct ParsedDeclaration {
     pub(super) body: CssDeclarationBody,
     pub(super) importance: CssImportance,
     pub(super) position: crate::source::CssSourcePosition,
+    components: CssComponentValues,
+    name: CssParsedOrigin,
+    value_origin: CssParsedOrigin,
+}
+
+impl ParsedDeclaration {
+    fn into_declaration(self) -> CssDeclaration {
+        CssDeclaration::new_parsed(
+            self.body,
+            self.importance,
+            self.components,
+            self.name,
+            self.value_origin,
+        )
+    }
 }
 
 enum DeclarationBoundaryContext {
@@ -3176,12 +3227,22 @@ pub(super) fn parse_declaration_core<'i, 't>(
     name: CowRcStr<'i>,
     input: &mut Parser<'i, 't>,
     declaration_start: &ParserState,
+    source_snapshot: &CssSourceSnapshot,
 ) -> std::result::Result<ParsedDeclaration, ParseError<'i, Error>> {
-    let position = crate::source::CssSourcePosition::from_cssparser(
-        declaration_start.position(),
-        declaration_start.source_location(),
-    );
-    if name.starts_with("--") {
+    // Revisit only the name token. The original snapshot is shared even when
+    // this parser reads a same-length masked structural chunk.
+    let value_start = input.state();
+    input.reset(declaration_start);
+    input.expect_ident()?;
+    let name_origin = CssParsedOrigin::from_range(
+        source_snapshot,
+        declaration_start.position().byte_index()..input.position().byte_index(),
+    )
+    .expect("parser name boundaries belong to the original source");
+    let position = name_origin.span().start();
+    input.reset(&value_start);
+
+    let (body, importance, components, value_origin) = if name.starts_with("--") {
         let Some(custom_name) = parse_custom_property_name(name.as_ref()) else {
             return Err(property_name_error(
                 declaration_start.source_location(),
@@ -3196,32 +3257,113 @@ pub(super) fn parse_declaration_core<'i, 't>(
                 DeclarationBoundaryContext::KeyframeCustom(custom_name.clone())
             }
         };
-        let (value, importance) = parse_declaration_boundary(input, &context, |input| {
-            parse_custom_property_value(input)
-                .map_err(|error| with_property_context(error, name.as_ref()))
-        })?;
-        return Ok(ParsedDeclaration {
-            body: CssDeclarationBody::Custom(CssCustomDeclaration::new(custom_name, value)),
+        let ((value, components, origin), importance) =
+            parse_declaration_boundary(input, &context, |input| {
+                collect_declaration_value(input, source_snapshot, |input| {
+                    parse_custom_property_value(input)
+                        .map_err(|error| with_property_context(error, name.as_ref()))
+                })
+            })?;
+        (
+            CssDeclarationBody::Custom(CssCustomDeclaration::new(custom_name, value)),
             importance,
-            position,
-        });
-    }
-
-    let resolved_property = resolve_property_name(name.as_ref())
-        .ok_or_else(|| property_name_error(declaration_start.source_location(), name.as_ref()))?;
-    let known_property = resolved_property.property();
-    let context = match mode {
-        DeclarationMode::Ordinary => DeclarationBoundaryContext::OrdinaryKnown(known_property),
-        DeclarationMode::Keyframe => DeclarationBoundaryContext::KeyframeKnown(known_property),
+            components,
+            origin,
+        )
+    } else {
+        let resolved_property = resolve_property_name(name.as_ref()).ok_or_else(|| {
+            property_name_error(declaration_start.source_location(), name.as_ref())
+        })?;
+        let known_property = resolved_property.property();
+        let context = match mode {
+            DeclarationMode::Ordinary => DeclarationBoundaryContext::OrdinaryKnown(known_property),
+            DeclarationMode::Keyframe => DeclarationBoundaryContext::KeyframeKnown(known_property),
+        };
+        let ((body, components, origin), importance) =
+            parse_declaration_boundary(input, &context, |input| {
+                collect_declaration_value(input, source_snapshot, |input| {
+                    parse_known_declaration_body(resolved_property, input)
+                })
+            })?;
+        (body, importance, components, origin)
     };
-    let (body, importance) = parse_declaration_boundary(input, &context, |input| {
-        parse_known_declaration_body(resolved_property, input)
-    })?;
     Ok(ParsedDeclaration {
         body,
         importance,
         position,
+        components,
+        name: name_origin,
+        value_origin,
     })
+}
+
+fn collect_declaration_value<'i, 't, T>(
+    input: &mut Parser<'i, 't>,
+    source_snapshot: &CssSourceSnapshot,
+    parse_value: impl FnOnce(&mut Parser<'i, 't>) -> std::result::Result<T, ParseError<'i, Error>>,
+) -> std::result::Result<(T, CssComponentValues, CssParsedOrigin), ParseError<'i, Error>> {
+    let start = input.state();
+    let value = parse_value(input)?;
+    input.reset(&start);
+    let components =
+        CssComponentValues::collect_from_parser(input, source_snapshot).map_err(|error| {
+            crate::error::invalid_component_value(input.current_source_location(), error)
+        })?;
+    let origin = CssParsedOrigin::from_range(
+        source_snapshot,
+        start.position().byte_index()..input.position().byte_index(),
+    )
+    .expect("parser value boundaries belong to the original source");
+    Ok((value, components, origin))
+}
+
+pub(crate) fn parse_property_value_body(
+    property: CssPropertyNameRef<'_>,
+    source: &str,
+) -> std::result::Result<CssDeclarationBody, Error> {
+    let mut input = ParserInput::new(source);
+    let mut parser = Parser::new(&mut input);
+    // Importance and declaration separators are outside a property value. The
+    // substitution shortcut must not hide them; nested punctuation stays data.
+    let start = parser.state();
+    while !parser.is_exhausted() {
+        let offset = parser.position().byte_index();
+        let token = parser
+            .next_including_whitespace_and_comments()
+            .map_err(|error| from_parse_error(source, error.into()))?
+            .clone();
+        if matches!(token, Token::Delim('!') | Token::Semicolon) {
+            return Err(crate::error::unexpected_token_at(source, offset, &token));
+        }
+        if matches!(
+            token,
+            Token::Function(_)
+                | Token::ParenthesisBlock
+                | Token::SquareBracketBlock
+                | Token::CurlyBracketBlock
+        ) {
+            parser
+                .parse_nested_block(|nested| {
+                    while nested.next_including_whitespace_and_comments().is_ok() {}
+                    Ok::<_, ParseError<'_, Error>>(())
+                })
+                .map_err(|error| from_parse_error(source, error))?;
+        }
+    }
+    parser.reset(&start);
+    let body = match property {
+        CssPropertyNameRef::Known(property) => {
+            parse_known_declaration_body(CssResolvedPropertyName::Canonical(property), &mut parser)
+        }
+        CssPropertyNameRef::Custom(name) => parse_custom_property_value(&mut parser).map(|value| {
+            CssDeclarationBody::Custom(CssCustomDeclaration::new(name.clone(), value))
+        }),
+    }
+    .map_err(|error| from_parse_error(source, error))?;
+    parser
+        .expect_exhausted()
+        .map_err(|error| from_parse_error(source, error.into()))?;
+    Ok(body)
 }
 
 fn parse_known_declaration_body<'i, 't>(
