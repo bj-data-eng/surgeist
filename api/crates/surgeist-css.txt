@@ -1820,6 +1820,19 @@ pub surgeist_css::CssNamespaceConstraint::Named(surgeist_css::CssNamespacePrefix
 #[non_exhaustive] pub enum surgeist_css::CssNonNegativeNumberValue
 pub surgeist_css::CssNonNegativeNumberValue::Calculation(surgeist_css::CssNumberCalculation)
 pub surgeist_css::CssNonNegativeNumberValue::Literal(surgeist_css::CssNonNegativeNumber)
+#[non_exhaustive] pub enum surgeist_css::CssNormalizationErrorKind
+pub surgeist_css::CssNormalizationErrorKind::LimitExceeded
+pub surgeist_css::CssNormalizationErrorKind::LimitExceeded::limit: usize
+pub surgeist_css::CssNormalizationErrorKind::LimitExceeded::resource: surgeist_css::CssNormalizationResource
+pub surgeist_css::CssNormalizationErrorKind::UnsupportedDeclaration(surgeist_css::CssExpansionError)
+#[non_exhaustive] pub enum surgeist_css::CssNormalizationResource
+pub surgeist_css::CssNormalizationResource::Contributions
+pub surgeist_css::CssNormalizationResource::Declarations
+pub surgeist_css::CssNormalizationResource::RuleDepth
+pub surgeist_css::CssNormalizationResource::Rules
+#[non_exhaustive] pub enum surgeist_css::CssNormalizedItem
+pub surgeist_css::CssNormalizedItem::Declaration(surgeist_css::CssNormalizedDeclaration)
+pub surgeist_css::CssNormalizedItem::Rule(surgeist_css::CssRuleContext)
 #[non_exhaustive] pub enum surgeist_css::CssNthPattern
 pub surgeist_css::CssNthPattern::AnPlusB(surgeist_css::CssNthAnPlusB)
 pub surgeist_css::CssNthPattern::Even
@@ -2088,6 +2101,26 @@ pub surgeist_css::CssRule::Page(surgeist_css::CssPageRule)
 pub surgeist_css::CssRule::Scope(surgeist_css::CssScopeRule)
 pub surgeist_css::CssRule::Style(surgeist_css::CssStyleRule)
 pub surgeist_css::CssRule::Supports(surgeist_css::CssSupportsRule)
+#[non_exhaustive] pub enum surgeist_css::CssRuleContextKindRef<'a>
+pub surgeist_css::CssRuleContextKindRef::Container
+pub surgeist_css::CssRuleContextKindRef::Container::condition: &'a surgeist_css::CssContainerCondition
+pub surgeist_css::CssRuleContextKindRef::Container::name: core::option::Option<&'a surgeist_css::CssContainerName>
+pub surgeist_css::CssRuleContextKindRef::CounterStyle(&'a surgeist_css::CssCounterStyleRule)
+pub surgeist_css::CssRuleContextKindRef::FontFace(&'a surgeist_css::CssFontFaceRule)
+pub surgeist_css::CssRuleContextKindRef::Import(&'a surgeist_css::CssImportRule)
+pub surgeist_css::CssRuleContextKindRef::Keyframes(&'a surgeist_css::CssKeyframesRule)
+pub surgeist_css::CssRuleContextKindRef::LayerBlock(core::option::Option<&'a surgeist_css::CssLayerName>)
+pub surgeist_css::CssRuleContextKindRef::LayerStatement(&'a surgeist_css::CssLayerNameList)
+pub surgeist_css::CssRuleContextKindRef::Media(&'a surgeist_css::CssMediaQueryList)
+pub surgeist_css::CssRuleContextKindRef::Namespace(&'a surgeist_css::CssNamespaceRule)
+pub surgeist_css::CssRuleContextKindRef::NestedDeclarations(&'a surgeist_css::CssSelectorContext)
+pub surgeist_css::CssRuleContextKindRef::Page(&'a surgeist_css::CssPageRule)
+pub surgeist_css::CssRuleContextKindRef::Scope
+pub surgeist_css::CssRuleContextKindRef::Scope::limit: core::option::Option<&'a surgeist_css::CssScopeSelectorList>
+pub surgeist_css::CssRuleContextKindRef::Scope::root: core::option::Option<&'a surgeist_css::CssScopeSelectorList>
+pub surgeist_css::CssRuleContextKindRef::ScopedStyle(&'a surgeist_css::CssSelectorContext)
+pub surgeist_css::CssRuleContextKindRef::Style(&'a surgeist_css::CssSelectorContext)
+pub surgeist_css::CssRuleContextKindRef::Supports(&'a surgeist_css::CssSupportsCondition)
 #[non_exhaustive] pub enum surgeist_css::CssScale
 pub surgeist_css::CssScale::None
 pub surgeist_css::CssScale::Values(surgeist_css::CssScaleValues)
@@ -2118,6 +2151,12 @@ pub surgeist_css::CssSelector::PseudoClass(surgeist_css::CssPseudoClass)
 pub surgeist_css::CssSelector::Tag(alloc::string::String)
 impl surgeist_css::CssSelector
 pub fn surgeist_css::CssSelector::has_pseudo_elements(&self) -> bool
+#[non_exhaustive] pub enum surgeist_css::CssSelectorBinding
+pub surgeist_css::CssSelectorBinding::Absolute
+pub surgeist_css::CssSelectorBinding::ExplicitAnchors
+pub surgeist_css::CssSelectorBinding::ImplicitDescendant
+pub surgeist_css::CssSelectorBinding::LeadingCombinator(surgeist_css::CssSelectorCombinator)
+pub surgeist_css::CssSelectorBinding::ScopeAnchors
 #[non_exhaustive] pub enum surgeist_css::CssSelectorCombinator
 pub surgeist_css::CssSelectorCombinator::Child
 pub surgeist_css::CssSelectorCombinator::Descendant
@@ -4576,6 +4615,47 @@ pub struct surgeist_css::CssNonNegativeNumber
 impl surgeist_css::CssNonNegativeNumber
 pub fn surgeist_css::CssNonNegativeNumber::try_new(value: f32) -> core::option::Option<Self>
 pub const fn surgeist_css::CssNonNegativeNumber::value(self) -> f32
+pub struct surgeist_css::CssNormalizationError
+impl surgeist_css::CssNormalizationError
+pub fn surgeist_css::CssNormalizationError::declaration(&self) -> core::option::Option<&surgeist_css::CssDeclaration>
+pub fn surgeist_css::CssNormalizationError::declaration_order(&self) -> core::option::Option<usize>
+pub fn surgeist_css::CssNormalizationError::kind(&self) -> &surgeist_css::CssNormalizationErrorKind
+pub fn surgeist_css::CssNormalizationError::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub fn surgeist_css::CssNormalizationError::rule_context(&self) -> core::option::Option<&surgeist_css::CssRuleContext>
+impl core::error::Error for surgeist_css::CssNormalizationError
+pub fn surgeist_css::CssNormalizationError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssNormalizationError
+pub fn surgeist_css::CssNormalizationError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_css::CssNormalizationLimits
+impl surgeist_css::CssNormalizationLimits
+pub const fn surgeist_css::CssNormalizationLimits::max_contributions(self) -> usize
+pub const fn surgeist_css::CssNormalizationLimits::max_declarations(self) -> usize
+pub const fn surgeist_css::CssNormalizationLimits::max_rule_depth(self) -> u32
+pub const fn surgeist_css::CssNormalizationLimits::max_rules(self) -> usize
+pub const fn surgeist_css::CssNormalizationLimits::try_new(max_rule_depth: u32, max_rules: usize, max_declarations: usize, max_contributions: usize) -> core::option::Option<Self>
+impl core::default::Default for surgeist_css::CssNormalizationLimits
+pub fn surgeist_css::CssNormalizationLimits::default() -> Self
+pub struct surgeist_css::CssNormalizedDeclaration
+impl surgeist_css::CssNormalizedDeclaration
+pub const fn surgeist_css::CssNormalizedDeclaration::expansion(&self) -> &surgeist_css::CssExpansion
+pub const fn surgeist_css::CssNormalizedDeclaration::order(&self) -> usize
+pub const fn surgeist_css::CssNormalizedDeclaration::rule_context(&self) -> &surgeist_css::CssRuleContext
+pub const fn surgeist_css::CssNormalizedDeclaration::selector_context(&self) -> &surgeist_css::CssSelectorContext
+pub const fn surgeist_css::CssNormalizedDeclaration::source(&self) -> &surgeist_css::CssDeclaration
+pub struct surgeist_css::CssNormalizedReport
+impl surgeist_css::CssNormalizedReport
+pub fn surgeist_css::CssNormalizedReport::diagnostics(&self) -> &[surgeist_css::CssRecoveryDiagnostic]
+pub fn surgeist_css::CssNormalizedReport::into_parts(self) -> (surgeist_css::CssNormalizedSheet, alloc::vec::Vec<surgeist_css::CssRecoveryDiagnostic>)
+pub fn surgeist_css::CssNormalizedReport::is_clean(&self) -> bool
+pub const fn surgeist_css::CssNormalizedReport::syntax(&self) -> &surgeist_css::CssNormalizedSheet
+pub struct surgeist_css::CssNormalizedSelector
+impl surgeist_css::CssNormalizedSelector
+pub const fn surgeist_css::CssNormalizedSelector::binding(&self) -> surgeist_css::CssSelectorBinding
+pub const fn surgeist_css::CssNormalizedSelector::selector(&self) -> &surgeist_css::CssSelector
+pub struct surgeist_css::CssNormalizedSheet
+impl surgeist_css::CssNormalizedSheet
+pub const fn surgeist_css::CssNormalizedSheet::encoding(&self) -> core::option::Option<&surgeist_css::CssEncodingDeclaration>
+pub fn surgeist_css::CssNormalizedSheet::items(&self) -> &[surgeist_css::CssNormalizedItem]
 pub struct surgeist_css::CssNthAnPlusB
 impl surgeist_css::CssNthAnPlusB
 pub const fn surgeist_css::CssNthAnPlusB::a(self) -> i32
@@ -4975,6 +5055,12 @@ pub struct surgeist_css::CssRowGapPropertyValue
 impl surgeist_css::CssRowGapPropertyValue
 pub fn surgeist_css::CssRowGapPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssRowGapPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
+pub struct surgeist_css::CssRuleContext
+impl surgeist_css::CssRuleContext
+pub fn surgeist_css::CssRuleContext::kind(&self) -> surgeist_css::CssRuleContextKindRef<'_>
+pub fn surgeist_css::CssRuleContext::parent(&self) -> core::option::Option<&Self>
+pub fn surgeist_css::CssRuleContext::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub fn surgeist_css::CssRuleContext::same_context(&self, other: &Self) -> bool
 pub struct surgeist_css::CssScalePropertyValue
 impl surgeist_css::CssScalePropertyValue
 pub fn surgeist_css::CssScalePropertyValue::as_css(&self) -> &str
@@ -5036,6 +5122,12 @@ pub struct surgeist_css::CssScrollbarWidthPropertyValue
 impl surgeist_css::CssScrollbarWidthPropertyValue
 pub fn surgeist_css::CssScrollbarWidthPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssScrollbarWidthPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssScrollbarWidth>
+pub struct surgeist_css::CssSelectorContext
+impl surgeist_css::CssSelectorContext
+pub fn surgeist_css::CssSelectorContext::parent(&self) -> core::option::Option<&Self>
+pub fn surgeist_css::CssSelectorContext::same_context(&self, other: &Self) -> bool
+pub fn surgeist_css::CssSelectorContext::scope_context(&self) -> core::option::Option<&surgeist_css::CssRuleContext>
+pub fn surgeist_css::CssSelectorContext::selectors(&self) -> &[surgeist_css::CssNormalizedSelector]
 pub struct surgeist_css::CssSelectorError
 impl surgeist_css::CssSelectorError
 pub const fn surgeist_css::CssSelectorError::encountered(&self) -> core::option::Option<&surgeist_css::CssTokenSummary>
@@ -5578,6 +5670,10 @@ pub const fn surgeist_css::conformance_exclusions() -> &'static [surgeist_css::C
 pub fn surgeist_css::expand_declaration(source: &surgeist_css::CssDeclaration) -> core::result::Result<surgeist_css::CssExpansion, surgeist_css::CssExpansionError>
 pub fn surgeist_css::feature_catalog() -> &'static [surgeist_css::CssFeatureMetadata]
 pub fn surgeist_css::feature_metadata(id: &str) -> core::option::Option<&'static surgeist_css::CssFeatureMetadata>
+pub fn surgeist_css::normalize_report(report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>) -> core::result::Result<surgeist_css::CssNormalizedReport, surgeist_css::CssNormalizationError>
+pub fn surgeist_css::normalize_report_with_limits(report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>, limits: surgeist_css::CssNormalizationLimits) -> core::result::Result<surgeist_css::CssNormalizedReport, surgeist_css::CssNormalizationError>
+pub fn surgeist_css::normalize_sheet(sheet: &surgeist_css::CssSheet) -> core::result::Result<surgeist_css::CssNormalizedSheet, surgeist_css::CssNormalizationError>
+pub fn surgeist_css::normalize_sheet_with_limits(sheet: &surgeist_css::CssSheet, limits: surgeist_css::CssNormalizationLimits) -> core::result::Result<surgeist_css::CssNormalizedSheet, surgeist_css::CssNormalizationError>
 pub fn surgeist_css::parse_component_values(source: &str) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::parse_component_values_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::parse_property_value(property: surgeist_css::CssPropertyNameRef<'_>, value: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>

@@ -23,8 +23,12 @@ For the implemented [declaration expansion slice](reference.md#intrinsic-declara
 CSS rechecks a caller-supplied replacement against the original property grammar
 and produces complete contributions atomically. This intrinsic grammar reentry
 retains token origins and the original declaration occurrence. It does not find
-variables or decide invalid-at-computed-value behavior. Whole-sheet normalization
-and expansion of the remaining properties are still being implemented.
+variables or decide invalid-at-computed-value behavior. The immutable
+[stylesheet normalizer](reference.md#immutable-stylesheet-normalization) preserves
+ordered rule contexts and grouped declaration contributions through that same
+expansion boundary. It traverses every retained rule family, but returns an
+atomic typed failure for emitted declarations outside the implemented expansion
+coverage. Expansion of the remaining properties is still unfinished.
 
 Where exposed, `i01_subset()` names a frozen earlier representation retained for
 compatibility. The `font-family` and `font` wrappers use their current typed
@@ -94,3 +98,10 @@ Downstream matching can therefore apply the parent list's maximum specificity to
 required by CSS Nesting, while preserving the source order of every declaration. The current
 nested-selector grammar and separate scoped-style model remain bounded by their registered
 support; preserving structure does not imply complete nesting grammar or live CSSOM support.
+
+Normalization keeps shared immutable references to those selector and rule
+contexts. Empty styles retain their selector lists, and declaration runs share
+the enclosing style's complete matching context. An explicit nested style instead
+retains a distinct binding to the parent selector list. Conditions and terminal
+payloads remain symbolic and ordered. These occurrence references carry no
+mutable CSSOM identity or revision; style owns that later phase.

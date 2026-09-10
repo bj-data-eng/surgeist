@@ -125,8 +125,9 @@ keyframe-declaration position APIs retain their existing contracts.
 padding, border width, style and color, the four side-border shorthands, `border`,
 the five border-image longhands, and `all`. The shared property schema owns their
 member lists, initial values and reset-only components. Other known properties
-return typed unsupported errors preserving their identity; complete stylesheet
-normalization remains unfinished.
+return typed unsupported errors preserving their identity. The stylesheet
+normalizer uses this same expansion boundary, so its complete property coverage
+remains unfinished.
 
 Custom declarations produce `CssContributions::Custom`. Its `declaration()` view
 retains the case-sensitive name and either authored token text or a whole-value
@@ -160,6 +161,79 @@ through `source()`. Contributions from reentry share one replacement component
 tree, available through `replacement_components()`, including its original token
 origins. These operations preserve symbolic lengths, colors and images; style
 owns variable environments, invalid-at-computed-value handling and cascade.
+
+## Immutable stylesheet normalization
+
+`normalize_sheet` turns retained authored syntax into an immutable
+`CssNormalizedSheet`. `normalize_report` additionally preserves the original
+ordered recovery diagnostics in `CssNormalizedReport`; `is_clean()` still means
+exactly that the original diagnostic slice was empty. Both operations are
+atomic: an unsupported emitted declaration or resource failure returns
+`CssNormalizationError` without changing the source or exposing partial output.
+
+The ordered `items()` stream contains every authored rule occurrence, followed
+by its leading declaration occurrences and ordered children. Each declaration
+contains one grouped `CssExpansion`, its original declaration occurrence,
+zero-based emitted declaration order, and shared rule and selector contexts.
+Shorthand members share their source occurrence and order. No declaration wins
+the cascade during normalization, and source positions are provenance rather
+than precedence keys.
+
+`CssRuleContextKindRef` borrows a group header or intact terminal payload.
+`Style`, `ScopedStyle`, and `NestedDeclarations` carry their shared selector
+contexts even when the style has no declarations. Conditional headers retain
+their conditions, layer blocks retain names or anonymous occurrences, and scope
+headers retain roots and limits. Imports, namespaces, layer statements, font
+faces, keyframes, counter styles, and pages remain ordered typed payloads.
+Keyframe, page, and font declarations are not emitted as element-style
+declarations. Imports are neither loaded nor merged, and conditions are not
+evaluated. Both the ordinary and separate scoped authored rule trees are walked.
+
+Each selector context contains one complete authored selector list, its earlier
+parent-selector reference when nested, and its nearest scope context when
+present. `CssSelectorBinding` distinguishes ordinary selectors, implicit
+descendants, authored leading combinators, explicit parent-list nesting anchors,
+and scoped grammar anchors. Explicit and implied nesting anchors refer to the
+complete parent list with its maximum specificity. Selector functions and
+repeated anchors remain intact for downstream specificity and matching rules.
+There is no eager selector multiplication.
+
+Nested declaration runs reuse exactly their enclosing style's selector context,
+including pseudo-elements and per-selector specificity behavior. This differs
+from an explicit nested `&` rule, which receives its own context with a parent
+binding. `same_context()` checks immutable occurrence identity: equal authored
+rules and equal anonymous layers are not interned together. These handles are
+not mutable CSSOM identities, revisions, or stable keys across normalizations.
+Rule and failure positions are optional and never manufacture coordinates.
+
+`normalize_sheet_with_limits` and `normalize_report_with_limits` take
+`CssNormalizationLimits::try_new(max_rule_depth, max_rules, max_declarations,
+max_contributions)`. Top-level rule depth is zero; the depth ceiling cannot
+exceed 256. Every visited rule counts, including implicit nested-declaration
+runs. Emitted declaration occurrences count once each. Completed longhands count
+individually, while custom, universal-reset, and pending groups count as one
+contribution member. Declarations inside terminal payloads are not individually
+counted. The defaults retain the depth ceiling and impose no additional count
+policy; zero budgets admit only output consuming zero corresponding units.
+These limits bound traversal/output counters, not payload bytes, allocator
+usage, or total process memory. Pending reentry is an independent immutable
+expansion operation and does not change these counters or the normalized sheet.
+
+Rule depth and rule count are checked before copying the rule header. Declaration
+count, expansion capability, and contribution count are checked before expansion
+allocates its members. A typed limit failure identifies its resource and limit;
+a declaration failure also retains the original occurrence and its prospective
+ordinal. Rule-admission failures refer to their enclosing rule context;
+declaration failures refer to their immediate owning style or declaration run.
+
+The current normalizer covers all retained rule families but only the intrinsic
+property expansion listed above. Other valid known declarations fail explicitly
+instead of being dropped or passed through as completed longhands. This does not
+claim complete CSS grammar, complete shorthand expansion, or public checked
+whole-sheet Rust construction. Parsing and checked construction of individual
+declarations already meet at the same expansion boundary. Style owns subsequent
+CSSOM mutation, revisions, cascade, variable environments, substitution, and
+invalidation; cross-crate composition remains root-owned.
 
 ## Authored property inspection
 

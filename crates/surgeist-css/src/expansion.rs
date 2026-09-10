@@ -478,6 +478,22 @@ pub fn expand_declaration(source: &CssDeclaration) -> Result<CssExpansion, CssEx
     .map(CssExpansion::Contributions)
 }
 
+/// Counts the schema-selected output before normalization allocates expansion members.
+/// Pending, custom, and universal-reset groups each occupy one symbolic output unit.
+pub(crate) fn expansion_member_count(source: &CssDeclaration) -> Result<usize, CssExpansionError> {
+    let Some(known) = source.known() else {
+        return Ok(1);
+    };
+    let shape = expansion_shape(known.property())?;
+    if known.substitution_dependent().is_some() {
+        return Ok(1);
+    }
+    Ok(match shape {
+        ExpansionShape::Longhands(members) => members.len(),
+        ExpansionShape::UniversalReset => 1,
+    })
+}
+
 fn complete_contributions(
     known: &CssKnownDeclaration,
     shape: ExpansionShape,

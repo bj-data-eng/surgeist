@@ -1036,6 +1036,30 @@
 //! complete non-empty diagnostic sequence in [`CssValidationFailure`]. The
 //! validation step does not select a second grammar or change ordinary parsing.
 //!
+//! # Immutable stylesheet normalization
+//!
+//! [`normalize_sheet`] preserves an ordered stream of rule occurrences and
+//! grouped declaration contributions. [`normalize_report`] also retains every
+//! original recovery diagnostic. Shared rule and selector contexts preserve
+//! nesting, empty rules, conditions, imports, layers, scopes, and complete
+//! nonstyle payloads without multiplying selectors or selecting cascade winners.
+//! The current property-expansion slice remains explicit: valid declarations
+//! outside it fail atomically with [`CssNormalizationError`].
+//!
+//! ```
+//! use surgeist_css::{CssNormalizedItem, normalize_report, parse_sheet};
+//!
+//! let report = parse_sheet(".a, #b { margin: 1px; & .child { padding: 2px } }");
+//! let normalized = normalize_report(&report).expect("supported expansion");
+//! assert!(normalized.is_clean());
+//! assert_eq!(normalized.syntax().items().len(), 4);
+//! let [CssNormalizedItem::Rule(_), CssNormalizedItem::Declaration(parent),
+//!      CssNormalizedItem::Rule(_), CssNormalizedItem::Declaration(child)] =
+//!     normalized.syntax().items() else { unreachable!() };
+//! assert!(child.selector_context().parent().unwrap()
+//!     .same_context(parent.selector_context()));
+//! ```
+//!
 //! # Boundary
 //!
 //! This crate owns authored CSS syntax, intrinsic grammar validation, recovery
@@ -1050,6 +1074,7 @@ mod component_values;
 mod conformance;
 mod error;
 mod expansion;
+mod normalization;
 mod parser;
 mod properties;
 mod property_value;
@@ -1074,6 +1099,13 @@ pub use expansion::{
     CssContributionValueRef, CssContributions, CssCustomPropertyContribution, CssExpansion,
     CssExpansionError, CssExpansionErrorKind, CssLonghandContribution, CssLonghandContributions,
     CssLonghandValueRef, CssPendingSubstitution, CssUniversalReset, expand_declaration,
+};
+pub use normalization::{
+    CssNormalizationError, CssNormalizationErrorKind, CssNormalizationLimits,
+    CssNormalizationResource, CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedReport,
+    CssNormalizedSelector, CssNormalizedSheet, CssRuleContext, CssRuleContextKindRef,
+    CssSelectorBinding, CssSelectorContext, normalize_report, normalize_report_with_limits,
+    normalize_sheet, normalize_sheet_with_limits,
 };
 pub use parser::{parse_sheet, parse_style_attribute};
 pub use properties::*;
