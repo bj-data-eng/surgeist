@@ -80,92 +80,66 @@ struct DelimiterLimitTarget {
 }
 
 fn scan_delimiters(source: &str, base_depth: u32) -> DelimiterScan {
-    let bytes = source.as_bytes();
-    let mut index = 0;
+    let mut offset = 0;
     let mut blocks: Vec<(BlockKind, usize)> = Vec::new();
+    let mut unclosed_url = None;
     let mut maximum = base_depth;
     let mut unit_start = None;
     let mut first_root_curly = None;
     let mut target = None;
 
-    while index < bytes.len() {
-        if bytes[index] == b'/' && bytes.get(index + 1) == Some(&b'*') {
-            index += 2;
-            while index < bytes.len()
-                && !(bytes[index] == b'*' && bytes.get(index + 1) == Some(&b'/'))
-            {
-                index += 1;
-            }
-            index = (index + 2).min(bytes.len());
+    while let Some((token_start, token_end, token)) = next_source_token(source, offset) {
+        offset = token_end;
+        if matches!(token, Token::WhiteSpace(_) | Token::Comment(_)) {
             continue;
         }
-        if matches!(bytes[index], b'\'' | b'"') {
-            let quote = bytes[index];
-            index += 1;
-            while index < bytes.len() {
-                if bytes[index] == b'\\' {
-                    index = (index + 2).min(bytes.len());
-                } else if bytes[index] == quote {
-                    index += 1;
-                    break;
-                } else if matches!(bytes[index], b'\n' | b'\r' | b'\x0c') {
-                    break;
-                } else {
-                    index += 1;
-                }
-            }
-            continue;
-        }
-        if bytes[index] == b'\\' {
-            index = (index + 2).min(bytes.len());
-            continue;
-        }
-        if blocks.is_empty() && !bytes[index].is_ascii_whitespace() {
-            if bytes[index] == b';' {
+        if blocks.is_empty() {
+            if matches!(token, Token::Semicolon) {
                 unit_start = None;
                 first_root_curly = None;
-                index += 1;
                 continue;
             }
-            unit_start.get_or_insert(index);
+            unit_start.get_or_insert(token_start);
         }
 
-        let opening = match bytes[index] {
-            b'(' => Some(BlockKind::Parenthesis),
-            b'[' => Some(BlockKind::Square),
-            b'{' => Some(BlockKind::Curly),
-            _ => None,
-        };
-        if let Some(opening) = opening {
-            let opening_offset = if opening == BlockKind::Parenthesis {
-                function_token_start(bytes, index)
+        if matches!(token, Token::UnquotedUrl(_)) {
+            // The tokenizer consumes the entire URL, including punctuation that
+            // would open blocks or comments outside its payload. Its own EOF
+            // termination is retained without adding a structural nesting level.
+            if source
+                .get(token_start..token_end)
+                .is_some_and(|spelling| !url_token_is_closed(spelling))
+            {
+                unclosed_url = Some(token_start);
+            }
+            continue;
+        }
+
+        if let Some(opening) = opening_block(&token) {
+            // Guards identify the actual opening delimiter. A function token
+            // ends at that delimiter even when its name contains CSS escapes.
+            let opening_offset = if matches!(token, Token::Function(_)) {
+                token_end.saturating_sub(1)
             } else {
-                index
+                token_start
             };
             if blocks.is_empty() && opening == BlockKind::Curly {
-                first_root_curly = Some(index);
+                first_root_curly = Some(token_start);
             }
             let depth = base_depth.saturating_add(blocks.len() as u32);
             if target.is_none() && depth >= STRUCTURAL_NESTING_LIMIT {
                 target = Some(DelimiterLimitTarget {
-                    unit_start: unit_start.unwrap_or(opening_offset),
-                    opening_offset,
+                    unit_start: unit_start.unwrap_or(token_start),
+                    opening_offset: token_start,
                     first_root_curly,
                 });
             }
             blocks.push((opening, opening_offset));
             maximum = maximum.max(base_depth.saturating_add(blocks.len() as u32));
-            index += 1;
             continue;
         }
 
-        let closing = match bytes[index] {
-            b')' => Some(BlockKind::Parenthesis),
-            b']' => Some(BlockKind::Square),
-            b'}' => Some(BlockKind::Curly),
-            _ => None,
-        };
-        if let Some(closing) = closing
+        if let Some(closing) = closing_block(&token)
             && blocks.last().is_some_and(|(kind, _)| *kind == closing)
         {
             blocks.pop();
@@ -175,27 +149,31 @@ fn scan_delimiters(source: &str, base_depth: u32) -> DelimiterScan {
                 target = None;
             }
         }
-        index += 1;
     }
 
     DelimiterScan {
         maximum,
-        unclosed: blocks.into_iter().map(|(_, offset)| offset).collect(),
+        unclosed: blocks
+            .into_iter()
+            .map(|(_, offset)| offset)
+            .chain(unclosed_url)
+            .collect(),
         eof_limit: target,
     }
 }
 
-fn function_token_start(source: &[u8], opening_parenthesis: usize) -> usize {
-    let mut start = opening_parenthesis;
-    while start > 0
-        && matches!(
-            source[start - 1],
-            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_'
-        )
-    {
-        start -= 1;
-    }
-    start
+fn url_token_is_closed(spelling: &str) -> bool {
+    // CSS Syntax's URL token ends only at an unescaped ')'. An escaped final
+    // parenthesis is payload, and the tokenizer then supplies EOF termination.
+    spelling.strip_suffix(')').is_some_and(|before_closing| {
+        before_closing
+            .bytes()
+            .rev()
+            .take_while(|byte| *byte == b'\\')
+            .count()
+            % 2
+            == 0
+    })
 }
 
 /// Parser-owned algorithm state shared by structural and component-value paths.
@@ -757,7 +735,7 @@ enum ScanBoundary {
 
 // Validate nesting and return the exclusive grammar-unit boundary. Token starts
 // are not structural opening identities: URL tokens consume their own contents,
-// and escaped function names need not have the raw scanner's name-start offset.
+// and function tokens end at their actual opening parenthesis.
 fn scan_nested_tokens<'i>(
     source: &str,
     start: usize,
@@ -989,7 +967,7 @@ mod tests {
     fn implicit_closure_scan_ignores_delimiters_in_strings_and_comments() {
         let source = ".x{--v:f(\") }\"/* ] } */x";
 
-        assert_eq!(unclosed_openings(source), [2, 7]);
+        assert_eq!(unclosed_openings(source), [2, 8]);
     }
 
     #[test]
