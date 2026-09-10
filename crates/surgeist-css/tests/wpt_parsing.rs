@@ -16,6 +16,7 @@ mod digest;
 
 const REVISION: &str = "ddcca5943fd41232d42149aaa19d9a04c5651b18";
 const FONT_CASES: &str = include_str!("corpus/wpt/font-face-src-presence.json");
+const PROFILE_EXPECTATIONS: &str = include_str!("corpus/wpt/profile-expectations.json");
 const SELECTOR_CASES: &str = include_str!("corpus/wpt/nesting-selector-presence.json");
 const ORDER_CASES: &str = include_str!("corpus/wpt/nesting-declaration-order.json");
 const DEFERRED_CASES: &str = include_str!("corpus/wpt/deferred-cssom-and-execution.json");
@@ -37,7 +38,7 @@ fn vectors<T: serde::de::DeserializeOwned>(text: &str, kind: &str) -> Vec<T> {
     vectors.cases
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct Binding {
     path: String,
@@ -174,8 +175,156 @@ fn assert_font_case_binding(case: &FontCase) {
     );
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProfileExpectations {
+    schema_version: u8,
+    source_revision: String,
+    profile_id: String,
+    publication_cutoff_utc: String,
+    assertion_kind: String,
+    standards: Vec<ProfileStandard>,
+    csswg_issue: String,
+    rationale: String,
+    cases: Vec<ProfileFontCase>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProfileStandard {
+    module_id: String,
+    publication_url: String,
+    publication_sha256: String,
+    sections: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProfileFontCase {
+    id: String,
+    source: Binding,
+    src: String,
+    upstream_expected_src_present: bool,
+    selected_profile_expected_src_present: bool,
+    reason: String,
+}
+
+fn selected_font_expectations(cases: &[FontCase]) -> BTreeMap<String, bool> {
+    let profile: ProfileExpectations =
+        serde_json::from_str(PROFILE_EXPECTATIONS).expect("selected-profile expectation schema");
+    let catalog: serde_json::Value = serde_json::from_str(include_str!("../specs/catalog.json"))
+        .expect("selected standards catalog");
+    assert_eq!(profile.schema_version, 1);
+    assert_eq!(profile.source_revision, REVISION);
+    assert_eq!(
+        Some(profile.profile_id.as_str()),
+        catalog["profile_id"].as_str()
+    );
+    assert_eq!(
+        Some(profile.publication_cutoff_utc.as_str()),
+        catalog["publication_cutoff_utc"].as_str()
+    );
+    assert_eq!(profile.assertion_kind, "recovering-font-face-src-presence");
+    assert_eq!(
+        profile.csswg_issue,
+        "https://github.com/w3c/csswg-drafts/issues/13692"
+    );
+    assert!(!profile.rationale.trim().is_empty());
+    assert_eq!(profile.standards.len(), 2);
+    let mut standard_ids = BTreeSet::new();
+    for standard in profile.standards {
+        assert!(standard_ids.insert(standard.module_id.clone()));
+        let sections: &[&str] = match standard.module_id.as_str() {
+            "css-fonts-4" => &[
+                "font-family-name-syntax",
+                "font-face-src-parsing",
+                "local-font-fallback",
+            ],
+            "css-values-4" => &["custom-idents", "component-multipliers"],
+            other => panic!("unreviewed profile expectation standard: {other}"),
+        };
+        assert_eq!(
+            standard
+                .sections
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            sections
+        );
+        let module = catalog["modules"]
+            .as_array()
+            .expect("catalog modules")
+            .iter()
+            .find(|module| module["id"].as_str() == Some(standard.module_id.as_str()))
+            .expect("profile standard in selected catalog");
+        assert_eq!(
+            Some(standard.publication_url.as_str()),
+            module["publication"]["url"].as_str()
+        );
+        assert_eq!(
+            Some(standard.publication_sha256.as_str()),
+            module["publication"]["sha256"].as_str()
+        );
+    }
+
+    // This is a closed set of independently reviewed source disagreements,
+    // not a mechanism for suppressing ordinary parser failures.
+    let mut reviewed = BTreeMap::from([
+        ("font-src-local-011", ("local(default A)", 26)),
+        ("font-src-local-012", ("local(inherit A)", 27)),
+        ("font-src-local-013", ("local(revert A)", 28)),
+        ("font-src-local-014", ("local(unset A)", 29)),
+    ]);
+    assert_eq!(profile.cases.len(), reviewed.len());
+    let active: BTreeMap<_, _> = cases.iter().map(|case| (case.id.as_str(), case)).collect();
+    assert_eq!(active.len(), cases.len(), "unique active font case IDs");
+    let mut selected = BTreeMap::new();
+    for expectation in profile.cases {
+        let (src, line) = reviewed
+            .remove(expectation.id.as_str())
+            .expect("unique, reviewed profile case ID");
+        assert_eq!(expectation.src, src);
+        assert_eq!(expectation.source.line, line);
+        assert_eq!(
+            expectation.source.path,
+            "css/css-fonts/parsing/font-face-src-local.html"
+        );
+        let case = active
+            .get(expectation.id.as_str())
+            .expect("profile case binds an active font case");
+        assert_font_case_binding(case);
+        assert_eq!(expectation.source, case.source);
+        assert_eq!(expectation.src, case.src);
+        assert_eq!(
+            expectation.upstream_expected_src_present,
+            case.expected_src_present
+        );
+        assert!(expectation.upstream_expected_src_present);
+        assert!(!expectation.selected_profile_expected_src_present);
+        assert!(!expectation.reason.trim().is_empty());
+        assert!(
+            selected
+                .insert(
+                    expectation.id,
+                    expectation.selected_profile_expected_src_present
+                )
+                .is_none()
+        );
+    }
+    assert!(reviewed.is_empty(), "all four profile cases are bound");
+    selected
+}
+
+fn expected_src_presence(case: &FontCase, selected: &BTreeMap<String, bool>) -> bool {
+    selected
+        .get(&case.id)
+        .copied()
+        .unwrap_or(case.expected_src_present)
+}
+
 fn assert_src_presence(suffix: &str, expected_count: usize) {
     let cases: Vec<FontCase> = vectors(FONT_CASES, "recovering-font-face-src-presence");
+    let profile = selected_font_expectations(&cases);
     let selected: Vec<_> = cases
         .iter()
         .filter(|case| case.source.path.ends_with(suffix))
@@ -198,13 +347,15 @@ fn assert_src_presence(suffix: &str, expected_count: usize) {
             continue;
         };
         let present = rule.descriptors().src().is_some();
-        if present != case.expected_src_present {
+        let expected = expected_src_presence(case, &profile);
+        if present != expected {
             failures.push(format!(
-                "{} {}:{} src {:?}: expected descriptor presence {}, got {}; diagnostics: {:?}",
+                "{} {}:{} src {:?}: selected profile expects descriptor presence {} (upstream {}), got {}; diagnostics: {:?}",
                 case.id,
                 case.source.path,
                 case.source.line,
                 case.src,
+                expected,
                 case.expected_src_present,
                 present,
                 report.diagnostics()
@@ -417,6 +568,13 @@ fn wpt_vectors_bind_declared_sources_and_keep_deferred_assertions_explicit() {
     assert_eq!(
         font.iter().filter(|case| case.expected_src_present).count(),
         63
+    );
+    let profile = selected_font_expectations(&font);
+    assert_eq!(
+        font.iter()
+            .filter(|case| expected_src_presence(case, &profile))
+            .count(),
+        59
     );
     let mut ids = BTreeSet::new();
     for case in font {

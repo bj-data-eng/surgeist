@@ -25,9 +25,10 @@ literal case text. The [parser harness](../../wpt_parsing.rs) verifies those
 bindings with the shared test digest helper before exercising `parse_sheet`.
 It never derives expected acceptance from Surgeist output.
 
-| Data | Active expectation |
+| Data | Expectation |
 | --- | --- |
-| [font-face-src-presence.json](font-face-src-presence.json) | 109 literal `src` records: 63 surviving descriptors and 46 absent descriptors after recovery |
+| [font-face-src-presence.json](font-face-src-presence.json) | 109 unchanged upstream `src` records: 63 surviving descriptors and 46 absent descriptors after recovery |
+| [profile-expectations.json](profile-expectations.json) | Four explicit source disagreements yield 59 surviving descriptors and 50 absent descriptors under the selected published profile |
 | [nesting-selector-presence.json](nesting-selector-presence.json) | 31 retained inner style rules and one rejected inner rule, with the authored parent retained |
 | [nesting-declaration-order.json](nesting-declaration-order.json) | Five authored rule/declaration sequences, including nested media and trailing declaration groups |
 | [deferred-cssom-and-execution.json](deferred-cssom-and-execution.json) | 116 source-only assertions with explicit deferred dispositions; no parser-conformance pass is claimed for them |
@@ -37,6 +38,39 @@ Font-source acceptance means that `src` remains present in a recovered
 parse. A bad comma-separated member may be discarded while a valid fallback
 survives; an all-invalid list leaves no `src` descriptor. These upstream tables
 do not specify exact whole-descriptor serialization or font loading outcomes.
+
+### Selected profile and upstream font-name disagreement
+
+The [standards catalog](../../../specs/catalog.json) selects published Fonts 4
+and Values 4 editions at the `2026-09-10T02:16:24Z` cutoff. Fonts 4 defines
+[`local(<font-family-name>)`](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-src-parsing),
+with [`<font-family-name> = <string> | <custom-ident>+`](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-family-name-syntax).
+Values 4 [excludes CSS-wide keywords and `default` from `<custom-ident>`](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#custom-idents).
+Every unquoted token must satisfy that production; converting an accepted
+identifier sequence into a space-separated name does not create an exception.
+
+The upstream `local()` table accepts `local(default A)`, `local(inherit A)`,
+`local(revert A)`, and `local(unset A)`. All four are rejected by the selected
+published grammar, leaving their sole-member `src` descriptors absent after
+recovery. The profile expectation file records each case's ID, exact input,
+source path, source digest, line, literal case, upstream expectation, and selected
+expectation. Its shared evidence records the selected publication URLs, SHA-256
+hashes, applicable sections, and the reason for the disagreement.
+
+[CSSWG issue 13692](https://github.com/w3c/csswg-drafts/issues/13692), opened
+March 20, 2026, reports this grammar/test discrepancy and discusses possible
+replacement grammars. It has no adopted resolution before the cutoff. The
+selected edition still defines the authored grammar: an open issue does not
+make that grammar undefined, and the profile has no compatibility exception.
+The imported source, acquisition record, manifest, receipt, and literal
+`expected_src_present` fields retain their original upstream meaning.
+
+The harness validates the profile ID and cutoff against the catalog, binds both
+standards to its publication URLs and hashes, and restricts reconciliation to
+these four exact source-bound cases. Duplicate, missing, rebound, or additional
+mappings fail validation. Every other case uses its unchanged upstream
+expectation; ordinary parser gaps still fail. Failure output shows selected
+profile and upstream expectations separately.
 
 Nesting vectors test authored structure and order. They preserve symbolic
 selectors without treating CSSOM's contextual selector rewriting as a

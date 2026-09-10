@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "source_revision": "ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "profile_id": "surgeist-css-foundation-2026",
+  "publication_cutoff_utc": "2026-09-10T02:16:24Z",
+  "assertion_kind": "recovering-font-face-src-presence",
+  "standards": [
+    {
+      "module_id": "css-fonts-4",
+      "publication_url": "https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/",
+      "publication_sha256": "03626a0c85658aaa94191f1b8c64dd5491b723acff08cc33ddd0331a80b920f5",
+      "sections": [
+        "font-family-name-syntax",
+        "font-face-src-parsing",
+        "local-font-fallback"
+      ]
+    },
+    {
+      "module_id": "css-values-4",
+      "publication_url": "https://www.w3.org/TR/2024/WD-css-values-4-20240312/",
+      "publication_sha256": "7b6b68c34d00d7f6945e66e4e2efa913266299f597d5825393cae85dac1cc78c",
+      "sections": [
+        "custom-idents",
+        "component-multipliers"
+      ]
+    }
+  ],
+  "csswg_issue": "https://github.com/w3c/csswg-drafts/issues/13692",
+  "rationale": "The selected Fonts 4 publication defines local(<font-family-name>) and <font-family-name> as <string> | <custom-ident>+. Values 4 excludes CSS-wide keywords and default from each <custom-ident>; the + multiplier repeats that type. Joining accepted identifiers with spaces does not exempt individual tokens. CSSWG issue 13692, opened 2026-03-20, reports the disagreement with WPT multiword names and discusses replacement grammars, but has no adopted resolution before the publication cutoff. The selected edition still defines the authored grammar, so this is a source disagreement, not undefined grammar. Preserve upstream expectations independently; the selected profile has no compatibility exception.",
+  "cases": [
+    {
+      "id": "font-src-local-011",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 26,
+        "case": "{ src:'local(default A)', valid:true },"
+      },
+      "src": "local(default A)",
+      "upstream_expected_src_present": true,
+      "selected_profile_expected_src_present": false,
+      "reason": "Values 4 reserves default from <custom-ident>, including when followed by A. The entire local() member is invalid under the selected Fonts 4 grammar; this sole-member src descriptor is absent after recovery."
+    },
+    {
+      "id": "font-src-local-012",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 27,
+        "case": "{ src:'local(inherit A)', valid:true },"
+      },
+      "src": "local(inherit A)",
+      "upstream_expected_src_present": true,
+      "selected_profile_expected_src_present": false,
+      "reason": "The CSS-wide keyword inherit is not a <custom-ident>, including when followed by A. The entire local() member is invalid under the selected Fonts 4 and Values 4 grammar; this sole-member src descriptor is absent after recovery."
+    },
+    {
+      "id": "font-src-local-013",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 28,
+        "case": "{ src:'local(revert A)', valid:true },"
+      },
+      "src": "local(revert A)",
+      "upstream_expected_src_present": true,
+      "selected_profile_expected_src_present": false,
+      "reason": "The CSS-wide keyword revert is not a <custom-ident>, including when followed by A. The entire local() member is invalid under the selected Fonts 4 and Values 4 grammar; this sole-member src descriptor is absent after recovery."
+    },
+    {
+      "id": "font-src-local-014",
+      "source": {
+        "path": "css/css-fonts/parsing/font-face-src-local.html",
+        "sha256": "1c3ba42991c4be3de53f90d9e028c3d506446cc3baa9a2e37c6293e1743f0b88",
+        "line": 29,
+        "case": "{ src:'local(unset A)', valid:true },"
+      },
+      "src": "local(unset A)",
+      "upstream_expected_src_present": true,
+      "selected_profile_expected_src_present": false,
+      "reason": "The CSS-wide keyword unset is not a <custom-ident>, including when followed by A. The entire local() member is invalid under the selected Fonts 4 and Values 4 grammar; this sole-member src descriptor is absent after recovery."
+    }
+  ]
+}
