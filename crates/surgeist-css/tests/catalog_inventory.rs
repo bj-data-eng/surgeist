@@ -89,7 +89,7 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
         ("margin", "O-BOX3"),
         ("color", "O-COLOR4"),
         ("background", "O-BACKGROUNDS3"),
-        ("font", "O-FONTS3"),
+        ("font", "I-FONTS4-20260907"),
         ("direction", "O-WRITING3"),
         ("flex", "O-FLEXBOX1"),
         ("cursor", "O-UI3"),
