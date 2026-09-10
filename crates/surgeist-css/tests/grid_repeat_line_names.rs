@@ -12,9 +12,9 @@
 
 use surgeist_css::{
     CssAuthoredGridAutoRepeatKind, CssAuthoredGridAutoTrackComponent,
-    CssAuthoredGridFixedRepeatComponent, CssAuthoredGridGeneralTrackComponent,
-    CssAuthoredGridTrackList, CssAuthoredGridTrackRepeatComponent, CssAuthoredGridTrackSize,
-    CssCalcLength, CssCalculationExpressionRef, CssCalculationProductOperator, CssCalculationType,
+    CssAuthoredGridGeneralTrackComponent, CssAuthoredGridTrackList,
+    CssAuthoredGridTrackRepeatComponent, CssAuthoredGridTrackSize, CssCalcLength,
+    CssCalculationExpressionRef, CssCalculationProductOperator, CssCalculationType,
     CssCalculationValueRef, CssCustomIdent, CssGridLineNames, CssGridRepeat, CssGridRepeatCount,
     CssGridTrackBreadth, CssGridTrackComponent, CssGridTrackList, CssGridTrackSize, CssImportance,
     CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssLengthUnit, parse_style_attribute,
@@ -205,17 +205,17 @@ fn ordered_repeat_content(
                 (
                     ContentCase::TypedLeading,
                     [
-                        CssAuthoredGridFixedRepeatComponent::LineNames(names),
-                        CssAuthoredGridFixedRepeatComponent::FixedSize(size),
+                        CssAuthoredGridTrackRepeatComponent::LineNames(names),
+                        CssAuthoredGridTrackRepeatComponent::TrackSize(size),
                     ],
                 )
                 | (
                     ContentCase::LiteralTrailing | ContentCase::TypedTrailing,
                     [
-                        CssAuthoredGridFixedRepeatComponent::FixedSize(size),
-                        CssAuthoredGridFixedRepeatComponent::LineNames(names),
+                        CssAuthoredGridTrackRepeatComponent::TrackSize(size),
+                        CssAuthoredGridTrackRepeatComponent::LineNames(names),
                     ],
-                ) => (names, size.size()),
+                ) => (names, size),
                 _ => panic!("automatic repetition must preserve the exact two-component order"),
             }
         }

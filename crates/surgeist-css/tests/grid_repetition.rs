@@ -8,7 +8,7 @@ use surgeist_css::{
 fn grid_repeat_models_reject_invalid_cross_products() {
     for invalid in [
         "grid-template-columns: repeat(2, repeat(3, 10px))",
-        "grid-template-columns: repeat(auto-fit, 1fr)",
+        "grid-template-columns: repeat(auto-fit, minmax(1fr, 10px))",
     ] {
         let source = format!("{invalid}; color: red");
         let report = parse_style_attribute(&source);
@@ -135,14 +135,14 @@ fn grid_repeat_models_accept_each_structural_language_and_project_exact_i01_valu
 fn grid_repeat_models_reject_each_invalid_structural_cross_product() {
     for (property, value) in [
         ("grid-template-columns", "repeat(2, [only])"),
-        ("grid-template-columns", "repeat(auto-fit, auto)"),
+        ("grid-template-columns", "repeat(auto-fit, none)"),
         (
             "grid-template-columns",
-            "repeat(auto-fit, fit-content(10px))",
+            "repeat(auto-fit, fit-content(-10px))",
         ),
         (
             "grid-template-columns",
-            "repeat(auto-fit, minmax(auto, 1fr))",
+            "repeat(auto-fit, minmax(1fr, 1fr))",
         ),
         ("grid-template-columns", "1fr repeat(auto-fit, 10px)"),
         ("grid-template-columns", "repeat(auto-fit, 10px) 1fr"),
@@ -275,7 +275,7 @@ fn grid_repeat_typed_calculation_stays_symbolic_and_outside_i01_projection() {
 #[test]
 fn grid_repeat_failures_report_the_first_responsible_token_and_recover_progressively() {
     let source = concat!(
-        "grid-template-columns: repeat(auto-fit, 1fr); ",
+        "grid-template-columns: repeat(auto-fit, minmax(1fr, 10px)); ",
         "grid-auto-rows: repeat(2, 10px); ",
         "color: red",
     );

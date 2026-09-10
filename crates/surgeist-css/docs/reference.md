@@ -551,11 +551,27 @@ crate.
 The six Grid repetition consumers expose a parser-owned current value through
 `current()` while preserving their existing `i01_subset()` compatibility view.
 Current Grid track lists distinguish general lists from lists containing exactly
-one automatic repetition. Integer repetition is non-recursive; automatic
-repetition and every surrounding track use fixed sizes; and `grid-auto-rows` and
-`grid-auto-columns` accept track sizes rather than `repeat()`. A conforming value
-that uses newly typed calculation structure can therefore be current even when
-its frozen I01 projection is absent.
+one automatic repetition. Integer and automatic repetitions are non-recursive.
+The [selected Grid 3 publication](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#intrinsic-auto-repeat)
+admits general track sizes inside automatic repetition, including intrinsic
+keywords, flexible tracks, `minmax()`, and `fit-content()`. Surrounding tracks
+and integer repetitions retain the fixed-size restrictions of Grid 2's
+[`<auto-track-list>`](https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#typedef-auto-track-list).
+`grid-auto-rows` and `grid-auto-columns` still accept track sizes without
+`repeat()`. Each explicit axis has its own limit of one automatic repetition.
+
+`CssAuthoredGridAutoRepeat::content()` now returns
+`&CssAuthoredGridTrackRepeatContent`. Consumers inspect its ordered `LineNames`
+and `TrackSize` members; the former fixed-body return type no longer describes
+the selected grammar. Surrounding integer fixed repeats continue to expose
+`CssAuthoredGridFixedRepeatContent`. Exact expressible I01 projections remain
+available. Typed calculations retain their current symbolic structure when no
+exact I01 projection exists. Historical captured inputs and observations remain
+unchanged; their explicit current-model witnesses apply the selected grammar.
+
+The shared repeat feature cites the Grid 3 extension. The containing property
+records retain their Grid 2 property grammar sources and document the extension
+in their supported subset. Source identities are immutable.
 
 Keyframe rules preserve authored structure rather than a merged animation
 timeline. Empty rules and blocks remain present. Repeated selector blocks,
@@ -567,12 +583,13 @@ observables replace older expectations that accepted structurally invalid Grid
 cross-products or discarded valid empty keyframe parents.
 
 The Grid repetition value, the six Grid property records, and the keyframe rule
-record remain `Partial`. Subgrid name-repeat and other unselected Grid 2 property
-grammar remain unsupported. Calculation keyframe selectors, string names, and
-unselected declaration-processing grammar remain outside the keyframe boundary.
-This crate does not perform Grid layout, cascade declarations, evaluate or
-interpolate keyframes, run timelines, or lower either syntax family into sibling
-Surgeist crates.
+record remain `Partial`. Subgrid name-repeat, empty line-name sets, wider Values
+math functions, and other unselected Grid property grammar remain unsupported.
+Calculation keyframe selectors, string names, and unselected declaration-processing
+grammar remain outside the keyframe boundary. Repetition counts and used track
+sizes remain unresolved. This crate does not perform Grid layout, cascade
+declarations, evaluate or interpolate keyframes, run timelines, or lower either
+syntax family into sibling Surgeist crates.
 
 ## Typography, font families, and font-face
 

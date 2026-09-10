@@ -755,11 +755,17 @@ fn unescape(field: &str) -> Result<String, String> {
 fn authored_css_cases_match_selected_public_report_observables() {
     let rows = parse_fixture(FIXTURE).expect("valid I01 observable fixture");
     let mut migrated_tolerance_cases = 0;
+    let mut migrated_auto_repeat_cases = 0;
     for row in rows {
         // Fixture feature labels record the original capture profile. Validation is
         // now unconditional, so every historical profile runs through the same API.
         if assert_archived_flow_tolerance_rejection(&row) {
             migrated_tolerance_cases += 1;
+            assert_strict_parity(&row);
+            continue;
+        }
+        if assert_archived_intrinsic_auto_repeat_acceptance(&row) {
+            migrated_auto_repeat_cases += 1;
             assert_strict_parity(&row);
             continue;
         }
@@ -781,6 +787,183 @@ fn authored_css_cases_match_selected_public_report_observables() {
         migrated_tolerance_cases, 4,
         "all four archived old-name cases require current rejection witnesses"
     );
+    assert_eq!(
+        migrated_auto_repeat_cases, 3,
+        "all three archived intrinsic auto-repeat cases require current acceptance witnesses"
+    );
+}
+
+// Grid3 relaxes the auto-repeat body to general track-size content. These three
+// exact captured inputs therefore become valid; the archived rejection fields
+// remain immutable evidence of their original Grid2 interpretation.
+// https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#intrinsic-auto-repeat
+fn assert_archived_intrinsic_auto_repeat_acceptance(row: &Row) -> bool {
+    use surgeist_css::{
+        CssAuthoredGridAutoRepeatKind, CssAuthoredGridAutoTrackComponent,
+        CssAuthoredGridTrackBreadthKind, CssAuthoredGridTrackRepeatComponent, CssGrid,
+        CssGridAutoFlow, CssGridAutoFlowAxis, CssGridRepeat, CssGridRepeatCount,
+        CssGridTrackBreadth, CssGridTrackComponent, CssGridTrackList, CssGridTrackSize,
+        CssKnownProperty, CssKnownPropertyValueRef, CssLength,
+    };
+
+    let (entry, input, retained, diagnostics, importance) = match row.case_id.as_str() {
+        "catalog.property.baseline.property.grid.positive" => (
+            "style",
+            "grid: auto-flow dense 12px / repeat(auto-fit, 1fr)",
+            "-",
+            "InvalidPropertyValue/InvalidPropertyValue:baseline.property.grid:a value accepted by the property's grammar:Dimension:1fr/DropDeclaration@46:0:46>0:0:0-50:0:50:50",
+            CssImportance::Normal,
+        ),
+        "focused.property-schema.baseline.property.grid.important" => (
+            "sheet",
+            ".test { GRID: auto-flow dense 12px / repeat(auto-fit, 1fr) !important; }",
+            "rule:baseline.rule.style",
+            "InvalidPropertyValue/InvalidPropertyValue:baseline.property.grid:a value accepted by the property's grammar:Dimension:1fr/DropDeclaration@54:0:54>8:0:8-70:0:70:70",
+            CssImportance::Important,
+        ),
+        "focused.property-schema.baseline.property.grid.ordinary" => (
+            "sheet",
+            ".test { GRID: auto-flow dense 12px / repeat(auto-fit, 1fr); }",
+            "rule:baseline.rule.style",
+            "InvalidPropertyValue/InvalidPropertyValue:baseline.property.grid:a value accepted by the property's grammar:Dimension:1fr/DropDeclaration@54:0:54>8:0:8-59:0:59:59",
+            CssImportance::Normal,
+        ),
+        _ => return false,
+    };
+    assert_eq!(
+        row.fields(),
+        [
+            row.case_id.as_str(),
+            entry,
+            "both",
+            input,
+            "false",
+            retained,
+            "-",
+            "-",
+            diagnostics
+        ]
+    );
+    let declaration = if entry == "style" {
+        let report = parse_style_attribute(input);
+        assert!(
+            report.is_clean(),
+            "{}: {:?}",
+            row.case_id,
+            report.diagnostics()
+        );
+        let [declaration] = report.syntax().as_slice() else {
+            panic!("the formerly rejected Grid declaration is retained");
+        };
+        declaration.clone()
+    } else {
+        let report = parse_sheet(input);
+        assert!(
+            report.is_clean(),
+            "{}: {:?}",
+            row.case_id,
+            report.diagnostics()
+        );
+        let [CssRule::Style(style)] = report.syntax().rules() else {
+            panic!("the original style rule is retained");
+        };
+        assert!(style.rules().is_empty());
+        let [selector] = style.selectors().selectors() else {
+            panic!("one original selector");
+        };
+        assert_eq!(
+            selector.selector(),
+            &surgeist_css::CssSelector::Class("test".to_owned())
+        );
+        let [declaration] = style.declarations().as_slice() else {
+            panic!("the original style rule now retains its Grid declaration");
+        };
+        declaration.clone()
+    };
+    assert_eq!(declaration.importance(), importance);
+    let name = declaration
+        .parsed_name()
+        .expect("original property-name provenance");
+    let name_start = if entry == "style" {
+        0
+    } else {
+        ".test { ".len()
+    };
+    assert_eq!(name.source().as_str(), input);
+    assert_eq!(name.span().start().byte_offset().value(), name_start);
+    assert_eq!(name.span().start().line().value(), 0);
+    assert_eq!(name.span().start().column().value() as usize, name_start);
+    assert_eq!(
+        name.span().end().byte_offset().value(),
+        input.find(':').unwrap()
+    );
+    assert_eq!(declaration.position(), Some(name.span().start()));
+    let authored = "auto-flow dense 12px / repeat(auto-fit, 1fr)";
+    let origin = declaration
+        .parsed_value()
+        .expect("original value provenance");
+    assert!(origin.source().same_snapshot(name.source()));
+    let start = origin.span().start().byte_offset().value();
+    let end = origin.span().end().byte_offset().value();
+    assert_eq!(origin.source().as_str()[start..end].trim(), authored);
+
+    let known = declaration.known().unwrap();
+    assert_eq!(known.property(), CssKnownProperty::Grid);
+    let Some(CssKnownPropertyValueRef::Grid(value)) = known.property_value() else {
+        panic!("a complete current Grid value");
+    };
+    assert_eq!(value.as_css(), authored);
+    assert!(value.current().template_value().is_none());
+    let flow = value.current().auto_flow().unwrap();
+    assert_eq!(flow.axis(), CssGridAutoFlowAxis::Row);
+    assert!(flow.dense());
+    let [implicit] = value.current().auto_tracks().unwrap().sizes() else {
+        panic!("one original implicit track size");
+    };
+    assert_eq!(
+        implicit.breadth().unwrap().length(),
+        Some(&CssLength::try_px(12.0).unwrap())
+    );
+    let explicit = value.current().explicit_tracks().unwrap();
+    assert!(explicit.general_list().is_none());
+    let [CssAuthoredGridAutoTrackComponent::AutoRepeat(repeat)] =
+        explicit.auto_list().unwrap().components()
+    else {
+        panic!("one automatic repeat in the explicit column axis");
+    };
+    assert_eq!(repeat.kind(), CssAuthoredGridAutoRepeatKind::AutoFit);
+    let [CssAuthoredGridTrackRepeatComponent::TrackSize(size)] = repeat.content().components()
+    else {
+        panic!("one nonrecursive general track size");
+    };
+    let breadth = size.breadth().unwrap();
+    assert_eq!(breadth.kind(), CssAuthoredGridTrackBreadthKind::Fraction);
+    assert_eq!(breadth.fraction().unwrap().value(), 1.0);
+
+    let expected = CssGrid::AutoFlow {
+        flow: CssGridAutoFlow::new(CssGridAutoFlowAxis::Row, true),
+        auto_tracks: Some(
+            CssGridTrackList::try_new(vec![CssGridTrackComponent::TrackSize(
+                CssGridTrackSize::Breadth(CssGridTrackBreadth::Length(
+                    CssLength::try_px(12.0).unwrap(),
+                )),
+            )])
+            .unwrap(),
+        ),
+        explicit_tracks: CssGridTrackList::try_new(vec![CssGridTrackComponent::Repeat(
+            CssGridRepeat::try_new(
+                CssGridRepeatCount::AutoFit,
+                CssGridTrackList::try_new(vec![CssGridTrackComponent::TrackSize(
+                    CssGridTrackSize::Breadth(CssGridTrackBreadth::try_fraction(1.0).unwrap()),
+                )])
+                .unwrap(),
+            )
+            .unwrap(),
+        )])
+        .unwrap(),
+    };
+    assert_eq!(value.i01_subset(), Some(&expected));
+    true
 }
 
 // Grid3's selected publication replaces the old property identity. The archive

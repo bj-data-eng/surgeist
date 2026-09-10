@@ -395,9 +395,15 @@
 //! their `current()` accessors while retaining the frozen `i01_subset()`
 //! compatibility view. [`CssAuthoredGridTrackList`] distinguishes general track
 //! lists from lists containing exactly one [`CssAuthoredGridAutoRepeat`]. Integer
-//! repetition is non-recursive; automatic repetition and surrounding tracks use
-//! fixed sizes; and `grid-auto-rows` and `grid-auto-columns` expose
+//! and automatic repetition are non-recursive. Under the
+//! [selected Grid 3 grammar](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#intrinsic-auto-repeat),
+//! automatic bodies admit general track sizes, including intrinsic and flexible
+//! sizes, while surrounding tracks and integer repeats retain fixed sizes.
+//! `grid-auto-rows` and `grid-auto-columns` expose
 //! [`CssAuthoredGridTrackSizeList`] values without `repeat()`.
+//! [`CssAuthoredGridAutoRepeat::content`] therefore borrows
+//! [`CssAuthoredGridTrackRepeatContent`], while surrounding fixed repeats retain
+//! [`CssAuthoredGridFixedRepeatContent`].
 //!
 //! [`CssKeyframesRule`] and [`CssKeyframeBlock`] preserve source structure. Empty
 //! rules and blocks remain present, while repeated selector blocks, equivalent
@@ -408,7 +414,9 @@
 //! keyframes.
 //!
 //! Grid repetition and the six consuming Grid properties remain Partial for
-//! subgrid name-repeat and other unselected Grid 2 property grammar.
+//! subgrid name-repeat, empty line-name sets, wider Values math functions, and
+//! other unselected Grid property grammar. Repetition counts and used track
+//! sizes require downstream layout context and remain unresolved here.
 //! `@keyframes` remains Partial for calculation selectors, string names, and
 //! unselected declaration-processing grammar. This crate does not perform Grid
 //! layout, cascade declarations, evaluate or interpolate keyframes, run

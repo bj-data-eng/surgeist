@@ -513,7 +513,7 @@ fn opacity_domain_error_after_non_bmp_text_has_exact_coordinates_and_span() {
 
 #[test]
 fn grid_repeat_error_after_non_bmp_text_has_exact_coordinates_and_span() {
-    let source = "--😀: 1; grid-template-columns: repeat(auto-fit, 1fr); color: red";
+    let source = "--😀: 1; grid-template-columns: repeat(auto-fit, minmax(1fr, 10px)); color: red";
     let report = parse_style_attribute(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {

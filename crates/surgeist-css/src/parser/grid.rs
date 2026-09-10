@@ -241,7 +241,7 @@ fn parse_auto_grid_repeat<'i, 't>(
         let state = input.state();
         if matches!(input.next().map_err(basic)?, Token::SquareBracketBlock) {
             let names = input.parse_nested_block(parse_grid_line_names)?;
-            components.push(CssAuthoredGridFixedRepeatComponent::LineNames(
+            components.push(CssAuthoredGridTrackRepeatComponent::LineNames(
                 names.clone(),
             ));
             if let Some(components) = legacy_components.as_mut() {
@@ -250,15 +250,7 @@ fn parse_auto_grid_repeat<'i, 't>(
             continue;
         }
         input.reset(&state);
-        let location = input.current_source_location();
         let size = parse_grid_track_size(input)?;
-        let Some(fixed) = grid_fixed_size(&size) else {
-            return Err(unsupported_value_at(
-                location,
-                None,
-                "automatic grid repetition requires a fixed track size",
-            ));
-        };
         has_track = true;
         match (legacy_components.as_mut(), size.i01_projection()) {
             (Some(components), Some(value)) => {
@@ -267,7 +259,7 @@ fn parse_auto_grid_repeat<'i, 't>(
             (Some(_), None) => legacy_components = None,
             (None, _) => {}
         }
-        components.push(CssAuthoredGridFixedRepeatComponent::FixedSize(fixed));
+        components.push(CssAuthoredGridTrackRepeatComponent::TrackSize(size));
     }
     if !has_track {
         return Err(unsupported_value(
@@ -285,7 +277,7 @@ fn parse_auto_grid_repeat<'i, 't>(
     Ok(ParsedGridTrackComponent::AutoRepeat {
         value: CssAuthoredGridAutoRepeat::new(
             kind,
-            CssAuthoredGridFixedRepeatContent::new(components),
+            CssAuthoredGridTrackRepeatContent::new(components),
         ),
         i01: legacy,
     })

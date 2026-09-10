@@ -6688,7 +6688,7 @@ impl CssAuthoredGridTrackSize {
     }
 }
 
-/// The fixed-size branch admitted by fixed and automatic Grid repetition.
+/// A fixed size admitted around automatic repetition or in an integer fixed-repeat.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct CssAuthoredGridFixedSize {
@@ -6706,7 +6706,7 @@ impl CssAuthoredGridFixedSize {
     }
 }
 
-/// One non-recursive member of integer track-repeat content.
+/// One non-recursive member of integer or automatic track-repeat content.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssAuthoredGridTrackRepeatComponent {
@@ -6714,7 +6714,7 @@ pub enum CssAuthoredGridTrackRepeatComponent {
     TrackSize(CssAuthoredGridTrackSize),
 }
 
-/// Non-empty, non-recursive integer track-repeat content.
+/// Non-empty, non-recursive integer or automatic track-repeat content.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct CssAuthoredGridTrackRepeatContent {
@@ -6821,17 +6821,20 @@ pub enum CssAuthoredGridAutoRepeatKind {
 }
 
 /// The single automatic repetition admitted by an auto track list.
+///
+/// Its non-recursive body admits general track sizes under CSS Grid 3. Surrounding
+/// tracks and integer repetitions in the same list remain constrained to fixed sizes.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct CssAuthoredGridAutoRepeat {
     kind: CssAuthoredGridAutoRepeatKind,
-    content: CssAuthoredGridFixedRepeatContent,
+    content: CssAuthoredGridTrackRepeatContent,
 }
 
 impl CssAuthoredGridAutoRepeat {
     pub(crate) const fn new(
         kind: CssAuthoredGridAutoRepeatKind,
-        content: CssAuthoredGridFixedRepeatContent,
+        content: CssAuthoredGridTrackRepeatContent,
     ) -> Self {
         Self { kind, content }
     }
@@ -6842,7 +6845,7 @@ impl CssAuthoredGridAutoRepeat {
     }
 
     #[must_use]
-    pub const fn content(&self) -> &CssAuthoredGridFixedRepeatContent {
+    pub const fn content(&self) -> &CssAuthoredGridTrackRepeatContent {
         &self.content
     }
 }

@@ -2730,7 +2730,7 @@ impl surgeist_css::CssAuthoredFunctionArguments
 pub fn surgeist_css::CssAuthoredFunctionArguments::as_css(&self) -> &str
 #[non_exhaustive] pub struct surgeist_css::CssAuthoredGridAutoRepeat
 impl surgeist_css::CssAuthoredGridAutoRepeat
-pub const fn surgeist_css::CssAuthoredGridAutoRepeat::content(&self) -> &surgeist_css::CssAuthoredGridFixedRepeatContent
+pub const fn surgeist_css::CssAuthoredGridAutoRepeat::content(&self) -> &surgeist_css::CssAuthoredGridTrackRepeatContent
 pub const fn surgeist_css::CssAuthoredGridAutoRepeat::kind(&self) -> surgeist_css::CssAuthoredGridAutoRepeatKind
 #[non_exhaustive] pub struct surgeist_css::CssAuthoredGridAutoTrackList
 impl surgeist_css::CssAuthoredGridAutoTrackList
