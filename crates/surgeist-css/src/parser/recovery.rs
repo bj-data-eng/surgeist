@@ -20,7 +20,7 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::CssFeatureId] = &[
     crate::CssFeatureId::new("official.value.style-block"),
 ];
 
-pub(super) const STRUCTURAL_NESTING_LIMIT: u32 = 256;
+pub(super) use crate::STRUCTURAL_NESTING_LIMIT;
 pub(super) const DIRECT_PARSE_DEPTH: u32 = 128;
 
 pub(super) fn maximum_nested_depth(source: &str) -> u32 {

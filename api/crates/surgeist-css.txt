@@ -245,6 +245,10 @@ pub surgeist_css::CssBlendMode::SoftLight
 impl surgeist_css::CssBlendMode
 pub const fn surgeist_css::CssBlendMode::as_css_str(self) -> &'static str
 pub fn surgeist_css::CssBlendMode::from_keyword(keyword: &str) -> core::option::Option<Self>
+#[non_exhaustive] pub enum surgeist_css::CssBlockKind
+pub surgeist_css::CssBlockKind::CurlyBracket
+pub surgeist_css::CssBlockKind::Parenthesis
+pub surgeist_css::CssBlockKind::SquareBracket
 #[non_exhaustive] pub enum surgeist_css::CssBorderCollapse
 pub surgeist_css::CssBorderCollapse::Collapse
 pub surgeist_css::CssBorderCollapse::Separate
@@ -437,6 +441,26 @@ pub surgeist_css::CssColumnSpan::None
 #[non_exhaustive] pub enum surgeist_css::CssColumnWidth
 pub surgeist_css::CssColumnWidth::Auto
 pub surgeist_css::CssColumnWidth::Length(surgeist_css::CssNonNegativeLength)
+#[non_exhaustive] pub enum surgeist_css::CssComponentValueErrorKind
+pub surgeist_css::CssComponentValueErrorKind::BadString
+pub surgeist_css::CssComponentValueErrorKind::BadUrl
+pub surgeist_css::CssComponentValueErrorKind::ByteLimit
+pub surgeist_css::CssComponentValueErrorKind::CapacityOverflow
+pub surgeist_css::CssComponentValueErrorKind::ComponentLimit
+pub surgeist_css::CssComponentValueErrorKind::InvalidDimension
+pub surgeist_css::CssComponentValueErrorKind::InvalidFunction
+pub surgeist_css::CssComponentValueErrorKind::InvalidIdentifier
+pub surgeist_css::CssComponentValueErrorKind::InvalidNumber
+pub surgeist_css::CssComponentValueErrorKind::InvalidString
+pub surgeist_css::CssComponentValueErrorKind::InvalidToken
+pub surgeist_css::CssComponentValueErrorKind::NestingLimit
+pub surgeist_css::CssComponentValueErrorKind::UnmatchedClosingDelimiter
+pub surgeist_css::CssComponentValueErrorKind::UnserializableBoundary
+#[non_exhaustive] pub enum surgeist_css::CssComponentValueRef<'a>
+pub surgeist_css::CssComponentValueRef::Block(&'a surgeist_css::CssSimpleBlock)
+pub surgeist_css::CssComponentValueRef::Comment(&'a str)
+pub surgeist_css::CssComponentValueRef::Function(&'a surgeist_css::CssFunctionValue)
+pub surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef<'a>)
 #[non_exhaustive] pub enum surgeist_css::CssContain
 pub surgeist_css::CssContain::Components(surgeist_css::CssContainComponentList)
 pub surgeist_css::CssContain::Content
@@ -1019,6 +1043,9 @@ impl surgeist_css::CssGridTrackSize
 pub const fn surgeist_css::CssGridTrackSize::breadth(breadth: surgeist_css::CssGridTrackBreadth) -> Self
 pub const fn surgeist_css::CssGridTrackSize::fit_content(limit: surgeist_css::CssLength) -> Self
 pub const fn surgeist_css::CssGridTrackSize::minmax(min: surgeist_css::CssGridTrackBreadth, max: surgeist_css::CssGridTrackBreadth) -> Self
+#[non_exhaustive] pub enum surgeist_css::CssHashFlag
+pub surgeist_css::CssHashFlag::Id
+pub surgeist_css::CssHashFlag::Unrestricted
 #[non_exhaustive] pub enum surgeist_css::CssHorizontalGradientSide
 pub surgeist_css::CssHorizontalGradientSide::Left
 pub surgeist_css::CssHorizontalGradientSide::Right
@@ -1744,6 +1771,9 @@ pub surgeist_css::CssNthPattern::AnPlusB(surgeist_css::CssNthAnPlusB)
 pub surgeist_css::CssNthPattern::Even
 pub surgeist_css::CssNthPattern::Integer(i32)
 pub surgeist_css::CssNthPattern::Odd
+#[non_exhaustive] pub enum surgeist_css::CssNumericTokenKind
+pub surgeist_css::CssNumericTokenKind::Integer
+pub surgeist_css::CssNumericTokenKind::Number
 #[non_exhaustive] pub enum surgeist_css::CssObjectFit
 pub surgeist_css::CssObjectFit::Contain
 pub surgeist_css::CssObjectFit::Cover
@@ -2036,6 +2066,12 @@ pub surgeist_css::CssSelectorCombinator::Child
 pub surgeist_css::CssSelectorCombinator::Descendant
 pub surgeist_css::CssSelectorCombinator::NextSibling
 pub surgeist_css::CssSelectorCombinator::SubsequentSibling
+#[non_exhaustive] pub enum surgeist_css::CssSerializedOrigin
+pub surgeist_css::CssSerializedOrigin::End(core::option::Option<surgeist_css::CssValueOrigin>)
+pub surgeist_css::CssSerializedOrigin::Separator
+pub surgeist_css::CssSerializedOrigin::Separator::after: surgeist_css::CssValueOrigin
+pub surgeist_css::CssSerializedOrigin::Separator::before: surgeist_css::CssValueOrigin
+pub surgeist_css::CssSerializedOrigin::Token(surgeist_css::CssValueOrigin)
 #[non_exhaustive] pub enum surgeist_css::CssSpecificationTier
 pub surgeist_css::CssSpecificationTier::LaterStandard
 pub surgeist_css::CssSpecificationTier::Snapshot2026Interop
@@ -2274,6 +2310,39 @@ pub surgeist_css::CssUserSelect::Auto
 pub surgeist_css::CssUserSelect::Contain
 pub surgeist_css::CssUserSelect::None
 pub surgeist_css::CssUserSelect::Text
+#[non_exhaustive] pub enum surgeist_css::CssValueOrigin
+pub surgeist_css::CssValueOrigin::ImplicitClosure
+pub surgeist_css::CssValueOrigin::ImplicitClosure::at: surgeist_css::CssParsedOrigin
+pub surgeist_css::CssValueOrigin::ImplicitClosure::opening: surgeist_css::CssParsedOrigin
+pub surgeist_css::CssValueOrigin::Parsed(surgeist_css::CssParsedOrigin)
+pub surgeist_css::CssValueOrigin::Programmatic
+pub surgeist_css::CssValueOrigin::UnretainedInput
+pub surgeist_css::CssValueOrigin::UnretainedInput::byte_length: usize
+#[non_exhaustive] pub enum surgeist_css::CssValueTokenRef<'a>
+pub surgeist_css::CssValueTokenRef::AtKeyword(&'a str)
+pub surgeist_css::CssValueTokenRef::Cdc
+pub surgeist_css::CssValueTokenRef::Cdo
+pub surgeist_css::CssValueTokenRef::Colon
+pub surgeist_css::CssValueTokenRef::Comma
+pub surgeist_css::CssValueTokenRef::DashMatch
+pub surgeist_css::CssValueTokenRef::Delim(char)
+pub surgeist_css::CssValueTokenRef::Dimension
+pub surgeist_css::CssValueTokenRef::Dimension::number: surgeist_css::CssNumericTokenRef<'a>
+pub surgeist_css::CssValueTokenRef::Dimension::unit: &'a str
+pub surgeist_css::CssValueTokenRef::Hash
+pub surgeist_css::CssValueTokenRef::Hash::flag: surgeist_css::CssHashFlag
+pub surgeist_css::CssValueTokenRef::Hash::value: &'a str
+pub surgeist_css::CssValueTokenRef::Ident(&'a str)
+pub surgeist_css::CssValueTokenRef::IncludeMatch
+pub surgeist_css::CssValueTokenRef::Number(surgeist_css::CssNumericTokenRef<'a>)
+pub surgeist_css::CssValueTokenRef::Percentage(surgeist_css::CssNumericTokenRef<'a>)
+pub surgeist_css::CssValueTokenRef::PrefixMatch
+pub surgeist_css::CssValueTokenRef::Semicolon
+pub surgeist_css::CssValueTokenRef::String(&'a str)
+pub surgeist_css::CssValueTokenRef::SubstringMatch
+pub surgeist_css::CssValueTokenRef::SuffixMatch
+pub surgeist_css::CssValueTokenRef::Url(&'a str)
+pub surgeist_css::CssValueTokenRef::Whitespace(&'a str)
 #[non_exhaustive] pub enum surgeist_css::CssVerticalAlign
 pub surgeist_css::CssVerticalAlign::Baseline
 pub surgeist_css::CssVerticalAlign::Bottom
@@ -3177,6 +3246,42 @@ pub struct surgeist_css::CssComplexSelectorPart
 impl surgeist_css::CssComplexSelectorPart
 pub const fn surgeist_css::CssComplexSelectorPart::combinator(&self) -> surgeist_css::CssSelectorCombinator
 pub const fn surgeist_css::CssComplexSelectorPart::selector(&self) -> &surgeist_css::CssCompoundSelector
+pub struct surgeist_css::CssComponentValue
+impl surgeist_css::CssComponentValue
+pub const fn surgeist_css::CssComponentValue::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssComponentValue::try_block(kind: surgeist_css::CssBlockKind, values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssComponentValue::try_dimension(number: &str, unit: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssComponentValue::try_function(name: impl core::convert::Into<alloc::string::String>, values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssComponentValue::try_ident(value: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssComponentValue::try_number(representation: &str) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssComponentValue::try_string(value: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssComponentValue::try_token(spelling: &str) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssComponentValue::try_url(value: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssComponentValue::view(&self) -> surgeist_css::CssComponentValueRef<'_>
+pub struct surgeist_css::CssComponentValueError
+impl surgeist_css::CssComponentValueError
+pub const fn surgeist_css::CssComponentValueError::kind(&self) -> surgeist_css::CssComponentValueErrorKind
+pub const fn surgeist_css::CssComponentValueError::origin(&self) -> &surgeist_css::CssValueOrigin
+impl core::error::Error for surgeist_css::CssComponentValueError
+impl core::fmt::Display for surgeist_css::CssComponentValueError
+pub fn surgeist_css::CssComponentValueError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_css::CssComponentValueLimits
+impl surgeist_css::CssComponentValueLimits
+pub const fn surgeist_css::CssComponentValueLimits::max_components(self) -> usize
+pub const fn surgeist_css::CssComponentValueLimits::max_css_bytes(self) -> usize
+pub const fn surgeist_css::CssComponentValueLimits::max_nesting_depth(self) -> u32
+pub const fn surgeist_css::CssComponentValueLimits::try_new(max_depth: u32, max_components: usize, max_css_bytes: usize) -> core::option::Option<Self>
+impl core::default::Default for surgeist_css::CssComponentValueLimits
+pub fn surgeist_css::CssComponentValueLimits::default() -> Self
+pub struct surgeist_css::CssComponentValues
+impl surgeist_css::CssComponentValues
+pub const fn surgeist_css::CssComponentValues::component_count(&self) -> usize
+pub fn surgeist_css::CssComponentValues::items(&self) -> &[surgeist_css::CssComponentValue]
+pub const fn surgeist_css::CssComponentValues::nesting_depth(&self) -> u32
+pub fn surgeist_css::CssComponentValues::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssComponentValues::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssComponentValues::try_new(items: alloc::vec::Vec<surgeist_css::CssComponentValue>) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssComponentValues::try_new_with_limits(items: alloc::vec::Vec<surgeist_css::CssComponentValue>, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
 pub struct surgeist_css::CssCompoundSelector
 impl surgeist_css::CssCompoundSelector
 pub fn surgeist_css::CssCompoundSelector::attributes(&self) -> &[surgeist_css::CssAttributeSelector]
@@ -3829,6 +3934,11 @@ impl surgeist_css::CssFrequencyLiteral
 pub fn surgeist_css::CssFrequencyLiteral::try_new(value: f32, unit: surgeist_css::CssFrequencyUnit) -> core::option::Option<Self>
 pub const fn surgeist_css::CssFrequencyLiteral::unit(self) -> surgeist_css::CssFrequencyUnit
 pub const fn surgeist_css::CssFrequencyLiteral::value(self) -> f32
+pub struct surgeist_css::CssFunctionValue
+impl surgeist_css::CssFunctionValue
+pub const fn surgeist_css::CssFunctionValue::closing_origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssFunctionValue::name(&self) -> &str
+pub const fn surgeist_css::CssFunctionValue::values(&self) -> &surgeist_css::CssComponentValues
 pub struct surgeist_css::CssGapPropertyValue
 impl surgeist_css::CssGapPropertyValue
 pub fn surgeist_css::CssGapPropertyValue::as_css(&self) -> &str
@@ -4376,6 +4486,11 @@ pub fn surgeist_css::CssNumberCalculation::expression(&self) -> surgeist_css::Cs
 pub const fn surgeist_css::CssNumberCalculation::result_type(&self) -> surgeist_css::CssCalculationType
 impl surgeist_css::CssNumberCalculation
 pub fn surgeist_css::CssNumberCalculation::try_literal(value: f32) -> core::option::Option<Self>
+pub struct surgeist_css::CssNumericTokenRef<'a>(_)
+impl<'a> surgeist_css::CssNumericTokenRef<'a>
+pub const fn surgeist_css::CssNumericTokenRef<'a>::has_sign(self) -> bool
+pub const fn surgeist_css::CssNumericTokenRef<'a>::kind(self) -> surgeist_css::CssNumericTokenKind
+pub fn surgeist_css::CssNumericTokenRef<'a>::representation(self) -> &'a str
 pub struct surgeist_css::CssObjectFitPropertyValue
 impl surgeist_css::CssObjectFitPropertyValue
 pub fn surgeist_css::CssObjectFitPropertyValue::as_css(&self) -> &str
@@ -4516,6 +4631,10 @@ pub fn surgeist_css::CssParseReport<T>::diagnostics(&self) -> &[surgeist_css::Cs
 pub fn surgeist_css::CssParseReport<T>::into_parts(self) -> (T, alloc::vec::Vec<surgeist_css::CssRecoveryDiagnostic>)
 pub fn surgeist_css::CssParseReport<T>::is_clean(&self) -> bool
 pub const fn surgeist_css::CssParseReport<T>::syntax(&self) -> &T
+pub struct surgeist_css::CssParsedOrigin
+impl surgeist_css::CssParsedOrigin
+pub const fn surgeist_css::CssParsedOrigin::source(&self) -> &surgeist_css::CssSourceSnapshot
+pub const fn surgeist_css::CssParsedOrigin::span(&self) -> surgeist_css::CssSourceSpan
 pub struct surgeist_css::CssPercentageCalculation
 impl surgeist_css::CssPercentageCalculation
 pub fn surgeist_css::CssPercentageCalculation::expression(&self) -> surgeist_css::CssCalculationExpressionRef<'_>
@@ -4798,6 +4917,15 @@ pub struct surgeist_css::CssSelectorList
 impl surgeist_css::CssSelectorList
 pub fn surgeist_css::CssSelectorList::selectors(&self) -> &[surgeist_css::CssSelector]
 pub fn surgeist_css::CssSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssSelector>) -> core::option::Option<Self>
+pub struct surgeist_css::CssSerializedOriginSegment
+impl surgeist_css::CssSerializedOriginSegment
+pub fn surgeist_css::CssSerializedOriginSegment::byte_range(&self) -> core::ops::range::Range<usize>
+pub const fn surgeist_css::CssSerializedOriginSegment::origin(&self) -> &surgeist_css::CssSerializedOrigin
+pub struct surgeist_css::CssSerializedValue
+impl surgeist_css::CssSerializedValue
+pub fn surgeist_css::CssSerializedValue::as_css(&self) -> &str
+pub fn surgeist_css::CssSerializedValue::origin_at(&self, byte_offset: usize) -> core::option::Option<&surgeist_css::CssSerializedOrigin>
+pub fn surgeist_css::CssSerializedValue::segments(&self) -> &[surgeist_css::CssSerializedOriginSegment]
 pub struct surgeist_css::CssShadow
 impl surgeist_css::CssShadow
 pub const fn surgeist_css::CssShadow::blur_radius(&self) -> core::option::Option<&surgeist_css::CssLength>
@@ -4830,6 +4958,11 @@ impl surgeist_css::CssSideOrCorner
 pub const fn surgeist_css::CssSideOrCorner::horizontal(self) -> core::option::Option<surgeist_css::CssHorizontalGradientSide>
 pub const fn surgeist_css::CssSideOrCorner::try_new(horizontal: core::option::Option<surgeist_css::CssHorizontalGradientSide>, vertical: core::option::Option<surgeist_css::CssVerticalGradientSide>) -> core::option::Option<Self>
 pub const fn surgeist_css::CssSideOrCorner::vertical(self) -> core::option::Option<surgeist_css::CssVerticalGradientSide>
+pub struct surgeist_css::CssSimpleBlock
+impl surgeist_css::CssSimpleBlock
+pub const fn surgeist_css::CssSimpleBlock::closing_origin(&self) -> &surgeist_css::CssValueOrigin
+pub const fn surgeist_css::CssSimpleBlock::kind(&self) -> surgeist_css::CssBlockKind
+pub const fn surgeist_css::CssSimpleBlock::values(&self) -> &surgeist_css::CssComponentValues
 pub struct surgeist_css::CssSourcePosition
 impl surgeist_css::CssSourcePosition
 pub const fn surgeist_css::CssSourcePosition::byte_offset(self) -> surgeist_css::CssByteOffset
@@ -4837,6 +4970,13 @@ pub const fn surgeist_css::CssSourcePosition::column(self) -> surgeist_css::CssU
 pub const fn surgeist_css::CssSourcePosition::line(self) -> surgeist_css::CssLineIndex
 impl core::fmt::Display for surgeist_css::CssSourcePosition
 pub fn surgeist_css::CssSourcePosition::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_css::CssSourceSnapshot(_)
+impl surgeist_css::CssSourceSnapshot
+pub fn surgeist_css::CssSourceSnapshot::as_str(&self) -> &str
+pub fn surgeist_css::CssSourceSnapshot::same_snapshot(&self, other: &Self) -> bool
+impl core::cmp::Eq for surgeist_css::CssSourceSnapshot
+impl core::cmp::PartialEq for surgeist_css::CssSourceSnapshot
+pub fn surgeist_css::CssSourceSnapshot::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssSourceSpan
 impl surgeist_css::CssSourceSpan
 pub const fn surgeist_css::CssSourceSpan::end(self) -> surgeist_css::CssSourcePosition
@@ -5301,6 +5441,8 @@ pub fn surgeist_css::conformance_exclusion(id: &str) -> core::option::Option<&'s
 pub const fn surgeist_css::conformance_exclusions() -> &'static [surgeist_css::CssExclusionMetadata]
 pub fn surgeist_css::feature_catalog() -> &'static [surgeist_css::CssFeatureMetadata]
 pub fn surgeist_css::feature_metadata(id: &str) -> core::option::Option<&'static surgeist_css::CssFeatureMetadata>
+pub fn surgeist_css::parse_component_values(source: &str) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::parse_component_values_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::parse_sheet(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssSheet>
 pub fn surgeist_css::parse_style_attribute(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssDeclarationList>
 pub fn surgeist_css::property_metadata(name: &str) -> core::option::Option<surgeist_css::CssPropertyMetadata>

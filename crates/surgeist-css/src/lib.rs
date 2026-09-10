@@ -1039,6 +1039,7 @@
 //! mutable CSSOM; or lower CSS into sibling Surgeist types.
 
 mod box_values;
+mod component_values;
 mod conformance;
 mod error;
 mod parser;
@@ -1051,6 +1052,13 @@ mod test_support;
 mod validation;
 
 pub use box_values::CssBorderColors;
+pub use component_values::{
+    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
+    CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssFunctionValue,
+    CssHashFlag, CssNumericTokenKind, CssNumericTokenRef, CssParsedOrigin, CssSerializedOrigin,
+    CssSerializedOriginSegment, CssSerializedValue, CssSimpleBlock, CssSourceSnapshot,
+    CssValueOrigin, CssValueTokenRef, parse_component_values, parse_component_values_with_limits,
+};
 pub use conformance::*;
 pub use error::*;
 pub use parser::{parse_sheet, parse_style_attribute};
@@ -1058,6 +1066,9 @@ pub use properties::*;
 pub use report::*;
 pub use source::*;
 pub use syntax::*;
+
+/// Shared ceiling for authored rules and owned component-value trees.
+const STRUCTURAL_NESTING_LIMIT: u32 = 256;
 #[cfg(test)]
 pub(crate) use test_support::{CssParseReportTestExt, CssProperty};
 
