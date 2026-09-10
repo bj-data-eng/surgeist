@@ -39,31 +39,35 @@ pub(super) fn preflight_specialized_eof_limit(
 ) -> Option<SpecializedEofLimit> {
     let scan = scan_delimiters(source, base_depth);
     let target = scan.eof_limit?;
-    let prefix = source
-        .get(target.unit_start..target.opening_offset)
-        .unwrap_or_default()
-        .trim_start();
-    let at_rule = prefix.strip_prefix('@').map(str::trim_start);
-    let is_media = at_rule.is_some_and(|value| value.starts_with("media"));
-    let is_supports = at_rule.is_some_and(|value| value.starts_with("supports"));
+    let at_rule = next_source_token(source, target.unit_start).and_then(|(_, _, token)| {
+        if let Token::AtKeyword(name) = token {
+            Some(name)
+        } else {
+            None
+        }
+    });
+    let rule_production = at_rule.as_deref().and_then(|name| {
+        if name.eq_ignore_ascii_case("media") {
+            Some("baseline.media.query-list")
+        } else if name.eq_ignore_ascii_case("supports") {
+            Some("baseline.rule.supports")
+        } else if name.eq_ignore_ascii_case("container") {
+            Some("baseline.rule.container")
+        } else {
+            None
+        }
+    });
     if target
         .first_root_curly
         .is_some_and(|curly| curly < target.opening_offset)
-        && !is_media
-        && !is_supports
+        && rule_production.is_none()
     {
         return None;
     }
     Some(SpecializedEofLimit {
         unit_start: target.unit_start,
         opening_offset: target.opening_offset,
-        enclosing_production: if is_media {
-            "baseline.media.query-list"
-        } else if is_supports {
-            "baseline.rule.supports"
-        } else {
-            "baseline.selector.complex"
-        },
+        enclosing_production: rule_production.unwrap_or("baseline.selector.complex"),
     })
 }
 
