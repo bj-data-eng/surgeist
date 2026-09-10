@@ -1593,6 +1593,47 @@ macro_rules! assert_property_specific_value {
     };
 }
 
+// The captured font witnesses have one fixed literal/generic list. Their old
+// Debug payloads remain archived evidence, while the production API now exposes
+// only the current model. Verify both the original record and its current
+// meaning explicitly instead of restoring a lossy production I01 projection.
+fn assert_captured_font_families(families: &surgeist_css::CssFontFamilyList) {
+    assert_eq!(
+        families.families(),
+        &[
+            surgeist_css::CssFontFamilyName::try_quoted("Avenir Next").unwrap(),
+            surgeist_css::CssFontFamilyName::generic(surgeist_css::CssGenericFontFamily::SansSerif),
+        ]
+    );
+}
+
+fn assert_captured_font_metadata(
+    id: &str,
+    current_css: &str,
+    captured_payload: &str,
+    semantic: Option<FrozenSemanticValue<'_>>,
+    authored: &AuthoredDeclaration<'_>,
+    case_id: &str,
+) {
+    assert_eq!(
+        authored.id, id,
+        "{case_id}: captured font property identity"
+    );
+    assert_eq!(authored.value_capability, "deferred-i01");
+    assert_ne!(authored.value, "<unavailable>");
+    assert_eq!(
+        current_css, authored.value,
+        "{case_id}: captured authored font value"
+    );
+    if let Some(semantic) = semantic {
+        assert_eq!(semantic.id, id);
+        assert_eq!(
+            semantic.payload, captured_payload,
+            "{case_id}: original captured font payload"
+        );
+    }
+}
+
 fn assert_known_property_value(
     property: surgeist_css::CssKnownProperty,
     value: surgeist_css::CssKnownPropertyValueRef<'_>,
@@ -1600,6 +1641,70 @@ fn assert_known_property_value(
     authored: &AuthoredDeclaration<'_>,
     frozen: &mut FrozenDeclarationCursor<'_>,
 ) {
+    match (property, &value) {
+        (
+            surgeist_css::CssKnownProperty::FontFamily,
+            surgeist_css::CssKnownPropertyValueRef::FontFamily(value),
+        ) => {
+            assert_captured_font_families(value.families());
+            assert_captured_font_metadata(
+                "baseline.property.font-family",
+                value.as_css(),
+                r#"typed:CssFontFamilyList { families: [CssFontFamilyName { kind: Quoted, value: "Avenir Next" }, CssFontFamilyName { kind: IdentSequence, value: "sans-serif" }] }"#,
+                semantic,
+                authored,
+                frozen.case_id,
+            );
+            return;
+        }
+        (
+            surgeist_css::CssKnownProperty::Font,
+            surgeist_css::CssKnownPropertyValueRef::Font(value),
+        ) => {
+            let surgeist_css::CssFontValue::Explicit(font) = value.font() else {
+                panic!("{}: expected captured explicit font", frozen.case_id);
+            };
+            assert_eq!(font.style(), Some(surgeist_css::CssFontStyle::Italic));
+            assert_eq!(
+                font.variant(),
+                Some(surgeist_css::CssFontVariant::SmallCaps)
+            );
+            assert_eq!(
+                font.weight(),
+                Some(surgeist_css::CssFontWeight::Number(
+                    surgeist_css::CssFontWeightNumber::try_new(700).unwrap()
+                ))
+            );
+            assert_eq!(
+                font.stretch(),
+                Some(surgeist_css::CssFontStretch::Condensed)
+            );
+            assert_eq!(
+                font.size(),
+                &surgeist_css::CssFontSize::LengthPercentage(
+                    surgeist_css::CssFontSizeLengthPercentage::try_new(
+                        surgeist_css::CssLength::try_px(16.0).unwrap()
+                    )
+                    .unwrap()
+                )
+            );
+            assert_eq!(
+                font.line_height(),
+                Some(&surgeist_css::CssLineHeight::Normal)
+            );
+            assert_captured_font_families(font.families());
+            assert_captured_font_metadata(
+                "baseline.property.font",
+                value.as_css(),
+                r#"typed:CssFont { style: Some(Italic), variant: Some(SmallCaps), weight: Some(Number(CssFontWeightNumber { value: 700 })), stretch: Some(Condensed), size: Px(CssFiniteNumber { value: 16.0 }), line_height: Some(Normal), families: CssFontFamilyList { families: [CssFontFamilyName { kind: Quoted, value: "Avenir Next" }, CssFontFamilyName { kind: IdentSequence, value: "sans-serif" }] } }"#,
+                semantic,
+                authored,
+                frozen.case_id,
+            );
+            return;
+        }
+        _ => {}
+    }
     assert_property_specific_value!(
         property,
         value,
@@ -1670,8 +1775,6 @@ fn assert_known_property_value(
             TextAlignLast,
             TextIndent,
             VerticalAlign,
-            FontFamily,
-            Font,
             FontWeight,
             FontStyle,
             FontStretch,

@@ -26,8 +26,9 @@ retains token origins and the original declaration occurrence. It does not find
 variables or decide invalid-at-computed-value behavior. Whole-sheet normalization
 and expansion of the remaining properties are still being implemented.
 
-`i01_subset()` names a frozen earlier representation retained for compatibility.
-A current property value can be valid and fully inspectable while that projection
+Where exposed, `i01_subset()` names a frozen earlier representation retained for
+compatibility. The `font-family` and `font` wrappers use their current typed
+accessors without that projection. A current property value can be valid and fully inspectable while a retained projection
 is `None`. Consumers should use current typed accessors for newly represented
 syntax. The projection is not a support or validity test. The [inspection guide](how-to.md#inspect-a-known-declaration)
 shows the distinction.

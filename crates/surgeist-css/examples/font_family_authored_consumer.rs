@@ -246,7 +246,10 @@ fn system_spellings_in_literal_names_and_whole_shorthands() {
     ] {
         for spelling in [name.to_owned(), name.to_ascii_uppercase()] {
             let single = CssFontFamilyName::try_ident(spelling.clone()).unwrap();
-            assert_eq!(single.identifier_tokens().unwrap(), &[spelling.clone()]);
+            assert_eq!(
+                single.identifier_tokens().unwrap(),
+                std::slice::from_ref(&spelling)
+            );
             assert_eq!(single.as_str(), spelling);
             assert_eq!(single.generic_family(), None);
             assert_eq!(parsed_name(&spelling), single);

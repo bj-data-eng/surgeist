@@ -216,8 +216,9 @@ fn parse_font_face_family<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontFaceFamily, ParseError<'i, Error>> {
     let family = parse_non_generic_font_family_name(input)?;
-    CssFontFaceFamily::try_new(family.as_str())
-        .ok_or_else(|| unsupported_value(input, None, "font-family descriptor is empty"))
+    CssFontFaceFamily::try_new(family.as_str()).ok_or_else(|| {
+        unsupported_value(input, None, "invalid decoded font-family descriptor name")
+    })
 }
 
 fn parse_font_face_source_list<'i, 't>(
@@ -299,7 +300,7 @@ fn parse_font_face_source<'i, 't>(
         let name = input.parse_nested_block(parse_local_name)?;
         return CssFontLocalName::try_new(name.as_str())
             .map(CssFontFaceSource::Local)
-            .ok_or_else(|| unsupported_value(input, None, "local font name is empty"));
+            .ok_or_else(|| unsupported_value(input, None, "invalid decoded local font name"));
     }
 
     let url = parse_font_source_url(input)?;

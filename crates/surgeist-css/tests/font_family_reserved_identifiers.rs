@@ -177,10 +177,10 @@ fn quoted_reserved_names_and_nonreserved_identifiers_preserve_decoded_names() {
 }
 
 #[test]
-fn checked_identifier_names_reject_reserved_default_as_the_whole_decoded_name() {
+fn checked_single_identifier_names_reject_reserved_default() {
     for name in ["default", "DEFAULT", "DeFaUlT"] {
         assert_eq!(
-            CssFontFamilyName::try_ident_sequence(name),
+            CssFontFamilyName::try_ident(name),
             None,
             "escaping an identifier cannot make the decoded reserved name valid: {name}"
         );
@@ -200,11 +200,11 @@ fn checked_quoted_and_decoded_face_names_preserve_reserved_spelling() {
         assert_eq!(CssFontLocalName::try_new(name).unwrap().as_str(), name);
     }
 
-    // An escaped space can occur inside one identifier. Once a name has been
-    // decoded, splitting it again would invent token boundaries that were lost.
+    // An escaped space can occur inside one identifier. The single-token
+    // constructor preserves it without inventing another token boundary.
     for name in ["A default", "default A", "My-default", "A\u{a0}default"] {
-        let sequence = CssFontFamilyName::try_ident_sequence(name)
-            .expect("decoded nonreserved identifier name");
+        let sequence =
+            CssFontFamilyName::try_ident(name).expect("decoded nonreserved identifier name");
         assert_eq!(sequence.kind(), CssFontFamilyNameKind::IdentSequence);
         assert_eq!(sequence.as_str(), name);
     }

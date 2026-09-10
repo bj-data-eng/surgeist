@@ -476,37 +476,6 @@ fn line_height_i01_projection(value: &CssLineHeight) -> Option<CssLength> {
     }
 }
 
-fn font_family_i01_projection(value: &CssFontFamilyList) -> Option<CssFontFamilyList> {
-    let families = value
-        .families()
-        .iter()
-        .map(|family| match family.kind() {
-            CssFontFamilyNameKind::Generic => CssFontFamilyName::ident_sequence(family.as_str()),
-            CssFontFamilyNameKind::Quoted | CssFontFamilyNameKind::IdentSequence => family.clone(),
-        })
-        .collect();
-    CssFontFamilyList::try_new(families)
-}
-
-fn font_i01_projection(value: &CssFontValue) -> Option<CssFont> {
-    let CssFontValue::Explicit(value) = value else {
-        return None;
-    };
-    let line_height = match value.line_height() {
-        Some(value) => Some(line_height_i01_projection(value)?),
-        None => None,
-    };
-    CssFont::try_new(
-        value.style(),
-        value.variant(),
-        value.weight(),
-        value.stretch(),
-        font_size_i01_projection(value.size())?,
-        line_height,
-        font_family_i01_projection(value.families())?,
-    )
-}
-
 fn font_variant_i01_projection(value: &CssFontVariantValue) -> Option<CssFontVariant> {
     match value {
         CssFontVariantValue::Normal => Some(CssFontVariant::Normal),
@@ -1280,28 +1249,24 @@ macro_rules! define_property_value {
         FontFamily, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_additive_current_property_value!(
             $canonical,
             $wrapper,
             $representation,
             CssFontFamilyList,
-            CssFontFamilyList,
-            families,
-            font_family_i01_projection
+            families
         );
     };
     (
         Font, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_additive_current_property_value!(
             $canonical,
             $wrapper,
             $representation,
             CssFontValue,
-            CssFont,
-            font,
-            font_i01_projection
+            font
         );
     };
     (

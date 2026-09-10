@@ -316,14 +316,22 @@ fn parse_font_family_name_with_generics<'i, 't>(
     allow_generic: bool,
 ) -> std::result::Result<CssFontFamilyName, ParseError<'i, Error>> {
     if let Ok(name) = input.try_parse(Parser::expect_string_cloned) {
-        if name.is_empty() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "font family string is empty",
-            ));
-        }
-        return Ok(CssFontFamilyName::quoted(name.to_string()));
+        return CssFontFamilyName::try_quoted(name.to_string())
+            .ok_or_else(|| unsupported_value(input, None, "invalid decoded font family string"));
+    }
+
+    if allow_generic
+        && input
+            .try_parse(|input| input.expect_function_matching("generic"))
+            .is_ok()
+    {
+        return input.parse_nested_block(|input| {
+            let keyword = input.expect_ident_cloned().map_err(basic)?;
+            let generic = CssGenericFontFamily::from_script_keyword(&keyword)
+                .ok_or_else(|| unsupported_value(input, None, "unknown generic font family"))?;
+            input.expect_exhausted().map_err(basic)?;
+            Ok(CssFontFamilyName::generic(generic))
+        });
     }
 
     let mut parts = Vec::new();
@@ -335,52 +343,20 @@ fn parse_font_family_name_with_generics<'i, 't>(
         }
     }
 
-    if parts.is_empty() {
-        return Err(unsupported_value(input, None, "font family name is empty"));
-    }
-
     if allow_generic
-        && parts.len() == 1
-        && let Some(generic) = generic_font_family(&parts[0])
+        && let [keyword] = parts.as_slice()
+        && let Some(generic) = CssGenericFontFamily::from_keyword(keyword)
     {
-        return Ok(CssFontFamilyName::generic(generic, parts.remove(0)));
+        return Ok(CssFontFamilyName::generic(generic));
     }
 
-    if parts.iter().any(|part| {
-        generic_font_family(part).is_some()
-            || is_css_wide_keyword(part)
-            || part.eq_ignore_ascii_case("default")
-    }) {
-        return Err(unsupported_value(
+    CssFontFamilyName::try_ident_sequence(parts).ok_or_else(|| {
+        unsupported_value(
             input,
             None,
-            "font family identifier sequences cannot contain reserved keywords",
-        ));
-    }
-
-    Ok(CssFontFamilyName::ident_sequence(parts.join(" ")))
-}
-
-fn generic_font_family(ident: &str) -> Option<CssGenericFontFamily> {
-    if ident.eq_ignore_ascii_case("serif") {
-        Some(CssGenericFontFamily::Serif)
-    } else if ident.eq_ignore_ascii_case("sans-serif") {
-        Some(CssGenericFontFamily::SansSerif)
-    } else if ident.eq_ignore_ascii_case("cursive") {
-        Some(CssGenericFontFamily::Cursive)
-    } else if ident.eq_ignore_ascii_case("fantasy") {
-        Some(CssGenericFontFamily::Fantasy)
-    } else if ident.eq_ignore_ascii_case("monospace") {
-        Some(CssGenericFontFamily::Monospace)
-    } else {
-        None
-    }
-}
-
-fn is_css_wide_keyword(ident: &str) -> bool {
-    ["initial", "inherit", "unset", "revert", "revert-layer"]
-        .iter()
-        .any(|keyword| ident.eq_ignore_ascii_case(keyword))
+            "font family names require nonempty identifier tokens without reserved keywords",
+        )
+    })
 }
 
 pub(super) fn parse_font<'i, 't>(

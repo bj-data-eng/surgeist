@@ -98,10 +98,11 @@ ordinary value, preserving its interior spelling and trivia while excluding
 boundary trivia and the terminal importance annotation. For checked construction,
 this text comes from token-preserving serialization of the supplied components;
 `value_components()` retains their original or programmatic provenance.
-`i01_subset()` exposes the compatibility payload only when the value belongs to
-the frozen I01 representation. Every I01 input retains its exact `Some`
-projection; newly accepted syntax returns `None` when the I01 payload cannot
-represent it.
+Where available, `i01_subset()` exposes the compatibility payload only when
+the value belongs to the frozen I01 representation. The `font-family` and `font`
+wrappers instead expose only their current `families()` and `font()` accessors,
+which distinguish generic families from literal names and preserve decoded
+identifier boundaries. Their obsolete joined-string projections were removed.
 
 The `overflow` row illustrates the wrapper/payload distinction. The generated
 `CssOverflowPropertyValue` is the authored property wrapper, while

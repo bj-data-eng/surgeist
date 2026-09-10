@@ -137,9 +137,11 @@
 //! excluding boundary trivia and the terminal importance annotation. For checked construction,
 //! this text comes from token-preserving serialization of the supplied components; their original
 //! or programmatic provenance remains available through [`CssDeclaration::value_components`].
-//! Its `i01_subset()` method is a compatibility view: every I01 input retains its
-//! exact `Some` projection, while newly accepted I02 syntax returns `None` when
-//! the frozen I01 representation cannot carry it.
+//! Wrappers with an `i01_subset()` method retain a compatibility view of the
+//! frozen representation. The `font-family` and `font` wrappers expose only their
+//! current `families()` and `font()` models: generic families remain distinct
+//! from literal names, and decoded identifier boundaries are retained rather
+//! than projected into the obsolete joined-string payload.
 //!
 //! The generated [`CssOverflowPropertyValue`] is the authored wrapper for the
 //! `overflow` row. [`CssOverflowI01PropertyValue`] is its renamed I01 payload and
@@ -412,14 +414,17 @@
 //! layout, cascade declarations, evaluate or interpolate keyframes, run
 //! timelines, or lower either syntax family into sibling Surgeist crates.
 //!
-//! # Fonts 3 typography and font-face
+//! # Typography, font families, and font-face
 //!
-//! The current authored font surface implements the sixteen Fonts 3 property
-//! grammars, including family/global boundaries, four-ASCII-character OpenType
-//! tags, non-negative feature indices, the explicit and system `font` branches,
-//! synthesis, and the five variant longhands. Concrete property wrappers expose
-//! parser-owned current values through their semantic accessors and retain
-//! `i01_subset()` only as a frozen compatibility projection.
+//! Family lists, the `@font-face` family descriptor, and `local()` names follow
+//! the selected September 7, 2026 Fonts 4 grammar. [`CssFontFamilyName`] preserves
+//! decoded identifier tokens and distinguishes literal names from all fifteen
+//! typed generic families. Family and font wrappers expose their current
+//! `families()` and `font()` models without the obsolete I01 projections; use
+//! [`CssFontValue`] and [`CssExplicitFont`] for explicit or system fonts.
+//! Other typography includes four-ASCII-character OpenType tags, non-negative
+//! feature indices, synthesis, and variant longhands. Individual metadata
+//! records identify the implemented grammar and its dated source.
 //!
 //! ```
 //! use surgeist_css::{
@@ -434,32 +439,32 @@
 //!     .property_value().expect("ordinary font")
 //! else { panic!("expected font") };
 //! assert!(matches!(font.font(), CssFontValue::System(CssSystemFont::Menu)));
-//! assert!(font.i01_subset().is_none());
+//! assert_eq!(font.as_css(), "menu");
 //! ```
 //!
 //! [`CssFontFaceDescriptors::occurrences`] exposes valid descriptor occurrences
 //! in authored order, while typed effective accessors return the last valid
 //! occurrence. Invalid and unknown occurrences recover with
-//! [`CssRecoveryAction::DropDescriptor`] without erasing valid neighbors. A
-//! [`CssFontFaceRule`] is retained only when valid effective `font-family` and
-//! `src` descriptors remain.
+//! [`CssRecoveryAction::DropDescriptor`] without erasing valid neighbors. Empty
+//! [`CssFontFaceRule`] values remain in the authored tree; whether a face can be
+//! used belongs to later contextual processing.
 //!
-//! Fonts 3 property, descriptor, source, and OpenType-tag records cite the dated
-//! `O-FONTS3` source and are Complete. The selected numeric weight, descriptor
-//! range, and modern source-hint deltas cite `I-FONTS4` as separate Partial
-//! records; `font-display` is Complete and `@font-feature-values` remains
-//! RecognizedUnsupported. This crate does not load or match fonts, resolve
-//! fallback or OpenType feature application, shape glyphs, apply cascade or
-//! substitution, evaluate computed values, expose CSSOM, serialize, or lower
-//! into another Surgeist crate.
+//! Family, font, source-list, and font-face records cite `I-FONTS4-20260907`.
+//! Family grammar and modern source hints are Complete; the font shorthand,
+//! source list, and font-face rule remain Partial. Newer shorthand components,
+//! selected descriptors, and the Values 4 `src()` URL function are unfinished.
+//! Older immutable source identities retain their original editions.
+//! Family models do not yet provide canonical CSS serialization. Font loading,
+//! matching, fallback, shaping, cascade, substitution, computed values, and
+//! live CSSOM behavior belong to their downstream owners.
 //!
 //! # Timing domains and I01 compatibility
 //!
 //! Duration literals are finite and non-negative; delay literals are finite and signed. A range
 //! constraint that belongs to a literal is enforced immediately, while a well-typed calculation
 //! remains representable for later computed-value processing. Current property accessors expose
-//! those distinct domains. [`CssKnownDeclaration::property_value`] still provides
-//! `i01_subset()` on each concrete wrapper as the frozen compatibility view.
+//! those distinct domains. [`CssKnownDeclaration::property_value`] provides
+//! `i01_subset()` on the timing wrappers as the frozen compatibility view.
 //!
 //! ```
 //! use surgeist_css::{

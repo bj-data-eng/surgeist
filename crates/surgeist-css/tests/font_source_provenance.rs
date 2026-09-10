@@ -1,8 +1,8 @@
-//! The selected published Fonts4 grammar replaces the earlier source-list
-//! production; immutable source identities must keep their original edition.
+//! The selected published Fonts4 grammar owns family names and source lists;
+//! immutable source identities must keep their original edition.
 //! The format/technology-hint subproduction includes the legacy equivalents.
-//! Broader font-face/source support remains Partial: selected descriptors and
-//! unquoted local-name keyword exclusions remain incomplete.
+//! Broader font, font-face and source support remains Partial because newer
+//! shorthand components, selected descriptors and the src() URL branch are absent.
 
 use surgeist_css::{CssSupportStatus, feature_metadata, specification_source};
 
@@ -12,6 +12,21 @@ const SELECTED_URL: &str = "https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/"
 #[test]
 fn selected_font_source_records_reference_the_pinned_published_edition() {
     for (id, production, status) in [
+        (
+            "baseline.property.font-family",
+            "#propdef-font-family",
+            CssSupportStatus::Complete,
+        ),
+        (
+            "baseline.property.font",
+            "#propdef-font",
+            CssSupportStatus::Partial,
+        ),
+        (
+            "baseline.descriptor.font-family",
+            "#font-family-desc",
+            CssSupportStatus::Complete,
+        ),
         (
             "baseline.rule.font-face",
             "#font-face-rule",

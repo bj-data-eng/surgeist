@@ -165,7 +165,8 @@ owns variable environments, invalid-at-computed-value handling and cascade.
 
 The [how-to guide](how-to.md#inspect-a-known-declaration) shows property/value
 inspection, exact authored text, and the frozen `i01_subset()` compatibility
-projection. `CssImportance` and `CssSupportStatus` are closed public enums;
+projection on wrappers that retain it. `font-family` and `font` expose only their
+current typed values. `CssImportance` and `CssSupportStatus` are closed public enums;
 other public enums are non-exhaustive, so downstream matches require a wildcard.
 The [compatibility explanation](explanation.md#symbolic-values-and-compatibility)
 defines the I01 representation used by those projections.
@@ -470,16 +471,20 @@ This crate does not perform Grid layout, cascade declarations, evaluate or
 interpolate keyframes, run timelines, or lower either syntax family into sibling
 Surgeist crates.
 
-## Fonts 3 typography and font-face
+## Typography, font families, and font-face
 
-The current authored font surface completes the sixteen Fonts 3 property
-grammars, including family/global boundaries, checked four-ASCII-character
-OpenType tags, non-negative feature indices, the explicit and system `font`
-branches, synthesis, and the five variant longhands. Each generated property
-wrapper exposes its typed current value through the property-specific accessor
-while retaining `i01_subset()` as a separate compatibility projection. A current
-value such as `font: menu` or `font-weight: 725` can be valid even when the frozen
-I01 payload cannot represent it.
+The authored font surface includes checked four-ASCII-character OpenType tags,
+non-negative feature indices, explicit and system `font` branches, synthesis,
+and the five variant longhands. `font-family`, explicit-font family lists, the
+`@font-face` family descriptor, and `local()` names follow the selected
+September 7, 2026 Fonts 4 grammar. Other typography records retain their
+individual dated sources.
+
+`CssFontFamilyPropertyValue::families()` and `CssFontPropertyValue::font()` expose
+the current models, with exact authored text available through `as_css()`.
+These two wrappers no longer expose `i01_subset()`, and the obsolete `CssFont`
+payload has been removed; use `CssFontValue` and `CssExplicitFont`. Other font
+wrappers retain their separate compatibility projections where available.
 
 ```rust
 use surgeist_css::{
@@ -494,8 +499,48 @@ let CssKnownPropertyValueRef::Font(font) = report.syntax()[0]
     .property_value().expect("ordinary font")
 else { panic!("expected font") };
 assert!(matches!(font.font(), CssFontValue::System(CssSystemFont::Menu)));
-assert!(font.i01_subset().is_none());
+assert_eq!(font.as_css(), "menu");
 ```
+
+`CssFontFamilyName` distinguishes quoted literal names, identifier sequences,
+and typed generics. Its fifteen `CssGenericFontFamily` values comprise eleven
+simple keywords (`serif`, `sans-serif`, `cursive`, `fantasy`, `monospace`,
+`system-ui`, `math`, `ui-serif`, `ui-sans-serif`, `ui-monospace`, `ui-rounded`)
+and four functional forms (`generic(fangsong)`, `generic(kai)`,
+`generic(khmer-mul)`, `generic(nastaliq)`). Bare `generic`, `fangsong`, `kai`,
+`khmer-mul`, `nastaliq`, and `emoji` remain ordinary literal names.
+
+`try_ident_sequence(Vec<String>)` accepts decoded identifier tokens without
+splitting or trimming them. It requires a nonempty list of nonempty tokens,
+each excluding U+0000, the eleven simple generics, the five selected CSS-wide
+keywords, and `default`. Reserved-token comparisons are ASCII-insensitive.
+`try_ident` checks one decoded token, and `generic` accepts a typed generic
+infallibly. `identifier_tokens()` exposes the preserved token boundaries;
+`as_str()` joins identifier tokens with one U+0020 space. Thus tokens
+`["A", "default"]` are invalid, while `["A default"]` is one valid escaped
+identifier. An identifier containing only escaped whitespace is also valid.
+
+`try_quoted` accepts decoded literal strings, including empty and whitespace-only
+names and reserved spellings, while rejecting U+0000. A quoted `"serif"` remains
+distinct from generic `serif`. `CssFontFamilyList::try_new` requires at least one
+item, so a quoted empty name is a valid list item. `CssFontFaceFamily::try_new`
+and `CssFontLocalName::try_new` also accept decoded literal strings with this NUL
+restriction; these wrappers do not assert that the input was an identifier
+sequence. Their parser paths validate unquoted tokens before joining them.
+Generic branches are valid in property lists and explicit-font family tails,
+but invalid in the face-family descriptor and `local()`.
+
+The six system spellings (`caption`, `icon`, `menu`, `message-box`,
+`small-caption`, `status-bar`) are literal names in family contexts. A complete
+`font: menu` selects the system-font branch, while `font: large menu` selects a
+literal family named `menu`, as specified in
+[Fonts 4 §2.7](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-prop).
+Whole-value CSS-wide keywords use the declaration's global-value branch.
+These distinctions preserve decoded meaning and identifier boundaries. The
+family model does not yet provide canonical CSS serialization. A serializer must quote a
+literal name or escape each identifier token independently, and must keep
+quoted reserved names distinct from generic families. Rejecting decoded U+0000
+avoids claiming preservation of a character that CSS replaces with U+FFFD.
 
 `@font-face` retains every valid descriptor occurrence in authored order;
 effective typed accessors return the last valid occurrence. Source-list grammar
@@ -543,19 +588,24 @@ technology is required together. `tech()` retains its exact authored order and
 repetitions. `CssFontFormatHint::is_equivalent_to` recognizes TrueType/OpenType
 compatibility while ordinary equality keeps their identities distinct.
 
-The `@font-face`, `src`, font-source and modern-source-hint records cite the
-September 7, 2026 edition as `I-FONTS4-20260907`. The narrowly named modern-source-hint
-record is `Complete`; the rule and source-list records remain `Partial`.
+The `font-family` property and descriptor, `font`, `@font-face`, `src`,
+font-source and modern-source-hint records cite the September 7, 2026 edition as
+`I-FONTS4-20260907`. The family property and descriptor and the narrowly named
+modern-source-hint record are `Complete`; the shorthand, rule and source-list
+records remain `Partial`.
 The older `I-FONTS4` identity keeps its April 22 edition; `O-FONTS3` also
 remains available for historical source records. These immutable identities
 must not be repointed when adopting a newer production.
 
 Selected descriptors including `font-width`, `font-variation-settings`,
-`font-named-instance` and metric overrides remain unfinished. Unquoted `local()`
-names do not yet enforce every selected Fonts 4 generic and system font keyword
-exclusion. Decoded-name constructors can represent quoted reserved names; this
-does not establish universal constructor/parser parity for identifier sequences.
-These are CSS implementation gaps. Other historical Fonts 3 and Fonts 4 support records
+`font-named-instance` and metric overrides remain unfinished. The `font-width`
+property and its full percentage grammar remain outside this family slice;
+the shorthand accepts the Fonts 3 width keywords, represented by the existing
+stretch model. Fonts 4 shorthand components including oblique angles,
+non-integer weights, and `xxx-large` or `math` sizes also remain unsupported.
+The source-list URL branch accepts `url()` but does not yet implement `src()`
+from the referenced Values 4 `<url>` production. These are CSS implementation
+gaps. Other historical Fonts 3 and Fonts 4 support records
 retain their existing classifications pending reconciliation with the complete
 selected profile; their dates bound those claims. These authored models do
 not load or match fonts, resolve fallback or feature application, shape glyphs,

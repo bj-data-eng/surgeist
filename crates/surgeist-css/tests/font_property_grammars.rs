@@ -606,8 +606,8 @@ fn font_size_family_line_height_and_shorthand_follow_fonts3() {
         Some(CssGenericFontFamily::Serif)
     );
     assert_eq!(
-        family.i01_subset().unwrap().families()[2].kind(),
-        CssFontFamilyNameKind::IdentSequence,
+        families[1].identifier_tokens().unwrap(),
+        &["Avenir".to_owned(), "Next".to_owned()]
     );
 
     let CssKnownPropertyValueRef::Font(explicit) = report.syntax()[3]
@@ -641,7 +641,6 @@ fn font_size_family_line_height_and_shorthand_follow_fonts3() {
             .unwrap(),
         CssKnownPropertyValueRef::Font(value)
             if matches!(value.font(), CssFontValue::System(CssSystemFont::Menu))
-                && value.i01_subset().is_none()
     ));
 }
 
@@ -771,7 +770,6 @@ fn system_fonts_are_whole_values_and_explicit_components_are_unique() {
             panic!("expected font");
         };
         assert_eq!(value.font(), &CssFontValue::System(expected));
-        assert!(value.i01_subset().is_none());
     }
 
     let legacy = parse_style_attribute("font: italic small-caps 700 condensed 16px/normal Arial");
@@ -784,7 +782,11 @@ fn system_fonts_are_whole_values_and_explicit_components_are_unique() {
     else {
         panic!("expected font");
     };
-    assert!(legacy.i01_subset().is_some());
+    let CssFontValue::Explicit(font) = legacy.font() else {
+        panic!("expected current explicit font");
+    };
+    assert_eq!(font.style(), Some(CssFontStyle::Italic));
+    assert_eq!(font.families().families()[0].as_str(), "Arial");
 
     for invalid in [
         "font: menu serif",

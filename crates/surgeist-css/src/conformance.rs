@@ -2215,10 +2215,13 @@ const FONT_FACE_STYLE_RANGE_REMAINDER: &str =
 const FONT_FACE_STRETCH_RANGE_SUBSET: &str = "Font-face non-negative percentage stretch values and increasing two-value ranges are supported.";
 const FONT_FACE_STRETCH_RANGE_REMAINDER: &str =
     "Other unselected Fonts 4 font-stretch descriptor grammar remains unsupported.";
+const FONT_SHORTHAND_SUBSET: &str = "Explicit fonts support the selected Fonts 4 family grammar, Fonts 3 style, variant, width and size components, integer weights from 1 through 1000, and optional line height. All six system-font alternatives are supported.";
+const FONT_SHORTHAND_REMAINDER: &str = "Oblique angles, non-integer font weights, xxx-large and math font sizes, and other Fonts 4 shorthand component forms remain unsupported.";
 const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, stretch, display, unicode-range and feature-settings descriptors have typed representations; invalid descriptors recover independently.";
 const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-width, font-variation-settings, font-named-instance and metric overrides remain unsupported.";
-const FONT_SOURCE_SUBSET: &str = "URL and local sources preserve authored order, including empty URL strings, a single format hint and technology hints. Invalid source members recover independently, while invalid descriptor annotations or all-invalid lists discard the descriptor. The four legacy variation strings project to base formats and required variations without changing authored hints; TrueType and OpenType have explicit format equivalence.";
-const FONT_SOURCE_REMAINDER: &str = "Unquoted local() names do not yet enforce every generic and system font keyword exclusion in the selected Fonts 4 grammar.";
+const FONT_SOURCE_SUBSET: &str = "url() and local() sources preserve authored order, including empty URL strings, the selected literal family-name grammar, a single format hint and technology hints. Invalid source members recover independently, while invalid descriptor annotations or all-invalid lists discard the descriptor. The four legacy variation strings project to base formats and required variations without changing authored hints; TrueType and OpenType have explicit format equivalence.";
+const FONT_SOURCE_REMAINDER: &str =
+    "The src() function from the referenced Values 4 <url> production remains unsupported.";
 
 const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
     match property {
@@ -2360,9 +2363,8 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::ImageRendering
         | CssKnownProperty::ObjectFit
         | CssKnownProperty::ObjectPosition => O_IMAGES3,
+        CssKnownProperty::FontFamily | CssKnownProperty::Font => I_FONTS4_20260907,
         CssKnownProperty::FontSize
-        | CssKnownProperty::FontFamily
-        | CssKnownProperty::Font
         | CssKnownProperty::FontWeight
         | CssKnownProperty::FontStyle
         | CssKnownProperty::FontStretch
@@ -3826,7 +3828,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 487] = [
         "baseline.descriptor.font-family",
         CssFeatureKind::Descriptor,
         "font-family in @font-face",
-        O_FONTS3,
+        I_FONTS4_20260907,
         "#font-family-desc",
     ),
     CssFeatureMetadata::partial(
@@ -4449,12 +4451,14 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 487] = [
         "#propdef-font-family",
         &[],
     ),
-    CssFeatureMetadata::complete_property(
+    CssFeatureMetadata::partial_property_with_boundary(
         "baseline.property.font",
         CssKnownProperty::Font,
         "font",
         "#propdef-font",
         &[],
+        FONT_SHORTHAND_SUBSET,
+        FONT_SHORTHAND_REMAINDER,
     ),
     CssFeatureMetadata::complete_property(
         "baseline.property.font-weight",

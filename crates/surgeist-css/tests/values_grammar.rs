@@ -142,7 +142,7 @@ fn c14_remaining_shared_values_are_typed() {
     else {
         panic!("expected font-family");
     };
-    let families = families.i01_subset().expect("I01 font families").families();
+    let families = families.families().families();
     assert_eq!(families[0].kind(), CssFontFamilyNameKind::Quoted);
     assert_eq!(families[0].as_str(), "inherit");
     assert_eq!(families[1].kind(), CssFontFamilyNameKind::IdentSequence);

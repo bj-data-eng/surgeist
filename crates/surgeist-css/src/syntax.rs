@@ -1728,21 +1728,13 @@ pub struct CssFontFaceFamily {
 }
 
 impl CssFontFaceFamily {
+    /// Preserves a decoded literal name, including empty and whitespace-only names.
+    /// Reserved spellings remain literal names and can be serialized quoted.
+    /// NUL is rejected because CSS replaces it with a different character.
     #[must_use]
     pub fn try_new(name: impl Into<String>) -> Option<Self> {
         let name = name.into();
-        if name.trim().is_empty() {
-            None
-        } else {
-            Some(Self::new(name))
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn new(name: impl Into<String>) -> Self {
-        let name = name.into();
-        debug_assert!(!name.trim().is_empty());
-        Self { name }
+        (!name.contains('\0')).then_some(Self { name })
     }
 
     #[must_use]
@@ -1757,21 +1749,13 @@ pub struct CssFontLocalName {
 }
 
 impl CssFontLocalName {
+    /// Preserves a decoded literal name, including empty and whitespace-only names.
+    /// Reserved spellings remain literal names and can be serialized quoted.
+    /// NUL is rejected because CSS replaces it with a different character.
     #[must_use]
     pub fn try_new(name: impl Into<String>) -> Option<Self> {
         let name = name.into();
-        if name.trim().is_empty() {
-            None
-        } else {
-            Some(Self::new(name))
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn new(name: impl Into<String>) -> Self {
-        let name = name.into();
-        debug_assert!(!name.trim().is_empty());
-        Self { name }
+        (!name.contains('\0')).then_some(Self { name })
     }
 
     #[must_use]
@@ -7951,6 +7935,7 @@ pub enum CssFontFamilyNameKind {
     Generic,
 }
 
+/// A generic family with CSS-defined meaning, including script-specific functions.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssGenericFontFamily {
@@ -7959,96 +7944,191 @@ pub enum CssGenericFontFamily {
     Cursive,
     Fantasy,
     Monospace,
+    SystemUi,
+    Math,
+    UiSerif,
+    UiSansSerif,
+    UiMonospace,
+    UiRounded,
+    Fangsong,
+    Kai,
+    KhmerMul,
+    Nastaliq,
+}
+
+impl CssGenericFontFamily {
+    pub(crate) fn from_keyword(value: &str) -> Option<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "serif" => Some(Self::Serif),
+            "sans-serif" => Some(Self::SansSerif),
+            "cursive" => Some(Self::Cursive),
+            "fantasy" => Some(Self::Fantasy),
+            "monospace" => Some(Self::Monospace),
+            "system-ui" => Some(Self::SystemUi),
+            "math" => Some(Self::Math),
+            "ui-serif" => Some(Self::UiSerif),
+            "ui-sans-serif" => Some(Self::UiSansSerif),
+            "ui-monospace" => Some(Self::UiMonospace),
+            "ui-rounded" => Some(Self::UiRounded),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn from_script_keyword(value: &str) -> Option<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "fangsong" => Some(Self::Fangsong),
+            "kai" => Some(Self::Kai),
+            "khmer-mul" => Some(Self::KhmerMul),
+            "nastaliq" => Some(Self::Nastaliq),
+            _ => None,
+        }
+    }
+
+    const fn as_css(self) -> &'static str {
+        match self {
+            Self::Serif => "serif",
+            Self::SansSerif => "sans-serif",
+            Self::Cursive => "cursive",
+            Self::Fantasy => "fantasy",
+            Self::Monospace => "monospace",
+            Self::SystemUi => "system-ui",
+            Self::Math => "math",
+            Self::UiSerif => "ui-serif",
+            Self::UiSansSerif => "ui-sans-serif",
+            Self::UiMonospace => "ui-monospace",
+            Self::UiRounded => "ui-rounded",
+            Self::Fangsong => "generic(fangsong)",
+            Self::Kai => "generic(kai)",
+            Self::KhmerMul => "generic(khmer-mul)",
+            Self::Nastaliq => "generic(nastaliq)",
+        }
+    }
 }
 
 #[derive(Clone, Eq, PartialEq)]
+enum CssFontFamilyNameRepresentation {
+    Quoted(String),
+    IdentSequence {
+        identifiers: Vec<String>,
+        joined: String,
+    },
+    Generic(CssGenericFontFamily),
+}
+
+/// A checked literal family name or a CSS-defined generic family.
+///
+/// Identifier boundaries participate in authored equality. A single identifier
+/// containing an escaped space can have the same joined name as two identifiers
+/// while retaining a different authored representation.
+#[derive(Clone, Eq, PartialEq)]
 pub struct CssFontFamilyName {
-    kind: CssFontFamilyNameKind,
-    value: String,
-    generic: Option<CssGenericFontFamily>,
+    representation: CssFontFamilyNameRepresentation,
 }
 
 impl std::fmt::Debug for CssFontFamilyName {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("CssFontFamilyName")
-            .field("kind", &self.kind)
-            .field("value", &self.value)
+            .field("kind", &self.kind())
+            .field("value", &self.as_str())
             .finish()
     }
 }
 
 impl CssFontFamilyName {
-    /// Constructs a quoted-form name from its decoded string content.
+    /// Constructs a quoted name from decoded string content, including empty or
+    /// whitespace-only content. NUL is rejected because CSS would replace it.
     #[must_use]
     pub fn try_quoted(value: impl Into<String>) -> Option<Self> {
-        Self::try_new(CssFontFamilyNameKind::Quoted, value)
-    }
-
-    /// Constructs an identifier-form name from its decoded value.
-    ///
-    /// CSS escapes must already be decoded. Spaces do not preserve the original
-    /// token boundaries, so this constructor does not reparse or split the value.
-    /// Empty values and the reserved whole-name `default`, in any ASCII case,
-    /// are rejected.
-    /// Use [`Self::try_quoted`] to construct that literal font name.
-    #[must_use]
-    pub fn try_ident_sequence(value: impl Into<String>) -> Option<Self> {
-        Self::try_new(CssFontFamilyNameKind::IdentSequence, value)
-    }
-
-    #[must_use]
-    pub(crate) fn quoted(value: impl Into<String>) -> Self {
-        Self::new(CssFontFamilyNameKind::Quoted, value)
-    }
-
-    #[must_use]
-    pub(crate) fn ident_sequence(value: impl Into<String>) -> Self {
-        Self::new(CssFontFamilyNameKind::IdentSequence, value)
-    }
-
-    #[must_use]
-    pub(crate) fn generic(generic: CssGenericFontFamily, value: impl Into<String>) -> Self {
-        Self {
-            kind: CssFontFamilyNameKind::Generic,
-            value: value.into(),
-            generic: Some(generic),
-        }
-    }
-
-    fn try_new(kind: CssFontFamilyNameKind, value: impl Into<String>) -> Option<Self> {
         let value = value.into();
-        if value.is_empty()
-            || (kind == CssFontFamilyNameKind::IdentSequence
-                && value.eq_ignore_ascii_case("default"))
-        {
-            None
-        } else {
-            Some(Self::new(kind, value))
-        }
+        (!value.contains('\0')).then_some(Self {
+            representation: CssFontFamilyNameRepresentation::Quoted(value),
+        })
     }
 
-    fn new(kind: CssFontFamilyNameKind, value: impl Into<String>) -> Self {
+    /// Constructs a name from one or more decoded identifier tokens.
+    ///
+    /// Tokens are not split, trimmed, or decoded again. Each token must be
+    /// nonempty, contain no NUL, and not be a simple generic-family keyword,
+    /// CSS-wide keyword, or `default` in any ASCII case. Escaped whitespace,
+    /// punctuation, and leading digits inside a decoded token remain valid.
+    /// System-font spellings such as `menu` are ordinary names in this position.
+    #[must_use]
+    pub fn try_ident_sequence(identifiers: Vec<String>) -> Option<Self> {
+        if identifiers.is_empty()
+            || identifiers.iter().any(|identifier| {
+                identifier.is_empty()
+                    || identifier.contains('\0')
+                    || CssGenericFontFamily::from_keyword(identifier).is_some()
+                    || is_css_wide_keyword(identifier)
+                    || identifier.eq_ignore_ascii_case("default")
+            })
+        {
+            return None;
+        }
+        let joined = identifiers.join(" ");
+        Some(Self {
+            representation: CssFontFamilyNameRepresentation::IdentSequence {
+                identifiers,
+                joined,
+            },
+        })
+    }
+
+    /// Constructs a name from exactly one decoded identifier token.
+    #[must_use]
+    pub fn try_ident(value: impl Into<String>) -> Option<Self> {
+        Self::try_ident_sequence(vec![value.into()])
+    }
+
+    /// Constructs a CSS-defined generic family without a literal-name ambiguity.
+    #[must_use]
+    pub const fn generic(generic: CssGenericFontFamily) -> Self {
         Self {
-            kind,
-            value: value.into(),
-            generic: None,
+            representation: CssFontFamilyNameRepresentation::Generic(generic),
         }
     }
 
     #[must_use]
     pub const fn kind(&self) -> CssFontFamilyNameKind {
-        self.kind
+        match &self.representation {
+            CssFontFamilyNameRepresentation::Quoted(_) => CssFontFamilyNameKind::Quoted,
+            CssFontFamilyNameRepresentation::IdentSequence { .. } => {
+                CssFontFamilyNameKind::IdentSequence
+            }
+            CssFontFamilyNameRepresentation::Generic(_) => CssFontFamilyNameKind::Generic,
+        }
     }
 
+    /// Returns the decoded literal name or the canonical CSS spelling of a generic.
+    /// Identifier tokens are joined with one U+0020 SPACE between tokens; spaces
+    /// within a token are preserved. This is not a serialization of a literal name.
     #[must_use]
     pub fn as_str(&self) -> &str {
-        &self.value
+        match &self.representation {
+            CssFontFamilyNameRepresentation::Quoted(value) => value,
+            CssFontFamilyNameRepresentation::IdentSequence { joined, .. } => joined,
+            CssFontFamilyNameRepresentation::Generic(generic) => generic.as_css(),
+        }
+    }
+
+    /// Returns the decoded identifier tokens, preserving their authored boundaries.
+    #[must_use]
+    pub fn identifier_tokens(&self) -> Option<&[String]> {
+        match &self.representation {
+            CssFontFamilyNameRepresentation::IdentSequence { identifiers, .. } => Some(identifiers),
+            CssFontFamilyNameRepresentation::Quoted(_)
+            | CssFontFamilyNameRepresentation::Generic(_) => None,
+        }
     }
 
     #[must_use]
     pub const fn generic_family(&self) -> Option<CssGenericFontFamily> {
-        self.generic
+        match &self.representation {
+            CssFontFamilyNameRepresentation::Generic(generic) => Some(*generic),
+            CssFontFamilyNameRepresentation::Quoted(_)
+            | CssFontFamilyNameRepresentation::IdentSequence { .. } => None,
+        }
     }
 }
 
@@ -8060,7 +8140,7 @@ pub struct CssFontFamilyList {
 impl CssFontFamilyList {
     #[must_use]
     pub fn try_new(families: Vec<CssFontFamilyName>) -> Option<Self> {
-        if families.is_empty() || families.iter().any(|family| family.as_str().is_empty()) {
+        if families.is_empty() {
             None
         } else {
             Some(Self::new(families))
@@ -8858,113 +8938,6 @@ impl CssExplicitFont {
 pub enum CssFontValue {
     Explicit(CssExplicitFont),
     System(CssSystemFont),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssFont {
-    style: Option<CssFontStyle>,
-    variant: Option<CssFontVariant>,
-    weight: Option<CssFontWeight>,
-    stretch: Option<CssFontStretch>,
-    size: CssLength,
-    line_height: Option<CssLength>,
-    families: CssFontFamilyList,
-}
-
-impl CssFont {
-    #[must_use]
-    pub fn try_new(
-        style: Option<CssFontStyle>,
-        variant: Option<CssFontVariant>,
-        weight: Option<CssFontWeight>,
-        stretch: Option<CssFontStretch>,
-        size: CssLength,
-        line_height: Option<CssLength>,
-        families: CssFontFamilyList,
-    ) -> Option<Self> {
-        if !is_font_size_length(&size)
-            || line_height.as_ref().is_some_and(|line_height| {
-                !matches!(
-                    line_height,
-                    CssLength::Px(_)
-                        | CssLength::Dimension(_)
-                        | CssLength::Percent(_)
-                        | CssLength::Zero
-                        | CssLength::Normal
-                        | CssLength::Calc(_)
-                )
-            })
-            || families.families().is_empty()
-        {
-            None
-        } else {
-            Some(Self::new(
-                style,
-                variant,
-                weight,
-                stretch,
-                size,
-                line_height,
-                families,
-            ))
-        }
-    }
-
-    #[must_use]
-    pub(crate) const fn new(
-        style: Option<CssFontStyle>,
-        variant: Option<CssFontVariant>,
-        weight: Option<CssFontWeight>,
-        stretch: Option<CssFontStretch>,
-        size: CssLength,
-        line_height: Option<CssLength>,
-        families: CssFontFamilyList,
-    ) -> Self {
-        Self {
-            style,
-            variant,
-            weight,
-            stretch,
-            size,
-            line_height,
-            families,
-        }
-    }
-
-    #[must_use]
-    pub const fn style(&self) -> Option<CssFontStyle> {
-        self.style
-    }
-
-    #[must_use]
-    pub const fn variant(&self) -> Option<CssFontVariant> {
-        self.variant
-    }
-
-    #[must_use]
-    pub const fn weight(&self) -> Option<CssFontWeight> {
-        self.weight
-    }
-
-    #[must_use]
-    pub const fn stretch(&self) -> Option<CssFontStretch> {
-        self.stretch
-    }
-
-    #[must_use]
-    pub const fn size(&self) -> &CssLength {
-        &self.size
-    }
-
-    #[must_use]
-    pub const fn line_height(&self) -> Option<&CssLength> {
-        self.line_height.as_ref()
-    }
-
-    #[must_use]
-    pub const fn families(&self) -> &CssFontFamilyList {
-        &self.families
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -10079,17 +10052,6 @@ fn is_text_decoration_thickness_length(length: &CssLength) -> bool {
         | CssLength::Medium
         | CssLength::Thick => false,
     }
-}
-
-fn is_font_size_length(length: &CssLength) -> bool {
-    matches!(
-        length,
-        CssLength::Px(_)
-            | CssLength::Dimension(_)
-            | CssLength::Percent(_)
-            | CssLength::Zero
-            | CssLength::Calc(_)
-    )
 }
 
 fn is_non_negative_length_percentage(length: &CssLength) -> bool {

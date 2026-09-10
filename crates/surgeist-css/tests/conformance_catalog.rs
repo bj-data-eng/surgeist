@@ -88,10 +88,13 @@ const FONT_FACE_STYLE_RANGE_REMAINDER: &str =
 const FONT_FACE_STRETCH_RANGE_SUBSET: &str = "Font-face non-negative percentage stretch values and increasing two-value ranges are supported.";
 const FONT_FACE_STRETCH_RANGE_REMAINDER: &str =
     "Other unselected Fonts 4 font-stretch descriptor grammar remains unsupported.";
+const FONT_SHORTHAND_SUBSET: &str = "Explicit fonts support the selected Fonts 4 family grammar, Fonts 3 style, variant, width and size components, integer weights from 1 through 1000, and optional line height. All six system-font alternatives are supported.";
+const FONT_SHORTHAND_REMAINDER: &str = "Oblique angles, non-integer font weights, xxx-large and math font sizes, and other Fonts 4 shorthand component forms remain unsupported.";
 const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, stretch, display, unicode-range and feature-settings descriptors have typed representations; invalid descriptors recover independently.";
 const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-width, font-variation-settings, font-named-instance and metric overrides remain unsupported.";
-const FONT_SOURCE_SUBSET: &str = "URL and local sources preserve authored order, including empty URL strings, a single format hint and technology hints. Invalid source members recover independently, while invalid descriptor annotations or all-invalid lists discard the descriptor. The four legacy variation strings project to base formats and required variations without changing authored hints; TrueType and OpenType have explicit format equivalence.";
-const FONT_SOURCE_REMAINDER: &str = "Unquoted local() names do not yet enforce every generic and system font keyword exclusion in the selected Fonts 4 grammar.";
+const FONT_SOURCE_SUBSET: &str = "url() and local() sources preserve authored order, including empty URL strings, the selected literal family-name grammar, a single format hint and technology hints. Invalid source members recover independently, while invalid descriptor annotations or all-invalid lists discard the descriptor. The four legacy variation strings project to base formats and required variations without changing authored hints; TrueType and OpenType have explicit format equivalence.";
+const FONT_SOURCE_REMAINDER: &str =
+    "The src() function from the referenced Values 4 <url> production remains unsupported.";
 
 fn assert_complete_fonts3_feature(
     id: &str,
@@ -132,15 +135,64 @@ fn assert_partial_fonts4_feature(
 }
 
 #[test]
+fn selected_font_family_and_shorthand_metadata_match_their_grammar_boundaries() {
+    let family = feature_metadata("baseline.property.font-family").unwrap();
+    assert_eq!(family.kind(), CssFeatureKind::Property);
+    assert_eq!(family.spelling(), "font-family");
+    assert_eq!(family.source().id().as_str(), "I-FONTS4-20260907");
+    assert_eq!(family.production(), "#propdef-font-family");
+    assert_eq!(family.status(), CssSupportStatus::Complete);
+    assert_eq!(family.supported_subset(), None);
+    assert_eq!(family.unsupported_remainder(), None);
+    assert_eq!(family.recognized_unsupported_code(), None);
+    assert!(family.baseline_alias_targets().is_empty());
+
+    let font = feature_metadata("baseline.property.font").unwrap();
+    assert_eq!(font.kind(), CssFeatureKind::Property);
+    assert_eq!(font.spelling(), "font");
+    assert_eq!(font.source().id().as_str(), "I-FONTS4-20260907");
+    assert_eq!(font.production(), "#propdef-font");
+    assert_eq!(font.status(), CssSupportStatus::Partial);
+    assert_eq!(font.supported_subset(), Some(FONT_SHORTHAND_SUBSET));
+    assert_eq!(font.unsupported_remainder(), Some(FONT_SHORTHAND_REMAINDER));
+    assert_eq!(font.recognized_unsupported_code(), None);
+    assert!(font.baseline_alias_targets().is_empty());
+
+    for authored in [
+        "font-family: \"Avenir Next\", sans-serif",
+        "font-family: \"\", menu, generic(kai), ui-rounded",
+        "font: menu",
+        "font: large menu",
+        "font: 16px generic(fangsong)",
+    ] {
+        let report = parse_style_attribute(authored);
+        assert!(report.is_clean(), "{authored}: {:?}", report.diagnostics());
+        assert_eq!(report.syntax().len(), 1, "{authored}");
+    }
+
+    // Fonts4 #propdef-font imports the newer style, weight and size grammars.
+    // These are valid selected-source forms outside the implemented subset.
+    for authored in [
+        "font: oblique 10deg 16px serif",
+        "font: 450.5 16px serif",
+        "font: xxx-large serif",
+        "font: math serif",
+    ] {
+        let report = parse_style_attribute(authored);
+        assert!(!report.is_clean(), "{authored}");
+        assert!(report.syntax().is_empty(), "{authored}");
+        assert_eq!(report.diagnostics().len(), 1, "{authored}");
+        assert_eq!(
+            report.diagnostics()[0].action(),
+            CssRecoveryAction::DropDeclaration,
+            "{authored}",
+        );
+    }
+}
+
+#[test]
 fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
     let fonts3_properties = [
-        ("baseline.property.font", "font", "#propdef-font", "menu"),
-        (
-            "baseline.property.font-family",
-            "font-family",
-            "#propdef-font-family",
-            "\"Avenir Next\", sans-serif",
-        ),
         (
             "baseline.property.font-feature-settings",
             "font-feature-settings",
@@ -243,12 +295,6 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
     assert_eq!(font_face.syntax().rules().len(), 1);
 
     for (id, kind, spelling, production) in [
-        (
-            "baseline.descriptor.font-family",
-            CssFeatureKind::Descriptor,
-            "font-family in @font-face",
-            "#font-family-desc",
-        ),
         (
             "baseline.descriptor.font-style",
             CssFeatureKind::Descriptor,
@@ -1233,7 +1279,7 @@ const EXPECTED: &[ExpectedFeature] = &[
         id: "baseline.descriptor.font-family",
         kind: CssFeatureKind::Descriptor,
         spelling: "font-family in @font-face",
-        source: ExpectedSource::Id("O-FONTS3"),
+        source: ExpectedSource::Id("I-FONTS4-20260907"),
         production: "#font-family-desc",
         status: CssSupportStatus::Complete,
         supported_subset: None,
@@ -1257,7 +1303,10 @@ const EXPECTED: &[ExpectedFeature] = &[
         positive: Some(Input::Sheet(
             "@font-face { font-family: Inter; src: url(inter.woff2) format(\"woff2\"); }",
         )),
-        negative: None,
+        negative: Some((
+            Input::Sheet("@font-face { src: src(\"inter.woff2\"); }"),
+            CssErrorCode::InvalidDescriptorValue,
+        )),
     },
     ExpectedFeature {
         id: "baseline.descriptor.font-weight",
@@ -3756,11 +3805,27 @@ fn conformance_catalog_vectors_cover_each_supported_and_unsupported_boundary() {
         match expected.status {
             CssSupportStatus::Complete => assert!(expected.negative.is_none()),
             CssSupportStatus::Partial if expected.id == "baseline.descriptor.src" => {
-                // The legacy compatibility remainder is closed. The broader src
-                // grammar remains Partial because selected Fonts4 generic names
-                // such as unquoted system-ui are still accepted as local names.
+                // The local-name remainder is closed. Values4 <url> still admits
+                // src() beyond the implemented url() source branch.
                 // https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-src-parsing
-                for name in ["system-ui", "\"system-ui\""] {
+                let (input, code) = expected.negative.expect("src() gap needs a vector");
+                let source_diagnostics = diagnostics(input);
+                assert_eq!(source_diagnostics.len(), 1);
+                assert_eq!(source_diagnostics[0].0, code);
+
+                let report = parse_sheet("@font-face { src: local(system-ui); }");
+                assert!(!report.is_clean());
+                assert_eq!(report.diagnostics().len(), 1);
+                assert_eq!(
+                    report.diagnostics()[0].action(),
+                    CssRecoveryAction::DropDescriptor,
+                );
+                let [CssRule::FontFace(face)] = report.syntax().rules() else {
+                    panic!("expected the retained font face");
+                };
+                assert!(face.descriptors().src().is_none());
+
+                for (name, decoded) in [("\"system-ui\"", "system-ui"), ("menu", "menu")] {
                     let report = parse_sheet(&format!("@font-face {{ src: local({name}); }}"));
                     assert!(report.is_clean());
                     let [CssRule::FontFace(face)] = report.syntax().rules() else {
@@ -3771,7 +3836,7 @@ fn conformance_catalog_vectors_cover_each_supported_and_unsupported_boundary() {
                     else {
                         panic!("expected the local name");
                     };
-                    assert_eq!(local.as_str(), "system-ui");
+                    assert_eq!(local.as_str(), decoded);
                 }
                 let report = parse_sheet(
                     "@font-face { src: url(demo.woff2) format(\"woff2-variations\"); }",

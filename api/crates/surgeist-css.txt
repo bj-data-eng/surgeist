@@ -966,10 +966,20 @@ pub surgeist_css::CssFrequencyUnit::Hertz
 pub surgeist_css::CssFrequencyUnit::Kilohertz
 #[non_exhaustive] pub enum surgeist_css::CssGenericFontFamily
 pub surgeist_css::CssGenericFontFamily::Cursive
+pub surgeist_css::CssGenericFontFamily::Fangsong
 pub surgeist_css::CssGenericFontFamily::Fantasy
+pub surgeist_css::CssGenericFontFamily::Kai
+pub surgeist_css::CssGenericFontFamily::KhmerMul
+pub surgeist_css::CssGenericFontFamily::Math
 pub surgeist_css::CssGenericFontFamily::Monospace
+pub surgeist_css::CssGenericFontFamily::Nastaliq
 pub surgeist_css::CssGenericFontFamily::SansSerif
 pub surgeist_css::CssGenericFontFamily::Serif
+pub surgeist_css::CssGenericFontFamily::SystemUi
+pub surgeist_css::CssGenericFontFamily::UiMonospace
+pub surgeist_css::CssGenericFontFamily::UiRounded
+pub surgeist_css::CssGenericFontFamily::UiSansSerif
+pub surgeist_css::CssGenericFontFamily::UiSerif
 #[non_exhaustive] pub enum surgeist_css::CssGlobalKeyword
 pub surgeist_css::CssGlobalKeyword::Inherit
 pub surgeist_css::CssGlobalKeyword::Initial
@@ -3789,16 +3799,6 @@ pub struct surgeist_css::CssFloatPropertyValue
 impl surgeist_css::CssFloatPropertyValue
 pub fn surgeist_css::CssFloatPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssFloatPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssFloat>
-pub struct surgeist_css::CssFont
-impl surgeist_css::CssFont
-pub const fn surgeist_css::CssFont::families(&self) -> &surgeist_css::CssFontFamilyList
-pub const fn surgeist_css::CssFont::line_height(&self) -> core::option::Option<&surgeist_css::CssLength>
-pub const fn surgeist_css::CssFont::size(&self) -> &surgeist_css::CssLength
-pub const fn surgeist_css::CssFont::stretch(&self) -> core::option::Option<surgeist_css::CssFontStretch>
-pub const fn surgeist_css::CssFont::style(&self) -> core::option::Option<surgeist_css::CssFontStyle>
-pub fn surgeist_css::CssFont::try_new(style: core::option::Option<surgeist_css::CssFontStyle>, variant: core::option::Option<surgeist_css::CssFontVariant>, weight: core::option::Option<surgeist_css::CssFontWeight>, stretch: core::option::Option<surgeist_css::CssFontStretch>, size: surgeist_css::CssLength, line_height: core::option::Option<surgeist_css::CssLength>, families: surgeist_css::CssFontFamilyList) -> core::option::Option<Self>
-pub const fn surgeist_css::CssFont::variant(&self) -> core::option::Option<surgeist_css::CssFontVariant>
-pub const fn surgeist_css::CssFont::weight(&self) -> core::option::Option<surgeist_css::CssFontWeight>
 pub struct surgeist_css::CssFontFaceDescriptors
 impl surgeist_css::CssFontFaceDescriptors
 pub const fn surgeist_css::CssFontFaceDescriptors::font_display(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontDisplay>>
@@ -3868,9 +3868,12 @@ pub fn surgeist_css::CssFontFamilyList::try_new(families: alloc::vec::Vec<surgei
 pub struct surgeist_css::CssFontFamilyName
 impl surgeist_css::CssFontFamilyName
 pub fn surgeist_css::CssFontFamilyName::as_str(&self) -> &str
+pub const fn surgeist_css::CssFontFamilyName::generic(generic: surgeist_css::CssGenericFontFamily) -> Self
 pub const fn surgeist_css::CssFontFamilyName::generic_family(&self) -> core::option::Option<surgeist_css::CssGenericFontFamily>
+pub fn surgeist_css::CssFontFamilyName::identifier_tokens(&self) -> core::option::Option<&[alloc::string::String]>
 pub const fn surgeist_css::CssFontFamilyName::kind(&self) -> surgeist_css::CssFontFamilyNameKind
-pub fn surgeist_css::CssFontFamilyName::try_ident_sequence(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub fn surgeist_css::CssFontFamilyName::try_ident(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub fn surgeist_css::CssFontFamilyName::try_ident_sequence(identifiers: alloc::vec::Vec<alloc::string::String>) -> core::option::Option<Self>
 pub fn surgeist_css::CssFontFamilyName::try_quoted(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
 impl core::fmt::Debug for surgeist_css::CssFontFamilyName
 pub fn surgeist_css::CssFontFamilyName::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -3878,7 +3881,6 @@ pub struct surgeist_css::CssFontFamilyPropertyValue
 impl surgeist_css::CssFontFamilyPropertyValue
 pub fn surgeist_css::CssFontFamilyPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssFontFamilyPropertyValue::families(&self) -> &surgeist_css::CssFontFamilyList
-pub const fn surgeist_css::CssFontFamilyPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssFontFamilyList>
 pub struct surgeist_css::CssFontFeature
 impl surgeist_css::CssFontFeature
 pub fn surgeist_css::CssFontFeature::tag(&self) -> &str
@@ -3917,7 +3919,6 @@ pub struct surgeist_css::CssFontPropertyValue
 impl surgeist_css::CssFontPropertyValue
 pub fn surgeist_css::CssFontPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssFontPropertyValue::font(&self) -> &surgeist_css::CssFontValue
-pub const fn surgeist_css::CssFontPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssFont>
 pub struct surgeist_css::CssFontSizeAdjustPropertyValue
 impl surgeist_css::CssFontSizeAdjustPropertyValue
 pub fn surgeist_css::CssFontSizeAdjustPropertyValue::as_css(&self) -> &str

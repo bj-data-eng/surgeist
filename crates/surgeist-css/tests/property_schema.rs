@@ -55,7 +55,7 @@ fn direct_color_wrappers_keep_current_i01_global_and_substitution_branches_disti
 }
 
 #[test]
-fn core_font_wrappers_keep_current_i01_global_and_substitution_branches_distinct() {
+fn core_font_wrappers_keep_current_global_and_substitution_branches_distinct() {
     let report = parse_style_attribute(concat!(
         "font-size: 16px; line-height: normal; ",
         "font-family: Arial, serif; font: italic 16px/normal Arial; ",
@@ -80,12 +80,17 @@ fn core_font_wrappers_keep_current_i01_global_and_substitution_branches_distinct
                 let _ = value.line_height();
             }
             CssKnownPropertyValueRef::FontFamily(value) => {
-                assert!(value.i01_subset().is_some());
-                let _ = value.families();
+                assert_eq!(value.families().families()[0].as_str(), "Arial");
+                assert_eq!(
+                    value.families().families()[1].generic_family(),
+                    Some(surgeist_css::CssGenericFontFamily::Serif)
+                );
             }
             CssKnownPropertyValueRef::Font(value) => {
-                assert!(value.i01_subset().is_some());
-                let _ = value.font();
+                let surgeist_css::CssFontValue::Explicit(font) = value.font() else {
+                    panic!("expected explicit font");
+                };
+                assert_eq!(font.families().families()[0].as_str(), "Arial");
             }
             CssKnownPropertyValueRef::FontFeatureSettings(value) => {
                 assert!(value.i01_subset().is_some());

@@ -5119,7 +5119,7 @@ fn font_face_descriptor_collection_preserves_optional_matching_fields() {
 }
 
 #[test]
-fn font_face_names_require_content_while_urls_preserve_authored_strings() {
+fn font_face_names_and_urls_preserve_empty_and_whitespace_authored_strings() {
     assert_eq!(
         CssFontFaceFamily::try_new("Avenir Next").unwrap().as_str(),
         "Avenir Next"
@@ -5140,8 +5140,8 @@ fn font_face_names_require_content_while_urls_preserve_authored_strings() {
     );
 
     for value in ["", " \t\n "] {
-        assert_eq!(CssFontFaceFamily::try_new(value), None);
-        assert_eq!(CssFontLocalName::try_new(value), None);
+        assert_eq!(CssFontFaceFamily::try_new(value).unwrap().as_str(), value);
+        assert_eq!(CssFontLocalName::try_new(value).unwrap().as_str(), value);
         assert_eq!(
             CssFontFaceUrlSource::try_new(value, None, Vec::new())
                 .unwrap()
@@ -8099,16 +8099,25 @@ fn parses_typography_and_text_length_families() {
 
 #[test]
 fn parses_font_families_and_font_shorthand_as_authored_syntax() {
-    let family = declaration_value!(
+    let family_declaration = declaration(
         ".panel { font-family: \"Avenir Next\", Gill Sans, sans-serif; }",
-        FontFamily
+        CssProperty::FontFamily,
     );
+    let CssKnownPropertyValueRef::FontFamily(value) = family_declaration
+        .known()
+        .unwrap()
+        .property_value()
+        .unwrap()
+    else {
+        panic!("expected current font-family");
+    };
+    let family = value.families();
     assert_eq!(
         family.families(),
         [
             CssFontFamilyName::try_quoted("Avenir Next").unwrap(),
-            CssFontFamilyName::try_ident_sequence("Gill Sans").unwrap(),
-            CssFontFamilyName::try_ident_sequence("sans-serif").unwrap(),
+            CssFontFamilyName::try_ident_sequence(vec!["Gill".into(), "Sans".into()]).unwrap(),
+            CssFontFamilyName::generic(CssGenericFontFamily::SansSerif),
         ]
     );
 
@@ -8139,10 +8148,18 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
         ]))
     );
 
-    let font = declaration_value!(
+    let font_declaration = declaration(
         ".panel { font: italic small-caps 700 condensed 16px/normal \"Avenir Next\", sans-serif; }",
-        Font
+        CssProperty::Font,
     );
+    let CssKnownPropertyValueRef::Font(value) =
+        font_declaration.known().unwrap().property_value().unwrap()
+    else {
+        panic!("expected current font shorthand");
+    };
+    let CssFontValue::Explicit(font) = value.font() else {
+        panic!("expected an explicit font");
+    };
     assert_eq!(font.style(), Some(CssFontStyle::Italic));
     assert_eq!(font.variant(), Some(CssFontVariant::SmallCaps));
     assert_eq!(
@@ -8150,13 +8167,18 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
         Some(CssFontWeight::Number(CssFontWeightNumber::new(700)))
     );
     assert_eq!(font.stretch(), Some(CssFontStretch::Condensed));
-    assert_eq!(font.size(), &CssLength::px(16.0));
-    assert_eq!(font.line_height(), Some(&CssLength::Normal));
+    assert_eq!(
+        font.size(),
+        &CssFontSize::LengthPercentage(
+            CssFontSizeLengthPercentage::try_new(CssLength::px(16.0)).unwrap()
+        )
+    );
+    assert_eq!(font.line_height(), Some(&CssLineHeight::Normal));
     assert_eq!(
         font.families().families(),
         [
             CssFontFamilyName::try_quoted("Avenir Next").unwrap(),
-            CssFontFamilyName::try_ident_sequence("sans-serif").unwrap(),
+            CssFontFamilyName::generic(CssGenericFontFamily::SansSerif),
         ]
     );
 }
@@ -8219,33 +8241,29 @@ fn checked_typography_constructors_reject_invalid_states() {
     assert_eq!(CssFontFeatureList::try_new(Vec::new()), None);
     assert_eq!(CssTextDecorationLine::try_new(Vec::new()), None);
     assert!(
-        CssFont::try_new(
+        CssExplicitFont::try_new(
             None,
             None,
             None,
             None,
-            CssLength::px(12.0),
+            CssFontSize::LengthPercentage(
+                CssFontSizeLengthPercentage::try_new(CssLength::px(12.0)).unwrap()
+            ),
             None,
-            CssFontFamilyList::new(vec![CssFontFamilyName::ident_sequence("sans-serif")]),
+            CssFontFamilyList::try_new(vec![CssFontFamilyName::generic(
+                CssGenericFontFamily::SansSerif
+            )])
+            .unwrap(),
         )
         .is_some(),
     );
+    assert_eq!(CssFontSizeLengthPercentage::try_new(CssLength::Auto), None);
+    let empty_quoted = CssFontFamilyName::try_quoted("").unwrap();
+    assert_eq!(empty_quoted.as_str(), "");
+    assert!(CssFontFamilyList::try_new(vec![empty_quoted]).is_some());
+    assert_eq!(CssFontFamilyName::try_ident_sequence(Vec::new()), None);
     assert_eq!(
-        CssFont::try_new(
-            None,
-            None,
-            None,
-            None,
-            CssLength::Auto,
-            None,
-            CssFontFamilyList::new(vec![CssFontFamilyName::ident_sequence("sans-serif")]),
-        ),
-        None
-    );
-    assert_eq!(CssFontFamilyName::try_quoted(""), None);
-    assert_eq!(CssFontFamilyName::try_ident_sequence(""), None);
-    assert_eq!(
-        CssFontFamilyList::try_new(vec![CssFontFamilyName::ident_sequence("")]),
+        CssFontFamilyName::try_ident_sequence(vec![String::new()]),
         None
     );
     assert_eq!(CssFontFeature::try_new("abc", None), None);
