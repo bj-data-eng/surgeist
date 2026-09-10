@@ -62,6 +62,12 @@ mode builds rustdoc data but does not rewrite audit files. Use `--list` to
 inspect targets; use `--check --all` only when the full audit set is in scope.
 API auditing is separate from normal `cargo test` runs.
 
+Use `--check --crate surgeist-generator` to check both its default API and its
+CSS corpus API. The companion `surgeist-generator.css-corpus.txt` artifact uses
+`--no-default-features --features css-corpus`. Its listing, header, and stale
+diagnostic identify it as `surgeist-generator [css-corpus]`; the browser feature
+is disabled for this profile.
+
 ## Refresh Audits After An Authorized Source Change
 
 Refresh from the changed source in this repository. External crate publication
@@ -73,6 +79,7 @@ CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo run --offline -j 1 --manifest-pa
 ```
 
 Use `--root` for the facade or `--all` for an authorized complete refresh.
+`--crate surgeist-generator` refreshes both its default and CSS profile audits.
 Inspect the generated diff, explain each delta from its source change, and run
 the corresponding check. Keep the source and generated changes together in
 review. Missing prerequisites or an unexplained delta stop the refresh handoff.

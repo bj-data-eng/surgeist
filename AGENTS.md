@@ -119,6 +119,13 @@ directories containing manifests, independently of Cargo workspace membership.
 This includes the shared generator crate and test-support crate. Inspect
 `api/generator/src/lib.rs` for target selection and its pinned rustdoc toolchain.
 
+Each package retains its default-feature artifact. The configured
+`surgeist-generator` CSS profile additionally writes
+`api/crates/surgeist-generator.css-corpus.txt` using `--no-default-features
+--features css-corpus`; it does not enable `browser-corpus`. Both `--crate
+surgeist-generator` and `--all` select its default and CSS artifacts. Listings,
+artifact headers, and stale-artifact diagnostics identify the CSS profile.
+
 Refresh API audits from the authorized source change in this repository and
 review the generated diff with that change. No external crate publication or
 pointer update is required. Source is authoritative; never hand-edit generated
@@ -168,6 +175,15 @@ environment setting also limits nested rustdoc Cargo builds to one job:
 CARGO_BUILD_JOBS=1 cargo test --offline -j 1 --manifest-path api/generator/Cargo.toml -- --test-threads=1
 CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo run --offline -j 1 --manifest-path api/generator/Cargo.toml -- --list
 CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo run --offline -j 1 --manifest-path api/generator/Cargo.toml -- --check
+```
+
+The API tool's real feature fixture is ignored in the ordinary suite because it
+invokes the pinned nightly rustdoc for generation and checking. Select it
+separately when profile handling changes. Unset `CARGO_TARGET_DIR` so the fixture
+owns and removes its nested build output:
+
+```sh
+env -u CARGO_TARGET_DIR CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo test --offline -j 1 --manifest-path api/generator/Cargo.toml --lib tests::css_corpus_audit_uses_only_requested_features_and_reports_its_missing_artifact -- --ignored --exact --test-threads=1
 ```
 
 For an authorized refresh, select `--root`, `--crate surgeist-task`, or `--all`

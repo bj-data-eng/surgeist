@@ -80,6 +80,14 @@ of Cargo workspace membership. Source is authoritative; the generated root
 audit retains wildcard reexport placeholders, and audit headers may report
 missing rustdoc item IDs. Consult current public source for detailed APIs.
 
+Every package keeps its existing artifact using its manifest-defined default
+features. The configured `surgeist-generator` CSS profile adds
+`api/crates/surgeist-generator.css-corpus.txt`, built with
+`--no-default-features --features css-corpus` and without `browser-corpus`.
+`--crate surgeist-generator` and `--all` select both generator artifacts; other
+packages keep their default profile. The CSS profile appears as
+`surgeist-generator [css-corpus]` in listings, headers, and stale diagnostics.
+
 ## Verification Scope
 
 The [root command inventory](../AGENTS.md#command-inventory) selects serial

@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -75,6 +77,13 @@ pub struct ApiTarget {
     name: String,
     root: PathBuf,
     artifact: PathBuf,
+    profile: ApiProfile,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum ApiProfile {
+    Default,
+    CssCorpus,
 }
 
 impl ApiTarget {
@@ -87,6 +96,23 @@ impl ApiTarget {
             name: name.into(),
             root: root.into(),
             artifact: artifact.into(),
+            profile: ApiProfile::Default,
+        }
+    }
+
+    fn css_corpus(root: PathBuf, artifact: PathBuf) -> Self {
+        Self {
+            name: "surgeist-generator".to_owned(),
+            root,
+            artifact,
+            profile: ApiProfile::CssCorpus,
+        }
+    }
+
+    fn audit_name(&self) -> String {
+        match self.profile {
+            ApiProfile::Default => self.name.clone(),
+            ApiProfile::CssCorpus => format!("{} [css-corpus]", self.name),
         }
     }
 
@@ -146,9 +172,19 @@ pub fn discover_targets(root: &Path) -> Result<Vec<ApiTarget>, String> {
                 ));
             }
             let artifact = root.join("api").join("crates").join(format!("{name}.txt"));
+            if name == "surgeist-generator" {
+                crate_targets.push(ApiTarget::css_corpus(
+                    path.clone(),
+                    root.join("api/crates/surgeist-generator.css-corpus.txt"),
+                ));
+            }
             crate_targets.push(ApiTarget::new(name, path, artifact));
         }
-        crate_targets.sort_by(|left, right| left.name().cmp(right.name()));
+        crate_targets.sort_by(|left, right| {
+            left.name()
+                .cmp(right.name())
+                .then_with(|| left.profile.cmp(&right.profile))
+        });
         targets.extend(crate_targets);
     }
 
@@ -172,13 +208,11 @@ pub fn select_targets(root: &Path, selection: TargetSelection) -> Result<Vec<Api
             if !matches.is_empty() {
                 return Ok(matches);
             }
-            let available = targets
-                .iter()
-                .map(ApiTarget::name)
-                .collect::<Vec<_>>()
-                .join(", ");
+            let mut available = targets.iter().map(ApiTarget::name).collect::<Vec<_>>();
+            available.dedup();
             Err(format!(
-                "unknown API target {name}; available targets: {available}"
+                "unknown API target {name}; available targets: {}",
+                available.join(", "),
             ))
         }
     }
@@ -216,7 +250,7 @@ where
                         println!("current {}", target.artifact_path().display());
                     }
                     ArtifactCheck::Different | ArtifactCheck::Missing => {
-                        stale.push(target.name().to_owned());
+                        stale.push(target.audit_name());
                     }
                 }
             }
@@ -239,24 +273,29 @@ pub fn render_list_line(root: &Path, target: &ApiTarget) -> String {
     let path = relative
         .map(|path| path.display().to_string())
         .unwrap_or_else(|| ".".to_owned());
-    format!("{} {}", target.name(), path)
+    format!("{} {}", target.audit_name(), path)
 }
 
 pub fn generate_target_artifact(target: &ApiTarget) -> Result<String, String> {
     // The parser's minimum nightly predates Surgeist's MSRV; pin a compatible rustdoc.
-    let rustdoc_json = rustdoc_json::Builder::default()
+    let builder = rustdoc_json::Builder::default()
         .toolchain("nightly-2026-05-28")
         .manifest_path(target.manifest_path())
-        .package(target.name())
+        .package(target.name());
+    let builder = match target.profile {
+        ApiProfile::Default => builder,
+        ApiProfile::CssCorpus => builder.no_default_features(true).features(["css-corpus"]),
+    };
+    let rustdoc_json = builder
         .build()
-        .map_err(|error| format!("build rustdoc JSON for {}: {error}", target.name()))?;
+        .map_err(|error| format!("build rustdoc JSON for {}: {error}", target.audit_name()))?;
 
     let public_api = public_api::Builder::from_rustdoc_json(rustdoc_json)
         .omit_blanket_impls(true)
         .omit_auto_trait_impls(true)
         .omit_auto_derived_impls(true)
         .build()
-        .map_err(|error| format!("derive public API for {}: {error}", target.name()))?;
+        .map_err(|error| format!("derive public API for {}: {error}", target.audit_name()))?;
 
     let missing_item_ids = public_api
         .missing_item_ids()
@@ -264,7 +303,7 @@ pub fn generate_target_artifact(target: &ApiTarget) -> Result<String, String> {
         .collect::<Vec<_>>();
 
     Ok(render_api_artifact(
-        target.name(),
+        &target.audit_name(),
         &public_api.to_string(),
         &missing_item_ids,
     ))
@@ -469,6 +508,136 @@ mod tests {
                 "listed generator profiles must be distinguishable",
             );
         }
+    }
+
+    #[test]
+    fn configured_generator_profiles_preserve_other_target_selections() {
+        let fixture = TempFixture::new("surgeist-api-profile-selection");
+        fixture.file("Cargo.toml", "[package]\nname = \"surgeist\"\n");
+        fixture.file(
+            "crates/surgeist-generator/Cargo.toml",
+            "[package]\nname = \"surgeist-generator\"\n",
+        );
+        fixture.file(
+            "crates/surgeist-task/Cargo.toml",
+            "[package]\nname = \"surgeist-task\"\n[features]\ncss-corpus = []\n",
+        );
+
+        let targets = select_targets(fixture.path(), TargetSelection::All).unwrap();
+        let listed = targets
+            .iter()
+            .map(|target| render_list_line(fixture.path(), target))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            listed,
+            [
+                "surgeist .",
+                "surgeist-generator crates/surgeist-generator",
+                "surgeist-generator [css-corpus] crates/surgeist-generator",
+                "surgeist-task crates/surgeist-task",
+            ],
+        );
+        assert_eq!(
+            select_targets(fixture.path(), TargetSelection::Root).unwrap(),
+            [ApiTarget::new(
+                "surgeist",
+                fixture.path(),
+                fixture.path().join("api/public-api.txt"),
+            )],
+        );
+        assert_eq!(
+            select_targets(
+                fixture.path(),
+                TargetSelection::Crate("surgeist-task".to_owned()),
+            )
+            .unwrap(),
+            [ApiTarget::new(
+                "surgeist-task",
+                fixture.path().join("crates/surgeist-task"),
+                fixture.path().join("api/crates/surgeist-task.txt"),
+            )],
+        );
+        assert_eq!(
+            select_targets(
+                fixture.path(),
+                TargetSelection::Crate("missing".to_owned()),
+            )
+            .unwrap_err(),
+            "unknown API target missing; available targets: surgeist, surgeist-generator, surgeist-task",
+        );
+    }
+
+    #[test]
+    #[ignore = "runs pinned nightly rustdoc on an isolated feature fixture; select explicitly with offline Cargo and one build job"]
+    fn css_corpus_audit_uses_only_requested_features_and_reports_its_missing_artifact() {
+        let fixture = TempFixture::new("surgeist-api-profile-rustdoc");
+        fixture.file(
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"crates/surgeist-generator\"]\nresolver = \"2\"\n",
+        );
+        fixture.file(
+            "crates/surgeist-generator/Cargo.toml",
+            concat!(
+                "[package]\nname = \"surgeist-generator\"\nversion = \"0.0.0\"\nedition = \"2021\"\n",
+                "[features]\ndefault = [\"browser-corpus\"]\ncss-corpus = []\nbrowser-corpus = []\n",
+            ),
+        );
+        fixture.file(
+            "crates/surgeist-generator/src/lib.rs",
+            concat!(
+                "#![forbid(unsafe_code)]\n",
+                "pub struct Shared;\n",
+                "#[cfg(feature = \"browser-corpus\")]\npub struct BrowserOnly;\n",
+                "#[cfg(feature = \"css-corpus\")]\npub struct CssOnly;\n",
+            ),
+        );
+
+        run(
+            fixture.path(),
+            ["generator", "--crate", "surgeist-generator"],
+        )
+        .unwrap();
+
+        let default_path = fixture.path().join("api/crates/surgeist-generator.txt");
+        let css_path = fixture
+            .path()
+            .join("api/crates/surgeist-generator.css-corpus.txt");
+        let default_artifact = std::fs::read_to_string(&default_path).unwrap();
+        let css_artifact = std::fs::read_to_string(&css_path).unwrap();
+        assert!(default_artifact.starts_with("# surgeist-generator public API\n"));
+        assert!(css_artifact.starts_with("# surgeist-generator [css-corpus] public API\n"));
+        for artifact in [&default_artifact, &css_artifact] {
+            assert!(artifact
+                .lines()
+                .any(|line| line == "pub struct surgeist_generator::Shared"));
+        }
+        assert!(default_artifact
+            .lines()
+            .any(|line| line == "pub struct surgeist_generator::BrowserOnly"));
+        assert!(!default_artifact.contains("CssOnly"));
+        assert!(css_artifact
+            .lines()
+            .any(|line| line == "pub struct surgeist_generator::CssOnly"));
+        assert!(!css_artifact.contains("BrowserOnly"));
+
+        std::fs::remove_file(&css_path).unwrap();
+        let error = run(
+            fixture.path(),
+            ["generator", "--check", "--crate", "surgeist-generator"],
+        )
+        .unwrap_err();
+        assert_eq!(
+            error,
+            "stale API artifacts: surgeist-generator [css-corpus]"
+        );
+        assert!(
+            !css_path.exists(),
+            "check must not recreate the missing audit"
+        );
+        assert_eq!(
+            std::fs::read_to_string(default_path).unwrap(),
+            default_artifact,
+        );
     }
 
     #[test]
