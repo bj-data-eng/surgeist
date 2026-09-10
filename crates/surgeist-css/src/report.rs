@@ -81,8 +81,8 @@ impl<T> CssParseReport<T> {
 
 /// A diagnostic-phase description of one CSS-owned recovery decision.
 ///
-/// The variants are the complete I01 action vocabulary and the enum is
-/// non-exhaustive so later initiatives can add actions without invalidating
+/// The variants describe the parser's recovery vocabulary and the enum is
+/// non-exhaustive so later recovery support can add actions without invalidating
 /// wildcard-compatible consumers. An action records what recovery did; it does
 /// not itself parse, mutate syntax, log, validate, cascade, or resolve values.
 #[non_exhaustive]
@@ -92,6 +92,8 @@ pub enum CssRecoveryAction {
     DropDeclaration,
     /// The diagnostic phase discarded one invalid authored at-rule descriptor.
     DropDescriptor,
+    /// The diagnostic phase discarded one invalid source while retaining valid `src` fallbacks.
+    DropFontSourceListItem,
     /// The diagnostic phase discarded one invalid authored qualified rule.
     DropQualifiedRule,
     /// The diagnostic phase discarded one invalid authored at-rule.

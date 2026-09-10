@@ -1914,6 +1914,7 @@ pub surgeist_css::CssRadialSize::Extent(surgeist_css::CssRadialExtent)
 pub surgeist_css::CssRecoveryAction::DropAtRule
 pub surgeist_css::CssRecoveryAction::DropDeclaration
 pub surgeist_css::CssRecoveryAction::DropDescriptor
+pub surgeist_css::CssRecoveryAction::DropFontSourceListItem
 pub surgeist_css::CssRecoveryAction::DropKeyframeBlock
 pub surgeist_css::CssRecoveryAction::DropQualifiedRule
 pub surgeist_css::CssRecoveryAction::DropSelectorListItem

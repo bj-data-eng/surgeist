@@ -1,15 +1,18 @@
 use cssparser::{
-    AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserState,
-    QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, Token,
+    AtRuleParser, BasicParseErrorKind, CowRcStr, DeclarationParser, Delimiter, ParseError, Parser,
+    ParserState, QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, Token,
     UnicodeRange as ParsedUnicodeRange, match_ignore_ascii_case,
 };
 
-use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
+use super::recovery::{
+    RecoveryLoopOutcome, RecoveryProgress, RecoveryState, comma_member_span,
+    recovery_action_for_error,
+};
 use super::typography::{parse_font_feature_settings, parse_non_generic_font_family_name};
 use super::{block_item_diagnostic, is_declaration_recovery_unit, parse_descriptor_boundary};
 use crate::error::{
-    CssFeatureId, Error, basic, descriptor_name_error, unsupported_value, unsupported_value_at,
-    with_descriptor_context,
+    CssFeatureId, Error, basic, descriptor_name_error, from_parse_error, unsupported_value,
+    unsupported_value_at, with_descriptor_context,
 };
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
@@ -44,7 +47,11 @@ pub(super) fn parse_font_face_rule<'i, 't>(
     recovery: RecoveryState,
 ) -> std::result::Result<CssFontFaceRule, ParseError<'i, Error>> {
     let mut descriptors = Vec::new();
-    let mut descriptor_parser = FontFaceDescriptorParser { source, recovery };
+    let mut descriptor_parser = FontFaceDescriptorParser {
+        source,
+        recovery,
+        diagnostics: Vec::new(),
+    };
 
     let mut items = RuleBodyParser::new(input, &mut descriptor_parser);
     loop {
@@ -77,6 +84,7 @@ pub(super) fn parse_font_face_rule<'i, 't>(
         }
     }
 
+    diagnostics.extend(descriptor_parser.diagnostics);
     let descriptors = CssFontFaceDescriptors::from_occurrences(descriptors);
 
     Ok(CssFontFaceRule::new(
@@ -88,6 +96,7 @@ pub(super) fn parse_font_face_rule<'i, 't>(
 struct FontFaceDescriptorParser<'s> {
     source: &'s str,
     recovery: RecoveryState,
+    diagnostics: Vec<crate::CssRecoveryDiagnostic>,
 }
 
 impl<'i> AtRuleParser<'i> for FontFaceDescriptorParser<'i> {
@@ -129,6 +138,7 @@ impl<'i> DeclarationParser<'i> for FontFaceDescriptorParser<'i> {
             declaration_start.position(),
             declaration_start.source_location(),
         );
+        let mut member_diagnostics = Vec::new();
         let result = (|| {
             Ok(match_ignore_ascii_case! { &name,
                 "font-family" => CssFontFaceDescriptor::FontFamily(
@@ -139,7 +149,9 @@ impl<'i> DeclarationParser<'i> for FontFaceDescriptorParser<'i> {
                 ),
                 "src" => CssFontFaceDescriptor::Src(
                     CssDescriptorOccurrence::new(
-                        parse_descriptor_boundary(input, "font-face", "src", parse_font_face_source_list)?,
+                        parse_descriptor_boundary(input, "font-face", "src", |input| {
+                            parse_font_face_source_list(self.source, input, &mut member_diagnostics)
+                        })?,
                         position,
                     ),
                 ),
@@ -192,6 +204,9 @@ impl<'i> DeclarationParser<'i> for FontFaceDescriptorParser<'i> {
             })
         })()
         .map_err(|error| with_descriptor_context(error, "font-face", name.as_ref()))?;
+        // A rejected enclosing descriptor did not retain any of these sources.
+        // Publish member recovery only after its annotation and value boundary pass.
+        self.diagnostics.extend(member_diagnostics);
         self.recovery.retain_component_closures(implicit_closures);
         Ok(result)
     }
@@ -206,25 +221,69 @@ fn parse_font_face_family<'i, 't>(
 }
 
 fn parse_font_face_source_list<'i, 't>(
+    source: &str,
     input: &mut Parser<'i, 't>,
+    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
 ) -> std::result::Result<CssFontFaceSourceList, ParseError<'i, Error>> {
     let mut sources = Vec::new();
+    let mut first_error = None;
+    let mut preceding_comma = None;
     loop {
-        sources.push(parse_font_face_source(input)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
+        let member_start = input.position().byte_index();
+        let result = input.parse_until_before(Delimiter::Comma, |member| {
+            let parsed = parse_font_face_source(member)?;
+            member.expect_exhausted().map_err(basic)?;
+            Ok(parsed)
+        });
+        let member_end = input.position().byte_index();
+        let following_comma = match input.next() {
+            Ok(Token::Comma) => Some((member_end, input.position().byte_index())),
+            Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => None,
+            Ok(_) => {
+                return Err(unsupported_value(
+                    input,
+                    None,
+                    "invalid font-face src list delimiter",
+                ));
+            }
+            Err(error) => return Err(basic(error)),
+        };
+
+        match result {
+            Ok(parsed) => sources.push(parsed),
+            Err(error) => {
+                if first_error.is_none() {
+                    first_error = Some(error.clone());
+                }
+                let action = recovery_action_for_error(
+                    &error,
+                    crate::CssRecoveryAction::DropFontSourceListItem,
+                );
+                let error =
+                    from_parse_error(source, with_descriptor_context(error, "font-face", "src"));
+                if let Some(span) = comma_member_span(
+                    source,
+                    member_start,
+                    member_end,
+                    following_comma,
+                    preceding_comma,
+                ) && let Some(diagnostic) =
+                    crate::CssRecoveryDiagnostic::new(error, span, action)
+                {
+                    diagnostics.push(diagnostic);
+                }
+            }
+        }
+
+        let Some(comma) = following_comma else {
             break;
-        }
-        if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "font-face src list has an empty item",
-            ));
-        }
+        };
+        preceding_comma = Some(comma);
     }
 
-    CssFontFaceSourceList::try_new(sources)
-        .ok_or_else(|| unsupported_value(input, None, "font-face src list is empty"))
+    CssFontFaceSourceList::try_new(sources).ok_or_else(|| {
+        first_error.unwrap_or_else(|| unsupported_value(input, None, "font-face src list is empty"))
+    })
 }
 
 fn parse_font_face_source<'i, 't>(

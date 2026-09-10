@@ -120,11 +120,41 @@ fn font_face_family_and_local_names_distinguish_quoted_reserved_names() {
 }
 
 #[test]
-fn font_source_lists_reject_empty_items_and_invalid_hint_order() {
-    let cases = [
-        "@font-face{font-family:Demo;src:}",
+fn font_source_lists_retain_fallbacks_beside_empty_members() {
+    // Fonts4 parses src members independently; an empty member does not remove
+    // a valid fallback: https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-src-parsing
+    for source in [
         "@font-face{font-family:Demo;src:,url(a)}",
         "@font-face{font-family:Demo;src:url(a),}",
+    ] {
+        let report = parse_sheet(source);
+        let [CssRule::FontFace(rule)] = report.syntax().rules() else {
+            panic!("expected retained font-face: {source}");
+        };
+        let [CssFontFaceSource::Url(url)] = rule.descriptors().src().unwrap().sources() else {
+            panic!("expected retained URL fallback: {source}");
+        };
+        assert_eq!(url.url(), "a");
+        assert_eq!(rule.descriptors().font_family().unwrap().as_str(), "Demo");
+        let [diagnostic] = report.diagnostics() else {
+            panic!("expected one discarded empty member: {source}");
+        };
+        assert_eq!(
+            diagnostic.error().code(),
+            CssErrorCode::InvalidDescriptorValue
+        );
+        assert_eq!(
+            diagnostic.action(),
+            CssRecoveryAction::DropFontSourceListItem
+        );
+        assert_strict_parity(source);
+    }
+}
+
+#[test]
+fn font_source_lists_reject_all_invalid_items_and_invalid_hint_order() {
+    let cases = [
+        "@font-face{font-family:Demo;src:}",
         "@font-face{font-family:Demo;src:mystery}",
         "@font-face{font-family:Demo;src:local()}",
         "@font-face{font-family:Demo;src:url(a) format()}",

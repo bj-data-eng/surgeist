@@ -378,6 +378,14 @@ and rules missing `font-family` or `src` remain valid authored syntax. Those two
 accessors return `Option`; their absence excludes the face from downstream font
 matching under the pinned Fonts 4 §4.1, rather than causing a grammar error.
 
+Under the selected Fonts 4 source-list processing rules, each comma-separated
+`src` member is validated independently. Invalid members receive
+`DropFontSourceListItem` diagnostics while valid fallbacks keep their authored
+order. If every member is invalid, or the enclosing descriptor has an invalid
+declaration annotation, the descriptor receives one `DropDescriptor` diagnostic;
+earlier valid descriptor occurrences remain available. Any such recovery makes
+the report unclean, so `validate_sheet` rejects it.
+
 Fonts 3 rows cite the dated `O-FONTS3` source and are `Complete`. The five
 selected atomic Fonts 4 deltas cite `I-FONTS4` and remain `Partial` with explicit
 subset and remainder text; `font-display` is `Complete`, while
