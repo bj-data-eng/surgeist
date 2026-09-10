@@ -253,3 +253,77 @@ fn clean_source_list_has_no_recovery_and_passes_validation() {
     assert!(report.is_clean());
     assert_validation_parity(source, &report);
 }
+
+#[test]
+fn discarded_source_members_do_not_claim_implicit_closures() {
+    // RetainWithImplicitClosure describes retained syntax. Discarding a source
+    // member also discards its unclosed functions, even if another member survives.
+    for discarded in ["local(", "dummy(", "dummy(nested(", "url(bad) format("] {
+        let source = format!("@font-face{{src:url(valid),{discarded}");
+        let report = parse_sheet(&source);
+        let [CssRule::FontFace(rule)] = report.syntax().rules() else {
+            panic!("expected retained font-face for {source}");
+        };
+        assert_sources(rule, &[("url", "valid")]);
+        let discarded_count = report
+            .diagnostics()
+            .iter()
+            .filter(|diagnostic| diagnostic.action() == CssRecoveryAction::DropFontSourceListItem)
+            .count();
+        assert_eq!(discarded_count, 1, "{source}: {:?}", report.diagnostics());
+        let closures: Vec<_> = report
+            .diagnostics()
+            .iter()
+            .filter(|diagnostic| {
+                diagnostic.action() == CssRecoveryAction::RetainWithImplicitClosure
+            })
+            .collect();
+        assert_eq!(
+            closures.len(),
+            1,
+            "only the retained font-face block closes at EOF: {source}: {:?}",
+            report.diagnostics()
+        );
+        assert_span(&source, closures[0], source.len(), source.len());
+        assert_eq!(report.diagnostics().len(), 2);
+        assert_validation_parity(&source, &report);
+    }
+}
+
+#[test]
+fn retained_source_members_keep_their_implicit_closures() {
+    for (source, expected_discarded) in [
+        ("@font-face{src:url(first),local(Last", 0),
+        ("@font-face{src:url(first),dummy(),local(Last", 1),
+    ] {
+        let report = parse_sheet(source);
+        let [CssRule::FontFace(rule)] = report.syntax().rules() else {
+            panic!("expected retained font-face for {source}");
+        };
+        assert_sources(rule, &[("url", "first"), ("local", "Last")]);
+        let discarded_count = report
+            .diagnostics()
+            .iter()
+            .filter(|diagnostic| diagnostic.action() == CssRecoveryAction::DropFontSourceListItem)
+            .count();
+        assert_eq!(discarded_count, expected_discarded);
+        let closures: Vec<_> = report
+            .diagnostics()
+            .iter()
+            .filter(|diagnostic| {
+                diagnostic.action() == CssRecoveryAction::RetainWithImplicitClosure
+            })
+            .collect();
+        assert_eq!(
+            closures.len(),
+            2,
+            "both retained font-face and local() close at EOF: {source}: {:?}",
+            report.diagnostics()
+        );
+        for diagnostic in closures {
+            assert_span(source, diagnostic, source.len(), source.len());
+        }
+        assert_eq!(report.diagnostics().len(), expected_discarded + 2);
+        assert_validation_parity(source, &report);
+    }
+}
