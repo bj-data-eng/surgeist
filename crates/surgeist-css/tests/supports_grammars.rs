@@ -1,6 +1,6 @@
 use surgeist_css::{
-    CssErrorCode, CssImportance, CssNamespaceConstraint, CssRecoveryAction, CssRule, CssScopedRule,
-    CssSelector, CssSupportsConditionKind, parse_sheet,
+    CssErrorCode, CssImportance, CssKnownProperty, CssNamespaceConstraint, CssPropertyNameRef,
+    CssRecoveryAction, CssRule, CssScopedRule, CssSelector, CssSupportsConditionKind, parse_sheet,
 };
 
 #[test]
@@ -224,7 +224,34 @@ fn supports_rules_work_in_conditional_nested_style_and_scoped_contexts() {
         panic!("expected media");
     };
     assert!(matches!(media.rules(), [CssRule::Supports(_)]));
-    assert!(matches!(report.syntax().rules()[1], CssRule::Supports(_)));
+    let CssRule::Style(parent) = &report.syntax().rules()[1] else {
+        panic!("expected the authored parent style rule");
+    };
+    assert_eq!(
+        parent.selectors().selectors()[0].selector(),
+        &CssSelector::Class("host".to_owned())
+    );
+    assert!(parent.declarations().is_empty());
+    let [CssRule::Supports(nested)] = parent.rules() else {
+        panic!("expected supports inside the parent style rule");
+    };
+    let [CssRule::NestedDeclarations(leading), CssRule::Style(child)] = nested.rules() else {
+        panic!("expected the conditional declaration run before its nested style rule");
+    };
+    let [color] = leading.declarations().as_slice() else {
+        panic!("expected the leading color declaration");
+    };
+    assert_eq!(
+        color.property_name(),
+        CssPropertyNameRef::Known(CssKnownProperty::Color)
+    );
+    let [width] = child.declarations().as_slice() else {
+        panic!("expected the child width declaration");
+    };
+    assert_eq!(
+        width.property_name(),
+        CssPropertyNameRef::Known(CssKnownProperty::Width)
+    );
     let CssRule::Scope(scope) = &report.syntax().rules()[2] else {
         panic!("expected scope");
     };

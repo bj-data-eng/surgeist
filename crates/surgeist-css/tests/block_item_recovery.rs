@@ -249,14 +249,21 @@ fn block_item_recovery_all_invalid_declarations_retain_empty_nested_style_in_ord
         &CssSelector::Class("host".to_owned())
     );
     assert_eq!(property_names(parent.declarations()), ["color"]);
-    let [CssStyleSelector::Relative(relative)] = empty.selectors().selectors() else {
-        panic!("expected relative selector for the empty nested style");
+    let [CssStyleSelector::Selector(CssSelector::Complex(selector))] =
+        empty.selectors().selectors()
+    else {
+        panic!("expected an explicit parent anchor followed by the child selector");
     };
-    assert_eq!(relative.combinator(), CssSelectorCombinator::Descendant);
-    let CssSelector::Compound(child) = relative.selector() else {
-        panic!("expected child compound");
+    assert_eq!(selector.first().nesting_selectors(), 1);
+    assert!(!selector.first().has_scope_anchor());
+    assert!(selector.first().classes().is_empty());
+    let [child] = selector.rest() else {
+        panic!("expected one descendant child compound");
     };
-    assert_eq!(child.classes(), &["child".to_owned()]);
+    assert_eq!(child.combinator(), CssSelectorCombinator::Descendant);
+    assert_eq!(child.selector().classes(), &["child".to_owned()]);
+    assert_eq!(child.selector().nesting_selectors(), 0);
+    assert!(!child.selector().has_scope_anchor());
     assert!(empty.declarations().is_empty());
     assert_eq!(property_names(after.declarations()), ["opacity"]);
     assert_eq!(
