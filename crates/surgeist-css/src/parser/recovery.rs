@@ -300,13 +300,14 @@ impl RecoveryState {
                 enclosing_production,
             ));
         }
-        scan_nested_tokens(
+        let end = scan_nested_tokens(
             source,
             start,
             self.depth.get(),
             enclosing_production,
             ScanBoundary::DeclarationValue,
-        )
+        )?;
+        Ok(self.component_openings_in(start..end))
     }
 
     pub(super) fn check_specialized_components<'i>(
@@ -328,13 +329,25 @@ impl RecoveryState {
                 enclosing_production,
             ));
         }
-        scan_nested_tokens(
+        let end = scan_nested_tokens(
             source,
             start,
             self.depth.get(),
             enclosing_production,
             ScanBoundary::SpecializedPrelude,
-        )
+        )?;
+        Ok(self.component_openings_in(start..end))
+    }
+
+    fn component_openings_in(&self, range: std::ops::Range<usize>) -> Vec<usize> {
+        // Keep the same opening identities as the structural scanner, including
+        // escaped function names and URL tokens, within this grammar unit only.
+        self.implicit_openings
+            .iter()
+            .rev()
+            .copied()
+            .filter(|opening| range.contains(opening))
+            .collect()
     }
 
     pub(super) fn retain_component_closures(&self, openings: Vec<usize>) {
@@ -742,19 +755,22 @@ enum ScanBoundary {
     SpecializedPrelude,
 }
 
+// Validate nesting and return the exclusive grammar-unit boundary. Token starts
+// are not structural opening identities: URL tokens consume their own contents,
+// and escaped function names need not have the raw scanner's name-start offset.
 fn scan_nested_tokens<'i>(
     source: &str,
     start: usize,
     base_depth: u32,
     enclosing_production: &'static str,
     boundary: ScanBoundary,
-) -> Result<Vec<usize>, ParseError<'i, Error>> {
+) -> Result<usize, ParseError<'i, Error>> {
     let mut offset = start.min(source.len());
-    let mut blocks: Vec<(BlockKind, usize)> = Vec::new();
+    let mut blocks: Vec<BlockKind> = Vec::new();
     while let Some((token_start, token_end, token)) = next_source_token(source, offset) {
         offset = token_end;
         if let Some(closing) = closing_block(&token) {
-            if blocks.last().is_some_and(|(kind, _)| *kind == closing) {
+            if blocks.last().is_some_and(|kind| *kind == closing) {
                 blocks.pop();
                 continue;
             }
@@ -762,13 +778,13 @@ fn scan_nested_tokens<'i>(
                 && matches!(boundary, ScanBoundary::FailedCurlyBlock)
                 && closing == BlockKind::Curly
             {
-                return Ok(Vec::new());
+                return Ok(token_start);
             }
             if blocks.is_empty()
                 && matches!(boundary, ScanBoundary::DeclarationValue)
                 && closing == BlockKind::Curly
             {
-                return Ok(Vec::new());
+                return Ok(token_start);
             }
             continue;
         }
@@ -776,13 +792,13 @@ fn scan_nested_tokens<'i>(
             && matches!(boundary, ScanBoundary::DeclarationValue)
             && matches!(token, Token::Semicolon)
         {
-            return Ok(Vec::new());
+            return Ok(token_start);
         }
         if blocks.is_empty()
             && matches!(boundary, ScanBoundary::SpecializedPrelude)
             && matches!(token, Token::Semicolon | Token::CurlyBracketBlock)
         {
-            return Ok(Vec::new());
+            return Ok(token_start);
         }
         if let Some(opening) = opening_block(&token) {
             let nested_depth = base_depth.saturating_add(blocks.len() as u32);
@@ -794,14 +810,10 @@ fn scan_nested_tokens<'i>(
                     enclosing_production,
                 ));
             }
-            blocks.push((opening, token_start));
+            blocks.push(opening);
         }
     }
-    Ok(blocks
-        .into_iter()
-        .rev()
-        .map(|(_, opening)| opening)
-        .collect())
+    Ok(source.len())
 }
 
 fn unclosed_openings(source: &str) -> Vec<usize> {
