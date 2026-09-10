@@ -131,7 +131,7 @@ impl<'i> DeclarationParser<'i> for FontFaceDescriptorParser<'i> {
         input: &mut Parser<'i, 't>,
         declaration_start: &ParserState,
     ) -> std::result::Result<Self::Declaration, ParseError<'i, Self::Error>> {
-        let implicit_closures =
+        let mut implicit_closures =
             self.recovery
                 .check_component_values(self.source, input, "css.descriptor")?;
         let position = crate::source::CssSourcePosition::from_cssparser(
@@ -150,7 +150,7 @@ impl<'i> DeclarationParser<'i> for FontFaceDescriptorParser<'i> {
                 "src" => CssFontFaceDescriptor::Src(
                     CssDescriptorOccurrence::new(
                         parse_descriptor_boundary(input, "font-face", "src", |input| {
-                            parse_font_face_source_list(self.source, input, &mut member_diagnostics)
+                            parse_font_face_source_list(self.source, input, &mut member_diagnostics, &mut implicit_closures)
                         })?,
                         position,
                     ),
@@ -224,6 +224,7 @@ fn parse_font_face_source_list<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    implicit_closures: &mut Vec<usize>,
 ) -> std::result::Result<CssFontFaceSourceList, ParseError<'i, Error>> {
     let mut sources = Vec::new();
     let mut first_error = None;
@@ -252,6 +253,8 @@ fn parse_font_face_source_list<'i, 't>(
         match result {
             Ok(parsed) => sources.push(parsed),
             Err(error) => {
+                // Openings in a discarded member do not describe retained syntax.
+                implicit_closures.retain(|opening| !(member_start..member_end).contains(opening));
                 if first_error.is_none() {
                     first_error = Some(error.clone());
                 }
