@@ -87,7 +87,6 @@ fn assert_invalid_easing_is_dropped(case: &InvalidEasingCase) {
         case.source
     );
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(case.source)
             .expect_err("strict validation must reject the recovered easing declaration");

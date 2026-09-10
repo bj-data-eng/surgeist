@@ -1,23 +1,4 @@
 #![forbid(unsafe_code)]
-#![cfg_attr(
-    not(feature = "app-strict"),
-    doc = r#"
-The application-strict validators are intentionally absent unless the
-`app-strict` feature is enabled.
-
-```compile_fail
-use surgeist_css::validate_sheet;
-
-let _ = validate_sheet(".x { color: red; }");
-```
-
-```compile_fail
-use surgeist_css::validate_style_attribute;
-
-let _ = validate_style_attribute("color: red");
-```
-"#
-)]
 //! Browser-recovering CSS ingestion for Surgeist.
 //!
 //! [`parse_sheet`] and [`parse_style_attribute`] parse UTF-8 input into CSS-owned
@@ -1042,11 +1023,11 @@ let _ = validate_style_attribute("color: red");
 //! and inventory boundaries do not change accepted CSS, retained syntax,
 //! diagnostics, positions, spans, or recovery actions.
 //!
-//! The optional `app-strict` feature adds `validate_sheet` and
-//! `validate_style_attribute`. Each validator consumes ordinary parsing semantics
+//! [`validate_sheet`] and [`validate_style_attribute`] are always available.
+//! Each validator consumes ordinary parsing semantics
 //! and its report, accepts exactly a clean report, and otherwise preserves the
 //! complete non-empty diagnostic sequence in [`CssValidationFailure`]. The
-//! feature does not select a second grammar or change ordinary parsing.
+//! validation step does not select a second grammar or change ordinary parsing.
 //!
 //! # Boundary
 //!
@@ -1092,7 +1073,6 @@ pub(crate) use test_support::{CssParseReportTestExt, CssProperty};
 /// let sheet = validate_sheet(".x { color: red; }").expect("clean stylesheet");
 /// assert_eq!(sheet.rules().len(), 1);
 /// ```
-#[cfg(feature = "app-strict")]
 pub fn validate_sheet(input: &str) -> Result<CssSheet, CssValidationFailure> {
     parser::parse_sheet(input).into_validation_result()
 }
@@ -1113,7 +1093,6 @@ pub fn validate_sheet(input: &str) -> Result<CssSheet, CssValidationFailure> {
 ///     .expect("clean style attribute");
 /// assert_eq!(declarations.len(), 1);
 /// ```
-#[cfg(feature = "app-strict")]
 pub fn validate_style_attribute(input: &str) -> Result<CssDeclarationList, CssValidationFailure> {
     parser::parse_style_attribute(input).into_validation_result()
 }

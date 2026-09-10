@@ -340,7 +340,6 @@ fn mq3_structurally_malformed_features_recover_one_member_and_retain_siblings() 
             "{invalid}"
         );
 
-        #[cfg(feature = "app-strict")]
         assert_eq!(
             surgeist_css::validate_sheet(&source)
                 .expect_err("strict mode rejects recovered media syntax")
@@ -521,7 +520,6 @@ fn empty_media_list_is_valid_authored_syntax_but_public_construction_stays_check
     assert!(media.query().queries().is_empty());
     assert!(surgeist_css::CssMediaQueryList::try_new(Vec::new()).is_none());
 
-    #[cfg(feature = "app-strict")]
     assert_eq!(
         surgeist_css::validate_sheet("@media {} .after { color: red; }")
             .expect("empty media list is valid"),

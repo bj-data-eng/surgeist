@@ -112,13 +112,15 @@ diagnostic behavior unchanged.
 
 ## Require clean input
 
-Enable `app-strict` on the consumer dependency:
+Validation is available with the ordinary dependency:
 
 ```toml
-surgeist-css = { path = "../surgeist/crates/surgeist-css", features = ["app-strict"] }
+surgeist-css = { path = "../surgeist/crates/surgeist-css" }
 ```
 
-Call the matching validator when every recovery should reject the input:
+Remove `app-strict` from existing dependency feature lists. The validators retain
+their names and behavior. Call the matching validator when every recovery should
+reject the input:
 
 ```rust
 use surgeist_css::{CssRecoveryAction, validate_style_attribute};

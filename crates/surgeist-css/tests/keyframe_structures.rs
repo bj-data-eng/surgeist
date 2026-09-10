@@ -166,7 +166,6 @@ fn empty_keyframe_rule_and_block_retain_eof_closures() {
     }
 }
 
-#[cfg(feature = "app-strict")]
 #[test]
 fn app_strict_matches_ordinary_empty_duplicate_and_recovered_keyframes() {
     let clean = "@keyframes fade { from, 0%, from { } from { opacity: 1; } }";

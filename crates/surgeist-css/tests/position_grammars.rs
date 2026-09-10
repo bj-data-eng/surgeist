@@ -66,7 +66,6 @@ fn assert_generic_position_rejected(value: &str) {
         "{source}",
     );
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(&source)
             .expect_err("strict validation rejects a recovered generic position");
@@ -496,7 +495,6 @@ fn object_and_transform_origin_invalid_z_mutations_drop_only_the_declaration() {
             reasons.push("valid color sibling was not retained".to_owned());
         }
 
-        #[cfg(feature = "app-strict")]
         {
             match surgeist_css::validate_style_attribute(&source) {
                 Ok(_) => reasons.push("app-strict unexpectedly accepted the source".to_owned()),
@@ -581,7 +579,6 @@ fn generic_position_typed_calculation_preserves_the_exact_depth_boundary() {
         first_over_limit,
     );
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(&source)
             .expect_err("strict validation rejects over-limit position calculations");
@@ -684,7 +681,6 @@ fn background_accepts_three_components_that_mask_rejects() {
             "{mask_source}",
         );
 
-        #[cfg(feature = "app-strict")]
         {
             let failure = surgeist_css::validate_style_attribute(&mask_source)
                 .expect_err("strict validation rejects mask-only three-component syntax");
@@ -737,7 +733,6 @@ fn mask_shorthand_rejects_a_three_component_position_and_recovers_at_the_declara
     assert_eq!(encountered.kind(), CssTokenKind::Ident);
     assert_eq!(encountered.authored(), "left");
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects recovered mask shorthand");
@@ -786,7 +781,6 @@ fn mask_shorthand_preserves_valid_image_position_size_and_repeat_components() {
     .expect("nonempty mask list");
     assert_eq!(value.i01_subset(), Some(&expected));
 
-    #[cfg(feature = "app-strict")]
     {
         let strict = surgeist_css::validate_style_attribute(source)
             .expect("strict validation accepts valid mask shorthand");
@@ -845,7 +839,6 @@ fn layered_position_failures_drop_each_declaration_and_continue() {
             && diagnostic.action() == CssRecoveryAction::DropDeclaration
     }));
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation reports every layered position failure");

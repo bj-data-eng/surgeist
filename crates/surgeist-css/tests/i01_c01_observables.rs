@@ -745,15 +745,8 @@ fn unescape(field: &str) -> Result<String, String> {
 fn authored_css_cases_match_frozen_public_report_observables() {
     let rows = parse_fixture(FIXTURE).expect("valid I01 observable fixture");
     for row in rows {
-        let applicable = match row.feature.as_str() {
-            "both" => true,
-            "default" => !cfg!(feature = "app-strict"),
-            "app-strict" => cfg!(feature = "app-strict"),
-            _ => unreachable!("validated fixture feature"),
-        };
-        if !applicable {
-            continue;
-        }
+        // Fixture feature labels record the original capture profile. Validation is
+        // now unconditional, so every historical profile runs through the same API.
         let actual = observe(&row);
         assert_eq!(actual.clean, row.clean, "{} clean report", row.case_id);
         assert_eq!(
@@ -766,7 +759,6 @@ fn authored_css_cases_match_frozen_public_report_observables() {
             "{} diagnostics",
             row.case_id
         );
-        #[cfg(feature = "app-strict")]
         assert_strict_parity(&row);
     }
 }
@@ -2056,7 +2048,6 @@ fn action_name(action: CssRecoveryAction) -> &'static str {
     }
 }
 
-#[cfg(feature = "app-strict")]
 fn assert_strict_parity(row: &Row) {
     match row.entry.as_str() {
         "sheet" => {

@@ -156,7 +156,6 @@ fn residual_ui_containment_and_compositing_properties_are_typed() {
     };
     assert_eq!(mix.mode(), &CssBlendMode::SoftLight);
 
-    #[cfg(feature = "app-strict")]
     assert_eq!(
         surgeist_css::validate_style_attribute(source)
             .expect("strict validation accepts selected UI and compositing grammars"),
@@ -441,7 +440,6 @@ fn ui_containment_and_compositing_invalid_values_drop_only_their_declaration() {
             "{source}: responsible position must be inside the dropped declaration",
         );
 
-        #[cfg(feature = "app-strict")]
         assert_eq!(
             surgeist_css::validate_style_attribute(&source)
                 .expect_err("strict validation rejects recovered T3 syntax")

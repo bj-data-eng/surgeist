@@ -1438,7 +1438,6 @@ fn deferred_basic_shape_math_drops_only_the_invalid_declaration() {
         };
         assert_eq!(detail.property(), CssKnownProperty::ClipPath, "{source}");
 
-        #[cfg(feature = "app-strict")]
         {
             let failure = surgeist_css::validate_style_attribute(&source)
                 .expect_err("recovered basic-shape math must fail strict validation");

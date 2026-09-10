@@ -455,7 +455,6 @@ fn invalid_border_image_domains_drop_exact_declaration_and_keep_siblings() {
         };
         assert_eq!(detail.property().canonical_name(), property, "{source}");
 
-        #[cfg(feature = "app-strict")]
         assert_eq!(
             surgeist_css::validate_style_attribute(&source)
                 .expect_err("strict validation rejects invalid image syntax")

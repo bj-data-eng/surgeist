@@ -221,7 +221,6 @@ fn generic_shell_eof_closure_preserves_non_bmp_coordinates() {
     assert_eq!(diagnostic.span().end(), diagnostic.error().position());
 }
 
-#[cfg(feature = "app-strict")]
 #[test]
 fn generic_shell_strict_entry_points_match_ordinary_reports() {
     for source in [

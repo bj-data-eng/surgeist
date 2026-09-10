@@ -393,7 +393,6 @@ fn font_variant_globals_substitution_duplicates_and_conflicts_are_exact() {
             "{source}",
         );
 
-        #[cfg(feature = "app-strict")]
         assert_eq!(
             surgeist_css::validate_style_attribute(&source)
                 .expect_err("strict parsing rejects the recovered declaration")
@@ -539,7 +538,6 @@ fn font_control_branches_globals_substitution_and_mutations_are_exact() {
             "{source}",
         );
 
-        #[cfg(feature = "app-strict")]
         assert_eq!(
             surgeist_css::validate_style_attribute(&source)
                 .expect_err("strict parsing rejects the recovered declaration")

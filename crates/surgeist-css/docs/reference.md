@@ -13,12 +13,12 @@ subset; it does not establish complete support for all CSS syntax.
 | --- | --- | --- |
 | `parse_sheet(&str)` | Default features | `CssParseReport<CssSheet>` |
 | `parse_style_attribute(&str)` | Default features | `CssParseReport<CssDeclarationList>` |
-| `validate_sheet(&str)` | `app-strict` | `Result<CssSheet, CssValidationFailure>` |
-| `validate_style_attribute(&str)` | `app-strict` | `Result<CssDeclarationList, CssValidationFailure>` |
+| `validate_sheet(&str)` | Default features | `Result<CssSheet, CssValidationFailure>` |
+| `validate_style_attribute(&str)` | Default features | `Result<CssDeclarationList, CssValidationFailure>` |
 
 The [manifest](../Cargo.toml) declares package `surgeist-css`, library
-`surgeist_css`, version `0.1.0`, Rust edition 2024, no default features, and the
-additive `app-strict` feature. Production dependencies are pinned to
+`surgeist_css`, version `0.1.0`, Rust edition 2024, and no default features.
+Clean-report validation is always available. Production dependencies are pinned to
 `cssparser = 0.37.0` and `cssparser-color = 0.5.0`; test-only JSON support uses
 `serde = 1.0.228` and `serde_json = 1.0.145`.
 

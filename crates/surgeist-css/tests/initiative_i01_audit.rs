@@ -145,7 +145,6 @@ fn malformed_units_report_typed_diagnostics_in_source_order() {
     assert_eq!(detail.name().as_str(), "mystery");
 }
 
-#[cfg(feature = "app-strict")]
 #[test]
 fn strict_validation_returns_clean_syntax_or_ordinary_diagnostics() {
     let clean_source = ".x { color: red; }";

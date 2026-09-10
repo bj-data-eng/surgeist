@@ -77,7 +77,7 @@ implemented dependency graph and behavior.
 | --- | --- |
 | Root `surgeist` | Thin facade, public composition, cross-crate adapters, and integration |
 | `surgeist-animation` | CSS animation and transition timing, easing, keyframes, interpolation, and sampled values |
-| `surgeist-css` | CSS syntax, authored values, browser recovery diagnostics, and optional strict validation |
+| `surgeist-css` | CSS syntax, authored values, browser recovery diagnostics, and clean-report validation |
 | `surgeist-dialog` | Dialog contracts and coordination primitives |
 | `surgeist-generator` | Shared generation contracts, CSS corpus driver, browser-corpus infrastructure, provenance, and publication of generated artifacts |
 | `surgeist-layout` | Layout algorithms and contracts, layout-ready fixtures, and parity/oracle tests |

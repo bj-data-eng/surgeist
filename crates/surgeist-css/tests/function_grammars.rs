@@ -551,7 +551,6 @@ fn box_shadow_accepts_interleaved_color_between_offsets() {
         .expect("red interleaved color");
     assert_eq!((color.red(), color.green(), color.blue()), (255, 0, 0));
 
-    #[cfg(feature = "app-strict")]
     assert_eq!(
         surgeist_css::validate_style_attribute(source),
         Ok(report.syntax().clone())
@@ -585,7 +584,6 @@ fn drop_shadow_accepts_interleaved_color_between_offsets() {
         .expect("red interleaved color");
     assert_eq!((color.red(), color.green(), color.blue()), (255, 0, 0));
 
-    #[cfg(feature = "app-strict")]
     assert_eq!(
         surgeist_css::validate_style_attribute(source),
         Ok(report.syntax().clone())
@@ -890,7 +888,6 @@ fn repeated_easing_failures_recover_to_valid_timing_and_color_siblings() {
             .all(|diagnostic| diagnostic.action() == CssRecoveryAction::DropDeclaration)
     );
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects both recovered easing declarations");
@@ -933,7 +930,6 @@ fn easing_symbolic_math_preserves_the_exact_depth_boundary() {
             "depth {depth}",
         );
 
-        #[cfg(feature = "app-strict")]
         {
             let failure = surgeist_css::validate_style_attribute(&source)
                 .expect_err("strict validation rejects over-limit easing calculations");
@@ -1123,7 +1119,6 @@ fn transform_angles_reject_percentage_calculations_and_recover_siblings() {
             CssKnownProperty::Color,
         );
 
-        #[cfg(feature = "app-strict")]
         {
             let failure = surgeist_css::validate_style_attribute(&source)
                 .expect_err("strict validation rejects percentage-typed transform angles");
@@ -1319,7 +1314,6 @@ fn transform_calculations_preserve_the_exact_depth_boundary() {
             "depth {depth}",
         );
 
-        #[cfg(feature = "app-strict")]
         {
             let failure = surgeist_css::validate_style_attribute(&source)
                 .expect_err("strict validation rejects over-limit transform calculations");

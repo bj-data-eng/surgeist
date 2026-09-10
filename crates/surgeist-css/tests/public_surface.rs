@@ -1020,7 +1020,6 @@ fn public_surface_font_face_descriptor_current_models_are_checked() {
     assert_eq!(CssFontFaceStretch::try_range_percent(125.0, 75.0), None);
 }
 
-#[cfg(feature = "app-strict")]
 #[test]
 fn public_surface_enabled_validators_accept_clean_reports_and_preserve_failures() {
     let sheet = surgeist_css::validate_sheet(".x { color: red; }")

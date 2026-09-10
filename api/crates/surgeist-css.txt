@@ -5298,4 +5298,6 @@ pub fn surgeist_css::parse_style_attribute(source: &str) -> surgeist_css::CssPar
 pub fn surgeist_css::property_metadata(name: &str) -> core::option::Option<surgeist_css::CssPropertyMetadata>
 pub fn surgeist_css::specification_source(id: &str) -> core::option::Option<&'static surgeist_css::CssSpecificationSource>
 pub const fn surgeist_css::specification_sources() -> &'static [surgeist_css::CssSpecificationSource]
+pub fn surgeist_css::validate_sheet(input: &str) -> core::result::Result<surgeist_css::CssSheet, surgeist_css::CssValidationFailure>
+pub fn surgeist_css::validate_style_attribute(input: &str) -> core::result::Result<surgeist_css::CssDeclarationList, surgeist_css::CssValidationFailure>
 pub type surgeist_css::CssLineStyle = surgeist_css::CssBorderStyle

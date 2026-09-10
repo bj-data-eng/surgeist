@@ -1,5 +1,3 @@
-#![cfg(feature = "app-strict")]
-
 use surgeist_css::{
     CssDeclarationList, CssMediaConditionKind, CssMediaQuery, CssParseReport, CssRecoveryAction,
     CssRule, CssSheet, parse_sheet, parse_style_attribute, validate_sheet,
@@ -47,7 +45,7 @@ fn assert_style_parity(source: &str) -> CssParseReport<CssDeclarationList> {
 }
 
 #[test]
-fn app_strict_accepts_defined_false_media_syntax_and_rejects_only_malformed_recovery() {
+fn validation_accepts_defined_false_media_syntax_and_rejects_only_malformed_recovery() {
     let defined_false = assert_sheet_parity(concat!(
         "@media only future-screen and (unknown: calc(1foo + 2px)), ",
         "(width: -1px) {}",
@@ -76,7 +74,7 @@ fn app_strict_accepts_defined_false_media_syntax_and_rejects_only_malformed_reco
 }
 
 #[test]
-fn app_strict_supports_conditions_match_ordinary_retention_and_recovery() {
+fn validation_supports_conditions_match_ordinary_retention_and_recovery() {
     let clean = assert_sheet_parity(concat!(
         "@supports (display: grid) and (mystery: value) {}",
         "@supports selector(.x > .y) {}",
@@ -104,7 +102,7 @@ fn app_strict_supports_conditions_match_ordinary_retention_and_recovery() {
 }
 
 #[test]
-fn app_strict_conditional_imports_and_prelude_phases_match_ordinary_reports() {
+fn validation_conditional_imports_and_prelude_phases_match_ordinary_reports() {
     let clean = assert_sheet_parity(concat!(
         "@layer reset; ",
         "@import 'theme.css' layer(theme) supports(display: grid) screen;",
@@ -132,7 +130,7 @@ fn app_strict_conditional_imports_and_prelude_phases_match_ordinary_reports() {
 }
 
 #[test]
-fn app_strict_namespace_rules_match_ordinary_retention_ordering_and_recovery() {
+fn validation_namespace_rules_match_ordinary_retention_ordering_and_recovery() {
     let clean = assert_sheet_parity(concat!(
         "@import 'theme.css'; ",
         "@namespace \"urn:default\"; ",
@@ -166,7 +164,7 @@ fn app_strict_namespace_rules_match_ordinary_retention_ordering_and_recovery() {
 }
 
 #[test]
-fn app_strict_namespace_qualified_selectors_match_ordinary_results() {
+fn validation_namespace_qualified_selectors_match_ordinary_results() {
     let clean = assert_sheet_parity(concat!(
         "@namespace \"urn:default\";",
         "@namespace svg \"urn:svg\";",
@@ -208,7 +206,7 @@ fn app_strict_namespace_qualified_selectors_match_ordinary_results() {
 }
 
 #[test]
-fn app_strict_selectors3_pseudos_repeated_ids_and_recovery_match_ordinary_results() {
+fn validation_selectors3_pseudos_repeated_ids_and_recovery_match_ordinary_results() {
     let clean = assert_sheet_parity(concat!(
         "a#first#second:link[data-ready] > .target:target { color: red; }",
         ".language:lang(e\\6e) { color: red; }",
@@ -242,7 +240,7 @@ fn nested_selector(depth: usize) -> String {
 }
 
 #[test]
-fn app_strict_parity_clean_and_recovered_sheet_and_style_results_are_exact() {
+fn validation_parity_clean_and_recovered_sheet_and_style_results_are_exact() {
     assert!(assert_sheet_parity(".x { color: red; }").is_clean());
     assert!(assert_style_parity("color: red").is_clean());
 
@@ -261,7 +259,7 @@ fn app_strict_parity_clean_and_recovered_sheet_and_style_results_are_exact() {
 }
 
 #[test]
-fn app_strict_counter_style_descriptors_match_ordinary_retention_and_recovery() {
+fn validation_counter_style_descriptors_match_ordinary_retention_and_recovery() {
     let clean = assert_sheet_parity(concat!(
         "@counter-style roman { system: additive; range: 1 infinite; ",
         "negative: \"-\"; pad: 2 \"0\"; fallback: decimal; ",
@@ -287,7 +285,7 @@ fn app_strict_counter_style_descriptors_match_ordinary_retention_and_recovery() 
 }
 
 #[test]
-fn app_strict_page_rules_match_ordinary_retention_and_recovery() {
+fn validation_page_rules_match_ordinary_retention_and_recovery() {
     let clean = assert_sheet_parity(concat!(
         "@import \"print.css\"; ",
         "@page :left { margin: -1cm 2% auto 3pt !important; }",
@@ -316,7 +314,7 @@ fn app_strict_page_rules_match_ordinary_retention_and_recovery() {
 }
 
 #[test]
-fn app_strict_parity_preserves_multiple_diagnostics_and_every_special_action() {
+fn validation_parity_preserves_multiple_diagnostics_and_every_special_action() {
     let sheet = assert_sheet_parity("<!-- .x { mystery: 1; width: nope; } -->");
     assert!(sheet.diagnostics().len() >= 4);
     assert!(
@@ -349,7 +347,7 @@ fn app_strict_parity_preserves_multiple_diagnostics_and_every_special_action() {
 }
 
 #[test]
-fn app_strict_parity_preserves_structural_and_specialized_depth_diagnostics() {
+fn validation_parity_preserves_structural_and_specialized_depth_diagnostics() {
     let mut structural = ".x{".repeat(257);
     structural.push_str("color:red;");
     structural.push_str(&"}".repeat(257));

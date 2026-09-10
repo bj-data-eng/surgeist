@@ -489,7 +489,6 @@ fn assert_invalid_case(case: InvalidDeclaration) {
         case.record
     );
 
-    #[cfg(feature = "app-strict")]
     assert_eq!(
         surgeist_css::validate_style_attribute(&source)
             .expect_err("strict validation rejects recovered C13 syntax")
@@ -660,7 +659,6 @@ fn c13_layer_separator_recovery_preserves_siblings_and_boundaries() {
         first_over_limit
     );
 
-    #[cfg(feature = "app-strict")]
     assert_eq!(
         surgeist_css::validate_style_attribute(&source)
             .expect_err("strict validation rejects C13 nesting overflow")

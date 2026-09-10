@@ -246,7 +246,6 @@ fn flexible_minmax_minimums_are_rejected_at_the_first_responsible_token() {
             "{source}",
         );
 
-        #[cfg(feature = "app-strict")]
         {
             let failure = surgeist_css::validate_style_attribute(&source)
                 .expect_err("strict validation rejects a flexible minmax minimum");

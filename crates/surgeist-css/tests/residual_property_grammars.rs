@@ -378,7 +378,6 @@ fn css2_residual_invalid_values_drop_exact_declaration_and_keep_sibling() {
             "{source}: responsible position must be inside the dropped declaration",
         );
 
-        #[cfg(feature = "app-strict")]
         assert_eq!(
             surgeist_css::validate_style_attribute(&source)
                 .expect_err("strict validation rejects recovered residual syntax")

@@ -178,7 +178,6 @@ fn font_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
     assert_eq!(detail.encountered().unwrap().kind(), CssTokenKind::Ident);
     assert_eq!(detail.encountered().unwrap().authored(), "menu");
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects the recovered font shorthand");
@@ -240,7 +239,6 @@ fn opentype_tag_error_has_exact_utf16_coordinates_and_full_declaration_span() {
         CssKnownProperty::Color,
     );
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects the recovered supplementary tag");
@@ -336,7 +334,6 @@ fn size_adjust_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
         CssKnownProperty::Color,
     );
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects recovered negative size adjustment");
@@ -392,7 +389,6 @@ fn font_variant_conflict_after_non_bmp_text_has_exact_utf16_coordinates_and_span
         CssKnownProperty::Color,
     );
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects the recovered shorthand");
@@ -446,7 +442,6 @@ fn font_source_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
     assert_eq!(detail.descriptor().as_str(), "src");
     assert_eq!(detail.encountered().unwrap().authored(), "woff3");
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_sheet(source)
             .expect_err("strict validation rejects recovered font source");
@@ -478,7 +473,6 @@ fn timing_type_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
     assert_eq!(encountered.kind(), CssTokenKind::Dimension);
     assert_eq!(encountered.authored(), "1px");
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects recovered timing type error");
@@ -510,7 +504,6 @@ fn opacity_domain_error_after_non_bmp_text_has_exact_coordinates_and_span() {
     assert_eq!(encountered.kind(), CssTokenKind::Dimension);
     assert_eq!(encountered.authored(), "1px");
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects recovered opacity dimension");
@@ -562,7 +555,6 @@ fn grid_repeat_error_after_non_bmp_text_has_exact_coordinates_and_span() {
     );
     assert_eq!(detail.encountered().unwrap().authored(), "1fr");
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects flexible auto-repeat");
@@ -619,7 +611,6 @@ fn color_component_error_after_non_bmp_text_has_exact_coordinates_and_span() {
     );
     assert_eq!(detail.encountered().unwrap().authored(), "1px");
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects recovered color component error");
@@ -673,7 +664,6 @@ fn perceptual_color_error_after_non_bmp_text_has_exact_coordinates_and_span() {
     assert_eq!(encountered.kind(), CssTokenKind::Dimension);
     assert_eq!(encountered.authored(), "1px");
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects recovered Lab component error");
@@ -727,7 +717,6 @@ fn relative_color_error_after_non_bmp_text_has_exact_coordinates_span_and_strict
     assert_eq!(encountered.kind(), CssTokenKind::Ident);
     assert_eq!(encountered.authored(), "s");
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects foreign relative channels");
@@ -781,7 +770,6 @@ fn color_mix_error_after_non_bmp_text_has_exact_coordinates_span_and_strict_pari
     assert_eq!(encountered.kind(), CssTokenKind::Ident);
     assert_eq!(encountered.authored(), "longer");
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects rectangular-space hue methods");
@@ -824,7 +812,6 @@ fn legacy_rgb_mixed_domain_reports_the_later_component_and_retains_its_sibling()
     assert_eq!(encountered.kind(), CssTokenKind::Percentage);
     assert_eq!(encountered.authored(), "20%");
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects mixed legacy RGB component domains");
@@ -883,7 +870,6 @@ fn easing_count_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() 
     assert_eq!(encountered.kind(), CssTokenKind::Number);
     assert_eq!(encountered.authored(), "1");
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects recovered easing count error");
@@ -917,7 +903,6 @@ fn generic_position_error_after_non_bmp_text_has_exact_utf16_coordinates_and_spa
     assert_eq!(encountered.kind(), CssTokenKind::Ident);
     assert_eq!(encountered.authored(), "left");
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects recovered generic position input");
@@ -971,7 +956,6 @@ fn object_position_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span
     assert_eq!(encountered.kind(), CssTokenKind::Dimension);
     assert_eq!(encountered.authored(), "10px");
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects recovered object-position input");
@@ -1025,7 +1009,6 @@ fn transform_domain_error_after_non_bmp_text_has_exact_utf16_coordinates_and_spa
     assert_eq!(encountered.kind(), CssTokenKind::Percentage);
     assert_eq!(encountered.authored(), "3%");
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects recovered transform input");
@@ -1079,7 +1062,6 @@ fn filter_domain_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span()
     assert_eq!(encountered.kind(), CssTokenKind::Number);
     assert_eq!(encountered.authored(), "-1");
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects recovered filter input");
@@ -1129,7 +1111,6 @@ fn basic_shape_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
     assert_eq!(encountered.kind(), CssTokenKind::Dimension);
     assert_eq!(encountered.authored(), "-1px");
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects recovered basic shape");

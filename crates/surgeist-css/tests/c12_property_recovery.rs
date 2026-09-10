@@ -228,7 +228,6 @@ fn assert_one_invalid_declaration(
     };
     assert_eq!(detail.property(), expected_property, "{source}");
 
-    #[cfg(feature = "app-strict")]
     assert_eq!(
         surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects recovered C12 syntax")
@@ -432,7 +431,6 @@ fn c12_residual_recovery_preserves_siblings_and_boundaries() {
             ));
         }
 
-        #[cfg(feature = "app-strict")]
         assert_eq!(
             surgeist_css::validate_sheet(&nested_source)
                 .expect_err("strict validation rejects nested C12 recovery")

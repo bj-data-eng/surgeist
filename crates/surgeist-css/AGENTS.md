@@ -8,8 +8,8 @@ facts; it grants no additional authority. The root guide prohibits executable
 
 This crate owns authored CSS syntax, intrinsic grammar validation, browser recovery,
 diagnostic provenance, and support metadata. Ordinary parsing returns retained
-syntax and ordered diagnostics; `app-strict` validates the same reports without
-selecting another grammar. Keep symbolic values unresolved. Cascade, inheritance,
+syntax and ordered diagnostics; the always-available validators accept exactly
+clean reports without selecting another grammar. Keep symbolic values unresolved. Cascade, inheritance,
 substitution, selector/query evaluation, resource loading, layout, painting, and
 cross-crate lowering remain outside this crate.
 
@@ -45,7 +45,7 @@ Cargo build/check/test commands may use `--offline --locked` to preserve the
 shared product resolution; command inventory is not a requirement to run every
 suite for each change.
 
-Cover default and `app-strict` when affected. Full package tests include corpus
+Validation and parsing share the default public surface. Full package tests include corpus
 parser probes. The [corpus guide](tests/corpus/csstree/README.md) owns maintenance
 with the local `surgeist-generator` CLI; do not hand-edit its generated set.
 `tests/csstree/expected-classes.json` is CSS-owned expectation data; `oracle.json`
@@ -54,12 +54,8 @@ is separately captured by the ignored environment-gated test in
 
 ```sh
 cargo check --offline -p surgeist-css
-cargo check --offline -p surgeist-css --features app-strict
 cargo test --offline -p surgeist-css
-cargo test --offline -p surgeist-css --features app-strict
 cargo test --offline -p surgeist-css --doc
-cargo test --offline -p surgeist-css --doc --features app-strict
 cargo clippy --offline -p surgeist-css --all-targets -- -F unsafe-code -D warnings
-cargo clippy --offline -p surgeist-css --all-targets --features app-strict -- -F unsafe-code -D warnings
 cargo fmt -p surgeist-css --check
 ```

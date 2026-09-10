@@ -6,7 +6,7 @@ The project's own license is in [LICENSE](LICENSE).
 
 This notice covers the bundled CSSTree fixtures and the 23 registry crates in
 the local Cargo resolution of `surgeist-css` 0.1.0 with default features,
-including development and build dependencies. `app-strict` adds no dependencies.
+including development and build dependencies.
 The Cargo dependencies are not vendored in this repository. The roles below
 describe their use by this crate; a downstream executable's contents depend on
 its build. Transitive versions can change with dependency resolution. Upstream

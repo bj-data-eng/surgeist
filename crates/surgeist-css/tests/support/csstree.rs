@@ -17,7 +17,6 @@ use adapters::{
 use surgeist_css::{
     CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, parse_sheet, parse_style_attribute,
 };
-#[cfg(feature = "app-strict")]
 use surgeist_css::{validate_sheet, validate_style_attribute};
 
 const CORPUS_ROOT: &str = "tests/corpus/csstree";
@@ -1762,7 +1761,6 @@ fn observe_csstree_record(case: &ValidatedCase) -> Result<RawOracleRecord, Basel
     ) {
         let parsed = catch_unwind(AssertUnwindSafe(|| {
             let _report = parse_style_attribute(complete.source());
-            #[cfg(feature = "app-strict")]
             validate_strict_parity(
                 _report.is_clean(),
                 _report.diagnostics(),
@@ -1937,7 +1935,6 @@ fn observe_public_parser(
                 report.diagnostics(),
                 complete,
             )?;
-            #[cfg(feature = "app-strict")]
             validate_strict_parity(
                 report.is_clean(),
                 report.diagnostics(),
@@ -1960,7 +1957,6 @@ fn observe_public_parser(
                 report.diagnostics(),
                 complete,
             )?;
-            #[cfg(feature = "app-strict")]
             validate_strict_parity(
                 report.is_clean(),
                 report.diagnostics(),
@@ -1989,7 +1985,6 @@ fn observe_public_parser(
     }
 }
 
-#[cfg(feature = "app-strict")]
 fn validate_strict_parity<T>(
     is_clean: bool,
     diagnostics: &[CssRecoveryDiagnostic],

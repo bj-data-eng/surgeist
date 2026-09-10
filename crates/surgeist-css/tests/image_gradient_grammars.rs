@@ -196,7 +196,6 @@ fn c13_images_keep_globals_substitutions_and_exact_invalid_recovery_distinct() {
             if detail.property() == CssKnownProperty::BackgroundImage
     ));
 
-    #[cfg(feature = "app-strict")]
     assert_eq!(
         surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects invalid radial size")

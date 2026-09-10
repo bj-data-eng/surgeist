@@ -311,7 +311,6 @@ fn multicolumn_mutations_drop_exact_declaration_and_retain_siblings() {
             "{source}",
         );
 
-        #[cfg(feature = "app-strict")]
         assert_eq!(
             surgeist_css::validate_style_attribute(&source)
                 .expect_err("strict validation rejects invalid multicolumn syntax")

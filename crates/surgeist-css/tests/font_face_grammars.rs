@@ -6,7 +6,6 @@ use surgeist_css::{
 };
 
 fn assert_strict_parity(source: &str) {
-    #[cfg(feature = "app-strict")]
     {
         let ordinary = parse_sheet(source);
         match surgeist_css::validate_sheet(source) {
@@ -17,8 +16,6 @@ fn assert_strict_parity(source: &str) {
             Err(failure) => assert_eq!(failure.diagnostics(), ordinary.diagnostics()),
         }
     }
-    #[cfg(not(feature = "app-strict"))]
-    let _ = source;
 }
 
 #[test]

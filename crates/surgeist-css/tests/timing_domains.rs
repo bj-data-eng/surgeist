@@ -99,7 +99,6 @@ fn assert_invalid_timing_case(case: &InvalidTimingCase) {
         ),
     }
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(case.source)
             .expect_err("strict validation must reject the recovered timing declaration");
@@ -501,7 +500,6 @@ fn every_transition_component_order_preserves_first_time_and_second_time_domains
             "{source}",
         );
 
-        #[cfg(feature = "app-strict")]
         assert_eq!(
             surgeist_css::validate_style_attribute(&source)
                 .expect("strict validation accepts every valid transition order"),
@@ -582,7 +580,6 @@ fn every_animation_component_order_preserves_all_eight_typed_domains() {
             "{source}",
         );
 
-        #[cfg(feature = "app-strict")]
         assert_eq!(
             surgeist_css::validate_style_attribute(&source)
                 .expect("strict validation accepts every valid animation order"),
@@ -784,7 +781,6 @@ fn repeated_timing_failures_and_depth_255_256_257_have_exact_recovery_behavior()
             CssKnownProperty::Color,
         );
 
-        #[cfg(feature = "app-strict")]
         assert_eq!(
             surgeist_css::validate_style_attribute(&source)
                 .expect("strict validation accepts supported calculation depth"),
@@ -815,7 +811,6 @@ fn repeated_timing_failures_and_depth_255_256_257_have_exact_recovery_behavior()
     assert_eq!(detail.limit(), 256);
     assert_eq!(detail.enclosing_production().as_str(), "css.declaration");
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(&source)
             .expect_err("strict validation rejects depth 257");

@@ -649,7 +649,6 @@ fn c11_rule_recovery_preserves_siblings_and_boundaries() {
         );
     }
 
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_sheet(source)
             .expect_err("strict validation rejects every recovered C11 rule context");

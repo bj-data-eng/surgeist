@@ -32,8 +32,6 @@ fn invalid_core_font_value_has_exact_property_diagnostic_and_retains_its_sibling
         report.syntax()[0].known().unwrap().property(),
         CssKnownProperty::Color,
     );
-
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects the recovered font size");
@@ -182,8 +180,6 @@ fn font_feature_list_separator_error_has_exact_identity_span_and_recovery() {
         report.syntax()[0].known().unwrap().property(),
         CssKnownProperty::Color,
     );
-
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects the recovered empty list item");
@@ -226,8 +222,6 @@ fn duplicate_font_synthesis_component_has_exact_identity_span_and_recovery() {
         report.syntax()[0].known().unwrap().property(),
         CssKnownProperty::Color,
     );
-
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects duplicate synthesis components");
@@ -272,8 +266,6 @@ fn conflicting_font_variant_group_has_exact_identity_span_and_recovery() {
         report.syntax()[0].known().unwrap().property(),
         CssKnownProperty::Color,
     );
-
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects conflicting variant groups");
@@ -304,8 +296,6 @@ fn color_domain_failure_reports_the_responsible_component_and_retains_its_siblin
         report.syntax()[0].known().unwrap().property(),
         CssKnownProperty::Opacity
     );
-
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects recovered hue unit error");
@@ -337,8 +327,6 @@ fn predefined_color_space_failure_reports_the_responsible_ident_and_retains_its_
         report.syntax()[0].known().unwrap().property(),
         CssKnownProperty::Opacity
     );
-
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects custom color profiles");
@@ -370,8 +358,6 @@ fn relative_color_environment_failure_reports_the_foreign_channel_and_recovers_o
         report.syntax()[0].known().unwrap().property(),
         CssKnownProperty::Opacity
     );
-
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects a foreign relative channel");
@@ -403,8 +389,6 @@ fn color_mix_hue_method_failure_reports_the_responsible_token_and_retains_its_si
         report.syntax()[0].known().unwrap().property(),
         CssKnownProperty::Opacity,
     );
-
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects rectangular-space hue methods");
@@ -430,8 +414,6 @@ fn repeated_color_mix_failures_make_progress_and_preserve_later_siblings() {
         report.syntax()[0].known().unwrap().property(),
         CssKnownProperty::Opacity,
     );
-
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects repeated invalid color-mix declarations");
@@ -457,8 +439,6 @@ fn repeated_relative_color_failures_make_progress_and_preserve_later_siblings() 
         report.syntax()[0].known().unwrap().property(),
         CssKnownProperty::Opacity
     );
-
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects repeated relative-color failures");
@@ -530,8 +510,6 @@ fn transform_separator_and_domain_failures_report_exact_tokens_and_retain_siblin
             CssKnownProperty::Color,
             "{source}",
         );
-
-        #[cfg(feature = "app-strict")]
         {
             let failure = surgeist_css::validate_style_attribute(&source)
                 .expect_err("strict validation rejects recovered transform mutation");
@@ -563,8 +541,6 @@ fn repeated_transform_failures_make_progress_to_a_valid_sibling() {
             .iter()
             .all(|diagnostic| diagnostic.action() == CssRecoveryAction::DropDeclaration)
     );
-
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects repeated recovered transforms");
@@ -602,8 +578,6 @@ fn repeated_filter_failures_make_progress_to_valid_filter_and_color_siblings() {
         };
         assert_eq!(detail.property(), CssKnownProperty::Filter);
     }
-
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects recovered filter mutations");
@@ -641,8 +615,6 @@ fn repeated_opacity_domain_failures_make_progress_to_a_valid_sibling() {
         assert_eq!(detail.property(), CssKnownProperty::Opacity);
         assert!(detail.encountered().is_some());
     }
-
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects recovered opacity mutations");
@@ -681,8 +653,6 @@ fn basic_shape_failures_report_clip_path_and_retain_valid_siblings() {
         let encountered = detail.encountered().expect("responsible shape token");
         assert_eq!(encountered.kind(), token_kind, "{source}");
         assert_eq!(encountered.authored(), responsible, "{source}");
-
-        #[cfg(feature = "app-strict")]
         {
             let failure = surgeist_css::validate_style_attribute(&source)
                 .expect_err("strict validation rejects invalid basic shape");
@@ -781,8 +751,6 @@ fn namespace_prelude_errors_expose_exact_payload_span_action_and_sibling_recover
         "an optional prefix followed by one string or URL namespace name"
     );
     assert_eq!(detail.encountered().unwrap().authored(), "ident");
-
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_sheet(&source)
             .expect_err("strict validation rejects malformed namespace rules");
@@ -850,26 +818,17 @@ fn error_missing_at_rule_body_reports_missing_token_position() {
 }
 
 #[test]
-fn error_empty_font_face_body_reports_missing_descriptor_at_body_end() {
-    let error = parse_sheet("@font-face {\n}")
-        .expect_err("font-face requires font-family and src descriptors");
-    assert_eq!(error.code(), CssErrorCode::InvalidAtRuleBody);
-    match error.kind() {
-        ErrorKind::InvalidAtRuleBody(detail) => {
-            assert_eq!(detail.name().as_str(), "font-face");
-            assert_eq!(detail.production().as_str(), "baseline.rule.font-face");
-            assert_eq!(
-                detail.expectation().as_str(),
-                "font-family and src descriptors"
-            );
-            assert!(detail.encountered().is_none());
-        }
-        _ => panic!("unexpected error root"),
-    }
-    let position = error.position();
-    assert_eq!(position.byte_offset().value(), 13);
-    assert_eq!(position.line().value(), 1);
-    assert_eq!(position.column().value(), 0);
+fn empty_font_face_body_retains_the_authored_rule_without_a_missing_descriptor_error() {
+    // Fonts 4 section 4.1 restricts font matching when descriptors are absent;
+    // the empty descriptor block remains grammatically valid authored syntax.
+    let report = parse_sheet("@font-face {\n}");
+    assert!(report.is_clean());
+    let [CssRule::FontFace(face)] = report.syntax().rules() else {
+        panic!("expected a retained empty font-face");
+    };
+    assert!(face.descriptors().font_family().is_none());
+    assert!(face.descriptors().src().is_none());
+    assert_eq!(face.descriptors().occurrences().len(), 0);
 }
 
 #[test]
@@ -1015,8 +974,12 @@ fn error_invalid_font_source_format_reports_descriptor_context_and_recovers_sibl
         ".after{color:red}",
     );
     let report = parse_sheet(source);
-    assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
-    assert_eq!(report.diagnostics().len(), 2);
+    let [CssRule::FontFace(face), CssRule::Style(_)] = report.syntax().rules() else {
+        panic!("expected the accepted font-face and later style rule");
+    };
+    assert!(face.descriptors().font_family().is_some());
+    assert!(face.descriptors().src().is_none());
+    assert_eq!(report.diagnostics().len(), 1);
     let diagnostic = &report.diagnostics()[0];
     assert_eq!(
         diagnostic.error().code(),
@@ -1029,14 +992,6 @@ fn error_invalid_font_source_format_reports_descriptor_context_and_recovers_sibl
     assert_eq!(detail.at_rule().as_str(), "font-face");
     assert_eq!(detail.descriptor().as_str(), "src");
     assert_eq!(detail.encountered().unwrap().authored(), "woff3");
-    assert_eq!(
-        report.diagnostics()[1].error().code(),
-        CssErrorCode::InvalidAtRuleBody
-    );
-    assert_eq!(
-        report.diagnostics()[1].action(),
-        CssRecoveryAction::DropAtRule
-    );
 }
 
 #[test]
@@ -1140,8 +1095,6 @@ fn typed_calculation_type_error_has_exact_non_bmp_coordinates_span_and_recovery(
     let encountered = detail.encountered().expect("responsible typed leaf");
     assert_eq!(encountered.kind(), CssTokenKind::Dimension);
     assert_eq!(encountered.authored(), "1px");
-
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation must reject recovered typed calculation input");
@@ -1227,8 +1180,6 @@ fn easing_bound_error_has_exact_payload_span_action_and_sibling_recovery() {
         .expect("responsible cubic-bezier x coordinate");
     assert_eq!(encountered.kind(), CssTokenKind::Number);
     assert_eq!(encountered.authored(), "1.1");
-
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects recovered easing input");
@@ -1263,8 +1214,6 @@ fn timing_first_duration_failure_has_exact_payload_span_action_and_sibling_recov
     let encountered = detail.encountered().expect("responsible negative duration");
     assert_eq!(encountered.kind(), CssTokenKind::Dimension);
     assert_eq!(encountered.authored(), "-1s");
-
-    #[cfg(feature = "app-strict")]
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation rejects recovered transition input");
@@ -1339,8 +1288,6 @@ fn generic_position_mutations_report_the_responsible_token_and_retain_the_siblin
             CssKnownProperty::Color,
             "{source}",
         );
-
-        #[cfg(feature = "app-strict")]
         {
             let failure = surgeist_css::validate_style_attribute(&source)
                 .expect_err("strict validation rejects the recovered mutation");
@@ -1425,8 +1372,6 @@ fn layered_position_mutations_report_exact_property_token_span_and_recovery() {
         let encountered = detail.encountered().expect("responsible position token");
         assert_eq!(encountered.kind(), token_kind, "{source}");
         assert_eq!(encountered.authored(), responsible, "{source}");
-
-        #[cfg(feature = "app-strict")]
         {
             let failure = surgeist_css::validate_style_attribute(&source)
                 .expect_err("strict validation rejects layered position mutation");
@@ -1559,8 +1504,6 @@ fn property_specific_origin_mutations_report_exact_payload_span_and_recovery() {
             CssKnownProperty::Color,
             "{source}",
         );
-
-        #[cfg(feature = "app-strict")]
         {
             let failure = surgeist_css::validate_style_attribute(&source)
                 .expect_err("strict validation rejects the recovered origin mutation");
