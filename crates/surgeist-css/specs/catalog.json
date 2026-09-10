@@ -1,0 +1,1781 @@
+{
+  "schema_version": 1,
+  "profile_id": "surgeist-css-foundation-2026",
+  "publication_cutoff_utc": "2026-09-10T02:16:24Z",
+  "authority": "This catalog defines selected standards and phase ownership for the CSS foundation. Source code and behavior-revealing tests establish implementation status; catalog membership is not evidence of implementation.",
+  "snapshot": {
+    "url": "https://www.w3.org/TR/2026/NOTE-css-2026-20260622/",
+    "sha256": "fddc6c448e08e5eaa22a362c759a3a7c28045da1cdffad2d8421d679d49839d2",
+    "bytes": 621957
+  },
+  "selection_policy": {
+    "snapshot_membership": "The four module lists in sections 2.1 through 2.4 of the pinned Snapshot select module identities and tiers. Their bibliographic edition dates do not override the publication-cutoff policy.",
+    "published_edition": "For each selected W3C module, use the latest published edition available at the cutoff. latest_published_url records the discovery endpoint; publication.url and its hash identify the selected representation. Live editor drafts are not substitute editions.",
+    "withdrawn_publication": "Use a published withdrawal only as supersession evidence. Follow its explicitly identified canonical successor for the same selected module, pinning an immutable successor snapshot at or before the cutoff. Fullscreen is the sole such transition in this catalog.",
+    "supersession": "Apply explicit replacement definitions from a selected successor to overlapping requirements; retain older definitions that the successor imports or leaves unchanged. A higher level number alone does not imply wholesale replacement. Count shared requirements once under their effective defining source while retaining module membership.",
+    "normative_dependencies": "Import only definitions necessary to interpret or validate a selected requirement. Prefer the already selected edition of an in-profile dependency. For an out-of-profile definition, record the defining module, exact section, dated or immutable source identity, and hash with the requirement evidence before relying on it. Do not select that dependency module in full or silently follow moving editor links.",
+    "draft_omissions": "A requirement may be classified unresolved-standard only when an exact pinned source section demonstrably omits or leaves that requirement undefined. Cite the omission and owning phase. Defined authored grammar remains required even when its execution algorithm is unfinished.",
+    "hashes": "SHA-256 and byte counts cover the retrieved HTTP body bytes before text decoding or whitespace normalization. Retrieval uses curl without automatic content decompression. Repository hashes cover git blob bytes. HTML document hashes do not include externally linked assets; CSS2 chapter and errata documents have individual hashes.",
+    "status": "This catalog contains target scope, source identities, and owner classifications, not progress flags. Evidence and unresolved implementation findings belong in the CSS conformance ledger and owning tests."
+  },
+  "authored_scope_definitions": {
+    "complete-applicable-grammar": "All defined authored properties, descriptors, selectors, at-rules, queries, functions, value productions, intrinsic restrictions, recovery rules, shorthand contributions, and applicable context-independent serialization in the selected effective definitions. Includes checked typed Rust construction. Does not claim execution or contextual validity without the required context.",
+    "referenced-grammar": "The module adds an API or execution model and consumes CSS grammars defined elsewhere. CSS supplies shared parsing, checked construction, and serialization for those referenced definitions; no duplicate grammar or live API is introduced here.",
+    "none": "The module contributes no independently authored stylesheet syntax. Its selection is retained and its requirements belong to the listed downstream owners.",
+    "named-property-exception": "Only explicitly named authored property grammar is selected; the remainder of the external module is not selected."
+  },
+  "owners": {
+    "css": "surgeist-css: authored semantic models, intrinsic grammar/recovery, specified-value facts, checked construction, expansion, context-preserving normalization, and canonical serialization.",
+    "style": "surgeist-style: selector/query evaluation, live CSSOM state, cascade/inheritance, custom-property environments, contextual validation, computed values, and invalidation.",
+    "layout": "surgeist-layout: formatting, sizing, positioning, fragmentation, and geometry requiring a layout tree or available space.",
+    "render": "surgeist-render: paint, compositing, filters, masks, and backend-facing drawing data.",
+    "text": "surgeist-text: fonts, shaping, line breaking, text measurement, and text layout.",
+    "animation": "surgeist-animation: timing, interpolation, sampled values, and animation/transition execution.",
+    "runtime": "surgeist-runtime: lifecycle, events/effects, observation delivery, invalidation scheduling, and frame orchestration.",
+    "window": "surgeist-window: window, viewport, input, and platform-host contracts.",
+    "shape": "surgeist-shape: geometry and path primitives.",
+    "root": "surgeist: cross-crate composition, resource/host adapters, and integration contracts. Includes future speech/HTML-facing integration without inventing a new crate."
+  },
+  "supersession_records": [
+    {
+      "older": "css-contain-3",
+      "effective": "css-conditional-5",
+      "scope": "Container-query definitions moved to Conditional Rules 5. Preserve Containment 3 membership as source history and use one effective grammar.",
+      "evidence": "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#changes"
+    },
+    {
+      "older": "fullscreen-w3c",
+      "effective": "fullscreen",
+      "scope": "Discontinued W3C draft replaced by the canonical WHATWG standard.",
+      "evidence": "https://www.w3.org/TR/2014/NOTE-fullscreen-20141118/#sotd"
+    },
+    {
+      "older": "grid-flow-tolerance repository baseline",
+      "effective": "css-grid-3",
+      "scope": "Replace the old authored spelling with the published flow-tolerance property. No compatibility alias is selected.",
+      "evidence": "https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#propdef-flow-tolerance"
+    },
+    {
+      "older": "display-mode repository baseline",
+      "effective": "mediaqueries-5",
+      "scope": "Use the published display-mode grammar and keyword set; remove the repository-baseline claim for this standard feature.",
+      "evidence": "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#descdef-media-display-mode"
+    },
+    {
+      "older": "Values 4 repository baseline",
+      "effective": "css-values-4",
+      "scope": "Use the selected dated publication for the complete applicable authored grammar instead of the former source-repository pin.",
+      "evidence": "https://www.w3.org/TR/2024/WD-css-values-4-20240312/"
+    }
+  ],
+  "expected_counts": {
+    "snapshot_official": 24,
+    "snapshot_reliable": 8,
+    "snapshot_stable": 10,
+    "snapshot_interop": 22,
+    "snapshot_total": 64,
+    "registered_extensions": 13,
+    "grid_extensions": 1,
+    "baseline_exceptions": 1,
+    "total_entries": 79
+  },
+  "modules": [
+    {
+      "id": "css2",
+      "title": "Cascading Style Sheets Level 2 Revision 1 (CSS 2.1) Specification",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/CSS2/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/",
+        "sha256": "1e43327015ed94d3e6a3bb5b3948dc5e56f54ed76cfd2ef4918ad8f8ca86c5dd",
+        "bytes": 127147,
+        "date": "2011-06-07",
+        "supplemental_documents": [
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/about.html",
+            "sha256": "c67ff594c99037d087680ac676d7dca89e85e34bfd13ebb0fdee47a15703d5d3",
+            "bytes": 29717
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/aural.html",
+            "sha256": "2915ca92d45afca74c29838b4ff4c79db3bac7db858a8a6d1f6babc8954ab39c",
+            "bytes": 64359
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/box.html",
+            "sha256": "8875bbcdefe6edc0d14fbd4a8d336b1062d2feb60aa65985bef60e86c530d99f",
+            "bytes": 60725
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/cascade.html",
+            "sha256": "c7aff33e6f0d4bbc75ffb20659afc3a413076db156259f7721be54f56184f148",
+            "bytes": 23438
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/changes.html",
+            "sha256": "830f199c671eea9ff2626fed1161bc4b5cbc6eb536be1f6b663cbf6fea13b589",
+            "bytes": 361878
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/colors.html",
+            "sha256": "5784063d27780195eedcd9824d347c923803de276fb8b766825e50cbd044c490",
+            "bytes": 27661
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/conform.html",
+            "sha256": "de58593b67d7256eaa72fc33b956c6838cd0e9fa1670d0a0e5feb8079b4ce572",
+            "bytes": 21602
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/cover.html",
+            "sha256": "1e43327015ed94d3e6a3bb5b3948dc5e56f54ed76cfd2ef4918ad8f8ca86c5dd",
+            "bytes": 127147
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/fonts.html",
+            "sha256": "d52fc14f36c26c6afad471e298a8e7d574d86030bfe3b97dcfb46e89a6d1d1b1",
+            "bytes": 44171
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/generate.html",
+            "sha256": "37748b674cd2035de0aea765c6c504622b34b82ae8cae3bdd851b716b013e22f",
+            "bytes": 57734
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/grammar.html",
+            "sha256": "eeb984c469daab242d4a7ba9be10e13a8457d96dacf472800ebc8e76fe893e28",
+            "bytes": 12734
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/indexlist.html",
+            "sha256": "e51f2555f47155e74d5fce212e94dab07d827bbcbdca379bdf1c7a4868984f1d",
+            "bytes": 77209
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/intro.html",
+            "sha256": "d4081213978405565da8b98cef9e099e450ed97d1f3a7390c474f6a1f54e19e7",
+            "bytes": 21097
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/media.html",
+            "sha256": "3a324a17037934085cc012d6730d86fdfd9beae5f02a0df9f97dd49696c98863",
+            "bytes": 12930
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/page.html",
+            "sha256": "984664616bba69b3ef8a2fbbfb8da02fc67f250349fab495d39d5d1ddbbe7a2f",
+            "bytes": 29005
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/propidx.html",
+            "sha256": "503a73555ead89289b7e75269da56b88c9b02cb9aa918f7e92e4b002c088f777",
+            "bytes": 56077
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/refs.html",
+            "sha256": "f208d881d0b718dfc1add0fbf6c7594dc080ace243d54f414323e1c4719bf89a",
+            "bytes": 13357
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/sample.html",
+            "sha256": "133769fd2555638382dda99739cea7b853bd683e46bc0ce82b7bbfbfe399d90d",
+            "bytes": 5679
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/selector.html",
+            "sha256": "f66f7c932788118efbbe1d328ecf012a85ae2881c02464d2a1751347b1e95e14",
+            "bytes": 61957
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/syndata.html",
+            "sha256": "02e71c159e14aae772a52b552b4fd8dbdcd4ea5716a0004bfff5cb8897ac8002",
+            "bytes": 74450
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/tables.html",
+            "sha256": "201812dd6e3c9ce9133afbc8c5ac576c7033514b6748f764aa111cc563036dc1",
+            "bytes": 76849
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/text.html",
+            "sha256": "467a8857ae69f2b325394ea400d14bd1280f85956c0a2e7deabc39e612b1380f",
+            "bytes": 35163
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/ui.html",
+            "sha256": "ff1f72803ea09e98b983dc7e380a2c903d4d91fb1de017375dc9d7002ff2613d",
+            "bytes": 21959
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/visudet.html",
+            "sha256": "12e8bc0e6b7c96d81c85f40690f296333342c0babe26ecee1fbf8a1fbd7f3834",
+            "bytes": 90847
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/visufx.html",
+            "sha256": "2bc674cb7ab0dcd094adf970d83b8339021d66a0c473be6575049af60aa51a05",
+            "bytes": 22558
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/visuren.html",
+            "sha256": "3f334c530cf450f6964062e5badccc3e9f4fed9589917a0e62c6be10dabc72a4",
+            "bytes": 119116
+          },
+          {
+            "url": "https://www.w3.org/TR/2011/REC-CSS2-20110607/zindex.html",
+            "sha256": "b486aef70d4d44e7f9cbf4376da33b5f31e8d0dcb15d400aa496bf4cb2d04f13",
+            "bytes": 10645
+          },
+          {
+            "url": "https://www.w3.org/Style/css2-updates/REC-CSS2-20110607-errata.html",
+            "sha256": "36b37eee597352e0e077a839eb2e9a02de55f89e9916fd385276678a71fe0428",
+            "bytes": 42303,
+            "kind": "errata"
+          }
+        ],
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout",
+        "render",
+        "text",
+        "root"
+      ],
+      "scope_note": "The dated publication is multi-document. Supplemental documents include all linked local HTML chapters and the separately published errata representation."
+    },
+    {
+      "id": "css-syntax-3",
+      "title": "CSS Syntax Module Level 3",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-syntax-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "sha256": "413b27acb4e16721d28b487456359ecbcecba472c4310bd2f6a4939ad393738b",
+        "bytes": 511620,
+        "date": "2021-12-24",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": []
+    },
+    {
+      "id": "css-style-attr",
+      "title": "CSS Style Attributes",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-style-attr/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2013/REC-css-style-attr-20131107/",
+        "sha256": "711c9a43978ff186225d21d7a7bff580037bc032ba70a7ba33c4fab16e396746",
+        "bytes": 17513,
+        "date": "2013-11-07",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "root"
+      ]
+    },
+    {
+      "id": "mediaqueries-3",
+      "title": "Media Queries Level 3",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css3-mediaqueries/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2024/REC-mediaqueries-3-20240521/",
+        "sha256": "5223a2f53fbcd9b85ee78c81d7db9ea9508624eec403241944c3324d7fdf851e",
+        "bytes": 61605,
+        "date": "2024-05-21",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "window"
+      ]
+    },
+    {
+      "id": "css-conditional-3",
+      "title": "CSS Conditional Rules Module Level 3",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-conditional-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/",
+        "sha256": "672eb79c78c53b9c92a460ffcfd8718af3c1e38ecf317566d955ffa1df470b35",
+        "bytes": 260197,
+        "date": "2024-08-15",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "root"
+      ]
+    },
+    {
+      "id": "selectors-3",
+      "title": "Selectors Level 3",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/selectors-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2018/REC-selectors-3-20181106/",
+        "sha256": "a30f0c0bd31b599b3163f8759b66536b7cc274fdc0b27e14046122afe3418183",
+        "bytes": 134902,
+        "date": "2018-11-06",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style"
+      ]
+    },
+    {
+      "id": "css-namespaces-3",
+      "title": "CSS Namespaces Module Level 3",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-namespaces/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2014/REC-css-namespaces-3-20140320/",
+        "sha256": "a23b00b30e8e3c550f35f85291cd514e0907c00899e12802569b7f977207daa8",
+        "bytes": 27439,
+        "date": "2014-03-20",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style"
+      ]
+    },
+    {
+      "id": "css-cascade-4",
+      "title": "CSS Cascading and Inheritance Level 4",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-cascade-4/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2022/CR-css-cascade-4-20220113/",
+        "sha256": "7787bd75c1f7187fdfdfdf9e7b5b8391faeac0e7c80dd19461de8426931138e5",
+        "bytes": 269589,
+        "date": "2022-01-13",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style"
+      ]
+    },
+    {
+      "id": "css-values-3",
+      "title": "CSS Values and Units Module Level 3",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-values-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2024/CRD-css-values-3-20240322/",
+        "sha256": "dcce1f2ff24d66a05373696e07dda59727303a421ee4593eb433092029df0094",
+        "bytes": 371644,
+        "date": "2024-03-22",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style"
+      ]
+    },
+    {
+      "id": "css-variables-1",
+      "title": "CSS Custom Properties for Cascading Variables Module Level 1",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-variables-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2022/CR-css-variables-1-20220616/",
+        "sha256": "5ce7b2c106af576328f222dd622598f847881f2ba9a64d53d6681d27d07ea0db",
+        "bytes": 267867,
+        "date": "2022-06-16",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style"
+      ]
+    },
+    {
+      "id": "css-box-3",
+      "title": "CSS Box Model Module Level 3",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-box-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2024/REC-css-box-3-20240411/",
+        "sha256": "5330ef95e4b8ae6ee3f87ea24f52b2b23092fb0dd0f9011736e1878db96c702e",
+        "bytes": 162853,
+        "date": "2024-04-11",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout"
+      ]
+    },
+    {
+      "id": "css-color-4",
+      "title": "CSS Color Module Level 4",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-color-4/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/CRD-css-color-4-20260908/",
+        "sha256": "bada647312a73c4cd4484dc177d67d22cf70df6c451b0e8c5dd5efc29c3415ba",
+        "bytes": 1203476,
+        "date": "2026-09-08",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "render"
+      ]
+    },
+    {
+      "id": "css-backgrounds-3",
+      "title": "CSS Backgrounds and Borders Module Level 3",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-backgrounds-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/",
+        "sha256": "8a291792b2fd351eee443df466626d02b889d890f5d80e315bf80181b408712a",
+        "bytes": 544031,
+        "date": "2024-03-11",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "render"
+      ]
+    },
+    {
+      "id": "css-images-3",
+      "title": "CSS Images Module Level 3",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-images-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2023/CRD-css-images-3-20231218/",
+        "sha256": "74eb4b475aa0845a50ebedb4bbb3ba7bf3966f975817d1c5cf8e3d512f53447e",
+        "bytes": 353703,
+        "date": "2023-12-18",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "render",
+        "root"
+      ]
+    },
+    {
+      "id": "css-fonts-3",
+      "title": "CSS Fonts Module Level 3",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-fonts-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2018/REC-css-fonts-3-20180920/",
+        "sha256": "e3982d57e3992dfa7c0e56c1ff39977bd71d807731247decc794c61d2eacd63b",
+        "bytes": 240662,
+        "date": "2018-09-20",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "text",
+        "root"
+      ]
+    },
+    {
+      "id": "css-writing-modes-3",
+      "title": "CSS Writing Modes Level 3",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-writing-modes-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2019/REC-css-writing-modes-3-20191210/",
+        "sha256": "39564c2366c0d46ad5cb4bf9363f232667e2d0b6833ac79931117baa24873aec",
+        "bytes": 355883,
+        "date": "2019-12-10",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout",
+        "text"
+      ]
+    },
+    {
+      "id": "css-multicol-1",
+      "title": "CSS Multi-column Layout Module Level 1",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-multicol-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2024/CR-css-multicol-1-20240516/",
+        "sha256": "0768f4526ac5b4be220169db13f1db9fb617c81c8112062a9df4883078220d09",
+        "bytes": 580366,
+        "date": "2024-05-16",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout"
+      ]
+    },
+    {
+      "id": "css-flexbox-1",
+      "title": "CSS Flexible Box Layout Module Level 1",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-flexbox-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2025/CRD-css-flexbox-1-20251014/",
+        "sha256": "b0e3b097bc6db0688d4712968c290cda280f8f750eb998bc358c28df490ff3f5",
+        "bytes": 1525929,
+        "date": "2025-10-14",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout"
+      ]
+    },
+    {
+      "id": "css-ui-3",
+      "title": "CSS Basic User Interface Module Level 3 (CSS3 UI)",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-ui-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/REC-css-ui-3-20260407/",
+        "sha256": "6dfbf85a9d9c6d682d9c0621872021e8a57216737acacd5dee31c2936d7da67e",
+        "bytes": 293306,
+        "date": "2026-04-07",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "render",
+        "window",
+        "root"
+      ]
+    },
+    {
+      "id": "css-contain-1",
+      "title": "CSS Containment Module Level 1",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-contain-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2024/REC-css-contain-1-20240625/",
+        "sha256": "eb6ea8d5435697776878bee6f58e0284c73f4ecd682ee43381d99f97bc69f56b",
+        "bytes": 183585,
+        "date": "2024-06-25",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout"
+      ]
+    },
+    {
+      "id": "css-transforms-1",
+      "title": "CSS Transforms Module Level 1",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-transforms-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2019/CR-css-transforms-1-20190214/",
+        "sha256": "4672e86844bfbe7af670c6702e873a36aee5a925d7fa30f374b79e88a1e18351",
+        "bytes": 310421,
+        "date": "2019-02-14",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "render"
+      ]
+    },
+    {
+      "id": "compositing-1",
+      "title": "Compositing and Blending Level 1",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/compositing-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2024/CRD-compositing-1-20240321/",
+        "sha256": "0fb91119308e706a5e4df368a91fa3b43cd5fe8cd8f192418b2df0a30ba8a62b",
+        "bytes": 234781,
+        "date": "2024-03-21",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "render"
+      ]
+    },
+    {
+      "id": "css-easing-1",
+      "title": "CSS Easing Functions Level 1",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-easing-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2023/CRD-css-easing-1-20230213/",
+        "sha256": "ea2901fc46cb032cd659c8024c0ef82ccad9009e4abb945615d59ce4fe506925",
+        "bytes": 94324,
+        "date": "2023-02-13",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "animation"
+      ]
+    },
+    {
+      "id": "css-counter-styles-3",
+      "title": "CSS Counter Styles Level 3",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-counter-styles-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2021/CR-css-counter-styles-3-20210727/",
+        "sha256": "7d697581c3eb238c3e8d18bcf0c03aa889380041fa208c8bf06c51dd07be9807",
+        "bytes": 343799,
+        "date": "2021-07-27",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "text"
+      ]
+    },
+    {
+      "id": "mediaqueries-4",
+      "title": "Media Queries Level 4",
+      "selection": "snapshot",
+      "tier": "reliable",
+      "latest_published_url": "https://www.w3.org/TR/mediaqueries-4/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/",
+        "sha256": "41310724809c30304b674442d35e09ec59b0b7b74ba6104bb1d90334953522e0",
+        "bytes": 409001,
+        "date": "2026-02-19",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "window"
+      ]
+    },
+    {
+      "id": "css-scroll-snap-1",
+      "title": "CSS Scroll Snap Module Level 1",
+      "selection": "snapshot",
+      "tier": "reliable",
+      "latest_published_url": "https://www.w3.org/TR/css-scroll-snap-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2021/CR-css-scroll-snap-1-20210311/",
+        "sha256": "9e5f5353d73d6df89aedafb11258fb44b8e00cd2b37332a658f417093a3b1e64",
+        "bytes": 241617,
+        "date": "2021-03-11",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout"
+      ]
+    },
+    {
+      "id": "css-scrollbars-1",
+      "title": "CSS Scrollbars Styling Module Level 1",
+      "selection": "snapshot",
+      "tier": "reliable",
+      "latest_published_url": "https://www.w3.org/TR/css-scrollbars-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2021/CR-css-scrollbars-1-20211209/",
+        "sha256": "bc4dd22757fd674e717b025d9826a95bd5674ed3ae4d0e5bb137e2ef1f6533af",
+        "bytes": 76960,
+        "date": "2021-12-09",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "render"
+      ]
+    },
+    {
+      "id": "css-grid-1",
+      "title": "CSS Grid Layout Module Level 1",
+      "selection": "snapshot",
+      "tier": "reliable",
+      "latest_published_url": "https://www.w3.org/TR/css-grid-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2025/CRD-css-grid-1-20250326/",
+        "sha256": "53a47980a217f0b976e1ab8fa0b56944421f7e6311deef96a6aa591ddc693317",
+        "bytes": 957488,
+        "date": "2025-03-26",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout"
+      ]
+    },
+    {
+      "id": "css-grid-2",
+      "title": "CSS Grid Layout Module Level 2",
+      "selection": "snapshot",
+      "tier": "reliable",
+      "latest_published_url": "https://www.w3.org/TR/css-grid-2/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/",
+        "sha256": "05aa64853c4428146973943b35caf121e44c1076bdf5b8c29f8896dba9b778e2",
+        "bytes": 885659,
+        "date": "2025-03-26",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout"
+      ]
+    },
+    {
+      "id": "css-cascade-5",
+      "title": "CSS Cascading and Inheritance Level 5",
+      "selection": "snapshot",
+      "tier": "reliable",
+      "latest_published_url": "https://www.w3.org/TR/css-cascade-5/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "sha256": "1fe27cdb69e4990a801bdad630d4bea755b4d472ff9aa23bf07f743056a3a2a1",
+        "bytes": 328235,
+        "date": "2022-01-13",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style"
+      ]
+    },
+    {
+      "id": "css-color-adjust-1",
+      "title": "CSS Color Adjustment Module Level 1",
+      "selection": "snapshot",
+      "tier": "reliable",
+      "latest_published_url": "https://www.w3.org/TR/css-color-adjust-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2025/CR-css-color-adjust-1-20251216/",
+        "sha256": "588c2672bb45911303f78a0590fa587f593234ef80d60b0f7a7af48afc91517c",
+        "bytes": 282841,
+        "date": "2025-12-16",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "render",
+        "window"
+      ]
+    },
+    {
+      "id": "css-conditional-4",
+      "title": "CSS Conditional Rules Module Level 4",
+      "selection": "snapshot",
+      "tier": "reliable",
+      "latest_published_url": "https://www.w3.org/TR/css-conditional-4/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2025/CRD-css-conditional-4-20250904/",
+        "sha256": "59e3eaee1e7311d7c1c295ae5f27d30abf64c424d21ed007b74849aec7ab000f",
+        "bytes": 98907,
+        "date": "2025-09-04",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "root"
+      ]
+    },
+    {
+      "id": "css-display-3",
+      "title": "CSS Display Module Level 3",
+      "selection": "snapshot",
+      "tier": "stable",
+      "latest_published_url": "https://www.w3.org/TR/css-display-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/CRD-css-display-3-20260605/",
+        "sha256": "872cdd7c49fdbfba1ff7ea5b6689145c168b17d09542f11af717a55bc16ab9ed",
+        "bytes": 581657,
+        "date": "2026-06-05",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout"
+      ]
+    },
+    {
+      "id": "css-writing-modes-4",
+      "title": "CSS Writing Modes Level 4",
+      "selection": "snapshot",
+      "tier": "stable",
+      "latest_published_url": "https://www.w3.org/TR/css-writing-modes-4/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2019/CR-css-writing-modes-4-20190730/",
+        "sha256": "30a59de49343d984c8570e2c1a5fa5bda511dda4f2e83841c862caa99d155fcd",
+        "bytes": 379734,
+        "date": "2019-07-30",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout",
+        "text"
+      ]
+    },
+    {
+      "id": "css-break-3",
+      "title": "CSS Fragmentation Module Level 3",
+      "selection": "snapshot",
+      "tier": "stable",
+      "latest_published_url": "https://www.w3.org/TR/css-break-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2018/CR-css-break-3-20181204/",
+        "sha256": "4d47d4b2dd36a28e2b0275833b9734b1d5a0b18299a3f278e238bed8e2ecd509",
+        "bytes": 171462,
+        "date": "2018-12-04",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout"
+      ]
+    },
+    {
+      "id": "css-align-3",
+      "title": "CSS Box Alignment Module Level 3",
+      "selection": "snapshot",
+      "tier": "stable",
+      "latest_published_url": "https://www.w3.org/TR/css-align-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/WD-css-align-3-20260130/",
+        "sha256": "7361249cbb73d90e811e6eb7f8cd5bc4de5bbb81c2a7add6d1cbcb9dfd800d37",
+        "bytes": 574165,
+        "date": "2026-01-30",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout"
+      ]
+    },
+    {
+      "id": "css-shapes-1",
+      "title": "CSS Shapes Module Level 1",
+      "selection": "snapshot",
+      "tier": "stable",
+      "latest_published_url": "https://www.w3.org/TR/css-shapes-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2025/CRD-css-shapes-1-20250612/",
+        "sha256": "f7e528fad3094f91fb9591ba6f849e2453353d50d0f136ca9e0749371fc31763",
+        "bytes": 609115,
+        "date": "2025-06-12",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout",
+        "shape"
+      ]
+    },
+    {
+      "id": "css-text-3",
+      "title": "CSS Text Module Level 3",
+      "selection": "snapshot",
+      "tier": "stable",
+      "latest_published_url": "https://www.w3.org/TR/css-text-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/CRD-css-text-3-20260814/",
+        "sha256": "17c26f1b41455947f106dac81736944b12da328ee4892c7c5b601f5b65ced55a",
+        "bytes": 540326,
+        "date": "2026-08-14",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "text"
+      ]
+    },
+    {
+      "id": "css-text-decor-3",
+      "title": "CSS Text Decoration Module Level 3",
+      "selection": "snapshot",
+      "tier": "stable",
+      "latest_published_url": "https://www.w3.org/TR/css-text-decor-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2022/CRD-css-text-decor-3-20220505/",
+        "sha256": "feebf9327271a19fdffe0d6e70fb8d01e3f3c1fca78abd3b7f223646ac3b6b95",
+        "bytes": 179502,
+        "date": "2022-05-05",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "render",
+        "text"
+      ]
+    },
+    {
+      "id": "css-masking-1",
+      "title": "CSS Masking Module Level 1",
+      "selection": "snapshot",
+      "tier": "stable",
+      "latest_published_url": "https://www.w3.org/TR/css-masking-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/",
+        "sha256": "79ff953b47472ae5bc1eace14c0c470d7bd75d128e933806c97c50b640194671",
+        "bytes": 489424,
+        "date": "2021-08-05",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "render"
+      ]
+    },
+    {
+      "id": "css-speech-1",
+      "title": "CSS Speech Module Level 1",
+      "selection": "snapshot",
+      "tier": "stable",
+      "latest_published_url": "https://www.w3.org/TR/css-speech-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/",
+        "sha256": "bb7b59c925640f089f19196a9d72f0c381bdcb10cec8ec411ba99cb9bc9b5c9a",
+        "bytes": 261800,
+        "date": "2023-02-14",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "root"
+      ],
+      "scope_note": "All authored speech properties and values are included. Speech execution and host accessibility integration are a later root-owned adapter concern; no speech backend is claimed."
+    },
+    {
+      "id": "css-view-transitions-1",
+      "title": "CSS View Transitions Module Level 1",
+      "selection": "snapshot",
+      "tier": "stable",
+      "latest_published_url": "https://www.w3.org/TR/css-view-transitions-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2024/CRD-css-view-transitions-1-20240328/",
+        "sha256": "7f8e537956b6c0fb0259d0e9231395ea985b35ee8f690e5d9e05e226110fc044",
+        "bytes": 508125,
+        "date": "2024-03-28",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "animation",
+        "runtime",
+        "root"
+      ]
+    },
+    {
+      "id": "css-transitions-1",
+      "title": "CSS Transitions Module Level 1",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/css-transitions-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/WD-css-transitions-1-20260108/",
+        "sha256": "969d35d13ee4e4248421ebf991156a1af6b577d17a1be2565ffeaa94a012ec80",
+        "bytes": 346601,
+        "date": "2026-01-08",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "animation"
+      ]
+    },
+    {
+      "id": "css-animations-1",
+      "title": "CSS Animations Level 1",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/css-animations-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2023/WD-css-animations-1-20230302/",
+        "sha256": "f725ad790abbf87f7f53b00f383b8c206a95decb27cd5c257a9725646abb4d98",
+        "bytes": 278425,
+        "date": "2023-03-02",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "animation"
+      ]
+    },
+    {
+      "id": "css-will-change-1",
+      "title": "CSS Will Change Module Level 1",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/css-will-change-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2022/CRD-css-will-change-1-20220505/",
+        "sha256": "66d3e479cd2b49c5998afa78cb8a571235c04fa42c3a47a053494d296b1bd9f4",
+        "bytes": 67364,
+        "date": "2022-05-05",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style"
+      ]
+    },
+    {
+      "id": "filter-effects-1",
+      "title": "Filter Effects Module Level 1",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/filter-effects-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/",
+        "sha256": "b73408da406802d4aa405c8ab1c0591732ff1403bae74f7267d53dc74b0dfb3d",
+        "bytes": 1600081,
+        "date": "2018-12-18",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "render"
+      ]
+    },
+    {
+      "id": "css-font-loading-3",
+      "title": "CSS Font Loading Module Level 3",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/css-font-loading/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2023/WD-css-font-loading-3-20230406/",
+        "sha256": "1a443ea0a7f67bab99daac264808df5268d652f0abbd63989c2a31b1d489a340",
+        "bytes": 288547,
+        "date": "2023-04-06",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "referenced-grammar",
+      "downstream_owners": [
+        "style",
+        "text",
+        "runtime",
+        "root"
+      ],
+      "scope_note": "No new stylesheet property grammar. CSS supplies the referenced font-descriptor and value grammars used by FontFace construction; loading, promises, and events belong downstream."
+    },
+    {
+      "id": "css-sizing-3",
+      "title": "CSS Box Sizing Module Level 3",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/css-sizing-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/WD-css-sizing-3-20260904/",
+        "sha256": "ca0f1db3d5ad0c9799bf9dc04b9c30b4d9adf8d4d6f222787e4759ed81a6bbad",
+        "bytes": 531778,
+        "date": "2026-09-04",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout"
+      ]
+    },
+    {
+      "id": "css-transforms-2",
+      "title": "CSS Transforms Module Level 2",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/css-transforms-2/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2021/WD-css-transforms-2-20211109/",
+        "sha256": "f1ada25106706968fc7b12ecb83bebc437de6ef309ee9dce1d990bd5fe8eead8",
+        "bytes": 270532,
+        "date": "2021-11-09",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "render"
+      ]
+    },
+    {
+      "id": "css-lists-3",
+      "title": "CSS Lists and Counters Module Level 3",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/css-lists-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2020/WD-css-lists-3-20201117/",
+        "sha256": "f898eb5b58818862a598d23d225da2ca3a58396b7bb32c9515c2cc8e31470ccf",
+        "bytes": 251726,
+        "date": "2020-11-17",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout",
+        "text"
+      ]
+    },
+    {
+      "id": "css-logical-1",
+      "title": "CSS Logical Properties and Values Module Level 1",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/css-logical-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2025/WD-css-logical-1-20251204/",
+        "sha256": "4c0f9fbefd2c66a86f220d5daa1514facca3ad7dbae68a4c1a82b569de370edc",
+        "bytes": 411946,
+        "date": "2025-12-04",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout"
+      ]
+    },
+    {
+      "id": "css-position-3",
+      "title": "CSS Positioned Layout Module Level 3",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/css-position-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2025/WD-css-position-3-20251007/",
+        "sha256": "3c8a8120af2c32d9259eb2feb80506cadffb29c716dbf571b9c1154ab06079a6",
+        "bytes": 413143,
+        "date": "2025-10-07",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout"
+      ]
+    },
+    {
+      "id": "resize-observer-1",
+      "title": "Resize Observer",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/resize-observer-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2020/WD-resize-observer-1-20200211/",
+        "sha256": "7bed69027b1b3bb7d406c73ebee4f34deb693885c77f8db38259438492240528",
+        "bytes": 135169,
+        "date": "2020-02-11",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "none",
+      "downstream_owners": [
+        "layout",
+        "runtime",
+        "root"
+      ],
+      "scope_note": "Defines observation APIs and delivery algorithms rather than authored stylesheet syntax."
+    },
+    {
+      "id": "web-animations-1",
+      "title": "Web Animations",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/web-animations-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2023/WD-web-animations-1-20230605/",
+        "sha256": "e814a799ef2442a6c2f5bb783307080054441215ae75921349c018aaef3a2e55",
+        "bytes": 1000120,
+        "date": "2023-06-05",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "referenced-grammar",
+      "downstream_owners": [
+        "style",
+        "animation",
+        "runtime"
+      ],
+      "scope_note": "No independent stylesheet syntax. CSS supplies referenced property/easing parsing; the timing model, effects, keyframe processing, and live API belong to animation, style, and runtime."
+    },
+    {
+      "id": "css-fonts-4",
+      "title": "CSS Fonts Module Level 4",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/css-fonts-4/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/",
+        "sha256": "03626a0c85658aaa94191f1b8c64dd5491b723acff08cc33ddd0331a80b920f5",
+        "bytes": 1384321,
+        "date": "2026-09-07",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "text",
+        "root"
+      ]
+    },
+    {
+      "id": "motion-1",
+      "title": "Motion Path Module Level 1",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/motion-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2024/WD-motion-1-20241105/",
+        "sha256": "5f3e94be9b120ab48065ecc17cf4a57b47af3fd2859a79c464c406d9996891c5",
+        "bytes": 361381,
+        "date": "2024-11-05",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "render",
+        "animation",
+        "shape"
+      ]
+    },
+    {
+      "id": "css-scroll-anchoring-1",
+      "title": "CSS Scroll Anchoring Module Level 1",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/css-scroll-anchoring-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2020/WD-css-scroll-anchoring-1-20201111/",
+        "sha256": "19072694d9cb63f46fcb122d020452401218f4c5e5c9ef576f56bc3ff205455b",
+        "bytes": 83475,
+        "date": "2020-11-11",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout"
+      ]
+    },
+    {
+      "id": "cssom-1",
+      "title": "CSS Object Model (CSSOM)",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/cssom-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2021/WD-cssom-1-20210826/",
+        "sha256": "24d77393e4ea56b04570066701d42c9ff6546a6d5e97d433a18cc1deaf6c9cd4",
+        "bytes": 635594,
+        "date": "2021-08-26",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style"
+      ],
+      "scope_note": "CSS owns context-independent parsing and serialization algorithms. Live CSSOM identity, mutation, declaration-block operations, and cascade-dependent computed-style APIs belong to style and root integration."
+    },
+    {
+      "id": "css-color-5",
+      "title": "CSS Color Module Level 5",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/css-color-5/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/WD-css-color-5-20260908/",
+        "sha256": "f749cb75ec1c0faca7d2443546c88be4e22750526dd45f9fefcfcdd079ed3c09",
+        "bytes": 569849,
+        "date": "2026-09-08",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "render"
+      ]
+    },
+    {
+      "id": "selectors-4",
+      "title": "Selectors Level 4",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/selectors-4/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/WD-selectors-4-20260122/",
+        "sha256": "5d3b3f7e1fcc562dcec1a01ad2c5651e9f0bac294b255a75352e9df202604e6d",
+        "bytes": 978757,
+        "date": "2026-01-22",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style"
+      ]
+    },
+    {
+      "id": "css-contain-2",
+      "title": "CSS Containment Module Level 2",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/css-contain-2/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2022/WD-css-contain-2-20220917/",
+        "sha256": "d26c8b725efe73df0f4ec215f44903d5128b3d61e74654f92f0d37be3631bfb9",
+        "bytes": 242847,
+        "date": "2022-09-17",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout"
+      ]
+    },
+    {
+      "id": "cssom-view-1",
+      "title": "CSSOM View Module",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/cssom-view-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2025/WD-cssom-view-1-20250916/",
+        "sha256": "693b1c1fe7f72274217cc5c690bd15fe290adc78f080578fb6718e830c4c83b6",
+        "bytes": 932214,
+        "date": "2025-09-16",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "layout",
+        "style",
+        "runtime",
+        "window",
+        "root"
+      ],
+      "scope_note": "Include authored grammar defined by this edition, including scroll-behavior; viewport geometry, scrolling APIs, and observations require runtime, layout, and host context."
+    },
+    {
+      "id": "geometry-1",
+      "title": "Geometry Interfaces Module Level 1",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/geometry-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2025/CRD-geometry-1-20251204/",
+        "sha256": "2d406c87fb2580570c6f46b458e347de464d963fd196e4797a1c19c1a4d95c09",
+        "bytes": 764853,
+        "date": "2025-12-04",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "none",
+      "downstream_owners": [
+        "shape",
+        "root"
+      ],
+      "scope_note": "Defines geometric interfaces rather than authored stylesheet syntax. Their public integration is outside CSS."
+    },
+    {
+      "id": "css-nesting-1",
+      "title": "CSS Nesting Module Level 1",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/css-nesting-1/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/",
+        "sha256": "b29b0db74b96af295efcd7cd94f34366dd099ebb905dc5529c61409184f6fa9c",
+        "bytes": 213027,
+        "date": "2026-01-22",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style"
+      ]
+    },
+    {
+      "id": "css-contain-3",
+      "selection": "registered-extension",
+      "latest_published_url": "https://www.w3.org/TR/css-contain-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2022/WD-css-contain-3-20220818/",
+        "sha256": "7e6b410172bfecf8b5fcccca2c5d6862ea87b81f20c34cd508934199f5373ec7",
+        "bytes": 224922,
+        "date": "2022-08-18",
+        "kind": "w3c-dated-publication"
+      },
+      "title": "CSS Containment Module Level 3",
+      "tier": null,
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout"
+      ],
+      "scope_note": "Container-query definitions were moved to Conditional Rules 5. Apply that selected successor to the overlapping definitions; do not implement a second older container-query grammar."
+    },
+    {
+      "id": "css-conditional-5",
+      "selection": "registered-extension",
+      "latest_published_url": "https://www.w3.org/TR/css-conditional-5/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/",
+        "sha256": "272548f0468544b6834bce6b5bbdb1203d3dade2b3480edfc7aed40b066d0f4a",
+        "bytes": 634104,
+        "date": "2025-10-30",
+        "kind": "w3c-dated-publication"
+      },
+      "title": "CSS Conditional Rules Module Level 5",
+      "tier": null,
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "root"
+      ],
+      "scope_note": "Owns the selected container-query grammar moved from Containment 3, plus the complete other authored grammar of this edition."
+    },
+    {
+      "id": "css-cascade-6",
+      "selection": "registered-extension",
+      "latest_published_url": "https://www.w3.org/TR/css-cascade-6/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/",
+        "sha256": "0cc42c0d3579cacf79c4549bc3302d31a2c847a325693585c21cafd92632263d",
+        "bytes": 194127,
+        "date": "2024-09-06",
+        "kind": "w3c-dated-publication"
+      },
+      "title": "CSS Cascading and Inheritance Level 6",
+      "tier": null,
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style"
+      ]
+    },
+    {
+      "id": "css-pseudo-4",
+      "selection": "registered-extension",
+      "latest_published_url": "https://www.w3.org/TR/css-pseudo-4/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2025/WD-css-pseudo-4-20250627/",
+        "sha256": "f983c087cb9e408fe0696976eeba6d5bc36120b62019e77114ee6b274b74db2e",
+        "bytes": 552074,
+        "date": "2025-06-27",
+        "kind": "w3c-dated-publication"
+      },
+      "title": "CSS Pseudo-Elements Module Level 4",
+      "tier": null,
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "render"
+      ]
+    },
+    {
+      "id": "css-values-4",
+      "selection": "registered-extension",
+      "latest_published_url": "https://www.w3.org/TR/css-values-4/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2024/WD-css-values-4-20240312/",
+        "sha256": "7b6b68c34d00d7f6945e66e4e2efa913266299f597d5825393cae85dac1cc78c",
+        "bytes": 823488,
+        "date": "2024-03-12",
+        "kind": "w3c-dated-publication"
+      },
+      "title": "CSS Values and Units Module Level 4",
+      "tier": null,
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style"
+      ]
+    },
+    {
+      "id": "mediaqueries-5",
+      "selection": "registered-extension",
+      "latest_published_url": "https://www.w3.org/TR/mediaqueries-5/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/",
+        "sha256": "9e761f96f6a9935591264b470bdf5e4c1b5b15874c376b9de70e670171671c95",
+        "bytes": 697033,
+        "date": "2026-02-19",
+        "kind": "w3c-dated-publication"
+      },
+      "title": "Media Queries Level 5",
+      "tier": null,
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "window"
+      ]
+    },
+    {
+      "id": "css-overflow-3",
+      "selection": "registered-extension",
+      "latest_published_url": "https://www.w3.org/TR/css-overflow-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2025/WD-css-overflow-3-20251007/",
+        "sha256": "1b59ae503fd88cdaeb07ae2a1c6b5ff344baead236ce4e1b55425f880eed85fb",
+        "bytes": 281370,
+        "date": "2025-10-07",
+        "kind": "w3c-dated-publication"
+      },
+      "title": "CSS Overflow Module Level 3",
+      "tier": null,
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout"
+      ]
+    },
+    {
+      "id": "css-sizing-4",
+      "selection": "registered-extension",
+      "latest_published_url": "https://www.w3.org/TR/css-sizing-4/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/WD-css-sizing-4-20260904/",
+        "sha256": "faaa865895590c6c523bd5faf127ba940886d5113cef822f8d08eb0aac2ea468",
+        "bytes": 543316,
+        "date": "2026-09-04",
+        "kind": "w3c-dated-publication"
+      },
+      "title": "CSS Box Sizing Module Level 4",
+      "tier": null,
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout"
+      ]
+    },
+    {
+      "id": "css-text-4",
+      "selection": "registered-extension",
+      "latest_published_url": "https://www.w3.org/TR/css-text-4/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/WD-css-text-4-20260814/",
+        "sha256": "106c5cd086ab23b0edea5aa3ff6876b61cc623154f728aa269b74f0527dba19d",
+        "bytes": 888007,
+        "date": "2026-08-14",
+        "kind": "w3c-dated-publication"
+      },
+      "title": "CSS Text Module Level 4",
+      "tier": null,
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "text"
+      ]
+    },
+    {
+      "id": "css-text-decor-4",
+      "selection": "registered-extension",
+      "latest_published_url": "https://www.w3.org/TR/css-text-decor-4/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2022/WD-css-text-decor-4-20220504/",
+        "sha256": "be6b9a7763ec76ae648f527cca1866ddf107f8f1dc3a607d5aeb24911252c421",
+        "bytes": 288319,
+        "date": "2022-05-04",
+        "kind": "w3c-dated-publication"
+      },
+      "title": "CSS Text Decoration Module Level 4",
+      "tier": null,
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "render",
+        "text"
+      ]
+    },
+    {
+      "id": "css-ui-4",
+      "selection": "registered-extension",
+      "latest_published_url": "https://www.w3.org/TR/css-ui-4/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/WD-css-ui-4-20260120/",
+        "sha256": "42d9c51404fbef8121215b0a098ce436f89f0b57798fb499e342b4dfc7740f8f",
+        "bytes": 560379,
+        "date": "2026-01-20",
+        "kind": "w3c-dated-publication"
+      },
+      "title": "CSS Basic User Interface Module Level 4",
+      "tier": null,
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "render",
+        "window",
+        "root"
+      ]
+    },
+    {
+      "id": "css-content-3",
+      "selection": "registered-extension",
+      "latest_published_url": "https://www.w3.org/TR/css-content-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2025/WD-css-content-3-20251204/",
+        "sha256": "918390055739ab76d6f8d1e45b887e413852cacff89a5e7de2c2f56b249c62e4",
+        "bytes": 291752,
+        "date": "2025-12-04",
+        "kind": "w3c-dated-publication"
+      },
+      "title": "CSS Generated Content Module Level 3",
+      "tier": null,
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "text"
+      ]
+    },
+    {
+      "id": "fullscreen",
+      "selection": "registered-extension",
+      "latest_published_url": "https://www.w3.org/TR/fullscreen/",
+      "title": "Fullscreen",
+      "superseded_publication": {
+        "url": "https://www.w3.org/TR/2014/NOTE-fullscreen-20141118/",
+        "sha256": "4fc3162120af3e4d11c986a397d5285cdaeeb224e3804e00b2961bd89611cff1",
+        "bytes": 7153,
+        "date": "2014-11-18"
+      },
+      "publication": {
+        "kind": "whatwg-commit-snapshot",
+        "url": "https://fullscreen.spec.whatwg.org/commit-snapshots/7c38d773117aa1e6bfa13754afe77483f40c908f/",
+        "revision": "7c38d773117aa1e6bfa13754afe77483f40c908f",
+        "date": "2026-07-17T13:21:11Z",
+        "sha256": "7d8cd68e63c06f2ac1a8caad1804ad48e6000af1dcf20943139f06c8fbfef6d1",
+        "bytes": 237039
+      },
+      "tier": null,
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "runtime",
+        "window",
+        "root"
+      ],
+      "scope_note": "The W3C publication was discontinued. Its status notice identifies WHATWG as the successor; the immutable WHATWG snapshot is the active source for this same module, including :fullscreen and ::backdrop references. Fullscreen state and host behavior remain downstream."
+    },
+    {
+      "id": "css-grid-3",
+      "selection": "grid-extension",
+      "latest_published_url": "https://www.w3.org/TR/css-grid-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/WD-css-grid-3-20260121/",
+        "sha256": "ab3a5d476f748764136b3ad89f2b4c9c9b47d6d50304aaa5d0a02319b9f5f46b",
+        "bytes": 337396,
+        "date": "2026-01-21",
+        "kind": "w3c-dated-publication"
+      },
+      "title": "CSS Grid Layout Module Level 3",
+      "tier": null,
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "layout"
+      ],
+      "scope_note": "Include all defined authored Grid 3 grammar, including grid-lanes, inline-grid-lanes, and flow-tolerance. Grid layout execution remains downstream. Unspecified draft algorithms do not excuse defined grammar gaps."
+    },
+    {
+      "id": "backdrop-filter-exception",
+      "title": "Surgeist backdrop-filter authored grammar exception",
+      "selection": "baseline-exception",
+      "tier": null,
+      "publication": {
+        "kind": "repository-snapshot",
+        "repository": "surgeist",
+        "revision": "fdf66b413c2e1e017fcc5bcf99163cd51047a784",
+        "files": [
+          {
+            "path": "crates/surgeist-css/src/parser/effects.rs",
+            "sha256": "d89f2446a69c19810d7c19f8042f6e046313746210b7c30a430118a9e420a1a9",
+            "bytes": 58592
+          },
+          {
+            "path": "crates/surgeist-css/src/properties.rs",
+            "sha256": "3ad9fc6dc15c411fe8a3f01a0f5a61f19bfefb7e12f0ff2f6ba277a01df37b00",
+            "bytes": 137380
+          },
+          {
+            "path": "crates/surgeist-css/src/syntax.rs",
+            "sha256": "6599ccfe78504587e760fffce37dca8cd2cdebbc1974db0e0917407dee000e84",
+            "bytes": 455365
+          }
+        ]
+      },
+      "authored_scope": "named-property-exception",
+      "properties": [
+        "backdrop-filter"
+      ],
+      "grammar_basis": "The pinned parse_filter and parse_filter_function grammar and the BackdropFilter property branch. Common specified-value primitives and substitution handling follow the selected CSS foundation. This exception does not select the complete Filter Effects 2 module.",
+      "downstream_owners": [
+        "style",
+        "render"
+      ],
+      "scope_note": "The former X-FILTER2-BASE identifier referred to an abbreviated historical repository revision. This catalog pins its imported grammar to a full root-repository commit and exact file content. No dated Filter Effects 2 publication is claimed."
+    }
+  ]
+}
