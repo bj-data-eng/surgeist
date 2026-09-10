@@ -3089,7 +3089,7 @@ mod tests {
     use super::*;
     use serde_json::Value;
 
-    type OracleMutation = (&'static str, fn(&mut Value));
+    type OracleMutation = (&'static str, OracleContractFailureKind, fn(&mut Value));
 
     #[test]
     fn payload_observation_retains_nonempty_recovery_ending_at_payload_end() {
@@ -3155,7 +3155,48 @@ mod tests {
     fn oracle_record_test_artifacts(expected_classes: &[u8]) -> ArtifactSet {
         let mut artifacts = committed_artifacts();
         artifacts.expected_classes = expected_classes.to_vec();
+        let digest = sha256_hex(expected_classes);
+        mutate_canonical_oracle(&mut artifacts, |oracle| {
+            oracle["expected_class_registry_sha256"] = Value::from(digest);
+        });
         artifacts
+    }
+
+    fn oracle_record_test_failures(artifacts: &ArtifactSet) -> Vec<OracleContractFailure> {
+        let inventory = validate_neutral_artifact_set(NeutralArtifactSet {
+            report: artifacts.report.clone(),
+            expected_classes: artifacts.expected_classes.clone(),
+            expectations: artifacts.expectations.clone(),
+            sources: artifacts.sources.clone(),
+        })
+        .expect("record tests require a valid neutral artifact set");
+        if let Err(error) = validate_oracle(
+            &artifacts.oracle,
+            &inventory.report_digest,
+            &inventory.expected_classes_digest,
+            &inventory.cases,
+        ) {
+            assert!(
+                error.starts_with("CSS oracle contract failures:\n"),
+                "record test setup must pass the document gates: {error}"
+            );
+        }
+        let oracle = load_csstree_oracle_schema(&artifacts.oracle)
+            .expect("record tests require a canonical closed-schema oracle");
+        collect_oracle_contract_failures(&oracle, &inventory.cases)
+    }
+
+    fn assert_oracle_record_failure_absent(
+        artifacts: &ArtifactSet,
+        kind: OracleContractFailureKind,
+    ) {
+        // Other record semantics in the copied oracle remain unresolved. The
+        // mutation's own failure must be absent before it is introduced.
+        let failures = oracle_record_test_failures(artifacts);
+        assert!(
+            failures.iter().all(|failure| failure.kind() != kind),
+            "record test setup already contains {kind:?}"
+        );
     }
 
     fn expected_classes_with_one_media_rule(bytes: &[u8]) -> Vec<u8> {
@@ -3561,7 +3602,9 @@ mod tests {
 
     #[test]
     fn oracle_loader_rejects_duplicate_ids() {
-        let mut artifacts = committed_artifacts();
+        let mut artifacts =
+            oracle_record_test_artifacts(include_bytes!("../csstree/expected-classes.json"));
+        assert_oracle_record_failure_absent(&artifacts, OracleContractFailureKind::DuplicateCaseId);
         mutate_canonical_oracle(&mut artifacts, |oracle| {
             oracle["records"][1]["id"] = oracle["records"][0]["id"].clone();
         });
@@ -3570,7 +3613,11 @@ mod tests {
 
     #[test]
     fn oracle_loader_rejects_missing_ids() {
-        let mut artifacts = committed_artifacts();
+        let mut artifacts =
+            oracle_record_test_artifacts(include_bytes!("../csstree/expected-classes.json"));
+        let oracle = load_csstree_oracle_schema(&artifacts.oracle)
+            .expect("canonical oracle before removing one record");
+        assert_eq!(oracle.records.len(), EXPECTED_CASES);
         mutate_canonical_oracle(&mut artifacts, |oracle| {
             oracle["records"]
                 .as_array_mut()
@@ -3582,7 +3629,9 @@ mod tests {
 
     #[test]
     fn oracle_loader_rejects_extra_ids() {
-        let mut artifacts = committed_artifacts();
+        let mut artifacts =
+            oracle_record_test_artifacts(include_bytes!("../csstree/expected-classes.json"));
+        assert_oracle_record_failure_absent(&artifacts, OracleContractFailureKind::ExtraCaseId);
         mutate_canonical_oracle(&mut artifacts, |oracle| {
             let records = oracle["records"]
                 .as_array_mut()
@@ -3603,7 +3652,12 @@ mod tests {
 
     #[test]
     fn oracle_loader_rejects_noncanonical_record_order() {
-        let mut artifacts = committed_artifacts();
+        let mut artifacts =
+            oracle_record_test_artifacts(include_bytes!("../csstree/expected-classes.json"));
+        assert_oracle_record_failure_absent(
+            &artifacts,
+            OracleContractFailureKind::NonCanonicalRecordOrder,
+        );
         mutate_canonical_oracle(&mut artifacts, |oracle| {
             oracle["records"]
                 .as_array_mut()
@@ -3739,21 +3793,39 @@ mod tests {
     #[test]
     fn oracle_loader_rejects_path_context_options_and_input_drift() {
         let mutations: [OracleMutation; 4] = [
-            ("path mismatch", |oracle| {
-                oracle["records"][0]["path"] = Value::from("expectations/extra.json");
-            }),
-            ("context mismatch", |oracle| {
-                oracle["records"][0]["context"] = Value::from("value");
-            }),
-            ("options mismatch", |oracle| {
-                oracle["records"][0]["options"]["parseValue"] = Value::Bool(false);
-            }),
-            ("input mismatch", |oracle| {
-                oracle["records"][0]["input"] = Value::from("different");
-            }),
+            (
+                "path mismatch",
+                OracleContractFailureKind::PathMismatch,
+                |oracle| {
+                    oracle["records"][0]["path"] = Value::from("expectations/extra.json");
+                },
+            ),
+            (
+                "context mismatch",
+                OracleContractFailureKind::ContextMismatch,
+                |oracle| {
+                    oracle["records"][0]["context"] = Value::from("value");
+                },
+            ),
+            (
+                "options mismatch",
+                OracleContractFailureKind::OptionsMismatch,
+                |oracle| {
+                    oracle["records"][0]["options"]["parseValue"] = Value::Bool(false);
+                },
+            ),
+            (
+                "input mismatch",
+                OracleContractFailureKind::InputMismatch,
+                |oracle| {
+                    oracle["records"][0]["input"] = Value::from("different");
+                },
+            ),
         ];
-        for (expected, mutation) in mutations {
-            let mut artifacts = committed_artifacts();
+        for (expected, kind, mutation) in mutations {
+            let mut artifacts =
+                oracle_record_test_artifacts(include_bytes!("../csstree/expected-classes.json"));
+            assert_oracle_record_failure_absent(&artifacts, kind);
             mutate_canonical_oracle(&mut artifacts, mutation);
             assert_rejected(artifacts, expected);
         }
@@ -3807,9 +3879,81 @@ mod tests {
 
     #[test]
     fn oracle_loader_rejects_full_observation_without_observation() {
-        let mut artifacts = committed_artifacts();
+        const ID: &str = "atrule/block.json#/shouldn't create a raw node when no prelude and parseAtrulePrelude is false";
+        let mut artifacts =
+            oracle_record_test_artifacts(include_bytes!("../csstree/expected-classes.json"));
+        // Independently specify the complete observation for an unknown @test
+        // rule. This record's upstream parser option has no public equivalent,
+        // so its existing expected class requires full observation.
         mutate_canonical_oracle(&mut artifacts, |oracle| {
-            oracle["records"][0]["outcome"]["policy"] = Value::from("full_observation");
+            let record = oracle["records"]
+                .as_array_mut()
+                .expect("oracle records")
+                .iter_mut()
+                .find(|record| record["id"] == ID)
+                .expect("unknown at-rule option fixture");
+            assert_eq!(record["input"], "@test {}");
+            assert_eq!(
+                record["options"],
+                serde_json::json!({ "parseAtrulePrelude": false })
+            );
+            record["probe"] = serde_json::json!({
+                "kind": "active",
+                "entry_point": "sheet",
+                "adapter": "top_level_at_rule",
+                "extractor": { "kind": "sheet_rules" },
+                "property_or_descriptor": null,
+                "options": { "parseAtrulePrelude": false },
+                "payload": { "prefix": "", "suffix": "", "input_byte_length": 8 },
+            });
+            record["outcome"] = serde_json::json!({
+                "kind": "unsupported",
+                "reason": "upstream_parser_option_without_public_css_equivalent",
+                "policy": "full_observation",
+            });
+            record["observation"] = serde_json::json!({
+                "extractor": { "kind": "sheet_rules" },
+                "syntax_count": 0,
+                "is_clean": false,
+                "diagnostics": [{
+                    "code": "unknown_at_rule",
+                    "action": "drop_at_rule",
+                    "byte_offset": 0,
+                    "span_start": 0,
+                    "span_end": 8,
+                    "multiplicity": 1,
+                    "payload_relation": "intersects",
+                }],
+            });
+        });
+        let oracle = load_csstree_oracle_schema(&artifacts.oracle)
+            .expect("canonical full-observation fixture");
+        let record = oracle
+            .records
+            .iter()
+            .find(|record| record.id == ID)
+            .expect("full-observation fixture record");
+        let registry = REGISTRY
+            .iter()
+            .find(|entry| entry.fixture_path() == record.path)
+            .copied()
+            .expect("full-observation fixture registry");
+        validate_probe(record, registry).expect("the independently specified probe is valid");
+        validate_outcome(record)
+            .expect("full observation is valid before removing its observation");
+        let failures = oracle_record_test_failures(&artifacts);
+        assert!(
+            failures.iter().all(|failure| failure.case_id() != ID),
+            "the full-observation fixture must satisfy every record contract before mutation"
+        );
+        mutate_canonical_oracle(&mut artifacts, |oracle| {
+            let record = oracle["records"]
+                .as_array_mut()
+                .expect("oracle records")
+                .iter_mut()
+                .find(|record| record["id"] == ID)
+                .expect("full-observation fixture");
+            record["observation"] = Value::Null;
         });
         assert_rejected(artifacts, "lacks observation");
     }

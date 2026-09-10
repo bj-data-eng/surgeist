@@ -906,7 +906,7 @@ pub const REGISTRY: &[RegistryEntry] = &[
         "atrule",
         Sheet,
         TopLevelAtRule,
-        Extractor::ScopeChildren,
+        Extractor::TopLevelRuleKind(TopLevelRuleKind::Scope),
         EMPTY
     ),
     entry!(
@@ -922,7 +922,7 @@ pub const REGISTRY: &[RegistryEntry] = &[
         "atrule",
         Sheet,
         TopLevelAtRule,
-        Extractor::SupportsChildren,
+        Extractor::TopLevelRuleKind(TopLevelRuleKind::Supports),
         EMPTY
     ),
     entry!(
