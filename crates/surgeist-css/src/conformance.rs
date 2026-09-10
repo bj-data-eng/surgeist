@@ -1007,6 +1007,14 @@ profile_source!(
     "https://www.w3.org/TR/2026/WD-css-fonts-4-20260422/"
 );
 profile_source!(
+    I_FONTS4_20260907,
+    "I-FONTS4-20260907",
+    "CSS Fonts",
+    "4",
+    CssSpecificationTier::Snapshot2026Interop,
+    "https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/"
+);
+profile_source!(
     I_COLOR5,
     "I-COLOR5",
     "CSS Color",
@@ -1223,6 +1231,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     I_LISTS3,
     I_POSITION3,
     I_FONTS4,
+    I_FONTS4_20260907,
     I_COLOR5,
     I_SELECTORS4,
     I_CONTAIN2,
@@ -2206,9 +2215,12 @@ const FONT_FACE_STYLE_RANGE_REMAINDER: &str =
 const FONT_FACE_STRETCH_RANGE_SUBSET: &str = "Font-face non-negative percentage stretch values and increasing two-value ranges are supported.";
 const FONT_FACE_STRETCH_RANGE_REMAINDER: &str =
     "Other unselected Fonts 4 font-stretch descriptor grammar remains unsupported.";
+const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, stretch, display, unicode-range and feature-settings descriptors have typed representations; invalid descriptors recover independently.";
+const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-width, font-variation-settings, font-named-instance and metric overrides remain unsupported; source-list compatibility projections also remain incomplete.";
+const FONT_SOURCE_SUBSET: &str = "URL and local sources preserve authored order, including empty URL strings, a single format hint and technology hints. Invalid source members recover independently, while invalid descriptor annotations or all-invalid lists discard the descriptor.";
+const FONT_SOURCE_REMAINDER: &str = "Legacy variation format strings are retained but are not yet projected to their equivalent format keyword and variations technology.";
 const FONT_SOURCE_HINTS_SUBSET: &str = "A single format() string, including empty or unrecognized strings, or a woff, woff2, truetype, opentype, collection, embedded-opentype, or svg keyword is supported. The variations, palettes, color-colrv0, color-colrv1, color-svg, color-sbix, color-cbdt, features-opentype, features-aat, features-graphite, and incremental tech() hints preserve authored order and repetition.";
-const FONT_SOURCE_HINTS_REMAINDER: &str =
-    "Other unselected Fonts 4 font source format and technology hints remain unsupported.";
+const FONT_SOURCE_HINTS_REMAINDER: &str = FONT_SOURCE_REMAINDER;
 
 const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
     match property {
@@ -2655,12 +2667,14 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 487] = [
         BASELINE_RULE_SUBSET,
         BASELINE_RULE_REMAINDER,
     ),
-    CssFeatureMetadata::complete(
+    CssFeatureMetadata::partial(
         "baseline.rule.font-face",
         CssFeatureKind::Rule,
         "@font-face",
-        O_FONTS3,
+        I_FONTS4_20260907,
         "#font-face-rule",
+        FONT_FACE_RULE_SUBSET,
+        FONT_FACE_RULE_REMAINDER,
     ),
     CssFeatureMetadata::partial(
         "baseline.rule.keyframes",
@@ -3817,12 +3831,14 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 487] = [
         O_FONTS3,
         "#font-family-desc",
     ),
-    CssFeatureMetadata::complete(
+    CssFeatureMetadata::partial(
         "baseline.descriptor.src",
         CssFeatureKind::Descriptor,
         "src in @font-face",
-        O_FONTS3,
-        "#src-desc",
+        I_FONTS4_20260907,
+        "#font-face-src-parsing",
+        FONT_SOURCE_SUBSET,
+        FONT_SOURCE_REMAINDER,
     ),
     CssFeatureMetadata::complete(
         "baseline.descriptor.font-weight",
@@ -3866,12 +3882,14 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 487] = [
         O_FONTS3,
         "#font-rend-desc",
     ),
-    CssFeatureMetadata::complete(
+    CssFeatureMetadata::partial(
         "official.value.font-source",
         CssFeatureKind::Value,
         "@font-face source list",
-        O_FONTS3,
-        "#src-desc",
+        I_FONTS4_20260907,
+        "#font-face-src-parsing",
+        FONT_SOURCE_SUBSET,
+        FONT_SOURCE_REMAINDER,
     ),
     CssFeatureMetadata::complete(
         "official.value.opentype-tag",
@@ -3911,7 +3929,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 487] = [
         "ext.value.font-source-modern-hints",
         CssFeatureKind::Value,
         "format() keyword and tech() font-source hints",
-        I_FONTS4,
+        I_FONTS4_20260907,
         "#font-face-src-parsing",
         FONT_SOURCE_HINTS_SUBSET,
         FONT_SOURCE_HINTS_REMAINDER,

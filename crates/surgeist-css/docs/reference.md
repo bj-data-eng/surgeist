@@ -404,11 +404,11 @@ assert!(font.i01_subset().is_none());
 ```
 
 `@font-face` retains every valid descriptor occurrence in authored order;
-effective typed accessors return the last valid occurrence. Fonts 3 family,
-source, weight, style, stretch, unicode-range, and feature-settings grammar is
-catalogued separately from the selected Fonts 4 additions: `font-display`,
-numeric property weight, descriptor weight/style/stretch ranges, and keyword
-`format()`/`tech()` source hints. An invalid or unknown descriptor is dropped
+effective typed accessors return the last valid occurrence. Source-list grammar
+follows the selected Fonts 4 edition. Other descriptor and property records
+retain their individual dated sources, including the previously selected
+`font-display`, numeric property weight and descriptor weight/style/stretch
+ranges. An invalid or unknown descriptor is dropped
 with a `DropDescriptor` diagnostic without erasing valid neighbors. Empty rules
 and rules missing `font-family` or `src` remain valid authored syntax. Those two
 accessors return `Option`; their absence excludes the face from downstream font
@@ -438,10 +438,19 @@ remain available with this single-item invariant. `tech(palettes)` has the
 typed `CssFontTechHint::Palettes` representation, and technology order and
 repeated entries remain authored.
 
-Fonts 3 rows cite the dated `O-FONTS3` source and are `Complete`. The five
-selected atomic Fonts 4 deltas cite `I-FONTS4` and remain `Partial` with explicit
-subset and remainder text; `font-display` is `Complete`, while
-`@font-feature-values` remains `RecognizedUnsupported`. These authored models do
+The `@font-face`, `src`, font-source and modern-source-hint records cite the
+September 7, 2026 edition as `I-FONTS4-20260907` and remain `Partial`.
+The older `I-FONTS4` identity keeps its April 22 edition; `O-FONTS3` also
+remains available for historical source records. These immutable identities
+must not be repointed when adopting a newer production.
+
+Selected descriptors including `font-width`, `font-variation-settings`,
+`font-named-instance` and metric overrides remain unfinished. Legacy strings
+such as `format("woff2-variations")` are retained but do not yet expose their
+specified equivalent format and `variations` technology. These are CSS
+implementation gaps. Other historical Fonts 3 and Fonts 4 support records
+retain their existing classifications pending reconciliation with the complete
+selected profile; their dates bound those claims. These authored models do
 not load or match fonts, resolve fallback or feature application, shape glyphs,
 apply cascade or substitution, evaluate computed values, expose CSSOM, serialize,
 or lower into another Surgeist crate.
