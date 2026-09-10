@@ -795,6 +795,10 @@ pub surgeist_css::CssFlexWrap::WrapReverse
 pub surgeist_css::CssFloat::Left
 pub surgeist_css::CssFloat::None
 pub surgeist_css::CssFloat::Right
+#[non_exhaustive] pub enum surgeist_css::CssFlowToleranceRef<'a>
+pub surgeist_css::CssFlowToleranceRef::Infinite
+pub surgeist_css::CssFlowToleranceRef::LengthPercentage(&'a surgeist_css::CssLength)
+pub surgeist_css::CssFlowToleranceRef::Normal
 #[non_exhaustive] pub enum surgeist_css::CssFontDisplay
 pub surgeist_css::CssFontDisplay::Auto
 pub surgeist_css::CssFontDisplay::Block
@@ -1004,18 +1008,6 @@ pub surgeist_css::CssGrid::Template(surgeist_css::CssGridTemplate)
 #[non_exhaustive] pub enum surgeist_css::CssGridAutoFlowAxis
 pub surgeist_css::CssGridAutoFlowAxis::Column
 pub surgeist_css::CssGridAutoFlowAxis::Row
-#[non_exhaustive] pub enum surgeist_css::CssGridFlowTolerance
-pub surgeist_css::CssGridFlowTolerance::Infinite
-pub surgeist_css::CssGridFlowTolerance::Length(surgeist_css::CssLength)
-pub surgeist_css::CssGridFlowTolerance::Normal
-pub surgeist_css::CssGridFlowTolerance::Percent(f32)
-impl core::fmt::Debug for surgeist_css::CssGridFlowTolerance
-pub fn surgeist_css::CssGridFlowTolerance::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-#[non_exhaustive] pub enum surgeist_css::CssGridFlowToleranceValue
-pub surgeist_css::CssGridFlowToleranceValue::Infinite
-pub surgeist_css::CssGridFlowToleranceValue::Length(surgeist_css::CssLength)
-pub surgeist_css::CssGridFlowToleranceValue::Normal
-pub surgeist_css::CssGridFlowToleranceValue::Percent(surgeist_css::CssFiniteNumber)
 #[non_exhaustive] pub enum surgeist_css::CssGridLine
 pub surgeist_css::CssGridLine::Auto
 pub surgeist_css::CssGridLine::CustomIdent(surgeist_css::CssCustomIdent)
@@ -1242,6 +1234,7 @@ pub surgeist_css::CssKnownProperty::FlexGrow
 pub surgeist_css::CssKnownProperty::FlexShrink
 pub surgeist_css::CssKnownProperty::FlexWrap
 pub surgeist_css::CssKnownProperty::Float
+pub surgeist_css::CssKnownProperty::FlowTolerance
 pub surgeist_css::CssKnownProperty::Font
 pub surgeist_css::CssKnownProperty::FontFamily
 pub surgeist_css::CssKnownProperty::FontFeatureSettings
@@ -1267,7 +1260,6 @@ pub surgeist_css::CssKnownProperty::GridAutoRows
 pub surgeist_css::CssKnownProperty::GridColumn
 pub surgeist_css::CssKnownProperty::GridColumnEnd
 pub surgeist_css::CssKnownProperty::GridColumnStart
-pub surgeist_css::CssKnownProperty::GridFlowTolerance
 pub surgeist_css::CssKnownProperty::GridRow
 pub surgeist_css::CssKnownProperty::GridRowEnd
 pub surgeist_css::CssKnownProperty::GridRowStart
@@ -1480,6 +1472,7 @@ pub surgeist_css::CssKnownPropertyValueRef::FlexGrow(&'a surgeist_css::CssFlexGr
 pub surgeist_css::CssKnownPropertyValueRef::FlexShrink(&'a surgeist_css::CssFlexShrinkPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FlexWrap(&'a surgeist_css::CssFlexWrapPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Float(&'a surgeist_css::CssFloatPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::FlowTolerance(&'a surgeist_css::CssFlowTolerancePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Font(&'a surgeist_css::CssFontPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontFamily(&'a surgeist_css::CssFontFamilyPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontFeatureSettings(&'a surgeist_css::CssFontFeatureSettingsPropertyValue)
@@ -1505,7 +1498,6 @@ pub surgeist_css::CssKnownPropertyValueRef::GridAutoRows(&'a surgeist_css::CssGr
 pub surgeist_css::CssKnownPropertyValueRef::GridColumn(&'a surgeist_css::CssGridColumnPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::GridColumnEnd(&'a surgeist_css::CssGridColumnEndPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::GridColumnStart(&'a surgeist_css::CssGridColumnStartPropertyValue)
-pub surgeist_css::CssKnownPropertyValueRef::GridFlowTolerance(&'a surgeist_css::CssGridFlowTolerancePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::GridRow(&'a surgeist_css::CssGridRowPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::GridRowEnd(&'a surgeist_css::CssGridRowEndPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::GridRowStart(&'a surgeist_css::CssGridRowStartPropertyValue)
@@ -1732,6 +1724,7 @@ pub surgeist_css::CssLonghandValueRef::BorderRightWidth(&'a surgeist_css::CssLen
 pub surgeist_css::CssLonghandValueRef::BorderTopColor(&'a surgeist_css::CssAuthoredColor)
 pub surgeist_css::CssLonghandValueRef::BorderTopStyle(&'a surgeist_css::CssBorderStyle)
 pub surgeist_css::CssLonghandValueRef::BorderTopWidth(&'a surgeist_css::CssLength)
+pub surgeist_css::CssLonghandValueRef::FlowTolerance(&'a surgeist_css::CssFlowTolerance)
 pub surgeist_css::CssLonghandValueRef::MarginBottom(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::MarginLeft(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::MarginRight(&'a surgeist_css::CssLength)
@@ -3838,6 +3831,18 @@ pub struct surgeist_css::CssFloatPropertyValue
 impl surgeist_css::CssFloatPropertyValue
 pub fn surgeist_css::CssFloatPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssFloatPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssFloat>
+pub struct surgeist_css::CssFlowTolerance
+impl surgeist_css::CssFlowTolerance
+pub const fn surgeist_css::CssFlowTolerance::as_ref(&self) -> surgeist_css::CssFlowToleranceRef<'_>
+pub const fn surgeist_css::CssFlowTolerance::infinite() -> Self
+pub const fn surgeist_css::CssFlowTolerance::normal() -> Self
+pub fn surgeist_css::CssFlowTolerance::try_length_percentage(value: surgeist_css::CssLength) -> core::option::Option<Self>
+impl core::default::Default for surgeist_css::CssFlowTolerance
+pub fn surgeist_css::CssFlowTolerance::default() -> Self
+pub struct surgeist_css::CssFlowTolerancePropertyValue
+impl surgeist_css::CssFlowTolerancePropertyValue
+pub fn surgeist_css::CssFlowTolerancePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssFlowTolerancePropertyValue::value(&self) -> &surgeist_css::CssFlowTolerance
 pub struct surgeist_css::CssFontFaceDescriptors
 impl surgeist_css::CssFontFaceDescriptors
 pub const fn surgeist_css::CssFontFaceDescriptors::font_display(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontDisplay>>
@@ -4127,11 +4132,6 @@ pub struct surgeist_css::CssGridColumnStartPropertyValue
 impl surgeist_css::CssGridColumnStartPropertyValue
 pub fn surgeist_css::CssGridColumnStartPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssGridColumnStartPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssGridLine>
-pub struct surgeist_css::CssGridFlowTolerancePropertyValue
-impl surgeist_css::CssGridFlowTolerancePropertyValue
-pub fn surgeist_css::CssGridFlowTolerancePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssGridFlowTolerancePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssGridFlowTolerance>
-pub const fn surgeist_css::CssGridFlowTolerancePropertyValue::value(&self) -> &surgeist_css::CssGridFlowToleranceValue
 pub struct surgeist_css::CssGridLineInteger
 impl surgeist_css::CssGridLineInteger
 pub const fn surgeist_css::CssGridLineInteger::try_new(value: i32) -> core::option::Option<Self>

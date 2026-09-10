@@ -75,7 +75,7 @@ macro_rules! property_schema {
             ColumnSpan, "column-span", [], "official.property.column-span", CssColumnSpan, CssColumnSpanPropertyValue, CssColumnSpanPropertyValueRepresentation, parse_column_span, { parse_column_span($input)? };
             ColumnWidth, "column-width", [], "official.property.column-width", CssColumnWidth, CssColumnWidthPropertyValue, CssColumnWidthPropertyValueRepresentation, parse_column_width, { parse_column_width($input)? };
             Columns, "columns", [], "official.property.columns", CssColumns, CssColumnsPropertyValue, CssColumnsPropertyValueRepresentation, parse_columns, { parse_columns($input)? };
-            GridFlowTolerance, "grid-flow-tolerance", [], "baseline.property.grid-flow-tolerance", CssGridFlowTolerance, CssGridFlowTolerancePropertyValue, CssGridFlowTolerancePropertyValueRepresentation, parse_grid_flow_tolerance, { parse_grid_flow_tolerance($input)? };
+            FlowTolerance, "flow-tolerance", [], "ext.property.flow-tolerance", CssFlowTolerance, CssFlowTolerancePropertyValue, CssFlowTolerancePropertyValueRepresentation, parse_flow_tolerance, { parse_flow_tolerance($input)? }, expansion = longhand { wrapper: existing, value: CssFlowTolerance, accessor: value, initial: CssFlowTolerance::normal() };
             GridTemplateRows, "grid-template-rows", [], "baseline.property.grid-template-rows", CssGridTrackList, CssGridTemplateRowsPropertyValue, CssGridTemplateRowsPropertyValueRepresentation, parse_grid_track_list, { parse_grid_track_list($input)? };
             GridTemplateColumns, "grid-template-columns", [], "baseline.property.grid-template-columns", CssGridTrackList, CssGridTemplateColumnsPropertyValue, CssGridTemplateColumnsPropertyValueRepresentation, parse_grid_track_list, { parse_grid_track_list($input)? };
             GridTemplateAreas, "grid-template-areas", [], "baseline.property.grid-template-areas", CssGridTemplateAreas, CssGridTemplateAreasPropertyValue, CssGridTemplateAreasPropertyValueRepresentation, parse_grid_template_areas, { parse_grid_template_areas($input)? };
@@ -2398,69 +2398,16 @@ macro_rules! define_property_value {
         );
     };
     (
-        GridFlowTolerance, $canonical:literal, $value:ty, $wrapper:ident,
+        FlowTolerance, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        #[derive(Clone, Debug, PartialEq)]
-        pub(crate) struct CssGridFlowTolerancePropertyValueRepresentation {
-            current: CssGridFlowToleranceValue,
-            i01_subset: Option<CssGridFlowTolerance>,
-        }
-
-        impl CssGridFlowTolerancePropertyValueRepresentation {
-            #[must_use]
-            pub(crate) const fn new(
-                current: CssGridFlowToleranceValue,
-                i01_subset: Option<CssGridFlowTolerance>,
-            ) -> Self {
-                Self {
-                    current,
-                    i01_subset,
-                }
-            }
-        }
-
-        /// A grammar-checked authored ordinary value for `grid-flow-tolerance`.
-        ///
-        /// The current checked value remains distinct from the frozen I01 compatibility payload.
-        #[derive(Clone, Debug, PartialEq)]
-        pub struct CssGridFlowTolerancePropertyValue {
-            authored: CssAuthoredDeclarationValue,
-            representation: CssGridFlowTolerancePropertyValueRepresentation,
-        }
-
-        impl CssGridFlowTolerancePropertyValue {
-            #[must_use]
-            pub(crate) const fn new(
-                authored: CssAuthoredDeclarationValue,
-                representation: CssGridFlowTolerancePropertyValueRepresentation,
-            ) -> Self {
-                Self {
-                    authored,
-                    representation,
-                }
-            }
-
-            /// Returns the exact authored ordinary value slice, excluding boundary trivia and a
-            /// terminal importance annotation.
-            #[must_use]
-            pub fn as_css(&self) -> &str {
-                self.authored.as_css()
-            }
-
-            /// Returns the checked current authored value.
-            #[must_use]
-            pub const fn value(&self) -> &CssGridFlowToleranceValue {
-                &self.representation.current
-            }
-
-            /// Returns the frozen I01 compatibility payload when this value belongs to that
-            /// subset.
-            #[must_use]
-            pub const fn i01_subset(&self) -> Option<&CssGridFlowTolerance> {
-                self.representation.i01_subset.as_ref()
-            }
-        }
+        define_additive_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssFlowTolerance,
+            value
+        );
     };
     (
         $variant:ident, $canonical:literal, $value:ty, $wrapper:ident,

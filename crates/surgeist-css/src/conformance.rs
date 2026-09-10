@@ -1168,6 +1168,15 @@ const X_GRID_TOLERANCE_BASE: CssSpecificationSource = CssSpecificationSource::fr
     "bc5394f:src/parser/grid.rs",
 );
 
+profile_source!(
+    X_GRID3_20260121,
+    "X-GRID3-20260121",
+    "CSS Grid Layout",
+    "3",
+    CssSpecificationTier::SurgeistExtension,
+    "https://www.w3.org/TR/2026/WD-css-grid-3-20260121/"
+);
+
 const CSS_SYNTAX_3: CssSpecificationSource = O_SYNTAX3;
 const CSS_STYLE_ATTRIBUTES: CssSpecificationSource = O_STYLE_ATTR;
 const CSS_CASCADE_4: CssSpecificationSource = O_CASCADE4;
@@ -1252,6 +1261,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     X_FILTER2_BASE,
     X_DISPLAY_MODE_BASE,
     X_GRID_TOLERANCE_BASE,
+    X_GRID3_20260121,
     BASELINE_SELECTORS,
     BASELINE_QUERIES,
 ];
@@ -2391,7 +2401,7 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::AlignTracks => S_ALIGN3,
         CssKnownProperty::ContentVisibility => I_CONTAIN2,
         CssKnownProperty::CounterSet => I_LISTS3,
-        CssKnownProperty::GridFlowTolerance => X_GRID_TOLERANCE_BASE,
+        CssKnownProperty::FlowTolerance => X_GRID3_20260121,
         CssKnownProperty::GridTemplateRows
         | CssKnownProperty::GridTemplateColumns
         | CssKnownProperty::GridTemplateAreas
@@ -4303,10 +4313,14 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 487] = [
         "columns",
         "official.property.columns"
     ),
-    property_feature!(
-        CssKnownProperty::GridFlowTolerance,
-        "grid-flow-tolerance",
-        "baseline.property.grid-flow-tolerance"
+    CssFeatureMetadata::partial_property_with_boundary(
+        "ext.property.flow-tolerance",
+        CssKnownProperty::FlowTolerance,
+        "flow-tolerance",
+        "#propdef-flow-tolerance",
+        &[],
+        "normal, infinite, signed literal length-percentages and supported typed calc() expressions remain authored and symbolic",
+        "full Values 4 length-percentage math-function grammar is not yet implemented; used-value resolution belongs downstream",
     ),
     CssFeatureMetadata::partial_property_with_boundary(
         "baseline.property.grid-template-rows",

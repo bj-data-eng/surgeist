@@ -3,7 +3,7 @@ use surgeist_css::{
     CssAuthoredHue, CssCalcLength, CssCalculationExpressionRef, CssCalculationProductOperator,
     CssCalculationType, CssCalculationValueRef, CssErrorCode, CssFilterAmount,
     CssFilterFunctionValue, CssFilterNumber, CssFilterPercentage, CssFilterValue, CssFlexValue,
-    CssFontSize, CssFrequencyCalculation, CssFrequencyUnit, CssGridFlowToleranceValue,
+    CssFlowToleranceRef, CssFontSize, CssFrequencyCalculation, CssFrequencyUnit,
     CssIntegerCalculation, CssIntegerValue, CssKnownPropertyValueRef, CssLength,
     CssLengthCalculation, CssLengthUnit, CssLineHeight, CssNonNegativeNumberValue,
     CssNumberCalculation, CssOpacityValue, CssPercentageCalculation, CssPositiveNumber,
@@ -462,7 +462,7 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
         "z-index: calc((4 + 1)); ",
         "aspect-ratio: calc(-1 * 2); ",
         "flex: calc(2 * 3) calc(-1 + 2) calc((10px * 2)); ",
-        "grid-flow-tolerance: calc((5% + 1px) * 2)"
+        "flow-tolerance: calc((5% + 1px) * 2)"
     );
     let report = parse_style_attribute(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -570,19 +570,18 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
     ));
     assert!(value.i01_subset().is_none());
 
-    let CssKnownPropertyValueRef::GridFlowTolerance(value) = report.syntax()[7]
+    let CssKnownPropertyValueRef::FlowTolerance(value) = report.syntax()[7]
         .known()
         .unwrap()
         .property_value()
         .unwrap()
     else {
-        panic!("expected grid-flow-tolerance wrapper");
+        panic!("expected flow-tolerance wrapper");
     };
     assert!(matches!(
-        value.value(),
-        CssGridFlowToleranceValue::Length(CssLength::Calc(CssCalcLength::Typed(_)))
+        value.value().as_ref(),
+        CssFlowToleranceRef::LengthPercentage(CssLength::Calc(CssCalcLength::Typed(_)))
     ));
-    assert!(value.i01_subset().is_none());
 }
 
 #[test]

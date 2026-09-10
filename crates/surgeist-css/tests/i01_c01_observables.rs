@@ -754,9 +754,15 @@ fn unescape(field: &str) -> Result<String, String> {
 #[test]
 fn authored_css_cases_match_selected_public_report_observables() {
     let rows = parse_fixture(FIXTURE).expect("valid I01 observable fixture");
+    let mut migrated_tolerance_cases = 0;
     for row in rows {
         // Fixture feature labels record the original capture profile. Validation is
         // now unconditional, so every historical profile runs through the same API.
+        if assert_archived_flow_tolerance_rejection(&row) {
+            migrated_tolerance_cases += 1;
+            assert_strict_parity(&row);
+            continue;
+        }
         let actual = observe(&row);
         assert_eq!(actual.clean, row.clean, "{} clean report", row.case_id);
         assert_eq!(
@@ -771,6 +777,137 @@ fn authored_css_cases_match_selected_public_report_observables() {
         );
         assert_strict_parity(&row);
     }
+    assert_eq!(
+        migrated_tolerance_cases, 4,
+        "all four archived old-name cases require current rejection witnesses"
+    );
+}
+
+// Grid3's selected publication replaces the old property identity. The archive
+// remains a record of the original parser, including its literal Debug values:
+// https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#propdef-flow-tolerance
+// Current behavior rejects those exact unchanged inputs. It must not reconstruct
+// an obsolete production value merely to satisfy the archived observation cursor.
+fn assert_archived_flow_tolerance_rejection(row: &Row) -> bool {
+    let (entry, input, clean, retained, values, authored, diagnostics) = match row.case_id.as_str()
+    {
+        "catalog.property.baseline.property.grid-flow-tolerance.boundary" => (
+            "style",
+            "grid-flow-tolerance: solid",
+            "false",
+            "-",
+            "-",
+            "-",
+            "InvalidPropertyValue/InvalidPropertyValue:baseline.property.grid-flow-tolerance:a value accepted by the property's grammar:Ident:solid/DropDeclaration@21:0:21>0:0:0-26:0:26:26",
+        ),
+        "catalog.property.baseline.property.grid-flow-tolerance.positive" => (
+            "style",
+            "grid-flow-tolerance: infinite",
+            "true",
+            "property:baseline.property.grid-flow-tolerance",
+            "baseline.property.grid-flow-tolerance=typed:Infinite@normal",
+            "baseline.property.grid-flow-tolerance=deferred-i01:infinite@public:normal",
+            "-",
+        ),
+        "focused.property-schema.baseline.property.grid-flow-tolerance.important" => (
+            "sheet",
+            ".test { GRID-FLOW-TOLERANCE: infinite !important; }",
+            "true",
+            "rule:baseline.rule.style~property:baseline.property.grid-flow-tolerance",
+            "baseline.property.grid-flow-tolerance=typed:Infinite@important",
+            "baseline.property.grid-flow-tolerance=deferred-i01:infinite@public:important",
+            "-",
+        ),
+        "focused.property-schema.baseline.property.grid-flow-tolerance.ordinary" => (
+            "sheet",
+            ".test { GRID-FLOW-TOLERANCE: infinite; }",
+            "true",
+            "rule:baseline.rule.style~property:baseline.property.grid-flow-tolerance",
+            "baseline.property.grid-flow-tolerance=typed:Infinite@normal",
+            "baseline.property.grid-flow-tolerance=deferred-i01:infinite@public:normal",
+            "-",
+        ),
+        _ => return false,
+    };
+    assert_eq!(
+        row.fields(),
+        [
+            row.case_id.as_str(),
+            entry,
+            "both",
+            input,
+            clean,
+            retained,
+            values,
+            authored,
+            diagnostics
+        ]
+    );
+    let current_diagnostics = if entry == "style" {
+        let report = parse_style_attribute(&row.input);
+        assert!(!report.is_clean());
+        assert!(
+            report.syntax().is_empty(),
+            "the obsolete property is dropped"
+        );
+        report.diagnostics().to_vec()
+    } else {
+        let report = parse_sheet(&row.input);
+        assert!(!report.is_clean());
+        let [CssRule::Style(style)] = report.syntax().rules() else {
+            panic!("the containing style rule remains after dropping its obsolete declaration");
+        };
+        assert!(style.declarations().is_empty());
+        assert!(style.rules().is_empty());
+        let [selector] = style.selectors().selectors() else {
+            panic!("the authored selector remains");
+        };
+        assert_eq!(
+            selector.selector(),
+            &surgeist_css::CssSelector::Class("test".to_owned())
+        );
+        report.diagnostics().to_vec()
+    };
+    let [diagnostic] = current_diagnostics.as_slice() else {
+        panic!("exactly one unknown-property diagnostic");
+    };
+    assert_eq!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
+    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
+    let ErrorKind::UnknownProperty(detail) = diagnostic.error().kind() else {
+        panic!("unknown authored property identity");
+    };
+    let property_start = if entry == "style" {
+        0
+    } else {
+        ".test { ".len()
+    };
+    let property_end = row.input.find(':').unwrap();
+    assert_eq!(
+        detail.name().as_str(),
+        &row.input[property_start..property_end]
+    );
+    assert_eq!(
+        diagnostic.error().position().byte_offset().value(),
+        property_start
+    );
+    assert_eq!(diagnostic.error().position().line().value(), 0);
+    assert_eq!(
+        diagnostic.error().position().column().value() as usize,
+        row.input[..property_start].encode_utf16().count()
+    );
+    assert_eq!(
+        diagnostic.span().start().byte_offset().value(),
+        property_start
+    );
+    let declaration_end = row
+        .input
+        .find(';')
+        .map_or(row.input.len(), |index| index + 1);
+    assert_eq!(
+        diagnostic.span().end().byte_offset().value(),
+        declaration_end
+    );
+    true
 }
 
 #[test]
@@ -1754,7 +1891,6 @@ fn assert_known_property_value(
             Gap,
             RowGap,
             ColumnGap,
-            GridFlowTolerance,
             GridTemplateRows,
             GridTemplateColumns,
             GridTemplateAreas,

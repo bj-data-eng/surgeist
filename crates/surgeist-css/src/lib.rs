@@ -138,8 +138,8 @@
 //! this text comes from token-preserving serialization of the supplied components; their original
 //! or programmatic provenance remains available through [`CssDeclaration::value_components`].
 //! Wrappers with an `i01_subset()` method retain a compatibility view of the
-//! frozen representation. The `font-family` and `font` wrappers expose only their
-//! current `families()` and `font()` models: generic families remain distinct
+//! frozen representation. The `font-family`, `font`, and `flow-tolerance` wrappers expose only their
+//! current `families()`, `font()`, and `value()` models: generic families remain distinct
 //! from literal names, and decoded identifier boundaries are retained rather
 //! than projected into the obsolete joined-string payload.
 //!

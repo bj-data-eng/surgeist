@@ -3,50 +3,35 @@ use std::collections::HashMap;
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::values::{
-    LengthGrammar, checked_percentage_value, next_is_delim, parse_box_size_value,
-    parse_calc_length_with_grammar, parse_custom_ident_from_str_at, parse_length_with_context,
-    parse_positive_integer,
+    LengthGrammar, checked_percentage_value, next_is_delim, parse_calc_length_with_grammar,
+    parse_custom_ident_from_str_at, parse_length_with_context, parse_positive_integer,
 };
 use crate::CssFeatureId;
 use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
-use crate::properties::CssGridFlowTolerancePropertyValueRepresentation;
 use crate::syntax::*;
 use crate::validation::{LengthUnitStatus, classify_length_unit, unsupported_keyword_reason};
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] =
     &[CssFeatureId::new("ext.value.grid-repeat")];
 
-pub(super) fn parse_grid_flow_tolerance<'i, 't>(
+pub(super) fn parse_flow_tolerance<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssGridFlowTolerancePropertyValueRepresentation, ParseError<'i, Error>> {
+) -> std::result::Result<CssFlowTolerance, ParseError<'i, Error>> {
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         return match_ignore_ascii_case! { &ident,
-            "normal" => Ok(CssGridFlowTolerancePropertyValueRepresentation::new(
-                CssGridFlowToleranceValue::Normal,
-                Some(CssGridFlowTolerance::Normal),
-            )),
-            "infinite" => Ok(CssGridFlowTolerancePropertyValueRepresentation::new(
-                CssGridFlowToleranceValue::Infinite,
-                Some(CssGridFlowTolerance::Infinite),
-            )),
+            "normal" => Ok(CssFlowTolerance::normal()),
+            "infinite" => Ok(CssFlowTolerance::infinite()),
             _ => Err(unsupported_value(
                 input,
                 None,
-                unsupported_keyword_reason("grid-flow-tolerance", ident.as_ref()),
+                unsupported_keyword_reason("flow-tolerance", ident.as_ref()),
             )),
         };
     }
 
-    let length = parse_box_size_value(input)?;
-    let current = CssGridFlowToleranceValue::from_length(length.clone());
-    let i01_subset = match &length {
-        CssLength::Percent(value) => Some(CssGridFlowTolerance::Percent(value.value())),
-        CssLength::Calc(CssCalcLength::Typed(_)) => None,
-        length => Some(CssGridFlowTolerance::Length(length.clone())),
-    };
-    Ok(CssGridFlowTolerancePropertyValueRepresentation::new(
-        current, i01_subset,
-    ))
+    let length = parse_length_with_context(input, LengthGrammar::FlowTolerance, "flow-tolerance")?;
+    CssFlowTolerance::try_length_percentage(length)
+        .ok_or_else(|| unsupported_value(input, None, "invalid flow-tolerance length-percentage"))
 }
 
 pub(super) fn parse_grid_track_list<'i, 't>(

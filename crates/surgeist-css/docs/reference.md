@@ -119,11 +119,40 @@ have no invented coordinates. Declaration accessors are no longer `const fn`
 because their shared occurrence storage is allocated. Rule, descriptor and
 keyframe-declaration position APIs retain their existing contracts.
 
+## Authored flow tolerance
+
+The selected [Grid3 publication](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#placement-tolerance)
+defines `flow-tolerance: normal | <length-percentage> | infinite`, with no
+nonnegative restriction. `CssFlowTolerancePropertyValue::value()` exposes its
+checked `CssFlowTolerance`; `as_ref()` returns `Normal`, `Infinite`, or a borrowed
+`LengthPercentage`. Construct the symbolic keywords with `normal()` and
+`infinite()`, or use `try_length_percentage(CssLength)` for numeric values.
+`Default` is symbolic `normal`. Its 1em used value in grid lanes and 0 used value
+in other layout modes require downstream context and are not computed here.
+
+The checked constructor accepts signed finite lengths, percentages, zero, and
+supported calculations. It rejects unrelated `CssLength` keywords, empty legacy
+`CssCalcLength::Sum` nodes, and sums whose first term is `Subtract`, at every
+depth. The last restriction prevents accepting a shape whose legacy serializer
+loses that operator. Negative first operands, later subtraction, and checked
+typed calculations remain valid. Validation traverses legacy sums iteratively;
+the shared legacy representation's recursive serialization, cloning, formatting,
+and destruction are separate existing limitations.
+
+Migration: use `flow-tolerance` and `CssKnownProperty::FlowTolerance`. Both
+`grid-flow-tolerance` and `item-tolerance` are unknown properties, without aliases.
+The obsolete `CssGridFlowTolerance`/`CssGridFlowToleranceValue` types and their
+I01 wrapper projection are removed. Historical source records and captured test
+inputs retain their original identities. The effective property feature is
+`ext.property.flow-tolerance`, sourced from the dated Grid3 publication.
+Support remains `Partial`: the broader Values 4 math-function grammar is still
+unfinished. This property migration does not complete the other Grid3 families.
+
 ## Intrinsic declaration expansion
 
 `expand_declaration` currently covers custom declarations, physical margin and
 padding, border width, style and color, the four side-border shorthands, `border`,
-the five border-image longhands, and `all`. The shared property schema owns their
+the five border-image longhands, `flow-tolerance`, and `all`. The shared property schema owns their
 member lists, initial values and reset-only components. Other known properties
 return typed unsupported errors preserving their identity. The stylesheet
 normalizer uses this same expansion boundary, so its complete property coverage

@@ -3929,11 +3929,8 @@ fn assert_box_decoration_break_value(value: CssKnownPropertyValueRef<'_>) {
     ));
 }
 
-fn assert_grid_flow_tolerance_value(value: CssKnownPropertyValueRef<'_>) {
-    assert!(matches!(
-        value,
-        CssKnownPropertyValueRef::GridFlowTolerance(_)
-    ));
+fn assert_flow_tolerance_value(value: CssKnownPropertyValueRef<'_>) {
+    assert!(matches!(value, CssKnownPropertyValueRef::FlowTolerance(_)));
 }
 
 fn assert_grid_track_list_value(value: CssKnownPropertyValueRef<'_>) {
@@ -6877,11 +6874,11 @@ fn acceptance_position_alignment_flex_and_grid_matrix_accepts_supported_values()
             assert_scrollbar_width_value
         ),
         value_case!(
-            "grid-flow-tolerance infinite",
-            "grid-flow-tolerance",
+            "flow-tolerance infinite",
+            "flow-tolerance",
             "infinite",
-            CssProperty::GridFlowTolerance,
-            assert_grid_flow_tolerance_value
+            CssProperty::FlowTolerance,
+            assert_flow_tolerance_value
         ),
         value_case!(
             "grid-template-rows tracks",
@@ -7936,18 +7933,22 @@ fn selector_missing_class_name_has_typed_error_kind() {
 }
 
 #[test]
-fn grid_flow_tolerance_calc_is_preserved_as_css_syntax() {
-    let value = declaration_value!(
-        ".panel { grid-flow-tolerance: calc(8px + 2%); }",
-        GridFlowTolerance
+fn flow_tolerance_calc_is_preserved_as_css_syntax() {
+    let declaration = declaration(
+        ".panel { flow-tolerance: calc(8px + 2%); }",
+        CssProperty::FlowTolerance,
     );
-
-    match value {
-        CssGridFlowTolerance::Length(CssLength::Calc(calc)) => {
+    let Some(CssKnownPropertyValueRef::FlowTolerance(value)) =
+        declaration.known().unwrap().property_value()
+    else {
+        panic!("expected flow-tolerance wrapper");
+    };
+    match value.value().as_ref() {
+        CssFlowToleranceRef::LengthPercentage(CssLength::Calc(calc)) => {
             assert!(calc.uses_percentage());
             assert_eq!(calc.to_css_string(), "calc(8px + 2%)");
         }
-        other => panic!("expected calc grid-flow-tolerance, got {other:?}"),
+        other => panic!("expected calc flow-tolerance, got {other:?}"),
     }
 }
 

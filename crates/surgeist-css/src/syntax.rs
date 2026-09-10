@@ -5740,43 +5740,104 @@ impl CssCounterChange {
     }
 }
 
-#[derive(Clone, PartialEq)]
-#[non_exhaustive]
-pub enum CssGridFlowTolerance {
-    Normal,
-    Infinite,
-    Length(CssLength),
-    Percent(f32),
-}
-
-impl std::fmt::Debug for CssGridFlowTolerance {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Normal => formatter.write_str("Normal"),
-            Self::Infinite => formatter.write_str("Infinite"),
-            Self::Length(value) => formatter.debug_tuple("Length").field(value).finish(),
-            Self::Percent(value) => formatter.debug_tuple("Percent").field(value).finish(),
-        }
-    }
+/// A checked authored `flow-tolerance`, before contextual used-value resolution.
+///
+/// Grid3 permits `normal`, `infinite`, or a signed length-percentage. `normal`
+/// remains symbolic because its used value depends on the downstream layout mode.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssFlowTolerance {
+    value: FlowToleranceValue,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssGridFlowToleranceValue {
+enum FlowToleranceValue {
     Normal,
     Infinite,
-    Length(CssLength),
-    Percent(CssFiniteNumber),
+    LengthPercentage(CssLength),
 }
 
-impl CssGridFlowToleranceValue {
+/// Borrows the checked authored branch without resolving relative units or `normal`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum CssFlowToleranceRef<'a> {
+    Normal,
+    Infinite,
+    LengthPercentage(&'a CssLength),
+}
+
+impl CssFlowTolerance {
+    /// Constructs the symbolic initial value.
     #[must_use]
-    pub(crate) fn from_length(value: CssLength) -> Self {
-        match value {
-            CssLength::Percent(value) => Self::Percent(value),
-            value => Self::Length(value),
+    pub const fn normal() -> Self {
+        Self {
+            value: FlowToleranceValue::Normal,
         }
     }
+
+    /// Constructs the symbolic infinite placement tolerance.
+    #[must_use]
+    pub const fn infinite() -> Self {
+        Self {
+            value: FlowToleranceValue::Infinite,
+        }
+    }
+
+    /// Checks a signed authored length-percentage without resolving it.
+    ///
+    /// Keyword-bearing lengths are rejected; use [`Self::normal`] for `normal`.
+    /// Legacy [`CssCalcLength::Sum`] inputs must be nonempty and begin with
+    /// [`CssCalcOperator::Add`] at every nested sum. A leading `Subtract` cannot
+    /// be serialized faithfully by that legacy model. Signed first operands,
+    /// later subtraction, and checked typed calculations remain supported; this
+    /// restriction does not prohibit negative authored CSS mathematics.
+    #[must_use]
+    pub fn try_length_percentage(value: CssLength) -> Option<Self> {
+        let valid = match &value {
+            CssLength::Px(_)
+            | CssLength::Dimension(_)
+            | CssLength::Percent(_)
+            | CssLength::Zero => true,
+            CssLength::Calc(calc) => flow_tolerance_calc_is_valid(calc),
+            _ => false,
+        };
+        valid.then_some(Self {
+            value: FlowToleranceValue::LengthPercentage(value),
+        })
+    }
+
+    /// Returns the checked authored branch and its unchanged numeric payload.
+    #[must_use]
+    pub const fn as_ref(&self) -> CssFlowToleranceRef<'_> {
+        match &self.value {
+            FlowToleranceValue::Normal => CssFlowToleranceRef::Normal,
+            FlowToleranceValue::Infinite => CssFlowToleranceRef::Infinite,
+            FlowToleranceValue::LengthPercentage(value) => {
+                CssFlowToleranceRef::LengthPercentage(value)
+            }
+        }
+    }
+}
+
+impl Default for CssFlowTolerance {
+    fn default() -> Self {
+        Self::normal()
+    }
+}
+
+fn flow_tolerance_calc_is_valid(calc: &CssCalcLength) -> bool {
+    let mut pending = vec![calc];
+    while let Some(calc) = pending.pop() {
+        if let CssCalcLength::Sum(terms) = calc {
+            if !terms
+                .first()
+                .is_some_and(|term| term.operator() == CssCalcOperator::Add)
+            {
+                return false;
+            }
+            pending.extend(terms.iter().map(CssCalcLengthTerm::value));
+        }
+    }
+    true
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

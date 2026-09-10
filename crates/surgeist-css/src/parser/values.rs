@@ -132,6 +132,7 @@ pub(super) fn parse_gap_value<'i, 't>(
 #[derive(Clone, Copy)]
 pub(super) enum LengthGrammar {
     BoxSize,
+    FlowTolerance,
     Inset,
     Margin,
     Padding,
@@ -161,6 +162,7 @@ impl LengthGrammar {
         matches!(
             self,
             Self::BoxSize
+                | Self::FlowTolerance
                 | Self::Inset
                 | Self::Margin
                 | Self::Padding
@@ -197,6 +199,7 @@ impl LengthGrammar {
         matches!(
             self,
             Self::BoxSize
+                | Self::FlowTolerance
                 | Self::Inset
                 | Self::Margin
                 | Self::Padding
@@ -231,6 +234,7 @@ impl LengthGrammar {
     const fn context(self) -> &'static str {
         match self {
             Self::BoxSize => "box size",
+            Self::FlowTolerance => "flow-tolerance",
             Self::Inset => "inset",
             Self::Margin => "margin",
             Self::Padding => "padding",
@@ -387,6 +391,7 @@ fn typed_length_calculation_is_current_consumer(context: &str) -> bool {
     matches!(
         context,
         "box size"
+            | "flow-tolerance"
             | "inset"
             | "margin"
             | "padding"

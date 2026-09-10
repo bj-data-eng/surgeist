@@ -98,7 +98,7 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
         ("gap", "S-ALIGN3"),
         ("content-visibility", "I-CONTAIN2"),
         ("counter-set", "I-LISTS3"),
-        ("grid-flow-tolerance", "X-GRID-TOLERANCE-BASE"),
+        ("flow-tolerance", "X-GRID3-20260121"),
         ("grid", "R-GRID2"),
         ("word-break", "S-TEXT3"),
         ("text-wrap", "X-TEXT4"),

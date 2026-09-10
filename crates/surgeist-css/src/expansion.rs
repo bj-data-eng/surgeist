@@ -1,6 +1,6 @@
 //! Intrinsic declaration expansion, before cascade or contextual resolution.
 //!
-//! The property schema selects the supported physical box and border slice and
+//! The property schema selects the supported box, border and flow-tolerance slice and
 //! owns its longhand types, initial values, shorthand members and reset-only
 //! members. Custom declarations retain their symbolic specified values.
 //! Unselected known properties return an explicit capability error.
@@ -143,8 +143,8 @@ macro_rules! define_expansion_schema {
 
         /// A borrowed exact ordinary longhand value coupled to its property.
         ///
-        /// The variants are generated only for the selected physical box and
-        /// border longhands. Symbolic lengths, colors and images stay unresolved.
+        /// The variants are generated only for the selected box, border and
+        /// flow-tolerance longhands. Symbolic values stay unresolved.
         #[non_exhaustive]
         #[derive(Clone, Copy, Debug, PartialEq)]
         pub enum CssLonghandValueRef<'a> {
@@ -292,7 +292,7 @@ impl CssLonghandContribution {
     }
 }
 
-/// Completed physical longhand contributions from one declaration occurrence.
+/// Completed selected longhand contributions from one declaration occurrence.
 #[derive(Clone, Debug)]
 pub struct CssLonghandContributions {
     items: Vec<CssLonghandContribution>,
@@ -439,7 +439,7 @@ impl CssPendingSubstitution {
     }
 }
 
-/// Expands custom declarations and the selected physical box and border declarations.
+/// Expands custom declarations and selected box, border and flow-tolerance declarations.
 ///
 /// Ordinary shorthands contribute every member, applying intrinsic initial
 /// values to omissions. `border` also resets the five border-image longhands;

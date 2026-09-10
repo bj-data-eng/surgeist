@@ -195,11 +195,7 @@ pub const PROPERTY_POSITIVE_VECTORS: &[PropertyVector] = &[
     vector!("baseline.property.gap", "gap", "12px"),
     vector!("baseline.property.row-gap", "row-gap", "normal"),
     vector!("baseline.property.column-gap", "column-gap", "5%"),
-    vector!(
-        "baseline.property.grid-flow-tolerance",
-        "grid-flow-tolerance",
-        "infinite"
-    ),
+    vector!("ext.property.flow-tolerance", "flow-tolerance", "infinite"),
     vector!(
         "baseline.property.grid-template-rows",
         "grid-template-rows",
@@ -885,11 +881,7 @@ pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
     vector!("baseline.property.gap", "gap", "auto"),
     vector!("baseline.property.row-gap", "row-gap", "auto"),
     vector!("baseline.property.column-gap", "column-gap", "auto"),
-    vector!(
-        "baseline.property.grid-flow-tolerance",
-        "grid-flow-tolerance",
-        "solid"
-    ),
+    vector!("ext.property.flow-tolerance", "flow-tolerance", "solid"),
     vector!(
         "baseline.property.grid-template-rows",
         "grid-template-rows",

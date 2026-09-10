@@ -31,7 +31,7 @@ atomic typed failure for emitted declarations outside the implemented expansion
 coverage. Expansion of the remaining properties is still unfinished.
 
 Where exposed, `i01_subset()` names a frozen earlier representation retained for
-compatibility. The `font-family` and `font` wrappers use their current typed
+compatibility. The `font-family`, `font`, and `flow-tolerance` wrappers use their current typed
 accessors without that projection. A current property value can be valid and fully inspectable while a retained projection
 is `None`. Consumers should use current typed accessors for newly represented
 syntax. The projection is not a support or validity test. The [inspection guide](how-to.md#inspect-a-known-declaration)

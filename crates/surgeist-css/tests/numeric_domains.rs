@@ -1,12 +1,12 @@
 use surgeist_css::{
     CssAnimationIterationCount, CssAnimationIterationNumber, CssAspectRatio, CssErrorCode,
-    CssFiniteNumber, CssFlexFactor, CssFontFaceObliqueRange, CssFontFaceStretchValue,
-    CssFontFaceWeightValue, CssFontSizeAdjust, CssFontWeightNumber, CssGridFlowTolerance,
-    CssGridFlowToleranceValue, CssGridRepeatInteger, CssGridTrackBreadth, CssKeyframePercent,
-    CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssLengthDimension, CssLengthUnit,
-    CssNonNegativeNumber, CssOpacity, CssRatio, CssRecoveryAction, CssResolution,
-    CssResolutionUnit, CssRule, CssScaleValues, CssTime, CssTimeUnit, CssTokenKind, ErrorKind,
-    parse_sheet, parse_style_attribute,
+    CssFiniteNumber, CssFlexFactor, CssFlowTolerance, CssFlowToleranceRef, CssFontFaceObliqueRange,
+    CssFontFaceStretchValue, CssFontFaceWeightValue, CssFontSizeAdjust, CssFontWeightNumber,
+    CssGridRepeatInteger, CssGridTrackBreadth, CssKeyframePercent, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLength, CssLengthDimension, CssLengthUnit, CssNonNegativeNumber,
+    CssOpacity, CssRatio, CssRecoveryAction, CssResolution, CssResolutionUnit, CssRule,
+    CssScaleValues, CssTime, CssTimeUnit, CssTokenKind, ErrorKind, parse_sheet,
+    parse_style_attribute,
 };
 
 #[test]
@@ -71,31 +71,28 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         f32::MAX
     );
 
-    let grid_tolerance = CssGridFlowTolerance::Percent(25.0);
+    let tolerance =
+        CssFlowTolerance::try_length_percentage(CssLength::try_percent(25.0).unwrap()).unwrap();
     assert!(matches!(
-        &grid_tolerance,
-        CssGridFlowTolerance::Percent(value) if *value == 25.0
+        tolerance.as_ref(),
+        CssFlowToleranceRef::LengthPercentage(CssLength::Percent(value)) if value.value() == 25.0
     ));
-    assert_eq!(format!("{grid_tolerance:?}"), "Percent(25.0)");
 
-    let report = parse_style_attribute("grid-flow-tolerance: 25%");
+    let report = parse_style_attribute("flow-tolerance: 25%");
     assert!(report.is_clean());
     let property = report.syntax()[0]
         .known()
         .and_then(|known| known.property_value())
-        .expect("parser-produced grid-flow-tolerance value");
-    let CssKnownPropertyValueRef::GridFlowTolerance(value) = property else {
-        panic!("expected grid-flow-tolerance wrapper");
+        .expect("parser-produced flow-tolerance value");
+    let CssKnownPropertyValueRef::FlowTolerance(value) = property else {
+        panic!("expected flow-tolerance wrapper");
     };
     assert_eq!(value.as_css(), "25%");
     assert!(matches!(
-        value.value(),
-        CssGridFlowToleranceValue::Percent(percent) if percent.value() == 25.0
+        value.value().as_ref(),
+        CssFlowToleranceRef::LengthPercentage(CssLength::Percent(percent)) if percent.value() == 25.0
     ));
-    assert!(matches!(
-        value.i01_subset(),
-        Some(CssGridFlowTolerance::Percent(percent)) if *percent == 25.0
-    ));
+    assert_eq!(value.value(), &tolerance);
 }
 
 #[test]
@@ -235,15 +232,15 @@ fn non_finite_iteration_parse_retains_sheet_siblings_with_exact_diagnostic() {
 fn percentage_conversion_overflow_drops_each_declaration_and_retains_siblings() {
     let cases = [
         (
-            "grid-flow-tolerance",
+            "flow-tolerance",
             "3.5e38%",
-            CssKnownProperty::GridFlowTolerance,
+            CssKnownProperty::FlowTolerance,
             0,
         ),
         (
-            "grid-flow-tolerance",
+            "flow-tolerance",
             "calc(3.5e38%)",
-            CssKnownProperty::GridFlowTolerance,
+            CssKnownProperty::FlowTolerance,
             "calc(".len(),
         ),
         (
