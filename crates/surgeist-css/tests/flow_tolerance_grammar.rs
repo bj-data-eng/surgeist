@@ -149,10 +149,31 @@ fn property_and_keyword_escapes_keep_canonical_identity_and_authored_spelling() 
         );
         assert_eq!(
             declaration.value_components().serialize().unwrap().as_css(),
-            value
+            format!("  {value} ")
         );
         validate_style_attribute(&source).unwrap();
     }
+}
+
+#[test]
+fn existing_property_components_preserve_authored_boundary_whitespace() {
+    // CssComponentValues::serialize preserves actual whitespace. Exercise an
+    // existing property independently of the new flow-tolerance grammar.
+    let source = "MARGIN:  AuTo !ImPoRtAnT;";
+    let report = parse_style_attribute(source);
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    let [declaration] = report.syntax().as_slice() else {
+        panic!("one valid existing margin declaration");
+    };
+    assert_eq!(
+        declaration.known().unwrap().property(),
+        CssKnownProperty::Margin
+    );
+    assert_eq!(declaration.importance(), CssImportance::Important);
+    assert_eq!(
+        declaration.value_components().serialize().unwrap().as_css(),
+        "  AuTo "
+    );
 }
 
 #[test]
