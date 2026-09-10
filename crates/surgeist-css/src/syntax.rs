@@ -1543,9 +1543,8 @@ impl CssFontFaceUrlSource {
         if url.trim().is_empty() {
             None
         } else {
-            let formats = format.map(|format| {
-                CssFontFormatList::new(vec![CssFontFormatString::new(format.as_str())])
-            });
+            let formats = format
+                .map(|format| CssFontFormatList::new(CssFontFormatString::new(format.as_str())));
             Some(Self {
                 url,
                 format,
@@ -1584,7 +1583,11 @@ impl CssFontFaceUrlSource {
         self.format.as_ref()
     }
 
-    /// Returns the current authored `format()` string list, when present.
+    /// Returns the single authored `format()` argument, when present.
+    ///
+    /// The list-named wrapper preserves the original inspection API. A present
+    /// hint always contains exactly one string, including empty or unrecognized
+    /// strings; `None` means that the source has no `format()` hint.
     #[must_use]
     pub const fn formats(&self) -> Option<&CssFontFormatList> {
         self.formats.as_ref()
@@ -1596,28 +1599,30 @@ impl CssFontFaceUrlSource {
     }
 }
 
-/// One checked authored string from a font source `format()` hint.
+/// One authored string from a font source `format()` hint.
+///
+/// Empty and unrecognized strings remain authored values. This type does not
+/// determine whether a resource loader recognizes or supports the format.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssFontFormatString {
     value: String,
 }
 
 impl CssFontFormatString {
+    /// Preserves an authored string, including the empty string.
+    ///
+    /// Every string is accepted. The optional return retains this constructor's
+    /// existing signature after removal of the former nonempty restriction.
     #[must_use]
     pub fn try_new(value: impl Into<String>) -> Option<Self> {
-        let value = value.into();
-        if value.is_empty() {
-            None
-        } else {
-            Some(Self::new(value))
-        }
+        Some(Self::new(value))
     }
 
     #[must_use]
     pub(crate) fn new(value: impl Into<String>) -> Self {
-        let value = value.into();
-        debug_assert!(!value.is_empty());
-        Self { value }
+        Self {
+            value: value.into(),
+        }
     }
 
     #[must_use]
@@ -1630,26 +1635,27 @@ impl CssFontFormatString {
     }
 }
 
-/// A nonempty ordered list of authored strings from one font source `format()` hint.
+/// Exactly one authored string from a font source `format()` hint.
+///
+/// The name and slice accessor originate in the earlier Fonts3 list model.
+/// The selected Fonts4 grammar permits exactly one argument, so empty and
+/// multiple-element inputs are rejected by [`Self::try_new`]. The one string
+/// itself may be empty or unrecognized; resource support is a later concern.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssFontFormatList {
-    formats: Vec<CssFontFormatString>,
+    formats: [CssFontFormatString; 1],
 }
 
 impl CssFontFormatList {
     #[must_use]
     pub fn try_new(formats: Vec<CssFontFormatString>) -> Option<Self> {
-        if formats.is_empty() {
-            None
-        } else {
-            Some(Self::new(formats))
-        }
+        let [format]: [CssFontFormatString; 1] = formats.try_into().ok()?;
+        Some(Self::new(format))
     }
 
     #[must_use]
-    pub(crate) fn new(formats: Vec<CssFontFormatString>) -> Self {
-        debug_assert!(!formats.is_empty());
-        Self { formats }
+    pub(crate) fn new(format: CssFontFormatString) -> Self {
+        Self { formats: [format] }
     }
 
     #[must_use]
@@ -1659,11 +1665,7 @@ impl CssFontFormatList {
 
     #[must_use]
     fn recognized(&self) -> Option<CssFontFormatHint> {
-        if self.formats.len() == 1 {
-            self.formats[0].recognized()
-        } else {
-            None
-        }
+        self.formats[0].recognized()
     }
 }
 
@@ -2128,6 +2130,7 @@ impl CssFontFormatHint {
 #[non_exhaustive]
 pub enum CssFontTechHint {
     Variations,
+    Palettes,
     ColorCOLRv0,
     ColorCOLRv1,
     ColorSVG,

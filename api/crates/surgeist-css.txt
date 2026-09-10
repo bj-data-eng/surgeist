@@ -879,6 +879,7 @@ pub surgeist_css::CssFontTechHint::FeaturesAAT
 pub surgeist_css::CssFontTechHint::FeaturesGraphite
 pub surgeist_css::CssFontTechHint::FeaturesOpenType
 pub surgeist_css::CssFontTechHint::Incremental
+pub surgeist_css::CssFontTechHint::Palettes
 pub surgeist_css::CssFontTechHint::Variations
 #[non_exhaustive] pub enum surgeist_css::CssFontValue
 pub surgeist_css::CssFontValue::Explicit(surgeist_css::CssExplicitFont)

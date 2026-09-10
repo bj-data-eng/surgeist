@@ -88,7 +88,7 @@ const FONT_FACE_STYLE_RANGE_REMAINDER: &str =
 const FONT_FACE_STRETCH_RANGE_SUBSET: &str = "Font-face non-negative percentage stretch values and increasing two-value ranges are supported.";
 const FONT_FACE_STRETCH_RANGE_REMAINDER: &str =
     "Other unselected Fonts 4 font-stretch descriptor grammar remains unsupported.";
-const FONT_SOURCE_HINTS_SUBSET: &str = "The woff, woff2, truetype, opentype, collection, embedded-opentype, and svg format() hints and the variations, color-colrv0, color-colrv1, color-svg, color-sbix, color-cbdt, features-opentype, features-aat, features-graphite, and incremental tech() hints are supported.";
+const FONT_SOURCE_HINTS_SUBSET: &str = "A single format() string, including empty or unrecognized strings, or a woff, woff2, truetype, opentype, collection, embedded-opentype, or svg keyword is supported. The variations, palettes, color-colrv0, color-colrv1, color-svg, color-sbix, color-cbdt, features-opentype, features-aat, features-graphite, and incremental tech() hints preserve authored order and repetition.";
 const FONT_SOURCE_HINTS_REMAINDER: &str =
     "Other unselected Fonts 4 font source format and technology hints remain unsupported.";
 
@@ -436,15 +436,19 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
     let unknown_hint = parse_sheet(
         "@font-face { font-family: Demo; src: url(demo.woff2) format(woff3) tech(unknown); }",
     );
-    assert!(unknown_hint.syntax().rules().is_empty());
-    assert_eq!(unknown_hint.diagnostics().len(), 2);
+    let [CssRule::FontFace(face)] = unknown_hint.syntax().rules() else {
+        panic!("invalid source hints must preserve the authored font face");
+    };
+    assert_eq!(face.descriptors().font_family().unwrap().as_str(), "Demo");
+    assert!(face.descriptors().src().is_none());
+    assert_eq!(unknown_hint.diagnostics().len(), 1);
     assert_eq!(
         unknown_hint.diagnostics()[0].error().code(),
         CssErrorCode::InvalidDescriptorValue
     );
     assert_eq!(
-        unknown_hint.diagnostics()[1].error().code(),
-        CssErrorCode::InvalidAtRuleBody
+        unknown_hint.diagnostics()[0].action(),
+        CssRecoveryAction::DropDescriptor
     );
 }
 

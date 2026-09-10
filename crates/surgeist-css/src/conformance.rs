@@ -2206,7 +2206,7 @@ const FONT_FACE_STYLE_RANGE_REMAINDER: &str =
 const FONT_FACE_STRETCH_RANGE_SUBSET: &str = "Font-face non-negative percentage stretch values and increasing two-value ranges are supported.";
 const FONT_FACE_STRETCH_RANGE_REMAINDER: &str =
     "Other unselected Fonts 4 font-stretch descriptor grammar remains unsupported.";
-const FONT_SOURCE_HINTS_SUBSET: &str = "The woff, woff2, truetype, opentype, collection, embedded-opentype, and svg format() hints and the variations, color-colrv0, color-colrv1, color-svg, color-sbix, color-cbdt, features-opentype, features-aat, features-graphite, and incremental tech() hints are supported.";
+const FONT_SOURCE_HINTS_SUBSET: &str = "A single format() string, including empty or unrecognized strings, or a woff, woff2, truetype, opentype, collection, embedded-opentype, or svg keyword is supported. The variations, palettes, color-colrv0, color-colrv1, color-svg, color-sbix, color-cbdt, features-opentype, features-aat, features-graphite, and incremental tech() hints preserve authored order and repetition.";
 const FONT_SOURCE_HINTS_REMAINDER: &str =
     "Other unselected Fonts 4 font source format and technology hints remain unsupported.";
 

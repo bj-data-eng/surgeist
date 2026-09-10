@@ -973,20 +973,22 @@ fn public_surface_emits_all_ten_recovery_actions() {
 }
 
 #[test]
-fn public_surface_font_format_models_are_checked_and_compatibility_preserving() {
+fn public_surface_font_format_models_enforce_fonts4_cardinality() {
     use surgeist_css::{
         CssFontFaceUrlSource, CssFontFormatHint, CssFontFormatList, CssFontFormatString,
         CssFontTechHint,
     };
 
-    assert_eq!(CssFontFormatString::try_new(""), None);
+    assert_eq!(CssFontFormatString::try_new("").unwrap().as_str(), "");
     let arbitrary = CssFontFormatString::try_new("zebra").unwrap();
     assert_eq!(arbitrary.as_str(), "zebra");
     let recognized = CssFontFormatString::try_new("WoFf2").unwrap();
     assert_eq!(recognized.as_str(), "WoFf2");
     assert_eq!(CssFontFormatList::try_new(Vec::new()), None);
-    let formats = CssFontFormatList::try_new(vec![arbitrary, recognized]).unwrap();
-    assert_eq!(formats.formats().len(), 2);
+    let formats = CssFontFormatList::try_new(vec![arbitrary.clone()]).unwrap();
+    assert_eq!(formats.formats().len(), 1);
+    assert_eq!(formats.formats()[0].as_str(), "zebra");
+    assert!(CssFontFormatList::try_new(vec![arbitrary, recognized]).is_none());
 
     let legacy = CssFontFaceUrlSource::try_new(
         "face.woff2",

@@ -422,6 +422,16 @@ declaration annotation, the descriptor receives one `DropDescriptor` diagnostic;
 earlier valid descriptor occurrences remain available. Any such recovery makes
 the report unclean, so `validate_sheet` rejects it.
 
+Each `format()` hint accepts exactly one recognized keyword or one quoted
+string under the selected Fonts 4 edition. Empty and unrecognized strings are
+valid authored values; resource support is determined later. Multiple quoted
+arguments from the earlier Fonts 3 grammar now discard that source member.
+`CssFontFormatList::try_new` consequently requires exactly one item, and
+`CssFontFormatString::try_new("")` succeeds. The list name and slice accessor
+remain available with this single-item invariant. `tech(palettes)` has the
+typed `CssFontTechHint::Palettes` representation, and technology order and
+repeated entries remain authored.
+
 Fonts 3 rows cite the dated `O-FONTS3` source and are `Complete`. The five
 selected atomic Fonts 4 deltas cite `I-FONTS4` and remain `Partial` with explicit
 subset and remainder text; `font-display` is `Complete`, while

@@ -19,7 +19,7 @@ fn assert_strict_parity(source: &str) {
 }
 
 #[test]
-fn font_sources_preserve_fonts3_formats_and_selected_fonts4_hints() {
+fn font_sources_drop_obsolete_multiple_formats_and_preserve_selected_hints() {
     let source = concat!(
         "@font-face { font-family: Demo; src: ",
         "local(Installed Demo), ",
@@ -29,42 +29,34 @@ fn font_sources_preserve_fonts3_formats_and_selected_fonts4_hints() {
     );
     let report = parse_sheet(source);
 
-    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    let [diagnostic] = report.diagnostics() else {
+        panic!("expected the Fonts3 multiple-format source to be discarded");
+    };
+    assert_eq!(
+        diagnostic.action(),
+        CssRecoveryAction::DropFontSourceListItem
+    );
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("expected one retained font-face rule");
     };
     let sources = rule.descriptors().src().unwrap().sources();
-    assert_eq!(sources.len(), 4);
+    assert_eq!(sources.len(), 3);
     let CssFontFaceSource::Local(local) = &sources[0] else {
         panic!("expected local source");
     };
     assert_eq!(local.as_str(), "Installed Demo");
 
-    let CssFontFaceSource::Url(multiple) = &sources[1] else {
-        panic!("expected first URL source");
+    let CssFontFaceSource::Url(arbitrary) = &sources[1] else {
+        panic!("expected first retained URL source");
     };
-    assert_eq!(multiple.url(), "demo-a.bin");
-    assert_eq!(
-        multiple
-            .formats()
-            .unwrap()
-            .formats()
-            .iter()
-            .map(|format| format.as_str())
-            .collect::<Vec<_>>(),
-        ["woff2", "opentype"]
-    );
-    assert_eq!(multiple.format(), None);
-
-    let CssFontFaceSource::Url(arbitrary) = &sources[2] else {
-        panic!("expected second URL source");
-    };
+    assert_eq!(arbitrary.url(), "demo-b.bin");
     assert_eq!(arbitrary.formats().unwrap().formats()[0].as_str(), "zebra");
     assert_eq!(arbitrary.format(), None);
 
-    let CssFontFaceSource::Url(keyword) = &sources[3] else {
-        panic!("expected third URL source");
+    let CssFontFaceSource::Url(keyword) = &sources[2] else {
+        panic!("expected second retained URL source");
     };
+    assert_eq!(keyword.url(), "demo-c.bin");
     assert_eq!(keyword.formats().unwrap().formats()[0].as_str(), "woff2");
     assert_eq!(keyword.format(), Some(&CssFontFormatHint::Woff2));
     assert_eq!(
@@ -158,7 +150,6 @@ fn font_source_lists_reject_all_invalid_items_and_invalid_hint_order() {
         "@font-face{font-family:Demo;src:mystery}",
         "@font-face{font-family:Demo;src:local()}",
         "@font-face{font-family:Demo;src:url(a) format()}",
-        "@font-face{font-family:Demo;src:url(a) format(\"\")}",
         "@font-face{font-family:Demo;src:url(a) format(woff3)}",
         "@font-face{font-family:Demo;src:url(a) tech(variations) format(\"woff2\")}",
         "@font-face{font-family:Demo;src:url(a) format(\"woff2\") format(\"opentype\")}",

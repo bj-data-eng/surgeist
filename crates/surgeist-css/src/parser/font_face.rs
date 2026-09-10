@@ -372,7 +372,7 @@ fn parse_font_format_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontFormatList, ParseError<'i, Error>> {
     let location = input.current_source_location();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+    let format = if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         let hint = font_format_hint_from_str(ident.as_ref()).ok_or_else(|| {
             unsupported_value_at(
                 location,
@@ -380,38 +380,14 @@ fn parse_font_format_list<'i, 't>(
                 format!("unsupported font format hint `{ident}`"),
             )
         })?;
-        input.expect_exhausted().map_err(basic)?;
-        return Ok(CssFontFormatList::new(vec![CssFontFormatString::new(
-            hint.as_str(),
-        )]));
-    }
-
-    let mut formats = Vec::new();
-    loop {
-        let item_location = input.current_source_location();
+        CssFontFormatString::new(hint.as_str())
+    } else {
         let value = input.expect_string_cloned().map_err(basic)?;
-        let Some(value) = CssFontFormatString::try_new(value.to_string()) else {
-            return Err(unsupported_value_at(
-                item_location,
-                None,
-                "font source format string is empty",
-            ));
-        };
-        formats.push(value);
-        if input.is_exhausted() {
-            break;
-        }
-        input.expect_comma().map_err(basic)?;
-        if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "font source format list has an empty item",
-            ));
-        }
-    }
+        CssFontFormatString::new(value.to_string())
+    };
+    input.expect_exhausted().map_err(basic)?;
 
-    Ok(CssFontFormatList::new(formats))
+    Ok(CssFontFormatList::new(format))
 }
 
 fn font_format_hint_from_str(value: &str) -> Option<CssFontFormatHint> {
@@ -469,6 +445,7 @@ fn parse_font_tech_hints<'i, 't>(
 fn font_tech_hint_from_str(value: &str) -> Option<CssFontTechHint> {
     match value.to_ascii_lowercase().as_str() {
         "variations" => Some(CssFontTechHint::Variations),
+        "palettes" => Some(CssFontTechHint::Palettes),
         "color-colrv0" => Some(CssFontTechHint::ColorCOLRv0),
         "color-colrv1" => Some(CssFontTechHint::ColorCOLRv1),
         "color-svg" => Some(CssFontTechHint::ColorSVG),
