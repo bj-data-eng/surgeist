@@ -312,17 +312,16 @@ fn c12_residual_recovery_preserves_siblings_and_boundaries() {
         diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
             && diagnostic.action() == CssRecoveryAction::DropDeclaration
     }));
-    let retained = nested_report
-        .syntax()
-        .rules()
-        .iter()
-        .filter_map(|rule| match rule {
-            CssRule::Style(style) => Some(property_names(style.declarations())),
-            _ => None,
-        })
-        .flatten()
-        .collect::<Vec<_>>();
-    assert_eq!(retained, ["color", "width", "word-spacing", "height"]);
+    let [CssRule::Style(parent), CssRule::Style(sibling)] = nested_report.syntax().rules() else {
+        panic!("expected the authored parent and following sibling");
+    };
+    let [CssRule::Style(child), CssRule::NestedDeclarations(after)] = parent.rules() else {
+        panic!("expected the nested style before the trailing declaration run");
+    };
+    assert_eq!(property_names(parent.declarations()), ["color"]);
+    assert_eq!(property_names(child.declarations()), ["width"]);
+    assert_eq!(property_names(after.declarations()), ["word-spacing"]);
+    assert_eq!(property_names(sibling.declarations()), ["height"]);
 
     let eof_source = "quotes: \"open\"";
     let eof_report = parse_style_attribute(eof_source);

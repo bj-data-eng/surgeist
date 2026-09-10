@@ -7,6 +7,13 @@ use surgeist_css::{
 };
 
 const FIXTURE: &str = include_str!("fixtures/i01-c01-observables.tsv");
+// Case inputs, feature labels, and I01 value expectations retain their capture
+// provenance. Selected report expectations follow Fonts4 section 4.1 (missing
+// matching descriptors do not invalidate an authored font face) and the authored
+// child/declaration-run model introduced by 54a4f4e4b21a3bb506bc4e37adb6c724fb69e773.
+// https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-rule
+// Deep style inputs retain each authored ancestor through parse_sheet's public
+// depth-256 boundary; dropping level 257 does not flatten its retained parents.
 const HEADER: &str =
     "case_id\tentry\tfeature\tinput\tclean\tretained\tvalues\tauthored_declarations\tdiagnostics";
 
@@ -147,6 +154,7 @@ fn validate_retained_field(field: &str, case_id: &str) -> Result<(), String> {
                 && id != "later.rule.namespace"
                 && id != "later.rule.counter-style"
                 && id != "later.rule.page"
+                && id != "nested-declarations"
             {
                 return Err(format!(
                     "{case_id}: malformed retained rule identity `{id}`"
@@ -742,7 +750,7 @@ fn unescape(field: &str) -> Result<String, String> {
 }
 
 #[test]
-fn authored_css_cases_match_frozen_public_report_observables() {
+fn authored_css_cases_match_selected_public_report_observables() {
     let rows = parse_fixture(FIXTURE).expect("valid I01 observable fixture");
     for row in rows {
         // Fixture feature labels record the original capture profile. Validation is
@@ -1042,28 +1050,30 @@ fn assert_fixture_row_rejected(row: &Row, expected_error: &str, reason: &str) {
 #[test]
 fn omitted_recovery_diagnostic_changes_the_public_report_observable() {
     let rows = parse_fixture(FIXTURE).expect("valid fixture");
-    let repeated_index = rows
+    // Unknown property and invalid width independently require two diagnostics;
+    // this witness does not depend on historical font-matching validation.
+    let original = rows
         .iter()
-        .position(|row| row.diagnostics.split_once('~').is_some())
-        .expect("fixture contains an input with multiple recovery diagnostics");
-    let mut repeated = rows.clone();
-    repeated[repeated_index].diagnostics = repeated[repeated_index]
+        .find(|row| row.case_id == "focused.app-strict.multi-style")
+        .expect("fixture contains the named two-error style attribute");
+    assert_eq!(
+        observe(original).diagnostics,
+        original.diagnostics,
+        "{} public report matches the complete authored diagnostic sequence",
+        original.case_id
+    );
+    let mut omitted = original.clone();
+    omitted.diagnostics = original
         .diagnostics
         .split_once('~')
         .expect("repeated diagnostic")
         .0
         .to_owned();
     assert_ne!(
-        observe(&repeated[repeated_index]).diagnostics,
-        repeated[repeated_index].diagnostics,
+        observe(&omitted).diagnostics,
+        omitted.diagnostics,
         "{} public parser retains every recovery diagnostic in source order",
-        repeated[repeated_index].case_id
-    );
-    assert_eq!(
-        observe(&rows[repeated_index]).diagnostics,
-        rows[repeated_index].diagnostics,
-        "{} public report matches the complete authored diagnostic sequence",
-        rows[repeated_index].case_id
+        omitted.case_id
     );
 }
 
@@ -1188,6 +1198,17 @@ fn rule_observables(
             let ids =
                 declaration_observables(rule.declarations().as_slice(), "public", true, frozen);
             retained.extend(ids);
+            for child in rule.rules() {
+                rule_observables(child, retained, frozen);
+            }
+        }
+        CssRule::NestedDeclarations(rule) => {
+            // This is an authored structural node, not another style selector or
+            // a fabricated conformance-catalog identity.
+            retained.push("rule:nested-declarations".to_owned());
+            let ids =
+                declaration_observables(rule.declarations().as_slice(), "public", true, frozen);
+            retained.extend(ids);
         }
         CssRule::Media(rule) => {
             retained.push("rule:baseline.rule.media".to_owned());
@@ -1228,6 +1249,9 @@ fn scoped_rule_observables(
             let ids =
                 declaration_observables(rule.declarations().as_slice(), "public", true, frozen);
             retained.extend(ids);
+            for child in rule.rules() {
+                rule_observables(child, retained, frozen);
+            }
         }
         CssScopedRule::Media(rule) => {
             for child in rule.rules().rules() {

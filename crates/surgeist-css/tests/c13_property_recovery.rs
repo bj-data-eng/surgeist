@@ -289,8 +289,8 @@ const C13_RECOVERY_CASES: &[InvalidDeclaration] = &[
     case(
         "baseline.property.border-color",
         "border-color",
-        "red blue",
-        "blue",
+        "red blue green black white",
+        "white",
     ),
     case(
         "baseline.property.border-top-color",
@@ -542,32 +542,20 @@ fn c13_layer_separator_recovery_preserves_siblings_and_boundaries() {
         diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
             && diagnostic.action() == CssRecoveryAction::DropDeclaration
     }));
-    let retained = nested_report
-        .syntax()
-        .rules()
-        .iter()
-        .filter_map(|rule| match rule {
-            CssRule::Style(style) => Some(property_names(style.declarations())),
-            _ => None,
-        })
-        .flatten()
-        .collect::<Vec<_>>();
-    assert_eq!(retained, ["color", "width", "background-image", "height"]);
+    let [CssRule::Style(parent), CssRule::Style(sibling)] = nested_report.syntax().rules() else {
+        panic!("expected the authored parent and following sibling");
+    };
+    let [CssRule::Style(child), CssRule::NestedDeclarations(after)] = parent.rules() else {
+        panic!("expected the nested style before the trailing declaration run");
+    };
+    assert_eq!(property_names(parent.declarations()), ["color"]);
+    assert_eq!(property_names(child.declarations()), ["width"]);
+    assert_eq!(property_names(after.declarations()), ["background-image"]);
+    assert_eq!(property_names(sibling.declarations()), ["height"]);
 
-    let image_declaration = nested_report
-        .syntax()
-        .rules()
-        .iter()
-        .filter_map(|rule| match rule {
-            CssRule::Style(style) => style.declarations().iter().find(|declaration| {
-                declaration
-                    .known()
-                    .is_some_and(|known| known.property() == CssKnownProperty::BackgroundImage)
-            }),
-            _ => None,
-        })
-        .next()
-        .expect("retained background-image declaration");
+    let [image_declaration] = after.declarations().as_slice() else {
+        panic!("expected the retained background-image declaration");
+    };
     let CssKnownPropertyValueRef::BackgroundImage(images) =
         image_declaration.known().unwrap().property_value().unwrap()
     else {
