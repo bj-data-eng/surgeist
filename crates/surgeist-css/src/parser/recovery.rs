@@ -300,20 +300,13 @@ impl RecoveryState {
                 enclosing_production,
             ));
         }
-        let _ = scan_nested_tokens(
+        scan_nested_tokens(
             source,
             start,
             self.depth.get(),
             enclosing_production,
             ScanBoundary::DeclarationValue,
-        )?;
-        Ok(self
-            .implicit_openings
-            .iter()
-            .rev()
-            .copied()
-            .filter(|opening| *opening >= start)
-            .collect())
+        )
     }
 
     pub(super) fn check_specialized_components<'i>(
@@ -335,20 +328,13 @@ impl RecoveryState {
                 enclosing_production,
             ));
         }
-        let _ = scan_nested_tokens(
+        scan_nested_tokens(
             source,
             start,
             self.depth.get(),
             enclosing_production,
             ScanBoundary::SpecializedPrelude,
-        )?;
-        Ok(self
-            .implicit_openings
-            .iter()
-            .rev()
-            .copied()
-            .filter(|opening| *opening >= start)
-            .collect())
+        )
     }
 
     pub(super) fn retain_component_closures(&self, openings: Vec<usize>) {
