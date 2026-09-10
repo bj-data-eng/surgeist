@@ -96,3 +96,54 @@ fn preceding_units_do_not_erase_retained_component_closures() {
         assert_actions(source, discarded, closures);
     }
 }
+
+#[test]
+fn escaped_retained_function_names_keep_their_eof_closures() {
+    for source in [
+        r"@font-face{src:l\6f cal(Last",
+        r"@font-face{src:lo\63 al(Last",
+        r"@font-face{font-family:Demo;src:l\6f cal(Last",
+    ] {
+        let report = parse_sheet(source);
+        let [CssRule::FontFace(face)] = report.syntax().rules() else {
+            panic!("expected retained font face: {source}");
+        };
+        let [surgeist_css::CssFontFaceSource::Local(local)] =
+            face.descriptors().src().unwrap().sources()
+        else {
+            panic!("expected retained local source: {source}");
+        };
+        assert_eq!(local.as_str(), "Last");
+        assert_actions(source, 0, 2);
+    }
+}
+
+#[test]
+fn unquoted_url_tokens_keep_their_eof_closures() {
+    for source in [
+        "@font-face{src:url(valid",
+        "@font-face{font-family:Demo;src:url(valid",
+    ] {
+        let report = parse_sheet(source);
+        let [CssRule::FontFace(face)] = report.syntax().rules() else {
+            panic!("expected retained font face: {source}");
+        };
+        let [surgeist_css::CssFontFaceSource::Url(url)] =
+            face.descriptors().src().unwrap().sources()
+        else {
+            panic!("expected retained URL token: {source}");
+        };
+        assert_eq!(url.url(), "valid");
+        assert_actions(source, 0, 2);
+    }
+}
+
+#[test]
+fn discarded_escaped_functions_keep_their_openings_unclaimed() {
+    for source in [
+        r"@font-face{font-family:Demo;src:url(valid),l\6f cal(",
+        r"@font-face{font-family:Demo;src:url(valid),du\6d my(nested(",
+    ] {
+        assert_actions(source, 1, 1);
+    }
+}
