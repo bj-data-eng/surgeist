@@ -60,8 +60,8 @@ pub(super) fn preflight_specialized_eof_limit(
     if target
         .first_root_curly
         .is_some_and(|curly| curly < target.opening_offset)
-        && rule_production.is_none()
     {
+        // The body parser owns limits after the rule's prelude has ended.
         return None;
     }
     Some(SpecializedEofLimit {
@@ -148,8 +148,11 @@ fn scan_delimiters(source: &str, base_depth: u32) -> DelimiterScan {
         {
             blocks.pop();
             if blocks.is_empty() {
-                unit_start = None;
-                first_root_curly = None;
+                // A completed prelude component does not terminate its rule.
+                if closing == BlockKind::Curly {
+                    unit_start = None;
+                    first_root_curly = None;
+                }
                 target = None;
             }
         }
@@ -290,18 +293,6 @@ impl RecoveryState {
         enclosing_production: &'static str,
     ) -> Result<Vec<usize>, ParseError<'i, Error>> {
         let start = input.position().byte_index();
-        if let Some(target) = source
-            .get(start..)
-            .map(|remaining| scan_delimiters(remaining, self.depth.get()))
-            .and_then(|scan| scan.eof_limit)
-        {
-            return Err(nesting_limit(
-                source,
-                start.saturating_add(target.opening_offset),
-                STRUCTURAL_NESTING_LIMIT,
-                enclosing_production,
-            ));
-        }
         let end = scan_nested_tokens(
             source,
             start,
@@ -319,18 +310,6 @@ impl RecoveryState {
         enclosing_production: &'static str,
     ) -> Result<Vec<usize>, ParseError<'i, Error>> {
         let start = input.position().byte_index();
-        if let Some(target) = source
-            .get(start..)
-            .map(|remaining| scan_delimiters(remaining, self.depth.get()))
-            .and_then(|scan| scan.eof_limit)
-        {
-            return Err(nesting_limit(
-                source,
-                start.saturating_add(target.opening_offset),
-                STRUCTURAL_NESTING_LIMIT,
-                enclosing_production,
-            ));
-        }
         let end = scan_nested_tokens(
             source,
             start,
