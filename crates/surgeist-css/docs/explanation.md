@@ -71,6 +71,11 @@ leading declarations, and ordered child rules. Declaration runs after a retained
 inside nested conditional groups use `CssRule::NestedDeclarations`; they inherit the owning
 style rule's selector context, including pseudo-elements. Nested selectors retain relative
 combinators and symbolic parent anchors without copying or multiplying parent selectors.
+Every explicit `&` remains attached to its compound, including repeated anchors,
+anchors after other simple selectors, and anchors inside selector-list functions.
+Thus `& > .item` retains its explicit parent compound, while `> .item` retains an
+authored leading combinator. Selector functions inherit their nesting context;
+the restriction against nested `:has()` still applies.
 Downstream matching can therefore apply the parent list's maximum specificity to `&`, as
 required by CSS Nesting, while preserving the source order of every declaration. The current
 nested-selector grammar and separate scoped-style model remain bounded by their registered

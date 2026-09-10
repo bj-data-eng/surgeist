@@ -3189,10 +3189,7 @@ fn nesting_retains_selector_lists_and_relative_combinators() {
         panic!("expected relative child");
     };
     assert_eq!(icon.combinator(), CssSelectorCombinator::Child);
-    let CssSelector::Compound(icon) = icon.selector() else {
-        panic!("expected child compound");
-    };
-    assert_eq!(icon.classes(), &["icon".to_owned()]);
+    assert_eq!(icon.selector(), &CssSelector::Class("icon".to_owned()));
 }
 
 #[test]
@@ -3204,14 +3201,19 @@ fn nesting_retains_ampersand_combinator_chain_and_suffixes() {
     let [tab] = style_rule(tabs).rules() else {
         panic!("expected nested tab");
     };
-    let [CssStyleSelector::Relative(tab)] = style_rule(tab).selectors().selectors() else {
-        panic!("expected relative tab");
+    let [CssStyleSelector::Selector(CssSelector::Complex(tab))] =
+        style_rule(tab).selectors().selectors()
+    else {
+        panic!("expected explicit parent compound and child combinator");
     };
-    assert_eq!(tab.combinator(), CssSelectorCombinator::Child);
-    let CssSelector::Compound(tab) = tab.selector() else {
-        panic!("expected tab compound");
+    assert_eq!(tab.first().nesting_selectors(), 1);
+    assert!(tab.first().classes().is_empty());
+    let [child] = tab.rest() else {
+        panic!("expected one authored child combinator");
     };
-    assert_eq!(tab.classes(), &["tab".to_owned()]);
+    assert_eq!(child.combinator(), CssSelectorCombinator::Child);
+    assert_eq!(child.selector().nesting_selectors(), 0);
+    assert_eq!(child.selector().classes(), &["tab".to_owned()]);
     let [active] = style_rule(button).rules() else {
         panic!("expected active child");
     };
@@ -3247,10 +3249,19 @@ fn nesting_retains_style_rules_inside_conditional_groups() {
     let [tab] = style_rule(tabs).rules() else {
         panic!("expected nested tab");
     };
-    let [CssStyleSelector::Relative(tab)] = style_rule(tab).selectors().selectors() else {
-        panic!("expected relative tab");
+    let [CssStyleSelector::Selector(CssSelector::Complex(tab))] =
+        style_rule(tab).selectors().selectors()
+    else {
+        panic!("expected explicit parent compound and child combinator");
     };
-    assert_eq!(tab.combinator(), CssSelectorCombinator::Child);
+    assert_eq!(tab.first().nesting_selectors(), 1);
+    assert!(tab.first().classes().is_empty());
+    let [child] = tab.rest() else {
+        panic!("expected one authored child combinator");
+    };
+    assert_eq!(child.combinator(), CssSelectorCombinator::Child);
+    assert_eq!(child.selector().nesting_selectors(), 0);
+    assert_eq!(child.selector().classes(), &["tab".to_owned()]);
 }
 
 #[test]
@@ -3378,9 +3389,6 @@ fn nesting_rejects_unsupported_at_rules_inside_style_blocks() {
 #[test]
 fn nesting_rejects_unsupported_nested_selector_forms() {
     for (css, expects_selector_error) in [
-        (".card { .theme & { color: black; } }", true),
-        (".card { && { color: black; } }", true),
-        (".card { & & { color: black; } }", true),
         (".card { svg|a { color: black; } }", false),
         (".card { [svg|href] { color: black; } }", true),
         (".card { .col || .cell { color: black; } }", true),
@@ -3402,9 +3410,6 @@ fn keyframes_and_nesting_reject_browser_recovery_forms() {
         "@keyframes fade { 0 { opacity: 0; } }",
         "@keyframes fade { from { @media screen { opacity: 0; } } }",
         "@keyframes fade { from { .nested { opacity: 0; } } }",
-        ".card { & & { color: black; } }",
-        ".card { .theme & { color: black; } }",
-        ".card { && { color: black; } }",
         ".card { svg|a { color: black; } }",
         ".card { .col || .cell { color: black; } }",
         r#".card { @import url("theme.css"); }"#,
@@ -3420,6 +3425,10 @@ fn keyframes_and_nesting_reject_browser_recovery_forms() {
 #[test]
 fn keyframes_and_nesting_accept_practical_surface_matrix() {
     let accepted = [
+        // CSS Nesting permits repeated anchors and anchors after other compounds.
+        ".card { .theme & { color: black; } }",
+        ".card { && { color: black; } }",
+        ".card { & & { color: black; } }",
         r#"@keyframes fade { from { opacity: 0; } to { opacity: 1; } }"#,
         r#"@keyframes "fade in" { 0%, 100% { opacity: 1; } }"#,
         r#"@keyframes duplicate { from, 0% { } from { opacity: 1; } }"#,
@@ -5883,10 +5892,7 @@ fn keyframes_and_authored_nesting_are_structurally_accessible() {
         panic!("expected relative child");
     };
     assert_eq!(relative.combinator(), CssSelectorCombinator::Child);
-    let CssSelector::Compound(selector) = relative.selector() else {
-        panic!("expected compound title");
-    };
-    assert_eq!(selector.classes(), &["title".to_owned()]);
+    assert_eq!(relative.selector(), &CssSelector::Class("title".to_owned()));
     assert_eq!(
         style_rule(title).declarations()[0].property(),
         &CssProperty::Color

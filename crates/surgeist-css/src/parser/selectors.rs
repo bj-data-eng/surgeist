@@ -158,42 +158,74 @@ fn parse_scoped_style_selector<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssScopedStyleSelector, ParseError<'i, Error>> {
+    match parse_style_selector_with_options(input, SelectorParseOptions::scoped_style(), recovery)?
+    {
+        CssStyleSelector::Selector(selector) => Ok(CssScopedStyleSelector::Selector(selector)),
+        CssStyleSelector::Relative(selector) => Ok(CssScopedStyleSelector::Relative(selector)),
+    }
+}
+
+pub(super) fn parse_nested_style_selector_list<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    recovery: &mut SelectorRecovery<'_>,
+) -> std::result::Result<Vec<CssStyleSelector>, ParseError<'i, Error>> {
+    recovery.check_depth(input)?;
+    let mut selectors = Vec::new();
+    loop {
+        selectors.push(parse_style_selector_with_options(
+            input,
+            SelectorParseOptions::nested_style(),
+            recovery,
+        )?);
+        if input.try_parse(Parser::expect_comma).is_err() {
+            break;
+        }
+    }
+    input.expect_exhausted().map_err(selector_basic)?;
+    Ok(selectors)
+}
+
+fn parse_style_selector_with_options<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    options: SelectorParseOptions,
+    recovery: &mut SelectorRecovery<'_>,
+) -> std::result::Result<CssStyleSelector, ParseError<'i, Error>> {
     consume_selector_whitespace(input)?;
     let state = input.state();
     match input.next_including_whitespace() {
         Ok(Token::Delim('>')) => parse_selector_after_leading_combinator_with_options(
             input,
             CssSelectorCombinator::Child,
-            SelectorParseOptions::scoped_style(),
+            options,
             recovery,
         )
-        .map(CssScopedStyleSelector::Relative),
+        .map(CssStyleSelector::Relative),
         Ok(Token::Delim('+')) => parse_selector_after_leading_combinator_with_options(
             input,
             CssSelectorCombinator::NextSibling,
-            SelectorParseOptions::scoped_style(),
+            options,
             recovery,
         )
-        .map(CssScopedStyleSelector::Relative),
+        .map(CssStyleSelector::Relative),
         Ok(Token::Delim('~')) => parse_selector_after_leading_combinator_with_options(
             input,
             CssSelectorCombinator::SubsequentSibling,
-            SelectorParseOptions::scoped_style(),
+            options,
             recovery,
         )
-        .map(CssScopedStyleSelector::Relative),
+        .map(CssStyleSelector::Relative),
         Ok(Token::Delim('|')) => Err(invalid_selector(
             input,
             "unsupported selector combinator `||`",
         )),
         Ok(_) => {
             input.reset(&state);
-            parse_rule_selector_with_options(input, SelectorParseOptions::scoped_style(), recovery)
-                .map(CssScopedStyleSelector::Selector)
+            parse_rule_selector_with_options(input, options, recovery)
+                .map(CssStyleSelector::Selector)
         }
         Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
             input.reset(&state);
-            Err(invalid_selector(input, "scoped selector is missing"))
+            Err(invalid_selector(input, "selector is missing"))
         }
         Err(error) => Err(selector_basic(error)),
     }
@@ -210,6 +242,7 @@ pub(super) fn parse_rule_selector<'i, 't>(
 struct SelectorParseOptions {
     allow_has: bool,
     allow_scope_anchor: bool,
+    allow_nesting_selectors: bool,
     allow_pseudo_elements: bool,
 }
 
@@ -218,15 +251,22 @@ impl SelectorParseOptions {
         Self {
             allow_has: true,
             allow_scope_anchor: false,
+            allow_nesting_selectors: false,
             allow_pseudo_elements: true,
         }
     }
 
-    const fn without_nested_has() -> Self {
+    const fn without_nested_has(self) -> Self {
         Self {
             allow_has: false,
-            allow_scope_anchor: false,
-            allow_pseudo_elements: true,
+            ..self
+        }
+    }
+
+    const fn nested_style() -> Self {
+        Self {
+            allow_nesting_selectors: true,
+            ..Self::standard()
         }
     }
 
@@ -234,6 +274,7 @@ impl SelectorParseOptions {
         Self {
             allow_has: true,
             allow_scope_anchor: true,
+            allow_nesting_selectors: false,
             allow_pseudo_elements: true,
         }
     }
@@ -242,6 +283,7 @@ impl SelectorParseOptions {
         Self {
             allow_has: true,
             allow_scope_anchor: false,
+            allow_nesting_selectors: false,
             allow_pseudo_elements: false,
         }
     }
@@ -250,6 +292,7 @@ impl SelectorParseOptions {
         Self {
             allow_has: self.allow_has,
             allow_scope_anchor: self.allow_scope_anchor,
+            allow_nesting_selectors: self.allow_nesting_selectors,
             allow_pseudo_elements: false,
         }
     }
@@ -357,19 +400,6 @@ fn parse_selector_after_first_compound<'i, 't>(
     }
 }
 
-pub(super) fn parse_complex_selector_part<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    combinator: CssSelectorCombinator,
-    recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssComplexSelectorPart, ParseError<'i, Error>> {
-    parse_complex_selector_part_with_options(
-        input,
-        combinator,
-        SelectorParseOptions::standard(),
-        recovery,
-    )
-}
-
 fn parse_complex_selector_part_with_options<'i, 't>(
     input: &mut Parser<'i, 't>,
     combinator: CssSelectorCombinator,
@@ -400,13 +430,6 @@ pub(super) fn consume_selector_whitespace<'i, 't>(
             Err(error) => return Err(selector_basic(error)),
         }
     }
-}
-
-pub(super) fn parse_compound_selector_model<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssCompoundSelector, ParseError<'i, Error>> {
-    parse_compound_selector_model_with_options(input, SelectorParseOptions::standard(), recovery)
 }
 
 struct ParsedTypeSelector {
@@ -565,6 +588,7 @@ fn parse_compound_selector_model_with_options<'i, 't>(
     let parsed_type_selector = parse_type_selector(input, recovery)?;
     let type_selector = parsed_type_selector.map(|parsed| (parsed.name, parsed.legacy_projection));
     let mut scope_anchor = false;
+    let mut nesting_selectors = 0;
     let mut id_names = Vec::new();
     let mut class_names = Vec::new();
     let mut attributes = Vec::new();
@@ -591,6 +615,10 @@ fn parse_compound_selector_model_with_options<'i, 't>(
         }
 
         if input.try_parse(|input| input.expect_delim('&')).is_ok() {
+            if options.allow_nesting_selectors {
+                nesting_selectors += 1;
+                continue;
+            }
             if !options.allow_scope_anchor {
                 return Err(invalid_selector(
                     input,
@@ -660,6 +688,7 @@ fn parse_compound_selector_model_with_options<'i, 't>(
                 input.reset(&state);
                 if type_selector.is_none()
                     && !scope_anchor
+                    && nesting_selectors == 0
                     && id_names.is_empty()
                     && class_names.is_empty()
                     && attributes.is_empty()
@@ -677,6 +706,7 @@ fn parse_compound_selector_model_with_options<'i, 't>(
 
     if type_selector.is_none()
         && !scope_anchor
+        && nesting_selectors == 0
         && id_names.is_empty()
         && class_names.is_empty()
         && attributes.is_empty()
@@ -697,12 +727,16 @@ fn parse_compound_selector_model_with_options<'i, 't>(
             attributes,
             pseudo_classes,
             pseudo_elements,
-        ),
+        )
+        .with_nesting_selectors(nesting_selectors),
     )
 }
 
 fn compound_selector_to_selector(selector: CssCompoundSelector) -> CssSelector {
-    if selector.has_scope_anchor() || selector.has_pseudo_elements() {
+    if selector.has_scope_anchor()
+        || selector.has_pseudo_elements()
+        || selector.nesting_selectors() > 0
+    {
         return CssSelector::Compound(selector);
     }
 
@@ -1145,7 +1179,7 @@ fn parse_function_pseudo_class<'i, 't>(
         "not" => CssPseudoClass::Not(parse_pseudo_selector_list_with_options(input, options.without_pseudo_elements(), recovery)?),
         "is" => CssPseudoClass::Is(parse_forgiving_pseudo_selector_list(input, options.without_pseudo_elements(), recovery)?),
         "where" => CssPseudoClass::Where(parse_forgiving_pseudo_selector_list(input, options.without_pseudo_elements(), recovery)?),
-        "has" if options.allow_has => CssPseudoClass::Has(parse_has_relative_selector_list(input, recovery)?),
+        "has" if options.allow_has => CssPseudoClass::Has(parse_has_relative_selector_list(input, options, recovery)?),
         "has" => return Err(invalid_selector(input, "nested `:has()` is unsupported")),
         _ => return Err(invalid_selector(input, format!("unsupported pseudo-class `:{name}(`"))),
     };
@@ -1230,11 +1264,12 @@ fn parse_forgiving_pseudo_selector_list<'i, 't>(
 
 fn parse_has_relative_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
+    options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssRelativeSelectorList, ParseError<'i, Error>> {
     let mut selectors = Vec::new();
     loop {
-        selectors.push(parse_has_relative_selector(input, recovery)?);
+        selectors.push(parse_has_relative_selector(input, options, recovery)?);
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
         }
@@ -1246,59 +1281,20 @@ fn parse_has_relative_selector_list<'i, 't>(
 
 fn parse_has_relative_selector<'i, 't>(
     input: &mut Parser<'i, 't>,
+    options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssRelativeSelector, ParseError<'i, Error>> {
-    consume_selector_whitespace(input)?;
-    let state = input.state();
-    match input.next_including_whitespace() {
-        Ok(Token::Delim('>')) => {
-            parse_selector_after_leading_combinator(input, CssSelectorCombinator::Child, recovery)
-        }
-        Ok(Token::Delim('+')) => parse_selector_after_leading_combinator(
-            input,
-            CssSelectorCombinator::NextSibling,
-            recovery,
-        ),
-        Ok(Token::Delim('~')) => parse_selector_after_leading_combinator(
-            input,
-            CssSelectorCombinator::SubsequentSibling,
-            recovery,
-        ),
-        Ok(Token::Delim('|')) => Err(invalid_selector(
-            input,
-            "unsupported selector combinator `||`",
-        )),
-        Ok(_) => {
-            input.reset(&state);
-            let selector = parse_rule_selector_with_options(
-                input,
-                SelectorParseOptions::without_nested_has().without_pseudo_elements(),
-                recovery,
-            )?;
-            Ok(CssRelativeSelector::new(
-                CssSelectorCombinator::Descendant,
-                selector,
-            ))
-        }
-        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-            input.reset(&state);
-            Err(invalid_selector(input, "relative selector is missing"))
-        }
-        Err(error) => Err(selector_basic(error)),
-    }
-}
-
-fn parse_selector_after_leading_combinator<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    combinator: CssSelectorCombinator,
-    recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssRelativeSelector, ParseError<'i, Error>> {
-    parse_selector_after_leading_combinator_with_options(
+    match parse_style_selector_with_options(
         input,
-        combinator,
-        SelectorParseOptions::without_nested_has().without_pseudo_elements(),
+        options.without_nested_has().without_pseudo_elements(),
         recovery,
-    )
+    )? {
+        CssStyleSelector::Selector(selector) => Ok(CssRelativeSelector::new(
+            CssSelectorCombinator::Descendant,
+            selector,
+        )),
+        CssStyleSelector::Relative(selector) => Ok(selector),
+    }
 }
 
 fn parse_selector_after_leading_combinator_with_options<'i, 't>(

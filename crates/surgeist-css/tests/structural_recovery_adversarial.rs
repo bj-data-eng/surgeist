@@ -568,15 +568,25 @@ fn structural_preflight_at_64_preserves_nested_style_context_and_exact_empty_sib
     assert_eq!(chain.len(), 64);
     for (level, style) in chain.iter().enumerate() {
         assert_eq!(style.selectors().selectors().len(), 1);
-        assert_eq!(
-            selector_classes(style.selectors().selectors()[0].selector()),
-            [format!("n{level:03}")]
-        );
-        if level > 0 {
-            let CssStyleSelector::Relative(relative) = &style.selectors().selectors()[0] else {
-                panic!("expected relative child at {level}");
+        if level == 0 {
+            assert_eq!(
+                selector_classes(style.selectors().selectors()[0].selector()),
+                ["n000"]
+            );
+        } else {
+            let CssStyleSelector::Selector(CssSelector::Complex(selector)) =
+                &style.selectors().selectors()[0]
+            else {
+                panic!("expected explicit nesting anchor and child at {level}");
             };
-            assert_eq!(relative.combinator(), CssSelectorCombinator::Child);
+            assert_eq!(selector.first().nesting_selectors(), 1);
+            assert!(selector.first().classes().is_empty());
+            let [child] = selector.rest() else {
+                panic!("expected one child at {level}");
+            };
+            assert_eq!(child.combinator(), CssSelectorCombinator::Child);
+            assert_eq!(child.selector().nesting_selectors(), 0);
+            assert_eq!(child.selector().classes(), &[format!("n{level:03}")]);
         }
     }
     assert_eq!(

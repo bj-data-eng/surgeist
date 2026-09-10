@@ -1,15 +1,11 @@
 use cssparser::{
-    AtRuleParser, BasicParseErrorKind, CowRcStr, DeclarationParser, ParseError, Parser,
-    ParserState, QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, ToCss, Token,
-    match_ignore_ascii_case,
+    AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserState,
+    QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, match_ignore_ascii_case,
 };
 
 use super::queries::parse_media_query_list;
 use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
-use super::selectors::{
-    SelectorRecovery, consume_selector_whitespace, parse_complex_selector_part,
-    parse_compound_selector_model, parse_rule_selector,
-};
+use super::selectors::{SelectorRecovery, parse_nested_style_selector_list};
 use super::supports::{parse_supports_condition, with_supports_prelude_context};
 use super::{
     CssContainerPrelude, CssScopePrelude, Recovered, StrictDeclarationParser,
@@ -18,8 +14,8 @@ use super::{
     structural_recovery_action, structural_recovery_production, structural_rule_diagnostic,
 };
 use crate::error::{
-    CssFeatureId, Error, invalid_at_rule_block, invalid_at_rule_placement, invalid_selector,
-    invalid_syntax, selector_basic, with_at_rule_prelude_context, with_media_query_context,
+    CssFeatureId, Error, invalid_at_rule_block, invalid_at_rule_placement, invalid_syntax,
+    with_at_rule_prelude_context, with_media_query_context,
 };
 use crate::syntax::*;
 
@@ -397,7 +393,7 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
 }
 
 impl<'i> QualifiedRuleParser<'i> for NestedStyleRuleParser<'i> {
-    type Prelude = Vec<NestedSelector>;
+    type Prelude = Vec<CssStyleSelector>;
     type QualifiedRule = StyleBlockItem;
     type Error = Error;
 
@@ -407,22 +403,18 @@ impl<'i> QualifiedRuleParser<'i> for NestedStyleRuleParser<'i> {
     ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
         let mut recovery =
             SelectorRecovery::new(self.source, &mut self.diagnostics, self.recovery.clone());
-        parse_nested_selector_list(input, &mut recovery)
+        parse_nested_style_selector_list(input, &mut recovery)
     }
 
     fn parse_block<'t>(
         &mut self,
-        nested_selectors: Self::Prelude,
+        selectors: Self::Prelude,
         start: &ParserState,
         input: &mut Parser<'i, 't>,
     ) -> std::result::Result<Self::QualifiedRule, ParseError<'i, Self::Error>> {
         let mut depth =
             self.recovery
                 .enter_rule_block(self.source, input, "baseline.rule.style")?;
-        let selectors = nested_selectors
-            .into_iter()
-            .map(|selector| selector.into_authored(input))
-            .collect::<std::result::Result<Vec<_>, _>>()?;
         let recovered = parse_style_rule_block(
             self.source,
             CssStyleSelectorList::new(selectors),
@@ -465,249 +457,5 @@ impl<'i> DeclarationParser<'i> for NestedStyleRuleParser<'i> {
             .parse_value(name, input, declaration_start)
             .map(Box::new)
             .map(StyleBlockItem::Declaration)
-    }
-}
-
-#[derive(Clone, Debug)]
-enum NestedSelector {
-    Descendant(CssSelector),
-    Relative(Vec<CssComplexSelectorPart>),
-    Parent,
-    Append(CssCompoundSelector),
-}
-
-impl NestedSelector {
-    fn into_authored<'i, 't>(
-        self,
-        input: &Parser<'i, 't>,
-    ) -> std::result::Result<CssStyleSelector, ParseError<'i, Error>> {
-        match self {
-            Self::Descendant(child) => Ok(CssStyleSelector::Selector(child)),
-            Self::Relative(parts) => {
-                let mut parts = parts.into_iter();
-                let Some(first) = parts.next() else {
-                    return Err(invalid_selector(input, "nested relative selector is empty"));
-                };
-                let rest: Vec<_> = parts.collect();
-                let selector = if rest.is_empty() {
-                    CssSelector::Compound(first.selector().clone())
-                } else {
-                    CssSelector::Complex(
-                        CssComplexSelector::try_new(first.selector().clone(), rest).ok_or_else(
-                            || invalid_selector(input, "invalid nested relative selector"),
-                        )?,
-                    )
-                };
-                Ok(CssStyleSelector::Relative(CssRelativeSelector::new(
-                    first.combinator(),
-                    selector,
-                )))
-            }
-            Self::Parent => Ok(CssStyleSelector::Selector(CssSelector::Compound(
-                CssCompoundSelector::new(None, None, Vec::new(), Vec::new(), Vec::new())
-                    .with_nesting_selectors(1),
-            ))),
-            Self::Append(suffix) => {
-                if suffix.type_selector().is_some() {
-                    return Err(invalid_selector(
-                        input,
-                        "a type selector cannot follow a nesting selector",
-                    ));
-                }
-                Ok(CssStyleSelector::Selector(CssSelector::Compound(
-                    suffix.with_nesting_selectors(1),
-                )))
-            }
-        }
-    }
-}
-
-fn parse_nested_selector_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<Vec<NestedSelector>, ParseError<'i, Error>> {
-    recovery.check_depth(input)?;
-    let mut selectors = Vec::new();
-    loop {
-        selectors.push(parse_nested_selector(input, recovery)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-    }
-    input.expect_exhausted().map_err(selector_basic)?;
-    Ok(selectors)
-}
-
-fn parse_nested_selector<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<NestedSelector, ParseError<'i, Error>> {
-    consume_selector_whitespace(input)?;
-    let state = input.state();
-    match input.next_including_whitespace() {
-        Ok(Token::Delim('&')) => parse_ampersand_nested_selector(input, recovery),
-        Ok(Token::Delim('>')) => {
-            parse_relative_selector(input, CssSelectorCombinator::Child, recovery)
-        }
-        Ok(Token::Delim('+')) => {
-            parse_relative_selector(input, CssSelectorCombinator::NextSibling, recovery)
-        }
-        Ok(Token::Delim('~')) => {
-            parse_relative_selector(input, CssSelectorCombinator::SubsequentSibling, recovery)
-        }
-        Ok(Token::Delim('|')) => Err(invalid_selector(
-            input,
-            "unsupported selector combinator `||`",
-        )),
-        Ok(_) => {
-            input.reset(&state);
-            parse_rule_selector(input, recovery).map(NestedSelector::Descendant)
-        }
-        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-            input.reset(&state);
-            Err(invalid_selector(input, "nested selector is empty"))
-        }
-        Err(error) => Err(selector_basic(error)),
-    }
-}
-
-fn parse_ampersand_nested_selector<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<NestedSelector, ParseError<'i, Error>> {
-    let had_whitespace = consume_selector_whitespace(input)?;
-    let state = input.state();
-    match input.next_including_whitespace() {
-        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-            input.reset(&state);
-            Ok(NestedSelector::Parent)
-        }
-        Err(error) => Err(selector_basic(error)),
-        Ok(Token::Comma) => {
-            input.reset(&state);
-            Ok(NestedSelector::Parent)
-        }
-        Ok(Token::Delim('&')) => Err(invalid_selector(
-            input,
-            "nesting selector `&` is only supported once at the start",
-        )),
-        Ok(Token::Delim('>')) => {
-            parse_relative_selector(input, CssSelectorCombinator::Child, recovery)
-        }
-        Ok(Token::Delim('+')) => {
-            parse_relative_selector(input, CssSelectorCombinator::NextSibling, recovery)
-        }
-        Ok(Token::Delim('~')) => {
-            parse_relative_selector(input, CssSelectorCombinator::SubsequentSibling, recovery)
-        }
-        Ok(Token::Delim('|')) => Err(invalid_selector(
-            input,
-            "unsupported selector combinator `||`",
-        )),
-        Ok(_) if had_whitespace => {
-            input.reset(&state);
-            parse_relative_selector(input, CssSelectorCombinator::Descendant, recovery)
-        }
-        Ok(_) => {
-            input.reset(&state);
-            let suffix = parse_compound_selector_model(input, recovery)?;
-            ensure_nested_selector_boundary(input)?;
-            Ok(NestedSelector::Append(suffix))
-        }
-    }
-}
-
-fn parse_relative_selector<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    first_combinator: CssSelectorCombinator,
-    recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<NestedSelector, ParseError<'i, Error>> {
-    let mut parts = vec![parse_complex_selector_part(
-        input,
-        first_combinator,
-        recovery,
-    )?];
-    loop {
-        let had_whitespace = consume_selector_whitespace(input)?;
-        let state = input.state();
-        match input.next_including_whitespace() {
-            Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-                input.reset(&state);
-                break;
-            }
-            Err(error) => return Err(selector_basic(error)),
-            Ok(Token::Comma) => {
-                input.reset(&state);
-                break;
-            }
-            Ok(Token::Delim('>')) => parts.push(parse_complex_selector_part(
-                input,
-                CssSelectorCombinator::Child,
-                recovery,
-            )?),
-            Ok(Token::Delim('+')) => parts.push(parse_complex_selector_part(
-                input,
-                CssSelectorCombinator::NextSibling,
-                recovery,
-            )?),
-            Ok(Token::Delim('~')) => parts.push(parse_complex_selector_part(
-                input,
-                CssSelectorCombinator::SubsequentSibling,
-                recovery,
-            )?),
-            Ok(Token::Delim('|')) => {
-                return Err(invalid_selector(
-                    input,
-                    "unsupported selector combinator `||`",
-                ));
-            }
-            Ok(Token::Delim('&')) => {
-                return Err(invalid_selector(
-                    input,
-                    "nesting selector `&` is only supported once at the start",
-                ));
-            }
-            Ok(_) if had_whitespace => {
-                input.reset(&state);
-                let selector = parse_compound_selector_model(input, recovery)?;
-                parts.push(CssComplexSelectorPart::new(
-                    CssSelectorCombinator::Descendant,
-                    selector,
-                ));
-            }
-            Ok(token) => {
-                let message = format!("unexpected selector token `{}`", token.to_css_string());
-                input.reset(&state);
-                return Err(invalid_selector(input, message));
-            }
-        }
-    }
-    Ok(NestedSelector::Relative(parts))
-}
-
-fn ensure_nested_selector_boundary<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<(), ParseError<'i, Error>> {
-    consume_selector_whitespace(input)?;
-    let state = input.state();
-    match input.next_including_whitespace() {
-        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-            input.reset(&state);
-            Ok(())
-        }
-        Err(error) => Err(selector_basic(error)),
-        Ok(Token::Comma) => {
-            input.reset(&state);
-            Ok(())
-        }
-        Ok(Token::Delim('&')) => Err(invalid_selector(
-            input,
-            "nesting selector `&` is only supported once at the start",
-        )),
-        Ok(token) => {
-            let message = format!("unexpected selector token `{}`", token.to_css_string());
-            input.reset(&state);
-            Err(invalid_selector(input, message))
-        }
     }
 }
