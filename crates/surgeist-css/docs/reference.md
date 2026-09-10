@@ -261,6 +261,15 @@ value returns `None` when the old `CssColor` or `CssOpacity` model cannot
 represent it without loss. A missing I01 projection does not make the current
 value invalid.
 
+`border-color` accepts one through four colors and exposes the expanded sides
+through `CssBorderColors`. Its wrapper's `current()` now returns this aggregate;
+migrate single-color consumers to the required `top()`, `right()`, `bottom()`,
+or `left()` accessor. Each side retains its complete specified color, including
+symbolic values. `CssBorderColors::try_new` checks the same component count for
+Rust construction. The frozen `i01_subset()` remains available only for a
+single authored component representable by the old color model; multiple
+components have no frozen projection even when their colors are equal.
+
 ```rust
 use surgeist_css::{
     CssAuthoredSystemColor, CssKnownPropertyValueRef, CssOpacityValue,

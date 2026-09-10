@@ -1038,6 +1038,7 @@
 //! resources, units, or colors; perform layout, painting, or animation; expose a
 //! mutable CSSOM; or lower CSS into sibling Surgeist types.
 
+mod box_values;
 mod conformance;
 mod error;
 mod parser;
@@ -1049,6 +1050,7 @@ mod syntax;
 mod test_support;
 mod validation;
 
+pub use box_values::CssBorderColors;
 pub use conformance::*;
 pub use error::*;
 pub use parser::{parse_sheet, parse_style_attribute};

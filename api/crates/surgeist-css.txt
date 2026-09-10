@@ -2808,8 +2808,15 @@ pub const fn surgeist_css::CssBorderCollapsePropertyValue::collapse(&self) -> &s
 pub struct surgeist_css::CssBorderColorPropertyValue
 impl surgeist_css::CssBorderColorPropertyValue
 pub fn surgeist_css::CssBorderColorPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderColorPropertyValue::current(&self) -> &surgeist_css::CssAuthoredColor
+pub const fn surgeist_css::CssBorderColorPropertyValue::current(&self) -> &surgeist_css::CssBorderColors
 pub const fn surgeist_css::CssBorderColorPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssColor>
+pub struct surgeist_css::CssBorderColors
+impl surgeist_css::CssBorderColors
+pub const fn surgeist_css::CssBorderColors::bottom(&self) -> &surgeist_css::CssAuthoredColor
+pub const fn surgeist_css::CssBorderColors::left(&self) -> &surgeist_css::CssAuthoredColor
+pub const fn surgeist_css::CssBorderColors::right(&self) -> &surgeist_css::CssAuthoredColor
+pub const fn surgeist_css::CssBorderColors::top(&self) -> &surgeist_css::CssAuthoredColor
+pub fn surgeist_css::CssBorderColors::try_new(colors: alloc::vec::Vec<surgeist_css::CssAuthoredColor>) -> core::option::Option<Self>
 pub struct surgeist_css::CssBorderImage
 impl surgeist_css::CssBorderImage
 pub const fn surgeist_css::CssBorderImage::outset(&self) -> core::option::Option<&surgeist_css::CssBorderImageOutset>

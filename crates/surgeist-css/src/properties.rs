@@ -4,6 +4,7 @@
 //! frozen property set. Public identity values describe authored property names;
 //! they do not apply cascade, substitute variables, or resolve authored values.
 
+use crate::box_values::{CssBorderColors, CssParsedBorderColors};
 use crate::syntax::*;
 
 macro_rules! property_schema {
@@ -157,7 +158,7 @@ macro_rules! property_schema {
             Color, "color", [], "baseline.property.color", CssColor, CssColorPropertyValue, CssColorPropertyValueRepresentation, parse_color, { parse_color($input)? };
             Background, "background", [], "baseline.property.background", CssColor, CssBackgroundPropertyValue, CssBackgroundPropertyValueRepresentation, parse_background, { parse_background($input)? };
             BackgroundColor, "background-color", [], "baseline.property.background-color", CssColor, CssBackgroundColorPropertyValue, CssBackgroundColorPropertyValueRepresentation, parse_color, { parse_color($input)? };
-            BorderColor, "border-color", [], "baseline.property.border-color", CssColor, CssBorderColorPropertyValue, CssBorderColorPropertyValueRepresentation, parse_color, { parse_color($input)? };
+            BorderColor, "border-color", [], "baseline.property.border-color", CssColor, CssBorderColorPropertyValue, CssBorderColorPropertyValueRepresentation, parse_border_colors, { parse_border_colors($input)? };
             BorderTopColor, "border-top-color", [], "baseline.property.border-top-color", CssColor, CssBorderTopColorPropertyValue, CssBorderTopColorPropertyValueRepresentation, parse_color, { parse_color($input)? };
             BorderRightColor, "border-right-color", [], "baseline.property.border-right-color", CssColor, CssBorderRightColorPropertyValue, CssBorderRightColorPropertyValueRepresentation, parse_color, { parse_color($input)? };
             BorderBottomColor, "border-bottom-color", [], "baseline.property.border-bottom-color", CssColor, CssBorderBottomColorPropertyValue, CssBorderBottomColorPropertyValueRepresentation, parse_color, { parse_color($input)? };
@@ -1588,7 +1589,53 @@ macro_rules! define_property_value {
         BorderColor, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_color_property_value!($canonical, $wrapper, $representation);
+        #[derive(Clone, Debug, PartialEq)]
+        pub(crate) struct $representation {
+            current: Box<CssBorderColors>,
+            i01_subset: Option<CssColor>,
+        }
+
+        #[doc = concat!("A parser-produced authored ordinary value for `", $canonical, "`.")]
+        #[derive(Clone, Debug, PartialEq)]
+        pub struct $wrapper {
+            authored: CssAuthoredDeclarationValue,
+            representation: $representation,
+        }
+
+        impl $wrapper {
+            #[must_use]
+            pub(crate) fn new(
+                authored: CssAuthoredDeclarationValue,
+                parsed: CssParsedBorderColors,
+            ) -> Self {
+                let (current, i01_subset) = parsed.into_parts();
+                Self {
+                    authored,
+                    representation: $representation {
+                        current: Box::new(current),
+                        i01_subset,
+                    },
+                }
+            }
+
+            #[must_use]
+            pub fn as_css(&self) -> &str {
+                self.authored.as_css()
+            }
+
+            /// Returns all four exact authored side colors after shorthand expansion.
+            #[must_use]
+            pub const fn current(&self) -> &CssBorderColors {
+                &self.representation.current
+            }
+
+            /// Returns the frozen I01 payload only for an exactly representable
+            /// single authored color component.
+            #[must_use]
+            pub const fn i01_subset(&self) -> Option<&CssColor> {
+                self.representation.i01_subset.as_ref()
+            }
+        }
     };
     (
         BorderTopColor, $canonical:literal, $value:ty, $wrapper:ident,
