@@ -7,6 +7,7 @@ struct Emitter {
     max_bytes: usize,
     previous: TokenSerializationType,
     previous_origin: Option<CssValueOrigin>,
+    previous_hex_escape: bool,
     reverse_solidus: bool,
     cdo_prefix: u8,
     last_origin: Option<CssValueOrigin>,
@@ -21,6 +22,7 @@ impl Emitter {
             max_bytes,
             previous: TokenSerializationType::Nothing,
             previous_origin: None,
+            previous_hex_escape: false,
             reverse_solidus: false,
             cdo_prefix: 0,
             last_origin: None,
@@ -78,6 +80,7 @@ impl Emitter {
         // delimiter '<', delimiter '!', then an identifier starting with '--'.
         if self.previous.needs_separator_when_before(kind)
             || (self.cdo_prefix == 2 && spelling.text.starts_with("--"))
+            || (self.previous_hex_escape && kind == TokenSerializationType::WhiteSpace)
         {
             self.append(
                 "/**/",
@@ -96,6 +99,7 @@ impl Emitter {
         )?;
         self.previous = kind;
         self.previous_origin = Some(spelling.origin.clone());
+        self.previous_hex_escape = ends_with_hex_escape(&spelling.text);
         self.last_origin = Some(spelling.origin.clone());
         self.reverse_solidus = reverse_solidus;
         self.cdo_prefix = if spelling.text.as_ref() == "<" {
@@ -114,6 +118,7 @@ impl Emitter {
             CssSerializedOrigin::Token(spelling.origin.clone()),
         )?;
         self.last_origin = Some(spelling.origin.clone());
+        self.previous_hex_escape = ends_with_hex_escape(&spelling.text);
         Ok(())
     }
 
@@ -137,6 +142,7 @@ impl Emitter {
         // A complete comment already separates both of its neighboring tokens.
         self.previous = TokenSerializationType::Nothing;
         self.previous_origin = None;
+        self.previous_hex_escape = false;
         self.cdo_prefix = 0;
         Ok(())
     }
@@ -192,6 +198,25 @@ impl Emitter {
             Ok(())
         }
     }
+}
+
+// CSS consumes one whitespace after a hexadecimal escape, even after its sixth
+// digit. A separately originating whitespace token must not become that terminator.
+fn ends_with_hex_escape(text: &str) -> bool {
+    let digits = text
+        .bytes()
+        .rev()
+        .take(6)
+        .take_while(u8::is_ascii_hexdigit)
+        .count();
+    digits > 0
+        && text.as_bytes()[..text.len() - digits]
+            .iter()
+            .rev()
+            .take_while(|byte| **byte == b'\\')
+            .count()
+            % 2
+            == 1
 }
 
 fn responsible_origin(origin: &CssSerializedOrigin) -> CssValueOrigin {
