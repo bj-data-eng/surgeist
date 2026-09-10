@@ -77,6 +77,7 @@ fn public_expansion_consumer_compiles_and_preserves_normalized_contribution_cont
             "source and occurrence identity: ok\n",
             "strict reentry success and origins: ok\n",
             "strict rejection and unsupported identity: ok\n",
+            "custom symbolic contributions: ok\n",
         )
     );
 }

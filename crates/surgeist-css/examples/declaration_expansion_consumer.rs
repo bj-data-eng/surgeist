@@ -896,6 +896,111 @@ fn strict_reentry_rejects_atomically_and_preserves_out_of_slice_identity() {
     println!("strict rejection and unsupported identity: ok");
 }
 
+// Variables 1 #defining-variables and #syntax keep specified custom values
+// symbolic. The contribution carries the same authored occurrence, not an
+// environment or an attempted variable-substitution result.
+fn custom_properties_preserve_symbolic_values_and_occurrences() {
+    for name in ["--Theme", "--theme", "--foó", "--foo\u{301}"] {
+        let name = CssCustomPropertyName::try_new(name).unwrap();
+        for value in [
+            "",
+            "Red",
+            "var(--Theme)",
+            "var(--missing, 1px)",
+            "[a] / f(2)",
+        ] {
+            for importance in [CssImportance::Normal, CssImportance::Important] {
+                let components = parse_component_values(value).unwrap();
+                let checked = parse_property_value(
+                    CssPropertyNameRef::Custom(&name),
+                    components.clone(),
+                    importance,
+                )
+                .unwrap();
+                let suffix = if importance == CssImportance::Important {
+                    "!important"
+                } else {
+                    ""
+                };
+                let source = format!("{}:{value}{suffix}", name.as_str());
+                let report = parse_style_attribute(&source);
+                assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
+                for declaration in [&checked, &report.syntax()[0]] {
+                    let CssExpansion::Contributions(CssContributions::Custom(contribution)) =
+                        expand_declaration(declaration).unwrap()
+                    else {
+                        panic!("custom contribution");
+                    };
+                    assert!(contribution.source().same_occurrence(declaration));
+                    assert_eq!(contribution.source().importance(), importance);
+                    assert_eq!(contribution.declaration().name(), &name);
+                    assert_eq!(
+                        contribution.declaration().value().value().unwrap().as_css(),
+                        value
+                    );
+                    assert!(std::ptr::eq(
+                        contribution.source().value_components(),
+                        declaration.value_components()
+                    ));
+                    assert_eq!(
+                        contribution.source().parsed_value(),
+                        declaration.parsed_value()
+                    );
+                    assert_eq!(contribution.source().position(), declaration.position());
+                    let cloned = contribution.clone();
+                    assert!(cloned.source().same_occurrence(declaration));
+                }
+                assert_eq!(checked.position(), None);
+                assert_eq!(
+                    checked.value_components().serialize().unwrap().as_css(),
+                    value
+                );
+                for (actual, expected) in checked
+                    .value_components()
+                    .items()
+                    .iter()
+                    .zip(components.items())
+                {
+                    assert_eq!(actual.origin(), expected.origin());
+                }
+                assert_eq!(
+                    report.syntax()[0].position().unwrap().byte_offset().value(),
+                    0
+                );
+            }
+        }
+        for (css, keyword) in [
+            ("initial", CssGlobalKeyword::Initial),
+            ("inherit", CssGlobalKeyword::Inherit),
+            ("unset", CssGlobalKeyword::Unset),
+            ("revert", CssGlobalKeyword::Revert),
+            ("revert-layer", CssGlobalKeyword::RevertLayer),
+        ] {
+            let components =
+                CssComponentValues::try_new(vec![CssComponentValue::try_ident(css).unwrap()])
+                    .unwrap();
+            let checked = parse_property_value(
+                CssPropertyNameRef::Custom(&name),
+                components,
+                CssImportance::Important,
+            )
+            .unwrap();
+            let CssExpansion::Contributions(CssContributions::Custom(contribution)) =
+                expand_declaration(&checked).unwrap()
+            else {
+                panic!("custom global contribution");
+            };
+            assert!(contribution.source().same_occurrence(&checked));
+            assert_eq!(contribution.declaration().name(), &name);
+            assert_eq!(contribution.declaration().value().global(), Some(keyword));
+            assert!(contribution.declaration().value().value().is_none());
+            assert_eq!(contribution.source().importance(), CssImportance::Important);
+            assert_eq!(contribution.source().position(), None);
+        }
+    }
+    println!("custom symbolic contributions: ok");
+}
+
 fn main() {
     four_sided_length_shorthands();
     four_sided_styles_and_current_colors();
@@ -906,4 +1011,5 @@ fn main() {
     contribution_sources_preserve_occurrence_and_importance();
     pending_reentry_preserves_original_and_replacement_provenance();
     strict_reentry_rejects_atomically_and_preserves_out_of_slice_identity();
+    custom_properties_preserve_symbolic_values_and_occurrences();
 }
