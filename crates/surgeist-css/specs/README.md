@@ -39,11 +39,12 @@ uses the latest published editions available at that cutoff, which can be newer
 than editions cited in the Snapshot bibliography or the existing runtime
 conformance registry.
 
-W3C publications use dated URLs. Fullscreen is the single publication-model
-exception: W3C discontinued its document and explicitly identified WHATWG as its
-successor. The catalog retains that Note as supersession evidence and pins an
-immutable WHATWG commit snapshot for the same module. It does not implement the
-withdrawn 2012 draft. The `backdrop-filter` exception instead pins the imported
+W3C module publications use dated URLs. Fullscreen is the single full-module
+publication-model exception: W3C discontinued its document and explicitly
+identified WHATWG as its successor. The catalog retains that Note as supersession
+evidence and pins an immutable WHATWG commit snapshot for the same module.
+It does not implement the withdrawn 2012 draft. The `backdrop-filter` exception
+instead pins the imported
 repository grammar to a full root commit and exact source-file hashes.
 
 Hashes cover unmodified retrieved body bytes or Git blob bytes, as specified in
@@ -52,6 +53,34 @@ that a publisher can never change a dated URL. CSS2 is a multi-document
 publication: its entry also hashes the linked HTML chapters and separate errata.
 External scripts, images, stylesheets, and linked specifications are not part of
 a document hash. No external document is bundled in this directory.
+
+## Required external definitions
+
+`normative_definitions` pins narrowly required definitions from outside the
+fully selected modules. These records leave the 79 module entries and their
+counts unchanged. Each definition identifies its source, exact sections, the
+selected requirements that need it, and authored versus downstream ownership.
+
+The host pseudo-class signatures and argument grammars come from published
+Scoping 1, and `::part()` grammar comes from published Shadow Parts 1. Their
+identities matter to Pseudo-Elements 4's distinction between valid syntax and
+selectors that never match after an element-backed pseudo-element. Conditional
+Rules 5 and CSSOM also refer to `::part()` and `::slotted()` by identity.
+
+Scoping 1's latest published edition is from 2014 and lacks `::slotted()`.
+Selectors 4 explicitly references its renamed successor, CSS Shadow 1, which has
+no dated publication at the cutoff. The catalog therefore pins an immutable
+CSSWG source revision for only `::slotted()` grammar, its tree-abiding
+pseudo-element suffix, and its specificity. The source revision and line anchor
+identify the exact text; the moving editor page is not a substitute pin.
+Selectors 4's illustrative Note corroborates that suffix behavior but does not
+independently select the rest of Shadow 1.
+
+These imports do not select whole Scoping, Shadow, or Shadow Parts modules.
+Shadow-tree construction, matching, slot assignment, part forwarding, and live
+APIs remain with style and root integration. Other features in those documents,
+including obsolete shadow selectors and `:has-slotted`, are not imported by
+these records.
 
 ## Applying the catalog
 
@@ -82,9 +111,10 @@ silently refresh the pin, invent grammar, or mark the affected requirement
 complete. Changing a pin is a reviewed product-contract change accompanied by
 the affected grammar, expectation, and provenance changes.
 
-Deterministic catalog checks require unique module IDs, the declared tier and
-selection counts, valid owner references, exact immutable or dated source
-identities, valid SHA-256/byte-count pairs, resolved supersession references,
+Deterministic catalog checks require unique module and definition IDs, the
+declared tier and selection counts, valid owner and definition-source references,
+exact immutable or dated source identities, valid SHA-256/byte-count pairs,
+resolved supersession and required-section references, source line bounds,
 UTF-8 with LF endings, no trailing whitespace, and one final newline. Hash checks
 compare the exact retrieved representations or pinned Git blobs; a reserialized
 HTML document is not the same input.

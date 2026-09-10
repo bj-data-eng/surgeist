@@ -79,6 +79,181 @@
     "baseline_exceptions": 1,
     "total_entries": 79
   },
+  "normative_definitions": {
+    "scope": "Only the listed required definitions are imported. These source documents are not additional fully selected modules and do not change expected_counts or modules.",
+    "sources": [
+      {
+        "id": "css-scoping-1-host-definitions",
+        "kind": "w3c-dated-publication",
+        "date": "2014-04-03",
+        "url": "https://www.w3.org/TR/2014/WD-css-scoping-1-20140403/",
+        "sha256": "0742453932fc6d802845b59084c51007069c7ddb4b689b59017bb546637c2140",
+        "bytes": 73843,
+        "latest_published_url": "https://www.w3.org/TR/css-scoping-1/",
+        "source_resolution": "Latest published Scoping 1 at the cutoff. Section 3.2.1 defines the three host signatures. This edition does not define ::slotted(); its obsolete shadow-tree model and other selectors are not imported."
+      },
+      {
+        "id": "css-shadow-1-slotted-definition",
+        "kind": "immutable-specification-source",
+        "date": "2026-04-28T18:26:14Z",
+        "url": "https://raw.githubusercontent.com/w3c/csswg-drafts/d2ed7a98bb7e499f3b04e6688941bb1a9823d396/css-shadow-1/Overview.bs",
+        "sha256": "0879121699895ad7670985665e6ee70bccd96c2a42e26cf99ca7fd56c44816e7",
+        "bytes": 66126,
+        "repository": "https://github.com/w3c/csswg-drafts",
+        "revision": "d2ed7a98bb7e499f3b04e6688941bb1a9823d396",
+        "path": "css-shadow-1/Overview.bs",
+        "source_resolution": "Selectors 4 explicitly references CSS Shadow 1. Its editor source identifies Scoping 1 as its predecessor, but no dated Shadow 1 publication is available at the cutoff and the last published Scoping edition lacks ::slotted(). This full source revision pins only the referenced ::slotted() definition; it does not replace any selected module edition or select the editor draft in full.",
+        "revision_discovery_url": "https://api.github.com/repos/w3c/csswg-drafts/commits?path=css-shadow-1%2FOverview.bs&until=2026-09-10T02%3A16%3A24Z&per_page=1"
+      },
+      {
+        "id": "css-shadow-parts-1-part-definition",
+        "kind": "w3c-dated-publication",
+        "date": "2025-12-16",
+        "url": "https://www.w3.org/TR/2025/WD-css-shadow-parts-1-20251216/",
+        "sha256": "4f3a1f5ef7725f5684ed09ac30619eac9271cfa1af0fa19c2b4cfd08e8f2bc54",
+        "bytes": 158395,
+        "latest_published_url": "https://www.w3.org/TR/css-shadow-parts-1/",
+        "source_resolution": "Latest published Shadow Parts 1 at the cutoff. Import only the ::part() authored grammar; part/exportparts markup, maps, and APIs remain outside this CSS definition import."
+      }
+    ],
+    "definitions": [
+      {
+        "id": "shadow-host-pseudo-classes",
+        "source_id": "css-scoping-1-host-definitions",
+        "signatures": [
+          ":host",
+          ":host(<compound-selector>)",
+          ":host-context(<compound-selector>)"
+        ],
+        "sections": [
+          {
+            "anchor": "host-selector",
+            "url": "https://www.w3.org/TR/2014/WD-css-scoping-1-20140403/#host-selector"
+          },
+          {
+            "anchor": "selectordef-host0",
+            "url": "https://www.w3.org/TR/2014/WD-css-scoping-1-20140403/#selectordef-host0"
+          },
+          {
+            "anchor": "selectordef-host",
+            "url": "https://www.w3.org/TR/2014/WD-css-scoping-1-20140403/#selectordef-host"
+          },
+          {
+            "anchor": "selectordef-host-context",
+            "url": "https://www.w3.org/TR/2014/WD-css-scoping-1-20140403/#selectordef-host-context"
+          }
+        ],
+        "required_by": [
+          {
+            "module_id": "css-pseudo-4",
+            "section_url": "https://www.w3.org/TR/2025/WD-css-pseudo-4-20250627/#element-backed",
+            "requirement": "The named host forms are syntactically allowed after an element-backed pseudo-element but never match there. Their identities and argument grammars are needed to preserve this syntax-versus-matching distinction."
+          }
+        ],
+        "authored_owner": "css",
+        "authored_requirements": [
+          "Recognize the non-functional :host form and the two functional forms.",
+          "Each functional argument is one nonempty compound selector, using the selected Selectors 4 grammar; a comma-separated list, top-level combinator, or pseudo-element is not that production.",
+          "Preserve syntactically valid uses after an element-backed pseudo-element even when the selected Pseudo-Elements rule says they never match."
+        ],
+        "downstream_owners": [
+          "style",
+          "root"
+        ],
+        "downstream_requirements": "Shadow-tree construction, tree context, matching, and live APIs are deferred. The 2014 shadow-tree execution model is not adopted by this authored grammar import."
+      },
+      {
+        "id": "slotted-pseudo-element",
+        "source_id": "css-shadow-1-slotted-definition",
+        "signatures": [
+          "::slotted(<compound-selector>)"
+        ],
+        "sections": [
+          {
+            "anchor": "slotted-pseudo",
+            "url": "https://github.com/w3c/csswg-drafts/blob/d2ed7a98bb7e499f3b04e6688941bb1a9823d396/css-shadow-1/Overview.bs#L522",
+            "source_lines": {
+              "first": 522,
+              "last": 558
+            }
+          }
+        ],
+        "required_by": [
+          {
+            "module_id": "css-conditional-5",
+            "section_url": "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-queries",
+            "requirement": "Normative query-container rules distinguish ::slotted() selectors and their represented elements; CSS must retain this authored selector while style evaluates the container context."
+          },
+          {
+            "module_id": "cssom-1",
+            "section_url": "https://www.w3.org/TR/2021/WD-cssom-1-20210826/#extensions-to-the-window-interface",
+            "requirement": "The getComputedStyle algorithm parses a pseudo-element selector and separately identifies ::slotted() as a disallowed argument. Its authored identity and grammar are distinct from the deferred live API behavior."
+          }
+        ],
+        "informative_correspondence": {
+          "module_id": "selectors-4",
+          "section_url": "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#grammar",
+          "role": "Section 16 gives ::slotted() suffix behavior as a Note and references CSS Shadow 1. The Note corroborates the dependency but does not independently select all Shadow 1 features."
+        },
+        "authored_owner": "css",
+        "authored_requirements": [
+          "The argument is one nonempty compound selector under the selected Selectors 4 grammar.",
+          "Allow the tree-abiding pseudo-element suffix defined in this section, composed with applicable selected Selectors 4 and Pseudo-Elements 4 syntax rules.",
+          "Preserve specificity equal to one pseudo-element plus the specificity of the argument."
+        ],
+        "downstream_owners": [
+          "style",
+          "root"
+        ],
+        "downstream_requirements": "Slot assignment and flattening, represented-element matching, container selection, and getComputedStyle execution are deferred. No general shadow-tree API or :has-slotted feature is imported."
+      },
+      {
+        "id": "part-pseudo-element",
+        "source_id": "css-shadow-parts-1-part-definition",
+        "signatures": [
+          "::part(<ident>+)"
+        ],
+        "sections": [
+          {
+            "anchor": "part",
+            "url": "https://www.w3.org/TR/2025/WD-css-shadow-parts-1-20251216/#part"
+          },
+          {
+            "anchor": "selectordef-part",
+            "url": "https://www.w3.org/TR/2025/WD-css-shadow-parts-1-20251216/#selectordef-part"
+          }
+        ],
+        "required_by": [
+          {
+            "module_id": "css-pseudo-4",
+            "section_url": "https://www.w3.org/TR/2025/WD-css-pseudo-4-20250627/#element-backed",
+            "requirement": "The named ::part() form participates in the normative syntactically-allowed versus never-matches distinction for element-backed pseudo-elements."
+          },
+          {
+            "module_id": "css-conditional-5",
+            "section_url": "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-queries",
+            "requirement": "Normative query-container rules distinguish ::part() selectors and their represented elements."
+          },
+          {
+            "module_id": "cssom-1",
+            "section_url": "https://www.w3.org/TR/2021/WD-cssom-1-20210826/#extensions-to-the-window-interface",
+            "requirement": "The getComputedStyle algorithm distinguishes parsed ::part() selectors from other pseudo-element arguments before rejecting them for that API."
+          }
+        ],
+        "authored_owner": "css",
+        "authored_requirements": [
+          "Require one or more CSS identifier components using <ident>+; an empty argument or comma-separated list does not match the production.",
+          "Use <ident>, not <custom-ident>; do not invent CSS-wide keyword exclusions.",
+          "Preserve syntactically valid suffixes required by the selected Pseudo-Elements 4 rules without converting never-matches restrictions into parse errors."
+        ],
+        "downstream_owners": [
+          "style",
+          "root"
+        ],
+        "downstream_requirements": "Part maps, part/exportparts markup and forwarding, matching, shadow-tree inheritance, container selection, and live APIs are deferred."
+      }
+    ]
+  },
   "modules": [
     {
       "id": "css2",
