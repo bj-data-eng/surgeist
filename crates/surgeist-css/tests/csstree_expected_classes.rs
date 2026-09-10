@@ -188,6 +188,37 @@ fn payload_relations_use_exclusive_nonempty_intervals_and_exact_payload_end() {
     ));
 }
 
+#[test]
+fn recovery_end_relation_requires_nonempty_payload_overlap_and_exact_end() {
+    assert!(expected_payload_relation_holds(
+        "recovery_ends_at",
+        10..20,
+        20,
+        10,
+        20
+    ));
+    assert!(expected_payload_relation_holds(
+        "recovery_ends_at",
+        10..20,
+        20,
+        9,
+        20
+    ));
+    for (payload, offset, start, end) in [
+        (10..20, 20, 20, 20),
+        (10..10, 10, 9, 10),
+        (10..20, 19, 10, 20),
+        (10..20, 20, 10, 21),
+        (10..20, 21, 10, 21),
+        (10..20, 20, 21, 20),
+    ] {
+        assert!(
+            !expected_payload_relation_holds("recovery_ends_at", payload, offset, start, end),
+            "a boundary relation must not accept empty overlap or wrapper diagnostics"
+        );
+    }
+}
+
 fn neutral_case_ids(root: &Path) -> BTreeSet<String> {
     let mut ids = BTreeSet::new();
     let expectations = root.join("tests/corpus/csstree/expectations");

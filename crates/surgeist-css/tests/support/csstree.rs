@@ -3222,6 +3222,62 @@ mod tests {
 
     type OracleMutation = (&'static str, fn(&mut Value));
 
+    #[test]
+    fn payload_observation_retains_nonempty_recovery_ending_at_payload_end() {
+        let complete = adapters::Adapter::Stylesheet
+            .wrap("@media;", None)
+            .expect("whole-sheet input needs no wrapper");
+        let report = parse_sheet(complete.source());
+        assert!(!report.is_clean());
+        assert!(report.syntax().rules().is_empty());
+        assert_eq!(report.diagnostics().len(), 1);
+        let diagnostic = &report.diagnostics()[0];
+        assert_eq!(diagnostic.error().position().byte_offset().value(), 7);
+        assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
+        assert_eq!(diagnostic.span().end().byte_offset().value(), 7);
+
+        // CssRecoveryDiagnostic explicitly permits an error at the exclusive
+        // end of a nonempty recovery span. The whole source is the payload here.
+        let observation = observation_from_report(
+            Extractor::SheetRules,
+            0,
+            report.is_clean(),
+            report.diagnostics(),
+            &complete,
+        )
+        .expect("valid recovery wholly within the payload must remain observable");
+        let observation = serde_json::to_value(observation).expect("serialized observation");
+        assert_eq!(
+            observation["diagnostics"][0]["payload_relation"],
+            "recovery_ends_at"
+        );
+        assert_eq!(observation["diagnostics"][0]["byte_offset"], 7);
+        assert_eq!(observation["diagnostics"][0]["span_start"], 0);
+        assert_eq!(observation["diagnostics"][0]["span_end"], 7);
+    }
+
+    #[test]
+    fn payload_observation_rejects_recovery_after_consuming_wrapper_suffix() {
+        let complete = adapters::Adapter::Selector
+            .wrap(":has(.a{)", None)
+            .expect("selector adapter preserves its payload");
+        let report = parse_sheet(complete.source());
+        assert!(report.diagnostics().iter().any(|diagnostic| {
+            diagnostic.error().position().byte_offset().value() > complete.payload_span().end
+        }));
+        assert!(
+            observation_from_report(
+                Extractor::StyleSelector,
+                0,
+                report.is_clean(),
+                report.diagnostics(),
+                &complete,
+            )
+            .is_err(),
+            "a wrapper diagnostic must not be relabeled as payload-local recovery"
+        );
+    }
+
     fn committed_artifacts() -> ArtifactSet {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(CORPUS_ROOT);
         read_artifact_set(&root).expect("committed artifacts should be readable")
