@@ -4821,3 +4821,71 @@ mod tests {
         assert!(observe_csstree_record(&case).is_err());
     }
 }
+
+#[cfg(test)]
+#[test]
+fn logical_selector_original_adapters_admit_independent_classes_and_diagnostics() {
+    // Independent pinned grammar/diagnostic audit, not the committed class registry
+    // or captured oracle. Exercise the real adapter -> observer -> class gate.
+    let data: serde_json::Value = serde_json::from_str(include_str!(
+        "../csstree/logical-selector-reconciliation.json"
+    ))
+    .unwrap();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(CORPUS_ROOT);
+    let mut inventory = read_neutral_artifact_set(&root)
+        .and_then(validate_neutral_artifact_set)
+        .unwrap();
+    let rows = data["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 45);
+    for row in rows {
+        let id = row["id"].as_str().unwrap();
+        let case = inventory
+            .cases
+            .iter_mut()
+            .find(|case| case.id == id)
+            .unwrap();
+        assert_eq!(case.input, row["input"].as_str().unwrap(), "{id}");
+        assert_eq!(
+            case.expectation_sha256,
+            row["expectation_sha256"].as_str().unwrap(),
+            "{id}"
+        );
+        assert_eq!(
+            serde_json::to_value(&case.options).unwrap(),
+            row["options"],
+            "{id}"
+        );
+        case.expected_class = Some(serde_json::from_value(row["expected_class"].clone()).unwrap());
+        validate_expected_class(case, case.expected_class.as_ref().unwrap()).unwrap();
+        let record = observe_csstree_record(case)
+            .unwrap_or_else(|error| panic!("{id}: real adapter/class admission failed: {error:?}"));
+        let observed = serde_json::to_value(record).unwrap();
+        assert_eq!(observed["probe"]["entry_point"], "selector", "{id}");
+        assert_eq!(observed["probe"]["payload"]["prefix"], "", "{id}");
+        assert_eq!(observed["probe"]["payload"]["suffix"], "", "{id}");
+        assert_eq!(
+            observed["probe"]["payload"]["input_byte_length"],
+            case.input.len(),
+            "{id}"
+        );
+        assert_eq!(
+            observed["outcome"]["kind"], row["expected_class"]["kind"],
+            "{id}"
+        );
+        assert_eq!(
+            observed["observation"]["extractor"],
+            serde_json::json!({"kind":"selector"}),
+            "{id}"
+        );
+        assert_eq!(
+            observed["observation"]["syntax_count"],
+            usize::from(row["present"].as_bool().unwrap()),
+            "{id}"
+        );
+        assert_eq!(observed["observation"]["is_clean"], row["clean"], "{id}");
+        assert_eq!(
+            observed["observation"]["diagnostics"], row["diagnostics"],
+            "{id}: ordered, multiplicity-one diagnostics"
+        );
+    }
+}

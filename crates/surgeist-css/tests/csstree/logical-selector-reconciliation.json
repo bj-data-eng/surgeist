@@ -1,0 +1,1937 @@
+{
+  "schema_version": 1,
+  "basis": "ba3dfeaa43b507863968a13b86396ce676cea04f",
+  "entry_contract": "parse_selector(original, corpus_namespace_context()), exactly one ordinary selector. No wrapper, no vendor option. Outer rejected syntax => None / RejectInput; retained forgiving recovery => Some / DropSelectorListItem. Selector extractor counts outer syntax, not inner members.",
+  "diagnostic_evidence": [
+    "crates/surgeist-css/src/parser/fragments.rs:131 selector_fragment; :160 complete-fragment exhaustion; :173 retention-only closures; :180 whole-source rejection; :187 parse_selector public contract",
+    "crates/surgeist-css/src/parser/selectors.rs:103 drop_forgiving_member uses original error plus comma-member span; :1262 forgiving list creates one recovery per failed member; :1245 unforgiving lists stop at first failing member; :1304 has relative list",
+    "crates/surgeist-css/src/parser/selectors.rs:335 selector continuation rejects malformed brace at its start; :590 compound parser rejects absent selector and nonselector function; :1197 unknown bare pseudo name resets name_start before InvalidSelector",
+    "crates/surgeist-css/src/error.rs:1019 resolve_source next/previous token inference; :1510 invalid_selector current location; :1315 selector_basic EOF without encountered token. The selector_component_error correction at 6daff0411ce33b78cae208056d55cb24c1538a45 preserves exact unmatched closing-token origin.",
+    "crates/surgeist-css/src/parser/recovery.rs comma_member_span: nonempty member own span; empty member following comma else preceding comma; zero-width only when no adjacent comma exists",
+    "crates/surgeist-css/tests/support/csstree_adapters.rs:116-130 raw selector adapters have empty prefix/suffix; :515 payload is prefix length through prefix plus original byte length; :1300-1370 is/where/not/has registry routes select raw Selector front door",
+    "crates/surgeist-css/tests/support/csstree.rs:2197 observation_from_report computes relation against complete payload; :2251 each raw diagnostic multiplicity is 1; :2707 relation contract demands offset strictly before payload end for intersects, not before recovery-span end",
+    "cssparser-0.37.0 parser.rs:646 stop-before and nested block EOF; rules_and_declarations are not used to wrap these selector fragments"
+  ],
+  "rows": [
+    {
+      "id": "selector/functional-pseudo/is.json#/basic",
+      "input": ":is(test)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/is.json",
+      "source_sha256": "84e4a022c0c319b270cba14226b016acd42257501ad5adfa27ce6e73b8e30e95",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/is.json",
+      "expectation_sha256": "b83c826039585f0307c96bc08e776264bbb121403fab2edeae5e8e48b7f90f4e",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Valid ordinary selector argument(s).",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#matches"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/error/0",
+      "input": ":is(.a{)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/is.json",
+      "source_sha256": "84e4a022c0c319b270cba14226b016acd42257501ad5adfa27ce6e73b8e30e95",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/is.json",
+      "expectation_sha256": "b83c826039585f0307c96bc08e776264bbb121403fab2edeae5e8e48b7f90f4e",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "byte_offset": 7,
+          "span_start": 0,
+          "span_end": 8,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Malformed brace block includes unmatched closing parenthesis. Inference from mandatory <any-value>? syntax gate: unmatched ) inside the unclosed { block fails CSS Syntax §8.2 before forgiving member filtering. At the audit basis, implementation only parsed/filtered members; retaining the outer pseudo violated this grammar. No RetainWithImplicitClosure when rejecting outer syntax.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#matches",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-a-simple-block"
+      ],
+      "diagnostic_basis": "planned_adjudicated_envelope_rejection"
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/error/1",
+      "input": ":is(,.b)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/is.json",
+      "source_sha256": "84e4a022c0c319b270cba14226b016acd42257501ad5adfa27ce6e73b8e30e95",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/is.json",
+      "expectation_sha256": "b83c826039585f0307c96bc08e776264bbb121403fab2edeae5e8e48b7f90f4e",
+      "present": true,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_selector_list_item",
+          "byte_offset": 4,
+          "span_start": 4,
+          "span_end": 5,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_selector_list_item",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": [
+        ".b"
+      ],
+      "rationale": "Empty leading list member. Forgiving filtering retains the outer pseudo, even when its inner list becomes empty.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#matches",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/error/2",
+      "input": ":is(.a,)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/is.json",
+      "source_sha256": "84e4a022c0c319b270cba14226b016acd42257501ad5adfa27ce6e73b8e30e95",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/is.json",
+      "expectation_sha256": "b83c826039585f0307c96bc08e776264bbb121403fab2edeae5e8e48b7f90f4e",
+      "present": true,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_selector_list_item",
+          "byte_offset": 7,
+          "span_start": 6,
+          "span_end": 7,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_selector_list_item",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": [
+        ".a"
+      ],
+      "rationale": "Empty trailing list member. Forgiving filtering retains the outer pseudo, even when its inner list becomes empty.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#matches",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/error/3",
+      "input": ":is(.a,,)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/is.json",
+      "source_sha256": "84e4a022c0c319b270cba14226b016acd42257501ad5adfa27ce6e73b8e30e95",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/is.json",
+      "expectation_sha256": "b83c826039585f0307c96bc08e776264bbb121403fab2edeae5e8e48b7f90f4e",
+      "present": true,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_selector_list_item",
+          "byte_offset": 7,
+          "span_start": 7,
+          "span_end": 8,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        },
+        {
+          "code": "invalid_selector",
+          "action": "drop_selector_list_item",
+          "byte_offset": 8,
+          "span_start": 7,
+          "span_end": 8,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_selector_list_item",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_selector",
+            "action": "drop_selector_list_item",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": [
+        ".a"
+      ],
+      "rationale": "Two empty list members. Forgiving filtering retains the outer pseudo, even when its inner list becomes empty.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#matches",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/error/4",
+      "input": ":is(.a,.b{)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/is.json",
+      "source_sha256": "84e4a022c0c319b270cba14226b016acd42257501ad5adfa27ce6e73b8e30e95",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/is.json",
+      "expectation_sha256": "b83c826039585f0307c96bc08e776264bbb121403fab2edeae5e8e48b7f90f4e",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "byte_offset": 10,
+          "span_start": 0,
+          "span_end": 11,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Second member contains malformed brace block with unmatched closing parenthesis. Inference from mandatory <any-value>? syntax gate: unmatched ) inside the unclosed { block fails CSS Syntax §8.2 before forgiving member filtering. At the audit basis, implementation only parsed/filtered members; retaining the outer pseudo violated this grammar. No RetainWithImplicitClosure when rejecting outer syntax.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#matches",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-a-simple-block"
+      ],
+      "diagnostic_basis": "planned_adjudicated_envelope_rejection"
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/error/5",
+      "input": ":is(var(--test))",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/is.json",
+      "source_sha256": "84e4a022c0c319b270cba14226b016acd42257501ad5adfa27ce6e73b8e30e95",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/is.json",
+      "expectation_sha256": "b83c826039585f0307c96bc08e776264bbb121403fab2edeae5e8e48b7f90f4e",
+      "present": true,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_selector_list_item",
+          "byte_offset": 4,
+          "span_start": 4,
+          "span_end": 15,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_selector_list_item",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": [],
+      "rationale": "var() is not a selector and substitution is not admitted in selector grammar. Forgiving filtering retains the outer pseudo, even when its inner list becomes empty.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#matches",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/negation with selector group",
+      "input": ":is(.a,.b.c)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/is.json",
+      "source_sha256": "84e4a022c0c319b270cba14226b016acd42257501ad5adfa27ce6e73b8e30e95",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/is.json",
+      "expectation_sha256": "b83c826039585f0307c96bc08e776264bbb121403fab2edeae5e8e48b7f90f4e",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Valid ordinary selector argument(s).",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#matches"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/selector group and spaces",
+      "input": ":is(  .a  ,  .b  )",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/is.json",
+      "source_sha256": "84e4a022c0c319b270cba14226b016acd42257501ad5adfa27ce6e73b8e30e95",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/is.json",
+      "expectation_sha256": "b83c826039585f0307c96bc08e776264bbb121403fab2edeae5e8e48b7f90f4e",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Valid ordinary selector argument(s).",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#matches"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/should be case insensitive",
+      "input": ":HaS(.a,.b)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/is.json",
+      "source_sha256": "84e4a022c0c319b270cba14226b016acd42257501ad5adfa27ce6e73b8e30e95",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/is.json",
+      "expectation_sha256": "b83c826039585f0307c96bc08e776264bbb121403fab2edeae5e8e48b7f90f4e",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Pseudo-class names are ASCII case-insensitive. Original is/where fixtures actually author :HaS(.a,.b), which must be interpreted as :has, preserving fixture identity.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#matches",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#case-sensitive"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/should support relative selectors",
+      "input": ":is(>.a,+.b)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/is.json",
+      "source_sha256": "84e4a022c0c319b270cba14226b016acd42257501ad5adfa27ce6e73b8e30e95",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/is.json",
+      "expectation_sha256": "b83c826039585f0307c96bc08e776264bbb121403fab2edeae5e8e48b7f90f4e",
+      "present": true,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_selector_list_item",
+          "byte_offset": 4,
+          "span_start": 4,
+          "span_end": 7,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        },
+        {
+          "code": "invalid_selector",
+          "action": "drop_selector_list_item",
+          "byte_offset": 8,
+          "span_start": 8,
+          "span_end": 11,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_selector_list_item",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_selector",
+            "action": "drop_selector_list_item",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": [],
+      "rationale": "Both arguments lead with combinators and fail complex-real-selector grammar; forgiving filtering retains outer pseudo with empty inner list.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#matches",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/basic",
+      "input": ":where(test)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/where.json",
+      "source_sha256": "e07eaa47ef6ebfd36a5f26c43fcc141b33b208f2ad852b1951938384d29ed803",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/where.json",
+      "expectation_sha256": "a4eefdd9e655c9290360b998c455c785f1f2f42fc3712aeb40cdf4a270924bd0",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Valid ordinary selector argument(s).",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#zero-matches"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/error/0",
+      "input": ":where(.a{)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/where.json",
+      "source_sha256": "e07eaa47ef6ebfd36a5f26c43fcc141b33b208f2ad852b1951938384d29ed803",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/where.json",
+      "expectation_sha256": "a4eefdd9e655c9290360b998c455c785f1f2f42fc3712aeb40cdf4a270924bd0",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "byte_offset": 10,
+          "span_start": 0,
+          "span_end": 11,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Malformed brace block includes unmatched closing parenthesis. Inference from mandatory <any-value>? syntax gate: unmatched ) inside the unclosed { block fails CSS Syntax §8.2 before forgiving member filtering. At the audit basis, implementation only parsed/filtered members; retaining the outer pseudo violated this grammar. No RetainWithImplicitClosure when rejecting outer syntax.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#zero-matches",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-a-simple-block"
+      ],
+      "diagnostic_basis": "planned_adjudicated_envelope_rejection"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/error/1",
+      "input": ":where(,.b)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/where.json",
+      "source_sha256": "e07eaa47ef6ebfd36a5f26c43fcc141b33b208f2ad852b1951938384d29ed803",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/where.json",
+      "expectation_sha256": "a4eefdd9e655c9290360b998c455c785f1f2f42fc3712aeb40cdf4a270924bd0",
+      "present": true,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_selector_list_item",
+          "byte_offset": 7,
+          "span_start": 7,
+          "span_end": 8,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_selector_list_item",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": [
+        ".b"
+      ],
+      "rationale": "Empty leading list member. Forgiving filtering retains the outer pseudo, even when its inner list becomes empty.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#zero-matches",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/error/2",
+      "input": ":where(.a,)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/where.json",
+      "source_sha256": "e07eaa47ef6ebfd36a5f26c43fcc141b33b208f2ad852b1951938384d29ed803",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/where.json",
+      "expectation_sha256": "a4eefdd9e655c9290360b998c455c785f1f2f42fc3712aeb40cdf4a270924bd0",
+      "present": true,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_selector_list_item",
+          "byte_offset": 10,
+          "span_start": 9,
+          "span_end": 10,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_selector_list_item",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": [
+        ".a"
+      ],
+      "rationale": "Empty trailing list member. Forgiving filtering retains the outer pseudo, even when its inner list becomes empty.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#zero-matches",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/error/3",
+      "input": ":where(.a,,)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/where.json",
+      "source_sha256": "e07eaa47ef6ebfd36a5f26c43fcc141b33b208f2ad852b1951938384d29ed803",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/where.json",
+      "expectation_sha256": "a4eefdd9e655c9290360b998c455c785f1f2f42fc3712aeb40cdf4a270924bd0",
+      "present": true,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_selector_list_item",
+          "byte_offset": 10,
+          "span_start": 10,
+          "span_end": 11,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        },
+        {
+          "code": "invalid_selector",
+          "action": "drop_selector_list_item",
+          "byte_offset": 11,
+          "span_start": 10,
+          "span_end": 11,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_selector_list_item",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_selector",
+            "action": "drop_selector_list_item",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": [
+        ".a"
+      ],
+      "rationale": "Two empty list members. Forgiving filtering retains the outer pseudo, even when its inner list becomes empty.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#zero-matches",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/error/4",
+      "input": ":where(.a,.b{)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/where.json",
+      "source_sha256": "e07eaa47ef6ebfd36a5f26c43fcc141b33b208f2ad852b1951938384d29ed803",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/where.json",
+      "expectation_sha256": "a4eefdd9e655c9290360b998c455c785f1f2f42fc3712aeb40cdf4a270924bd0",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "byte_offset": 13,
+          "span_start": 0,
+          "span_end": 14,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Second member contains malformed brace block with unmatched closing parenthesis. Inference from mandatory <any-value>? syntax gate: unmatched ) inside the unclosed { block fails CSS Syntax §8.2 before forgiving member filtering. At the audit basis, implementation only parsed/filtered members; retaining the outer pseudo violated this grammar. No RetainWithImplicitClosure when rejecting outer syntax.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#zero-matches",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-a-simple-block"
+      ],
+      "diagnostic_basis": "planned_adjudicated_envelope_rejection"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/error/5",
+      "input": ":where(var(--test))",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/where.json",
+      "source_sha256": "e07eaa47ef6ebfd36a5f26c43fcc141b33b208f2ad852b1951938384d29ed803",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/where.json",
+      "expectation_sha256": "a4eefdd9e655c9290360b998c455c785f1f2f42fc3712aeb40cdf4a270924bd0",
+      "present": true,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_selector_list_item",
+          "byte_offset": 7,
+          "span_start": 7,
+          "span_end": 18,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_selector_list_item",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": [],
+      "rationale": "var() is not a selector and substitution is not admitted in selector grammar. Forgiving filtering retains the outer pseudo, even when its inner list becomes empty.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#zero-matches",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/negation with selector group",
+      "input": ":where(.a,.b.c)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/where.json",
+      "source_sha256": "e07eaa47ef6ebfd36a5f26c43fcc141b33b208f2ad852b1951938384d29ed803",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/where.json",
+      "expectation_sha256": "a4eefdd9e655c9290360b998c455c785f1f2f42fc3712aeb40cdf4a270924bd0",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Valid ordinary selector argument(s).",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#zero-matches"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/selector group and spaces",
+      "input": ":where(  .a  ,  .b  )",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/where.json",
+      "source_sha256": "e07eaa47ef6ebfd36a5f26c43fcc141b33b208f2ad852b1951938384d29ed803",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/where.json",
+      "expectation_sha256": "a4eefdd9e655c9290360b998c455c785f1f2f42fc3712aeb40cdf4a270924bd0",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Valid ordinary selector argument(s).",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#zero-matches"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/should be case insensitive",
+      "input": ":HaS(.a,.b)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/where.json",
+      "source_sha256": "e07eaa47ef6ebfd36a5f26c43fcc141b33b208f2ad852b1951938384d29ed803",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/where.json",
+      "expectation_sha256": "a4eefdd9e655c9290360b998c455c785f1f2f42fc3712aeb40cdf4a270924bd0",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Pseudo-class names are ASCII case-insensitive. Original is/where fixtures actually author :HaS(.a,.b), which must be interpreted as :has, preserving fixture identity.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#zero-matches",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#case-sensitive"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/should support relative selectors",
+      "input": ":where(>.a,+.b)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/where.json",
+      "source_sha256": "e07eaa47ef6ebfd36a5f26c43fcc141b33b208f2ad852b1951938384d29ed803",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/where.json",
+      "expectation_sha256": "a4eefdd9e655c9290360b998c455c785f1f2f42fc3712aeb40cdf4a270924bd0",
+      "present": true,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_selector_list_item",
+          "byte_offset": 7,
+          "span_start": 7,
+          "span_end": 10,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        },
+        {
+          "code": "invalid_selector",
+          "action": "drop_selector_list_item",
+          "byte_offset": 11,
+          "span_start": 11,
+          "span_end": 14,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_selector_list_item",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_selector",
+            "action": "drop_selector_list_item",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": [],
+      "rationale": "Both arguments lead with combinators and fail complex-real-selector grammar; forgiving filtering retains outer pseudo with empty inner list.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#zero-matches",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/not.json#/basic",
+      "input": ":not(test)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/not.json",
+      "source_sha256": "4f90347af6c69bcfae7594dfd1cbcdd15f47859e147113df5fa4dc8612672cd5",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/not.json",
+      "expectation_sha256": "67335d0731319f4ed5902d8157990c1c05c169204c9a239ad61bf4a2131bb43f",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Valid ordinary selector argument(s).",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#negation"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/not.json#/error/0",
+      "input": ":not(.a{)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/not.json",
+      "source_sha256": "4f90347af6c69bcfae7594dfd1cbcdd15f47859e147113df5fa4dc8612672cd5",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/not.json",
+      "expectation_sha256": "67335d0731319f4ed5902d8157990c1c05c169204c9a239ad61bf4a2131bb43f",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "byte_offset": 7,
+          "span_start": 0,
+          "span_end": 9,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Malformed brace block includes unmatched closing parenthesis. Unforgiving list invalidates entire pseudo and selector.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#negation"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/not.json#/error/1",
+      "input": ":not(,.b)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/not.json",
+      "source_sha256": "4f90347af6c69bcfae7594dfd1cbcdd15f47859e147113df5fa4dc8612672cd5",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/not.json",
+      "expectation_sha256": "67335d0731319f4ed5902d8157990c1c05c169204c9a239ad61bf4a2131bb43f",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "byte_offset": 5,
+          "span_start": 0,
+          "span_end": 9,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Empty leading list member. Unforgiving list invalidates entire pseudo and selector.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#negation"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/not.json#/error/2",
+      "input": ":not(.a,)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/not.json",
+      "source_sha256": "4f90347af6c69bcfae7594dfd1cbcdd15f47859e147113df5fa4dc8612672cd5",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/not.json",
+      "expectation_sha256": "67335d0731319f4ed5902d8157990c1c05c169204c9a239ad61bf4a2131bb43f",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "byte_offset": 8,
+          "span_start": 0,
+          "span_end": 9,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Empty trailing list member. Unforgiving list invalidates entire pseudo and selector.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#negation"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/not.json#/error/3",
+      "input": ":not(.a,,)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/not.json",
+      "source_sha256": "4f90347af6c69bcfae7594dfd1cbcdd15f47859e147113df5fa4dc8612672cd5",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/not.json",
+      "expectation_sha256": "67335d0731319f4ed5902d8157990c1c05c169204c9a239ad61bf4a2131bb43f",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "byte_offset": 8,
+          "span_start": 0,
+          "span_end": 10,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Two empty list members. Unforgiving list invalidates entire pseudo and selector.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#negation"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/not.json#/error/4",
+      "input": ":not(.a,.b{)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/not.json",
+      "source_sha256": "4f90347af6c69bcfae7594dfd1cbcdd15f47859e147113df5fa4dc8612672cd5",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/not.json",
+      "expectation_sha256": "67335d0731319f4ed5902d8157990c1c05c169204c9a239ad61bf4a2131bb43f",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "byte_offset": 10,
+          "span_start": 0,
+          "span_end": 12,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Second member contains malformed brace block with unmatched closing parenthesis. Unforgiving list invalidates entire pseudo and selector.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#negation"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/not.json#/error/5",
+      "input": ":not(var(--test))",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/not.json",
+      "source_sha256": "4f90347af6c69bcfae7594dfd1cbcdd15f47859e147113df5fa4dc8612672cd5",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/not.json",
+      "expectation_sha256": "67335d0731319f4ed5902d8157990c1c05c169204c9a239ad61bf4a2131bb43f",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "byte_offset": 5,
+          "span_start": 0,
+          "span_end": 17,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "var() is not a selector and substitution is not admitted in selector grammar. Unforgiving list invalidates entire pseudo and selector.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#negation"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/not.json#/selector group",
+      "input": ":not(.a,.b.c)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/not.json",
+      "source_sha256": "4f90347af6c69bcfae7594dfd1cbcdd15f47859e147113df5fa4dc8612672cd5",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/not.json",
+      "expectation_sha256": "67335d0731319f4ed5902d8157990c1c05c169204c9a239ad61bf4a2131bb43f",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Valid ordinary selector argument(s).",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#negation"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/not.json#/selector group and spaces",
+      "input": ":not(  .a  ,  .b  )",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/not.json",
+      "source_sha256": "4f90347af6c69bcfae7594dfd1cbcdd15f47859e147113df5fa4dc8612672cd5",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/not.json",
+      "expectation_sha256": "67335d0731319f4ed5902d8157990c1c05c169204c9a239ad61bf4a2131bb43f",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Valid ordinary selector argument(s).",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#negation"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/not.json#/should be case insensitive",
+      "input": ":NoT(.a,.b)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/not.json",
+      "source_sha256": "4f90347af6c69bcfae7594dfd1cbcdd15f47859e147113df5fa4dc8612672cd5",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/not.json",
+      "expectation_sha256": "67335d0731319f4ed5902d8157990c1c05c169204c9a239ad61bf4a2131bb43f",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Pseudo-class names are ASCII case-insensitive. Original is/where fixtures actually author :HaS(.a,.b), which must be interpreted as :has, preserving fixture identity.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#negation",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#case-sensitive"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/has.json#/basic",
+      "input": ":has(test)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/has.json",
+      "source_sha256": "e75766d59a4792e04492b82bfb3040fe7546ace3000e9eb116b64bc601e2afe7",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/has.json",
+      "expectation_sha256": "6ad5da7d33d866f7034be05440b79e22122d79185e3dcc00da92c077c0456ac7",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Valid ordinary selector argument(s).",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#relational"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/has.json#/empty argument",
+      "input": ":has()",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/has.json",
+      "source_sha256": "e75766d59a4792e04492b82bfb3040fe7546ace3000e9eb116b64bc601e2afe7",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/has.json",
+      "expectation_sha256": "6ad5da7d33d866f7034be05440b79e22122d79185e3dcc00da92c077c0456ac7",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "byte_offset": 5,
+          "span_start": 0,
+          "span_end": 6,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": ":has requires functional notation and a nonempty relative-selector-list.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#relational"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/has.json#/error/0",
+      "input": ":has(.a{)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/has.json",
+      "source_sha256": "e75766d59a4792e04492b82bfb3040fe7546ace3000e9eb116b64bc601e2afe7",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/has.json",
+      "expectation_sha256": "6ad5da7d33d866f7034be05440b79e22122d79185e3dcc00da92c077c0456ac7",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "byte_offset": 7,
+          "span_start": 0,
+          "span_end": 9,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Malformed brace block includes unmatched closing parenthesis. Unforgiving list invalidates entire pseudo and selector.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#relational"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/has.json#/error/1",
+      "input": ":has(,.b)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/has.json",
+      "source_sha256": "e75766d59a4792e04492b82bfb3040fe7546ace3000e9eb116b64bc601e2afe7",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/has.json",
+      "expectation_sha256": "6ad5da7d33d866f7034be05440b79e22122d79185e3dcc00da92c077c0456ac7",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "byte_offset": 5,
+          "span_start": 0,
+          "span_end": 9,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Empty leading list member. Unforgiving list invalidates entire pseudo and selector.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#relational"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/has.json#/error/2",
+      "input": ":has(.a,)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/has.json",
+      "source_sha256": "e75766d59a4792e04492b82bfb3040fe7546ace3000e9eb116b64bc601e2afe7",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/has.json",
+      "expectation_sha256": "6ad5da7d33d866f7034be05440b79e22122d79185e3dcc00da92c077c0456ac7",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "byte_offset": 8,
+          "span_start": 0,
+          "span_end": 9,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Empty trailing list member. Unforgiving list invalidates entire pseudo and selector.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#relational"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/has.json#/error/3",
+      "input": ":has(.a,,)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/has.json",
+      "source_sha256": "e75766d59a4792e04492b82bfb3040fe7546ace3000e9eb116b64bc601e2afe7",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/has.json",
+      "expectation_sha256": "6ad5da7d33d866f7034be05440b79e22122d79185e3dcc00da92c077c0456ac7",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "byte_offset": 8,
+          "span_start": 0,
+          "span_end": 10,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Two empty list members. Unforgiving list invalidates entire pseudo and selector.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#relational"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/has.json#/error/4",
+      "input": ":has(.a,.b{)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/has.json",
+      "source_sha256": "e75766d59a4792e04492b82bfb3040fe7546ace3000e9eb116b64bc601e2afe7",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/has.json",
+      "expectation_sha256": "6ad5da7d33d866f7034be05440b79e22122d79185e3dcc00da92c077c0456ac7",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "byte_offset": 10,
+          "span_start": 0,
+          "span_end": 12,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Second member contains malformed brace block with unmatched closing parenthesis. Unforgiving list invalidates entire pseudo and selector.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#relational"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/has.json#/error/5",
+      "input": ":has(var(--test))",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/has.json",
+      "source_sha256": "e75766d59a4792e04492b82bfb3040fe7546ace3000e9eb116b64bc601e2afe7",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/has.json",
+      "expectation_sha256": "6ad5da7d33d866f7034be05440b79e22122d79185e3dcc00da92c077c0456ac7",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "byte_offset": 5,
+          "span_start": 0,
+          "span_end": 17,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "var() is not a selector and substitution is not admitted in selector grammar. Unforgiving list invalidates entire pseudo and selector.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#relational"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/has.json#/negation with selector group",
+      "input": ":has(.a,.b.c)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/has.json",
+      "source_sha256": "e75766d59a4792e04492b82bfb3040fe7546ace3000e9eb116b64bc601e2afe7",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/has.json",
+      "expectation_sha256": "6ad5da7d33d866f7034be05440b79e22122d79185e3dcc00da92c077c0456ac7",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Valid ordinary selector argument(s).",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#relational"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/has.json#/no argument",
+      "input": ":has",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/has.json",
+      "source_sha256": "e75766d59a4792e04492b82bfb3040fe7546ace3000e9eb116b64bc601e2afe7",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/has.json",
+      "expectation_sha256": "6ad5da7d33d866f7034be05440b79e22122d79185e3dcc00da92c077c0456ac7",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "byte_offset": 1,
+          "span_start": 0,
+          "span_end": 4,
+          "payload_relation": "intersects",
+          "multiplicity": 1
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": ":has requires functional notation and a nonempty relative-selector-list.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#relational"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/has.json#/selector group and spaces",
+      "input": ":has(  .a  ,  .b  )",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/has.json",
+      "source_sha256": "e75766d59a4792e04492b82bfb3040fe7546ace3000e9eb116b64bc601e2afe7",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/has.json",
+      "expectation_sha256": "6ad5da7d33d866f7034be05440b79e22122d79185e3dcc00da92c077c0456ac7",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Valid ordinary selector argument(s).",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#relational"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/has.json#/should be case insensitive",
+      "input": ":HaS(.a,.b)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/has.json",
+      "source_sha256": "e75766d59a4792e04492b82bfb3040fe7546ace3000e9eb116b64bc601e2afe7",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/has.json",
+      "expectation_sha256": "6ad5da7d33d866f7034be05440b79e22122d79185e3dcc00da92c077c0456ac7",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": "Pseudo-class names are ASCII case-insensitive. Original is/where fixtures actually author :HaS(.a,.b), which must be interpreted as :has, preserving fixture identity.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#relational",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#case-sensitive"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    },
+    {
+      "id": "selector/functional-pseudo/has.json#/should support relative selectors",
+      "input": ":has(>.a,+.b)",
+      "context": "selector",
+      "options": {},
+      "source_path": "corpus/csstree/source/selector/functional-pseudo/has.json",
+      "source_sha256": "e75766d59a4792e04492b82bfb3040fe7546ace3000e9eb116b64bc601e2afe7",
+      "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/has.json",
+      "expectation_sha256": "6ad5da7d33d866f7034be05440b79e22122d79185e3dcc00da92c077c0456ac7",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "expected_inner_members_when_recovered": null,
+      "rationale": ":has admits both leading child and adjacent-sibling combinators in its relative-selector-list.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#relational"
+      ],
+      "diagnostic_basis": "unchanged_source_contract"
+    }
+  ]
+}
