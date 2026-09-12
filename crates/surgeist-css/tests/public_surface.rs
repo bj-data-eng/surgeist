@@ -19,7 +19,8 @@ use surgeist_css::{
     CssRelativeColorExpressionValue, CssRelativeColorFunction, CssRelativeColorResultDomain,
     CssRule, CssSelector, CssSelectorCombinator, CssSpecificationTier, CssSupportStatus,
     CssSupportsConditionKind, CssSupportsConditionList, ErrorKind, conformance_exclusion,
-    feature_metadata, parse_sheet, parse_style_attribute, property_metadata, specification_source,
+    feature_metadata, parse_sheet, parse_style_attribute, property_support_metadata,
+    specification_source,
 };
 
 #[test]
@@ -853,13 +854,13 @@ fn public_surface_metadata_exposes_every_final_accessor_and_bounded_status() {
     assert_eq!(namespace.status(), CssSupportStatus::Complete);
     assert_eq!(namespace.recognized_unsupported_code(), None);
 
-    let property = property_metadata("WiDtH").expect("ASCII-insensitive property lookup");
+    let property = property_support_metadata("WiDtH").expect("ASCII-insensitive property lookup");
     assert_eq!(property.feature().id().as_str(), "baseline.property.width");
     assert_eq!(property.property(), CssKnownProperty::Width);
     assert_eq!(property.canonical_name(), "width");
     assert!(property.aliases().is_empty());
-    assert_eq!(property_metadata("--width"), None);
-    assert_eq!(property_metadata("not-a-property"), None);
+    assert_eq!(property_support_metadata("--width"), None);
+    assert_eq!(property_support_metadata("not-a-property"), None);
     assert_eq!(feature_metadata("BASELINE.PROPERTY.WIDTH"), None);
 }
 

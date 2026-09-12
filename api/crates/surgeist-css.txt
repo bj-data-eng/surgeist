@@ -4924,15 +4924,15 @@ pub const fn surgeist_css::CssPositiveNumber::value(self) -> f32
 pub struct surgeist_css::CssProductionId(_)
 impl surgeist_css::CssProductionId
 pub const fn surgeist_css::CssProductionId::as_str(self) -> &'static str
-pub struct surgeist_css::CssPropertyMetadata
-impl surgeist_css::CssPropertyMetadata
-pub const fn surgeist_css::CssPropertyMetadata::aliases(&self) -> &'static [&'static str]
-pub const fn surgeist_css::CssPropertyMetadata::canonical_name(&self) -> &'static str
-pub const fn surgeist_css::CssPropertyMetadata::feature(&self) -> &'static surgeist_css::CssFeatureMetadata
-pub fn surgeist_css::CssPropertyMetadata::property(&self) -> surgeist_css::CssKnownProperty
 pub struct surgeist_css::CssPropertyName(_)
 impl surgeist_css::CssPropertyName
 pub fn surgeist_css::CssPropertyName::as_str(&self) -> &str
+pub struct surgeist_css::CssPropertySupportMetadata
+impl surgeist_css::CssPropertySupportMetadata
+pub const fn surgeist_css::CssPropertySupportMetadata::aliases(&self) -> &'static [&'static str]
+pub const fn surgeist_css::CssPropertySupportMetadata::canonical_name(&self) -> &'static str
+pub const fn surgeist_css::CssPropertySupportMetadata::feature(&self) -> &'static surgeist_css::CssFeatureMetadata
+pub fn surgeist_css::CssPropertySupportMetadata::property(&self) -> surgeist_css::CssKnownProperty
 pub struct surgeist_css::CssPropertyValueError
 impl surgeist_css::CssPropertyValueError
 pub const fn surgeist_css::CssPropertyValueError::encountered(&self) -> core::option::Option<&surgeist_css::CssTokenSummary>
@@ -5691,7 +5691,7 @@ pub fn surgeist_css::parse_selector(source: &str, context: &surgeist_css::CssNam
 pub fn surgeist_css::parse_selector_list(source: &str, context: &surgeist_css::CssNamespaceContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssStyleSelectorList>>
 pub fn surgeist_css::parse_sheet(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssSheet>
 pub fn surgeist_css::parse_style_attribute(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssDeclarationList>
-pub fn surgeist_css::property_metadata(name: &str) -> core::option::Option<surgeist_css::CssPropertyMetadata>
+pub fn surgeist_css::property_support_metadata(name: &str) -> core::option::Option<surgeist_css::CssPropertySupportMetadata>
 pub fn surgeist_css::specification_source(id: &str) -> core::option::Option<&'static surgeist_css::CssSpecificationSource>
 pub const fn surgeist_css::specification_sources() -> &'static [surgeist_css::CssSpecificationSource]
 pub fn surgeist_css::validate_sheet(input: &str) -> core::result::Result<surgeist_css::CssSheet, surgeist_css::CssValidationFailure>

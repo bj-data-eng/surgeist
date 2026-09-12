@@ -1,6 +1,6 @@
 use surgeist_css::{
     CssErrorCode, CssImportance, CssKnownProperty, CssRecoveryAction, CssRule, CssSupportStatus,
-    ErrorKind, feature_metadata, parse_sheet, parse_style_attribute, property_metadata,
+    ErrorKind, feature_metadata, parse_sheet, parse_style_attribute, property_support_metadata,
 };
 
 fn actions(source: &str) -> Vec<CssRecoveryAction> {
@@ -209,11 +209,11 @@ fn custom_substitution_and_known_declarations_preserve_coupled_values() {
 
 #[test]
 fn named_property_metadata_lookup_is_exact() {
-    let width = property_metadata("WiDtH").expect("width metadata");
+    let width = property_support_metadata("WiDtH").expect("width metadata");
     assert_eq!(width.property(), CssKnownProperty::Width);
     assert_eq!(width.feature().id().as_str(), "baseline.property.width");
-    assert_eq!(property_metadata("--width"), None);
-    assert_eq!(property_metadata("not-a-property"), None);
+    assert_eq!(property_support_metadata("--width"), None);
+    assert_eq!(property_support_metadata("not-a-property"), None);
     assert_eq!(feature_metadata("BASELINE.PROPERTY.WIDTH"), None);
 }
 

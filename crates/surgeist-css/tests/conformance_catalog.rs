@@ -10,7 +10,7 @@ use surgeist_css::{
     CssTransformFunctionValue, CssTransformPerspective, CssTransformScaleComponent,
     CssTransformValue, CssVerticalPosition, ErrorKind, conformance_exclusion,
     conformance_exclusions, feature_metadata, parse_sheet, parse_style_attribute,
-    property_metadata, specification_source, specification_sources,
+    property_support_metadata, specification_source, specification_sources,
 };
 
 #[derive(Clone, Copy)]
@@ -666,7 +666,7 @@ fn color4_value_and_property_metadata_match_public_authored_behavior() {
         "color(display-p3 1 0 0 / 120%)",
     );
 
-    let color = property_metadata("color").expect("color metadata");
+    let color = property_support_metadata("color").expect("color metadata");
     assert_eq!(color.feature().status(), CssSupportStatus::Complete);
     assert_eq!(color.feature().source().id().as_str(), "O-COLOR4");
     assert_eq!(color.feature().production(), "#propdef-color");
@@ -679,7 +679,7 @@ fn color4_value_and_property_metadata_match_public_authored_behavior() {
         "{:?}",
         opacity_report.diagnostics()
     );
-    let opacity = property_metadata("opacity").expect("opacity metadata");
+    let opacity = property_support_metadata("opacity").expect("opacity metadata");
     assert_eq!(opacity.feature().status(), CssSupportStatus::Complete);
     assert_eq!(opacity.feature().source().id().as_str(), "O-COLOR4");
     assert_eq!(opacity.feature().production(), "#propdef-opacity");
@@ -2301,7 +2301,7 @@ fn assert_complete_position_property_metadata(
     production: &str,
 ) {
     let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
-    let property_owner = property_metadata(canonical_name)
+    let property_owner = property_support_metadata(canonical_name)
         .unwrap_or_else(|| panic!("missing `{canonical_name}` property metadata"));
     assert!(
         std::ptr::eq(metadata, property_owner.feature()),
@@ -3583,7 +3583,8 @@ fn c12_property_metadata_is_truthful() {
         assert_eq!(metadata.recognized_unsupported_code(), None, "{id} code");
         assert!(metadata.baseline_alias_targets().is_empty(), "{id} atomic");
 
-        let property = property_metadata(name).unwrap_or_else(|| panic!("missing property {name}"));
+        let property =
+            property_support_metadata(name).unwrap_or_else(|| panic!("missing property {name}"));
         assert_eq!(property.feature(), metadata, "{id} property metadata");
         assert_eq!(property.canonical_name(), name, "{id} canonical name");
 
@@ -4299,7 +4300,7 @@ fn assert_complete_function_property_metadata(
     production: &str,
 ) {
     let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
-    let property = property_metadata(canonical_name)
+    let property = property_support_metadata(canonical_name)
         .unwrap_or_else(|| panic!("missing `{canonical_name}` property metadata"));
     assert!(std::ptr::eq(metadata, property.feature()), "{id} owner");
     assert_eq!(metadata.kind(), CssFeatureKind::Property, "{id} kind");
@@ -5437,7 +5438,7 @@ fn c13_background_image_metadata_is_truthful() {
         assert!(metadata.baseline_alias_targets().is_empty(), "{id} atomic");
 
         if kind == CssFeatureKind::Property {
-            let property = property_metadata(spelling)
+            let property = property_support_metadata(spelling)
                 .unwrap_or_else(|| panic!("missing property metadata for {spelling}"));
             assert!(std::ptr::eq(metadata, property.feature()), "{id} owner");
         }
@@ -5484,7 +5485,7 @@ fn c13_background_image_metadata_is_truthful() {
     ];
     assert_eq!(promoted_properties.len(), 33);
     for name in promoted_properties {
-        let metadata = property_metadata(name)
+        let metadata = property_support_metadata(name)
             .unwrap_or_else(|| panic!("missing promoted property metadata for {name}"))
             .feature();
         assert_eq!(metadata.source().id().as_str(), "O-BACKGROUNDS3", "{name}");

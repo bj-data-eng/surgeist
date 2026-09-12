@@ -611,17 +611,17 @@ impl CssFeatureMetadata {
     }
 }
 
-/// Immutable catalog metadata for one recognized non-custom authored CSS property.
+/// Immutable support-catalog metadata for one recognized non-custom authored CSS property.
 ///
 /// The metadata reports parser support; it does not apply cascade, substitute
 /// variables, resolve values, or dispatch property parsing. Construction is
 /// catalog-owned so callers cannot forge a property-to-feature association.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct CssPropertyMetadata {
+pub struct CssPropertySupportMetadata {
     feature: &'static CssFeatureMetadata,
 }
 
-impl CssPropertyMetadata {
+impl CssPropertySupportMetadata {
     /// Returns the underlying support-catalog record.
     #[must_use]
     pub const fn feature(&self) -> &'static CssFeatureMetadata {
@@ -5832,13 +5832,13 @@ pub fn feature_metadata(id: &str) -> Option<&'static CssFeatureMetadata> {
         .find(|feature| feature.id.as_str() == id)
 }
 
-/// Returns metadata for a recognized non-custom authored property name.
+/// Returns support metadata for a recognized non-custom authored property name.
 ///
 /// Canonical names and reviewed aliases use ASCII-case-insensitive matching.
 /// Custom-property names and unknown spellings return `None`; this lookup does
 /// not parse a declaration or classify its diagnostics.
 #[must_use]
-pub fn property_metadata(name: &str) -> Option<CssPropertyMetadata> {
+pub fn property_support_metadata(name: &str) -> Option<CssPropertySupportMetadata> {
     FEATURE_CATALOG
         .iter()
         .filter(|feature| feature.kind == CssFeatureKind::Property)
@@ -5849,7 +5849,7 @@ pub fn property_metadata(name: &str) -> Option<CssPropertyMetadata> {
                     .iter()
                     .any(|alias| alias.eq_ignore_ascii_case(name))
         })
-        .map(|feature| CssPropertyMetadata { feature })
+        .map(|feature| CssPropertySupportMetadata { feature })
 }
 
 #[cfg(test)]

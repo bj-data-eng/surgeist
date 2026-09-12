@@ -144,9 +144,24 @@ this feature leaves ordinary parsing and recovery unchanged.
 
 ## Inspect support metadata
 
-Use `feature_metadata` for an exact stable feature ID, `property_metadata` for a
-property name, and `specification_source` for a source ID. Check `status()` and,
-for `Partial` records, both `supported_subset()` and `unsupported_remainder()`.
+Use `feature_metadata` for an exact stable feature ID,
+`property_support_metadata` for a property name, and `specification_source` for a
+source ID. Check `status()` and, for `Partial` records, both
+`supported_subset()` and `unsupported_remainder()`.
 The [conformance reference](reference.md#conformance-sources-and-atomic-records)
 contains lookup examples with assertions and explains aggregate aliases and
 exclusions. A metadata status is not a substitute for examining a parse report.
+
+### Migrate property support lookups
+
+Rename `property_metadata` calls to `property_support_metadata` and explicit
+`CssPropertyMetadata` support-wrapper types to `CssPropertySupportMetadata`.
+The `feature()`, `property()`, `canonical_name()`, and `aliases()` methods retain
+their existing meanings. Name matching and lookup availability are unchanged:
+all recognized catalog properties remain available, including properties whose
+intrinsic metadata has not yet been implemented.
+
+Support metadata describes the parser support catalog. The planned intrinsic
+property metadata describes grammar, initial values, and shorthand expansion.
+Availability in the support catalog does not imply intrinsic metadata is available
+or that every authored grammar is supported.

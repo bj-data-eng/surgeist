@@ -5,7 +5,7 @@ mod catalog_inventory {
 use catalog_inventory::vectors::{PROPERTY_NEGATIVE_VECTORS, PROPERTY_POSITIVE_VECTORS};
 use surgeist_css::{
     CssErrorCode, CssFeatureKind, CssSupportStatus, ErrorKind, feature_metadata,
-    parse_style_attribute, property_metadata,
+    parse_style_attribute, property_support_metadata,
 };
 
 const CSS_WIDE_KEYWORDS: &[&str] = &["inherit", "initial", "unset", "revert", "revert-layer"];
@@ -29,7 +29,7 @@ fn contains_substitution(authored_value: &str) -> bool {
 #[test]
 fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
     for vector in PROPERTY_POSITIVE_VECTORS {
-        let metadata = property_metadata(vector.canonical_name)
+        let metadata = property_support_metadata(vector.canonical_name)
             .unwrap_or_else(|| panic!("missing metadata for `{}`", vector.canonical_name));
         let feature = metadata.feature();
 
@@ -64,7 +64,7 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
 
         let folded = vector.canonical_name.to_ascii_uppercase();
         assert_eq!(
-            property_metadata(&folded).map(|entry| entry.property()),
+            property_support_metadata(&folded).map(|entry| entry.property()),
             Some(metadata.property())
         );
     }
@@ -77,7 +77,7 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
         " display",
     ] {
         assert!(
-            property_metadata(name).is_none(),
+            property_support_metadata(name).is_none(),
             "unexpected metadata for `{name}`"
         );
     }
@@ -118,7 +118,7 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
         ("animation", "I-ANIMATIONS1"),
     ];
     for (property, source_id) in exact_source_cases {
-        let feature = property_metadata(property)
+        let feature = property_support_metadata(property)
             .expect("representative property")
             .feature();
         assert_eq!(feature.source().id().as_str(), source_id, "{property}");
@@ -283,7 +283,7 @@ fn added_fonts3_property_rows_expose_complete_authored_metadata() {
             id,
         );
 
-        let metadata = property_metadata(name).unwrap_or_else(|| panic!("missing {id}"));
+        let metadata = property_support_metadata(name).unwrap_or_else(|| panic!("missing {id}"));
         assert_eq!(metadata.feature().id().as_str(), id);
         assert_eq!(metadata.feature().source().id().as_str(), "O-FONTS3");
         assert_eq!(metadata.feature().status(), CssSupportStatus::Complete);
