@@ -35,6 +35,27 @@ fn reject(
         .expect("fragment errors originate within the complete source")
 }
 
+fn finish_nested_component<'i>(
+    input: &mut Parser<'i, '_>,
+    token: &Token<'i>,
+) -> Result<(), ParseError<'i, Error>> {
+    if matches!(
+        token,
+        Token::Function(_)
+            | Token::ParenthesisBlock
+            | Token::SquareBracketBlock
+            | Token::CurlyBracketBlock
+    ) {
+        // Finish this block now so the next root token's location and source
+        // slice begin after it, rather than before implicit tokenizer skipping.
+        input.parse_nested_block(|nested| {
+            while nested.next_including_whitespace_and_comments().is_ok() {}
+            Ok(())
+        })?;
+    }
+    Ok(())
+}
+
 /// Parses exactly one complete, grammar-valid ordinary declaration from raw source.
 ///
 /// Surrounding whitespace and comments are accepted. The source must contain a
@@ -76,20 +97,7 @@ pub fn parse_declaration(source: &str) -> crate::CssParseReport<Option<CssDeclar
                 ) {
                     return Err(location.new_unexpected_token_error::<Error>(token));
                 }
-                if matches!(
-                    token,
-                    Token::Function(_)
-                        | Token::ParenthesisBlock
-                        | Token::SquareBracketBlock
-                        | Token::CurlyBracketBlock
-                ) {
-                    // Finish this block now so the next root token's location
-                    // is measured after it, rather than before tokenizer skipping.
-                    input.parse_nested_block(|nested| {
-                        while nested.next_including_whitespace_and_comments().is_ok() {}
-                        Ok::<_, ParseError<'_, Error>>(())
-                    })?;
-                }
+                finish_nested_component(&mut input, &token)?;
             }
             input.reset(&value_start);
             let declaration = parse_declaration_core(
@@ -326,6 +334,7 @@ pub fn parse_font_face_descriptor_value(
                         input.slice_from(token_start),
                     ));
                 }
+                finish_nested_component(&mut input, &token)?;
             }
             input.reset(&start);
             let value = font_face::parse_font_face_value(
