@@ -51,7 +51,7 @@
         "diagnostics": [
           {
             "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -74,7 +74,7 @@
         "diagnostics": [
           {
             "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -97,7 +97,7 @@
         "diagnostics": [
           {
             "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -222,8 +222,8 @@
         },
         "diagnostics": [
           {
-            "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
+            "code": "invalid_at_rule_body",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -246,7 +246,7 @@
         "diagnostics": [
           {
             "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -256,20 +256,20 @@
       "id": "atrule/atrule/font-face.json#/error/0",
       "expectation_sha256": "f0a81e5a6400ec2fad1eba661c08da14233a615edf51eb2ed685c8d445dfe6ba",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
             "kind": "top_level_rule_kind",
             "rule_kind": "font_face"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
         },
         "diagnostics": [
           {
-            "code": "invalid_at_rule_body",
-            "action": "drop_at_rule",
+            "code": "unexpected_token",
+            "action": "drop_descriptor",
             "payload_relation": "intersects"
           }
         ]
@@ -311,26 +311,14 @@
       "id": "atrule/atrule/font-feature-values.json#/with all feature types",
       "expectation_sha256": "639da2bcdef001fa01667a49344bb0e0bdd19a46416380d5c0ee43602c3e6489",
       "class": {
-        "kind": "unsupported",
-        "reason": "outside_selected_profile",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "at_rule"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unsupported_at_rule",
-              "action": "drop_at_rule",
-              "payload_relation": "intersects"
-            }
-          ]
+          "predicate": {
+            "relation": "nonempty"
+          }
         }
       }
     },
@@ -377,8 +365,8 @@
         },
         "diagnostics": [
           {
-            "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
+            "code": "invalid_at_rule_body",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -401,7 +389,7 @@
         "diagnostics": [
           {
             "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -424,7 +412,7 @@
         "diagnostics": [
           {
             "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -434,20 +422,20 @@
       "id": "atrule/atrule/import.json#/error/0",
       "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
             "kind": "top_level_rule_kind",
             "rule_kind": "import"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
         },
         "diagnostics": [
           {
-            "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
+            "code": "invalid_media_query",
+            "action": "replace_media_query_with_never",
             "payload_relation": "intersects"
           }
         ]
@@ -485,8 +473,8 @@
         },
         "diagnostics": [
           {
-            "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
+            "code": "invalid_at_rule_body",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -512,92 +500,64 @@
       "id": "atrule/atrule/import.json#/with bad layer()/0",
       "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "top_level_rule_kind",
             "rule_kind": "import"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {
       "id": "atrule/atrule/import.json#/with bad layer()/1",
       "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "top_level_rule_kind",
             "rule_kind": "import"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {
       "id": "atrule/atrule/import.json#/with bad supports()/0",
       "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "top_level_rule_kind",
             "rule_kind": "import"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {
       "id": "atrule/atrule/import.json#/with bad supports()/1",
       "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "top_level_rule_kind",
             "rule_kind": "import"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {
@@ -743,8 +703,8 @@
         },
         "diagnostics": [
           {
-            "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
+            "code": "unexpected_token",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -781,7 +741,7 @@
         "diagnostics": [
           {
             "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -864,7 +824,7 @@
         "diagnostics": [
           {
             "code": "invalid_at_rule_body",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -890,21 +850,21 @@
       "id": "atrule/atrule/media.json#/@media with unclosed parentheses is not an error",
       "expectation_sha256": "01586dd60f9cb2a51046cc25fa9da56fd063f2fd2a921b6c03dfcde34e45a920",
       "class": {
-        "kind": "recovered",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "top_level_rule_kind",
             "rule_kind": "media"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
         },
         "diagnostics": [
           {
-            "code": "unexpected_end",
-            "action": "retain_with_implicit_closure",
-            "payload_relation": "ends_at"
+            "code": "unexpected_token",
+            "action": "reject_input",
+            "payload_relation": "intersects"
           }
         ]
       }
@@ -952,20 +912,20 @@
       "id": "atrule/atrule/media.json#/error/1",
       "expectation_sha256": "01586dd60f9cb2a51046cc25fa9da56fd063f2fd2a921b6c03dfcde34e45a920",
       "class": {
-        "kind": "recovered",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "top_level_rule_kind",
             "rule_kind": "media"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
         },
         "diagnostics": [
           {
-            "code": "invalid_media_query",
-            "action": "replace_media_query_with_never",
+            "code": "unexpected_token",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1107,14 +1067,26 @@
       "id": "atrule/atrule/nest.json#/single media type",
       "expectation_sha256": "2b955d2752af54528afbd14e12a59ceb8f8fb39bff9d5f9ceda974f8181a80f2",
       "class": {
-        "kind": "clean",
-        "retained_syntax": {
-          "extractor": {
-            "kind": "at_rule"
+        "kind": "unsupported",
+        "reason": "outside_selected_profile",
+        "policy": {
+          "kind": "full_observation",
+          "retained_syntax": {
+            "extractor": {
+              "kind": "at_rule"
+            },
+            "predicate": {
+              "relation": "empty"
+            }
           },
-          "predicate": {
-            "relation": "nonempty"
-          }
+          "is_clean": false,
+          "diagnostics": [
+            {
+              "code": "unknown_at_rule",
+              "action": "reject_input",
+              "payload_relation": "intersects"
+            }
+          ]
         }
       }
     },
@@ -1134,8 +1106,8 @@
         },
         "diagnostics": [
           {
-            "code": "invalid_selector",
-            "action": "drop_at_rule",
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1208,8 +1180,8 @@
           "is_clean": false,
           "diagnostics": [
             {
-              "code": "unsupported_at_rule",
-              "action": "drop_at_rule",
+              "code": "unknown_at_rule",
+              "action": "reject_input",
               "payload_relation": "intersects"
             }
           ]
@@ -1220,21 +1192,21 @@
       "id": "atrule/atrule/supports.json#/@supports with no block",
       "expectation_sha256": "f4cecaea08b5a88286e135ae09b91d40f47a04ab888db4de3a1d26739522464e",
       "class": {
-        "kind": "recovered",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "top_level_rule_kind",
             "rule_kind": "supports"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
         },
         "diagnostics": [
           {
-            "code": "unexpected_end",
-            "action": "retain_with_implicit_closure",
-            "payload_relation": "ends_at"
+            "code": "unexpected_token",
+            "action": "reject_input",
+            "payload_relation": "intersects"
           }
         ]
       }
@@ -1256,7 +1228,7 @@
         "diagnostics": [
           {
             "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1279,7 +1251,7 @@
         "diagnostics": [
           {
             "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1414,7 +1386,7 @@
         "diagnostics": [
           {
             "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1437,7 +1409,7 @@
         "diagnostics": [
           {
             "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1460,7 +1432,7 @@
         "diagnostics": [
           {
             "code": "invalid_at_rule_prelude",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1577,12 +1549,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unknown_property",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1604,12 +1571,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unknown_property",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1631,12 +1593,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unknown_property",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1658,7 +1615,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1680,7 +1637,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1702,7 +1659,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1724,12 +1681,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unknown_property",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1751,12 +1703,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unknown_property",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1778,12 +1725,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unknown_property",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1805,7 +1747,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1827,12 +1769,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unknown_property",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1873,7 +1810,7 @@
           "diagnostics": [
             {
               "code": "unknown_at_rule",
-              "action": "drop_at_rule",
+              "action": "reject_input",
               "payload_relation": "intersects"
             }
           ]
@@ -1900,7 +1837,7 @@
           "diagnostics": [
             {
               "code": "unknown_at_rule",
-              "action": "drop_at_rule",
+              "action": "reject_input",
               "payload_relation": "intersects"
             }
           ]
@@ -1923,7 +1860,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1945,7 +1882,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1967,7 +1904,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -1989,7 +1926,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -2026,7 +1963,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -2048,7 +1985,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -2070,7 +2007,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -2092,7 +2029,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -2114,7 +2051,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -2136,7 +2073,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -2146,15 +2083,22 @@
       "id": "atrule/no-block.json#/should turn empty prelude to null",
       "expectation_sha256": "fba114f32376821b09efa3072002ff3878ca698a31d52765c2f75f47eae84d74",
       "class": {
-        "kind": "clean",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "at_rule"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -2177,7 +2121,7 @@
           "diagnostics": [
             {
               "code": "unknown_at_rule",
-              "action": "drop_at_rule",
+              "action": "reject_input",
               "payload_relation": "intersects"
             }
           ]
@@ -2204,7 +2148,7 @@
           "diagnostics": [
             {
               "code": "unknown_at_rule",
-              "action": "drop_at_rule",
+              "action": "reject_input",
               "payload_relation": "intersects"
             }
           ]
@@ -2227,12 +2171,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unknown_property",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -2254,12 +2193,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unknown_property",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -2281,12 +2215,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unknown_property",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -2308,17 +2237,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unknown_property",
-            "action": "drop_declaration",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unknown_property",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -2340,7 +2259,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -2362,7 +2281,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -2384,7 +2303,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -2406,12 +2325,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unknown_property",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -2433,12 +2347,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unknown_property",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -2460,12 +2369,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unknown_property",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -2491,7 +2395,7 @@
           "diagnostics": [
             {
               "code": "unknown_at_rule",
-              "action": "drop_at_rule",
+              "action": "reject_input",
               "payload_relation": "intersects"
             }
           ]
@@ -2502,15 +2406,22 @@
       "id": "atrule/tolerant.json#/at-rule (known) may have any content in prelude",
       "expectation_sha256": "95ee984041fb97221a7c895098c6639c223f8deae74a676e3554cf5a89f03eb0",
       "class": {
-        "kind": "clean",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "at_rule"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -2528,8 +2439,8 @@
         },
         "diagnostics": [
           {
-            "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -2554,15 +2465,22 @@
       "id": "atrule/tolerant.json#/at-rule (known) with no block may be followed by block",
       "expectation_sha256": "95ee984041fb97221a7c895098c6639c223f8deae74a676e3554cf5a89f03eb0",
       "class": {
-        "kind": "clean",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "at_rule"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -2581,7 +2499,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -2603,12 +2521,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -2618,7 +2531,7 @@
       "id": "atrule/tolerant.json#/unclosed block - known declaration at-rule",
       "expectation_sha256": "95ee984041fb97221a7c895098c6639c223f8deae74a676e3554cf5a89f03eb0",
       "class": {
-        "kind": "clean",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
             "kind": "at_rule"
@@ -2626,14 +2539,21 @@
           "predicate": {
             "relation": "nonempty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_end",
+            "action": "retain_with_implicit_closure",
+            "payload_relation": "ends_at"
+          }
+        ]
       }
     },
     {
       "id": "atrule/tolerant.json#/unclosed block - known rule at-rule",
       "expectation_sha256": "95ee984041fb97221a7c895098c6639c223f8deae74a676e3554cf5a89f03eb0",
       "class": {
-        "kind": "clean",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
             "kind": "at_rule"
@@ -2641,7 +2561,14 @@
           "predicate": {
             "relation": "nonempty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_end",
+            "action": "retain_with_implicit_closure",
+            "payload_relation": "ends_at"
+          }
+        ]
       }
     },
     {
@@ -2660,7 +2587,7 @@
         "diagnostics": [
           {
             "code": "unknown_at_rule",
-            "action": "drop_at_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]

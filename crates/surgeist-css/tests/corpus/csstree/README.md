@@ -96,6 +96,27 @@ closers remain invalid even when an enclosing block reaches EOF
 Raw rejections use `RejectInput`; declaration-list fixtures retain their separate
 list parser and recovery contract.
 
+Full `atrule` fixtures use the raw single-rule parser with the same immutable
+namespace binding. The CSS-owned classes reconcile 129 determinate originals:
+55 require clean outer retention, 66 require one whole-input `RejectInput`, and
+eight retain their enclosing rule with local recovery. The independently authored
+[`at-rule-reconciliation.json`](../../csstree/at-rule-reconciliation.json) records
+these expectations and their sources; exact diagnostic coordinates characterize
+the public API rather than numerical requirements imposed by CSS specifications.
+The original IDs, inputs, options, source hashes, and active dispositions remain
+unchanged. Unsupported upstream options and vendor syntax keep their explicit
+policies; superseded `@nest` and unselected Transitions2 `@starting-style` remain
+outside the selected grammar.
+
+Two boundaries remain open. The complex container-query original requires clean
+retention of unknown terms, but the parser currently rejects it; the reconciliation
+test keeps that grammar gap visible. The Fonts4 character-variant singleton
+original independently requires a retained `@font-feature-values` outer rule,
+while conflicting pinned descriptor prose leaves its cleanliness and diagnostics
+unresolved. Its existing class is therefore left pending, not endorsed as an
+outside-profile exclusion. These class corrections do not establish a complete
+130-case baseline or refresh the separately persisted oracle.
+
 The adapterless Combinator fixtures retain their explicit panic-freedom policy.
 The mixed `atrulePrelude` fixture resolves its adapter from validated options:
 `atrule: media` selects the raw media-query-list parser, while the unnamed generic
