@@ -114,6 +114,17 @@
         "bytes": 158395,
         "latest_published_url": "https://www.w3.org/TR/css-shadow-parts-1/",
         "source_resolution": "Latest published Shadow Parts 1 at the cutoff. Import only the ::part() authored grammar; part/exportparts markup, maps, and APIs remain outside this CSS definition import."
+      },
+      {
+        "id": "css-typed-om-1-numeric-definitions",
+        "kind": "w3c-dated-publication",
+        "date": "2024-03-21",
+        "url": "https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/",
+        "sha256": "c877651417ec547297d6c8b583f2b9b2d69179c3551894bed368111a44100b76",
+        "bytes": 1761021,
+        "latest_published_url": "https://www.w3.org/TR/css-typed-om-1/",
+        "publication_history_url": "https://www.w3.org/standards/history/css-typed-om-1/",
+        "source_resolution": "The latest published edition before the cutoff is 2024-03-21, established from W3C version metadata and publication history inspected on 2026-09-12. Values 4 links living numeric-type algorithms despite an older bibliography date; the catalog latest-published policy selects this dated edition for only the required numeric definitions. This does not select Typed OM browser APIs or the module in full."
       }
     ],
     "definitions": [
@@ -251,6 +262,62 @@
           "root"
         ],
         "downstream_requirements": "Part maps, part/exportparts markup and forwarding, matching, shadow-tree inheritance, container selection, and live APIs are deferred."
+      },
+      {
+        "id": "numeric-types-and-algebra",
+        "source_id": "css-typed-om-1-numeric-definitions",
+        "sections": [
+          {
+            "anchor": "numeric-typing",
+            "url": "https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#numeric-typing"
+          },
+          {
+            "anchor": "cssnumericvalue-type",
+            "url": "https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#cssnumericvalue-type"
+          },
+          {
+            "anchor": "cssnumericvalue-percent-hint",
+            "url": "https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#cssnumericvalue-percent-hint"
+          },
+          {
+            "anchor": "apply-the-percent-hint",
+            "url": "https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#apply-the-percent-hint"
+          },
+          {
+            "anchor": "cssnumericvalue-add-two-types",
+            "url": "https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#cssnumericvalue-add-two-types"
+          },
+          {
+            "anchor": "cssnumericvalue-multiply-two-types",
+            "url": "https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#cssnumericvalue-multiply-two-types"
+          },
+          {
+            "anchor": "cssnumericvalue-invert-a-type",
+            "url": "https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#cssnumericvalue-invert-a-type"
+          },
+          {
+            "anchor": "cssnumericvalue-match",
+            "url": "https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#cssnumericvalue-match"
+          }
+        ],
+        "required_by": [
+          {
+            "module_id": "css-values-4",
+            "section_url": "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking",
+            "requirement": "Mathematical expression admission uses numeric dimension types, percent hints, matching, addition, multiplication and inversion to determine intrinsic grammar compatibility."
+          }
+        ],
+        "authored_owner": "css",
+        "authored_requirements": [
+          "Represent dimension exponents and a contextual percent hint without evaluating authored numeric values.",
+          "Apply the imported type addition, multiplication, inversion and percent-hint algorithms when checking the selected Values 4 mathematical grammar.",
+          "Match resulting numeric types against the owning grammar context, keeping integer conversion and deferred value ranges distinct from dimensional typing."
+        ],
+        "downstream_owners": [
+          "style",
+          "root"
+        ],
+        "downstream_requirements": "Arithmetic execution, environment-dependent substitution, unit resolution, integer rounding and contextual clamping remain downstream. CSSStyleValue objects, DOM maps, JavaScript reification and other Typed OM APIs are not imported."
       }
     ]
   },

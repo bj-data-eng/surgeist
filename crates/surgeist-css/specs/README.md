@@ -82,6 +82,14 @@ APIs remain with style and root integration. Other features in those documents,
 including obsolete shadow selectors and `:has-slotted`, are not imported by
 these records.
 
+Values 4 mathematical grammar also requires the numeric-type definitions from
+Typed OM. The catalog pins the published 21 March 2024 edition for dimension
+exponents, percent hints, type matching, addition, multiplication and inversion.
+This resolves Values 4's living algorithm links under the catalog's publication
+cutoff, despite its older bibliography date. CSS owns intrinsic type admission;
+arithmetic execution, unit resolution, rounding and contextual clamping remain
+downstream. Typed OM objects, DOM maps and JavaScript APIs are not imported.
+
 ## Applying the catalog
 
 Read `selection_policy`, `authored_scope_definitions`, and `owners` before using
