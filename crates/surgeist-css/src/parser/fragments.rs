@@ -226,7 +226,11 @@ pub fn parse_media_query(source: &str) -> crate::CssParseReport<CssMediaQuery> {
         let result = state
             .check_comma_member_components(source, &input, "baseline.media.query-list")
             .and_then(|openings| {
-                let query = queries::parse_media_query(source, &mut input)?;
+                let query = queries::parse_media_query(
+                    source,
+                    &mut input,
+                    &crate::numeric::NumericInputContext::parsed(state.source_snapshot()),
+                )?;
                 input.expect_exhausted()?;
                 state.retain_component_closures(openings);
                 Ok(query)

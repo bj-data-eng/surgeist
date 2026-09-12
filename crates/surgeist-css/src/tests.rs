@@ -4757,20 +4757,18 @@ fn media_query_list_constructor_accepts_empty_and_nonempty_lists() {
 
 #[test]
 fn media_condition_list_constructor_requires_at_least_two_conditions() {
-    let width = CssMediaCondition::new(
-        CssMediaConditionKind::Feature(CssMediaFeatureQuery::Width(CssRangeFeature::new(
-            Some(CssQueryComparison::GreaterThanOrEqual),
-            CssQueryLength::try_new(600.0, CssLengthUnit::Px).unwrap(),
-        ))),
-        test_media_position(),
-    );
+    let parsed = parse_media_query_list_for_test("(min-width: 600px)").unwrap();
+    let [CssMediaQuery::Condition(width)] = parsed.queries() else {
+        panic!("expected checked media width condition");
+    };
+    let width = width.clone();
     assert_eq!(CssMediaConditionList::try_new(Vec::new()), None);
     assert_eq!(CssMediaConditionList::try_new(vec![width.clone()]), None);
     assert!(CssMediaConditionList::try_new(vec![width.clone(), width]).is_some());
 }
 
 #[test]
-fn media_feature_numeric_constructors_enforce_query_invariants() {
+fn legacy_query_numeric_constructors_preserve_container_compatibility_invariants() {
     assert_eq!(
         CssQueryLength::try_new(12.0, CssLengthUnit::Rem)
             .unwrap()
@@ -4817,14 +4815,14 @@ fn media_feature_numeric_constructors_enforce_query_invariants() {
 
 #[test]
 fn media_feature_names_are_canonical() {
-    assert_eq!(
-        CssMediaFeatureQuery::Width(CssRangeFeature::new(
-            None,
-            CssQueryLength::try_new(1.0, CssLengthUnit::Px).unwrap(),
-        ))
-        .name(),
-        "width"
-    );
+    let parsed = parse_media_query_list_for_test("(width: 1px)").unwrap();
+    let [CssMediaQuery::Condition(condition)] = parsed.queries() else {
+        panic!("expected checked width condition");
+    };
+    let CssMediaConditionKind::Feature(feature) = condition.kind() else {
+        panic!("expected numeric feature");
+    };
+    assert_eq!(feature.name(), "width");
     assert_eq!(
         CssMediaFeatureQuery::PrefersColorScheme(CssColorSchemePreference::Dark).name(),
         "prefers-color-scheme"
@@ -4882,6 +4880,16 @@ fn media_query_parser_preserves_defined_false_and_rejects_malformed_conditions()
     }
 }
 
+fn assert_media_length_literal(value: &CssMediaLength, number: &str, unit: &str) {
+    let CssCalculationExpressionRef::Value(CssCalculationValueRef::Length(literal)) =
+        value.calculation().expression()
+    else {
+        panic!("expected exact media length literal");
+    };
+    assert_eq!(literal.representation(), number);
+    assert_eq!(literal.unit(), Some(unit));
+}
+
 #[test]
 fn media_query_parser_preserves_typed_query_structure() {
     let query_list = parse_media_query_list_for_test("not screen and (max-width: 400px)").unwrap();
@@ -4898,12 +4906,10 @@ fn media_query_parser_preserves_typed_query_structure() {
     else {
         panic!("expected width condition");
     };
-    assert_eq!(
-        width.comparison(),
-        Some(CssQueryComparison::LessThanOrEqual)
-    );
-    assert_eq!(width.value().value().value(), 400.0);
-    assert_eq!(width.value().unit(), CssLengthUnit::Px);
+    let CssMediaRangeRef::Max { value } = width.view() else {
+        panic!("expected authored media range form");
+    };
+    assert_media_length_literal(value, "400", "px");
 }
 
 #[test]
@@ -4917,12 +4923,14 @@ fn media_query_parser_preserves_condition_only_range_structure() {
         panic!("expected one condition-only width query");
     };
 
-    assert_eq!(
-        width.comparison(),
-        Some(CssQueryComparison::GreaterThanOrEqual)
-    );
-    assert_eq!(width.value().value().value(), 600.0);
-    assert_eq!(width.value().unit(), CssLengthUnit::Px);
+    let CssMediaRangeRef::FeatureFirst {
+        comparison: CssQueryComparison::GreaterThanOrEqual,
+        value,
+    } = width.view()
+    else {
+        panic!("expected authored media range form");
+    };
+    assert_media_length_literal(value, "600", "px");
 }
 
 #[test]
@@ -5799,12 +5807,10 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
     else {
         panic!("expected import width condition");
     };
-    assert_eq!(
-        width.comparison(),
-        Some(CssQueryComparison::GreaterThanOrEqual)
-    );
-    assert_eq!(width.value().value().value(), 600.0);
-    assert_eq!(width.value().unit(), CssLengthUnit::Px);
+    let CssMediaRangeRef::Min { value } = width.view() else {
+        panic!("expected authored min-width prefix");
+    };
+    assert_media_length_literal(value, "600", "px");
 
     let descriptors = font_face.descriptors();
     assert_eq!(descriptors.font_family().unwrap().as_str(), "Inter");

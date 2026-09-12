@@ -388,8 +388,32 @@ fn specialized_list_defined_false_and_repeated_malformed_members_recover_locally
             CssMediaQuery::Never(_),
             CssMediaQuery::Typed(_),
         ] if matches!(unknown.kind(), CssMediaConditionKind::DefinedFalse(_))
-            && matches!(value.kind(), CssMediaConditionKind::DefinedFalse(_))
+            && matches!(value.kind(), CssMediaConditionKind::Feature(surgeist_css::CssMediaFeatureQuery::Width(_)))
     ));
+    let CssMediaQuery::Condition(condition) = &queries[2] else {
+        panic!("expected retained known width condition");
+    };
+    let CssMediaConditionKind::Feature(surgeist_css::CssMediaFeatureQuery::Width(range)) =
+        condition.kind()
+    else {
+        panic!("calc(1px) is a known pure length, without evaluating it");
+    };
+    let surgeist_css::CssMediaRangeRef::Plain { value } = range.view() else {
+        panic!("expected authored plain width form");
+    };
+    let surgeist_css::CssCalculationExpressionRef::NestedCalc(root) =
+        value.calculation().expression()
+    else {
+        panic!("expected retained calc function");
+    };
+    let surgeist_css::CssCalculationExpressionRef::Value(
+        surgeist_css::CssCalculationValueRef::Length(literal),
+    ) = root.operand()
+    else {
+        panic!("expected exact length operand");
+    };
+    assert_eq!(literal.representation(), "1");
+    assert_eq!(literal.unit(), Some("px"));
     assert_eq!(report.diagnostics().len(), 2);
     assert!(report.diagnostics().iter().all(|diagnostic| {
         diagnostic.action() == CssRecoveryAction::ReplaceMediaQueryWithNever

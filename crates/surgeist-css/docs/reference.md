@@ -1469,9 +1469,11 @@ family), one normative legacy shorthand, and 167 non-property units. All 219
 preserved I01 baseline records retain their classifications, and the exclusion
 registry remains exactly 131 rows.
 
-The crate still stops at strict authored syntax. Cascade, substitution,
+The crate owns authored syntax and canonical serialization. Cascade, substitution,
 selector matching, query evaluation, resource loading, layout, pagination,
-painting, serialization, and cross-crate lowering remain downstream concerns.
+painting, and cross-crate lowering remain downstream concerns. Serialization
+coverage is still incomplete; this ownership statement does not imply that every
+rule has a canonical writer.
 
 ## Conditional rules and import preludes
 
@@ -1491,7 +1493,33 @@ partial: general-enclosed conditions, complete size/style/scroll-state features,
 name-only queries, and query lists still need authored support. Container
 selection and condition evaluation belong to style.
 
-Media Queries 3 types and features are retained as authored query syntax.
+Media features retain authored query syntax, including all 37 known boolean
+feature names in the selected Media Queries 5 edition. Numeric feature operands
+use media-owned exact values: signed lengths and integers, signed resolutions
+or `infinite`, and number-valued ratios. Calculations use the shared numeric
+grammar and remain symbolic. A syntactically valid empty range is retained;
+parsing does not evaluate its bounds or match a device environment.
+
+`CssMediaRange::view()` distinguishes plain, min/max, feature-first, value-first,
+ascending and descending forms. Chained ranges preserve both operands in source
+order and each comparison's inclusivity. Ratios retain an explicit denominator
+or a programmatic default of one; zero denominators are valid authored syntax.
+Ratio calculations carry a deferred nonnegative constraint. Grid literals admit
+zero or one, including negative zero, while grid calculations retain integer
+rounding and the deferred closed interval `[0,1]` constraint.
+
+For migration, media numeric variants of `CssMediaFeatureQuery` now contain
+`CssMediaRange<T>` instead of `CssRangeFeature<T>`. Match the borrowed range view
+and inspect a length or integer operand's `calculation()` to access exact lexical
+values and origins. Resolution and grid operands expose their own borrowed
+views. `CssMediaRatio::numerator()` and `denominator()` return shared number
+calculations; `denominator_is_omitted()` distinguishes an authored denominator
+from its default. The former integer-pair `CssMediaRatio::try_new` constructor
+and `Copy` implementation are removed; obtain the checked ratio through a parsed
+media query and borrow or clone it. Container-query range, length and ratio types retain their
+existing contracts. Complete checked media construction and canonical media
+serialization remain unfinished.
+
 Supported unknown-type, unknown-feature, and unknown-value forms use
 defined-false syntax: their exact authored text is preserved without a
 diagnostic. The following example shows that representation; it is not a claim

@@ -1,8 +1,8 @@
 use surgeist_css::{
     CssDefinedFalseMediaReason, CssErrorCode, CssGridMode, CssMediaConditionKind,
-    CssMediaFeatureKind, CssMediaFeatureQuery, CssMediaQuery, CssMediaQueryModifier, CssMediaRatio,
-    CssMediaType, CssQueryComparison, CssRatio, CssRecoveryAction, CssResolutionUnit, CssRule,
-    CssScanMode, parse_sheet,
+    CssMediaFeatureKind, CssMediaFeatureQuery, CssMediaGridRef, CssMediaQuery,
+    CssMediaQueryModifier, CssMediaRangeRef, CssMediaResolutionRef, CssMediaType,
+    CssQueryComparison, CssRatio, CssRecoveryAction, CssRule, CssScanMode, parse_sheet,
 };
 
 fn parsed_feature(query: &str) -> CssMediaFeatureQuery {
@@ -85,24 +85,24 @@ fn defined_false_media_syntax_is_not_malformed_recovery() {
     }
 
     let scripting = parse_sheet("@media screen,(scripting: enabled),print {}");
+    assert!(scripting.is_clean(), "{:?}", scripting.diagnostics());
     let [CssRule::Media(rule)] = scripting.syntax().rules() else {
         panic!("expected the scripting media rule to be retained")
     };
-    assert!(matches!(
-        rule.query().queries(),
-        [
-            CssMediaQuery::Typed(_),
-            CssMediaQuery::Never(_),
-            CssMediaQuery::Typed(_)
-        ]
-    ));
-    let [diagnostic] = scripting.diagnostics() else {
-        panic!("recognized deferred scripting still diagnoses")
+    let [
+        CssMediaQuery::Typed(_),
+        CssMediaQuery::Condition(condition),
+        CssMediaQuery::Typed(_),
+    ] = rule.query().queries()
+    else {
+        panic!("scripting is a supported typed feature between both siblings");
     };
-    assert_eq!(
-        diagnostic.action(),
-        CssRecoveryAction::ReplaceMediaQueryWithNever
-    );
+    assert!(matches!(
+        condition.kind(),
+        CssMediaConditionKind::Feature(CssMediaFeatureQuery::Scripting(
+            surgeist_css::CssMediaScripting::Enabled
+        ))
+    ));
 }
 
 #[test]
@@ -177,74 +177,189 @@ fn mq3_boolean_features_preserve_their_typed_names() {
     }
 }
 
-#[test]
-fn mq3_range_features_follow_length_ratio_integer_and_resolution_domains() {
-    assert!(matches!(
-        parsed_feature("(device-width: 800px)"),
-        CssMediaFeatureQuery::DeviceWidth(value)
-            if value.comparison() == Some(CssQueryComparison::Equal)
-                && value.value().value().value() == 800.0
-    ));
-    assert!(matches!(
-        parsed_feature("(max-device-height: 7em)"),
-        CssMediaFeatureQuery::DeviceHeight(value)
-            if value.comparison() == Some(CssQueryComparison::LessThanOrEqual)
-                && value.value().value().value() == 7.0
-    ));
-    assert!(matches!(
-        parsed_feature("(width: 0)"),
-        CssMediaFeatureQuery::Width(value)
-            if value.value().value().value() == 0.0
-                && value.value().authored_unit().is_none()
-                && value.value().unit() == surgeist_css::CssLengthUnit::Px
-    ));
-    assert!(matches!(
-        parsed_feature("(width: 0px)"),
-        CssMediaFeatureQuery::Width(value)
-            if value.value().authored_unit() == Some(surgeist_css::CssLengthUnit::Px)
-    ));
-    assert!(matches!(
-        parsed_feature("(min-aspect-ratio: 16/9)"),
-        CssMediaFeatureQuery::AspectRatio(value)
-            if value.comparison() == Some(CssQueryComparison::GreaterThanOrEqual)
-                && value.value().numerator() == 16
-                && value.value().denominator() == 9
-    ));
-    assert!(matches!(
-        parsed_feature("(device-aspect-ratio > 4/3)"),
-        CssMediaFeatureQuery::DeviceAspectRatio(value)
-            if value.comparison() == Some(CssQueryComparison::GreaterThan)
-                && value.value().numerator() == 4
-                && value.value().denominator() == 3
-    ));
-    assert!(matches!(
-        parsed_feature("(min-color-index: 256)"),
-        CssMediaFeatureQuery::ColorIndex(value)
-            if value.comparison() == Some(CssQueryComparison::GreaterThanOrEqual)
-                && value.value().value() == 256
-    ));
+fn assert_numeric_literal(
+    expression: surgeist_css::CssCalculationExpressionRef<'_>,
+    number: &str,
+    unit: Option<&str>,
+) {
+    let surgeist_css::CssCalculationExpressionRef::Value(value) = expression else {
+        panic!("expected an exact authored numeric literal");
+    };
+    assert_eq!(value.literal().representation(), number);
+    assert_eq!(value.literal().unit(), unit);
+}
 
-    for (css, unit) in [
-        ("(resolution: 96dpi)", CssResolutionUnit::Dpi),
-        ("(resolution: 38dpcm)", CssResolutionUnit::Dpcm),
-        ("(resolution: 2dppx)", CssResolutionUnit::Dppx),
+#[test]
+fn media_range_features_preserve_exact_domain_values_and_authored_range_forms() {
+    let CssMediaFeatureQuery::DeviceWidth(range) = parsed_feature("(device-width: 800px)") else {
+        panic!("device width")
+    };
+    let CssMediaRangeRef::Plain { value } = range.view() else {
+        panic!("plain form")
+    };
+    assert_numeric_literal(value.calculation().expression(), "800", Some("px"));
+
+    let CssMediaFeatureQuery::DeviceHeight(range) = parsed_feature("(max-device-height: 7em)")
+    else {
+        panic!("device height")
+    };
+    let CssMediaRangeRef::Max { value } = range.view() else {
+        panic!("max prefix")
+    };
+    assert_numeric_literal(value.calculation().expression(), "7", Some("em"));
+
+    for (source, number, unit) in [
+        ("(width: 0)", "0", None),
+        ("(width: 0px)", "0", Some("px")),
+        ("(width: -1px)", "-1", Some("px")),
     ] {
-        assert!(matches!(
-            parsed_feature(css),
-            CssMediaFeatureQuery::Resolution(value) if value.value().unit() == unit
-        ));
+        let CssMediaFeatureQuery::Width(range) = parsed_feature(source) else {
+            panic!("width")
+        };
+        let CssMediaRangeRef::Plain { value } = range.view() else {
+            panic!("plain form")
+        };
+        assert_numeric_literal(value.calculation().expression(), number, unit);
+    }
+
+    let CssMediaFeatureQuery::AspectRatio(range) = parsed_feature("(min-aspect-ratio: 16/9)")
+    else {
+        panic!("aspect ratio")
+    };
+    let CssMediaRangeRef::Min { value } = range.view() else {
+        panic!("min prefix")
+    };
+    assert_numeric_literal(value.numerator().expression(), "16", None);
+    assert_numeric_literal(value.denominator().expression(), "9", None);
+    assert!(!value.denominator_is_omitted());
+
+    let CssMediaFeatureQuery::DeviceAspectRatio(range) =
+        parsed_feature("(device-aspect-ratio > 4/3)")
+    else {
+        panic!("device aspect ratio")
+    };
+    let CssMediaRangeRef::FeatureFirst { comparison, value } = range.view() else {
+        panic!("feature first")
+    };
+    assert_eq!(comparison, CssQueryComparison::GreaterThan);
+    assert_numeric_literal(value.numerator().expression(), "4", None);
+    assert_numeric_literal(value.denominator().expression(), "3", None);
+
+    let CssMediaFeatureQuery::ColorIndex(range) = parsed_feature("(min-color-index: 256)") else {
+        panic!("color index")
+    };
+    let CssMediaRangeRef::Min { value } = range.view() else {
+        panic!("min prefix")
+    };
+    assert_numeric_literal(value.calculation().expression(), "256", None);
+
+    for (source, number, unit) in [
+        ("(resolution: 96dpi)", "96", "dpi"),
+        ("(resolution: 38dpcm)", "38", "dpcm"),
+        ("(resolution: 2dppx)", "2", "dppx"),
+        ("(resolution: 0dpi)", "0", "dpi"),
+        ("(resolution: -1dpi)", "-1", "dpi"),
+    ] {
+        let CssMediaFeatureQuery::Resolution(range) = parsed_feature(source) else {
+            panic!("resolution")
+        };
+        let CssMediaRangeRef::Plain { value } = range.view() else {
+            panic!("plain form")
+        };
+        let CssMediaResolutionRef::Numeric(calculation) = value.view() else {
+            panic!("numeric resolution")
+        };
+        assert_numeric_literal(calculation.expression(), number, Some(unit));
     }
 }
 
 #[test]
-fn mq3_ratio_is_positive_integer_only_without_narrowing_general_ratio() {
-    let ratio = CssMediaRatio::try_new(16, 9).expect("positive MQ3 ratio");
-    assert_eq!(ratio.numerator(), 16);
-    assert_eq!(ratio.denominator(), 9);
-    assert_eq!(CssMediaRatio::try_new(0, 9), None);
-    assert_eq!(CssMediaRatio::try_new(16, 0), None);
+fn media_ranges_keep_value_first_and_both_chain_directions() {
+    let CssMediaFeatureQuery::Width(range) = parsed_feature("(400px < width)") else {
+        panic!("width")
+    };
+    let CssMediaRangeRef::ValueFirst { value, comparison } = range.view() else {
+        panic!("value first")
+    };
+    assert_eq!(comparison, CssQueryComparison::LessThan);
+    assert_numeric_literal(value.calculation().expression(), "400", Some("px"));
 
-    let general = CssRatio::try_new(0.0, 1.5).expect("existing general ratio remains broader");
+    let CssMediaFeatureQuery::Width(range) = parsed_feature("(400px <= width < 800px)") else {
+        panic!("width")
+    };
+    let CssMediaRangeRef::Ascending {
+        left,
+        left_inclusive,
+        right,
+        right_inclusive,
+    } = range.view()
+    else {
+        panic!("ascending chain")
+    };
+    assert!(left_inclusive);
+    assert!(!right_inclusive);
+    assert_numeric_literal(left.calculation().expression(), "400", Some("px"));
+    assert_numeric_literal(right.calculation().expression(), "800", Some("px"));
+
+    let CssMediaFeatureQuery::Width(range) = parsed_feature("(800px > width >= 400px)") else {
+        panic!("width")
+    };
+    let CssMediaRangeRef::Descending {
+        left,
+        left_inclusive,
+        right,
+        right_inclusive,
+    } = range.view()
+    else {
+        panic!("descending chain")
+    };
+    assert!(!left_inclusive);
+    assert!(right_inclusive);
+    assert_numeric_literal(left.calculation().expression(), "800", Some("px"));
+    assert_numeric_literal(right.calculation().expression(), "400", Some("px"));
+}
+
+#[test]
+fn known_media_numeric_values_remain_typed_without_evaluation() {
+    let CssMediaFeatureQuery::Width(range) = parsed_feature("(width: calc(1px))") else {
+        panic!("typed width")
+    };
+    let CssMediaRangeRef::Plain { value } = range.view() else {
+        panic!("plain form")
+    };
+    let surgeist_css::CssCalculationExpressionRef::NestedCalc(root) =
+        value.calculation().expression()
+    else {
+        panic!("authored calculation")
+    };
+    assert_numeric_literal(root.operand(), "1", Some("px"));
+    let CssMediaFeatureQuery::Color(range) = parsed_feature("(color: -1)") else {
+        panic!("typed color depth")
+    };
+    let CssMediaRangeRef::Plain { value } = range.view() else {
+        panic!("plain form")
+    };
+    assert_numeric_literal(value.calculation().expression(), "-1", None);
+}
+
+#[test]
+fn media_ratio_accepts_nonnegative_decimal_and_zero_components_without_changing_legacy_ratio() {
+    for (source, numerator, denominator) in [
+        ("(aspect-ratio: 0/1)", "0", "1"),
+        ("(aspect-ratio: 1.5/1)", "1.5", "1"),
+        ("(aspect-ratio: 16/0)", "16", "0"),
+    ] {
+        let CssMediaFeatureQuery::AspectRatio(range) = parsed_feature(source) else {
+            panic!("aspect ratio")
+        };
+        let CssMediaRangeRef::Plain { value } = range.view() else {
+            panic!("plain form")
+        };
+        assert_numeric_literal(value.numerator().expression(), numerator, None);
+        assert_numeric_literal(value.denominator().expression(), denominator, None);
+        assert!(!value.denominator_is_omitted());
+    }
+    let general = CssRatio::try_new(0.0, 1.5).expect("legacy ratio remains independent");
     assert_eq!(general.numerator().value(), 0.0);
     assert_eq!(general.denominator().value(), 1.5);
 }
@@ -261,15 +376,15 @@ fn mq3_scan_and_grid_expose_exact_keyword_and_binary_domains() {
     ));
     assert!(matches!(
         parsed_feature("(grid: 0)"),
-        CssMediaFeatureQuery::Grid(CssGridMode::Bitmap)
+        CssMediaFeatureQuery::Grid(value) if matches!(value.view(), CssMediaGridRef::Literal(CssGridMode::Bitmap))
     ));
     assert!(matches!(
         parsed_feature("(grid: -0)"),
-        CssMediaFeatureQuery::Grid(CssGridMode::Bitmap)
+        CssMediaFeatureQuery::Grid(value) if matches!(value.view(), CssMediaGridRef::Literal(CssGridMode::Bitmap))
     ));
     assert!(matches!(
         parsed_feature("(grid: 1)"),
-        CssMediaFeatureQuery::Grid(CssGridMode::Grid)
+        CssMediaFeatureQuery::Grid(value) if matches!(value.view(), CssMediaGridRef::Literal(CssGridMode::Grid))
     ));
     assert_eq!(CssGridMode::Bitmap.value(), 0);
     assert_eq!(CssGridMode::Grid.value(), 1);
@@ -365,26 +480,9 @@ fn mq3_unknown_features_and_complete_unknown_values_are_defined_false() {
             "(future-feature: calc(1foo + 2px))",
             CssDefinedFalseMediaReason::UnknownFeature,
         ),
-        (
-            "(width: calc(1px))",
-            CssDefinedFalseMediaReason::UnknownValue,
-        ),
-        ("(width: -1px)", CssDefinedFalseMediaReason::UnknownValue),
         ("(width: 2qu)", CssDefinedFalseMediaReason::UnknownValue),
         (
             "(orientation: diagonal)",
-            CssDefinedFalseMediaReason::UnknownValue,
-        ),
-        (
-            "(aspect-ratio: 0/1)",
-            CssDefinedFalseMediaReason::UnknownValue,
-        ),
-        (
-            "(aspect-ratio: 1.5/1)",
-            CssDefinedFalseMediaReason::UnknownValue,
-        ),
-        (
-            "(resolution: 0dpi)",
             CssDefinedFalseMediaReason::UnknownValue,
         ),
         ("(scan: raster)", CssDefinedFalseMediaReason::UnknownValue),
@@ -535,7 +633,7 @@ fn mq4_comparisons_and_discrete_features_remain_typed() {
     assert!(matches!(
         parsed_feature("(width >= 600px)"),
         CssMediaFeatureQuery::Width(value)
-            if value.comparison() == Some(CssQueryComparison::GreaterThanOrEqual)
+            if matches!(value.view(), CssMediaRangeRef::FeatureFirst { comparison: CssQueryComparison::GreaterThanOrEqual, .. })
     ));
     assert!(matches!(
         parsed_feature("(hover: hover)"),

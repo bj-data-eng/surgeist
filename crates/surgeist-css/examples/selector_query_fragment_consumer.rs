@@ -17,13 +17,13 @@
 
 use std::fmt::Debug;
 use surgeist_css::{
-    CssCompoundSelector, CssDefinedFalseMediaReason, CssErrorCode, CssLengthUnit,
-    CssMediaConditionKind, CssMediaFeatureQuery, CssMediaQuery, CssMediaQueryList,
-    CssMediaQueryModifier, CssMediaType, CssNamespaceConstraint, CssNamespaceContext,
-    CssNamespaceName, CssNamespacePrefix, CssParseReport, CssPseudoClass, CssQueryLength,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssSelector, CssSelectorCombinator,
-    CssSourcePosition, CssStyleSelector, CssStyleSelectorList, CssTokenKind, ErrorKind,
-    parse_media_query, parse_media_query_list, parse_selector, parse_selector_list, parse_sheet,
+    CssCompoundSelector, CssDefinedFalseMediaReason, CssErrorCode, CssMediaConditionKind,
+    CssMediaFeatureQuery, CssMediaQuery, CssMediaQueryList, CssMediaQueryModifier, CssMediaType,
+    CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
+    CssParseReport, CssPseudoClass, CssRecoveryAction, CssRecoveryDiagnostic, CssSelector,
+    CssSelectorCombinator, CssSourcePosition, CssStyleSelector, CssStyleSelectorList, CssTokenKind,
+    ErrorKind, parse_media_query, parse_media_query_list, parse_selector, parse_selector_list,
+    parse_sheet,
 };
 
 fn assert_position(actual: CssSourcePosition, expected: (usize, u32, u32)) {
@@ -519,10 +519,17 @@ fn media_admission_and_recovery() {
     else {
         panic!("authored width condition");
     };
-    assert_eq!(
-        width.value(),
-        &CssQueryLength::try_new(1.0, CssLengthUnit::Px).unwrap()
-    );
+    let surgeist_css::CssMediaRangeRef::Plain { value: length } = width.view() else {
+        panic!("authored plain width form");
+    };
+    let surgeist_css::CssCalculationExpressionRef::Value(
+        surgeist_css::CssCalculationValueRef::Length(literal),
+    ) = length.calculation().expression()
+    else {
+        panic!("exact authored media length");
+    };
+    assert_eq!(literal.representation(), "1");
+    assert_eq!(literal.unit(), Some("px"));
     assert_validation_parity(&typed);
 
     for (source, reason) in [

@@ -1835,6 +1835,10 @@ pub surgeist_css::CssMathFunction::Sqrt
 pub surgeist_css::CssMathFunction::Tan
 impl surgeist_css::CssMathFunction
 pub fn surgeist_css::CssMathFunction::name(self) -> &'static str
+#[non_exhaustive] pub enum surgeist_css::CssMediaColorGamut
+pub surgeist_css::CssMediaColorGamut::P3
+pub surgeist_css::CssMediaColorGamut::Rec2020
+pub surgeist_css::CssMediaColorGamut::Srgb
 #[non_exhaustive] pub enum surgeist_css::CssMediaConditionKind
 pub surgeist_css::CssMediaConditionKind::And(surgeist_css::CssMediaConditionList)
 pub surgeist_css::CssMediaConditionKind::DefinedFalse(surgeist_css::CssDefinedFalseMediaCondition)
@@ -1842,49 +1846,111 @@ pub surgeist_css::CssMediaConditionKind::Feature(surgeist_css::CssMediaFeatureQu
 pub surgeist_css::CssMediaConditionKind::Not(alloc::boxed::Box<surgeist_css::CssMediaCondition>)
 pub surgeist_css::CssMediaConditionKind::Or(surgeist_css::CssMediaConditionList)
 pub surgeist_css::CssMediaConditionKind::Parenthesized(alloc::boxed::Box<surgeist_css::CssMediaCondition>)
+#[non_exhaustive] pub enum surgeist_css::CssMediaDynamicRange
+pub surgeist_css::CssMediaDynamicRange::High
+pub surgeist_css::CssMediaDynamicRange::Standard
+#[non_exhaustive] pub enum surgeist_css::CssMediaEnvironmentBlending
+pub surgeist_css::CssMediaEnvironmentBlending::Additive
+pub surgeist_css::CssMediaEnvironmentBlending::Opaque
+pub surgeist_css::CssMediaEnvironmentBlending::Subtractive
 #[non_exhaustive] pub enum surgeist_css::CssMediaFeatureKind
+pub surgeist_css::CssMediaFeatureKind::AnyHover
+pub surgeist_css::CssMediaFeatureKind::AnyPointer
 pub surgeist_css::CssMediaFeatureKind::AspectRatio
 pub surgeist_css::CssMediaFeatureKind::Color
+pub surgeist_css::CssMediaFeatureKind::ColorGamut
 pub surgeist_css::CssMediaFeatureKind::ColorIndex
 pub surgeist_css::CssMediaFeatureKind::DeviceAspectRatio
 pub surgeist_css::CssMediaFeatureKind::DeviceHeight
 pub surgeist_css::CssMediaFeatureKind::DeviceWidth
+pub surgeist_css::CssMediaFeatureKind::DisplayMode
+pub surgeist_css::CssMediaFeatureKind::DynamicRange
+pub surgeist_css::CssMediaFeatureKind::EnvironmentBlending
+pub surgeist_css::CssMediaFeatureKind::ForcedColors
 pub surgeist_css::CssMediaFeatureKind::Grid
 pub surgeist_css::CssMediaFeatureKind::Height
+pub surgeist_css::CssMediaFeatureKind::HorizontalViewportSegments
+pub surgeist_css::CssMediaFeatureKind::Hover
+pub surgeist_css::CssMediaFeatureKind::InvertedColors
 pub surgeist_css::CssMediaFeatureKind::Monochrome
+pub surgeist_css::CssMediaFeatureKind::NavControls
 pub surgeist_css::CssMediaFeatureKind::Orientation
+pub surgeist_css::CssMediaFeatureKind::OverflowBlock
+pub surgeist_css::CssMediaFeatureKind::OverflowInline
+pub surgeist_css::CssMediaFeatureKind::Pointer
+pub surgeist_css::CssMediaFeatureKind::PrefersColorScheme
+pub surgeist_css::CssMediaFeatureKind::PrefersContrast
+pub surgeist_css::CssMediaFeatureKind::PrefersReducedData
+pub surgeist_css::CssMediaFeatureKind::PrefersReducedMotion
+pub surgeist_css::CssMediaFeatureKind::PrefersReducedTransparency
 pub surgeist_css::CssMediaFeatureKind::Resolution
 pub surgeist_css::CssMediaFeatureKind::Scan
+pub surgeist_css::CssMediaFeatureKind::Scripting
+pub surgeist_css::CssMediaFeatureKind::Update
+pub surgeist_css::CssMediaFeatureKind::VerticalViewportSegments
+pub surgeist_css::CssMediaFeatureKind::VideoColorGamut
+pub surgeist_css::CssMediaFeatureKind::VideoDynamicRange
 pub surgeist_css::CssMediaFeatureKind::Width
 impl surgeist_css::CssMediaFeatureKind
 pub const fn surgeist_css::CssMediaFeatureKind::name(self) -> &'static str
 #[non_exhaustive] pub enum surgeist_css::CssMediaFeatureQuery
 pub surgeist_css::CssMediaFeatureQuery::AnyHover(surgeist_css::CssHoverCapability)
 pub surgeist_css::CssMediaFeatureQuery::AnyPointer(surgeist_css::CssPointerCapability)
-pub surgeist_css::CssMediaFeatureQuery::AspectRatio(surgeist_css::CssRangeFeature<surgeist_css::CssMediaRatio>)
+pub surgeist_css::CssMediaFeatureQuery::AspectRatio(surgeist_css::CssMediaRange<surgeist_css::CssMediaRatio>)
 pub surgeist_css::CssMediaFeatureQuery::Boolean(surgeist_css::CssMediaFeatureKind)
-pub surgeist_css::CssMediaFeatureQuery::Color(surgeist_css::CssRangeFeature<surgeist_css::CssNonNegativeInteger>)
-pub surgeist_css::CssMediaFeatureQuery::ColorIndex(surgeist_css::CssRangeFeature<surgeist_css::CssNonNegativeInteger>)
-pub surgeist_css::CssMediaFeatureQuery::DeviceAspectRatio(surgeist_css::CssRangeFeature<surgeist_css::CssMediaRatio>)
-pub surgeist_css::CssMediaFeatureQuery::DeviceHeight(surgeist_css::CssRangeFeature<surgeist_css::CssQueryLength>)
-pub surgeist_css::CssMediaFeatureQuery::DeviceWidth(surgeist_css::CssRangeFeature<surgeist_css::CssQueryLength>)
+pub surgeist_css::CssMediaFeatureQuery::Color(surgeist_css::CssMediaRange<surgeist_css::CssMediaInteger>)
+pub surgeist_css::CssMediaFeatureQuery::ColorGamut(surgeist_css::CssMediaColorGamut)
+pub surgeist_css::CssMediaFeatureQuery::ColorIndex(surgeist_css::CssMediaRange<surgeist_css::CssMediaInteger>)
+pub surgeist_css::CssMediaFeatureQuery::DeviceAspectRatio(surgeist_css::CssMediaRange<surgeist_css::CssMediaRatio>)
+pub surgeist_css::CssMediaFeatureQuery::DeviceHeight(surgeist_css::CssMediaRange<surgeist_css::CssMediaLength>)
+pub surgeist_css::CssMediaFeatureQuery::DeviceWidth(surgeist_css::CssMediaRange<surgeist_css::CssMediaLength>)
 pub surgeist_css::CssMediaFeatureQuery::DisplayMode(surgeist_css::CssDisplayMode)
+pub surgeist_css::CssMediaFeatureQuery::DynamicRange(surgeist_css::CssMediaDynamicRange)
+pub surgeist_css::CssMediaFeatureQuery::EnvironmentBlending(surgeist_css::CssMediaEnvironmentBlending)
 pub surgeist_css::CssMediaFeatureQuery::ForcedColors(surgeist_css::CssForcedColorsMode)
-pub surgeist_css::CssMediaFeatureQuery::Grid(surgeist_css::CssGridMode)
-pub surgeist_css::CssMediaFeatureQuery::Height(surgeist_css::CssRangeFeature<surgeist_css::CssQueryLength>)
+pub surgeist_css::CssMediaFeatureQuery::Grid(surgeist_css::CssMediaGrid)
+pub surgeist_css::CssMediaFeatureQuery::Height(surgeist_css::CssMediaRange<surgeist_css::CssMediaLength>)
+pub surgeist_css::CssMediaFeatureQuery::HorizontalViewportSegments(surgeist_css::CssMediaRange<surgeist_css::CssMediaInteger>)
 pub surgeist_css::CssMediaFeatureQuery::Hover(surgeist_css::CssHoverCapability)
-pub surgeist_css::CssMediaFeatureQuery::Monochrome(surgeist_css::CssRangeFeature<surgeist_css::CssNonNegativeInteger>)
+pub surgeist_css::CssMediaFeatureQuery::InvertedColors(surgeist_css::CssMediaInvertedColors)
+pub surgeist_css::CssMediaFeatureQuery::Monochrome(surgeist_css::CssMediaRange<surgeist_css::CssMediaInteger>)
+pub surgeist_css::CssMediaFeatureQuery::NavControls(surgeist_css::CssMediaNavigationControls)
 pub surgeist_css::CssMediaFeatureQuery::Orientation(surgeist_css::CssOrientation)
+pub surgeist_css::CssMediaFeatureQuery::OverflowBlock(surgeist_css::CssMediaOverflowBlock)
+pub surgeist_css::CssMediaFeatureQuery::OverflowInline(surgeist_css::CssMediaOverflowInline)
 pub surgeist_css::CssMediaFeatureQuery::Pointer(surgeist_css::CssPointerCapability)
 pub surgeist_css::CssMediaFeatureQuery::PrefersColorScheme(surgeist_css::CssColorSchemePreference)
 pub surgeist_css::CssMediaFeatureQuery::PrefersContrast(surgeist_css::CssContrastPreference)
+pub surgeist_css::CssMediaFeatureQuery::PrefersReducedData(surgeist_css::CssMediaReducedDataPreference)
 pub surgeist_css::CssMediaFeatureQuery::PrefersReducedMotion(surgeist_css::CssReducedMotionPreference)
 pub surgeist_css::CssMediaFeatureQuery::PrefersReducedTransparency(surgeist_css::CssReducedTransparencyPreference)
-pub surgeist_css::CssMediaFeatureQuery::Resolution(surgeist_css::CssRangeFeature<surgeist_css::CssResolution>)
+pub surgeist_css::CssMediaFeatureQuery::Resolution(surgeist_css::CssMediaRange<surgeist_css::CssMediaResolution>)
 pub surgeist_css::CssMediaFeatureQuery::Scan(surgeist_css::CssScanMode)
-pub surgeist_css::CssMediaFeatureQuery::Width(surgeist_css::CssRangeFeature<surgeist_css::CssQueryLength>)
+pub surgeist_css::CssMediaFeatureQuery::Scripting(surgeist_css::CssMediaScripting)
+pub surgeist_css::CssMediaFeatureQuery::Update(surgeist_css::CssMediaUpdate)
+pub surgeist_css::CssMediaFeatureQuery::VerticalViewportSegments(surgeist_css::CssMediaRange<surgeist_css::CssMediaInteger>)
+pub surgeist_css::CssMediaFeatureQuery::VideoColorGamut(surgeist_css::CssMediaColorGamut)
+pub surgeist_css::CssMediaFeatureQuery::VideoDynamicRange(surgeist_css::CssMediaDynamicRange)
+pub surgeist_css::CssMediaFeatureQuery::Width(surgeist_css::CssMediaRange<surgeist_css::CssMediaLength>)
 impl surgeist_css::CssMediaFeatureQuery
+pub const fn surgeist_css::CssMediaFeatureQuery::kind(&self) -> surgeist_css::CssMediaFeatureKind
 pub const fn surgeist_css::CssMediaFeatureQuery::name(&self) -> &'static str
+#[non_exhaustive] pub enum surgeist_css::CssMediaGridRef<'a>
+pub surgeist_css::CssMediaGridRef::Calculation(&'a surgeist_css::CssIntegerCalculation)
+pub surgeist_css::CssMediaGridRef::Literal(surgeist_css::CssGridMode)
+#[non_exhaustive] pub enum surgeist_css::CssMediaInvertedColors
+pub surgeist_css::CssMediaInvertedColors::Inverted
+pub surgeist_css::CssMediaInvertedColors::None
+#[non_exhaustive] pub enum surgeist_css::CssMediaNavigationControls
+pub surgeist_css::CssMediaNavigationControls::Back
+pub surgeist_css::CssMediaNavigationControls::None
+#[non_exhaustive] pub enum surgeist_css::CssMediaOverflowBlock
+pub surgeist_css::CssMediaOverflowBlock::None
+pub surgeist_css::CssMediaOverflowBlock::Paged
+pub surgeist_css::CssMediaOverflowBlock::Scroll
+#[non_exhaustive] pub enum surgeist_css::CssMediaOverflowInline
+pub surgeist_css::CssMediaOverflowInline::None
+pub surgeist_css::CssMediaOverflowInline::Scroll
 #[non_exhaustive] pub enum surgeist_css::CssMediaQuery
 pub surgeist_css::CssMediaQuery::Condition(surgeist_css::CssMediaCondition)
 pub surgeist_css::CssMediaQuery::Never(surgeist_css::CssNeverMediaQuery)
@@ -1895,6 +1961,39 @@ pub const fn surgeist_css::CssMediaQuery::position(&self) -> surgeist_css::CssSo
 #[non_exhaustive] pub enum surgeist_css::CssMediaQueryModifier
 pub surgeist_css::CssMediaQueryModifier::Not
 pub surgeist_css::CssMediaQueryModifier::Only
+#[non_exhaustive] pub enum surgeist_css::CssMediaRangeRef<'a, T>
+pub surgeist_css::CssMediaRangeRef::Ascending
+pub surgeist_css::CssMediaRangeRef::Ascending::left: &'a T
+pub surgeist_css::CssMediaRangeRef::Ascending::left_inclusive: bool
+pub surgeist_css::CssMediaRangeRef::Ascending::right: &'a T
+pub surgeist_css::CssMediaRangeRef::Ascending::right_inclusive: bool
+pub surgeist_css::CssMediaRangeRef::Descending
+pub surgeist_css::CssMediaRangeRef::Descending::left: &'a T
+pub surgeist_css::CssMediaRangeRef::Descending::left_inclusive: bool
+pub surgeist_css::CssMediaRangeRef::Descending::right: &'a T
+pub surgeist_css::CssMediaRangeRef::Descending::right_inclusive: bool
+pub surgeist_css::CssMediaRangeRef::FeatureFirst
+pub surgeist_css::CssMediaRangeRef::FeatureFirst::comparison: surgeist_css::CssQueryComparison
+pub surgeist_css::CssMediaRangeRef::FeatureFirst::value: &'a T
+pub surgeist_css::CssMediaRangeRef::Max
+pub surgeist_css::CssMediaRangeRef::Max::value: &'a T
+pub surgeist_css::CssMediaRangeRef::Min
+pub surgeist_css::CssMediaRangeRef::Min::value: &'a T
+pub surgeist_css::CssMediaRangeRef::Plain
+pub surgeist_css::CssMediaRangeRef::Plain::value: &'a T
+pub surgeist_css::CssMediaRangeRef::ValueFirst
+pub surgeist_css::CssMediaRangeRef::ValueFirst::comparison: surgeist_css::CssQueryComparison
+pub surgeist_css::CssMediaRangeRef::ValueFirst::value: &'a T
+#[non_exhaustive] pub enum surgeist_css::CssMediaReducedDataPreference
+pub surgeist_css::CssMediaReducedDataPreference::NoPreference
+pub surgeist_css::CssMediaReducedDataPreference::Reduce
+#[non_exhaustive] pub enum surgeist_css::CssMediaResolutionRef<'a>
+pub surgeist_css::CssMediaResolutionRef::Infinite(&'a surgeist_css::CssComponentValue)
+pub surgeist_css::CssMediaResolutionRef::Numeric(&'a surgeist_css::CssResolutionCalculation)
+#[non_exhaustive] pub enum surgeist_css::CssMediaScripting
+pub surgeist_css::CssMediaScripting::Enabled
+pub surgeist_css::CssMediaScripting::InitialOnly
+pub surgeist_css::CssMediaScripting::None
 #[non_exhaustive] pub enum surgeist_css::CssMediaType
 pub surgeist_css::CssMediaType::All
 pub surgeist_css::CssMediaType::Aural
@@ -1908,6 +2007,10 @@ pub surgeist_css::CssMediaType::Speech
 pub surgeist_css::CssMediaType::Tty
 pub surgeist_css::CssMediaType::Tv
 pub surgeist_css::CssMediaType::Unknown
+#[non_exhaustive] pub enum surgeist_css::CssMediaUpdate
+pub surgeist_css::CssMediaUpdate::Fast
+pub surgeist_css::CssMediaUpdate::None
+pub surgeist_css::CssMediaUpdate::Slow
 #[non_exhaustive] pub enum surgeist_css::CssNamespaceConstraint
 pub surgeist_css::CssNamespaceConstraint::Any
 pub surgeist_css::CssNamespaceConstraint::Default
@@ -4839,6 +4942,18 @@ pub fn surgeist_css::CssMediaConditionList::try_new(conditions: alloc::vec::Vec<
 pub struct surgeist_css::CssMediaFeatureName(_)
 impl surgeist_css::CssMediaFeatureName
 pub fn surgeist_css::CssMediaFeatureName::as_str(&self) -> &str
+pub struct surgeist_css::CssMediaGrid
+impl surgeist_css::CssMediaGrid
+pub fn surgeist_css::CssMediaGrid::components(&self) -> &surgeist_css::CssComponentValues
+pub fn surgeist_css::CssMediaGrid::view(&self) -> surgeist_css::CssMediaGridRef<'_>
+pub struct surgeist_css::CssMediaInteger
+impl surgeist_css::CssMediaInteger
+pub fn surgeist_css::CssMediaInteger::calculation(&self) -> &surgeist_css::CssIntegerCalculation
+pub fn surgeist_css::CssMediaInteger::components(&self) -> &surgeist_css::CssComponentValues
+pub struct surgeist_css::CssMediaLength
+impl surgeist_css::CssMediaLength
+pub fn surgeist_css::CssMediaLength::calculation(&self) -> &surgeist_css::CssLengthCalculation
+pub fn surgeist_css::CssMediaLength::components(&self) -> &surgeist_css::CssComponentValues
 pub struct surgeist_css::CssMediaQueryError
 impl surgeist_css::CssMediaQueryError
 pub const fn surgeist_css::CssMediaQueryError::encountered(&self) -> core::option::Option<&surgeist_css::CssTokenSummary>
@@ -4848,11 +4963,17 @@ pub struct surgeist_css::CssMediaQueryList
 impl surgeist_css::CssMediaQueryList
 pub fn surgeist_css::CssMediaQueryList::queries(&self) -> &[surgeist_css::CssMediaQuery]
 pub fn surgeist_css::CssMediaQueryList::try_new(queries: alloc::vec::Vec<surgeist_css::CssMediaQuery>) -> core::option::Option<Self>
+pub struct surgeist_css::CssMediaRange<T>
+impl<T> surgeist_css::CssMediaRange<T>
+pub fn surgeist_css::CssMediaRange<T>::view(&self) -> surgeist_css::CssMediaRangeRef<'_, T>
 pub struct surgeist_css::CssMediaRatio
 impl surgeist_css::CssMediaRatio
-pub const fn surgeist_css::CssMediaRatio::denominator(self) -> u32
-pub const fn surgeist_css::CssMediaRatio::numerator(self) -> u32
-pub const fn surgeist_css::CssMediaRatio::try_new(numerator: u32, denominator: u32) -> core::option::Option<Self>
+pub fn surgeist_css::CssMediaRatio::denominator(&self) -> &surgeist_css::CssNumberCalculation
+pub const fn surgeist_css::CssMediaRatio::denominator_is_omitted(&self) -> bool
+pub fn surgeist_css::CssMediaRatio::numerator(&self) -> &surgeist_css::CssNumberCalculation
+pub struct surgeist_css::CssMediaResolution
+impl surgeist_css::CssMediaResolution
+pub fn surgeist_css::CssMediaResolution::view(&self) -> surgeist_css::CssMediaResolutionRef<'_>
 pub struct surgeist_css::CssMediaRule
 impl surgeist_css::CssMediaRule
 pub const fn surgeist_css::CssMediaRule::position(&self) -> surgeist_css::CssSourcePosition

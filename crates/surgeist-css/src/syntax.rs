@@ -10,6 +10,7 @@
 //! Downstream adapters can inspect either without depending on parser internals.
 
 use crate::CssFontFeatureValuesRule;
+pub(crate) use crate::media_features::*;
 pub(crate) use crate::numeric::*;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -3716,108 +3717,6 @@ impl CssMediaConditionList {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssMediaFeatureQuery {
-    Boolean(CssMediaFeatureKind),
-    Width(CssRangeFeature<CssQueryLength>),
-    Height(CssRangeFeature<CssQueryLength>),
-    DeviceWidth(CssRangeFeature<CssQueryLength>),
-    DeviceHeight(CssRangeFeature<CssQueryLength>),
-    AspectRatio(CssRangeFeature<CssMediaRatio>),
-    DeviceAspectRatio(CssRangeFeature<CssMediaRatio>),
-    Resolution(CssRangeFeature<CssResolution>),
-    Color(CssRangeFeature<CssNonNegativeInteger>),
-    ColorIndex(CssRangeFeature<CssNonNegativeInteger>),
-    Monochrome(CssRangeFeature<CssNonNegativeInteger>),
-    Orientation(CssOrientation),
-    Scan(CssScanMode),
-    Grid(CssGridMode),
-    PrefersColorScheme(CssColorSchemePreference),
-    PrefersReducedMotion(CssReducedMotionPreference),
-    PrefersReducedTransparency(CssReducedTransparencyPreference),
-    PrefersContrast(CssContrastPreference),
-    ForcedColors(CssForcedColorsMode),
-    Hover(CssHoverCapability),
-    AnyHover(CssHoverCapability),
-    Pointer(CssPointerCapability),
-    AnyPointer(CssPointerCapability),
-    DisplayMode(CssDisplayMode),
-}
-
-impl CssMediaFeatureQuery {
-    #[must_use]
-    pub const fn name(&self) -> &'static str {
-        match self {
-            Self::Boolean(feature) => feature.name(),
-            Self::Width(_) => "width",
-            Self::Height(_) => "height",
-            Self::DeviceWidth(_) => "device-width",
-            Self::DeviceHeight(_) => "device-height",
-            Self::AspectRatio(_) => "aspect-ratio",
-            Self::DeviceAspectRatio(_) => "device-aspect-ratio",
-            Self::Resolution(_) => "resolution",
-            Self::Color(_) => "color",
-            Self::ColorIndex(_) => "color-index",
-            Self::Monochrome(_) => "monochrome",
-            Self::Orientation(_) => "orientation",
-            Self::Scan(_) => "scan",
-            Self::Grid(_) => "grid",
-            Self::PrefersColorScheme(_) => "prefers-color-scheme",
-            Self::PrefersReducedMotion(_) => "prefers-reduced-motion",
-            Self::PrefersReducedTransparency(_) => "prefers-reduced-transparency",
-            Self::PrefersContrast(_) => "prefers-contrast",
-            Self::ForcedColors(_) => "forced-colors",
-            Self::Hover(_) => "hover",
-            Self::AnyHover(_) => "any-hover",
-            Self::Pointer(_) => "pointer",
-            Self::AnyPointer(_) => "any-pointer",
-            Self::DisplayMode(_) => "display-mode",
-        }
-    }
-}
-
-/// The recognized Media Queries Level 3 feature named by a value-less boolean expression.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[non_exhaustive]
-pub enum CssMediaFeatureKind {
-    Width,
-    Height,
-    DeviceWidth,
-    DeviceHeight,
-    Orientation,
-    AspectRatio,
-    DeviceAspectRatio,
-    Color,
-    ColorIndex,
-    Monochrome,
-    Resolution,
-    Scan,
-    Grid,
-}
-
-impl CssMediaFeatureKind {
-    /// Returns the canonical ASCII spelling of this media feature.
-    #[must_use]
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Width => "width",
-            Self::Height => "height",
-            Self::DeviceWidth => "device-width",
-            Self::DeviceHeight => "device-height",
-            Self::Orientation => "orientation",
-            Self::AspectRatio => "aspect-ratio",
-            Self::DeviceAspectRatio => "device-aspect-ratio",
-            Self::Color => "color",
-            Self::ColorIndex => "color-index",
-            Self::Monochrome => "monochrome",
-            Self::Resolution => "resolution",
-            Self::Scan => "scan",
-            Self::Grid => "grid",
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssQueryComparison {
@@ -3997,41 +3896,6 @@ pub enum CssResolutionUnit {
     Dpi,
     Dpcm,
     Dppx,
-}
-
-/// A positive-integer ratio used by Media Queries Level 3 aspect-ratio features.
-///
-/// This distinct model preserves MQ3's integer-only grammar without narrowing the general
-/// [`CssRatio`] value used by later authored syntax.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssMediaRatio {
-    numerator: u32,
-    denominator: u32,
-}
-
-impl CssMediaRatio {
-    /// Constructs a ratio only when both integer components are positive.
-    #[must_use]
-    pub const fn try_new(numerator: u32, denominator: u32) -> Option<Self> {
-        if numerator == 0 || denominator == 0 {
-            None
-        } else {
-            Some(Self {
-                numerator,
-                denominator,
-            })
-        }
-    }
-
-    #[must_use]
-    pub const fn numerator(self) -> u32 {
-        self.numerator
-    }
-
-    #[must_use]
-    pub const fn denominator(self) -> u32 {
-        self.denominator
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

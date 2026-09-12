@@ -14,6 +14,8 @@ use crate::error::{
     CssFeatureId, Error, basic, from_parse_error, invalid_syntax, is_nesting_limit_error,
     unsupported_value_at, with_media_query_context,
 };
+use crate::media_features::{MediaRangeState, MediaValueFamily};
+use crate::numeric::{CalculationRoot, NumericInputContext};
 use crate::syntax::*;
 
 pub(super) static IMPLEMENTED_MEDIA: &[CssFeatureId] = &[
@@ -97,7 +99,11 @@ pub(super) fn parse_media_query_list_with_closures<'i, 't>(
                 member,
                 "baseline.media.query-list",
             )?;
-            let query = parse_media_query(source, member)?;
+            let query = parse_media_query(
+                source,
+                member,
+                &NumericInputContext::parsed(recovery.source_snapshot()),
+            )?;
             member.expect_exhausted()?;
             Ok((query, openings))
         });
@@ -380,19 +386,23 @@ fn parse_container_style_query<'i, 't>(
 pub(super) fn parse_media_query<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
 ) -> std::result::Result<CssMediaQuery, ParseError<'i, Error>> {
     let position = first_non_trivia_parser_position(input);
-    if let Ok(query) = input.try_parse(|input| parse_typed_media_query(source, input, position)) {
-        return Ok(CssMediaQuery::Typed(query));
+    match input.try_parse(|input| parse_typed_media_query(source, input, position, numeric)) {
+        Ok(query) => return Ok(CssMediaQuery::Typed(query)),
+        Err(error) if is_nesting_limit_error(&error) => return Err(error),
+        Err(_) => {}
     }
 
-    parse_media_condition(source, input).map(CssMediaQuery::Condition)
+    parse_media_condition(source, input, numeric).map(CssMediaQuery::Condition)
 }
 
 fn parse_typed_media_query<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     position: crate::CssSourcePosition,
+    numeric: &NumericInputContext<'_>,
 ) -> std::result::Result<CssTypedMediaQuery, ParseError<'i, Error>> {
     let modifier = input.try_parse(parse_media_query_modifier).ok();
     let media_type = parse_media_type(source, input)?;
@@ -400,7 +410,7 @@ fn parse_typed_media_query<'i, 't>(
         .try_parse(|input| input.expect_ident_matching("and"))
         .is_ok()
     {
-        Some(parse_media_condition_without_or(source, input)?)
+        Some(parse_media_condition_without_or(source, input, numeric)?)
     } else {
         None
     };
@@ -472,21 +482,24 @@ fn parse_media_type<'i, 't>(
 fn parse_media_condition<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
 ) -> std::result::Result<CssMediaCondition, ParseError<'i, Error>> {
-    parse_media_condition_with_or(source, input, true)
+    parse_media_condition_with_or(source, input, true, numeric)
 }
 
 fn parse_media_condition_without_or<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
 ) -> std::result::Result<CssMediaCondition, ParseError<'i, Error>> {
-    parse_media_condition_with_or(source, input, false)
+    parse_media_condition_with_or(source, input, false, numeric)
 }
 
 fn parse_media_condition_with_or<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     allow_or: bool,
+    numeric: &NumericInputContext<'_>,
 ) -> std::result::Result<CssMediaCondition, ParseError<'i, Error>> {
     let position = first_non_trivia_parser_position(input);
     if input
@@ -494,22 +507,22 @@ fn parse_media_condition_with_or<'i, 't>(
         .is_ok()
     {
         return Ok(CssMediaCondition::new(
-            CssMediaConditionKind::Not(Box::new(parse_media_in_parens(source, input)?)),
+            CssMediaConditionKind::Not(Box::new(parse_media_in_parens(source, input, numeric)?)),
             position,
         ));
     }
-    let first = parse_media_in_parens(source, input)?;
+    let first = parse_media_in_parens(source, input, numeric)?;
 
     if input
         .try_parse(|input| input.expect_ident_matching("and"))
         .is_ok()
     {
-        let mut conditions = vec![first, parse_media_in_parens(source, input)?];
+        let mut conditions = vec![first, parse_media_in_parens(source, input, numeric)?];
         while input
             .try_parse(|input| input.expect_ident_matching("and"))
             .is_ok()
         {
-            conditions.push(parse_media_in_parens(source, input)?);
+            conditions.push(parse_media_in_parens(source, input, numeric)?);
         }
         return Ok(CssMediaCondition::new(
             CssMediaConditionKind::And(CssMediaConditionList::new(conditions)),
@@ -522,12 +535,12 @@ fn parse_media_condition_with_or<'i, 't>(
             .try_parse(|input| input.expect_ident_matching("or"))
             .is_ok()
     {
-        let mut conditions = vec![first, parse_media_in_parens(source, input)?];
+        let mut conditions = vec![first, parse_media_in_parens(source, input, numeric)?];
         while input
             .try_parse(|input| input.expect_ident_matching("or"))
             .is_ok()
         {
-            conditions.push(parse_media_in_parens(source, input)?);
+            conditions.push(parse_media_in_parens(source, input, numeric)?);
         }
         return Ok(CssMediaCondition::new(
             CssMediaConditionKind::Or(CssMediaConditionList::new(conditions)),
@@ -541,13 +554,14 @@ fn parse_media_condition_with_or<'i, 't>(
 fn parse_media_in_parens<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
 ) -> std::result::Result<CssMediaCondition, ParseError<'i, Error>> {
     let position = first_non_trivia_parser_position(input);
     let expression_start = position.byte_offset().value();
     input.expect_parenthesis_block().map_err(basic)?;
     let parsed = input.parse_nested_block(|input| {
         match input.try_parse(|input| {
-            let condition = parse_media_condition(source, input)?;
+            let condition = parse_media_condition(source, input, numeric)?;
             input.expect_exhausted()?;
             Ok(condition)
         }) {
@@ -558,7 +572,7 @@ fn parse_media_in_parens<'i, 't>(
             Err(_) => {}
         }
         let initial = input.state();
-        match parse_media_feature_query(input) {
+        match parse_media_feature_query(source, input, numeric) {
             Ok(feature) if input.is_exhausted() => Ok(ParsedMediaConditionAtom::Feature(feature)),
             Ok(_) => {
                 let location = input.current_source_location();
@@ -569,6 +583,7 @@ fn parse_media_in_parens<'i, 't>(
                         invalid_syntax(location, "unexpected token in media feature query")
                     })
             }
+            Err(error) if is_nesting_limit_error(&error) => Err(error),
             Err(error) => {
                 input.reset(&initial);
                 if let Some(reason) = parse_defined_false_media_reason(input) {
@@ -664,191 +679,520 @@ fn first_non_trivia_parser_position(input: &mut Parser<'_, '_>) -> crate::CssSou
 }
 
 fn parse_media_feature_query<'i, 't>(
+    source: &str,
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssMediaFeatureQuery, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
-    let Some(feature_name) = MediaFeatureName::parse(&ident) else {
-        return Err(with_media_query_context(
+    numeric: &NumericInputContext<'_>,
+) -> Result<CssMediaFeatureQuery, ParseError<'i, Error>> {
+    let initial = input.state();
+    let first_name = input.try_parse(Parser::expect_ident_cloned).ok();
+    let name = if let Some(name) = first_name.as_deref().and_then(MediaFeatureName::parse) {
+        if input.is_exhausted() {
+            return name
+                .boolean_kind()
+                .map(CssMediaFeatureQuery::Boolean)
+                .ok_or_else(|| {
+                    invalid_syntax(
+                        input.current_source_location(),
+                        "prefixed media features require a value",
+                    )
+                });
+        }
+        name
+    } else {
+        // The first operand precedes the feature name. Consume its component shape
+        // only to discover the named domain; the domain parser reads it after reset.
+        input.reset(&initial);
+        let _ = numeric
+            .collect(input)
+            .map_err(|error| media_numeric_error(source, input, numeric, error))?;
+        if input.try_parse(|p| p.expect_delim('/')).is_ok() {
+            let _ = numeric
+                .collect(input)
+                .map_err(|error| media_numeric_error(source, input, numeric, error))?;
+        }
+        parse_media_comparison(input)?;
+        let ident = input.expect_ident_cloned().map_err(basic)?;
+        MediaFeatureName::parse(&ident).ok_or_else(|| {
             unsupported_value_at(
-                location,
+                input.current_source_location(),
                 None,
-                format!("unsupported media feature `{ident}`"),
-            ),
-            Some(ident.as_ref()),
-        ));
+                "unknown media range feature",
+            )
+        })?
     };
-
-    if input.is_exhausted() {
-        return feature_name
-            .boolean_kind()
-            .map(CssMediaFeatureQuery::Boolean)
-            .ok_or_else(|| {
-                invalid_syntax(
-                    input.current_source_location(),
-                    "prefixed media features require a value",
-                )
-            });
-    }
-
-    match feature_name {
-        MediaFeatureName::Width(prefix) => {
-            let comparison = parse_range_feature_comparison(input, prefix)?;
-            let value = parse_query_length(input)?;
-            Ok(CssMediaFeatureQuery::Width(CssRangeFeature::new(
-                comparison, value,
-            )))
+    input.reset(&initial);
+    match name.id.family() {
+        MediaValueFamily::Length => {
+            let range = parse_media_range(input, name, |p| {
+                parse_media_numeric(source, p, numeric, CalculationRoot::Length)
+                    .map(CssLengthCalculation::from_expression)
+                    .map(CssMediaLength::new)
+            })?;
+            Ok(match name.id {
+                CssMediaFeatureKind::Width => CssMediaFeatureQuery::Width(range),
+                CssMediaFeatureKind::Height => CssMediaFeatureQuery::Height(range),
+                CssMediaFeatureKind::DeviceWidth => CssMediaFeatureQuery::DeviceWidth(range),
+                CssMediaFeatureKind::DeviceHeight => CssMediaFeatureQuery::DeviceHeight(range),
+                _ => unreachable!("length feature catalog"),
+            })
         }
-        MediaFeatureName::Height(prefix) => {
-            let comparison = parse_range_feature_comparison(input, prefix)?;
-            let value = parse_query_length(input)?;
-            Ok(CssMediaFeatureQuery::Height(CssRangeFeature::new(
-                comparison, value,
-            )))
+        MediaValueFamily::Integer => {
+            let range = parse_media_range(input, name, |p| {
+                parse_media_numeric(source, p, numeric, CalculationRoot::Integer)
+                    .map(CssIntegerCalculation::from_expression)
+                    .map(CssMediaInteger::new)
+            })?;
+            Ok(match name.id {
+                CssMediaFeatureKind::Color => CssMediaFeatureQuery::Color(range),
+                CssMediaFeatureKind::ColorIndex => CssMediaFeatureQuery::ColorIndex(range),
+                CssMediaFeatureKind::Monochrome => CssMediaFeatureQuery::Monochrome(range),
+                CssMediaFeatureKind::HorizontalViewportSegments => {
+                    CssMediaFeatureQuery::HorizontalViewportSegments(range)
+                }
+                CssMediaFeatureKind::VerticalViewportSegments => {
+                    CssMediaFeatureQuery::VerticalViewportSegments(range)
+                }
+                _ => unreachable!("integer feature catalog"),
+            })
         }
-        MediaFeatureName::DeviceWidth(prefix) => {
-            let comparison = parse_range_feature_comparison(input, prefix)?;
-            let value = parse_query_length(input)?;
-            Ok(CssMediaFeatureQuery::DeviceWidth(CssRangeFeature::new(
-                comparison, value,
-            )))
+        MediaValueFamily::Ratio => {
+            let range = parse_media_range(input, name, |p| parse_media_ratio(source, p, numeric))?;
+            Ok(match name.id {
+                CssMediaFeatureKind::AspectRatio => CssMediaFeatureQuery::AspectRatio(range),
+                CssMediaFeatureKind::DeviceAspectRatio => {
+                    CssMediaFeatureQuery::DeviceAspectRatio(range)
+                }
+                _ => unreachable!("ratio feature catalog"),
+            })
         }
-        MediaFeatureName::DeviceHeight(prefix) => {
-            let comparison = parse_range_feature_comparison(input, prefix)?;
-            let value = parse_query_length(input)?;
-            Ok(CssMediaFeatureQuery::DeviceHeight(CssRangeFeature::new(
-                comparison, value,
-            )))
-        }
-        MediaFeatureName::AspectRatio(prefix) => {
-            let comparison = parse_range_feature_comparison(input, prefix)?;
-            let value = parse_media_ratio(input)?;
-            Ok(CssMediaFeatureQuery::AspectRatio(CssRangeFeature::new(
-                comparison, value,
-            )))
-        }
-        MediaFeatureName::DeviceAspectRatio(prefix) => {
-            let comparison = parse_range_feature_comparison(input, prefix)?;
-            let value = parse_media_ratio(input)?;
-            Ok(CssMediaFeatureQuery::DeviceAspectRatio(
-                CssRangeFeature::new(comparison, value),
-            ))
-        }
-        MediaFeatureName::Resolution(prefix) => {
-            let comparison = parse_range_feature_comparison(input, prefix)?;
-            let value = parse_resolution(input)?;
-            Ok(CssMediaFeatureQuery::Resolution(CssRangeFeature::new(
-                comparison, value,
-            )))
-        }
-        MediaFeatureName::Color(prefix) => {
-            let comparison = parse_range_feature_comparison(input, prefix)?;
-            let value = parse_non_negative_integer(input)?;
-            Ok(CssMediaFeatureQuery::Color(CssRangeFeature::new(
-                comparison, value,
-            )))
-        }
-        MediaFeatureName::ColorIndex(prefix) => {
-            let comparison = parse_range_feature_comparison(input, prefix)?;
-            let value = parse_non_negative_integer(input)?;
-            Ok(CssMediaFeatureQuery::ColorIndex(CssRangeFeature::new(
-                comparison, value,
-            )))
-        }
-        MediaFeatureName::Monochrome(prefix) => {
-            let comparison = parse_range_feature_comparison(input, prefix)?;
-            let value = parse_non_negative_integer(input)?;
-            Ok(CssMediaFeatureQuery::Monochrome(CssRangeFeature::new(
-                comparison, value,
-            )))
-        }
-        MediaFeatureName::Orientation => {
+        MediaValueFamily::Resolution => parse_media_range(input, name, |p| {
+            let initial = p.state();
+            if p.try_parse(|p| p.expect_ident_matching("infinite")).is_ok() {
+                p.reset(&initial);
+                numeric
+                    .collect(p)
+                    .map(CssMediaResolution::infinite)
+                    .map_err(|error| media_numeric_error(source, p, numeric, error))
+            } else {
+                parse_media_numeric(source, p, numeric, CalculationRoot::Resolution)
+                    .map(CssResolutionCalculation::from_expression)
+                    .map(CssMediaResolution::numeric)
+            }
+        })
+        .map(CssMediaFeatureQuery::Resolution),
+        MediaValueFamily::Discrete => {
+            input.expect_ident().map_err(basic)?;
             input.expect_colon().map_err(basic)?;
-            parse_orientation(input).map(CssMediaFeatureQuery::Orientation)
-        }
-        MediaFeatureName::Scan => {
-            input.expect_colon().map_err(basic)?;
-            parse_scan_mode(input).map(CssMediaFeatureQuery::Scan)
-        }
-        MediaFeatureName::Grid => {
-            input.expect_colon().map_err(basic)?;
-            parse_grid_mode(input).map(CssMediaFeatureQuery::Grid)
-        }
-        MediaFeatureName::PrefersColorScheme => {
-            input.expect_colon().map_err(basic)?;
-            parse_color_scheme_preference(input).map(CssMediaFeatureQuery::PrefersColorScheme)
-        }
-        MediaFeatureName::PrefersReducedMotion => {
-            input.expect_colon().map_err(basic)?;
-            parse_reduced_motion_preference(input).map(CssMediaFeatureQuery::PrefersReducedMotion)
-        }
-        MediaFeatureName::PrefersReducedTransparency => {
-            input.expect_colon().map_err(basic)?;
-            parse_reduced_transparency_preference(input)
-                .map(CssMediaFeatureQuery::PrefersReducedTransparency)
-        }
-        MediaFeatureName::PrefersContrast => {
-            input.expect_colon().map_err(basic)?;
-            parse_contrast_preference(input).map(CssMediaFeatureQuery::PrefersContrast)
-        }
-        MediaFeatureName::ForcedColors => {
-            input.expect_colon().map_err(basic)?;
-            parse_forced_colors_mode(input).map(CssMediaFeatureQuery::ForcedColors)
-        }
-        MediaFeatureName::Hover => {
-            input.expect_colon().map_err(basic)?;
-            parse_hover_capability(input).map(CssMediaFeatureQuery::Hover)
-        }
-        MediaFeatureName::AnyHover => {
-            input.expect_colon().map_err(basic)?;
-            parse_hover_capability(input).map(CssMediaFeatureQuery::AnyHover)
-        }
-        MediaFeatureName::Pointer => {
-            input.expect_colon().map_err(basic)?;
-            parse_pointer_capability(input).map(CssMediaFeatureQuery::Pointer)
-        }
-        MediaFeatureName::AnyPointer => {
-            input.expect_colon().map_err(basic)?;
-            parse_pointer_capability(input).map(CssMediaFeatureQuery::AnyPointer)
-        }
-        MediaFeatureName::DisplayMode => {
-            input.expect_colon().map_err(basic)?;
-            parse_display_mode(input).map(CssMediaFeatureQuery::DisplayMode)
+            parse_media_discrete(source, input, numeric, name.id)
         }
     }
 }
 
-#[derive(Clone, Copy)]
+fn parse_media_comparison<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> Result<CssQueryComparison, ParseError<'i, Error>> {
+    let location = input.current_source_location();
+    let token = input.next().map_err(basic)?.clone();
+    let symbol = match token {
+        Token::Delim(v @ ('<' | '>' | '=')) => v,
+        _ => return Err(invalid_syntax(location, "expected media comparison")),
+    };
+    if symbol == '=' {
+        return Ok(CssQueryComparison::Equal);
+    }
+    let after = input.state();
+    let inclusive = loop {
+        match input.next_including_whitespace_and_comments() {
+            Ok(Token::Comment(_)) => {}
+            Ok(Token::Delim('=')) => break true,
+            _ => {
+                input.reset(&after);
+                break false;
+            }
+        }
+    };
+    Ok(match (symbol, inclusive) {
+        ('<', false) => CssQueryComparison::LessThan,
+        ('<', true) => CssQueryComparison::LessThanOrEqual,
+        ('>', false) => CssQueryComparison::GreaterThan,
+        ('>', true) => CssQueryComparison::GreaterThanOrEqual,
+        _ => unreachable!(),
+    })
+}
+
+fn parse_media_range<'i, 't, T>(
+    input: &mut Parser<'i, 't>,
+    name: MediaFeatureName,
+    mut value: impl FnMut(&mut Parser<'i, 't>) -> Result<T, ParseError<'i, Error>>,
+) -> Result<CssMediaRange<T>, ParseError<'i, Error>> {
+    let initial = input.state();
+    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned)
+        && MediaFeatureName::parse(&ident).is_some_and(|actual| actual == name)
+    {
+        if input.try_parse(Parser::expect_colon).is_ok() {
+            let value = value(input)?;
+            return Ok(CssMediaRange::new(match name.prefix {
+                None => MediaRangeState::Plain { value },
+                Some(RangePrefix::Min) => MediaRangeState::Min { value },
+                Some(RangePrefix::Max) => MediaRangeState::Max { value },
+            }));
+        }
+        if name.prefix.is_some() {
+            return Err(invalid_syntax(
+                input.current_source_location(),
+                "prefixed range needs colon",
+            ));
+        }
+        let comparison = parse_media_comparison(input)?;
+        return value(input)
+            .map(|value| CssMediaRange::new(MediaRangeState::FeatureFirst { comparison, value }));
+    }
+    input.reset(&initial);
+    if name.prefix.is_some() {
+        return Err(invalid_syntax(
+            input.current_source_location(),
+            "prefixed range needs colon",
+        ));
+    }
+    let left = value(input)?;
+    let first = parse_media_comparison(input)?;
+    input.expect_ident_matching(name.id.name()).map_err(basic)?;
+    if input.is_exhausted() {
+        return Ok(CssMediaRange::new(MediaRangeState::ValueFirst {
+            value: left,
+            comparison: first,
+        }));
+    }
+    let second = parse_media_comparison(input)?;
+    let right = value(input)?;
+    use CssQueryComparison::{GreaterThan, GreaterThanOrEqual, LessThan, LessThanOrEqual};
+    let state = match (first, second) {
+        (LessThan | LessThanOrEqual, LessThan | LessThanOrEqual) => MediaRangeState::Ascending {
+            left,
+            left_inclusive: first == LessThanOrEqual,
+            right,
+            right_inclusive: second == LessThanOrEqual,
+        },
+        (GreaterThan | GreaterThanOrEqual, GreaterThan | GreaterThanOrEqual) => {
+            MediaRangeState::Descending {
+                left,
+                left_inclusive: first == GreaterThanOrEqual,
+                right,
+                right_inclusive: second == GreaterThanOrEqual,
+            }
+        }
+        _ => {
+            return Err(invalid_syntax(
+                input.current_source_location(),
+                "media range chain requires matching inequality directions",
+            ));
+        }
+    };
+    Ok(CssMediaRange::new(state))
+}
+
+fn media_numeric_error<'i>(
+    source: &str,
+    input: &Parser<'i, '_>,
+    numeric: &NumericInputContext<'_>,
+    error: crate::CssNumericConstructionError,
+) -> ParseError<'i, Error> {
+    if matches!(
+        error.kind(),
+        crate::CssNumericConstructionErrorKind::ResourceLimit
+    ) {
+        return crate::error::nesting_limit(
+            source,
+            input.position().byte_index(),
+            256,
+            "media numeric value",
+        );
+    }
+    unsupported_value_at(
+        numeric.error_location(
+            &error,
+            input.current_source_location(),
+            input.position().byte_index(),
+        ),
+        None,
+        "invalid typed media numeric value",
+    )
+}
+fn parse_media_numeric<'i, 't>(
+    source: &str,
+    input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
+    root: CalculationRoot,
+) -> Result<CssCalculationExpression, ParseError<'i, Error>> {
+    let component = numeric
+        .collect(input)
+        .map_err(|error| media_numeric_error(source, input, numeric, error))?;
+    let values = crate::CssComponentValues::try_new(vec![component])
+        .map_err(|_| invalid_syntax(input.current_source_location(), "invalid media component"))?;
+    numeric
+        .admit(values, root)
+        .map_err(|error| media_numeric_error(source, input, numeric, error))
+}
+fn media_literal_number(
+    value: &crate::CssComponentValues,
+) -> Option<crate::CssNumericTokenRef<'_>> {
+    value.items().iter().find_map(|c| match c.view() {
+        crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Number(n)) => Some(n),
+        _ => None,
+    })
+}
+fn negative_literal(number: crate::CssNumericTokenRef<'_>) -> bool {
+    let text = number.representation();
+    text.starts_with('-')
+        && text
+            .split(['e', 'E'])
+            .next()
+            .expect("numeric mantissa")
+            .bytes()
+            .any(|b| matches!(b, b'1'..=b'9'))
+}
+fn parse_media_ratio<'i, 't>(
+    source: &str,
+    input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
+) -> Result<CssMediaRatio, ParseError<'i, Error>> {
+    let operand = |input: &mut Parser<'i, 't>| {
+        let value = CssNumberCalculation::from_expression(parse_media_numeric(
+            source,
+            input,
+            numeric,
+            CalculationRoot::Number,
+        )?);
+        if media_literal_number(value.components()).is_some_and(negative_literal) {
+            return Err(unsupported_value_at(
+                input.current_source_location(),
+                None,
+                "negative media ratio operand",
+            ));
+        }
+        Ok(value)
+    };
+    let numerator = operand(input)?;
+    let denominator_is_omitted = input.try_parse(|p| p.expect_delim('/')).is_err();
+    let denominator = if denominator_is_omitted {
+        CssNumberCalculation::try_from_components(
+            crate::CssComponentValues::try_new(vec![
+                crate::CssComponentValue::try_number("1").expect("default denominator"),
+            ])
+            .expect("single default denominator"),
+        )
+        .expect("number default denominator")
+    } else {
+        operand(input)?
+    };
+    Ok(CssMediaRatio::new(
+        numerator,
+        denominator,
+        denominator_is_omitted,
+    ))
+}
+
+fn parse_media_grid<'i, 't>(
+    source: &str,
+    input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
+) -> Result<CssMediaGrid, ParseError<'i, Error>> {
+    let calculation = CssIntegerCalculation::from_expression(parse_media_numeric(
+        source,
+        input,
+        numeric,
+        CalculationRoot::Integer,
+    )?);
+    let literal = if let Some(n) = media_literal_number(calculation.components()) {
+        let digits = n
+            .representation()
+            .trim_start_matches(['+', '-'])
+            .trim_start_matches('0');
+        Some(if digits.is_empty() {
+            CssGridMode::Bitmap
+        } else if !n.representation().starts_with('-') && digits == "1" {
+            CssGridMode::Grid
+        } else {
+            return Err(unsupported_value_at(
+                input.current_source_location(),
+                None,
+                "grid literal must be zero or one",
+            ));
+        })
+    } else {
+        None
+    };
+    Ok(CssMediaGrid::new(calculation, literal))
+}
+
+fn parse_media_discrete<'i, 't>(
+    source: &str,
+    input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
+    id: CssMediaFeatureKind,
+) -> Result<CssMediaFeatureQuery, ParseError<'i, Error>> {
+    match id {
+        CssMediaFeatureKind::Orientation => {
+            parse_orientation(input).map(CssMediaFeatureQuery::Orientation)
+        }
+        CssMediaFeatureKind::Scan => parse_scan_mode(input).map(CssMediaFeatureQuery::Scan),
+        CssMediaFeatureKind::PrefersColorScheme => {
+            parse_color_scheme_preference(input).map(CssMediaFeatureQuery::PrefersColorScheme)
+        }
+        CssMediaFeatureKind::PrefersReducedMotion => {
+            parse_reduced_motion_preference(input).map(CssMediaFeatureQuery::PrefersReducedMotion)
+        }
+        CssMediaFeatureKind::PrefersReducedTransparency => {
+            parse_reduced_transparency_preference(input)
+                .map(CssMediaFeatureQuery::PrefersReducedTransparency)
+        }
+        CssMediaFeatureKind::PrefersContrast => {
+            parse_contrast_preference(input).map(CssMediaFeatureQuery::PrefersContrast)
+        }
+        CssMediaFeatureKind::ForcedColors => {
+            parse_forced_colors_mode(input).map(CssMediaFeatureQuery::ForcedColors)
+        }
+        CssMediaFeatureKind::Hover => {
+            parse_hover_capability(input).map(CssMediaFeatureQuery::Hover)
+        }
+        CssMediaFeatureKind::AnyHover => {
+            parse_hover_capability(input).map(CssMediaFeatureQuery::AnyHover)
+        }
+        CssMediaFeatureKind::Pointer => {
+            parse_pointer_capability(input).map(CssMediaFeatureQuery::Pointer)
+        }
+        CssMediaFeatureKind::AnyPointer => {
+            parse_pointer_capability(input).map(CssMediaFeatureQuery::AnyPointer)
+        }
+        CssMediaFeatureKind::DisplayMode => {
+            parse_display_mode(input).map(CssMediaFeatureQuery::DisplayMode)
+        }
+        CssMediaFeatureKind::Grid => {
+            parse_media_grid(source, input, numeric).map(CssMediaFeatureQuery::Grid)
+        }
+        CssMediaFeatureKind::Update => parse_discrete_ident(input, id.name(), |ident| match ident
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "none" => Some(CssMediaUpdate::None),
+            "slow" => Some(CssMediaUpdate::Slow),
+            "fast" => Some(CssMediaUpdate::Fast),
+            _ => None,
+        })
+        .map(CssMediaFeatureQuery::Update),
+        CssMediaFeatureKind::OverflowBlock => parse_discrete_ident(input, id.name(), |ident| {
+            match ident.to_ascii_lowercase().as_str() {
+                "none" => Some(CssMediaOverflowBlock::None),
+                "scroll" => Some(CssMediaOverflowBlock::Scroll),
+                "paged" => Some(CssMediaOverflowBlock::Paged),
+                _ => None,
+            }
+        })
+        .map(CssMediaFeatureQuery::OverflowBlock),
+        CssMediaFeatureKind::OverflowInline => parse_discrete_ident(input, id.name(), |ident| {
+            match ident.to_ascii_lowercase().as_str() {
+                "none" => Some(CssMediaOverflowInline::None),
+                "scroll" => Some(CssMediaOverflowInline::Scroll),
+                _ => None,
+            }
+        })
+        .map(CssMediaFeatureQuery::OverflowInline),
+        CssMediaFeatureKind::ColorGamut => parse_discrete_ident(input, id.name(), |ident| {
+            match ident.to_ascii_lowercase().as_str() {
+                "srgb" => Some(CssMediaColorGamut::Srgb),
+                "p3" => Some(CssMediaColorGamut::P3),
+                "rec2020" => Some(CssMediaColorGamut::Rec2020),
+                _ => None,
+            }
+        })
+        .map(CssMediaFeatureQuery::ColorGamut),
+        CssMediaFeatureKind::VideoColorGamut => parse_discrete_ident(input, id.name(), |ident| {
+            match ident.to_ascii_lowercase().as_str() {
+                "srgb" => Some(CssMediaColorGamut::Srgb),
+                "p3" => Some(CssMediaColorGamut::P3),
+                "rec2020" => Some(CssMediaColorGamut::Rec2020),
+                _ => None,
+            }
+        })
+        .map(CssMediaFeatureQuery::VideoColorGamut),
+        CssMediaFeatureKind::DynamicRange => parse_discrete_ident(input, id.name(), |ident| {
+            match ident.to_ascii_lowercase().as_str() {
+                "standard" => Some(CssMediaDynamicRange::Standard),
+                "high" => Some(CssMediaDynamicRange::High),
+                _ => None,
+            }
+        })
+        .map(CssMediaFeatureQuery::DynamicRange),
+        CssMediaFeatureKind::VideoDynamicRange => parse_discrete_ident(input, id.name(), |ident| {
+            match ident.to_ascii_lowercase().as_str() {
+                "standard" => Some(CssMediaDynamicRange::Standard),
+                "high" => Some(CssMediaDynamicRange::High),
+                _ => None,
+            }
+        })
+        .map(CssMediaFeatureQuery::VideoDynamicRange),
+        CssMediaFeatureKind::EnvironmentBlending => {
+            parse_discrete_ident(input, id.name(), |ident| {
+                match ident.to_ascii_lowercase().as_str() {
+                    "opaque" => Some(CssMediaEnvironmentBlending::Opaque),
+                    "additive" => Some(CssMediaEnvironmentBlending::Additive),
+                    "subtractive" => Some(CssMediaEnvironmentBlending::Subtractive),
+                    _ => None,
+                }
+            })
+            .map(CssMediaFeatureQuery::EnvironmentBlending)
+        }
+        CssMediaFeatureKind::InvertedColors => parse_discrete_ident(input, id.name(), |ident| {
+            match ident.to_ascii_lowercase().as_str() {
+                "none" => Some(CssMediaInvertedColors::None),
+                "inverted" => Some(CssMediaInvertedColors::Inverted),
+                _ => None,
+            }
+        })
+        .map(CssMediaFeatureQuery::InvertedColors),
+        CssMediaFeatureKind::NavControls => parse_discrete_ident(input, id.name(), |ident| {
+            match ident.to_ascii_lowercase().as_str() {
+                "none" => Some(CssMediaNavigationControls::None),
+                "back" => Some(CssMediaNavigationControls::Back),
+                _ => None,
+            }
+        })
+        .map(CssMediaFeatureQuery::NavControls),
+        CssMediaFeatureKind::Scripting => {
+            parse_discrete_ident(input, id.name(), |ident| {
+                match ident.to_ascii_lowercase().as_str() {
+                    "none" => Some(CssMediaScripting::None),
+                    "initial-only" => Some(CssMediaScripting::InitialOnly),
+                    "enabled" => Some(CssMediaScripting::Enabled),
+                    _ => None,
+                }
+            })
+            .map(CssMediaFeatureQuery::Scripting)
+        }
+        CssMediaFeatureKind::PrefersReducedData => {
+            parse_discrete_ident(input, id.name(), |ident| {
+                match ident.to_ascii_lowercase().as_str() {
+                    "no-preference" => Some(CssMediaReducedDataPreference::NoPreference),
+                    "reduce" => Some(CssMediaReducedDataPreference::Reduce),
+                    _ => None,
+                }
+            })
+            .map(CssMediaFeatureQuery::PrefersReducedData)
+        }
+        _ => unreachable!("discrete media feature catalog"),
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
 enum RangePrefix {
     Min,
     Max,
 }
 
-#[derive(Clone, Copy)]
-enum MediaFeatureName {
-    Width(Option<RangePrefix>),
-    Height(Option<RangePrefix>),
-    DeviceWidth(Option<RangePrefix>),
-    DeviceHeight(Option<RangePrefix>),
-    AspectRatio(Option<RangePrefix>),
-    DeviceAspectRatio(Option<RangePrefix>),
-    Resolution(Option<RangePrefix>),
-    Color(Option<RangePrefix>),
-    ColorIndex(Option<RangePrefix>),
-    Monochrome(Option<RangePrefix>),
-    Orientation,
-    Scan,
-    Grid,
-    PrefersColorScheme,
-    PrefersReducedMotion,
-    PrefersReducedTransparency,
-    PrefersContrast,
-    ForcedColors,
-    Hover,
-    AnyHover,
-    Pointer,
-    AnyPointer,
-    DisplayMode,
+#[derive(Clone, Copy, PartialEq)]
+struct MediaFeatureName {
+    id: CssMediaFeatureKind,
+    prefix: Option<RangePrefix>,
 }
 
 #[derive(Clone, Copy)]
@@ -887,150 +1231,48 @@ impl ContainerFeatureName {
 
 impl MediaFeatureName {
     fn parse(name: &str) -> Option<Self> {
-        Some(match name.to_ascii_lowercase().as_str() {
-            "width" => Self::Width(None),
-            "min-width" => Self::Width(Some(RangePrefix::Min)),
-            "max-width" => Self::Width(Some(RangePrefix::Max)),
-            "height" => Self::Height(None),
-            "min-height" => Self::Height(Some(RangePrefix::Min)),
-            "max-height" => Self::Height(Some(RangePrefix::Max)),
-            "device-width" => Self::DeviceWidth(None),
-            "min-device-width" => Self::DeviceWidth(Some(RangePrefix::Min)),
-            "max-device-width" => Self::DeviceWidth(Some(RangePrefix::Max)),
-            "device-height" => Self::DeviceHeight(None),
-            "min-device-height" => Self::DeviceHeight(Some(RangePrefix::Min)),
-            "max-device-height" => Self::DeviceHeight(Some(RangePrefix::Max)),
-            "aspect-ratio" => Self::AspectRatio(None),
-            "min-aspect-ratio" => Self::AspectRatio(Some(RangePrefix::Min)),
-            "max-aspect-ratio" => Self::AspectRatio(Some(RangePrefix::Max)),
-            "device-aspect-ratio" => Self::DeviceAspectRatio(None),
-            "min-device-aspect-ratio" => Self::DeviceAspectRatio(Some(RangePrefix::Min)),
-            "max-device-aspect-ratio" => Self::DeviceAspectRatio(Some(RangePrefix::Max)),
-            "resolution" => Self::Resolution(None),
-            "min-resolution" => Self::Resolution(Some(RangePrefix::Min)),
-            "max-resolution" => Self::Resolution(Some(RangePrefix::Max)),
-            "color" => Self::Color(None),
-            "min-color" => Self::Color(Some(RangePrefix::Min)),
-            "max-color" => Self::Color(Some(RangePrefix::Max)),
-            "color-index" => Self::ColorIndex(None),
-            "min-color-index" => Self::ColorIndex(Some(RangePrefix::Min)),
-            "max-color-index" => Self::ColorIndex(Some(RangePrefix::Max)),
-            "monochrome" => Self::Monochrome(None),
-            "min-monochrome" => Self::Monochrome(Some(RangePrefix::Min)),
-            "max-monochrome" => Self::Monochrome(Some(RangePrefix::Max)),
-            "orientation" => Self::Orientation,
-            "scan" => Self::Scan,
-            "grid" => Self::Grid,
-            "prefers-color-scheme" => Self::PrefersColorScheme,
-            "prefers-reduced-motion" => Self::PrefersReducedMotion,
-            "prefers-reduced-transparency" => Self::PrefersReducedTransparency,
-            "prefers-contrast" => Self::PrefersContrast,
-            "forced-colors" => Self::ForcedColors,
-            "hover" => Self::Hover,
-            "any-hover" => Self::AnyHover,
-            "pointer" => Self::Pointer,
-            "any-pointer" => Self::AnyPointer,
-            "display-mode" => Self::DisplayMode,
-            _ => return None,
-        })
-    }
-
-    fn boolean_kind(self) -> Option<CssMediaFeatureKind> {
-        Some(match self {
-            Self::Width(None) => CssMediaFeatureKind::Width,
-            Self::Height(None) => CssMediaFeatureKind::Height,
-            Self::DeviceWidth(None) => CssMediaFeatureKind::DeviceWidth,
-            Self::DeviceHeight(None) => CssMediaFeatureKind::DeviceHeight,
-            Self::AspectRatio(None) => CssMediaFeatureKind::AspectRatio,
-            Self::DeviceAspectRatio(None) => CssMediaFeatureKind::DeviceAspectRatio,
-            Self::Resolution(None) => CssMediaFeatureKind::Resolution,
-            Self::Color(None) => CssMediaFeatureKind::Color,
-            Self::ColorIndex(None) => CssMediaFeatureKind::ColorIndex,
-            Self::Monochrome(None) => CssMediaFeatureKind::Monochrome,
-            Self::Orientation => CssMediaFeatureKind::Orientation,
-            Self::Scan => CssMediaFeatureKind::Scan,
-            Self::Grid => CssMediaFeatureKind::Grid,
-            Self::Width(Some(_))
-            | Self::Height(Some(_))
-            | Self::DeviceWidth(Some(_))
-            | Self::DeviceHeight(Some(_))
-            | Self::AspectRatio(Some(_))
-            | Self::DeviceAspectRatio(Some(_))
-            | Self::Resolution(Some(_))
-            | Self::Color(Some(_))
-            | Self::ColorIndex(Some(_))
-            | Self::Monochrome(Some(_))
-            | Self::PrefersColorScheme
-            | Self::PrefersReducedMotion
-            | Self::PrefersReducedTransparency
-            | Self::PrefersContrast
-            | Self::ForcedColors
-            | Self::Hover
-            | Self::AnyHover
-            | Self::Pointer
-            | Self::AnyPointer
-            | Self::DisplayMode => return None,
-        })
-    }
-
-    fn is_mq3(self) -> bool {
-        !matches!(
-            self,
-            Self::PrefersColorScheme
-                | Self::PrefersReducedMotion
-                | Self::PrefersReducedTransparency
-                | Self::PrefersContrast
-                | Self::ForcedColors
-                | Self::Hover
-                | Self::AnyHover
-                | Self::Pointer
-                | Self::AnyPointer
-                | Self::DisplayMode
-        )
-    }
-
-    fn is_range(self) -> bool {
-        matches!(
-            self,
-            Self::Width(_)
-                | Self::Height(_)
-                | Self::DeviceWidth(_)
-                | Self::DeviceHeight(_)
-                | Self::AspectRatio(_)
-                | Self::DeviceAspectRatio(_)
-                | Self::Resolution(_)
-                | Self::Color(_)
-                | Self::ColorIndex(_)
-                | Self::Monochrome(_)
-        )
-    }
-
-    fn prefix(self) -> Option<RangePrefix> {
-        match self {
-            Self::Width(prefix)
-            | Self::Height(prefix)
-            | Self::DeviceWidth(prefix)
-            | Self::DeviceHeight(prefix)
-            | Self::AspectRatio(prefix)
-            | Self::DeviceAspectRatio(prefix)
-            | Self::Resolution(prefix)
-            | Self::Color(prefix)
-            | Self::ColorIndex(prefix)
-            | Self::Monochrome(prefix) => prefix,
-            Self::Orientation
-            | Self::Scan
-            | Self::Grid
-            | Self::PrefersColorScheme
-            | Self::PrefersReducedMotion
-            | Self::PrefersReducedTransparency
-            | Self::PrefersContrast
-            | Self::ForcedColors
-            | Self::Hover
-            | Self::AnyHover
-            | Self::Pointer
-            | Self::AnyPointer
-            | Self::DisplayMode => None,
+        if let Some(id) = CssMediaFeatureKind::from_name(name) {
+            return Some(Self { id, prefix: None });
         }
+        let lower = name.to_ascii_lowercase();
+        let (name, prefix) = if let Some(v) = lower.strip_prefix("min-") {
+            (v, RangePrefix::Min)
+        } else {
+            (lower.strip_prefix("max-")?, RangePrefix::Max)
+        };
+        let id = CssMediaFeatureKind::from_name(name)?;
+        (id.family() != MediaValueFamily::Discrete).then_some(Self {
+            id,
+            prefix: Some(prefix),
+        })
+    }
+    fn boolean_kind(self) -> Option<CssMediaFeatureKind> {
+        self.prefix.is_none().then_some(self.id)
+    }
+    fn prefix(self) -> Option<RangePrefix> {
+        self.prefix
+    }
+    fn is_range(self) -> bool {
+        self.id.family() != MediaValueFamily::Discrete
+    }
+    // Legacy unknown classification is replaced by the following admission slice.
+    fn is_mq3(self) -> bool {
+        matches!(
+            self.id,
+            CssMediaFeatureKind::Width
+                | CssMediaFeatureKind::Height
+                | CssMediaFeatureKind::DeviceWidth
+                | CssMediaFeatureKind::DeviceHeight
+                | CssMediaFeatureKind::AspectRatio
+                | CssMediaFeatureKind::DeviceAspectRatio
+                | CssMediaFeatureKind::Resolution
+                | CssMediaFeatureKind::Color
+                | CssMediaFeatureKind::ColorIndex
+                | CssMediaFeatureKind::Monochrome
+                | CssMediaFeatureKind::Orientation
+                | CssMediaFeatureKind::Scan
+                | CssMediaFeatureKind::Grid
+        )
     }
 }
 
@@ -1144,91 +1386,6 @@ fn parse_ratio<'i, 't>(
         .ok_or_else(|| unsupported_value_at(location, None, "unsupported query ratio"))
 }
 
-fn parse_media_ratio<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssMediaRatio, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let numerator = parse_positive_integer(input, "media query ratio")?;
-    input.expect_delim('/').map_err(basic)?;
-    let denominator = parse_positive_integer(input, "media query ratio")?;
-    CssMediaRatio::try_new(numerator, denominator)
-        .ok_or_else(|| unsupported_value_at(location, None, "unsupported media query ratio"))
-}
-
-fn parse_positive_integer<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    domain: &str,
-) -> std::result::Result<u32, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Number {
-            int_value: Some(value),
-            ..
-        } => u32::try_from(*value)
-            .ok()
-            .filter(|value| *value > 0)
-            .ok_or_else(|| unsupported_value_at(location, None, format!("unsupported {domain}"))),
-        token => Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported {domain} `{}`", token.to_css_string()),
-        )),
-    }
-}
-
-fn parse_resolution<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssResolution, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Dimension { value, unit, .. } => {
-            let unit = match_ignore_ascii_case! { unit,
-                "dpi" => CssResolutionUnit::Dpi,
-                "dpcm" => CssResolutionUnit::Dpcm,
-                "dppx" => CssResolutionUnit::Dppx,
-                _ => return Err(unsupported_value_at(
-                    location,
-                    None,
-                    format!("unknown media query resolution unit `{unit}`"),
-                )),
-            };
-            CssResolution::try_new(*value, unit).ok_or_else(|| {
-                unsupported_value_at(location, None, "unsupported media query resolution")
-            })
-        }
-        token => Err(unsupported_value_at(
-            location,
-            None,
-            format!(
-                "unsupported media query resolution `{}`",
-                token.to_css_string()
-            ),
-        )),
-    }
-}
-
-fn parse_non_negative_integer<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssNonNegativeInteger, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Number {
-            int_value: Some(value),
-            ..
-        } => u32::try_from(*value)
-            .map(CssNonNegativeInteger::new)
-            .map_err(|_| unsupported_value_at(location, None, "unsupported negative integer")),
-        token => Err(unsupported_value_at(
-            location,
-            None,
-            format!(
-                "unsupported media query integer `{}`",
-                token.to_css_string()
-            ),
-        )),
-    }
-}
-
 fn parse_orientation<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssOrientation, ParseError<'i, Error>> {
@@ -1251,28 +1408,6 @@ fn parse_scan_mode<'i, 't>(
             _ => None,
         }
     })
-}
-
-fn parse_grid_mode<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssGridMode, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Number {
-            int_value: Some(0), ..
-        } => Ok(CssGridMode::Bitmap),
-        Token::Number {
-            int_value: Some(1), ..
-        } => Ok(CssGridMode::Grid),
-        token => Err(unsupported_value_at(
-            location,
-            None,
-            format!(
-                "unsupported grid value `{}`; expected 0 or 1",
-                token.to_css_string()
-            ),
-        )),
-    }
 }
 
 fn parse_color_scheme_preference<'i, 't>(
