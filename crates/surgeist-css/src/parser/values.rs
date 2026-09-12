@@ -219,7 +219,8 @@ impl LengthGrammar {
     const fn requires_non_negative(self) -> bool {
         matches!(
             self,
-            Self::Padding
+            Self::BoxSize
+                | Self::Padding
                 | Self::BorderWidth
                 | Self::Radius
                 | Self::ShadowBlur
