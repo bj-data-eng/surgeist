@@ -5479,7 +5479,7 @@ fn container_condition_parser_accepts_supported_size_style_and_boolean_condition
 }
 
 #[test]
-fn container_condition_parser_rejects_unknown_features_and_malformed_conditions() {
+fn container_condition_parser_retains_unrecognized_enclosures() {
     for css in [
         "(unknown > 1px)",
         "(width: auto)",
@@ -5490,10 +5490,11 @@ fn container_condition_parser_rejects_unknown_features_and_malformed_conditions(
         "scroll-state(stuck: top)",
         "(width > )",
     ] {
-        assert!(
-            parse_container_condition_for_test(css).is_err(),
-            "{css} should reject"
-        );
+        let condition = parse_container_condition_for_test(css).expect("valid opaque enclosure");
+        let CssContainerCondition::GeneralEnclosed(value) = condition else {
+            panic!("{css} should retain an opaque enclosure");
+        };
+        assert_eq!(value.serialize().unwrap().as_css(), css);
     }
 }
 
@@ -5688,8 +5689,12 @@ fn nested_conditional_rules_allow_media_and_container_in_either_direction() {
 }
 
 #[test]
-fn container_rule_parser_rejects_unknown_features_imports_and_invalid_declarations() {
-    assert!(parse_sheet("@container (unknown > 1px) { .card { color: black; } }").is_err());
+fn container_rule_parser_retains_unknown_features_and_rejects_invalid_bodies() {
+    let sheet = parse_sheet("@container (unknown > 1px) { .card { color: black; } }").unwrap();
+    assert!(matches!(
+        container_rule(&sheet.rules()[0]).condition(),
+        CssContainerCondition::GeneralEnclosed(_)
+    ));
     assert!(parse_sheet("@container (width > 300px) { @import \"x.css\"; }").is_err());
     assert!(parse_sheet("@container (width > 300px) { .card { made-up: 1; } }").is_err());
 }
@@ -5766,6 +5771,7 @@ fn advanced_css_surface_matrix_accepts_supported_forms() {
         r#"@import url("theme.css") screen and (min-width: 600px);"#,
         "@media (prefers-color-scheme: dark) { .panel { color: black; } }",
         "@container sidebar (inline-size > 30rem) { .panel { color: black; } }",
+        "@container scroll-state(stuck: top) { .panel { color: black; } }",
         r#"@font-face { font-family: Inter; src: url("inter.woff2") format("woff2"); }"#,
         "@keyframes fade { from { opacity: 0; } to { opacity: 1; } }",
         ".field:has(> .icon) { color: black; }",
@@ -5808,7 +5814,7 @@ fn advanced_css_surface_matrix_rejects_unsupported_forms() {
         ".field:has(::before) { color: black; }",
         "[svg|href] { color: black; }",
         ".col || .cell { color: black; }",
-        "@container scroll-state(stuck: top) { .panel { color: black; } }",
+        "@container scroll-state(stuck: top) trailing { .panel { color: black; } }",
     ];
 
     for css in rejected {

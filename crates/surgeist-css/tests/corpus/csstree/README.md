@@ -108,9 +108,8 @@ unchanged. Unsupported upstream options and vendor syntax keep their explicit
 policies; superseded `@nest` and unselected Transitions2 `@starting-style` remain
 outside the selected grammar.
 
-Two boundaries remain open. The complex container-query original requires clean
-retention of unknown terms, but the parser currently rejects it; the reconciliation
-test keeps that grammar gap visible. The Fonts4 character-variant singleton
+The complex container-query original retains its unknown enclosed operands
+within the authored Boolean structure. The Fonts4 character-variant singleton
 original independently requires a retained `@font-feature-values` outer rule,
 while conflicting pinned descriptor prose leaves its cleanliness and diagnostics
 unresolved. Its existing class is therefore left pending, not endorsed as an

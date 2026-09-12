@@ -1093,7 +1093,7 @@ const EXPECTED: &[ExpectedFeature] = &[
             "@container (width > 1px) { .x { color: red; } }",
         )),
         negative: Some((
-            Input::Sheet("@container scroll-state(stuck: top) { .x { color: red; } }"),
+            Input::Sheet("@container scroll-state(stuck: top) and { .x { color: red; } }"),
             CssErrorCode::InvalidAtRulePrelude,
         )),
     },
@@ -1603,12 +1603,12 @@ const EXPECTED: &[ExpectedFeature] = &[
     ExpectedFeature {
         id: "baseline.container.condition",
         kind: CssFeatureKind::ContainerQuery,
-        spelling: "and/or/not, size features, and custom-property style existence/equality",
+        spelling: "and/or/not, size features, custom-property style existence/equality, and general-enclosed",
         source: ExpectedSource::Id("X-CONDITIONAL5"),
         production: "#container-rule",
         status: CssSupportStatus::Partial,
         supported_subset: Some(
-            "Recursive grouped and/or/not conditions over the supported size and custom-property style features are retained; ungrouped negation is limited to a complete query.",
+            "Recursive and/or/not conditions over supported size and custom-property style features, plus original-component general-enclosed operands, are retained; ungrouped negation is limited to a complete query.",
         ),
         unsupported_remainder: Some(QUERY_REMAINDER),
         recognized_code: None,
@@ -1616,7 +1616,7 @@ const EXPECTED: &[ExpectedFeature] = &[
             "@container (width > 1px) and style(--theme) { .x { color: red; } }",
         )),
         negative: Some((
-            Input::Sheet("@container style(color: red) { .x { color: red; } }"),
+            Input::Sheet("@container style(color: red) and { .x { color: red; } }"),
             CssErrorCode::InvalidAtRulePrelude,
         )),
     },
@@ -1636,7 +1636,7 @@ const EXPECTED: &[ExpectedFeature] = &[
             "@container (inline-size > 1px) { .x { color: red; } }",
         )),
         negative: Some((
-            Input::Sheet("@container (unknown-size > 1px) { .x { color: red; } }"),
+            Input::Sheet("@container (unknown-size > 1px) or { .x { color: red; } }"),
             CssErrorCode::InvalidAtRulePrelude,
         )),
     },

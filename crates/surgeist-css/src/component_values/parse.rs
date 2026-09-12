@@ -419,12 +419,16 @@ fn token_data(token: &Token<'_>, representation: &str) -> Option<TokenData> {
         Token::QuotedString(value) => TokenData::String(value.as_ref().into()),
         Token::UnquotedUrl(value) => TokenData::Url(value.as_ref().into()),
         Token::Delim(value) => TokenData::Delim(*value),
-        Token::Number { .. } => TokenData::Number(numeric(representation)),
-        Token::Percentage { .. } => {
-            TokenData::Percentage(numeric(&representation[..representation.len() - 1]))
-        }
-        Token::Dimension { unit, .. } => TokenData::Dimension {
-            number: numeric(&representation[..numeric_prefix_length(representation)]),
+        Token::Number { value, .. } => TokenData::Number(numeric(representation, *value)),
+        Token::Percentage { unit_value, .. } => TokenData::Percentage(numeric(
+            &representation[..representation.len() - 1],
+            *unit_value,
+        )),
+        Token::Dimension { value, unit, .. } => TokenData::Dimension {
+            number: numeric(
+                &representation[..numeric_prefix_length(representation)],
+                *value,
+            ),
             unit: unit.as_ref().into(),
         },
         Token::WhiteSpace(_) => TokenData::Whitespace,
@@ -451,8 +455,9 @@ fn token_data(token: &Token<'_>, representation: &str) -> Option<TokenData> {
     })
 }
 
-fn numeric(representation: &str) -> NumericToken {
+fn numeric(representation: &str, tokenizer_value: f32) -> NumericToken {
     NumericToken {
+        tokenizer_value_bits: tokenizer_value.to_bits(),
         representation: representation.into(),
         kind: if representation.contains(['.', 'e', 'E']) {
             CssNumericTokenKind::Number

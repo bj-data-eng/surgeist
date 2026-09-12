@@ -3682,11 +3682,105 @@ fn is_parser_reserved_container_name(name: &str) -> bool {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssContainerCondition {
+    /// A complete unrecognized function or parenthesized operand, with original syntax.
+    GeneralEnclosed(CssContainerGeneralEnclosed),
     Feature(CssContainerFeatureQuery),
     Style(CssContainerStyleQuery),
     Not(Box<CssContainerCondition>),
     And(CssContainerConditionList),
     Or(CssContainerConditionList),
+}
+
+/// A container operand classified as general-enclosed by the container grammar.
+/// Its private payload prevents bypassing recognized feature and style admission.
+///
+/// ```compile_fail
+/// use surgeist_css::{CssContainerGeneralEnclosed, CssGeneralEnclosed};
+/// fn forge(enclosed: CssGeneralEnclosed) -> CssContainerGeneralEnclosed {
+///     CssContainerGeneralEnclosed { enclosed }
+/// }
+/// ```
+/// ```compile_fail
+/// use surgeist_css::{CssContainerCondition, CssGeneralEnclosed};
+/// fn forge(enclosed: CssGeneralEnclosed) -> CssContainerCondition {
+///     CssContainerCondition::GeneralEnclosed(enclosed)
+/// }
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssContainerGeneralEnclosed {
+    enclosed: CssGeneralEnclosed,
+}
+
+impl CssContainerGeneralEnclosed {
+    pub(crate) fn new(enclosed: CssGeneralEnclosed) -> Self {
+        Self { enclosed }
+    }
+    /// Returns the immutable lexical enclosure admitted by the container grammar.
+    #[must_use]
+    pub const fn enclosed(&self) -> &CssGeneralEnclosed {
+        &self.enclosed
+    }
+    #[must_use]
+    pub const fn component(&self) -> &crate::CssComponentValue {
+        self.enclosed.component()
+    }
+    #[must_use]
+    pub const fn origin(&self) -> &CssValueOrigin {
+        self.enclosed.origin()
+    }
+    #[must_use]
+    pub fn position(&self) -> Option<CssSourcePosition> {
+        self.enclosed.position()
+    }
+    #[must_use]
+    pub fn authored(&self) -> Option<&str> {
+        self.enclosed.authored()
+    }
+    /// Serializes the original lexical operand, including EOF-implied delimiters.
+    pub fn serialize(&self) -> Result<crate::CssSerializedValue, crate::CssComponentValueError> {
+        self.enclosed.serialize()
+    }
+}
+
+/// Failure to admit immutable component syntax as a container condition.
+#[non_exhaustive]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CssContainerConstructionError {
+    Component(crate::CssComponentValueError),
+}
+impl CssContainerConstructionError {
+    #[must_use]
+    pub const fn origin(&self) -> &CssValueOrigin {
+        match self {
+            Self::Component(error) => error.origin(),
+        }
+    }
+}
+impl std::fmt::Display for CssContainerConstructionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Component(error) => error.fmt(f),
+        }
+    }
+}
+impl std::error::Error for CssContainerConstructionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Component(error) => Some(error),
+        }
+    }
+}
+impl CssContainerCondition {
+    /// Classifies an immutable enclosure with the same grammar used by parsing.
+    /// Recognized size, style, and grouped conditions take precedence over opaque syntax.
+    /// Opaque payloads retain supplied origins and trusted EOF recovery without
+    /// reparsing. Recognized variants retain their existing semantic fields;
+    /// they do not yet preserve complete grouping or operator provenance.
+    pub fn try_from_enclosed(
+        enclosed: CssGeneralEnclosed,
+    ) -> Result<Self, CssContainerConstructionError> {
+        crate::parser::container_condition_from_enclosed(enclosed)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

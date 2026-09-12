@@ -482,9 +482,20 @@ pub surgeist_css::CssContainComponent::Size
 #[non_exhaustive] pub enum surgeist_css::CssContainerCondition
 pub surgeist_css::CssContainerCondition::And(surgeist_css::CssContainerConditionList)
 pub surgeist_css::CssContainerCondition::Feature(surgeist_css::CssContainerFeatureQuery)
+pub surgeist_css::CssContainerCondition::GeneralEnclosed(surgeist_css::CssContainerGeneralEnclosed)
 pub surgeist_css::CssContainerCondition::Not(alloc::boxed::Box<surgeist_css::CssContainerCondition>)
 pub surgeist_css::CssContainerCondition::Or(surgeist_css::CssContainerConditionList)
 pub surgeist_css::CssContainerCondition::Style(surgeist_css::CssContainerStyleQuery)
+impl surgeist_css::CssContainerCondition
+pub fn surgeist_css::CssContainerCondition::try_from_enclosed(enclosed: surgeist_css::CssGeneralEnclosed) -> core::result::Result<Self, surgeist_css::CssContainerConstructionError>
+#[non_exhaustive] pub enum surgeist_css::CssContainerConstructionError
+pub surgeist_css::CssContainerConstructionError::Component(surgeist_css::CssComponentValueError)
+impl surgeist_css::CssContainerConstructionError
+pub const fn surgeist_css::CssContainerConstructionError::origin(&self) -> &surgeist_css::CssValueOrigin
+impl core::error::Error for surgeist_css::CssContainerConstructionError
+pub fn surgeist_css::CssContainerConstructionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssContainerConstructionError
+pub fn surgeist_css::CssContainerConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssContainerFeatureQuery
 pub surgeist_css::CssContainerFeatureQuery::AspectRatio(surgeist_css::CssRangeFeature<surgeist_css::CssRatio>)
 pub surgeist_css::CssContainerFeatureQuery::BlockSize(surgeist_css::CssRangeFeature<surgeist_css::CssQueryLength>)
@@ -3873,6 +3884,14 @@ pub struct surgeist_css::CssContainerConditionList
 impl surgeist_css::CssContainerConditionList
 pub fn surgeist_css::CssContainerConditionList::conditions(&self) -> &[surgeist_css::CssContainerCondition]
 pub fn surgeist_css::CssContainerConditionList::try_new(conditions: alloc::vec::Vec<surgeist_css::CssContainerCondition>) -> core::option::Option<Self>
+pub struct surgeist_css::CssContainerGeneralEnclosed
+impl surgeist_css::CssContainerGeneralEnclosed
+pub fn surgeist_css::CssContainerGeneralEnclosed::authored(&self) -> core::option::Option<&str>
+pub const fn surgeist_css::CssContainerGeneralEnclosed::component(&self) -> &surgeist_css::CssComponentValue
+pub const fn surgeist_css::CssContainerGeneralEnclosed::enclosed(&self) -> &surgeist_css::CssGeneralEnclosed
+pub const fn surgeist_css::CssContainerGeneralEnclosed::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssContainerGeneralEnclosed::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub fn surgeist_css::CssContainerGeneralEnclosed::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
 pub struct surgeist_css::CssContainerName
 impl surgeist_css::CssContainerName
 pub fn surgeist_css::CssContainerName::as_str(&self) -> &str

@@ -761,6 +761,7 @@ fn unescape(field: &str) -> Result<String, String> {
 #[test]
 fn authored_css_cases_match_selected_public_report_observables() {
     let rows = parse_fixture(FIXTURE).expect("valid I01 observable fixture");
+    let mut migrated_container_cases = 0;
     let mut migrated_tolerance_cases = 0;
     let mut migrated_auto_repeat_cases = 0;
     for row in rows {
@@ -773,6 +774,11 @@ fn authored_css_cases_match_selected_public_report_observables() {
         }
         if assert_archived_intrinsic_auto_repeat_acceptance(&row) {
             migrated_auto_repeat_cases += 1;
+            assert_strict_parity(&row);
+            continue;
+        }
+        if assert_archived_container_opaque_acceptance(&row) {
+            migrated_container_cases += 1;
             assert_strict_parity(&row);
             continue;
         }
@@ -791,6 +797,10 @@ fn authored_css_cases_match_selected_public_report_observables() {
         assert_strict_parity(&row);
     }
     assert_eq!(
+        migrated_container_cases, 3,
+        "all three archived unknown-container rejections have explicit current witnesses"
+    );
+    assert_eq!(
         migrated_tolerance_cases, 4,
         "all four archived old-name cases require current rejection witnesses"
     );
@@ -798,6 +808,81 @@ fn authored_css_cases_match_selected_public_report_observables() {
         migrated_auto_repeat_cases, 3,
         "all three archived intrinsic auto-repeat cases require current acceptance witnesses"
     );
+}
+
+// Conditional 5 query-in-parens admits general-enclosed syntax. These three
+// historical rejections remain unchanged in the archive, while current syntax
+// retains the opaque condition and the independently expected nested style.
+fn assert_archived_container_opaque_acceptance(row: &Row) -> bool {
+    let (input, query) = match row.case_id.as_str() {
+        "catalog.non-property.baseline.rule.container.boundary" => (
+            "@container scroll-state(stuck: top) { .x { color: red; } }",
+            "scroll-state(stuck: top)",
+        ),
+        "catalog.non-property.baseline.container.condition.boundary" => (
+            "@container style(color: red) { .x { color: red; } }",
+            "style(color: red)",
+        ),
+        "catalog.non-property.baseline.container.size-feature.boundary" => (
+            "@container (unknown-size > 1px) { .x { color: red; } }",
+            "(unknown-size > 1px)",
+        ),
+        _ => return false,
+    };
+    assert_eq!(row.input, input);
+    assert_eq!(row.entry, "sheet");
+    assert_eq!(row.clean, "false");
+    assert_eq!(row.retained, "-");
+    assert_eq!(row.values, "-");
+    assert_eq!(row.authored_declarations, "-");
+    assert!(row.diagnostics.starts_with("InvalidAtRulePrelude/"));
+    let report = parse_sheet(input);
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    let [CssRule::Container(container)] = report.syntax().rules() else {
+        panic!("retained container")
+    };
+    let surgeist_css::CssContainerCondition::GeneralEnclosed(value) = container.condition() else {
+        panic!("opaque query")
+    };
+    assert_eq!(value.authored(), Some(query));
+    assert_eq!(value.serialize().unwrap().as_css(), query);
+    let surgeist_css::CssValueOrigin::Parsed(query_origin) = value.origin() else {
+        panic!("original query source")
+    };
+    assert_eq!(query_origin.source().as_str(), input);
+    assert_eq!(
+        query_origin.span().start().byte_offset().value(),
+        input.find(query).unwrap()
+    );
+    let [CssRule::Style(style)] = container.rules() else {
+        panic!("retained child style")
+    };
+    let [selector] = style.selectors().selectors() else {
+        panic!("one selector")
+    };
+    assert_eq!(
+        selector.selector(),
+        &surgeist_css::CssSelector::Class("x".to_owned())
+    );
+    let [declaration] = style.declarations().as_slice() else {
+        panic!("one color declaration")
+    };
+    assert_eq!(declaration.importance(), CssImportance::Normal);
+    let parsed_value = declaration.parsed_value().unwrap();
+    assert!(parsed_value.source().same_snapshot(query_origin.source()));
+    assert_eq!(parsed_value.source().as_str(), input);
+    let surgeist_css::CssKnownPropertyValueRef::Color(color) =
+        declaration.known().unwrap().property_value().unwrap()
+    else {
+        panic!("color")
+    };
+    assert_eq!(
+        color.i01_subset(),
+        Some(&surgeist_css::CssColor::Rgba(
+            surgeist_css::CssRgbaColor::try_new(255, 0, 0, 1.0).unwrap()
+        ))
+    );
+    true
 }
 
 // Grid3 relaxes the auto-repeat body to general track-size content. These three

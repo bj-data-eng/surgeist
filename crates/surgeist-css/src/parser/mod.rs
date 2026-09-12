@@ -56,11 +56,12 @@ use layout::*;
 use multicolumn::*;
 use nesting::{parse_style_contents, parse_style_rule_block};
 use page::{parse_page_rule, parse_page_selector};
+pub(crate) use queries::container_condition_from_enclosed;
 #[cfg(test)]
 pub(crate) use queries::parse_container_condition_for_test;
+use queries::parse_media_query_list as parse_media_query_list_inner;
 #[cfg(test)]
 pub(crate) use queries::parse_media_query_list_for_test;
-use queries::{parse_container_condition, parse_media_query_list as parse_media_query_list_inner};
 use recovery::{
     GroupKind, RecoveryLoopOutcome, RecoveryProgress, RecoveryState, StructuralParent,
     StructuralPreflightOutcome, StyleContextCaptures, preflight_specialized_eof_limit,
@@ -87,9 +88,8 @@ use crate::error::{
     invalid_at_rule_body, invalid_at_rule_placement, invalid_custom_declaration_annotation,
     invalid_descriptor_annotation, invalid_encoding_declaration,
     invalid_known_declaration_annotation, invalid_root_syntax, invalid_syntax,
-    is_nesting_limit_error, normalize_encoding_error, property_name_error, unsupported_value,
-    with_at_rule_prelude_context, with_encoding_declaration_context, with_media_query_context,
-    with_property_context,
+    normalize_encoding_error, property_name_error, unsupported_value, with_at_rule_prelude_context,
+    with_encoding_declaration_context, with_media_query_context, with_property_context,
 };
 use crate::properties::*;
 use crate::syntax::*;
@@ -2997,30 +2997,15 @@ fn parse_container_prelude<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &RecoveryState,
 ) -> std::result::Result<CssContainerPrelude, ParseError<'i, Error>> {
-    let implicit =
-        recovery.check_specialized_components(source, input, "baseline.rule.container")?;
-    let state = input.state();
-    let name = if let Ok(name) = input.try_parse(Parser::expect_ident_cloned) {
-        if let Some(name) = CssContainerName::try_new(name.to_string()) {
-            Some(name)
-        } else {
-            input.reset(&state);
-            None
-        }
-    } else {
-        None
-    };
-    let condition = parse_container_condition(input)?;
-
-    if input.is_exhausted() {
-        recovery.retain_component_closures(implicit);
-    }
-
-    Ok(CssContainerPrelude { name, condition })
+    let (values, implicit) = queries::collect_container_components(source, input, recovery)?;
+    let prelude =
+        queries::container_prelude_from_components(&values, input.current_source_location())?;
+    recovery.retain_component_closures(implicit);
+    Ok(prelude)
 }
 
 fn with_container_prelude_context<'i>(error: ParseError<'i, Error>) -> ParseError<'i, Error> {
-    if is_nesting_limit_error(&error) {
+    if queries::media_terminal_error(&error) {
         error
     } else {
         with_at_rule_prelude_context(

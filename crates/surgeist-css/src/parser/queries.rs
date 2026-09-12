@@ -1,15 +1,15 @@
 #[cfg(test)]
 use cssparser::ParserInput;
 use cssparser::{
-    BasicParseErrorKind, Delimiter, ParseError, Parser, ToCss, Token, match_ignore_ascii_case,
+    BasicParseErrorKind, Delimiter, ParseError, Parser, Token, match_ignore_ascii_case,
 };
 
+use super::CssContainerPrelude;
 #[cfg(test)]
 use super::recovery::StyleContextCaptures;
 use super::recovery::{
     RecoveryState, comma_member_span, first_non_trivia_position, recovery_action_for_error,
 };
-use super::variables::collect_authored_declaration_value;
 use crate::error::{
     CssFeatureId, Error, basic, from_parse_error, invalid_syntax, is_nesting_limit_error,
     unsupported_value_at, with_media_query_context,
@@ -233,186 +233,408 @@ pub(crate) fn parse_media_query_list_for_test(
     Ok(list)
 }
 
-pub(crate) fn parse_container_condition<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssContainerCondition, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("not"))
-        .is_ok()
-    {
-        return Ok(CssContainerCondition::Not(Box::new(
-            parse_container_condition_atom(input)?,
-        )));
-    }
-
-    let first = parse_container_condition_atom(input)?;
-
-    if input
-        .try_parse(|input| input.expect_ident_matching("and"))
-        .is_ok()
-    {
-        let mut conditions = vec![first, parse_container_condition_atom(input)?];
-        while input
-            .try_parse(|input| input.expect_ident_matching("and"))
-            .is_ok()
-        {
-            conditions.push(parse_container_condition_atom(input)?);
-        }
-        return Ok(CssContainerCondition::And(CssContainerConditionList::new(
-            conditions,
-        )));
-    }
-
-    if input
-        .try_parse(|input| input.expect_ident_matching("or"))
-        .is_ok()
-    {
-        let mut conditions = vec![first, parse_container_condition_atom(input)?];
-        while input
-            .try_parse(|input| input.expect_ident_matching("or"))
-            .is_ok()
-        {
-            conditions.push(parse_container_condition_atom(input)?);
-        }
-        return Ok(CssContainerCondition::Or(CssContainerConditionList::new(
-            conditions,
-        )));
-    }
-
-    Ok(first)
+/// The parsed and checked entry points share this immutable component grammar.
+pub(crate) fn container_condition_from_enclosed(
+    enclosed: CssGeneralEnclosed,
+) -> Result<CssContainerCondition, CssContainerConstructionError> {
+    // The lexical owner already enforces the shared structural ceiling. Validate
+    // its complete output before classification; no text is fed back to a parser.
+    let mut budget = crate::component_values::CssCanonicalBuilder::counting(usize::MAX);
+    budget
+        .push_components(std::slice::from_ref(enclosed.component()))
+        .map_err(CssContainerConstructionError::Component)?;
+    container_atom(enclosed.component())
+        .map(ContainerNode::into_condition)
+        .map_err(CssContainerConstructionError::Component)
 }
 
+// Grammar probes borrow opaque leaves. Only the selected final tree copies its
+// retained leaves, so failed enclosing probes cannot repeatedly clone subtrees.
+enum ContainerNode<'a> {
+    Opaque(&'a CssComponentValue),
+    Feature(CssContainerFeatureQuery),
+    Style(CssContainerStyleQuery),
+    Not(Box<Self>),
+    And(Vec<Self>),
+    Or(Vec<Self>),
+}
+impl ContainerNode<'_> {
+    fn into_condition(self) -> CssContainerCondition {
+        match self {
+            Self::Opaque(component) => {
+                CssContainerCondition::GeneralEnclosed(CssContainerGeneralEnclosed::new(
+                    CssGeneralEnclosed::try_from_component(component.clone())
+                        .expect("container atom is an enclosure"),
+                ))
+            }
+            Self::Feature(feature) => CssContainerCondition::Feature(feature),
+            Self::Style(style) => CssContainerCondition::Style(style),
+            Self::Not(child) => CssContainerCondition::Not(Box::new(child.into_condition())),
+            Self::And(children) => CssContainerCondition::And(CssContainerConditionList::new(
+                children.into_iter().map(Self::into_condition).collect(),
+            )),
+            Self::Or(children) => CssContainerCondition::Or(CssContainerConditionList::new(
+                children.into_iter().map(Self::into_condition).collect(),
+            )),
+        }
+    }
+}
+
+struct ContainerCursor<'a> {
+    items: &'a [CssComponentValue],
+    index: usize,
+}
+impl<'a> ContainerCursor<'a> {
+    fn new(items: &'a [CssComponentValue]) -> Self {
+        Self { items, index: 0 }
+    }
+    fn peek(&mut self) -> Option<&'a CssComponentValue> {
+        while self.items.get(self.index).is_some_and(container_trivia) {
+            self.index += 1;
+        }
+        self.items.get(self.index)
+    }
+    fn next(&mut self) -> Option<&'a CssComponentValue> {
+        let value = self.peek()?;
+        self.index += 1;
+        Some(value)
+    }
+    fn ident(&mut self, expected: &str) -> bool {
+        if matches!(self.peek().map(CssComponentValue::view), Some(CssComponentValueRef::Token(CssValueTokenRef::Ident(name))) if name.eq_ignore_ascii_case(expected))
+        {
+            self.index += 1;
+            true
+        } else {
+            false
+        }
+    }
+    fn delim(&mut self, expected: char) -> bool {
+        if matches!(self.peek().map(CssComponentValue::view), Some(CssComponentValueRef::Token(CssValueTokenRef::Delim(value))) if value == expected)
+        {
+            self.index += 1;
+            true
+        } else {
+            false
+        }
+    }
+    fn token(&mut self) -> Option<CssValueTokenRef<'a>> {
+        match self.next()?.view() {
+            CssComponentValueRef::Token(token) => Some(token),
+            _ => None,
+        }
+    }
+}
+fn container_trivia(value: &CssComponentValue) -> bool {
+    matches!(
+        value.view(),
+        CssComponentValueRef::Comment(_)
+            | CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
+    )
+}
+fn container_condition(
+    items: &[CssComponentValue],
+) -> Result<Result<ContainerNode<'_>, usize>, crate::CssComponentValueError> {
+    let mut cursor = ContainerCursor::new(items);
+    if cursor.ident("not") {
+        let atom = match container_cursor_atom(&mut cursor)? {
+            Ok(atom) => atom,
+            Err(index) => return Ok(Err(index)),
+        };
+        return Ok(if cursor.peek().is_none() {
+            Ok(ContainerNode::Not(Box::new(atom)))
+        } else {
+            Err(cursor.index)
+        });
+    }
+    let first = match container_cursor_atom(&mut cursor)? {
+        Ok(atom) => atom,
+        Err(index) => return Ok(Err(index)),
+    };
+    let is_and = if cursor.ident("and") {
+        true
+    } else if cursor.ident("or") {
+        false
+    } else {
+        return Ok(if cursor.peek().is_none() {
+            Ok(first)
+        } else {
+            Err(cursor.index)
+        });
+    };
+    let mut conditions = vec![first];
+    loop {
+        let atom = match container_cursor_atom(&mut cursor)? {
+            Ok(atom) => atom,
+            Err(index) => return Ok(Err(index)),
+        };
+        conditions.push(atom);
+        if !cursor.ident(if is_and { "and" } else { "or" }) {
+            break;
+        }
+    }
+    if cursor.peek().is_some() {
+        return Ok(Err(cursor.index));
+    }
+    Ok(Ok(if is_and {
+        ContainerNode::And(conditions)
+    } else {
+        ContainerNode::Or(conditions)
+    }))
+}
+fn container_cursor_atom<'a>(
+    cursor: &mut ContainerCursor<'a>,
+) -> Result<Result<ContainerNode<'a>, usize>, crate::CssComponentValueError> {
+    cursor.peek();
+    let index = cursor.index;
+    let Some(component) = cursor.next() else {
+        return Ok(Err(index));
+    };
+    match component.view() {
+        CssComponentValueRef::Function(_) => container_atom(component).map(Ok),
+        CssComponentValueRef::Block(block) if block.kind() == crate::CssBlockKind::Parenthesis => {
+            container_atom(component).map(Ok)
+        }
+        _ => Ok(Err(index)),
+    }
+}
+fn container_atom(
+    component: &CssComponentValue,
+) -> Result<ContainerNode<'_>, crate::CssComponentValueError> {
+    match component.view() {
+        CssComponentValueRef::Function(function)
+            if function.name().eq_ignore_ascii_case("style") =>
+        {
+            if let Some(style) = container_style(function.values().items())? {
+                return Ok(ContainerNode::Style(style));
+            }
+        }
+        CssComponentValueRef::Block(block) if block.kind() == crate::CssBlockKind::Parenthesis => {
+            if let Ok(condition) = container_condition(block.values().items())? {
+                return Ok(condition);
+            }
+            if let Some(feature) = container_feature(block.values().items()) {
+                return Ok(ContainerNode::Feature(feature));
+            }
+        }
+        _ => {}
+    }
+    Ok(ContainerNode::Opaque(component))
+}
+fn container_feature(items: &[CssComponentValue]) -> Option<CssContainerFeatureQuery> {
+    let mut cursor = ContainerCursor::new(items);
+    let CssValueTokenRef::Ident(name) = cursor.token()? else {
+        return None;
+    };
+    let feature = ContainerFeatureName::parse(name)?;
+    let result = match feature {
+        ContainerFeatureName::Width(prefix)
+        | ContainerFeatureName::Height(prefix)
+        | ContainerFeatureName::InlineSize(prefix)
+        | ContainerFeatureName::BlockSize(prefix) => {
+            let comparison = container_comparison(&mut cursor, prefix)?;
+            let value = match cursor.token()? {
+                CssValueTokenRef::Dimension { number, unit } => CssQueryLength::try_new(
+                    number.tokenizer_value(),
+                    CssLengthUnit::from_css_unit(unit)?,
+                )?,
+                CssValueTokenRef::Number(number) if number.tokenizer_value() == 0.0 => {
+                    CssQueryLength::unitless_zero()
+                }
+                _ => return None,
+            };
+            let range = CssRangeFeature::new(Some(comparison), value);
+            match feature {
+                ContainerFeatureName::Width(_) => CssContainerFeatureQuery::Width(range),
+                ContainerFeatureName::Height(_) => CssContainerFeatureQuery::Height(range),
+                ContainerFeatureName::InlineSize(_) => CssContainerFeatureQuery::InlineSize(range),
+                _ => CssContainerFeatureQuery::BlockSize(range),
+            }
+        }
+        ContainerFeatureName::AspectRatio(prefix) => {
+            let comparison = container_comparison(&mut cursor, prefix)?;
+            let CssValueTokenRef::Number(numerator) = cursor.token()? else {
+                return None;
+            };
+            if !cursor.delim('/') {
+                return None;
+            }
+            let CssValueTokenRef::Number(denominator) = cursor.token()? else {
+                return None;
+            };
+            let value =
+                CssRatio::try_new(numerator.tokenizer_value(), denominator.tokenizer_value())?;
+            CssContainerFeatureQuery::AspectRatio(CssRangeFeature::new(Some(comparison), value))
+        }
+        ContainerFeatureName::Orientation => {
+            if !matches!(cursor.token()?, CssValueTokenRef::Colon) {
+                return None;
+            }
+            let CssValueTokenRef::Ident(value) = cursor.token()? else {
+                return None;
+            };
+            CssContainerFeatureQuery::Orientation(if value.eq_ignore_ascii_case("portrait") {
+                CssOrientation::Portrait
+            } else if value.eq_ignore_ascii_case("landscape") {
+                CssOrientation::Landscape
+            } else {
+                return None;
+            })
+        }
+    };
+    cursor.peek().is_none().then_some(result)
+}
+fn container_comparison(
+    cursor: &mut ContainerCursor<'_>,
+    prefix: Option<RangePrefix>,
+) -> Option<CssQueryComparison> {
+    if matches!(
+        cursor.peek()?.view(),
+        CssComponentValueRef::Token(CssValueTokenRef::Colon)
+    ) {
+        cursor.next();
+        return Some(match prefix {
+            Some(RangePrefix::Min) => CssQueryComparison::GreaterThanOrEqual,
+            Some(RangePrefix::Max) => CssQueryComparison::LessThanOrEqual,
+            None => CssQueryComparison::Equal,
+        });
+    }
+    if prefix.is_some() {
+        return None;
+    }
+    match cursor.token()? {
+        CssValueTokenRef::Delim('<') => Some(if cursor.delim('=') {
+            CssQueryComparison::LessThanOrEqual
+        } else {
+            CssQueryComparison::LessThan
+        }),
+        CssValueTokenRef::Delim('>') => Some(if cursor.delim('=') {
+            CssQueryComparison::GreaterThanOrEqual
+        } else {
+            CssQueryComparison::GreaterThan
+        }),
+        CssValueTokenRef::Delim('=') => Some(CssQueryComparison::Equal),
+        _ => None,
+    }
+}
+fn container_style(
+    items: &[CssComponentValue],
+) -> Result<Option<CssContainerStyleQuery>, crate::CssComponentValueError> {
+    let mut cursor = ContainerCursor::new(items);
+    let Some(CssValueTokenRef::Ident(name)) = cursor.token() else {
+        return Ok(None);
+    };
+    let Some(name) = super::variables::parse_custom_property_name(name) else {
+        return Ok(None);
+    };
+    if cursor.peek().is_none() {
+        return Ok(Some(CssContainerStyleQuery::CustomPropertyPresence(name)));
+    }
+    if !matches!(cursor.token(), Some(CssValueTokenRef::Colon)) {
+        return Ok(None);
+    }
+    let Some(value) = super::variables::authored_value_from_components(&items[cursor.index..])?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(CssContainerStyleQuery::CustomPropertyValue {
+        name,
+        value,
+    }))
+}
+
+/// Collect and validate the complete original prelude once, after the enclosing
+/// production's shared depth check, before any semantic classification.
+pub(super) fn collect_container_components<'i>(
+    source: &str,
+    input: &mut Parser<'i, '_>,
+    recovery: &RecoveryState,
+) -> Result<(CssComponentValues, Vec<usize>), ParseError<'i, Error>> {
+    let implicit =
+        recovery.check_specialized_components(source, input, "baseline.rule.container")?;
+    let values = CssComponentValues::collect_from_parser(input, recovery.source_snapshot())
+        .map_err(|error| {
+            crate::error::invalid_component_value(input.current_source_location(), error)
+        })?;
+    Ok((values, implicit))
+}
+pub(super) fn container_prelude_from_components<'i>(
+    values: &CssComponentValues,
+    location: cssparser::SourceLocation,
+) -> Result<CssContainerPrelude, ParseError<'i, Error>> {
+    let mut cursor = ContainerCursor::new(values.items());
+    let name = match cursor.peek().map(CssComponentValue::view) {
+        Some(CssComponentValueRef::Token(CssValueTokenRef::Ident(name))) => {
+            CssContainerName::try_new(name.to_owned())
+        }
+        _ => None,
+    };
+    if name.is_some() {
+        cursor.next();
+    }
+    let condition = container_condition(&values.items()[cursor.index..])
+        .map_err(|error| container_component_error(location, error))?
+        .map_err(|index| {
+            invalid_syntax(
+                container_failure_location(&values.items()[cursor.index..], index, location),
+                "invalid container condition",
+            )
+        })?;
+    Ok(CssContainerPrelude {
+        name,
+        condition: condition.into_condition(),
+    })
+}
+fn container_failure_location(
+    items: &[CssComponentValue],
+    index: usize,
+    end: cssparser::SourceLocation,
+) -> cssparser::SourceLocation {
+    items
+        .get(index)
+        .and_then(|component| crate::media::parsed_position(component.origin()))
+        .map_or(end, |position| cssparser::SourceLocation {
+            line: position.line().value(),
+            column: position.column().value() + 1,
+        })
+}
+fn container_component_error<'i>(
+    fallback: cssparser::SourceLocation,
+    error: crate::CssComponentValueError,
+) -> ParseError<'i, Error> {
+    let location = crate::media::parsed_position(error.origin()).map_or(fallback, |position| {
+        cssparser::SourceLocation {
+            line: position.line().value(),
+            column: position.column().value() + 1,
+        }
+    });
+    crate::error::invalid_component_value(location, error)
+}
 #[cfg(test)]
 pub(crate) fn parse_container_condition_for_test(
     source: &str,
-) -> std::result::Result<CssContainerCondition, Error> {
+) -> Result<CssContainerCondition, Error> {
     let mut input = ParserInput::new(source);
     let mut parser = Parser::new(&mut input);
-    let condition =
-        parse_container_condition(&mut parser).map_err(|error| from_parse_error(source, error))?;
-    if !parser.is_exhausted() {
-        return Err(from_parse_error(
-            source,
-            invalid_syntax(
-                parser.current_source_location(),
-                "unexpected token after container condition",
-            ),
-        ));
-    }
-    Ok(condition)
-}
-
-fn parse_container_condition_atom<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssContainerCondition, ParseError<'i, Error>> {
-    if let Ok(style) = input.try_parse(parse_container_style_query) {
-        return Ok(CssContainerCondition::Style(style));
-    }
-
-    input.expect_parenthesis_block().map_err(basic)?;
-    input.parse_nested_block(|input| {
-        if let Ok(condition) =
-            input.try_parse(|input| input.parse_entirely(parse_container_condition))
-        {
-            return Ok(condition);
-        }
-
-        let feature = parse_container_feature_query(input)?;
-        if !input.is_exhausted() {
-            return Err(invalid_syntax(
-                input.current_source_location(),
-                "unexpected token in container feature query",
-            ));
-        }
-        Ok(CssContainerCondition::Feature(feature))
-    })
-}
-
-fn parse_container_feature_query<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssContainerFeatureQuery, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
-    let Some(feature_name) = ContainerFeatureName::parse(&ident) else {
-        return Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported container feature `{ident}`"),
-        ));
-    };
-
-    match feature_name {
-        ContainerFeatureName::Width(prefix) => {
-            let comparison = parse_range_feature_comparison(input, prefix)?;
-            let value = parse_query_length(input)?;
-            Ok(CssContainerFeatureQuery::Width(CssRangeFeature::new(
-                comparison, value,
-            )))
-        }
-        ContainerFeatureName::Height(prefix) => {
-            let comparison = parse_range_feature_comparison(input, prefix)?;
-            let value = parse_query_length(input)?;
-            Ok(CssContainerFeatureQuery::Height(CssRangeFeature::new(
-                comparison, value,
-            )))
-        }
-        ContainerFeatureName::InlineSize(prefix) => {
-            let comparison = parse_range_feature_comparison(input, prefix)?;
-            let value = parse_query_length(input)?;
-            Ok(CssContainerFeatureQuery::InlineSize(CssRangeFeature::new(
-                comparison, value,
-            )))
-        }
-        ContainerFeatureName::BlockSize(prefix) => {
-            let comparison = parse_range_feature_comparison(input, prefix)?;
-            let value = parse_query_length(input)?;
-            Ok(CssContainerFeatureQuery::BlockSize(CssRangeFeature::new(
-                comparison, value,
-            )))
-        }
-        ContainerFeatureName::AspectRatio(prefix) => {
-            let comparison = parse_range_feature_comparison(input, prefix)?;
-            let value = parse_ratio(input)?;
-            Ok(CssContainerFeatureQuery::AspectRatio(CssRangeFeature::new(
-                comparison, value,
-            )))
-        }
-        ContainerFeatureName::Orientation => {
-            input.expect_colon().map_err(basic)?;
-            parse_orientation(input).map(CssContainerFeatureQuery::Orientation)
-        }
-    }
-}
-
-fn parse_container_style_query<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssContainerStyleQuery, ParseError<'i, Error>> {
-    input.expect_function_matching("style").map_err(basic)?;
-    input.parse_nested_block(|input| {
-        let location = input.current_source_location();
-        let name = input.expect_ident_cloned().map_err(basic)?;
-        let Some(name) = CssCustomPropertyName::try_new(name.to_string()) else {
-            return Err(invalid_syntax(
-                location,
-                "container style queries only support custom properties",
-            ));
-        };
-
-        if input.is_exhausted() {
-            return Ok(CssContainerStyleQuery::CustomPropertyPresence(name));
-        }
-
-        input.expect_colon().map_err(basic)?;
-        let (value, _) = collect_authored_declaration_value(input)?;
-        if value.as_css().trim().is_empty() {
-            return Err(invalid_syntax(
-                input.current_source_location(),
-                "container style query custom property value must not be empty",
-            ));
-        }
-
-        Ok(CssContainerStyleQuery::CustomPropertyValue { name, value })
-    })
+    let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+    let location = parser.current_source_location();
+    let (values, _) = collect_container_components(source, &mut parser, &recovery)
+        .map_err(|error| from_parse_error(source, error))?;
+    container_condition(values.items())
+        .map_err(|error| from_parse_error(source, container_component_error(location, error)))?
+        .map(ContainerNode::into_condition)
+        .map_err(|index| {
+            from_parse_error(
+                source,
+                invalid_syntax(
+                    container_failure_location(
+                        values.items(),
+                        index,
+                        parser.current_source_location(),
+                    ),
+                    "invalid container condition",
+                ),
+            )
+        })
 }
 
 pub(super) fn parse_media_query<'i, 't>(
@@ -1547,116 +1769,6 @@ impl MediaFeatureName {
     fn boolean_kind(self) -> Option<CssMediaFeatureKind> {
         self.prefix.is_none().then_some(self.id)
     }
-}
-
-fn parse_range_feature_comparison<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    prefix: Option<RangePrefix>,
-) -> std::result::Result<Option<CssQueryComparison>, ParseError<'i, Error>> {
-    if input.try_parse(Parser::expect_colon).is_ok() {
-        return Ok(Some(match prefix {
-            Some(RangePrefix::Min) => CssQueryComparison::GreaterThanOrEqual,
-            Some(RangePrefix::Max) => CssQueryComparison::LessThanOrEqual,
-            None => CssQueryComparison::Equal,
-        }));
-    }
-
-    if prefix.is_some() {
-        return Err(invalid_syntax(
-            input.current_source_location(),
-            "prefixed media range features require colon syntax",
-        ));
-    }
-
-    parse_query_comparison(input).map(Some)
-}
-
-fn parse_query_comparison<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssQueryComparison, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let Token::Delim(delim) = input.next().map_err(basic)? else {
-        return Err(invalid_syntax(
-            location,
-            "expected media feature comparison",
-        ));
-    };
-    let delim = *delim;
-
-    match delim {
-        '<' if input.try_parse(|input| input.expect_delim('=')).is_ok() => {
-            Ok(CssQueryComparison::LessThanOrEqual)
-        }
-        '<' => Ok(CssQueryComparison::LessThan),
-        '>' if input.try_parse(|input| input.expect_delim('=')).is_ok() => {
-            Ok(CssQueryComparison::GreaterThanOrEqual)
-        }
-        '>' => Ok(CssQueryComparison::GreaterThan),
-        '=' => Ok(CssQueryComparison::Equal),
-        _ => Err(invalid_syntax(
-            location,
-            "expected media feature comparison",
-        )),
-    }
-}
-
-fn parse_query_length<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssQueryLength, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Dimension { value, unit, .. } => {
-            let Some(unit) = CssLengthUnit::from_css_unit(unit) else {
-                return Err(unsupported_value_at(
-                    location,
-                    None,
-                    format!("unknown media query length unit `{unit}`"),
-                ));
-            };
-            CssQueryLength::try_new(*value, unit).ok_or_else(|| {
-                unsupported_value_at(location, None, "unsupported media query length")
-            })
-        }
-        Token::Number { value, .. } if *value == 0.0 => Ok(CssQueryLength::unitless_zero()),
-        token => Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported media query length `{}`", token.to_css_string()),
-        )),
-    }
-}
-
-fn parse_ratio<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssRatio, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let numerator = match input.next().map_err(basic)? {
-        Token::Number { value, .. } => *value,
-        token => {
-            return Err(unsupported_value_at(
-                location,
-                None,
-                format!("unsupported query ratio `{}`", token.to_css_string()),
-            ));
-        }
-    };
-
-    input.expect_delim('/').map_err(basic)?;
-
-    let denominator_location = input.current_source_location();
-    let denominator = match input.next().map_err(basic)? {
-        Token::Number { value, .. } => *value,
-        token => {
-            return Err(unsupported_value_at(
-                denominator_location,
-                None,
-                format!("unsupported query ratio `{}`", token.to_css_string()),
-            ));
-        }
-    };
-
-    CssRatio::try_new(numerator, denominator)
-        .ok_or_else(|| unsupported_value_at(location, None, "unsupported query ratio"))
 }
 
 fn parse_orientation<'i, 't>(
