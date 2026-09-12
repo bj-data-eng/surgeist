@@ -121,6 +121,15 @@ unresolved. Its existing class is therefore left pending, not endorsed as an
 outside-profile exclusion. These class corrections do not establish a complete
 130-case baseline or refresh the separately persisted oracle.
 
+The 45 original `:is`, `:where`, `:not`, and `:has` records use the raw
+single-selector adapter. Their independently derived
+[`logical-selector-reconciliation.json`](../../csstree/logical-selector-reconciliation.json)
+contracts distinguish 17 clean, ten recovered, and 18 rejected selectors.
+Forgiving lists retain the outer pseudo even when no inner member survives;
+unforgiving failures reject the input. Ordered diagnostics preserve repeated
+invalid members. The tests bind original identity and source hashes and exercise
+the real adapter against these classes. The persisted oracle remains separate.
+
 The adapterless Combinator fixtures retain their explicit panic-freedom policy.
 The mixed `atrulePrelude` fixture resolves its adapter from validated options:
 `atrule: media` selects the raw media-query-list parser, while the unnamed generic

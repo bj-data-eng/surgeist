@@ -10701,34 +10701,41 @@
       "id": "selector/functional-pseudo/has.json#/empty argument",
       "expectation_sha256": "6ad5da7d33d866f7034be05440b79e22122d79185e3dcc00da92c077c0456ac7",
       "class": {
-        "kind": "clean",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "selector/functional-pseudo/has.json#/error/0",
       "expectation_sha256": "6ad5da7d33d866f7034be05440b79e22122d79185e3dcc00da92c077c0456ac7",
       "class": {
-        "kind": "recovered",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
         },
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_selector_list_item",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -10738,19 +10745,19 @@
       "id": "selector/functional-pseudo/has.json#/error/1",
       "expectation_sha256": "6ad5da7d33d866f7034be05440b79e22122d79185e3dcc00da92c077c0456ac7",
       "class": {
-        "kind": "recovered",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
         },
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_selector_list_item",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -10760,19 +10767,19 @@
       "id": "selector/functional-pseudo/has.json#/error/2",
       "expectation_sha256": "6ad5da7d33d866f7034be05440b79e22122d79185e3dcc00da92c077c0456ac7",
       "class": {
-        "kind": "recovered",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
         },
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_selector_list_item",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -10782,19 +10789,19 @@
       "id": "selector/functional-pseudo/has.json#/error/3",
       "expectation_sha256": "6ad5da7d33d866f7034be05440b79e22122d79185e3dcc00da92c077c0456ac7",
       "class": {
-        "kind": "recovered",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
         },
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_selector_list_item",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -10804,19 +10811,19 @@
       "id": "selector/functional-pseudo/has.json#/error/4",
       "expectation_sha256": "6ad5da7d33d866f7034be05440b79e22122d79185e3dcc00da92c077c0456ac7",
       "class": {
-        "kind": "recovered",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
         },
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_selector_list_item",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -10838,7 +10845,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -10875,7 +10882,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -11437,19 +11444,19 @@
       "id": "selector/functional-pseudo/is.json#/error/0",
       "expectation_sha256": "b83c826039585f0307c96bc08e776264bbb121403fab2edeae5e8e48b7f90f4e",
       "class": {
-        "kind": "recovered",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
         },
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_selector_list_item",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -11517,12 +11524,39 @@
             "code": "invalid_selector",
             "action": "drop_selector_list_item",
             "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_selector",
+            "action": "drop_selector_list_item",
+            "payload_relation": "intersects"
           }
         ]
       }
     },
     {
       "id": "selector/functional-pseudo/is.json#/error/4",
+      "expectation_sha256": "b83c826039585f0307c96bc08e776264bbb121403fab2edeae5e8e48b7f90f4e",
+      "class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      }
+    },
+    {
+      "id": "selector/functional-pseudo/is.json#/error/5",
       "expectation_sha256": "b83c826039585f0307c96bc08e776264bbb121403fab2edeae5e8e48b7f90f4e",
       "class": {
         "kind": "recovered",
@@ -11538,28 +11572,6 @@
           {
             "code": "invalid_selector",
             "action": "drop_selector_list_item",
-            "payload_relation": "intersects"
-          }
-        ]
-      }
-    },
-    {
-      "id": "selector/functional-pseudo/is.json#/error/5",
-      "expectation_sha256": "b83c826039585f0307c96bc08e776264bbb121403fab2edeae5e8e48b7f90f4e",
-      "class": {
-        "kind": "strict_rejected",
-        "retained_syntax": {
-          "extractor": {
-            "kind": "selector"
-          },
-          "predicate": {
-            "relation": "empty"
-          }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_selector",
-            "action": "drop_qualified_rule",
             "payload_relation": "intersects"
           }
         ]
@@ -11614,7 +11626,7 @@
       "id": "selector/functional-pseudo/is.json#/should support relative selectors",
       "expectation_sha256": "b83c826039585f0307c96bc08e776264bbb121403fab2edeae5e8e48b7f90f4e",
       "class": {
-        "kind": "clean",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
@@ -11622,7 +11634,19 @@
           "predicate": {
             "relation": "nonempty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_selector_list_item",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_selector",
+            "action": "drop_selector_list_item",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -12036,7 +12060,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -12058,7 +12082,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -12080,7 +12104,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -12102,7 +12126,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -12124,7 +12148,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -12146,7 +12170,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -12462,19 +12486,19 @@
       "id": "selector/functional-pseudo/where.json#/error/0",
       "expectation_sha256": "a4eefdd9e655c9290360b998c455c785f1f2f42fc3712aeb40cdf4a270924bd0",
       "class": {
-        "kind": "recovered",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
         },
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_selector_list_item",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -12542,12 +12566,39 @@
             "code": "invalid_selector",
             "action": "drop_selector_list_item",
             "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_selector",
+            "action": "drop_selector_list_item",
+            "payload_relation": "intersects"
           }
         ]
       }
     },
     {
       "id": "selector/functional-pseudo/where.json#/error/4",
+      "expectation_sha256": "a4eefdd9e655c9290360b998c455c785f1f2f42fc3712aeb40cdf4a270924bd0",
+      "class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      }
+    },
+    {
+      "id": "selector/functional-pseudo/where.json#/error/5",
       "expectation_sha256": "a4eefdd9e655c9290360b998c455c785f1f2f42fc3712aeb40cdf4a270924bd0",
       "class": {
         "kind": "recovered",
@@ -12563,28 +12614,6 @@
           {
             "code": "invalid_selector",
             "action": "drop_selector_list_item",
-            "payload_relation": "intersects"
-          }
-        ]
-      }
-    },
-    {
-      "id": "selector/functional-pseudo/where.json#/error/5",
-      "expectation_sha256": "a4eefdd9e655c9290360b998c455c785f1f2f42fc3712aeb40cdf4a270924bd0",
-      "class": {
-        "kind": "strict_rejected",
-        "retained_syntax": {
-          "extractor": {
-            "kind": "selector"
-          },
-          "predicate": {
-            "relation": "empty"
-          }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_selector",
-            "action": "drop_qualified_rule",
             "payload_relation": "intersects"
           }
         ]
@@ -12639,7 +12668,7 @@
       "id": "selector/functional-pseudo/where.json#/should support relative selectors",
       "expectation_sha256": "a4eefdd9e655c9290360b998c455c785f1f2f42fc3712aeb40cdf4a270924bd0",
       "class": {
-        "kind": "clean",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
@@ -12647,7 +12676,19 @@
           "predicate": {
             "relation": "nonempty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_selector_list_item",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_selector",
+            "action": "drop_selector_list_item",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
