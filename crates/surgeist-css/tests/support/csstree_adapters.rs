@@ -10,6 +10,7 @@ use surgeist_css::{
 #[serde(rename_all = "snake_case")]
 pub enum EntryPoint {
     Sheet,
+    Rule,
     StyleAttribute,
     Declaration,
     PropertyValueText,
@@ -24,6 +25,7 @@ impl EntryPoint {
     pub const fn name(self) -> &'static str {
         match self {
             Self::Sheet => "sheet",
+            Self::Rule => "rule",
             Self::StyleAttribute => "style_attribute",
             Self::Declaration => "declaration",
             Self::PropertyValueText => "property_value_text",
@@ -656,7 +658,7 @@ impl RegistryEntry {
             ),
             "rule" => matches!(
                 (self.entry_point, self.adapter),
-                (EntryPoint::Sheet, Adapter::TopLevelRule)
+                (EntryPoint::Rule, Adapter::TopLevelRule)
             ),
             "atrule" => matches!(
                 (self.entry_point, self.adapter),
@@ -1109,7 +1111,7 @@ pub const REGISTRY: &[RegistryEntry] = &[
     entry!(
         "expectations/rule/Rule.json",
         "rule",
-        Sheet,
+        Rule,
         TopLevelRule,
         Extractor::SheetRules,
         EMPTY_OR_NO_RULE_PRELUDE
@@ -1117,7 +1119,7 @@ pub const REGISTRY: &[RegistryEntry] = &[
     entry!(
         "expectations/rule/legacy.json",
         "rule",
-        Sheet,
+        Rule,
         TopLevelRule,
         Extractor::SheetRules,
         EMPTY
@@ -1125,7 +1127,7 @@ pub const REGISTRY: &[RegistryEntry] = &[
     entry!(
         "expectations/rule/nested-atrule.json",
         "rule",
-        Sheet,
+        Rule,
         TopLevelRule,
         Extractor::SheetRules,
         EMPTY
@@ -1133,7 +1135,7 @@ pub const REGISTRY: &[RegistryEntry] = &[
     entry!(
         "expectations/rule/nesting.json",
         "rule",
-        Sheet,
+        Rule,
         TopLevelRule,
         Extractor::SheetRules,
         EMPTY
@@ -1141,7 +1143,7 @@ pub const REGISTRY: &[RegistryEntry] = &[
     entry!(
         "expectations/rule/tolerant.json",
         "rule",
-        Sheet,
+        Rule,
         TopLevelRule,
         Extractor::SheetRules,
         EMPTY

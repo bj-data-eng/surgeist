@@ -15,7 +15,7 @@ mod font_face;
 mod fragments;
 pub use fragments::{
     parse_declaration, parse_font_face_descriptor_value, parse_media_query, parse_media_query_list,
-    parse_property_value_text, parse_property_value_text_for_grammar, parse_selector,
+    parse_property_value_text, parse_property_value_text_for_grammar, parse_rule, parse_selector,
     parse_selector_list,
 };
 mod generated_content;
@@ -1576,7 +1576,7 @@ impl TopLevelPreludePhase {
     }
 }
 
-/// Immutable namespace bindings used to parse authored selector fragments.
+/// Immutable namespace bindings used to parse authored selector and rule fragments.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct CssNamespaceContext(CssNamespaceBindings);
 impl CssNamespaceContext {
@@ -1671,6 +1671,13 @@ impl<'s> StrictRuleParser<'s> {
             encoding: None,
             diagnostics: Vec::new(),
             recovery,
+        }
+    }
+
+    fn isolated_rule(source: &'s str, recovery: RecoveryState) -> Self {
+        Self {
+            encoding_allowed: false,
+            ..Self::top_level(source, recovery)
         }
     }
 

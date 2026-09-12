@@ -16,7 +16,7 @@ use super::{
 };
 use crate::error::{
     CssFeatureId, Error, invalid_at_rule_block, invalid_at_rule_placement, invalid_syntax,
-    with_at_rule_prelude_context, with_media_query_context,
+    is_nesting_limit_error, with_at_rule_prelude_context, with_media_query_context,
 };
 use crate::syntax::*;
 
@@ -71,6 +71,7 @@ pub(super) fn parse_style_contents<'i, 't>(
         source,
         diagnostics: Vec::new(),
         recovery,
+        qualified_resource_error: None,
     };
     let mut declarations = Vec::new();
     let mut rules = Vec::new();
@@ -80,7 +81,13 @@ pub(super) fn parse_style_contents<'i, 't>(
     let mut items = RuleBodyParser::new(input, &mut body_parser);
     loop {
         let progress = RecoveryProgress::record(items.input);
-        let Some(item) = items.next() else {
+        // cssparser's identifier-led declaration fallback discards qualified-rule
+        // errors. Preserve only typed resource failures for this one item so they
+        // cannot become an ordinary declaration error or leak into the next item.
+        items.parser.qualified_resource_error = None;
+        let item = items.next();
+        let qualified_resource_error = items.parser.qualified_resource_error.take();
+        let Some(item) = item else {
             break;
         };
         let (failed_at_block, failed_block_error) = item
@@ -107,7 +114,9 @@ pub(super) fn parse_style_contents<'i, 't>(
                 rules.extend(nested_rules);
             }
             Err((error, failed_unit))
-                if is_declaration_recovery_unit(failed_unit) && !failed_at_block =>
+                if is_declaration_recovery_unit(failed_unit)
+                    && !failed_at_block
+                    && qualified_resource_error.is_none() =>
             {
                 if let Some(diagnostic) = block_item_diagnostic(
                     source,
@@ -120,7 +129,9 @@ pub(super) fn parse_style_contents<'i, 't>(
                 }
             }
             Err((error, failed_unit)) => {
-                let error = failed_block_error.unwrap_or(error);
+                let error = qualified_resource_error
+                    .or(failed_block_error)
+                    .unwrap_or(error);
                 if let Some(diagnostic) = structural_rule_diagnostic(
                     source,
                     error,
@@ -169,6 +180,7 @@ struct NestedStyleRuleParser<'s> {
     source: &'s str,
     diagnostics: Vec<crate::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
+    qualified_resource_error: Option<ParseError<'s, Error>>,
 }
 
 enum StyleBlockItem {
@@ -398,7 +410,13 @@ impl<'i> QualifiedRuleParser<'i> for NestedStyleRuleParser<'i> {
     ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
         let mut recovery =
             SelectorRecovery::new(self.source, &mut self.diagnostics, self.recovery.clone());
-        parse_nested_style_selector_list(input, &mut recovery)
+        let result = parse_nested_style_selector_list(input, &mut recovery);
+        if let Err(error) = &result
+            && is_nesting_limit_error(error)
+        {
+            self.qualified_resource_error = Some(error.clone());
+        }
+        result
     }
 
     fn parse_block<'t>(
@@ -407,22 +425,30 @@ impl<'i> QualifiedRuleParser<'i> for NestedStyleRuleParser<'i> {
         start: &ParserState,
         input: &mut Parser<'i, 't>,
     ) -> std::result::Result<Self::QualifiedRule, ParseError<'i, Self::Error>> {
-        let mut depth =
-            self.recovery
-                .enter_rule_block(self.source, input, "baseline.rule.style")?;
-        let recovered = parse_style_rule_block(
-            self.source,
-            CssStyleSelectorList::new(selectors),
-            crate::source::CssSourcePosition::from_cssparser(
-                start.position(),
-                start.source_location(),
-            ),
-            input,
-            self.recovery.clone(),
-        )?;
-        self.diagnostics.extend(recovered.diagnostics);
-        depth.retain();
-        Ok(StyleBlockItem::NestedRules(recovered.syntax))
+        let result = (|| {
+            let mut depth =
+                self.recovery
+                    .enter_rule_block(self.source, input, "baseline.rule.style")?;
+            let recovered = parse_style_rule_block(
+                self.source,
+                CssStyleSelectorList::new(selectors),
+                crate::source::CssSourcePosition::from_cssparser(
+                    start.position(),
+                    start.source_location(),
+                ),
+                input,
+                self.recovery.clone(),
+            )?;
+            self.diagnostics.extend(recovered.diagnostics);
+            depth.retain();
+            Ok(StyleBlockItem::NestedRules(recovered.syntax))
+        })();
+        if let Err(error) = &result
+            && is_nesting_limit_error(error)
+        {
+            self.qualified_resource_error = Some(error.clone());
+        }
+        result
     }
 }
 

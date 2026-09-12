@@ -5963,7 +5963,7 @@
       "id": "rule/Rule.json#/declaration with ~1~1",
       "expectation_sha256": "6a931934399378b82679b5ef4e7e8c91df82e880ec018dc12ec07f6f4b68558c",
       "class": {
-        "kind": "clean",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
             "kind": "sheet_rules"
@@ -5971,7 +5971,14 @@
           "predicate": {
             "relation": "nonempty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -6076,7 +6083,7 @@
       "id": "rule/Rule.json#/rule.c.0",
       "expectation_sha256": "6a931934399378b82679b5ef4e7e8c91df82e880ec018dc12ec07f6f4b68558c",
       "class": {
-        "kind": "clean",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
             "kind": "sheet_rules"
@@ -6084,14 +6091,21 @@
           "predicate": {
             "relation": "nonempty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "rule/Rule.json#/rule.c.1",
       "expectation_sha256": "6a931934399378b82679b5ef4e7e8c91df82e880ec018dc12ec07f6f4b68558c",
       "class": {
-        "kind": "clean",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
             "kind": "sheet_rules"
@@ -6099,14 +6113,26 @@
           "predicate": {
             "relation": "nonempty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "rule/Rule.json#/rule.c.2",
       "expectation_sha256": "6a931934399378b82679b5ef4e7e8c91df82e880ec018dc12ec07f6f4b68558c",
       "class": {
-        "kind": "clean",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
             "kind": "sheet_rules"
@@ -6114,14 +6140,21 @@
           "predicate": {
             "relation": "nonempty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "rule/Rule.json#/rule.c.3",
       "expectation_sha256": "6a931934399378b82679b5ef4e7e8c91df82e880ec018dc12ec07f6f4b68558c",
       "class": {
-        "kind": "clean",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
             "kind": "sheet_rules"
@@ -6129,7 +6162,19 @@
           "predicate": {
             "relation": "nonempty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -6249,34 +6294,29 @@
       "id": "rule/Rule.json#/shouldn't parse a selector when parseRulePrelude is false",
       "expectation_sha256": "6a931934399378b82679b5ef4e7e8c91df82e880ec018dc12ec07f6f4b68558c",
       "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "sheet_rules"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "rule/Rule.json#/unclosed block",
       "expectation_sha256": "6a931934399378b82679b5ef4e7e8c91df82e880ec018dc12ec07f6f4b68558c",
       "class": {
-        "kind": "clean",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
             "kind": "sheet_rules"
@@ -6284,7 +6324,14 @@
           "predicate": {
             "relation": "nonempty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_end",
+            "action": "retain_with_implicit_closure",
+            "payload_relation": "ends_at"
+          }
+        ]
       }
     },
     {
@@ -6335,108 +6382,88 @@
       "id": "rule/legacy.json#/rule.4",
       "expectation_sha256": "2733e4bc97e5595a9f2fdca3c611ea6c27d877de54cd3dda451fd16ca4d69b59",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "sheet_rules"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_property_value",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "rule/legacy.json#/rule.5",
       "expectation_sha256": "2733e4bc97e5595a9f2fdca3c611ea6c27d877de54cd3dda451fd16ca4d69b59",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "sheet_rules"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_property_value",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "rule/legacy.json#/rule.s.4",
       "expectation_sha256": "2733e4bc97e5595a9f2fdca3c611ea6c27d877de54cd3dda451fd16ca4d69b59",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "sheet_rules"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_property_value",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "rule/legacy.json#/rule.s.5",
       "expectation_sha256": "2733e4bc97e5595a9f2fdca3c611ea6c27d877de54cd3dda451fd16ca4d69b59",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "sheet_rules"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_property_value",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -6479,11 +6506,6 @@
             "code": "unknown_at_rule",
             "action": "drop_at_rule",
             "payload_relation": "intersects"
-          },
-          {
-            "code": "unknown_at_rule",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
           }
         ]
       }
@@ -6505,11 +6527,6 @@
           {
             "code": "unknown_at_rule",
             "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unknown_property",
-            "action": "drop_declaration",
             "payload_relation": "intersects"
           }
         ]
@@ -6541,21 +6558,6 @@
       "id": "rule/nesting.json#/basic",
       "expectation_sha256": "bfa6c3129a3f9e476322a8c2cce9c1b88b6fd23f97d950e758a7d952c640af08",
       "class": {
-        "kind": "clean",
-        "retained_syntax": {
-          "extractor": {
-            "kind": "sheet_rules"
-          },
-          "predicate": {
-            "relation": "nonempty"
-          }
-        }
-      }
-    },
-    {
-      "id": "rule/nesting.json#/don't parse nested rule when it not started with &",
-      "expectation_sha256": "bfa6c3129a3f9e476322a8c2cce9c1b88b6fd23f97d950e758a7d952c640af08",
-      "class": {
         "kind": "recovered",
         "retained_syntax": {
           "extractor": {
@@ -6567,11 +6569,26 @@
         },
         "diagnostics": [
           {
-            "code": "unknown_property",
-            "action": "drop_declaration",
+            "code": "unknown_at_rule",
+            "action": "drop_at_rule",
             "payload_relation": "intersects"
           }
         ]
+      }
+    },
+    {
+      "id": "rule/nesting.json#/don't parse nested rule when it not started with &",
+      "expectation_sha256": "bfa6c3129a3f9e476322a8c2cce9c1b88b6fd23f97d950e758a7d952c640af08",
+      "class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
       }
     },
     {
@@ -6608,7 +6625,7 @@
       "id": "rule/nesting.json#/nested @starting-style",
       "expectation_sha256": "bfa6c3129a3f9e476322a8c2cce9c1b88b6fd23f97d950e758a7d952c640af08",
       "class": {
-        "kind": "clean",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
             "kind": "sheet_rules"
@@ -6616,7 +6633,14 @@
           "predicate": {
             "relation": "nonempty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "drop_at_rule",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -6638,19 +6662,19 @@
       "id": "rule/tolerant.json#/bad selector",
       "expectation_sha256": "149098cf076e252bc6dcdfe5e9d68ccd22cb1b23b28b6fd002349720c1b67cab",
       "class": {
-        "kind": "recovered",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "sheet_rules"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
         },
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]

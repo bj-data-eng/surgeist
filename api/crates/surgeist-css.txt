@@ -5777,6 +5777,7 @@ pub fn surgeist_css::parse_property_value(property: surgeist_css::CssPropertyNam
 pub fn surgeist_css::parse_property_value_for_grammar(grammar: surgeist_css::CssPropertyGrammar, value: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
 pub fn surgeist_css::parse_property_value_text(source: &str, property: surgeist_css::CssPropertyNameRef<'_>, importance: surgeist_css::CssImportance) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssDeclaration>>
 pub fn surgeist_css::parse_property_value_text_for_grammar(source: &str, grammar: surgeist_css::CssPropertyGrammar, importance: surgeist_css::CssImportance) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssDeclaration>>
+pub fn surgeist_css::parse_rule(source: &str, context: &surgeist_css::CssNamespaceContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssRule>>
 pub fn surgeist_css::parse_selector(source: &str, context: &surgeist_css::CssNamespaceContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssSelector>>
 pub fn surgeist_css::parse_selector_list(source: &str, context: &surgeist_css::CssNamespaceContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssStyleSelectorList>>
 pub fn surgeist_css::parse_sheet(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssSheet>

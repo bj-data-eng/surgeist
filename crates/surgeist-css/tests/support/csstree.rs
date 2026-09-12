@@ -20,7 +20,7 @@ use surgeist_css::{
     CssErrorCode, CssImportance, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
     CssPropertyNameRef, CssRecoveryAction, CssRecoveryDiagnostic, parse_declaration,
     parse_font_face_descriptor_value, parse_media_query, parse_media_query_list,
-    parse_property_value_text, parse_selector, parse_selector_list, parse_sheet,
+    parse_property_value_text, parse_rule, parse_selector, parse_selector_list, parse_sheet,
     parse_style_attribute,
 };
 use surgeist_css::{validate_sheet, validate_style_attribute};
@@ -1967,6 +1967,16 @@ fn observe_public_parser(
                 validate_sheet(complete.source()),
             )?;
             Ok::<Observation, String>(observation)
+        }
+        EntryPoint::Rule => {
+            let report = parse_rule(complete.source(), &corpus_namespace_context());
+            fragment_observation(
+                report,
+                registry,
+                RegistryExtractor::SheetRules,
+                complete,
+                |syntax| usize::from(syntax.is_some()),
+            )
         }
         EntryPoint::Declaration => {
             let report = parse_declaration(complete.source());

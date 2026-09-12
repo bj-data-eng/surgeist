@@ -440,3 +440,131 @@ fn property_value_text(
         }
     })
 }
+
+// Distinguish a rejected first rule from parse_one_rule's trailing-input error.
+// The latter must not be reinterpreted as an error in the completed rule body.
+struct SingleRuleParser<'s> {
+    grammar: StrictRuleParser<'s>,
+    completed: bool,
+}
+
+impl<'i> AtRuleParser<'i> for SingleRuleParser<'i> {
+    type Prelude = StrictAtRulePrelude;
+    type AtRule = Vec<CssRule>;
+    type Error = Error;
+
+    fn parse_prelude<'t>(
+        &mut self,
+        name: CowRcStr<'i>,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self::Prelude, ParseError<'i, Error>> {
+        AtRuleParser::parse_prelude(&mut self.grammar, name, input)
+    }
+
+    fn rule_without_block(
+        &mut self,
+        prelude: Self::Prelude,
+        start: &ParserState,
+    ) -> Result<Self::AtRule, ()> {
+        let result = self.grammar.rule_without_block(prelude, start);
+        self.completed = result.is_ok();
+        result
+    }
+
+    fn parse_block<'t>(
+        &mut self,
+        prelude: Self::Prelude,
+        start: &ParserState,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self::AtRule, ParseError<'i, Error>> {
+        let result = AtRuleParser::parse_block(&mut self.grammar, prelude, start, input);
+        self.completed = result.is_ok();
+        result
+    }
+}
+
+impl<'i> QualifiedRuleParser<'i> for SingleRuleParser<'i> {
+    type Prelude = Vec<CssSelector>;
+    type QualifiedRule = Vec<CssRule>;
+    type Error = Error;
+
+    fn parse_prelude<'t>(
+        &mut self,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self::Prelude, ParseError<'i, Error>> {
+        QualifiedRuleParser::parse_prelude(&mut self.grammar, input)
+    }
+
+    fn parse_block<'t>(
+        &mut self,
+        prelude: Self::Prelude,
+        start: &ParserState,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self::QualifiedRule, ParseError<'i, Error>> {
+        let result = QualifiedRuleParser::parse_block(&mut self.grammar, prelude, start, input);
+        self.completed = result.is_ok();
+        result
+    }
+}
+
+/// Parses exactly one complete ordinary rule using supplied namespace bindings.
+///
+/// The original source must contain one supported style rule or at-rule, with
+/// optional surrounding whitespace/comments. Multiple rules, trailing nontrivia
+/// and rejected outer grammar return `None` with `RejectInput`. Encoding directives
+/// are stylesheet metadata and cannot produce a rule; no BOM or CDO/CDC is stripped.
+/// Imports and namespaces use isolated top-level grammar, without insertion-order
+/// validation against an existing sheet. The supplied namespace context is immutable.
+///
+/// A retained rule preserves its inner declaration, selector, query and child-rule
+/// recovery diagnostics. Implicit EOF closures are reported only when the outer
+/// rule survives; resource diagnostics preserve `StopAtNestingLimit`. Positions
+/// refer to the original UTF-8 source and zero-based UTF-16 coordinates. Nested
+/// contents remain inside their owning rule. This performs no matching, cascade,
+/// CSSOM insertion or contextual resolution.
+pub fn parse_rule(
+    source: &str,
+    context: &CssNamespaceContext,
+) -> crate::CssParseReport<Option<CssRule>> {
+    bounded(source, || {
+        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+        if let Some(name) = &context.0.default {
+            state.activate_namespace(None, name.clone());
+        }
+        for (prefix, name) in &context.0.named {
+            state.activate_namespace(Some(prefix.clone()), name.clone());
+        }
+        let mut parser_input = ParserInput::new(source);
+        let mut input = Parser::new(&mut parser_input);
+        let mut parser = SingleRuleParser {
+            grammar: StrictRuleParser::isolated_rule(source, state.clone()),
+            completed: false,
+        };
+        input.skip_whitespace();
+        let rule_start = input.position().byte_index();
+        match cssparser::parse_one_rule(&mut input, &mut parser) {
+            Ok(rules) => {
+                // The ordinary grammar emits one outer node. Encoding, which
+                // emits no node, was excluded by the isolated constructor.
+                let [rule]: [CssRule; 1] = rules
+                    .try_into()
+                    .expect("a successful isolated ordinary rule emits one outer node");
+                let mut diagnostics = parser.grammar.diagnostics;
+                diagnostics.extend(state.take_implicit_closure_diagnostics(source));
+                crate::CssParseReport::new(Some(rule), diagnostics)
+            }
+            Err(error) => {
+                let action =
+                    recovery_action_for_error(&error, crate::CssRecoveryAction::RejectInput);
+                let error = if parser.completed {
+                    error
+                } else {
+                    let location = error.location;
+                    let failed_unit = &source[rule_start..input.position().byte_index()];
+                    location.new_custom_error(from_rule_parse_error(source, failed_unit, error))
+                };
+                crate::CssParseReport::new(None, vec![reject(source, error, action)])
+            }
+        }
+    })
+}

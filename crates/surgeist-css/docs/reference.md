@@ -13,6 +13,7 @@ subset; it does not establish complete support for all CSS syntax.
 | --- | --- | --- |
 | `parse_sheet(&str)` | Default features | `CssParseReport<CssSheet>` |
 | `parse_style_attribute(&str)` | Default features | `CssParseReport<CssDeclarationList>` |
+| `parse_rule(source, namespace_context)` | Default features | `CssParseReport<Option<CssRule>>` |
 | `parse_declaration(&str)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
 | `parse_selector(&str, &CssNamespaceContext)` | Default features | `CssParseReport<Option<CssSelector>>` |
 | `parse_selector_list(&str, &CssNamespaceContext)` | Default features | `CssParseReport<Option<CssStyleSelectorList>>` |
@@ -141,6 +142,31 @@ delimiters, and unrepresentable token boundaries return typed errors. Explicit
 the shared structural ceiling is 256. Input exceeding the byte limit is rejected
 before copying or tokenizing it, with `UnretainedInput` provenance and its UTF-8
 length. These syntax limits do not promise a global memory budget.
+
+## Raw single rules
+
+`parse_rule(source, &CssNamespaceContext)` parses exactly one supported ordinary
+rule from the original source. A style rule retains its declarations, nested
+rules and later declaration runs inside that one node. At-rules use their owning
+CSS grammar. Imports and namespaces are parsed in isolation at the top level;
+this operation does not validate insertion order in an existing stylesheet.
+
+Whitespace and comments may surround the rule. Empty input, a second rule,
+trailing nontrivia, or an invalid outer rule returns `None` with `RejectInput`
+over the complete source. This remains true when a stylesheet parser could
+recover one valid sibling. `@charset` is encoding metadata and cannot produce a
+`CssRule`. The raw parser does not strip a BOM or stylesheet CDO/CDC sentinels.
+
+A valid outer rule survives inner declaration, selector, query and child-rule
+recovery with the original diagnostics and actions. Implicit EOF closures are
+published only when the outer rule is retained. Resource failures preserve
+`StopAtNestingLimit`, including recoverable failures within retained parents.
+Positions use the original UTF-8 bytes, zero-based lines and UTF-16 columns.
+
+Namespace bindings are copied from the immutable supplied context without
+fabricating namespace declarations. Explicit `&` remains symbolic; leading
+relative combinators still require a nested style context. Parsing neither
+matches selectors nor applies cascade, substitution or CSSOM mutation.
 
 ## Raw declaration fragments
 
