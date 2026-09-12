@@ -3252,6 +3252,58 @@ mod tests {
     }
 
     #[test]
+    fn raw_declaration_observation_rejects_original_invalid_values_in_payload() {
+        // Syntax 3's declaration-value grammar rejects unmatched nested closers;
+        // Filter Effects 1 does not define the proprietary alpha() function.
+        // Neither discarded declaration owns an implicit EOF closure.
+        for (path, source) in [
+            (
+                "expectations/declaration/custom-property.json",
+                "--var: ([)]",
+            ),
+            (
+                "expectations/declaration/filter.json",
+                "filter:alpha(opacity",
+            ),
+        ] {
+            let value = raw_fragment_observation(path, Context::Declaration, source);
+            assert_eq!(value["syntax_count"], 0, "{source}");
+            assert_eq!(value["is_clean"], false, "{source}");
+            let diagnostics = value["diagnostics"].as_array().unwrap();
+            assert!(!diagnostics.is_empty(), "{source}");
+            for diagnostic in diagnostics {
+                assert_eq!(diagnostic["action"], "reject_input", "{source}");
+                assert_eq!(diagnostic["span_start"], 0, "{source}");
+                assert_eq!(diagnostic["span_end"], source.len(), "{source}");
+            }
+        }
+    }
+
+    #[test]
+    fn raw_declaration_observation_requires_one_complete_declaration() {
+        // Syntax 3's parse-a-declaration entry consumes to EOF. A top-level
+        // semicolon belongs to declaration-list syntax, not declaration-value.
+        let path = "expectations/declaration/custom-property.json";
+        for source in ["--x:a;--y:b", "--x:a;", ";--x:a"] {
+            let value = raw_fragment_observation(path, Context::Declaration, source);
+            assert_eq!(value["syntax_count"], 0, "{source}");
+            assert_eq!(value["is_clean"], false, "{source}");
+            assert!(
+                value["diagnostics"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|d| d["action"] == "reject_input"),
+                "{source}"
+            );
+        }
+        let value = raw_fragment_observation(path, Context::Declaration, "--x:{a:b;c:d}");
+        assert_eq!(value["syntax_count"], 1);
+        assert_eq!(value["is_clean"], true);
+        assert_eq!(value["diagnostics"], serde_json::json!([]));
+    }
+
+    #[test]
     fn raw_font_face_value_observation_keeps_incomplete_range_eof_in_payload() {
         // Original UnicodeRange fixtures: Syntax 3 section 7.1 requires a
         // continuation after u and +. Missing input belongs to the raw EOF,
