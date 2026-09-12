@@ -113,6 +113,15 @@ contains concrete semantic, recovery, namespace, coordinate, and depth examples.
 
 Each diagnostic exposes a typed error and stable root code, the first responsible source position, the complete recovery-unit span, and one `CssRecoveryAction`. Source byte offsets index the original UTF-8 input; line and column indices are zero-based, and columns count UTF-16 code units. Display text is for people, not control flow—match typed variants with a wildcard for future non-exhaustive cases.
 
+An unterminated comment produces one `UnexpectedEnd` diagnostic with
+`IgnoreUnterminatedComment`. Its position is the actual EOF and its recovery span
+runs from the comment opening to EOF. This lexical error is reported even for
+comment-only input or when surrounding grammar is rejected; valid surrounding
+syntax remains retained. The same rule applies to sheets, declaration lists and
+all source-fragment parsers, so clean-report validation rejects unfinished
+comments. Structural EOF closures retain their separate diagnostics. Comment-like
+bytes inside strings and URL tokens are payload and do not create comment errors.
+
 ## Owned component values
 
 `CssComponentValues` retains an immutable sequence of tokens, functions, blocks,

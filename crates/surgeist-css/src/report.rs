@@ -111,6 +111,9 @@ pub enum CssRecoveryAction {
     RetainWithImplicitClosure,
     /// The diagnostic phase ignored one authored top-level legacy CDO or CDC token.
     IgnoreLegacyToken,
+    /// The tokenizer ignored an authored comment terminated by EOF instead of `*/`.
+    /// This recovery is independent of retention or rejection of surrounding syntax.
+    IgnoreUnterminatedComment,
     /// The diagnostic phase stopped retaining the smallest unit at the nesting limit.
     StopAtNestingLimit,
 }

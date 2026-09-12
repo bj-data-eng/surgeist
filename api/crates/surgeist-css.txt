@@ -2354,6 +2354,7 @@ pub surgeist_css::CssRecoveryAction::DropKeyframeBlock
 pub surgeist_css::CssRecoveryAction::DropQualifiedRule
 pub surgeist_css::CssRecoveryAction::DropSelectorListItem
 pub surgeist_css::CssRecoveryAction::IgnoreLegacyToken
+pub surgeist_css::CssRecoveryAction::IgnoreUnterminatedComment
 pub surgeist_css::CssRecoveryAction::RejectInput
 pub surgeist_css::CssRecoveryAction::ReplaceMediaQueryWithNever
 pub surgeist_css::CssRecoveryAction::RetainWithImplicitClosure

@@ -23,6 +23,44 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::CssFeatureId] = &[
 pub(super) use crate::STRUCTURAL_NESTING_LIMIT;
 pub(super) const DIRECT_PARSE_DEPTH: u32 = 128;
 
+/// Publish tokenizer recovery once, after the public grammar entry finishes.
+/// Comments have no retained syntax token, so their EOF error is independent of
+/// whether the enclosing grammar unit survived. Internal probes and recursive
+/// parses must leave this step to the caller with the original complete source.
+pub(super) fn finish_report<T>(
+    source: &str,
+    report: crate::CssParseReport<T>,
+) -> crate::CssParseReport<T> {
+    let mut offset = 0;
+    while let Some((token_start, token_end, token)) = next_source_token(source, offset) {
+        offset = token_end;
+        if !matches!(token, Token::Comment(_)) {
+            continue;
+        }
+        // Only comment tokens participate: strings and URL tokens (including
+        // bad tokens) have already consumed their own comment-looking payload.
+        // Exclude the opening delimiter before checking the terminator so `/*/`
+        // cannot reuse its opening '*' as part of a closing delimiter.
+        let contents = &source[token_start + 2..token_end];
+        if contents.ends_with("*/") {
+            continue;
+        }
+        let start = CssSourcePosition::from_byte_offset_in(source, token_start);
+        let eof = CssSourcePosition::from_byte_offset_in(source, source.len());
+        let span = crate::CssSourceSpan::new(start, eof).expect("comment ends at source EOF");
+        let diagnostic = crate::CssRecoveryDiagnostic::new(
+            crate::error::implicit_eof(source),
+            span,
+            crate::CssRecoveryAction::IgnoreUnterminatedComment,
+        )
+        .expect("comment EOF belongs to its consumed source span");
+        let (syntax, mut diagnostics) = report.into_parts();
+        diagnostics.push(diagnostic);
+        return crate::CssParseReport::new(syntax, diagnostics);
+    }
+    report
+}
+
 pub(super) fn maximum_nested_depth(source: &str) -> u32 {
     scan_delimiters(source, 0).maximum
 }

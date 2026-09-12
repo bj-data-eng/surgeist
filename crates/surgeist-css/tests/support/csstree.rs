@@ -2340,6 +2340,9 @@ fn css_recovery_action_name(action: CssRecoveryAction) -> Result<CssRecoveryActi
         CssRecoveryAction::RetainWithImplicitClosure => {
             Ok(CssRecoveryActionName::RetainWithImplicitClosure)
         }
+        CssRecoveryAction::IgnoreUnterminatedComment => {
+            Ok(CssRecoveryActionName::IgnoreUnterminatedComment)
+        }
         CssRecoveryAction::IgnoreLegacyToken => Ok(CssRecoveryActionName::IgnoreLegacyToken),
         CssRecoveryAction::StopAtNestingLimit => Ok(CssRecoveryActionName::StopAtNestingLimit),
         _ => Err("public parser returned an unrecognized CssRecoveryAction variant".into()),
@@ -3027,6 +3030,7 @@ enum CssRecoveryActionName {
     DropSelectorListItem,
     ReplaceMediaQueryWithNever,
     RetainWithImplicitClosure,
+    IgnoreUnterminatedComment,
     IgnoreLegacyToken,
     StopAtNestingLimit,
 }

@@ -405,7 +405,7 @@ pub fn parse_sheet(source: &str) -> crate::CssParseReport<CssSheet> {
         // The public limit is intentionally higher than the platform's small
         // default test-thread stack. A bounded parser thread preserves the exact
         // 256-level contract without making ordinary shallow parses pay for it.
-        return std::thread::scope(|scope| {
+        let report = std::thread::scope(|scope| {
             let parser = std::thread::Builder::new()
                 .name("surgeist-css-bounded-parser".to_owned())
                 .stack_size(16 * 1024 * 1024)
@@ -432,14 +432,16 @@ pub fn parse_sheet(source: &str) -> crate::CssParseReport<CssSheet> {
                 ),
             }
         });
+        return recovery::finish_report(source, report);
     }
-    parse_sheet_bounded(
+    let report = parse_sheet_bounded(
         source,
         &source_snapshot,
         0,
         BoundedParseContext::Sheet,
         StyleContextCaptures::default(),
-    )
+    );
+    recovery::finish_report(source, report)
 }
 
 /// Parses a UTF-8 style attribute into valid ordinary declarations and recovery diagnostics.
@@ -467,7 +469,7 @@ pub fn parse_sheet(source: &str) -> crate::CssParseReport<CssSheet> {
 #[must_use]
 pub fn parse_style_attribute(source: &str) -> crate::CssParseReport<CssDeclarationList> {
     if recovery::maximum_nested_depth(source) > recovery::DIRECT_PARSE_DEPTH {
-        return std::thread::scope(|scope| {
+        let report = std::thread::scope(|scope| {
             let parser = std::thread::Builder::new()
                 .name("surgeist-css-bounded-style-attribute-parser".to_owned())
                 .stack_size(16 * 1024 * 1024)
@@ -480,8 +482,9 @@ pub fn parse_style_attribute(source: &str) -> crate::CssParseReport<CssDeclarati
                 Err(_) => parse_style_attribute_inner(source),
             }
         });
+        return recovery::finish_report(source, report);
     }
-    parse_style_attribute_inner(source)
+    recovery::finish_report(source, parse_style_attribute_inner(source))
 }
 
 fn parse_style_attribute_inner(source: &str) -> crate::CssParseReport<CssDeclarationList> {
