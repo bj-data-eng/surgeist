@@ -1577,8 +1577,8 @@ operand order and symbolic value spelling, and emits both ratio components.
 Opaque enclosures preserve their meaningful token boundaries and comments.
 Serialization fails with `RecoveredNever` if any list member is a recovery
 sentinel; it produces no partial list. Clean authored `not all` remains ordinary
-serializable syntax. These are authored-syntax contracts; custom media and the
-complete import-alternative grammar remain unfinished.
+serializable syntax. These are authored-syntax contracts; custom media remains
+unfinished.
 
 `@supports` conditions expose declaration tests, `not`/`and`/`or` grouping,
 complete Selectors 3 plus the selected existing selector extensions as the typed
@@ -1642,9 +1642,28 @@ An `@import` prelude is retained in exact target, optional `layer` or
 `layer(name)`, optional `supports(...)`, optional media-list order. A successful
 initial layer statement permits a following import. Once an import is followed
 by another layer statement, a namespace phase, or a body rule, later imports are
-invalid; only successful rules advance the phase. Duplicated, swapped, or
-trailing import clauses drop that import without preventing later siblings from
-being parsed.
+invalid; only successful rules advance the phase.
+
+Optional clauses are selected from complete grammar alternatives. For example,
+`layer(theme) and (color)` is a media condition with no layer clause, while
+`layer(theme) print` has a named layer and a media type. A later `layer()` or
+`supports()` function can be an opaque media operand. When several complete
+alternatives fit, this API prefers a present layer clause, then a present
+supports clause. If none fits, media recovery runs once after the first valid
+clause combination, retaining the import with invalid media members represented
+by `Never`. Lexical and resource failures remain terminal, with their original
+error categories and source positions. EOF-implied closures remain diagnostics
+on the selected interpretation; speculative alternatives do not add diagnostics.
+
+`CssImportRule::serialize()` returns canonical `CssSerializedValue` output with
+the same optional-clause interpretation. It preserves target spelling, checked
+clause components, symbolic media and original token origins. An added EOF
+semicolon has programmatic provenance. Any recovered `Never` member returns
+`CssImportSerializationError::Media` without producing a partial rule. This does
+not emit output if the shared grammar cannot preserve its interpretation:
+`InterpretationChanged` reports that failure. The API does not yet provide a
+checked Rust import constructor or change the existing
+rejection of empty import targets.
 
 These models are authored syntax only. `surgeist-css` does not evaluate media or
 supports conditions, match selectors, resolve URLs, load imported resources,

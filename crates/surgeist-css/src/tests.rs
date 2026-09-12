@@ -847,27 +847,28 @@ fn import_target_constructors_reject_empty_values() {
 fn import_rule_accessors_expose_authored_structure() {
     let target = CssImportTarget::Url(CssImportUrl::try_new("theme.css").unwrap());
     let layer = CssImportLayer::Named(CssLayerName::try_new(["theme", "components"]).unwrap());
-    let media = CssMediaQueryList::try_new(vec![
-        crate::parse_media_query("screen")
-            .into_validation_result()
-            .unwrap(),
-    ])
-    .unwrap();
     let location = source_position(3, 7);
-    let rule = CssImportRule::new(
-        target.clone(),
-        Some(layer.clone()),
-        None,
-        Some(media.clone()),
-        location,
-    );
+    let sheet =
+        parse_sheet("\n\n\n       @import url(theme.css) layer(theme.components) screen;").unwrap();
+    let [CssRule::Import(rule)] = sheet.rules() else {
+        panic!("expected parsed import")
+    };
 
     assert_eq!(rule.target(), &target);
     assert_eq!(rule.layer(), Some(&layer));
     assert_eq!(rule.supports(), None);
-    assert_eq!(rule.media(), Some(&media));
+    let [CssMediaQuery::Typed(media)] = rule.media().expect("media clause").queries() else {
+        panic!("expected one typed media query")
+    };
+    assert_eq!(media.modifier(), None);
+    assert_eq!(media.media_type(), CssMediaType::Screen);
+    assert_eq!(media.condition(), None);
     assert_eq!(rule.position(), location);
-    assert_eq!(CssRule::Import(rule.clone()), CssRule::Import(rule));
+    let owned_rule = rule.clone();
+    assert_eq!(
+        CssRule::Import(owned_rule.clone()),
+        CssRule::Import(owned_rule)
+    );
 }
 
 #[test]
@@ -975,12 +976,39 @@ fn import_rule_parser_rejects_late_nested_unsupported_and_malformed_imports() {
         r#".panel { color: black; } @import "late.css";"#,
         r#"@media screen { @import "nested.css"; }"#,
         r#"@scope { @import "nested.css"; }"#,
-        r#"@import url("theme.css") supports(display: grid) supports(color: red);"#,
         r#"@import url("theme.css") screen layer(components);"#,
         "@import;",
     ] {
         assert!(parse_sheet(css).is_err(), "{css} should reject");
     }
+}
+
+#[test]
+fn import_rule_parser_retains_repeated_supports_as_opaque_media() {
+    let sheet =
+        parse_sheet(r#"@import url("theme.css") supports(display: grid) supports(color: red);"#)
+            .unwrap();
+    let [CssRule::Import(rule)] = sheet.rules() else {
+        panic!("expected retained import")
+    };
+    assert_eq!(rule.layer(), None);
+    let CssSupportsConditionKind::Declaration(declaration) = rule
+        .supports()
+        .expect("first supports clause")
+        .condition()
+        .kind()
+    else {
+        panic!("expected declaration supports clause")
+    };
+    assert_eq!(declaration.authored(), "display: grid");
+    let [CssMediaQuery::Condition(condition)] = rule.media().expect("media suffix").queries()
+    else {
+        panic!("expected one media condition")
+    };
+    let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+        panic!("expected repeated supports function as media")
+    };
+    assert_eq!(enclosed.authored(), Some("supports(color: red)"));
 }
 
 #[test]
@@ -5746,13 +5774,37 @@ fn advanced_css_surface_matrix_accepts_supported_forms() {
     for css in accepted {
         assert!(parse_sheet(css).is_ok(), "{css} should parse");
     }
+
+    let sheet =
+        parse_sheet(r#"@import url("theme.css") supports(display: grid) layer(theme);"#).unwrap();
+    let [CssRule::Import(import)] = sheet.rules() else {
+        panic!("expected retained conditional import")
+    };
+    assert!(matches!(import.target(), CssImportTarget::Url(url) if url.as_str() == "theme.css"));
+    assert!(import.layer().is_none());
+    let CssSupportsConditionKind::Declaration(declaration) = import
+        .supports()
+        .expect("selected supports clause")
+        .condition()
+        .kind()
+    else {
+        panic!("expected declaration supports clause")
+    };
+    assert_eq!(declaration.authored(), "display: grid");
+    let [CssMediaQuery::Condition(condition)] = import.media().expect("media suffix").queries()
+    else {
+        panic!("expected condition-only media")
+    };
+    let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+        panic!("expected layer function as opaque media")
+    };
+    assert_eq!(enclosed.authored(), Some("layer(theme)"));
 }
 
 #[test]
 fn advanced_css_surface_matrix_rejects_unsupported_forms() {
     let rejected = [
         r#"@import url("late.css"); .panel { color: black; } @import url("later.css");"#,
-        r#"@import url("theme.css") supports(display: grid) layer(theme);"#,
         ".field:has(::before) { color: black; }",
         "[svg|href] { color: black; }",
         ".col || .cell { color: black; }",

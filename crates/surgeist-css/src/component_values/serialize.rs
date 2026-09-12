@@ -3,6 +3,8 @@ use super::*;
 /// Recognized grammar syntax; opaque syntax must use original components instead.
 pub(crate) enum CssCanonicalToken<'a> {
     Ident(&'a str),
+    AtKeyword(&'a str),
+    Semicolon,
     Whitespace,
     Comma,
     Colon,
@@ -40,6 +42,14 @@ impl CssCanonicalBuilder {
             other => {
                 let component = match other {
                     CssCanonicalToken::Ident(value) => CssComponentValue::try_ident(value),
+                    CssCanonicalToken::AtKeyword(value) => {
+                        let ident = CssComponentValue::try_ident(value)?;
+                        let mut text = String::from("@");
+                        let ComponentData::Token(ident) = ident.data else { unreachable!("checked identifier") };
+                        text.push_str(&ident.spelling.text);
+                        CssComponentValue::try_token(&text)
+                    },
+                    CssCanonicalToken::Semicolon => CssComponentValue::try_token(";"),
                     CssCanonicalToken::Whitespace => CssComponentValue::try_token(" "),
                     CssCanonicalToken::Comma => CssComponentValue::try_token(","),
                     CssCanonicalToken::Colon => CssComponentValue::try_token(":"),
@@ -68,6 +78,10 @@ impl CssCanonicalBuilder {
             kind,
             reverse_solidus,
         )
+    }
+
+    pub(crate) fn byte_len(&self) -> usize {
+        self.emitter.bytes
     }
 
     pub(crate) fn finish(self) -> Result<CssSerializedValue, CssComponentValueError> {

@@ -1,6 +1,6 @@
 use surgeist_css::{
-    CssErrorCode, CssImportLayer, CssImportTarget, CssMediaQuery, CssRecoveryAction, CssRule,
-    CssSupportsConditionKind, parse_sheet,
+    CssErrorCode, CssImportLayer, CssImportTarget, CssMediaConditionKind, CssMediaQuery,
+    CssRecoveryAction, CssRule, CssSupportsConditionKind, parse_sheet,
 };
 
 fn import_rule(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssSheet> {
@@ -108,32 +108,89 @@ fn import_supports_accepts_bare_declarations_and_full_conditions() {
 }
 
 #[test]
-fn duplicate_swapped_and_trailing_import_clauses_drop_only_the_import() {
-    for invalid in [
-        "@import 'x.css' layer layer;",
-        "@import 'x.css' layer(a) layer(b);",
-        "@import 'x.css' supports(display: grid) supports(color: red);",
-        "@import 'x.css' supports(display: grid) layer(a);",
-        "@import 'x.css' screen supports(display: grid);",
-        "@import 'x.css' screen layer(a);",
-        "@import 'x.css' supports(not);",
+fn repeated_or_swapped_clause_functions_remain_valid_media_suffixes() {
+    for (prelude, layer, supports, opaque) in [
+        ("layer(a) layer(b)", Some("a"), false, "layer(b)"),
+        (
+            "supports(display: grid) supports(color: red)",
+            None,
+            true,
+            "supports(color: red)",
+        ),
+        ("supports(display: grid) layer(a)", None, true, "layer(a)"),
+        ("supports(not)", None, false, "supports(not)"),
     ] {
-        let source = format!("{invalid} .after {{ color: red; }}");
+        let source = format!("@import 'x.css' {prelude}; .after {{ color: red; }}");
         let report = parse_sheet(&source);
+        assert!(report.is_clean(), "{prelude}: {:?}", report.diagnostics());
+        let [CssRule::Import(import), CssRule::Style(_)] = report.syntax().rules() else {
+            panic!("{prelude}: expected import and following style")
+        };
         assert!(
-            matches!(report.syntax().rules(), [CssRule::Style(_)]),
-            "{invalid}"
+            matches!(import.target(), CssImportTarget::String(value) if value.as_str() == "x.css")
         );
-        assert_eq!(report.diagnostics().len(), 1, "{invalid}");
-        assert_eq!(
-            report.diagnostics()[0].error().code(),
-            CssErrorCode::InvalidAtRulePrelude,
-            "{invalid}"
+        if let Some(expected) = layer {
+            assert!(
+                matches!(import.layer(), Some(CssImportLayer::Named(name)) if name.components() == [expected])
+            );
+        } else {
+            assert!(import.layer().is_none());
+        }
+        if supports {
+            let CssSupportsConditionKind::Declaration(declaration) = import
+                .supports()
+                .expect("first supports clause")
+                .condition()
+                .kind()
+            else {
+                panic!("expected declaration supports clause")
+            };
+            assert_eq!(declaration.authored(), "display: grid");
+        } else {
+            assert!(import.supports().is_none());
+        }
+        let [CssMediaQuery::Condition(condition)] = import.media().expect("media suffix").queries()
+        else {
+            panic!("expected one condition-only media query")
+        };
+        let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+            panic!("expected clause-shaped function as opaque media")
+        };
+        assert_eq!(enclosed.authored(), Some(opaque));
+    }
+}
+
+#[test]
+fn malformed_outer_media_preserves_import_clauses_and_recovers_once() {
+    for (prelude, anonymous_layer) in [
+        ("layer layer", true),
+        ("screen supports(display: grid)", false),
+        ("screen layer(a)", false),
+    ] {
+        let source = format!("@import 'x.css' {prelude}; .after {{ color: red; }}");
+        let report = parse_sheet(&source);
+        let [CssRule::Import(import), CssRule::Style(_)] = report.syntax().rules() else {
+            panic!("{prelude}: expected retained import and following style")
+        };
+        assert!(
+            matches!(import.target(), CssImportTarget::String(value) if value.as_str() == "x.css")
         );
         assert_eq!(
-            report.diagnostics()[0].action(),
-            CssRecoveryAction::DropAtRule,
-            "{invalid}"
+            import.layer(),
+            anonymous_layer.then_some(&CssImportLayer::Anonymous)
+        );
+        assert!(import.supports().is_none());
+        assert!(matches!(
+            import.media().expect("media suffix").queries(),
+            [CssMediaQuery::Never(_)]
+        ));
+        let [diagnostic] = report.diagnostics() else {
+            panic!("{prelude}: expected exactly one media recovery")
+        };
+        assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidMediaQuery);
+        assert_eq!(
+            diagnostic.action(),
+            CssRecoveryAction::ReplaceMediaQueryWithNever
         );
     }
 }

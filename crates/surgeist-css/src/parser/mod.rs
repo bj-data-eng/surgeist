@@ -1799,7 +1799,7 @@ impl<'s> StrictRuleParser<'s> {
 enum StrictAtRulePrelude {
     FontFeatureValues(Vec<CssFontFaceFamily>),
     Encoding(String),
-    Import(CssImportPrelude),
+    Import(Box<CssImportPrelude>),
     Namespace(CssNamespacePrelude),
     CounterStyle(CssCounterStyleName),
     Page(Option<CssPageSelector>),
@@ -1838,6 +1838,8 @@ struct CssImportPrelude {
     supports: Option<CssImportSupports>,
     media: Option<CssMediaQueryList>,
     implicit_media_closures: Vec<usize>,
+    diagnostics: Vec<crate::CssRecoveryDiagnostic>,
+    syntax: crate::imports::ImportPreludeSyntax,
 }
 
 struct CssNamespacePrelude {
@@ -1922,6 +1924,7 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                     &mut self.diagnostics,
                     &self.recovery,
                 ).map_err(|error| {
+                    if queries::media_terminal_error(&error) { return error; }
                     with_at_rule_prelude_context(
                         error,
                         "import",
@@ -1929,7 +1932,7 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                         "a supported @import prelude",
                     )
                 })?;
-                Ok(StrictAtRulePrelude::Import(prelude))
+                Ok(StrictAtRulePrelude::Import(Box::new(prelude)))
             },
             "namespace" => {
                 let Some(namespace_is_allowed) = self.namespace_is_allowed() else {
@@ -2137,6 +2140,15 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                 Ok(Vec::new())
             }
             StrictAtRulePrelude::Import(prelude) => {
+                self.diagnostics.extend(prelude.diagnostics);
+                let mut token_input = ParserInput::new(self.source);
+                let mut token_parser = Parser::new(&mut token_input);
+                token_parser.reset(start);
+                let at_keyword = crate::CssComponentValue::collect_from_parser(
+                    &mut token_parser,
+                    self.recovery.source_snapshot(),
+                )
+                .expect("parsed import at-keyword");
                 self.recovery
                     .retain_component_closures(prelude.implicit_media_closures);
                 let rule = CssRule::Import(CssImportRule::new(
@@ -2144,6 +2156,10 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                     prelude.layer,
                     prelude.supports,
                     prelude.media,
+                    crate::imports::ImportSyntax {
+                        at_keyword,
+                        prelude: prelude.syntax,
+                    },
                     crate::source::CssSourcePosition::from_cssparser(
                         start.position(),
                         start.source_location(),
@@ -2427,38 +2443,251 @@ impl<'i> RuleBodyItemParser<'i, Vec<CssRule>, Error> for StrictRuleParser<'i> {
 fn parse_import_prelude<'i, 't>(
     source: &'i str,
     input: &mut Parser<'i, 't>,
-    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    _diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> std::result::Result<CssImportPrelude, ParseError<'i, Error>> {
+) -> Result<CssImportPrelude, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let target_start = input.state();
     let target = parse_import_target(input)?;
-    let layer = parse_import_layer(input)?;
-    let supports = parse_import_supports(source, input, diagnostics, recovery)?;
-    reject_misordered_import_clauses(input)?;
-    let (media, implicit_media_closures) = if input.is_exhausted() {
-        (None, Vec::new())
+    let target_end = input.state();
+    input.reset(&target_start);
+    let target_component =
+        crate::CssComponentValue::collect_from_parser(input, recovery.source_snapshot()).map_err(
+            |error| crate::error::invalid_component_value(input.current_source_location(), error),
+        )?;
+    input.reset(&target_end);
+    queries::check_media_import_components(source, input, recovery)?;
+    let prelude_closures =
+        recovery.check_specialized_components(source, input, "baseline.media.query-list")?;
+    let selected = select_import_clauses(source, input, recovery)?;
+    let probe = recovery.detached_probe();
+    let mut diagnostics = selected.diagnostics;
+    let mut implicit = selected.implicit_closures;
+    let clauses_end = input.position().byte_index();
+    implicit.extend(
+        prelude_closures
+            .into_iter()
+            .filter(|opening| *opening < clauses_end),
+    );
+    let media = if input.is_exhausted() {
+        None
     } else {
-        queries::check_media_import_components(source, input, recovery)?;
         let parsed =
-            queries::parse_media_query_list_with_closures(source, input, diagnostics, recovery)?;
-        (Some(parsed.queries), parsed.implicit_closures)
+            queries::parse_media_query_list_with_closures(source, input, &mut diagnostics, &probe)?;
+        implicit.extend(parsed.implicit_closures);
+        Some(parsed.queries)
     };
-
-    if !input.is_exhausted() {
-        return Err(invalid_syntax(
-            input.current_source_location(),
-            "unexpected token after import rule",
-        ));
-    }
-
+    while input.next_including_whitespace_and_comments().is_ok() {}
+    let end = input.position().byte_index();
+    let semicolon = if source.as_bytes().get(end) == Some(&b';') {
+        crate::CssValueOrigin::Parsed(
+            CssParsedOrigin::from_range(recovery.source_snapshot(), end..end + 1)
+                .expect("parsed import terminator"),
+        )
+    } else {
+        crate::CssValueOrigin::Programmatic
+    };
     Ok(CssImportPrelude {
         target,
-        layer,
-        supports,
+        layer: selected.layer,
+        supports: selected.supports,
         media,
-        implicit_media_closures,
+        implicit_media_closures: implicit,
+        diagnostics,
+        syntax: crate::imports::ImportPreludeSyntax {
+            target: target_component,
+            layer: selected.layer_component,
+            supports: selected.supports_component,
+            semicolon,
+        },
     })
 }
-
+struct ImportSelection {
+    layer: Option<CssImportLayer>,
+    supports: Option<CssImportSupports>,
+    layer_component: Option<crate::CssComponentValue>,
+    supports_component: Option<crate::CssComponentValue>,
+    diagnostics: Vec<crate::CssRecoveryDiagnostic>,
+    implicit_closures: Vec<usize>,
+}
+fn import_clause_component<'i>(
+    input: &mut Parser<'i, '_>,
+    start: &ParserState,
+    recovery: &RecoveryState,
+) -> Result<crate::CssComponentValue, ParseError<'i, Error>> {
+    let end = input.state();
+    input.reset(start);
+    let result = crate::CssComponentValue::collect_from_parser(input, recovery.source_snapshot())
+        .map_err(|error| {
+            crate::error::invalid_component_value(input.current_source_location(), error)
+        });
+    input.reset(&end);
+    result
+}
+fn select_import_clauses<'i>(
+    source: &'i str,
+    input: &mut Parser<'i, '_>,
+    recovery: &RecoveryState,
+) -> Result<ImportSelection, ParseError<'i, Error>> {
+    let start = input.state();
+    let mut fallback = None;
+    for (layer_present, supports_present) in
+        [(true, true), (true, false), (false, true), (false, false)]
+    {
+        input.reset(&start);
+        let probe = recovery.detached_probe();
+        let mut diagnostics = Vec::new();
+        let candidate = (|| {
+            let (layer, layer_component) = if layer_present {
+                input.skip_whitespace();
+                let at = input.state();
+                let layer = parse_import_layer(input)?.ok_or_else(|| {
+                    invalid_syntax(
+                        input.current_source_location(),
+                        "expected import layer clause",
+                    )
+                })?;
+                (
+                    Some(layer),
+                    Some(import_clause_component(input, &at, &probe)?),
+                )
+            } else {
+                (None, None)
+            };
+            let (supports, supports_component) = if supports_present {
+                input.skip_whitespace();
+                let at = input.state();
+                let supports = parse_import_supports(source, input, &mut diagnostics, &probe)?
+                    .ok_or_else(|| {
+                        invalid_syntax(
+                            input.current_source_location(),
+                            "expected import supports clause",
+                        )
+                    })?;
+                (
+                    Some(supports),
+                    Some(import_clause_component(input, &at, &probe)?),
+                )
+            } else {
+                (None, None)
+            };
+            Ok(ImportSelection {
+                layer,
+                supports,
+                layer_component,
+                supports_component,
+                diagnostics,
+                implicit_closures: probe.pending_component_closures(),
+            })
+        })();
+        let candidate = match candidate {
+            Ok(value) => value,
+            Err(error) if queries::media_terminal_error(&error) => return Err(error),
+            Err(_) => continue,
+        };
+        let media_start = input.state();
+        let clean = if candidate.diagnostics.is_empty() {
+            probe_import_media(source, input, &probe)
+        } else {
+            Ok(false)
+        }?;
+        input.reset(&media_start);
+        if clean {
+            return Ok(candidate);
+        }
+        if fallback.is_none() {
+            fallback = Some((candidate, media_start));
+        }
+    }
+    let (selected, media_start) =
+        fallback.expect("absent optional clauses always form a candidate");
+    input.reset(&media_start);
+    Ok(selected)
+}
+fn probe_import_media<'i>(
+    source: &'i str,
+    input: &mut Parser<'i, '_>,
+    recovery: &RecoveryState,
+) -> Result<bool, ParseError<'i, Error>> {
+    if input.is_exhausted() {
+        return Ok(true);
+    }
+    loop {
+        let result = input.parse_until_before(Delimiter::Comma, |member| {
+            queries::parse_media_query(
+                source,
+                member,
+                &crate::numeric::NumericInputContext::parsed(recovery.source_snapshot()),
+            )?;
+            member.expect_exhausted()?;
+            Ok(())
+        });
+        match result {
+            Ok(()) => {}
+            Err(error) if queries::media_terminal_error(&error) => return Err(error),
+            Err(_) => return Ok(false),
+        }
+        if input.is_exhausted() {
+            return Ok(true);
+        }
+        input.expect_comma().map_err(basic)?;
+        if input.is_exhausted() {
+            return Ok(false);
+        }
+    }
+}
+pub(crate) fn import_boundaries_match(
+    serialized: &crate::CssSerializedValue,
+    expected: [Option<usize>; 2],
+    original_origin: &crate::CssValueOrigin,
+) -> Result<bool, crate::CssImportSerializationError> {
+    let source = serialized.as_css();
+    let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+    let mut buffer = ParserInput::new(source);
+    let mut input = Parser::new(&mut buffer);
+    let result = (|| {
+        let selected = select_import_clauses(source, &mut input, &recovery)?;
+        let actual = [
+            selected.layer_component.as_ref(),
+            selected.supports_component.as_ref(),
+        ]
+        .map(|component| {
+            component
+                .and_then(crate::CssComponentValue::parsed_origin)
+                .map(|origin| origin.span().end().byte_offset().value())
+        });
+        Ok(actual == expected && probe_import_media(source, &mut input, &recovery)?)
+    })();
+    result.map_err(|error: ParseError<'_, Error>| {
+        let error = from_parse_error(source, error);
+        let offset = match error.kind() {
+            crate::ErrorKind::InvalidComponentValue(component) => {
+                crate::media::parsed_position(component.origin())
+                    .map_or(error.position().byte_offset().value(), |position| {
+                        position.byte_offset().value()
+                    })
+            }
+            _ => error.position().byte_offset().value(),
+        };
+        let origin = serialized
+            .value_origin_at(offset)
+            .unwrap_or(original_origin)
+            .clone();
+        let kind = match error.kind() {
+            crate::ErrorKind::InvalidComponentValue(component) => Some(component.kind()),
+            crate::ErrorKind::NestingLimit(_) => {
+                Some(crate::CssComponentValueErrorKind::NestingLimit)
+            }
+            _ => None,
+        };
+        match kind {
+            Some(kind) => crate::CssImportSerializationError::Component(
+                crate::CssComponentValueError::new(kind, origin),
+            ),
+            None => crate::CssImportSerializationError::InterpretationChanged { origin },
+        }
+    })
+}
 fn parse_import_supports<'i, 't>(
     source: &'i str,
     input: &mut Parser<'i, 't>,
@@ -2489,65 +2718,6 @@ fn parse_import_supports<'i, 't>(
     })?;
 
     Ok(Some(CssImportSupports::new(condition)))
-}
-
-fn reject_misordered_import_clauses<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<(), ParseError<'i, Error>> {
-    let state = input.state();
-    let result = find_misordered_import_clause(input);
-    input.reset(&state);
-    if let Some(location) = result? {
-        return Err(invalid_syntax(
-            location,
-            "import layer and supports clauses must precede media and appear at most once",
-        ));
-    }
-    Ok(())
-}
-
-fn find_misordered_import_clause<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<Option<cssparser::SourceLocation>, ParseError<'i, Error>> {
-    while !input.is_exhausted() {
-        let location = input.current_source_location();
-        let token = input.next_including_whitespace_and_comments()?.clone();
-        match token {
-            Token::Ident(name) if name.eq_ignore_ascii_case("layer") => {
-                return Ok(Some(location));
-            }
-            Token::Function(name)
-                if name.eq_ignore_ascii_case("layer") || name.eq_ignore_ascii_case("supports") =>
-            {
-                return Ok(Some(location));
-            }
-            Token::Function(_)
-            | Token::ParenthesisBlock
-            | Token::SquareBracketBlock
-            | Token::CurlyBracketBlock => {
-                input.parse_nested_block(skip_import_clause_scan_block)?;
-            }
-            _ => {}
-        }
-    }
-    Ok(None)
-}
-
-fn skip_import_clause_scan_block<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<(), ParseError<'i, Error>> {
-    while !input.is_exhausted() {
-        match input.next_including_whitespace_and_comments()?.clone() {
-            Token::Function(_)
-            | Token::ParenthesisBlock
-            | Token::SquareBracketBlock
-            | Token::CurlyBracketBlock => {
-                input.parse_nested_block(skip_import_clause_scan_block)?;
-            }
-            _ => {}
-        }
-    }
-    Ok(())
 }
 
 fn parse_container_prelude<'i, 't>(

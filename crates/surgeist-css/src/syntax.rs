@@ -927,16 +927,18 @@ pub struct CssImportRule {
     layer: Option<CssImportLayer>,
     supports: Option<CssImportSupports>,
     media: Option<CssMediaQueryList>,
+    pub(crate) syntax: Box<crate::imports::ImportSyntax>,
     position: CssSourcePosition,
 }
 
 impl CssImportRule {
     #[must_use]
-    pub(crate) const fn new(
+    pub(crate) fn new(
         target: CssImportTarget,
         layer: Option<CssImportLayer>,
         supports: Option<CssImportSupports>,
         media: Option<CssMediaQueryList>,
+        syntax: crate::imports::ImportSyntax,
         position: CssSourcePosition,
     ) -> Self {
         Self {
@@ -944,6 +946,7 @@ impl CssImportRule {
             layer,
             supports,
             media,
+            syntax: Box::new(syntax),
             position,
         }
     }

@@ -228,7 +228,7 @@ fn space(
 ) -> Result<(), CssComponentValueError> {
     out.push_grammar(CssCanonicalToken::Whitespace, origin)
 }
-fn emit_query(
+pub(crate) fn emit_query(
     out: &mut CssCanonicalBuilder,
     query: &CssMediaQuery,
 ) -> Result<(), CssMediaSerializationError> {
@@ -523,7 +523,7 @@ pub(crate) fn with_media_stack<T: Send>(deep: bool, action: impl FnOnce() -> T +
         }
     })
 }
-fn query_is_deep(query: &CssMediaQuery) -> bool {
+pub(crate) fn query_is_deep(query: &CssMediaQuery) -> bool {
     match query {
         CssMediaQuery::Condition(value) => condition_is_deep(value),
         CssMediaQuery::Typed(value) => value.condition().is_some_and(condition_is_deep),
@@ -564,7 +564,7 @@ fn condition_is_deep(root: &CssMediaCondition) -> bool {
     }
     false
 }
-fn component_depth(component: &CssComponentValue) -> u32 {
+pub(crate) fn component_depth(component: &CssComponentValue) -> u32 {
     match component.view() {
         CssComponentValueRef::Function(v) => v.values().nesting_depth() + 1,
         CssComponentValueRef::Block(v) => v.values().nesting_depth() + 1,

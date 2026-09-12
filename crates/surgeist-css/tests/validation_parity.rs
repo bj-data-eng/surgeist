@@ -128,8 +128,16 @@ fn validation_conditional_imports_and_prelude_phases_match_ordinary_reports() {
         [CssRule::LayerStatement(_), CssRule::Import(_)]
     ));
 
+    let alternative = assert_sheet_parity("@import 'x.css' supports(display: grid) layer(theme);");
+    assert!(alternative.is_clean());
+    let [CssRule::Import(import)] = alternative.syntax().rules() else {
+        panic!("retained import");
+    };
+    assert!(import.layer().is_none());
+    assert!(import.supports().is_some());
+    assert!(import.media().is_some());
+
     for source in [
-        "@import 'x.css' supports(display: grid) layer(theme);",
         "@import 'x.css'; @layer theme; @import 'late.css';",
         "@media screen { @import 'nested.css'; }",
     ] {

@@ -229,6 +229,21 @@ impl RecoveryState {
         }
     }
 
+    pub(super) fn detached_probe(&self) -> Self {
+        Self {
+            depth: Rc::new(Cell::new(self.depth.get())),
+            source_snapshot: self.source_snapshot.clone(),
+            style_context_captures: self.style_context_captures.clone(),
+            namespace_bindings: Rc::clone(&self.namespace_bindings),
+            implicit_openings: Rc::clone(&self.implicit_openings),
+            retained_implicit_openings: Rc::new(RefCell::new(Vec::new())),
+        }
+    }
+
+    pub(super) fn pending_component_closures(&self) -> Vec<usize> {
+        self.retained_implicit_openings.borrow().clone()
+    }
+
     pub(super) fn source_snapshot(&self) -> &crate::CssSourceSnapshot {
         &self.source_snapshot
     }
