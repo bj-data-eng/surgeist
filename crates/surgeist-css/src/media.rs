@@ -284,6 +284,9 @@ fn emit_condition(
     condition: &CssMediaCondition,
 ) -> Result<(), CssMediaSerializationError> {
     match condition.kind() {
+        CssMediaConditionKind::CustomMediaReference(value) => {
+            out.push_component(value.component())?
+        }
         CssMediaConditionKind::GeneralEnclosed(value) => out.push_component(value.component())?,
         CssMediaConditionKind::UnknownFeature(value) => emit_feature(out, &value.syntax, &[])?,
         CssMediaConditionKind::Feature(feature) => {
@@ -537,6 +540,7 @@ fn condition_is_deep(root: &CssMediaCondition) -> bool {
             return true;
         }
         match value.kind() {
+            CssMediaConditionKind::CustomMediaReference(_) => {}
             CssMediaConditionKind::Parenthesized(v) | CssMediaConditionKind::Not(v) => {
                 pending.push((v, depth + 1))
             }

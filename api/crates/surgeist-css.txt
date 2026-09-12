@@ -619,6 +619,44 @@ pub surgeist_css::CssCursorKeyword::WResize
 pub surgeist_css::CssCursorKeyword::Wait
 pub surgeist_css::CssCursorKeyword::ZoomIn
 pub surgeist_css::CssCursorKeyword::ZoomOut
+pub enum surgeist_css::CssCustomMediaBody
+pub surgeist_css::CssCustomMediaBody::False
+pub surgeist_css::CssCustomMediaBody::Media(surgeist_css::CssMediaQueryList)
+pub surgeist_css::CssCustomMediaBody::True
+#[non_exhaustive] pub enum surgeist_css::CssCustomMediaConstructionError
+pub surgeist_css::CssCustomMediaConstructionError::AmbiguousMediaBody
+pub surgeist_css::CssCustomMediaConstructionError::AmbiguousMediaBody::origin: surgeist_css::CssValueOrigin
+pub surgeist_css::CssCustomMediaConstructionError::Component(surgeist_css::CssComponentValueError)
+pub surgeist_css::CssCustomMediaConstructionError::InvalidName
+pub surgeist_css::CssCustomMediaConstructionError::InvalidName::origin: surgeist_css::CssValueOrigin
+pub surgeist_css::CssCustomMediaConstructionError::InvalidPrelude
+pub surgeist_css::CssCustomMediaConstructionError::InvalidPrelude::origin: surgeist_css::CssValueOrigin
+pub surgeist_css::CssCustomMediaConstructionError::Media(surgeist_css::CssMediaConstructionError)
+pub surgeist_css::CssCustomMediaConstructionError::RecoveredInput
+pub surgeist_css::CssCustomMediaConstructionError::RecoveredInput::origin: surgeist_css::CssValueOrigin
+impl surgeist_css::CssCustomMediaConstructionError
+pub fn surgeist_css::CssCustomMediaConstructionError::origin(&self) -> &surgeist_css::CssValueOrigin
+impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssCustomMediaConstructionError
+pub fn surgeist_css::CssCustomMediaConstructionError::from(e: surgeist_css::CssComponentValueError) -> Self
+impl core::convert::From<surgeist_css::CssMediaConstructionError> for surgeist_css::CssCustomMediaConstructionError
+pub fn surgeist_css::CssCustomMediaConstructionError::from(e: surgeist_css::CssMediaConstructionError) -> Self
+impl core::error::Error for surgeist_css::CssCustomMediaConstructionError
+pub fn surgeist_css::CssCustomMediaConstructionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssCustomMediaConstructionError
+pub fn surgeist_css::CssCustomMediaConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+#[non_exhaustive] pub enum surgeist_css::CssCustomMediaSerializationError
+pub surgeist_css::CssCustomMediaSerializationError::Component(surgeist_css::CssComponentValueError)
+pub surgeist_css::CssCustomMediaSerializationError::Media(surgeist_css::CssMediaSerializationError)
+impl surgeist_css::CssCustomMediaSerializationError
+pub fn surgeist_css::CssCustomMediaSerializationError::origin(&self) -> &surgeist_css::CssValueOrigin
+impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssCustomMediaSerializationError
+pub fn surgeist_css::CssCustomMediaSerializationError::from(e: surgeist_css::CssComponentValueError) -> Self
+impl core::convert::From<surgeist_css::CssMediaSerializationError> for surgeist_css::CssCustomMediaSerializationError
+pub fn surgeist_css::CssCustomMediaSerializationError::from(e: surgeist_css::CssMediaSerializationError) -> Self
+impl core::error::Error for surgeist_css::CssCustomMediaSerializationError
+pub fn surgeist_css::CssCustomMediaSerializationError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssCustomMediaSerializationError
+pub fn surgeist_css::CssCustomMediaSerializationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssCustomPropertyDeclaredValue
 pub surgeist_css::CssCustomPropertyDeclaredValue::Global(surgeist_css::CssGlobalKeyword)
 pub surgeist_css::CssCustomPropertyDeclaredValue::Value(surgeist_css::CssCustomPropertyValue)
@@ -1854,6 +1892,7 @@ pub surgeist_css::CssMediaColorGamut::Rec2020
 pub surgeist_css::CssMediaColorGamut::Srgb
 #[non_exhaustive] pub enum surgeist_css::CssMediaConditionKind
 pub surgeist_css::CssMediaConditionKind::And(surgeist_css::CssMediaConditionList)
+pub surgeist_css::CssMediaConditionKind::CustomMediaReference(surgeist_css::CssCustomMediaReference)
 pub surgeist_css::CssMediaConditionKind::Feature(surgeist_css::CssMediaFeatureQuery)
 pub surgeist_css::CssMediaConditionKind::GeneralEnclosed(surgeist_css::CssGeneralEnclosed)
 pub surgeist_css::CssMediaConditionKind::Not(alloc::boxed::Box<surgeist_css::CssMediaCondition>)
@@ -1872,6 +1911,8 @@ impl surgeist_css::CssMediaConstructionError
 pub fn surgeist_css::CssMediaConstructionError::origin(&self) -> &surgeist_css::CssValueOrigin
 impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssMediaConstructionError
 pub fn surgeist_css::CssMediaConstructionError::from(error: surgeist_css::CssComponentValueError) -> Self
+impl core::convert::From<surgeist_css::CssMediaConstructionError> for surgeist_css::CssCustomMediaConstructionError
+pub fn surgeist_css::CssCustomMediaConstructionError::from(e: surgeist_css::CssMediaConstructionError) -> Self
 impl core::error::Error for surgeist_css::CssMediaConstructionError
 impl core::fmt::Display for surgeist_css::CssMediaConstructionError
 pub fn surgeist_css::CssMediaConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -2036,6 +2077,8 @@ impl surgeist_css::CssMediaSerializationError
 pub fn surgeist_css::CssMediaSerializationError::origin(&self) -> &surgeist_css::CssValueOrigin
 impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssMediaSerializationError
 pub fn surgeist_css::CssMediaSerializationError::from(error: surgeist_css::CssComponentValueError) -> Self
+impl core::convert::From<surgeist_css::CssMediaSerializationError> for surgeist_css::CssCustomMediaSerializationError
+pub fn surgeist_css::CssCustomMediaSerializationError::from(e: surgeist_css::CssMediaSerializationError) -> Self
 impl core::convert::From<surgeist_css::CssMediaSerializationError> for surgeist_css::CssImportSerializationError
 pub fn surgeist_css::CssImportSerializationError::from(value: surgeist_css::CssMediaSerializationError) -> Self
 impl core::error::Error for surgeist_css::CssMediaSerializationError
@@ -2387,6 +2430,7 @@ pub surgeist_css::CssRoundingStrategy::Up
 #[non_exhaustive] pub enum surgeist_css::CssRule
 pub surgeist_css::CssRule::Container(surgeist_css::CssContainerRule)
 pub surgeist_css::CssRule::CounterStyle(surgeist_css::CssCounterStyleRule)
+pub surgeist_css::CssRule::CustomMedia(surgeist_css::CssCustomMediaRule)
 pub surgeist_css::CssRule::FontFace(surgeist_css::CssFontFaceRule)
 pub surgeist_css::CssRule::FontFeatureValues(surgeist_css::CssFontFeatureValuesRule)
 pub surgeist_css::CssRule::Import(surgeist_css::CssImportRule)
@@ -2405,6 +2449,7 @@ pub surgeist_css::CssRuleContextKindRef::Container
 pub surgeist_css::CssRuleContextKindRef::Container::condition: &'a surgeist_css::CssContainerCondition
 pub surgeist_css::CssRuleContextKindRef::Container::name: core::option::Option<&'a surgeist_css::CssContainerName>
 pub surgeist_css::CssRuleContextKindRef::CounterStyle(&'a surgeist_css::CssCounterStyleRule)
+pub surgeist_css::CssRuleContextKindRef::CustomMedia(&'a surgeist_css::CssCustomMediaRule)
 pub surgeist_css::CssRuleContextKindRef::FontFace(&'a surgeist_css::CssFontFaceRule)
 pub surgeist_css::CssRuleContextKindRef::FontFeatureValues(&'a surgeist_css::CssFontFeatureValuesRule)
 pub surgeist_css::CssRuleContextKindRef::Import(&'a surgeist_css::CssImportRule)
@@ -2429,6 +2474,7 @@ pub surgeist_css::CssScanMode::Interlace
 pub surgeist_css::CssScanMode::Progressive
 #[non_exhaustive] pub enum surgeist_css::CssScopedRule
 pub surgeist_css::CssScopedRule::Container(surgeist_css::CssScopedContainerRule)
+pub surgeist_css::CssScopedRule::CustomMedia(surgeist_css::CssCustomMediaRule)
 pub surgeist_css::CssScopedRule::FontFeatureValues(surgeist_css::CssFontFeatureValuesRule)
 pub surgeist_css::CssScopedRule::LayerBlock(surgeist_css::CssScopedLayerBlockRule)
 pub surgeist_css::CssScopedRule::LayerStatement(surgeist_css::CssScopedLayerStatementRule)
@@ -3723,6 +3769,10 @@ pub struct surgeist_css::CssComponentValueError
 impl surgeist_css::CssComponentValueError
 pub const fn surgeist_css::CssComponentValueError::kind(&self) -> surgeist_css::CssComponentValueErrorKind
 pub const fn surgeist_css::CssComponentValueError::origin(&self) -> &surgeist_css::CssValueOrigin
+impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssCustomMediaConstructionError
+pub fn surgeist_css::CssCustomMediaConstructionError::from(e: surgeist_css::CssComponentValueError) -> Self
+impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssCustomMediaSerializationError
+pub fn surgeist_css::CssCustomMediaSerializationError::from(e: surgeist_css::CssComponentValueError) -> Self
 impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssImportSerializationError
 pub fn surgeist_css::CssImportSerializationError::from(value: surgeist_css::CssComponentValueError) -> Self
 impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssMediaConstructionError
@@ -3933,6 +3983,31 @@ pub struct surgeist_css::CssCustomIdent
 impl surgeist_css::CssCustomIdent
 pub fn surgeist_css::CssCustomIdent::as_str(&self) -> &str
 pub fn surgeist_css::CssCustomIdent::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssCustomMediaName
+impl surgeist_css::CssCustomMediaName
+pub fn surgeist_css::CssCustomMediaName::as_str(&self) -> &str
+pub const fn surgeist_css::CssCustomMediaName::component(&self) -> &surgeist_css::CssComponentValue
+pub const fn surgeist_css::CssCustomMediaName::origin(&self) -> &surgeist_css::CssValueOrigin
+pub const fn surgeist_css::CssCustomMediaName::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub fn surgeist_css::CssCustomMediaName::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssCustomMediaConstructionError>
+pub fn surgeist_css::CssCustomMediaName::try_new(name: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_css::CssCustomMediaConstructionError>
+pub struct surgeist_css::CssCustomMediaReference
+impl surgeist_css::CssCustomMediaReference
+pub const fn surgeist_css::CssCustomMediaReference::component(&self) -> &surgeist_css::CssComponentValue
+pub const fn surgeist_css::CssCustomMediaReference::name(&self) -> &surgeist_css::CssCustomMediaName
+pub const fn surgeist_css::CssCustomMediaReference::origin(&self) -> &surgeist_css::CssValueOrigin
+pub const fn surgeist_css::CssCustomMediaReference::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub struct surgeist_css::CssCustomMediaRule
+impl surgeist_css::CssCustomMediaRule
+pub const fn surgeist_css::CssCustomMediaRule::body(&self) -> &surgeist_css::CssCustomMediaBody
+pub const fn surgeist_css::CssCustomMediaRule::name(&self) -> &surgeist_css::CssCustomMediaName
+pub const fn surgeist_css::CssCustomMediaRule::origin(&self) -> &surgeist_css::CssValueOrigin
+pub const fn surgeist_css::CssCustomMediaRule::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub fn surgeist_css::CssCustomMediaRule::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssCustomMediaSerializationError>
+pub fn surgeist_css::CssCustomMediaRule::try_from_components(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssCustomMediaConstructionError>
+pub fn surgeist_css::CssCustomMediaRule::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssCustomMediaConstructionError>
+pub fn surgeist_css::CssCustomMediaRule::try_new(name: surgeist_css::CssCustomMediaName, body: surgeist_css::CssCustomMediaBody) -> core::result::Result<Self, surgeist_css::CssCustomMediaConstructionError>
+pub fn surgeist_css::CssCustomMediaRule::try_new_with_limits(name: surgeist_css::CssCustomMediaName, body: surgeist_css::CssCustomMediaBody, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssCustomMediaConstructionError>
 pub struct surgeist_css::CssCustomPropertyContribution
 impl surgeist_css::CssCustomPropertyContribution
 pub fn surgeist_css::CssCustomPropertyContribution::declaration(&self) -> &surgeist_css::CssCustomDeclaration

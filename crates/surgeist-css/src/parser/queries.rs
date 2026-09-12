@@ -24,6 +24,7 @@ use crate::{
 };
 
 pub(super) static IMPLEMENTED_MEDIA: &[CssFeatureId] = &[
+    CssFeatureId::new("ext.media.custom-media"),
     CssFeatureId::new("baseline.media.type"),
     CssFeatureId::new("official.media.query-list-core"),
     CssFeatureId::new("ext.media.condition-syntax"),
@@ -435,7 +436,7 @@ fn parse_media_query_inner<'i, 't>(
 ) -> Result<CssMediaQuery, ParseError<'i, Error>> {
     match input.try_parse(|p| parse_typed_media_query(source, p, numeric)) {
         Ok(query) => return Ok(CssMediaQuery::Typed(query)),
-        Err(error) if media_terminal_error(&error) => return Err(error),
+        Err(error) if media_committed_error(&error) => return Err(error),
         Err(_) => {}
     }
     parse_media_condition(source, input, numeric).map(CssMediaQuery::Condition)
@@ -669,14 +670,14 @@ fn parse_media_in_parens<'i, 't>(
                         MediaConditionSyntax::Group { closing },
                     )));
                 }
-                Err(e) if media_terminal_error(&e) => return Err(e),
+                Err(e) if media_committed_error(&e) => return Err(e),
                 Err(_) => {}
             }
             p.reset(&initial);
             let mut syntax =
                 match parse_generic_media_feature(source, p, numeric, component.clone()) {
                     Ok(value) => value,
-                    Err(e) if media_terminal_error(&e) => return Err(e),
+                    Err(e) if media_committed_error(&e) => return Err(e),
                     Err(_) => {
                         // The original complete component was validated above. Consume this
                         // speculative parser before retaining that component as opaque syntax.
@@ -684,6 +685,22 @@ fn parse_media_in_parens<'i, 't>(
                         return Ok(None);
                     }
                 };
+            if syntax.name_text.starts_with("--") {
+                if !matches!(syntax.shape, MediaFeatureShape::Boolean) {
+                    return Err(crate::error::custom_media_context_error(
+                        initial.source_location(),
+                        &syntax.name_text,
+                    ));
+                }
+                let name = crate::CssCustomMediaName::try_from_component(syntax.name.clone())
+                    .expect("selected extension identifier");
+                return Ok(Some((
+                    CssMediaConditionKind::CustomMediaReference(
+                        crate::CssCustomMediaReference::new(name, component.clone()),
+                    ),
+                    MediaConditionSyntax::Enclosed,
+                )));
+            }
             let known = known_generic_name(&syntax);
             if let Some(name) = known {
                 syntax.canonical_name = Some(syntax.name_text.to_ascii_lowercase());
@@ -711,9 +728,10 @@ fn parse_media_in_parens<'i, 't>(
                             MediaConditionSyntax::Feature(Box::new(syntax)),
                         )));
                     }
-                    Err(e) if media_terminal_error(&e) => return Err(e),
+                    Err(e) if media_committed_error(&e) => return Err(e),
                     _ => {}
                 }
+                while p.next_including_whitespace_and_comments().is_ok() {}
                 Ok(Some((
                     CssMediaConditionKind::UnknownFeature(CssUnknownMediaFeature::new(
                         syntax,
@@ -1865,6 +1883,10 @@ impl MediaInput<'_> {
         CssComponentValues::try_new(items)
             .map_err(|e| crate::error::invalid_component_value(input.current_source_location(), e))
     }
+}
+fn media_committed_error(error: &ParseError<'_, Error>) -> bool {
+    media_terminal_error(error)
+        || matches!(&error.kind, cssparser::ParseErrorKind::Custom(error) if matches!(error.kind(), crate::ErrorKind::InvalidMediaQuery(detail) if detail.is_committed_context()))
 }
 pub(super) fn media_terminal_error(error: &ParseError<'_, Error>) -> bool {
     is_nesting_limit_error(error)

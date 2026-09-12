@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::syntax::*;
 use crate::{
-    CssExpansion, CssExpansionError, CssFontFeatureValuesRule, CssParseReport,
+    CssCustomMediaRule, CssExpansion, CssExpansionError, CssFontFeatureValuesRule, CssParseReport,
     CssRecoveryDiagnostic, CssSourcePosition, expand_declaration,
 };
 
@@ -383,6 +383,7 @@ pub enum CssRuleContextKindRef<'a> {
     Import(&'a CssImportRule),
     Namespace(&'a CssNamespaceRule),
     FontFace(&'a CssFontFaceRule),
+    CustomMedia(&'a CssCustomMediaRule),
     FontFeatureValues(&'a CssFontFeatureValuesRule),
     Keyframes(&'a CssKeyframesRule),
     CounterStyle(&'a CssCounterStyleRule),
@@ -409,6 +410,7 @@ enum RuleContextKind {
     Import(CssImportRule),
     Namespace(CssNamespaceRule),
     FontFace(CssFontFaceRule),
+    CustomMedia(CssCustomMediaRule),
     FontFeatureValues(CssFontFeatureValuesRule),
     Keyframes(CssKeyframesRule),
     CounterStyle(CssCounterStyleRule),
@@ -457,6 +459,7 @@ impl CssRuleContext {
             RuleContextKind::LayerStatement(value) => CssRuleContextKindRef::LayerStatement(value),
             RuleContextKind::Import(value) => CssRuleContextKindRef::Import(value),
             RuleContextKind::Namespace(value) => CssRuleContextKindRef::Namespace(value),
+            RuleContextKind::CustomMedia(value) => CssRuleContextKindRef::CustomMedia(value),
             RuleContextKind::FontFeatureValues(value) => {
                 CssRuleContextKindRef::FontFeatureValues(value)
             }
@@ -887,6 +890,13 @@ impl Normalizer {
                         context.rule,
                     );
                 }
+                CssRule::CustomMedia(value) => {
+                    self.record_rule(
+                        RuleContextKind::CustomMedia(value.clone()),
+                        position,
+                        context.rule,
+                    );
+                }
                 CssRule::FontFeatureValues(value) => {
                     self.record_rule(
                         RuleContextKind::FontFeatureValues(value.clone()),
@@ -1047,6 +1057,13 @@ impl Normalizer {
                         context.rule,
                     );
                 }
+                CssScopedRule::CustomMedia(value) => {
+                    self.record_rule(
+                        RuleContextKind::CustomMedia(value.clone()),
+                        position,
+                        context.rule,
+                    );
+                }
                 CssScopedRule::FontFeatureValues(value) => {
                     self.record_rule(
                         RuleContextKind::FontFeatureValues(value.clone()),
@@ -1076,6 +1093,7 @@ fn ordinary_position(rule: &CssRule) -> Option<CssSourcePosition> {
         CssRule::Page(value) => value.position(),
         CssRule::LayerStatement(value) => value.position(),
         CssRule::LayerBlock(value) => value.position(),
+        CssRule::CustomMedia(value) => return value.position(),
         CssRule::FontFeatureValues(value) => return value.position(),
         CssRule::FontFace(value) => value.position(),
         CssRule::Keyframes(value) => value.position(),
@@ -1088,6 +1106,7 @@ fn ordinary_position(rule: &CssRule) -> Option<CssSourcePosition> {
 
 fn scoped_position(rule: &CssScopedRule) -> Option<CssSourcePosition> {
     Some(match rule {
+        CssScopedRule::CustomMedia(value) => return value.position(),
         CssScopedRule::FontFeatureValues(value) => return value.position(),
         CssScopedRule::Style(value) => value.position(),
         CssScopedRule::Media(value) => value.position(),

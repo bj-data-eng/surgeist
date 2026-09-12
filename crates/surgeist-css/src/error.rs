@@ -524,12 +524,16 @@ impl CssSelectorError {
 /// not evaluate the query against an environment or select recovery policy.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssMediaQueryError {
+    committed_context: bool,
     feature: Option<CssMediaFeatureName>,
     expectation: CssGrammarExpectation,
     encountered: Option<CssTokenSummary>,
 }
 
 impl CssMediaQueryError {
+    pub(crate) const fn is_committed_context(&self) -> bool {
+        self.committed_context
+    }
     #[must_use]
     /// Returns the decoded authored media-feature name when one caused the failure.
     pub const fn feature(&self) -> Option<&CssMediaFeatureName> {
@@ -1630,11 +1634,30 @@ pub(crate) fn with_media_query_context<'i>(
     error.kind = ParseErrorKind::Custom(Error::at(
         error.location,
         ErrorKind::InvalidMediaQuery(CssMediaQueryError {
+            committed_context: false,
             feature: feature.map(CssMediaFeatureName::new),
             expectation: EXPECT_MEDIA_QUERY,
             encountered,
         }),
     ));
+    error
+}
+
+pub(crate) fn custom_media_context_error<'i>(
+    location: cssparser::SourceLocation,
+    name: &str,
+) -> ParseError<'i, Error> {
+    let mut error = with_media_query_context(
+        invalid_syntax(location, "custom-media references require boolean context"),
+        Some(name),
+    );
+    if let ParseErrorKind::Custom(Error {
+        kind: ErrorKind::InvalidMediaQuery(detail),
+        ..
+    }) = &mut error.kind
+    {
+        detail.committed_context = true;
+    }
     error
 }
 
@@ -2201,6 +2224,7 @@ mod tests {
             ),
             (
                 ErrorKind::InvalidMediaQuery(CssMediaQueryError {
+                    committed_context: false,
                     feature: None,
                     expectation: EXPECT_MEDIA_QUERY,
                     encountered: None,

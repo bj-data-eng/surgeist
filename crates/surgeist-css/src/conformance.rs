@@ -2611,7 +2611,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 501] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 503] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -5511,6 +5511,20 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 501] = [
         "Media Queries 5 authored query-list grammar",
         X_MEDIA5,
         "#mq-syntax",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.rule.custom-media",
+        CssFeatureKind::Rule,
+        "authored custom-media definitions with boolean or symbolic query-list bodies and checked construction",
+        X_MEDIA5,
+        "#at-ruledef-custom-media",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.media.custom-media",
+        CssFeatureKind::MediaQuery,
+        "symbolic custom-media references in boolean media-feature context",
+        X_MEDIA5,
+        "#custom-mq",
     ),
     CssFeatureMetadata::complete(
         "ext.media.condition-syntax",

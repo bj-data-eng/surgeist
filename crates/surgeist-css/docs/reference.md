@@ -1465,8 +1465,9 @@ three conflicting grammar requirements retain a documented provisional policy.
 General rule serialization remains unfinished.
 
 The preceding public support catalog contained 456 records. The 31 additions
-above brought it to 487; fourteen additional media feature records bring the
-current public support catalog to 501 records, as declared in
+above brought it to 487; fourteen additional media feature records and two
+custom-media rule/reference records bring the current public support catalog
+to 503 records, as declared in
 [the catalog source](../src/conformance.rs). That
 catalog cardinality is distinct from the immutable official inventory of
 exactly 162 property units (161 canonical properties plus the custom-property
@@ -1503,7 +1504,7 @@ source for query grammar and all 37 feature definitions. Historical feature IDs
 and baseline alias memberships remain stable; they do not select superseded
 semantics. The five existing range rows describe complete signed, symbolic and
 source-ordered comparison grammar. Metadata does not claim query evaluation,
-custom-media support, empty import targets or checked import construction.
+empty import targets or checked import construction.
 
 Media features retain authored query syntax, including all 37 known boolean
 feature names in the selected Media Queries 5 edition. Numeric feature operands
@@ -1585,8 +1586,49 @@ operand order and symbolic value spelling, and emits both ratio components.
 Opaque enclosures preserve their meaningful token boundaries and comments.
 Serialization fails with `RecoveredNever` if any list member is a recovery
 sentinel; it produces no partial list. Clean authored `not all` remains ordinary
-serializable syntax. These are authored-syntax contracts; custom media remains
-unfinished.
+serializable syntax. These are authored-syntax contracts.
+
+Custom-media definitions retain their name and explicit boolean or media-list
+body, including an empty list. The name grammar permits the bare `--` identifier;
+it differs from custom-property naming. Definitions remain in authored order,
+including duplicate and cyclic references. Root-context conditional, layer and
+scope groups retain definitions, while style bodies and groups nested under
+style bodies reject them. A valid definition also closes the initial import
+region. CSS preserves these rules and their enclosing contexts during
+normalization; style owns environments, duplicate selection, cycle handling and
+evaluation. The source is the selected [MQ5 custom-media
+grammar](https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#custom-mq) and the
+narrowly imported extension-name definition in the [standards
+catalog](../specs/catalog.json).
+
+Boolean custom-media references have their own condition variant rather than
+being unknown ordinary features. A selected custom name in a normal or range
+feature is a syntax error; recovery replaces the entire comma member with
+`Never`, including when the misuse is nested inside other conditions. A dashed
+identifier used as an ordinary feature's value is still a value. For ambiguous
+two-identifier comparisons, the parser retains its existing preference for a
+known ordinary feature across complete grammar alternatives. Thus
+`(--x < width)` retains an invalid-value `width` feature, while `(1 < --x)` is a
+custom-media syntax error. This precedence is a repository interpretation of
+the ambiguous grammar. An enclosure that matches no feature production, such
+as `(--x:)`, remains general-enclosed.
+
+`CssCustomMediaName::try_new` accepts a decoded identifier and escapes it as
+needed. `CssCustomMediaRule::try_new` combines a checked name with a
+`CssCustomMediaBody`; `try_from_components` instead admits the name/body prelude.
+Both rule constructors have explicit-limit variants. A constructed prelude has
+no authored at-keyword, so the containing rule has programmatic origin while its
+supplied name and body tokens retain their origins.
+
+Checked custom-media construction shares the grammar constraints and rejects
+recovered input. Explicit media-list bodies containing only an unmodified,
+unconditioned unknown `true` or `false` media type are rejected as ambiguous:
+serializing them would select the distinct boolean body. Modifiers, conditions,
+multiple members and empty lists avoid that ambiguity. Component-prelude
+construction selects a boolean body for a lone `true` or `false` keyword.
+Canonical serialization preserves token boundaries and original origins;
+programmatic structure does not invent source coordinates. Retained malformed
+media members cause an atomic serialization error.
 
 `@supports` conditions expose declaration tests, `not`/`and`/`or` grouping,
 complete Selectors 3 plus the selected existing selector extensions as the typed

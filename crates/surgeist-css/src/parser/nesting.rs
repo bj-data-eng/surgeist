@@ -274,6 +274,7 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
                 "import",
                 "the stylesheet top level",
             )),
+            "custom-media" => Err(invalid_at_rule_placement(input.current_source_location(), "custom-media", "a rule list without a style-rule ancestor")),
             "font-feature-values" => Err(invalid_at_rule_placement(
                 input.current_source_location(),
                 "font-feature-values",

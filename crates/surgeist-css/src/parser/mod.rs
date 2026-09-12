@@ -137,6 +137,7 @@ static IMPLEMENTED_RULES: &[CssFeatureId] = &[
     CssFeatureId::new("later.rule.counter-style"),
     CssFeatureId::new("later.rule.page"),
     CssFeatureId::new("later.rule.font-feature-values"),
+    CssFeatureId::new("ext.rule.custom-media"),
 ];
 
 static IMPLEMENTED_QUALIFIED_RULES: &[CssFeatureId] = &[CssFeatureId::new("baseline.rule.style")];
@@ -843,6 +844,7 @@ fn scoped_rule_into_chunk_rule(rule: CssScopedRule) -> CssRule {
             rule.position(),
         )),
         CssScopedRule::Scope(rule) => CssRule::Scope(rule),
+        CssScopedRule::CustomMedia(rule) => CssRule::CustomMedia(rule),
         CssScopedRule::FontFeatureValues(rule) => CssRule::FontFeatureValues(rule),
     }
 }
@@ -1178,6 +1180,7 @@ fn into_scoped_rule(rule: CssRule) -> Option<CssScopedRule> {
             rule.position(),
         ))),
         CssRule::Scope(rule) => Some(CssScopedRule::Scope(rule)),
+        CssRule::CustomMedia(rule) => Some(CssScopedRule::CustomMedia(rule)),
         CssRule::FontFeatureValues(rule) => Some(CssScopedRule::FontFeatureValues(rule)),
         CssRule::NestedDeclarations(_)
         | CssRule::Import(_)
@@ -1191,6 +1194,13 @@ fn into_scoped_rule(rule: CssRule) -> Option<CssScopedRule> {
 
 fn scoped_rule_start(rule: &CssScopedRule) -> usize {
     match rule {
+        CssScopedRule::CustomMedia(rule) => {
+            return rule
+                .position()
+                .expect("parsed custom-media rule")
+                .byte_offset()
+                .value();
+        }
         CssScopedRule::FontFeatureValues(rule) => {
             return rule
                 .position()
@@ -1249,6 +1259,13 @@ fn rebuild_group_rule(rule: CssRule, rules: Vec<CssRule>) -> CssRule {
 
 fn rule_start(rule: &CssRule) -> usize {
     match rule {
+        CssRule::CustomMedia(rule) => {
+            return rule
+                .position()
+                .expect("parsed custom-media rule")
+                .byte_offset()
+                .value();
+        }
         CssRule::FontFeatureValues(rule) => {
             return rule
                 .position()
@@ -1797,6 +1814,7 @@ impl<'s> StrictRuleParser<'s> {
 }
 
 enum StrictAtRulePrelude {
+    CustomMedia(Box<CustomMediaPrelude>),
     FontFeatureValues(Vec<CssFontFaceFamily>),
     Encoding(String),
     Import(Box<CssImportPrelude>),
@@ -1815,6 +1833,7 @@ enum StrictAtRulePrelude {
 impl StrictAtRulePrelude {
     fn production(&self) -> &'static str {
         match self {
+            Self::CustomMedia(_) => "ext.rule.custom-media",
             Self::FontFeatureValues(_) => "later.rule.font-feature-values",
             Self::Encoding(_) => "css.encoding-declaration",
             Self::Import(_) => "baseline.rule.import",
@@ -2019,6 +2038,7 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                 }
                 Ok(StrictAtRulePrelude::Page(selector))
             },
+            "custom-media" => Ok(StrictAtRulePrelude::CustomMedia(Box::new(parse_custom_media_prelude(self.source, input, &self.recovery)?))),
             "font-feature-values" => Ok(StrictAtRulePrelude::FontFeatureValues(font_feature_values::parse_families(self.source, input, &self.recovery)?)),
             "font-face" => {
                 if !input.is_exhausted() {
@@ -2129,6 +2149,17 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
         start: &ParserState,
     ) -> std::result::Result<Self::AtRule, ()> {
         match prelude {
+            StrictAtRulePrelude::CustomMedia(prelude) => {
+                let rule = finish_custom_media(
+                    self.source,
+                    *prelude,
+                    start,
+                    &self.recovery,
+                    &mut self.diagnostics,
+                );
+                self.mark_successful_body_rule();
+                Ok(vec![CssRule::CustomMedia(rule)])
+            }
             StrictAtRulePrelude::Encoding(label) => {
                 self.encoding = Some(CssEncodingDeclaration::new(
                     label,
@@ -2215,6 +2246,12 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
             .recovery
             .enter_rule_block(self.source, input, prelude.production())?;
         let result = match prelude {
+            StrictAtRulePrelude::CustomMedia(_) => Err(invalid_at_rule_block(
+                input,
+                "custom-media",
+                "ext.rule.custom-media",
+                "a statement-form custom-media rule",
+            )),
             StrictAtRulePrelude::Encoding(_) => Err(invalid_encoding_declaration(
                 input.current_source_location(),
             )),
@@ -3066,6 +3103,7 @@ struct ScopedRuleParser<'s> {
 }
 
 enum ScopedAtRulePrelude {
+    CustomMedia(Box<CustomMediaPrelude>),
     FontFeatureValues(Vec<CssFontFaceFamily>),
     Media(CssMediaQueryList),
     Supports(CssSupportsCondition),
@@ -3077,6 +3115,7 @@ enum ScopedAtRulePrelude {
 impl ScopedAtRulePrelude {
     fn production(&self) -> &'static str {
         match self {
+            Self::CustomMedia(_) => "ext.rule.custom-media",
             Self::FontFeatureValues(_) => "later.rule.font-feature-values",
             Self::Media(_) => "baseline.rule.media",
             Self::Supports(_) => "baseline.rule.supports",
@@ -3166,6 +3205,10 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                 "import",
                 "the stylesheet top level",
             )),
+            "custom-media" => {
+                if self.has_style_ancestor { return Err(invalid_at_rule_placement(input.current_source_location(), "custom-media", "a rule list without a style-rule ancestor")); }
+                Ok(ScopedAtRulePrelude::CustomMedia(Box::new(parse_custom_media_prelude(self.source, input, &self.recovery)?)))
+            },
             "font-feature-values" => {
                 if self.has_style_ancestor {
                     return Err(invalid_at_rule_placement(input.current_source_location(), "font-feature-values", "a rule list without a style-rule ancestor"));
@@ -3205,6 +3248,16 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
         start: &ParserState,
     ) -> std::result::Result<Self::AtRule, ()> {
         match prelude {
+            ScopedAtRulePrelude::CustomMedia(prelude) => {
+                let rule = finish_custom_media(
+                    self.source,
+                    *prelude,
+                    start,
+                    &self.recovery,
+                    &mut self.diagnostics,
+                );
+                Ok(vec![CssScopedRule::CustomMedia(rule)])
+            }
             ScopedAtRulePrelude::Layer(names) => {
                 let names = CssLayerNameList::try_new(names).ok_or(())?;
                 Ok(vec![CssScopedRule::LayerStatement(
@@ -3239,6 +3292,12 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
             start.source_location(),
         );
         let result = match prelude {
+            ScopedAtRulePrelude::CustomMedia(_) => Err(invalid_at_rule_block(
+                input,
+                "custom-media",
+                "ext.rule.custom-media",
+                "a statement-form custom-media rule",
+            )),
             ScopedAtRulePrelude::FontFeatureValues(families) => {
                 let rule = font_feature_values::parse_rule(
                     self.source,
@@ -3887,6 +3946,113 @@ pub(super) fn parse_descriptor_boundary<'i, 't, T>(
         descriptor,
     };
     parse_declaration_boundary(input, &context, parse_value).map(|(value, _)| value)
+}
+
+struct CustomMediaPrelude {
+    name: crate::CssCustomMediaName,
+    body: crate::CssCustomMediaBody,
+    body_origin: crate::CssValueOrigin,
+    semicolon: crate::CssValueOrigin,
+    diagnostics: Vec<crate::CssRecoveryDiagnostic>,
+    implicit: Vec<usize>,
+}
+fn parse_custom_media_prelude<'i>(
+    source: &str,
+    input: &mut Parser<'i, '_>,
+    recovery: &RecoveryState,
+) -> Result<CustomMediaPrelude, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let location = input.current_source_location();
+    let component =
+        crate::CssComponentValue::collect_from_parser(input, recovery.source_snapshot())
+            .map_err(|e| crate::error::invalid_component_value(location, e))?;
+    let name = crate::CssCustomMediaName::try_from_component(component).map_err(|_| {
+        with_at_rule_prelude_context(
+            invalid_syntax(location, "expected extension name"),
+            "custom-media",
+            "ext.rule.custom-media",
+            "an extension name followed by a custom-media body",
+        )
+    })?;
+    let body_start = input.state();
+    let boolean = input
+        .try_parse(|p| {
+            let name = p.expect_ident_cloned().map_err(basic)?;
+            let boolean = crate::custom_media::boolean_keyword(&name)
+                .ok_or_else(|| invalid_syntax(p.current_source_location(), "not a boolean body"))?;
+            p.expect_exhausted().map_err(basic)?;
+            Ok::<_, ParseError<'i, Error>>(boolean)
+        })
+        .ok();
+    input.reset(&body_start);
+    let mut diagnostics = Vec::new();
+    let mut implicit = Vec::new();
+    let (body, body_origin) = if let Some(boolean) = boolean {
+        input.skip_whitespace();
+        let token =
+            crate::CssComponentValue::collect_from_parser(input, recovery.source_snapshot())
+                .map_err(|e| {
+                    crate::error::invalid_component_value(input.current_source_location(), e)
+                })?;
+        while input.next_including_whitespace_and_comments().is_ok() {}
+        (
+            if boolean {
+                crate::CssCustomMediaBody::True
+            } else {
+                crate::CssCustomMediaBody::False
+            },
+            token.origin().clone(),
+        )
+    } else {
+        let probe = recovery.detached_probe();
+        let parsed =
+            queries::parse_media_query_list_with_closures(source, input, &mut diagnostics, &probe)?;
+        implicit.extend(parsed.implicit_closures);
+        implicit.extend(probe.pending_component_closures());
+        (
+            crate::CssCustomMediaBody::Media(parsed.queries),
+            crate::CssValueOrigin::Programmatic,
+        )
+    };
+    let end = input.position().byte_index();
+    let semicolon = if source.as_bytes().get(end) == Some(&b';') {
+        crate::CssValueOrigin::Parsed(
+            CssParsedOrigin::from_range(recovery.source_snapshot(), end..end + 1)
+                .expect("custom-media semicolon"),
+        )
+    } else {
+        crate::CssValueOrigin::Programmatic
+    };
+    Ok(CustomMediaPrelude {
+        name,
+        body,
+        body_origin,
+        semicolon,
+        diagnostics,
+        implicit,
+    })
+}
+fn finish_custom_media(
+    source: &str,
+    prelude: CustomMediaPrelude,
+    start: &ParserState,
+    recovery: &RecoveryState,
+    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+) -> crate::CssCustomMediaRule {
+    let mut token_input = ParserInput::new(source);
+    let mut parser = Parser::new(&mut token_input);
+    parser.reset(start);
+    let at = crate::CssComponentValue::collect_from_parser(&mut parser, recovery.source_snapshot())
+        .expect("parsed custom-media at-keyword");
+    diagnostics.extend(prelude.diagnostics);
+    recovery.retain_component_closures(prelude.implicit);
+    crate::CssCustomMediaRule::parsed(
+        prelude.name,
+        prelude.body,
+        at.origin().clone(),
+        prelude.body_origin,
+        prelude.semicolon,
+    )
 }
 
 #[cfg(test)]

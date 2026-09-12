@@ -110,7 +110,7 @@ impl CssEncodingDeclaration {
     }
 }
 
-/// One valid parser-produced rule in the authored stylesheet phase.
+/// One checked rule in the authored stylesheet phase.
 ///
 /// The non-exhaustive union contains only syntax that passed its rule grammar;
 /// discarded source units are represented by report diagnostics instead. A rule
@@ -119,6 +119,7 @@ impl CssEncodingDeclaration {
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum CssRule {
+    CustomMedia(crate::CssCustomMediaRule),
     Import(CssImportRule),
     Namespace(CssNamespaceRule),
     CounterStyle(CssCounterStyleRule),
@@ -2956,6 +2957,7 @@ impl CssScopedRuleList {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssScopedRule {
+    CustomMedia(crate::CssCustomMediaRule),
     FontFeatureValues(CssFontFeatureValuesRule),
     Style(CssScopedStyleRule),
     Media(CssScopedMediaRule),
@@ -3584,6 +3586,7 @@ impl CssMediaCondition {
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum CssMediaConditionKind {
+    CustomMediaReference(crate::CssCustomMediaReference),
     /// An explicitly parenthesized condition, retaining the outer and inner positions.
     Parenthesized(Box<CssMediaCondition>),
     Feature(CssMediaFeatureQuery),

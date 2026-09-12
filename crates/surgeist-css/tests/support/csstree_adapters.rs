@@ -420,6 +420,7 @@ impl Extractor {
         let is_at_rule = matches!(
             rule,
             CssRule::Import(_)
+                | CssRule::CustomMedia(_)
                 | CssRule::Namespace(_)
                 | CssRule::CounterStyle(_)
                 | CssRule::Page(_)
