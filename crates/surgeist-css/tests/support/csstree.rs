@@ -3311,6 +3311,45 @@ mod tests {
         serde_json::to_value(observation).unwrap()
     }
 
+    fn assert_raw_at_rule_rejects_trailing_input(source: &str) {
+        // Syntax 3 single-rule admission requires EOF after the at-rule;
+        // retaining siblings through stylesheet recovery is not this contract.
+        let value = raw_fragment_observation(
+            "expectations/atrule/block.json",
+            Context::Atrule,
+            source,
+        );
+        assert_eq!(value["syntax_count"], 0, "{source}");
+        assert_eq!(value["is_clean"], false, "{source}");
+        let diagnostics = value["diagnostics"].as_array().unwrap();
+        assert_eq!(diagnostics.len(), 1, "{source}");
+        assert_eq!(diagnostics[0]["action"], "reject_input", "{source}");
+        assert_eq!(diagnostics[0]["span_start"], 0, "{source}");
+        assert_eq!(diagnostics[0]["span_end"], source.len(), "{source}");
+    }
+
+    #[test]
+    fn raw_at_rule_observation_rejects_trailing_semicolon() {
+        assert_raw_at_rule_rejects_trailing_input("@media{} ;");
+    }
+
+    #[test]
+    fn raw_at_rule_observation_rejects_trailing_rule() {
+        assert_raw_at_rule_rejects_trailing_input("@media{} a{}");
+    }
+
+    #[test]
+    fn raw_at_rule_observation_retains_clean_empty_rule() {
+        let value = raw_fragment_observation(
+            "expectations/atrule/block.json",
+            Context::Atrule,
+            "@media{}",
+        );
+        assert_eq!(value["syntax_count"], 1);
+        assert_eq!(value["is_clean"], true);
+        assert!(value["diagnostics"].as_array().unwrap().is_empty());
+    }
+
     #[test]
     fn raw_style_block_observation_rejects_extra_outer_input() {
         // A real-brace style-block fragment consumes exactly one whole block.
