@@ -68,6 +68,13 @@ Their two fixture files contain six clean and nine rejected inputs. Rejections
 use the raw `RejectInput` action; functional argument contents cannot define an
 otherwise unknown pseudo name.
 
+The Nth fixtures preserve token-level `An+B` grammar. In particular, `3 n`,
+`+ 2n`, and `+ 2` are invalid; permitted whitespace around a later offset does
+not join a coefficient, sign, or integer across tokens
+([Syntax 3](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#anb-syntax)).
+The corpus checks verify the coefficients, pseudo-class kind, and authored
+`of` filter for 25 clean inputs, and raw rejection for 39 invalid inputs.
+
 The adapterless Combinator fixtures retain their explicit panic-freedom policy.
 The mixed `atrulePrelude` fixture resolves its adapter from validated options:
 `atrule: media` selects the raw media-query-list parser, while the unnamed generic
