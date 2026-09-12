@@ -707,127 +707,146 @@ impl CssCalculationExpression {
     fn closing_origin(&self) -> &CssValueOrigin {
         self.closing.as_ref().unwrap_or(&self.origin)
     }
-    fn canonical_tokens(&self, out: &mut Vec<(String, CssValueOrigin)>) {
-        let push =
-            |out: &mut Vec<(String, CssValueOrigin)>, s: String| out.push((s, self.origin.clone()));
-        match &self.kind {
-            NodeKind::Value(_) | NodeKind::Constant(_) | NodeKind::Variable(_) => {
-                push(out, self.to_css_fragment())
-            }
-            NodeKind::Group(value) => {
-                push(out, "(".into());
-                value.canonical_tokens(out);
-                out.push((")".into(), self.closing_origin().clone()))
-            }
-            NodeKind::Sum(values) => {
-                let mut operators = self.syntax_items().iter().filter(|c| {
-                    matches!(
-                        c.view(),
-                        CssComponentValueRef::Token(CssValueTokenRef::Delim('+' | '-'))
-                    )
-                });
-                for (op, value) in values {
-                    if let Some(op) = op {
-                        out.push((
-                            match op {
+    /// Emits canonical tokens without consuming call stack per expression node.
+    /// Both string and provenance serialization use this one traversal.
+    fn emit_canonical(&self, mut emit: impl FnMut(String, &CssValueOrigin)) {
+        enum Work<'a> {
+            Visit(&'a CssCalculationExpression),
+            Token(String, &'a CssValueOrigin),
+        }
+        let mut pending = vec![Work::Visit(self)];
+        while let Some(work) = pending.pop() {
+            let node = match work {
+                Work::Token(text, origin) => {
+                    emit(text, origin);
+                    continue;
+                }
+                Work::Visit(node) => node,
+            };
+            let mut next = Vec::new();
+            match &node.kind {
+                NodeKind::Value(component) => {
+                    let literal = CssNumericLiteralRef {
+                        component,
+                        ty: node.ty,
+                    };
+                    let text = match component.view() {
+                        CssComponentValueRef::Token(CssValueTokenRef::Percentage(_)) => {
+                            format!("{}%", literal.representation())
+                        }
+                        CssComponentValueRef::Token(CssValueTokenRef::Dimension {
+                            unit, ..
+                        }) => format!("{}{}", literal.representation(), unit.to_ascii_lowercase()),
+                        _ => literal.representation().to_owned(),
+                    };
+                    emit(text, &node.origin);
+                }
+                NodeKind::Constant(constant) => emit(constant.name().to_owned(), &node.origin),
+                NodeKind::Variable(channel) => {
+                    emit(format!("{channel:?}").to_ascii_lowercase(), &node.origin)
+                }
+                NodeKind::Group(value) => {
+                    emit("(".into(), &node.origin);
+                    next.push(Work::Visit(value));
+                    next.push(Work::Token(")".into(), node.closing_origin()));
+                }
+                NodeKind::Sum(values) => {
+                    let mut operators = node.syntax_items().iter().filter(|component| {
+                        matches!(
+                            component.view(),
+                            CssComponentValueRef::Token(CssValueTokenRef::Delim('+' | '-'))
+                        )
+                    });
+                    for (operator, value) in values {
+                        if let Some(operator) = operator {
+                            let text = match operator {
                                 CssCalculationSumOperator::Add => " + ",
                                 CssCalculationSumOperator::Subtract => " - ",
-                            }
-                            .into(),
-                            operators
-                                .next()
-                                .expect("checked sum operator")
-                                .origin()
-                                .clone(),
-                        ))
+                            };
+                            next.push(Work::Token(
+                                text.into(),
+                                operators.next().expect("checked sum operator").origin(),
+                            ));
+                        }
+                        next.push(Work::Visit(value));
                     }
-                    value.canonical_tokens(out)
                 }
-            }
-            NodeKind::Product(values) => {
-                let mut operators = self.syntax_items().iter().filter(|c| {
-                    matches!(
-                        c.view(),
-                        CssComponentValueRef::Token(CssValueTokenRef::Delim('*' | '/'))
-                    )
-                });
-                for (op, value) in values {
-                    if let Some(op) = op {
-                        out.push((
-                            match op {
+                NodeKind::Product(values) => {
+                    let mut operators = node.syntax_items().iter().filter(|component| {
+                        matches!(
+                            component.view(),
+                            CssComponentValueRef::Token(CssValueTokenRef::Delim('*' | '/'))
+                        )
+                    });
+                    for (operator, value) in values {
+                        if let Some(operator) = operator {
+                            let text = match operator {
                                 CssCalculationProductOperator::Multiply => " * ",
                                 CssCalculationProductOperator::Divide => " / ",
-                            }
-                            .into(),
-                            operators
-                                .next()
-                                .expect("checked product operator")
-                                .origin()
-                                .clone(),
-                        ))
+                            };
+                            next.push(Work::Token(
+                                text.into(),
+                                operators.next().expect("checked product operator").origin(),
+                            ));
+                        }
+                        next.push(Work::Visit(value));
                     }
-                    value.canonical_tokens(out)
                 }
-            }
-            NodeKind::Function {
-                function,
-                args,
-                strategy,
-            } => {
-                push(out, format!("{}(", function.name()));
-                let mut commas = self.syntax_items().iter().filter(|c| {
-                    matches!(
-                        c.view(),
-                        CssComponentValueRef::Token(CssValueTokenRef::Comma)
-                    )
-                });
-                let mut names = self.syntax_items().iter().filter(|c| {
-                    matches!(
-                        c.view(),
-                        CssComponentValueRef::Token(CssValueTokenRef::Ident(_))
-                    )
-                });
-                if let Some(s) = strategy {
-                    out.push((
-                        s.name().into(),
-                        names.next().expect("checked strategy").origin().clone(),
-                    ));
-                    out.push((
-                        ", ".into(),
-                        commas
-                            .next()
-                            .expect("checked strategy comma")
-                            .origin()
-                            .clone(),
-                    ));
-                }
-                for (i, arg) in args.iter().enumerate() {
-                    if i > 0 {
-                        out.push((
+                NodeKind::Function {
+                    function,
+                    args,
+                    strategy,
+                } => {
+                    emit(format!("{}(", function.name()), &node.origin);
+                    let mut commas = node.syntax_items().iter().filter(|component| {
+                        matches!(
+                            component.view(),
+                            CssComponentValueRef::Token(CssValueTokenRef::Comma)
+                        )
+                    });
+                    let mut names = node.syntax_items().iter().filter(|component| {
+                        matches!(
+                            component.view(),
+                            CssComponentValueRef::Token(CssValueTokenRef::Ident(_))
+                        )
+                    });
+                    if let Some(strategy) = strategy {
+                        next.push(Work::Token(
+                            strategy.name().into(),
+                            names.next().expect("checked strategy").origin(),
+                        ));
+                        next.push(Work::Token(
                             ", ".into(),
-                            commas
-                                .next()
-                                .expect("checked argument comma")
-                                .origin()
-                                .clone(),
-                        ))
+                            commas.next().expect("checked strategy comma").origin(),
+                        ));
                     }
-                    if let Some(arg) = arg {
-                        arg.canonical_tokens(out)
-                    } else {
-                        out.push((
-                            "none".into(),
-                            names
-                                .find(|c| ident(c, "none"))
-                                .expect("checked absent bound")
-                                .origin()
-                                .clone(),
-                        ))
+                    for (index, argument) in args.iter().enumerate() {
+                        if index > 0 {
+                            next.push(Work::Token(
+                                ", ".into(),
+                                commas.next().expect("checked argument comma").origin(),
+                            ));
+                        }
+                        if let Some(argument) = argument {
+                            next.push(Work::Visit(argument));
+                        } else {
+                            next.push(Work::Token(
+                                "none".into(),
+                                names
+                                    .find(|component| ident(component, "none"))
+                                    .expect("checked absent bound")
+                                    .origin(),
+                            ));
+                        }
                     }
+                    next.push(Work::Token(")".into(), node.closing_origin()));
                 }
-                out.push((")".into(), self.closing_origin().clone()))
             }
+            pending.extend(next.into_iter().rev());
         }
+    }
+    fn canonical_tokens(&self, out: &mut Vec<(String, CssValueOrigin)>) {
+        self.emit_canonical(|text, origin| out.push((text, origin.clone())));
     }
     pub(crate) fn references(&self) -> Vec<CssRelativeColorChannel> {
         let mut found = Vec::new();
@@ -906,76 +925,9 @@ impl CssCalculationExpression {
         }
     }
     pub(crate) fn to_css_fragment(&self) -> String {
-        match &self.kind {
-            NodeKind::Value(c) => {
-                let v = CssNumericLiteralRef {
-                    component: c,
-                    ty: self.ty,
-                };
-                match c.view() {
-                    CssComponentValueRef::Token(CssValueTokenRef::Percentage(_)) => {
-                        format!("{}%", v.representation())
-                    }
-                    CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit, .. }) => {
-                        format!("{}{}", v.representation(), unit.to_ascii_lowercase())
-                    }
-                    _ => v.representation().to_owned(),
-                }
-            }
-            NodeKind::Constant(c) => c.name().to_owned(),
-            NodeKind::Variable(c) => format!("{c:?}").to_ascii_lowercase(),
-            NodeKind::Group(v) => format!("({})", v.to_css_fragment()),
-            NodeKind::Sum(terms) => terms
-                .iter()
-                .map(|(op, v)| {
-                    format!(
-                        "{}{}",
-                        match op {
-                            None => "",
-                            Some(CssCalculationSumOperator::Add) => " + ",
-                            Some(CssCalculationSumOperator::Subtract) => " - ",
-                        },
-                        v.to_css_fragment()
-                    )
-                })
-                .collect(),
-            NodeKind::Product(terms) => terms
-                .iter()
-                .map(|(op, v)| {
-                    format!(
-                        "{}{}",
-                        match op {
-                            None => "",
-                            Some(CssCalculationProductOperator::Multiply) => " * ",
-                            Some(CssCalculationProductOperator::Divide) => " / ",
-                        },
-                        v.to_css_fragment()
-                    )
-                })
-                .collect(),
-            NodeKind::Function {
-                function,
-                args,
-                strategy,
-            } => {
-                let mut out = format!("{}(", function.name());
-                if let Some(s) = strategy {
-                    out.push_str(s.name());
-                    out.push_str(", ")
-                };
-                for (i, a) in args.iter().enumerate() {
-                    if i > 0 {
-                        out.push_str(", ")
-                    }
-                    out.push_str(
-                        &a.as_ref()
-                            .map_or_else(|| "none".to_owned(), Self::to_css_fragment),
-                    );
-                }
-                out.push(')');
-                out
-            }
-        }
+        let mut output = String::new();
+        self.emit_canonical(|text, _| output.push_str(&text));
+        output
     }
 }
 
