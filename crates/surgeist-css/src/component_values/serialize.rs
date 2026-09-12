@@ -31,6 +31,49 @@ impl CssCanonicalBuilder {
         self.emitter.component(component, &mut Vec::new())
     }
 
+    /// Emits borrowed components iteratively; supports lexical views need no
+    /// subtree clone or caller-stack recursion to serialize nested enclosures.
+    pub(crate) fn push_components(
+        &mut self,
+        components: &[CssComponentValue],
+    ) -> Result<(), CssComponentValueError> {
+        enum Event<'a> {
+            Component(&'a CssComponentValue),
+            Closing(&'a Lexeme),
+        }
+        let mut pending: Vec<_> = components.iter().rev().map(Event::Component).collect();
+        while let Some(event) = pending.pop() {
+            let component = match event {
+                Event::Closing(value) => {
+                    self.emitter
+                        .token(value, TokenSerializationType::Other, false)?;
+                    continue;
+                }
+                Event::Component(value) => value,
+            };
+            match &component.data {
+                ComponentData::Function(value) => {
+                    self.emitter
+                        .token(&value.opening, TokenSerializationType::Function, false)?;
+                    pending.push(Event::Closing(&value.closing));
+                    pending.extend(value.values.items().iter().rev().map(Event::Component));
+                }
+                ComponentData::Block(value) => {
+                    let kind = if value.kind == CssBlockKind::Parenthesis {
+                        TokenSerializationType::OpenParen
+                    } else {
+                        TokenSerializationType::Other
+                    };
+                    self.emitter.token(&value.opening, kind, false)?;
+                    pending.push(Event::Closing(&value.closing));
+                    pending.extend(value.values.items().iter().rev().map(Event::Component));
+                }
+                _ => self.emitter.component(component, &mut Vec::new())?,
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn push_grammar(
         &mut self,
         token: CssCanonicalToken<'_>,

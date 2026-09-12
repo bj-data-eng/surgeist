@@ -127,7 +127,7 @@ fn supports_nodes_preserve_exact_non_bmp_byte_and_utf16_positions() {
     let declaration_offset = source.find("D\\69splay").unwrap();
     assert_position(rule.position(), rule_offset, 1, 0);
     assert_position(
-        rule.condition().position(),
+        rule.condition().position().unwrap(),
         condition_offset,
         1,
         u32::try_from(
@@ -138,7 +138,7 @@ fn supports_nodes_preserve_exact_non_bmp_byte_and_utf16_positions() {
         .unwrap(),
     );
     assert_position(
-        declaration.position(),
+        declaration.position().unwrap(),
         declaration_offset,
         1,
         u32::try_from(
@@ -1167,7 +1167,8 @@ fn source_public_nodes_expose_zero_based_byte_line_and_utf16_coordinates() {
         rule.supports()
             .expect("import supports")
             .condition()
-            .position(),
+            .position()
+            .unwrap(),
         29,
         0,
         27,

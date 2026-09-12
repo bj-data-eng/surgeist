@@ -15,11 +15,11 @@ fn supports_conditions_and_group_rules_follow_conditional3() {
     let CssSupportsConditionKind::Declaration(declaration) = rule.condition().kind() else {
         panic!("expected declaration condition");
     };
-    assert_eq!(declaration.authored(), "display: grid");
+    assert_eq!(declaration.authored().unwrap(), "display: grid");
     assert_eq!(declaration.property(), "display");
     assert_eq!(declaration.importance(), CssImportance::Normal);
     assert!(declaration.known().is_some());
-    assert_eq!(declaration.position().byte_offset().value(), 11);
+    assert_eq!(declaration.position().unwrap().byte_offset().value(), 11);
     assert!(matches!(rule.rules(), [CssRule::Style(_)]));
     assert_eq!(rule.position().byte_offset().value(), 0);
 }
@@ -51,20 +51,23 @@ fn supports_declaration_tests_preserve_authored_false_syntax_without_diagnostics
         })
         .collect::<Vec<_>>();
 
-    assert_eq!(declarations[0].authored(), "--theme: red !important");
+    assert_eq!(
+        declarations[0].authored().unwrap(),
+        "--theme: red !important"
+    );
     assert_eq!(declarations[0].property(), "--theme");
     assert_eq!(declarations[0].importance(), CssImportance::Important);
     assert!(declarations[0].known().is_none());
-    assert_eq!(declarations[1].authored(), "mystery: 1");
+    assert_eq!(declarations[1].authored().unwrap(), "mystery: 1");
     assert!(declarations[1].known().is_none());
     assert_eq!(
-        declarations[2].authored(),
+        declarations[2].authored().unwrap(),
         "display: definitely-not-a-display"
     );
     assert!(declarations[2].known().is_none());
-    assert_eq!(declarations[3].authored(), "display:");
+    assert_eq!(declarations[3].authored().unwrap(), "display:");
     assert!(declarations[3].known().is_none());
-    assert_eq!(declarations[4].authored(), " display: grid ");
+    assert_eq!(declarations[4].authored().unwrap(), " display: grid ");
     assert_eq!(declarations[4].property(), "display");
     assert!(declarations[4].known().is_some());
 }

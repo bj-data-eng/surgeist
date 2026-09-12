@@ -119,7 +119,7 @@ fn empty_targets_preserve_layer_supports_and_symbolic_media_clauses() {
             panic!("retained declaration supports condition");
         };
         assert_eq!(declaration.property(), "display");
-        assert_eq!(declaration.authored(), "display:grid");
+        assert_eq!(declaration.authored().unwrap(), "display:grid");
         assert!(matches!(
             import.media().unwrap().queries(),
             [CssMediaQuery::Typed(query)] if query.media_type() == CssMediaType::Print

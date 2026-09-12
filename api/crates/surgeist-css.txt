@@ -2546,6 +2546,24 @@ pub surgeist_css::CssSupportsConditionKind::GeneralEnclosed(surgeist_css::CssGen
 pub surgeist_css::CssSupportsConditionKind::Not(alloc::boxed::Box<surgeist_css::CssSupportsCondition>)
 pub surgeist_css::CssSupportsConditionKind::Or(surgeist_css::CssSupportsConditionList)
 pub surgeist_css::CssSupportsConditionKind::Selector(surgeist_css::CssSelector)
+#[non_exhaustive] pub enum surgeist_css::CssSupportsConstructionError
+pub surgeist_css::CssSupportsConstructionError::Component(surgeist_css::CssComponentValueError)
+pub surgeist_css::CssSupportsConstructionError::InvalidConditionGrammar
+pub surgeist_css::CssSupportsConstructionError::InvalidConditionGrammar::origin: surgeist_css::CssValueOrigin
+pub surgeist_css::CssSupportsConstructionError::InvalidDeclarationGrammar
+pub surgeist_css::CssSupportsConstructionError::InvalidDeclarationGrammar::origin: surgeist_css::CssValueOrigin
+pub surgeist_css::CssSupportsConstructionError::RecoveredInput
+pub surgeist_css::CssSupportsConstructionError::RecoveredInput::origin: surgeist_css::CssValueOrigin
+pub surgeist_css::CssSupportsConstructionError::WorkerUnavailable
+pub surgeist_css::CssSupportsConstructionError::WorkerUnavailable::origin: surgeist_css::CssValueOrigin
+impl surgeist_css::CssSupportsConstructionError
+pub fn surgeist_css::CssSupportsConstructionError::origin(&self) -> &surgeist_css::CssValueOrigin
+impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssSupportsConstructionError
+pub fn surgeist_css::CssSupportsConstructionError::from(error: surgeist_css::CssComponentValueError) -> Self
+impl core::error::Error for surgeist_css::CssSupportsConstructionError
+pub fn surgeist_css::CssSupportsConstructionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssSupportsConstructionError
+pub fn surgeist_css::CssSupportsConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssSystemColor
 pub surgeist_css::CssSystemColor::AccentColor
 pub surgeist_css::CssSystemColor::AccentColorText
@@ -3780,6 +3798,8 @@ impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css:
 pub fn surgeist_css::CssMediaConstructionError::from(error: surgeist_css::CssComponentValueError) -> Self
 impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssMediaSerializationError
 pub fn surgeist_css::CssMediaSerializationError::from(error: surgeist_css::CssComponentValueError) -> Self
+impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssSupportsConstructionError
+pub fn surgeist_css::CssSupportsConstructionError::from(error: surgeist_css::CssComponentValueError) -> Self
 impl core::error::Error for surgeist_css::CssComponentValueError
 impl core::fmt::Display for surgeist_css::CssComponentValueError
 pub fn surgeist_css::CssComponentValueError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -5876,19 +5896,35 @@ impl surgeist_css::CssSubstitutionDependentValue
 pub fn surgeist_css::CssSubstitutionDependentValue::as_css(&self) -> &str
 pub struct surgeist_css::CssSupportsCondition
 impl surgeist_css::CssSupportsCondition
+pub fn surgeist_css::CssSupportsCondition::components(&self) -> &[surgeist_css::CssComponentValue]
 pub const fn surgeist_css::CssSupportsCondition::kind(&self) -> &surgeist_css::CssSupportsConditionKind
-pub const fn surgeist_css::CssSupportsCondition::position(&self) -> surgeist_css::CssSourcePosition
+pub const fn surgeist_css::CssSupportsCondition::origin(&self) -> &surgeist_css::CssValueOrigin
+pub const fn surgeist_css::CssSupportsCondition::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+impl surgeist_css::CssSupportsCondition
+pub fn surgeist_css::CssSupportsCondition::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssSupportsCondition::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssSupportsCondition::try_from_components(values: surgeist_css::CssComponentValues, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssSupportsConstructionError>
+pub fn surgeist_css::CssSupportsCondition::try_from_components_with_limits(values: surgeist_css::CssComponentValues, context: &surgeist_css::CssNamespaceContext, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssSupportsConstructionError>
 pub struct surgeist_css::CssSupportsConditionList
 impl surgeist_css::CssSupportsConditionList
 pub fn surgeist_css::CssSupportsConditionList::conditions(&self) -> &[surgeist_css::CssSupportsCondition]
 pub fn surgeist_css::CssSupportsConditionList::try_new(conditions: alloc::vec::Vec<surgeist_css::CssSupportsCondition>) -> core::option::Option<Self>
 pub struct surgeist_css::CssSupportsDeclaration
 impl surgeist_css::CssSupportsDeclaration
-pub fn surgeist_css::CssSupportsDeclaration::authored(&self) -> &str
+pub fn surgeist_css::CssSupportsDeclaration::authored(&self) -> core::option::Option<&str>
+pub fn surgeist_css::CssSupportsDeclaration::components(&self) -> &[surgeist_css::CssComponentValue]
 pub const fn surgeist_css::CssSupportsDeclaration::importance(&self) -> surgeist_css::CssImportance
 pub const fn surgeist_css::CssSupportsDeclaration::known(&self) -> core::option::Option<&surgeist_css::CssKnownDeclaration>
-pub const fn surgeist_css::CssSupportsDeclaration::position(&self) -> surgeist_css::CssSourcePosition
+pub fn surgeist_css::CssSupportsDeclaration::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssSupportsDeclaration::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
 pub fn surgeist_css::CssSupportsDeclaration::property(&self) -> &str
+pub fn surgeist_css::CssSupportsDeclaration::property_component(&self) -> &surgeist_css::CssComponentValue
+pub fn surgeist_css::CssSupportsDeclaration::value_components(&self) -> &[surgeist_css::CssComponentValue]
+impl surgeist_css::CssSupportsDeclaration
+pub fn surgeist_css::CssSupportsDeclaration::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssSupportsDeclaration::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssSupportsDeclaration::try_from_components(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssSupportsConstructionError>
+pub fn surgeist_css::CssSupportsDeclaration::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssSupportsConstructionError>
 pub struct surgeist_css::CssSupportsRule
 impl surgeist_css::CssSupportsRule
 pub const fn surgeist_css::CssSupportsRule::condition(&self) -> &surgeist_css::CssSupportsCondition

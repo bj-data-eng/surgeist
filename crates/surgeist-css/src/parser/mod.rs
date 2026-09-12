@@ -29,6 +29,7 @@ mod page;
 mod queries;
 // Shared checked media construction uses the same private admission engine.
 pub(crate) use queries::{construct_media_condition, construct_media_query};
+pub(crate) use supports::{construct_supports_condition, construct_supports_declaration};
 mod recovery;
 mod selectors;
 mod supports;
@@ -2751,10 +2752,11 @@ fn parse_import_supports<'i, 't>(
             nested.expect_exhausted().map_err(basic)?;
             Ok::<_, ParseError<'i, Error>>(declaration)
         }))? {
-            let position = declaration.position();
+            let lexical = declaration.lexical().clone();
             return Ok(CssSupportsCondition::new(
                 CssSupportsConditionKind::Declaration(Box::new(declaration)),
-                position,
+                lexical,
+                true,
             ));
         }
 

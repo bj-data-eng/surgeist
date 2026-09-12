@@ -87,7 +87,7 @@ fn supports_valid_declaration_tests_keep_empty_unknown_custom_and_terminal_impor
         let CssSupportsConditionKind::Declaration(declaration) = condition.kind() else {
             panic!("valid authored declaration: {contents}: {condition:?}");
         };
-        assert_eq!(declaration.authored(), contents);
+        assert_eq!(declaration.authored().unwrap(), contents);
         assert_eq!(declaration.property(), property);
         assert_eq!(declaration.known().is_some(), known, "{contents}");
         assert_eq!(
@@ -107,7 +107,7 @@ fn supports_valid_declaration_tests_keep_empty_unknown_custom_and_terminal_impor
         else {
             panic!("valid bare import declaration: {contents}");
         };
-        assert_eq!(import_declaration.authored(), contents);
+        assert_eq!(import_declaration.authored().unwrap(), contents);
         assert_eq!(import_declaration.importance(), declaration.importance());
     }
 }

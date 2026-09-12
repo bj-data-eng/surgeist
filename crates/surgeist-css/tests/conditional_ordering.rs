@@ -86,7 +86,7 @@ fn import_supports_accepts_bare_declarations_and_full_conditions() {
     else {
         panic!("expected declaration test")
     };
-    assert_eq!(declaration.authored(), "display: grid");
+    assert_eq!(declaration.authored().unwrap(), "display: grid");
     assert_eq!(declaration.property(), "display");
     assert!(declaration.known().is_some());
     assert!(bare.layer().is_none());
@@ -145,7 +145,7 @@ fn repeated_or_swapped_clause_functions_remain_valid_media_suffixes() {
             else {
                 panic!("expected declaration supports clause")
             };
-            assert_eq!(declaration.authored(), "display: grid");
+            assert_eq!(declaration.authored().unwrap(), "display: grid");
         } else {
             assert!(import.supports().is_none());
         }

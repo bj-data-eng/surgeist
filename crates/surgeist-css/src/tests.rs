@@ -1000,7 +1000,7 @@ fn import_rule_parser_retains_repeated_supports_as_opaque_media() {
     else {
         panic!("expected declaration supports clause")
     };
-    assert_eq!(declaration.authored(), "display: grid");
+    assert_eq!(declaration.authored(), Some("display: grid"));
     let [CssMediaQuery::Condition(condition)] = rule.media().expect("media suffix").queries()
     else {
         panic!("expected one media condition")
@@ -5790,7 +5790,7 @@ fn advanced_css_surface_matrix_accepts_supported_forms() {
     else {
         panic!("expected declaration supports clause")
     };
-    assert_eq!(declaration.authored(), "display: grid");
+    assert_eq!(declaration.authored(), Some("display: grid"));
     let [CssMediaQuery::Condition(condition)] = import.media().expect("media suffix").queries()
     else {
         panic!("expected condition-only media")

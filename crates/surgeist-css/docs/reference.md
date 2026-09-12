@@ -1661,6 +1661,46 @@ Bad string and URL tokens cannot enter either branch. These distinctions follow
 the selected [Conditional Rules 3 grammar](https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#at-supports);
 they do not evaluate whether the renderer supports a declaration.
 
+Supports conditions and declarations can also be constructed from checked
+component values. `CssSupportsCondition::try_from_components` takes an explicit
+`CssNamespaceContext`; `CssSupportsDeclaration::try_from_components` takes the
+bare declaration contents. Both have explicit-limit variants. They share the
+authored grammar with stylesheet parsing and reject recovered component input.
+Unknown properties, empty values, CSS-wide keywords and pending substitutions
+retain their authored meaning; a known-property view never evaluates support.
+`CssSupportsConstructionError` distinguishes grammar rejection, recovered input,
+component resource limits and failure to start the bounded deep-construction
+worker. Serialization also accepts an explicit output byte limit.
+
+`components()` borrows the original lexical slice, including grouping and
+importance tokens. Declaration `property_component()` and `value_components()`
+expose the original property token and value without the terminal importance
+annotation. Nested conditions share immutable lexical backing. Cloning a child
+keeps its tokens alive independently of its parent; unrelated enclosing siblings
+do not affect child equality.
+
+Both models expose `origin()` and an optional `position()`. Programmatic wrappers
+have no parsed position. A constructed declaration whose property token came
+from a parsed source retains that token's position, but its aggregate `authored()`
+is still `None`. Only declarations actually parsed from a source report a genuine
+authored slice through `Some(...)`. Mixed-source tokens and known numeric views
+retain their original snapshot identities.
+
+Their serializers use the shared component canonical rules: preserve lexical
+spelling, grouping and origins, and insert separators where tokens would otherwise
+combine. They do not promise CSSOM whitespace or case normalization. Parsed
+implicit closing delimiters can serialize with their recovery origins; checked
+construction rejects those same recovered inputs. A standalone condition obtained
+from an import's bare declaration gains programmatic parentheses when serialized
+as a condition. The import rule keeps its original clause syntax.
+
+Migration: `CssSupportsCondition::position()` and
+`CssSupportsDeclaration::position()` now return `Option<CssSourcePosition>`;
+`CssSupportsDeclaration::authored()` returns `Option<&str>`. Consumers must handle
+programmatic construction rather than assuming a single source location or text
+slice. Existing stylesheet parsing still supplies the original positions and
+authored declaration text.
+
 ```rust
 use surgeist_css::{CssRule, CssSupportsConditionKind, parse_sheet};
 

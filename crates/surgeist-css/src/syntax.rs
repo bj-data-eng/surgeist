@@ -2532,31 +2532,49 @@ impl CssSupportsRule {
     }
 }
 
-/// One positioned authored supports condition.
+/// One authored supports condition with original lexical backing.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssSupportsCondition {
-    kind: CssSupportsConditionKind,
-    position: CssSourcePosition,
+    kind: Box<CssSupportsConditionKind>,
+    lexical: crate::supports::SupportsLexical,
+    origin: CssValueOrigin,
+    bare_declaration: bool,
 }
-
 impl CssSupportsCondition {
-    #[must_use]
-    pub(crate) const fn new(kind: CssSupportsConditionKind, position: CssSourcePosition) -> Self {
-        Self { kind, position }
+    pub(crate) fn new(
+        kind: CssSupportsConditionKind,
+        lexical: crate::supports::SupportsLexical,
+        bare_declaration: bool,
+    ) -> Self {
+        let origin = lexical.first_origin().clone();
+        Self {
+            kind: Box::new(kind),
+            lexical,
+            origin,
+            bare_declaration,
+        }
     }
-
     #[must_use]
     pub const fn kind(&self) -> &CssSupportsConditionKind {
         &self.kind
     }
-
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
-        self.position
+    pub const fn origin(&self) -> &CssValueOrigin {
+        &self.origin
     }
-
+    #[must_use]
+    pub const fn position(&self) -> Option<CssSourcePosition> {
+        crate::media::parsed_position(&self.origin)
+    }
+    #[must_use]
+    pub fn components(&self) -> &[crate::CssComponentValue] {
+        self.lexical.items()
+    }
     pub(crate) fn into_kind(self) -> CssSupportsConditionKind {
-        self.kind
+        *self.kind
+    }
+    pub(crate) const fn bare_declaration(&self) -> bool {
+        self.bare_declaration
     }
 }
 
@@ -2603,58 +2621,72 @@ impl CssSupportsConditionList {
 /// parser can provide its property-coupled typed declaration view.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssSupportsDeclaration {
-    authored: String,
+    authored: Option<String>,
     property: String,
     importance: CssImportance,
     known: Option<CssKnownDeclaration>,
-    position: CssSourcePosition,
+    lexical: crate::supports::SupportsLexical,
+    property_index: usize,
+    value_range: std::ops::Range<usize>,
 }
-
 impl CssSupportsDeclaration {
-    #[must_use]
     pub(crate) fn new(
-        authored: impl Into<String>,
-        property: impl Into<String>,
+        authored: Option<String>,
+        property: String,
         importance: CssImportance,
         known: Option<CssKnownDeclaration>,
-        position: CssSourcePosition,
+        lexical: crate::supports::SupportsLexical,
+        property_index: usize,
+        value_range: std::ops::Range<usize>,
     ) -> Self {
-        let authored = authored.into();
-        let property = property.into();
-        debug_assert!(!authored.is_empty());
-        debug_assert!(!property.is_empty());
         Self {
             authored,
             property,
             importance,
             known,
-            position,
+            lexical,
+            property_index,
+            value_range,
         }
     }
-
     #[must_use]
-    pub fn authored(&self) -> &str {
-        &self.authored
+    pub fn authored(&self) -> Option<&str> {
+        self.authored.as_deref()
     }
-
     #[must_use]
     pub fn property(&self) -> &str {
         &self.property
     }
-
     #[must_use]
     pub const fn importance(&self) -> CssImportance {
         self.importance
     }
-
     #[must_use]
     pub const fn known(&self) -> Option<&CssKnownDeclaration> {
         self.known.as_ref()
     }
-
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
-        self.position
+    pub fn origin(&self) -> &CssValueOrigin {
+        self.property_component().origin()
+    }
+    #[must_use]
+    pub fn position(&self) -> Option<CssSourcePosition> {
+        crate::media::parsed_position(self.origin())
+    }
+    #[must_use]
+    pub fn components(&self) -> &[crate::CssComponentValue] {
+        self.lexical.items()
+    }
+    #[must_use]
+    pub fn property_component(&self) -> &crate::CssComponentValue {
+        &self.components()[self.property_index]
+    }
+    #[must_use]
+    pub fn value_components(&self) -> &[crate::CssComponentValue] {
+        &self.components()[self.value_range.clone()]
+    }
+    pub(crate) fn lexical(&self) -> &crate::supports::SupportsLexical {
+        &self.lexical
     }
 }
 

@@ -46,7 +46,7 @@ fn declaration_supports(import: &CssImportRule) {
         panic!("authored declaration test");
     };
     assert_eq!(declaration.property(), "display");
-    assert_eq!(declaration.authored(), "display:grid");
+    assert_eq!(declaration.authored().unwrap(), "display:grid");
 }
 
 #[test]
