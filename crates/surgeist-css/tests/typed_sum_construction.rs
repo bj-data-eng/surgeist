@@ -333,3 +333,46 @@ fn normalized_operator_spacing_is_budgeted_before_consuming_another_operand() {
         "calc(calc(1px*2))"
     );
 }
+
+#[test]
+fn escaped_operand_boundary_bytes_are_counted_before_reading_later_operands() {
+    use std::cell::Cell;
+    let consumed = Cell::new(0);
+    let rest = std::iter::repeat_with(|| {
+        consumed.set(consumed.get() + 1);
+        (Op::Add, operand("2px"))
+    })
+    .take(3);
+    // Joint serialization needs a comment before actual whitespace so that the
+    // space is not swallowed as the hexadecimal escape's terminator:
+    // calc(1p\78/**/ + 2px) = 6 + 5 + 4 + 3 + 3 = 21 bytes.
+    let limits = CssComponentValueLimits::try_new(256, usize::MAX, 17).unwrap();
+    let error = Calculation::try_sum_with_limits(operand(r"1p\78"), rest, limits).unwrap_err();
+    resource(&error, CssComponentValueErrorKind::ByteLimit);
+    assert_eq!(
+        consumed.get(),
+        1,
+        "the first additional operand already exceeds the joint budget"
+    );
+}
+
+#[test]
+fn exact_escaped_operand_budget_preserves_the_original_unit_and_math_whitespace() {
+    let first = operand(r"1p\78");
+    let original = first.components().clone();
+    let limits = CssComponentValueLimits::try_new(256, usize::MAX, 21).unwrap();
+    let sum = Calculation::try_sum_with_limits(first, [(Op::Add, operand("2px"))], limits).unwrap();
+    assert_eq!(
+        sum.components().serialize().unwrap().as_css(),
+        r"calc(1p\78/**/ + 2px)"
+    );
+    assert_eq!(sum.serialize().unwrap().as_css(), "calc(1px + 2px)");
+    let CssComponentValueRef::Function(function) = sum.components().items()[0].view() else {
+        panic!("outer calc")
+    };
+    assert_eq!(function.values().items()[0], original.items()[0]);
+    same_origin(
+        function.values().items()[0].origin(),
+        original.items()[0].origin(),
+    );
+}
