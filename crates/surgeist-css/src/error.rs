@@ -1462,10 +1462,17 @@ fn invalid_at_rule_body_at<'i>(
 
 pub(crate) fn invalid_selector<'i, 't>(
     input: &Parser<'i, 't>,
+    reason: impl Into<String>,
+) -> ParseError<'i, Error> {
+    invalid_selector_at(input.current_source_location(), reason)
+}
+
+pub(crate) fn invalid_selector_at<'i>(
+    location: cssparser::SourceLocation,
     _reason: impl Into<String>,
 ) -> ParseError<'i, Error> {
     error_at(
-        input.current_source_location(),
+        location,
         ErrorKind::InvalidSelector(CssSelectorError {
             production: Some(SELECTOR_LIST),
             expectation: EXPECT_SELECTOR,

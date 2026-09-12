@@ -4,7 +4,9 @@ use cssparser::{
 };
 
 use super::recovery::{RecoveryState, comma_member_span, recovery_action_for_error};
-use crate::error::{CssFeatureId, Error, from_parse_error, invalid_selector, selector_basic};
+use crate::error::{
+    CssFeatureId, Error, from_parse_error, invalid_selector, invalid_selector_at, selector_basic,
+};
 use crate::syntax::*;
 
 pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] = &[
@@ -1108,7 +1110,13 @@ fn parse_pseudo_class_with_options<'i, 't>(
                 "baseline.selector.complex",
             )?;
             let result = input.parse_nested_block(|input| {
-                parse_function_pseudo_class(name.as_ref(), input, options, recovery)
+                parse_function_pseudo_class(
+                    name.as_ref(),
+                    state.source_location(),
+                    input,
+                    options,
+                    recovery,
+                )
             });
             if result.is_ok() {
                 depth.retain();
@@ -1178,6 +1186,7 @@ fn parse_named_pseudo_class<'i>(
 #[inline(never)]
 fn parse_function_pseudo_class<'i, 't>(
     name: &str,
+    name_start: cssparser::SourceLocation,
     input: &mut Parser<'i, 't>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
@@ -1193,7 +1202,7 @@ fn parse_function_pseudo_class<'i, 't>(
         "where" => CssPseudoClass::Where(parse_forgiving_pseudo_selector_list(input, options.without_pseudo_elements(), recovery)?),
         "has" if options.allow_has => CssPseudoClass::Has(parse_has_relative_selector_list(input, options, recovery)?),
         "has" => return Err(invalid_selector(input, "nested `:has()` is unsupported")),
-        _ => return Err(invalid_selector(input, format!("unsupported pseudo-class `:{name}(`"))),
+        _ => return Err(invalid_selector_at(name_start, format!("unsupported pseudo-class `:{name}(`"))),
     };
     input.expect_exhausted().map_err(selector_basic)?;
     Ok(pseudo_class)
