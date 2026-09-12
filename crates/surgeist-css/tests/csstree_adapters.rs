@@ -90,6 +90,17 @@ fn at_rule_extraction_retains_authored_font_feature_values() {
 }
 
 #[test]
+fn at_rule_extraction_retains_authored_custom_media() {
+    // MQ5 #custom-mq defines an authored at-rule independently of evaluation.
+    let report = parse_rule(
+        "@custom-media --theme (color);",
+        &CssNamespaceContext::default(),
+    );
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    assert_eq!(Extractor::AtRule.extract_at_rule(report.syntax()), Ok(1));
+}
+
+#[test]
 fn style_block_adapter_preserves_raw_input_and_names_block_presence() {
     let entry = adapters::REGISTRY
         .iter()
