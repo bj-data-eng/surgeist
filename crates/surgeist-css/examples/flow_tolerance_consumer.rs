@@ -4,18 +4,16 @@
 //! https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#placement-tolerance
 //! The grammar has no nonnegative range annotation. `normal` remains symbolic:
 //! its 1em/0 used value requires the downstream layout context.
-//! The new constructor rejects empty legacy sums and a leading Subtract at any
-//! sum depth because the public legacy serializer cannot faithfully represent
-//! them. This is a checked legacy-input restriction, not a ban on negative CSS
-//! mathematics: signed first operands and typed calculations remain valid.
+//! Checked sum assembly requires a first operand and preserves signed math,
+//! later subtraction, and trusted typed calculation children.
 //! Values, component origins, contribution ordering, and strict retry behavior
 //! below are asserted independently of serialization followed by reparsing.
 
 use surgeist_css::{
-    CssCalcLength, CssCalcLengthTerm, CssCalculationExpressionRef, CssCalculationProductOperator,
-    CssCalculationType, CssCalculationValueRef, CssComponentValue, CssComponentValues,
-    CssContributionValueRef, CssContributions, CssDeclaration, CssExpansion, CssExpansionErrorKind,
-    CssFlowTolerance, CssFlowToleranceRef, CssGlobalKeyword, CssImportance,
+    CssCalcLength, CssCalculationExpressionRef, CssCalculationProductOperator,
+    CssCalculationSumOperator, CssCalculationType, CssCalculationValueRef, CssComponentValue,
+    CssComponentValues, CssContributionValueRef, CssContributions, CssDeclaration, CssExpansion,
+    CssExpansionErrorKind, CssFlowTolerance, CssFlowToleranceRef, CssGlobalKeyword, CssImportance,
     CssKnownProperty as Property, CssKnownPropertyValueRef, CssLength,
     CssLengthPercentageCalculation, CssLengthUnit, CssLonghandContribution, CssLonghandValueRef,
     CssNormalizedItem, CssPropertyNameRef, CssPropertyValueErrorKind, CssSerializedOrigin,
@@ -113,55 +111,29 @@ fn constructors_preserve_symbolic_keywords_and_signed_numeric_payloads() {
     println!("checked symbolic and signed values: ok");
 }
 
-fn constructor_rejects_unserializable_legacy_shapes_without_rejecting_signed_math() {
-    let px = || CssCalcLength::try_px(2.0).unwrap();
-    let empty = || CssCalcLength::Sum(Vec::new());
-    let leading_subtract = || CssCalcLength::Sum(vec![CssCalcLengthTerm::sub(px())]);
-    for invalid in [
-        empty(),
-        CssCalcLength::Sum(vec![CssCalcLengthTerm::add(empty())]),
-        CssCalcLength::Sum(vec![
-            CssCalcLengthTerm::add(px()),
-            CssCalcLengthTerm::sub(empty()),
-        ]),
-        CssCalcLength::Sum(vec![CssCalcLengthTerm::add(CssCalcLength::Sum(vec![
-            CssCalcLengthTerm::add(empty()),
-        ]))]),
-        leading_subtract(),
-        CssCalcLength::Sum(vec![
-            CssCalcLengthTerm::sub(px()),
-            CssCalcLengthTerm::add(px()),
-        ]),
-        CssCalcLength::Sum(vec![CssCalcLengthTerm::add(leading_subtract())]),
-        CssCalcLength::Sum(vec![
-            CssCalcLengthTerm::add(px()),
-            CssCalcLengthTerm::sub(leading_subtract()),
-        ]),
-    ] {
-        assert!(
-            CssFlowTolerance::try_length_percentage(CssLength::Calc(invalid.clone())).is_none(),
-            "the checked boundary must reject malformed legacy shape {invalid:?}",
-        );
-    }
-
-    let signed = CssCalcLength::sum(
-        CssCalcLengthTerm::add(CssCalcLength::try_px(-2.0).unwrap()),
-        [CssCalcLengthTerm::sub(
-            CssCalcLength::try_percent(3.0).unwrap(),
+fn checked_sum_construction_preserves_signed_math() {
+    let signed = CssLengthPercentageCalculation::try_sum(
+        CssLengthPercentageCalculation::try_dimension(-2.0, CssLengthUnit::Px).unwrap(),
+        [(
+            CssCalculationSumOperator::Subtract,
+            CssLengthPercentageCalculation::try_percentage(3.0).unwrap(),
         )],
-    );
-    let nested = CssCalcLength::sum(
-        CssCalcLengthTerm::add(signed.clone()),
-        [CssCalcLengthTerm::sub(
-            CssCalcLength::try_dimension(-4.0, CssLengthUnit::Em).unwrap(),
+    )
+    .unwrap();
+    let nested = CssLengthPercentageCalculation::try_sum(
+        signed.clone(),
+        [(
+            CssCalculationSumOperator::Subtract,
+            CssLengthPercentageCalculation::try_dimension(-4.0, CssLengthUnit::Em).unwrap(),
         )],
-    );
+    )
+    .unwrap();
     for valid in [signed, nested] {
-        let tolerance = CssFlowTolerance::try_length_percentage(CssLength::Calc(valid.clone()))
-            .expect("negative operands and non-leading subtraction preserve valid math");
-        assert_eq!(length(&tolerance), &CssLength::Calc(valid));
+        let expected = CssLength::Calc(CssCalcLength::Typed(valid));
+        let tolerance = CssFlowTolerance::try_length_percentage(expected.clone()).unwrap();
+        assert_eq!(length(&tolerance), &expected);
     }
-    println!("legacy calculation construction boundary: ok");
+    println!("checked calculation construction: ok");
 }
 
 fn parsed_and_constructed_payloads_match_independent_signed_expectations() {
@@ -535,7 +507,7 @@ fn pending_reentry_preserves_original_and_replacement_origins_and_is_retryable()
 
 fn main() {
     constructors_preserve_symbolic_keywords_and_signed_numeric_payloads();
-    constructor_rejects_unserializable_legacy_shapes_without_rejecting_signed_math();
+    checked_sum_construction_preserves_signed_math();
     parsed_and_constructed_payloads_match_independent_signed_expectations();
     component_construction_preserves_value_importance_and_origins();
     normalization_keeps_occurrence_order_and_symbolic_values();

@@ -2,7 +2,7 @@ use surgeist_css::{
     CssAnimationDirection, CssAuthoredColorComponent, CssAuthoredColorMix,
     CssAuthoredColorMixPercentage, CssAuthoredColorSyntax, CssAuthoredFontFeature,
     CssAuthoredFontFeatureList, CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue,
-    CssAuthoredSystemColor, CssCalcOperator, CssColorInterpolationMethod,
+    CssAuthoredSystemColor, CssCalculationSumOperator, CssColorInterpolationMethod,
     CssColorInterpolationSpace, CssCounterStyleRange, CssCounterStyleSpeakAs, CssCounterSymbol,
     CssDefinedFalseMediaReason, CssErrorCode, CssExclusionReason, CssFeatureKind,
     CssFontFamilyNameKind, CssFontFeature, CssFontFeatureIndex, CssFontFeatureValue, CssFontSize,
@@ -586,7 +586,7 @@ fn exclusion_reason_kind(reason: CssExclusionReason) -> &'static str {
 fn representative_evolving_kind(
     media: CssMediaQueryModifier,
     selector: CssSelectorCombinator,
-    calculation: CssCalcOperator,
+    calculation: CssCalculationSumOperator,
     timing: CssAnimationDirection,
     grid: CssGridAutoFlowAxis,
     color: CssRelativeColorFunction,
@@ -604,9 +604,8 @@ fn representative_evolving_kind(
         _ => "future selector combinator",
     };
     let calculation = match calculation {
-        CssCalcOperator::Add => "calculation add",
-        CssCalcOperator::Subtract => "calculation subtract",
-        _ => "future calculation operator",
+        CssCalculationSumOperator::Add => "calculation add",
+        CssCalculationSumOperator::Subtract => "calculation subtract",
     };
     let timing = match timing {
         CssAnimationDirection::Normal => "timing normal",
@@ -686,7 +685,7 @@ fn public_surface_closed_enums_are_exhaustive_and_evolving_enums_use_wildcards()
         representative_evolving_kind(
             CssMediaQueryModifier::Only,
             CssSelectorCombinator::Child,
-            CssCalcOperator::Add,
+            CssCalculationSumOperator::Add,
             CssAnimationDirection::Alternate,
             CssGridAutoFlowAxis::Column,
             CssRelativeColorFunction::Oklch,

@@ -318,18 +318,13 @@ pub surgeist_css::CssBuiltInCounterStyle::UpperRoman
 pub surgeist_css::CssCalcLength::Dimension(surgeist_css::CssLengthDimension)
 pub surgeist_css::CssCalcLength::Percent(surgeist_css::CssFiniteNumber)
 pub surgeist_css::CssCalcLength::Px(surgeist_css::CssFiniteNumber)
-pub surgeist_css::CssCalcLength::Sum(alloc::vec::Vec<surgeist_css::CssCalcLengthTerm>)
 pub surgeist_css::CssCalcLength::Typed(surgeist_css::CssLengthPercentageCalculation)
 impl surgeist_css::CssCalcLength
-pub fn surgeist_css::CssCalcLength::sum(first: surgeist_css::CssCalcLengthTerm, rest: impl core::iter::traits::collect::IntoIterator<Item = surgeist_css::CssCalcLengthTerm>) -> Self
 pub fn surgeist_css::CssCalcLength::to_css_string(&self) -> alloc::string::String
 pub fn surgeist_css::CssCalcLength::try_dimension(value: f32, unit: surgeist_css::CssLengthUnit) -> core::option::Option<Self>
 pub fn surgeist_css::CssCalcLength::try_percent(value: f32) -> core::option::Option<Self>
 pub fn surgeist_css::CssCalcLength::try_px(value: f32) -> core::option::Option<Self>
 pub fn surgeist_css::CssCalcLength::uses_percentage(&self) -> bool
-#[non_exhaustive] pub enum surgeist_css::CssCalcOperator
-pub surgeist_css::CssCalcOperator::Add
-pub surgeist_css::CssCalcOperator::Subtract
 #[non_exhaustive] pub enum surgeist_css::CssCalculationExpressionRef<'a>
 pub surgeist_css::CssCalculationExpressionRef::Constant(surgeist_css::CssCalculationConstantRef<'a>)
 pub surgeist_css::CssCalculationExpressionRef::Function(surgeist_css::CssCalculationFunctionRef<'a>)
@@ -3607,12 +3602,6 @@ pub const fn surgeist_css::CssBoxSizingPropertyValue::i01_subset(&self) -> core:
 pub struct surgeist_css::CssByteOffset(_)
 impl surgeist_css::CssByteOffset
 pub const fn surgeist_css::CssByteOffset::value(self) -> usize
-pub struct surgeist_css::CssCalcLengthTerm
-impl surgeist_css::CssCalcLengthTerm
-pub const fn surgeist_css::CssCalcLengthTerm::add(value: surgeist_css::CssCalcLength) -> Self
-pub const fn surgeist_css::CssCalcLengthTerm::operator(&self) -> surgeist_css::CssCalcOperator
-pub const fn surgeist_css::CssCalcLengthTerm::sub(value: surgeist_css::CssCalcLength) -> Self
-pub const fn surgeist_css::CssCalcLengthTerm::value(&self) -> &surgeist_css::CssCalcLength
 pub struct surgeist_css::CssCalculationConstantRef<'a>
 impl<'a> surgeist_css::CssCalculationConstantRef<'a>
 pub fn surgeist_css::CssCalculationConstantRef<'a>::numeric_type(self) -> surgeist_css::CssNumericType

@@ -1970,7 +1970,7 @@ fn assert_captured_font_metadata(
 }
 
 // The six archived calculation witnesses predate exact lexical math trees.
-// Keep their captured payloads: independently construct the old literal model,
+// Keep their captured payloads: independently render the historical text schema,
 // and check the current tree's operators, exact leaves, types and source spans.
 fn assert_captured_sum(
     current: &surgeist_css::CssLength,
@@ -1979,10 +1979,10 @@ fn assert_captured_sum(
     second: (&str, bool),
     subtract: bool,
     source: &str,
-) -> surgeist_css::CssLength {
+) -> String {
     use surgeist_css::{
-        CssCalcLength, CssCalcLengthTerm, CssCalculationExpressionRef, CssCalculationSumOperator,
-        CssCalculationType, CssCalculationValueRef, CssLength, CssNumericDimension, CssValueOrigin,
+        CssCalcLength, CssCalculationExpressionRef, CssCalculationSumOperator, CssCalculationType,
+        CssCalculationValueRef, CssLength, CssNumericDimension, CssValueOrigin,
     };
     let CssLength::Calc(CssCalcLength::Typed(calculation)) = current else {
         panic!("captured calculation must retain the exact current tree");
@@ -2074,25 +2074,26 @@ fn assert_captured_sum(
             origin.span().end().byte_offset().value(),
             offset + token.len()
         );
-        // These fixed archived operands are exactly representable small integers.
-        let old = if percentage {
-            CssCalcLength::try_percent(number.parse().unwrap()).unwrap()
+        // Independent historical schema, derived from the explicit operand
+        // expectations above. No fixture payload is read to build this text.
+        let literal = number.parse::<f32>().unwrap();
+        let variant = if percentage { "Percent" } else { "Px" };
+        let operator = if index == 1 && subtract {
+            "Subtract"
         } else {
-            CssCalcLength::try_px(number.parse().unwrap()).unwrap()
+            "Add"
         };
-        old_terms.push(if index == 1 && subtract {
-            CssCalcLengthTerm::sub(old)
-        } else {
-            CssCalcLengthTerm::add(old)
-        });
+        old_terms.push(format!(
+            "CssCalcLengthTerm {{ operator: {operator}, value: {variant}(CssFiniteNumber {{ value: {literal:?} }}) }}"
+        ));
     }
-    CssLength::Calc(CssCalcLength::sum(old_terms.remove(0), old_terms))
+    format!("Calc(Sum([{}]))", old_terms.join(", "))
 }
 
 fn assert_captured_numeric_metadata(
     id: &str,
     css: &str,
-    old: &impl std::fmt::Debug,
+    old: &str,
     semantic: Option<FrozenSemanticValue<'_>>,
     authored: &AuthoredDeclaration<'_>,
 ) {
@@ -2101,7 +2102,7 @@ fn assert_captured_numeric_metadata(
     assert_eq!(css, authored.value);
     if let Some(semantic) = semantic {
         assert_eq!(semantic.id, id);
-        assert_eq!(semantic.payload, format!("typed:{old:?}"));
+        assert_eq!(semantic.payload, format!("typed:{old}"));
     }
 }
 
@@ -2222,7 +2223,8 @@ fn assert_known_property_value(
                 false,
                 frozen.input,
             );
-            let old = surgeist_css::CssCornerRadius::try_new(horizontal, vertical).unwrap();
+            let old =
+                format!("CssCornerRadius {{ horizontal: {horizontal}, vertical: {vertical} }}");
             assert_captured_numeric_metadata(
                 property.stable_id(),
                 value.as_css(),
@@ -2251,10 +2253,10 @@ fn assert_known_property_value(
                 false,
                 frozen.input,
             );
-            let old = surgeist_css::CssEdges::new(
+            let old = format!(
+                "CssEdges {{ top: {:?}, right: {:?}, bottom: {bottom}, left: {:?} }}",
                 surgeist_css::CssLength::try_px(1.0).unwrap(),
                 surgeist_css::CssLength::try_percent(2.0).unwrap(),
-                bottom,
                 surgeist_css::CssLength::Zero,
             );
             assert_captured_numeric_metadata(

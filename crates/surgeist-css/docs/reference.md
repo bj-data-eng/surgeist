@@ -363,19 +363,21 @@ whereas `0px` remains valid. Trusted checked children may retain recovered
 closures during assembly; direct public construction from recovered components
 continues to reject them.
 
-Checked owners accepting `CssLength` reject malformed legacy calculations: every
-`CssCalcLength::Sum` must be nonempty and its first term must use `Add`, including
-nested sums. This shape check also applies to fallible position, translate,
-outline, background-size-list, and grid-track-list construction; their other
-existing admission rules are unchanged. Signed first operands and later
-subtraction remain subject to each owner's existing value policy. The check
-traverses borrowed values iteratively and leaves typed calculations, symbolic
-semantics, and original component provenance intact.
+Breaking migration: `CssCalcLength::Sum`, `CssCalcLength::sum`,
+`CssCalcLengthTerm`, and `CssCalcOperator` are removed. `CssCalcLength` retains
+finite scalar leaves and `Typed`. Assemble compound programmatic calculations
+with `CssLengthPercentageCalculation::try_sum` and
+`CssCalculationSumOperator`, then wrap them in `CssCalcLength::Typed`. The first
+operand has no binary operator; signed operand tokens remain valid. Checked
+component construction owns shape and resource admission, so arbitrary recursive
+legacy sums can no longer bypass those invariants.
 
-Raw public enum variants and infallible constructors still permit malformed or
-arbitrarily deep legacy trees. Their serialization, cloning, debugging, equality,
-and destruction remain recursive and unbounded; this checked-admission rule does
-not establish a resource guarantee for that raw representation.
+The frozen I01 position, basic-shape and filter projection grammar now admits
+literal lengths only. Calculation-bearing current values still parse through the
+numeric owner but have no projection through that frozen grammar. Literal
+projections, including `circle(50% at center)`, remain available. This does not
+retire unrelated generic wrapper accessors that already expose typed calculations.
+Grid and position compatibility checks exclude every `CssLength::Calc` variant.
 
 ## Authored flow tolerance
 
@@ -389,13 +391,9 @@ checked `CssFlowTolerance`; `as_ref()` returns `Normal`, `Infinite`, or a borrow
 in other layout modes require downstream context and are not computed here.
 
 The checked constructor accepts signed finite lengths, percentages, zero, and
-supported calculations. It rejects unrelated `CssLength` keywords, empty legacy
-`CssCalcLength::Sum` nodes, and sums whose first term is `Subtract`, at every
-depth. The last restriction prevents accepting a shape whose legacy serializer
-loses that operator. Negative first operands, later subtraction, and checked
-typed calculations remain valid. Validation traverses legacy sums iteratively;
-the shared legacy representation's recursive serialization, cloning, formatting,
-and destruction are separate existing limitations.
+supported calculations. It rejects unrelated `CssLength` keywords. Signed
+operands, later subtraction and typed calculations remain valid and symbolic;
+no computed range evaluation occurs at this boundary.
 
 Migration: use `flow-tolerance` and `CssKnownProperty::FlowTolerance`. Both
 `grid-flow-tolerance` and `item-tolerance` are unknown properties, without aliases.

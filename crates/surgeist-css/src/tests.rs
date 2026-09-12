@@ -4738,8 +4738,8 @@ fn constructor_invariants_reject_invalid_public_numeric_values() {
         None
     );
     assert_eq!(
-        CssCalcLengthTerm::add(CssCalcLength::try_px(1.0).unwrap()),
-        CssCalcLengthTerm::add(CssCalcLength::px(1.0))
+        CssCalcLength::try_px(1.0).unwrap(),
+        CssCalcLength::Px(CssFiniteNumber::try_new(1.0).unwrap())
     );
 
     assert_eq!(CssFlexFactor::try_new(f32::NAN), None);
@@ -9162,8 +9162,8 @@ fn checked_border_constructor_rejects_parser_invalid_widths() {
         CssLength::px(-1.0),
         CssLength::MinContent,
         CssLength::Normal,
-        CssLength::Calc(CssCalcLength::percent(10.0)),
-        CssLength::Calc(CssCalcLength::px(-1.0)),
+        CssLength::Calc(CssCalcLength::try_percent(10.0).unwrap()),
+        CssLength::Calc(CssCalcLength::try_px(-1.0).unwrap()),
     ] {
         assert_eq!(
             CssBorder::try_new(Some(width), Some(CssBorderStyle::Solid), None),
@@ -9173,12 +9173,12 @@ fn checked_border_constructor_rejects_parser_invalid_widths() {
 
     assert_eq!(
         CssBorder::try_new(
-            Some(CssLength::Calc(CssCalcLength::px(1.0))),
+            Some(CssLength::Calc(CssCalcLength::try_px(1.0).unwrap())),
             Some(CssBorderStyle::Solid),
             None,
         ),
         Some(CssBorder::new(
-            Some(CssLength::Calc(CssCalcLength::px(1.0))),
+            Some(CssLength::Calc(CssCalcLength::try_px(1.0).unwrap())),
             Some(CssBorderStyle::Solid),
             None,
         ))
@@ -9195,8 +9195,8 @@ fn checked_corner_radius_constructor_rejects_parser_invalid_values() {
         CssLength::Normal,
         CssLength::px(-1.0),
         CssLength::percent(-1.0),
-        CssLength::Calc(CssCalcLength::px(-1.0)),
-        CssLength::Calc(CssCalcLength::percent(-1.0)),
+        CssLength::Calc(CssCalcLength::try_px(-1.0).unwrap()),
+        CssLength::Calc(CssCalcLength::try_percent(-1.0).unwrap()),
     ] {
         assert_eq!(
             CssCornerRadius::try_new(value.clone(), CssLength::px(1.0)),

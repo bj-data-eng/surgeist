@@ -6017,21 +6017,18 @@ impl CssFlowTolerance {
     /// Checks a signed authored length-percentage without resolving it.
     ///
     /// Keyword-bearing lengths are rejected; use [`Self::normal`] for `normal`.
-    /// Legacy [`CssCalcLength::Sum`] inputs must be nonempty and begin with
-    /// [`CssCalcOperator::Add`] at every nested sum. A leading `Subtract` cannot
-    /// be serialized faithfully by that legacy model. Signed first operands,
-    /// later subtraction, and checked typed calculations remain supported; this
-    /// restriction does not prohibit negative authored CSS mathematics.
+    /// Signed operands and checked typed calculations remain symbolic; no
+    /// computed range evaluation occurs at this boundary.
     #[must_use]
     pub fn try_length_percentage(value: CssLength) -> Option<Self> {
-        let valid = match &value {
+        let valid = matches!(
+            &value,
             CssLength::Px(_)
-            | CssLength::Dimension(_)
-            | CssLength::Percent(_)
-            | CssLength::Zero => true,
-            CssLength::Calc(calc) => calc_has_valid_legacy_shape(calc),
-            _ => false,
-        };
+                | CssLength::Dimension(_)
+                | CssLength::Percent(_)
+                | CssLength::Zero
+                | CssLength::Calc(_)
+        );
         valid.then_some(Self {
             value: FlowToleranceValue::LengthPercentage(value),
         })
@@ -6054,30 +6051,6 @@ impl Default for CssFlowTolerance {
     fn default() -> Self {
         Self::normal()
     }
-}
-
-/// Checks only legacy calculation shape, without changing symbolic values or origins.
-pub(crate) fn length_has_valid_calc_shape(value: &CssLength) -> bool {
-    match value {
-        CssLength::Calc(calc) => calc_has_valid_legacy_shape(calc),
-        _ => true,
-    }
-}
-
-fn calc_has_valid_legacy_shape(calc: &CssCalcLength) -> bool {
-    let mut pending = vec![calc];
-    while let Some(calc) = pending.pop() {
-        if let CssCalcLength::Sum(terms) = calc {
-            if !terms
-                .first()
-                .is_some_and(|term| term.operator() == CssCalcOperator::Add)
-            {
-                return false;
-            }
-            pending.extend(terms.iter().map(CssCalcLengthTerm::value));
-        }
-    }
-    true
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -6203,42 +6176,9 @@ pub struct CssGridTrackList {
     components: Vec<CssGridTrackComponent>,
 }
 
-fn grid_tracks_have_valid_calc_shape(components: &[CssGridTrackComponent]) -> bool {
-    let valid_breadth = |breadth: &CssGridTrackBreadth| match breadth {
-        CssGridTrackBreadth::Length(value) => length_has_valid_calc_shape(value),
-        _ => true,
-    };
-    let mut pending = vec![components];
-    while let Some(components) = pending.pop() {
-        for component in components {
-            let valid = match component {
-                CssGridTrackComponent::LineNames(_) => true,
-                CssGridTrackComponent::Repeat(repeat) => {
-                    pending.push(repeat.tracks().components());
-                    true
-                }
-                CssGridTrackComponent::TrackSize(size) => match size {
-                    CssGridTrackSize::Breadth(breadth) => valid_breadth(breadth),
-                    CssGridTrackSize::MinMax { min, max } => {
-                        valid_breadth(min) && valid_breadth(max)
-                    }
-                    CssGridTrackSize::FitContent(value) => length_has_valid_calc_shape(value),
-                },
-            };
-            if !valid {
-                return false;
-            }
-        }
-    }
-    true
-}
-
 impl CssGridTrackList {
     #[must_use]
     pub fn try_new(components: Vec<CssGridTrackComponent>) -> Option<Self> {
-        if !grid_tracks_have_valid_calc_shape(&components) {
-            return None;
-        }
         if components.is_empty() {
             None
         } else {
@@ -6805,7 +6745,7 @@ impl CssAuthoredGridTrackBreadth {
     pub(crate) fn i01_projection(&self) -> Option<CssGridTrackBreadth> {
         Some(match &self.representation {
             CssAuthoredGridTrackBreadthRepresentation::Length(value) => {
-                if matches!(value, CssLength::Calc(CssCalcLength::Typed(_))) {
+                if matches!(value, CssLength::Calc(_)) {
                     return None;
                 }
                 CssGridTrackBreadth::length(value.clone())
@@ -6939,7 +6879,7 @@ impl CssAuthoredGridTrackSize {
                 CssGridTrackSize::minmax(min.i01_projection()?, max.i01_projection()?)
             }
             CssAuthoredGridTrackSizeRepresentation::FitContent(value) => {
-                if matches!(value, CssLength::Calc(CssCalcLength::Typed(_))) {
+                if matches!(value, CssLength::Calc(_)) {
                     return None;
                 }
                 CssGridTrackSize::fit_content(value.clone())
@@ -8193,9 +8133,6 @@ pub struct CssTextIndent {
 impl CssTextIndent {
     #[must_use]
     pub fn try_new(length: CssLength, hanging: bool, each_line: bool) -> Option<Self> {
-        if !length_has_valid_calc_shape(&length) {
-            return None;
-        }
         if is_text_length(&length) {
             Some(Self::new(length, hanging, each_line))
         } else {
@@ -8250,9 +8187,6 @@ pub struct CssVerticalAlignLength {
 impl CssVerticalAlignLength {
     #[must_use]
     pub fn try_new(length: CssLength) -> Option<Self> {
-        if !length_has_valid_calc_shape(&length) {
-            return None;
-        }
         if is_vertical_align_length(&length) {
             Some(Self::new(length))
         } else {
@@ -9148,9 +9082,6 @@ pub struct CssFontSizeLengthPercentage {
 impl CssFontSizeLengthPercentage {
     #[must_use]
     pub fn try_new(value: CssLength) -> Option<Self> {
-        if !length_has_valid_calc_shape(&value) {
-            return None;
-        }
         is_non_negative_length_percentage(&value).then_some(Self { value })
     }
 
@@ -9183,9 +9114,6 @@ pub struct CssLineHeightLengthPercentage {
 impl CssLineHeightLengthPercentage {
     #[must_use]
     pub fn try_new(value: CssLength) -> Option<Self> {
-        if !length_has_valid_calc_shape(&value) {
-            return None;
-        }
         is_non_negative_length_percentage(&value).then_some(Self { value })
     }
 
@@ -9564,9 +9492,6 @@ pub struct CssTextDecorationThicknessLength {
 impl CssTextDecorationThicknessLength {
     #[must_use]
     pub fn try_new(length: CssLength) -> Option<Self> {
-        if !length_has_valid_calc_shape(&length) {
-            return None;
-        }
         if is_text_decoration_thickness_length(&length) {
             Some(Self::new(length))
         } else {
@@ -10048,9 +9973,6 @@ pub struct CssCornerRadius {
 impl CssCornerRadius {
     #[must_use]
     pub fn try_new(horizontal: CssLength, vertical: CssLength) -> Option<Self> {
-        if !(length_has_valid_calc_shape(&horizontal) && length_has_valid_calc_shape(&vertical)) {
-            return None;
-        }
         if is_radius_length(&horizontal) && is_radius_length(&vertical) {
             Some(Self::new(horizontal, vertical))
         } else {
@@ -10744,9 +10666,6 @@ pub struct CssBorderImageWidthLengthPercentage {
 impl CssBorderImageWidthLengthPercentage {
     #[must_use]
     pub fn try_new(value: CssLength) -> Option<Self> {
-        if !length_has_valid_calc_shape(&value) {
-            return None;
-        }
         is_non_negative_length_percentage(&value).then_some(Self { value })
     }
 
@@ -11119,9 +11038,6 @@ pub struct CssGradientLinePosition {
 impl CssGradientLinePosition {
     #[must_use]
     pub fn try_new(value: CssLength) -> Option<Self> {
-        if !length_has_valid_calc_shape(&value) {
-            return None;
-        }
         matches!(
             value,
             CssLength::Px(_)
@@ -11280,9 +11196,6 @@ pub struct CssRadialEllipseSize {
 impl CssRadialEllipseSize {
     #[must_use]
     pub fn try_new(horizontal: CssLength, vertical: CssLength) -> Option<Self> {
-        if !(length_has_valid_calc_shape(&horizontal) && length_has_valid_calc_shape(&vertical)) {
-            return None;
-        }
         let valid = |value: &CssLength| match value {
             CssLength::Px(value) | CssLength::Percent(value) => value.value() >= 0.0,
             CssLength::Dimension(value) => value.value() >= 0.0,
@@ -11394,9 +11307,6 @@ impl CssPositionOffset {
     /// Constructs an offset from a position-valid authored length or percentage.
     #[must_use]
     pub fn try_new(value: CssLength) -> Option<Self> {
-        if !length_has_valid_calc_shape(&value) {
-            return None;
-        }
         match value {
             CssLength::Px(_)
             | CssLength::Dimension(_)
@@ -11737,12 +11647,6 @@ pub struct CssPosition {
 impl CssPosition {
     #[must_use]
     pub fn try_new(components: Vec<CssPositionComponent>) -> Option<Self> {
-        if !components.iter().all(|component| match component {
-            CssPositionComponent::Length(value) => length_has_valid_calc_shape(value),
-            _ => true,
-        }) {
-            return None;
-        }
         if components.is_empty()
             || components.len() > 4
             || has_duplicate_axis_side_keywords(&components)
@@ -12009,17 +11913,6 @@ pub struct CssBackgroundSizeList {
 impl CssBackgroundSizeList {
     #[must_use]
     pub fn try_new(sizes: Vec<CssBackgroundSize>) -> Option<Self> {
-        if !sizes.iter().all(|size| match size {
-            CssBackgroundSize::Explicit { width, height } => std::iter::once(width)
-                .chain(height.iter())
-                .all(|component| match component {
-                    CssBackgroundSizeComponent::Length(value) => length_has_valid_calc_shape(value),
-                    CssBackgroundSizeComponent::Auto => true,
-                }),
-            _ => true,
-        }) {
-            return None;
-        }
         if sizes.is_empty() {
             None
         } else {
@@ -12324,12 +12217,6 @@ impl CssOutline {
         style: Option<CssOutlineStyle>,
         color: Option<CssColor>,
     ) -> Option<Self> {
-        if !width.as_ref().is_none_or(|width| match width {
-            CssOutlineWidth::Length(value) => length_has_valid_calc_shape(value),
-            _ => true,
-        }) {
-            return None;
-        }
         if width.is_none() && style.is_none() && color.is_none() {
             None
         } else {
@@ -12462,9 +12349,6 @@ pub struct CssTransformLengthPercentage {
 impl CssTransformLengthPercentage {
     #[must_use]
     pub fn try_new(value: CssLength) -> Option<Self> {
-        if !length_has_valid_calc_shape(&value) {
-            return None;
-        }
         if matches!(
             value,
             CssLength::Px(_)
@@ -12931,9 +12815,6 @@ pub struct CssTranslateValues {
 impl CssTranslateValues {
     #[must_use]
     pub fn try_new(values: Vec<CssLength>) -> Option<Self> {
-        if !values.iter().all(length_has_valid_calc_shape) {
-            return None;
-        }
         if values.is_empty() || values.len() > 3 {
             None
         } else {
@@ -13325,9 +13206,6 @@ pub struct CssShapeLengthPercentage {
 impl CssShapeLengthPercentage {
     #[must_use]
     pub fn try_new(value: CssLength) -> Option<Self> {
-        if !length_has_valid_calc_shape(&value) {
-            return None;
-        }
         let valid = match &value {
             CssLength::Px(value) | CssLength::Percent(value) => value.value() >= 0.0,
             CssLength::Dimension(value) => value.value() >= 0.0,
@@ -13483,9 +13361,6 @@ pub struct CssInsetShapeOffsets {
 impl CssInsetShapeOffsets {
     #[must_use]
     pub fn try_new(values: Vec<CssLength>) -> Option<Self> {
-        if !values.iter().all(length_has_valid_calc_shape) {
-            return None;
-        }
         ((1..=4).contains(&values.len()) && values.iter().all(is_shape_length_percentage))
             .then_some(Self { values })
     }
@@ -13538,9 +13413,6 @@ pub struct CssPolygonPoint {
 impl CssPolygonPoint {
     #[must_use]
     pub fn try_new(x: CssLength, y: CssLength) -> Option<Self> {
-        if !(length_has_valid_calc_shape(&x) && length_has_valid_calc_shape(&y)) {
-            return None;
-        }
         (is_shape_length_percentage(&x) && is_shape_length_percentage(&y)).then_some(Self { x, y })
     }
 
@@ -14870,9 +14742,6 @@ pub(crate) fn calc_has_negative_component(calc: &CssCalcLength) -> bool {
     match calc {
         CssCalcLength::Px(value) | CssCalcLength::Percent(value) => value.value() < 0.0,
         CssCalcLength::Dimension(length) => length.value() < 0.0,
-        CssCalcLength::Sum(terms) => terms
-            .iter()
-            .any(|term| calc_has_negative_component(term.value())),
         CssCalcLength::Typed(_) => false,
     }
 }
@@ -17657,7 +17526,6 @@ pub enum CssCalcLength {
     Px(CssFiniteNumber),
     Dimension(CssLengthDimension),
     Percent(CssFiniteNumber),
-    Sum(Vec<CssCalcLengthTerm>),
     Typed(CssLengthPercentageCalculation),
 }
 
@@ -17681,40 +17549,11 @@ impl CssCalcLength {
     }
 
     #[must_use]
-    pub(crate) const fn px(value: f32) -> Self {
-        Self::Px(CssFiniteNumber::new_unchecked(value))
-    }
-
-    #[must_use]
-    pub(crate) const fn percent(value: f32) -> Self {
-        Self::Percent(CssFiniteNumber::new_unchecked(value))
-    }
-
-    #[must_use]
-    pub(crate) const fn dimension(value: f32, unit: CssLengthUnit) -> Self {
-        match unit {
-            CssLengthUnit::Px => Self::px(value),
-            _ => Self::Dimension(CssLengthDimension::new(value, unit)),
-        }
-    }
-
-    #[must_use]
-    pub fn sum(
-        first: CssCalcLengthTerm,
-        rest: impl IntoIterator<Item = CssCalcLengthTerm>,
-    ) -> Self {
-        let mut terms = vec![first];
-        terms.extend(rest);
-        Self::Sum(terms)
-    }
-
-    #[must_use]
     pub fn uses_percentage(&self) -> bool {
         match self {
             Self::Px(_) => false,
             Self::Dimension(_) => false,
             Self::Percent(_) => true,
-            Self::Sum(terms) => terms.iter().any(|term| term.value.uses_percentage()),
             Self::Typed(calculation) => {
                 calculation.numeric_type().percent_hint().is_some()
                     || calculation
@@ -17735,71 +17574,9 @@ impl CssCalcLength {
             Self::Px(value) => format!("{}px", format_css_number(value.value())),
             Self::Dimension(length) => length.to_css_string(),
             Self::Percent(value) => format!("{}%", format_css_number(value.value())),
-            Self::Sum(terms) => {
-                let mut css = String::from("calc(");
-                for (index, term) in terms.iter().enumerate() {
-                    if index == 0 {
-                        css.push_str(&term.value.to_css_fragment());
-                    } else {
-                        css.push(' ');
-                        css.push_str(match term.operator {
-                            CssCalcOperator::Add => "+",
-                            CssCalcOperator::Subtract => "-",
-                        });
-                        css.push(' ');
-                        css.push_str(&term.value.to_css_fragment());
-                    }
-                }
-                css.push(')');
-                css
-            }
             Self::Typed(calculation) => calculation.expression.to_css_fragment(),
         }
     }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssCalcLengthTerm {
-    operator: CssCalcOperator,
-    value: CssCalcLength,
-}
-
-impl CssCalcLengthTerm {
-    #[must_use]
-    pub const fn add(value: CssCalcLength) -> Self {
-        Self {
-            operator: CssCalcOperator::Add,
-            value,
-        }
-    }
-
-    #[must_use]
-    pub const fn sub(value: CssCalcLength) -> Self {
-        Self {
-            operator: CssCalcOperator::Subtract,
-            value,
-        }
-    }
-
-    #[must_use]
-    pub const fn operator(&self) -> CssCalcOperator {
-        self.operator
-    }
-
-    #[must_use]
-    pub const fn value(&self) -> &CssCalcLength {
-        &self.value
-    }
-    pub(crate) fn value_mut(&mut self) -> &mut CssCalcLength {
-        &mut self.value
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssCalcOperator {
-    Add,
-    Subtract,
 }
 
 fn format_css_number(value: f32) -> String {

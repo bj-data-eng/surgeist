@@ -3,7 +3,7 @@ use cssparser::{ParseError, Parser, ParserState, ToCss, Token, match_ignore_asci
 use super::box_model::parse_border_style;
 use super::values::{
     CalculationRoot, LengthGrammar, next_is_comma, next_is_delim, parse_color, parse_length_with,
-    parse_length_with_context, parse_length_with_context_legacy, parse_numeric_function,
+    parse_length_with_context, parse_literal_length_with_context, parse_numeric_function,
 };
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
@@ -1343,7 +1343,7 @@ pub(super) fn parse_mask_position_list<'i, 't>(
     let mut positions = Vec::new();
     loop {
         let (current, legacy) = parse_generic_position(input, numeric)?;
-        let legacy = (!position_has_typed_calculation(&legacy)).then_some(legacy);
+        let legacy = (!position_has_calculation(&legacy)).then_some(legacy);
         positions.push(CssMaskPosition::new(current, legacy));
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
@@ -1398,7 +1398,7 @@ pub(super) fn parse_transform_origin<'i, 't>(
     if atoms.len() <= 2
         && let Some((position, legacy)) = build_generic_position(&atoms)
     {
-        let legacy = (!position_has_typed_calculation(&legacy)).then_some(legacy);
+        let legacy = (!position_has_calculation(&legacy)).then_some(legacy);
         return Ok(CssTransformOrigin::new(position, None, legacy));
     }
 
@@ -1408,7 +1408,7 @@ pub(super) fn parse_transform_origin<'i, 't>(
             let z = transform_origin_z(&atoms[z_index])
                 .ok_or_else(|| invalid_generic_position_atom(input, &states[z_index]))?;
             let legacy = CssPosition::new(contextual_legacy_components(&atoms));
-            let legacy = (!position_has_typed_calculation(&legacy)).then_some(legacy);
+            let legacy = (!position_has_calculation(&legacy)).then_some(legacy);
             return Ok(CssTransformOrigin::new(position, Some(z), legacy));
         }
     }
@@ -1479,7 +1479,7 @@ fn parse_legacy_position_component<'i, 't>(
         };
     }
     input.reset(&state);
-    parse_length_with_context_legacy(input, LengthGrammar::Position, "position")
+    parse_literal_length_with_context(input, LengthGrammar::Position, "position")
         .map(CssPositionComponent::Length)
 }
 
@@ -1834,7 +1834,7 @@ fn build_background_position(atoms: &[GenericPositionAtom]) -> Option<CssBackgro
         ),
         _ => {
             let (position, legacy) = build_generic_position(atoms)?;
-            let legacy = (!position_has_typed_calculation(&legacy)).then_some(legacy);
+            let legacy = (!position_has_calculation(&legacy)).then_some(legacy);
             return Some(CssBackgroundPosition::new(
                 position.horizontal().clone(),
                 position.vertical().clone(),
@@ -1844,7 +1844,7 @@ fn build_background_position(atoms: &[GenericPositionAtom]) -> Option<CssBackgro
     };
 
     let legacy = CssPosition::new(contextual_legacy_components(atoms));
-    let legacy = (!position_has_typed_calculation(&legacy)).then_some(legacy);
+    let legacy = (!position_has_calculation(&legacy)).then_some(legacy);
     Some(CssBackgroundPosition::new(horizontal, vertical, legacy))
 }
 
@@ -1873,13 +1873,11 @@ fn contextual_legacy_components(atoms: &[GenericPositionAtom]) -> Vec<CssPositio
     components
 }
 
-fn position_has_typed_calculation(position: &CssPosition) -> bool {
-    position.components().iter().any(|component| {
-        matches!(
-            component,
-            CssPositionComponent::Length(CssLength::Calc(CssCalcLength::Typed(_)))
-        )
-    })
+fn position_has_calculation(position: &CssPosition) -> bool {
+    position
+        .components()
+        .iter()
+        .any(|component| matches!(component, CssPositionComponent::Length(CssLength::Calc(_))))
 }
 
 fn legacy_components(atoms: &[GenericPositionAtom]) -> Vec<CssPositionComponent> {

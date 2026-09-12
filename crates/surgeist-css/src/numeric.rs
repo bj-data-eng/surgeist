@@ -1967,34 +1967,18 @@ root!(CssResolutionCalculation, Resolution);
 /// Rechecks a mixed-context tree at a pure-length consumer boundary without
 /// serialization or loss of original component provenance.
 pub(crate) fn admit_pure_length(mut value: crate::CssLength) -> Option<crate::CssLength> {
-    if !crate::syntax::length_has_valid_calc_shape(&value) {
-        return None;
-    }
-    if let crate::CssLength::Calc(calculation) = &mut value {
-        let mut pending = vec![calculation];
-        while let Some(node) = pending.pop() {
-            match node {
-                crate::CssCalcLength::Typed(calculation)
-                    if calculation.numeric_type()
-                        != CssNumericType::dimension(CssNumericDimension::Length) =>
-                {
-                    // The input is already an admitted tree. A recovered closing
-                    // origin remains recovered when changing its type context.
-                    let expression = construct_with_policy(
-                        calculation.components().clone(),
-                        CalculationRoot::Length,
-                        CssComponentValueLimits::default(),
-                        AdmissionPolicy::RecoveredSyntax,
-                    )
-                    .ok()?;
-                    *calculation = CssLengthPercentageCalculation::from_expression(expression);
-                }
-                crate::CssCalcLength::Sum(terms) => {
-                    pending.extend(terms.iter_mut().map(crate::CssCalcLengthTerm::value_mut))
-                }
-                _ => {}
-            }
-        }
+    if let crate::CssLength::Calc(crate::CssCalcLength::Typed(calculation)) = &mut value
+        && calculation.numeric_type() != CssNumericType::dimension(CssNumericDimension::Length)
+    {
+        // A recovered closing origin remains recovered when changing type context.
+        let expression = construct_with_policy(
+            calculation.components().clone(),
+            CalculationRoot::Length,
+            CssComponentValueLimits::default(),
+            AdmissionPolicy::RecoveredSyntax,
+        )
+        .ok()?;
+        *calculation = CssLengthPercentageCalculation::from_expression(expression);
     }
     Some(value)
 }

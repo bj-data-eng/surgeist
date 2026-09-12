@@ -4,9 +4,9 @@
 //! Values 4 numeric typing permits percentage units to cancel without a basis.
 
 use surgeist_css::{
-    CssCalcLength, CssCalcLengthTerm, CssComponentValues, CssLength,
-    CssLengthPercentageCalculation, CssNonNegativeLength, CssNumericDimension, CssTransformLength,
-    CssValueOrigin, parse_component_values, parse_style_attribute,
+    CssCalcLength, CssComponentValues, CssLength, CssLengthPercentageCalculation,
+    CssNonNegativeLength, CssNumericDimension, CssTransformLength, CssValueOrigin,
+    parse_component_values, parse_style_attribute,
 };
 
 fn mixed_calculation(source: &str) -> (CssLength, CssComponentValues) {
@@ -59,19 +59,42 @@ fn pure_constructor_readmits_percentage_cancellation_and_preserves_original_comp
 #[test]
 fn pure_constructor_readmits_typed_children_inside_a_public_sum() {
     let (value, components) = mixed_calculation("calc(10% / 10% * 1px)");
-    let CssLength::Calc(child) = value else {
+    let CssLength::Calc(CssCalcLength::Typed(child)) = value else {
         panic!("expected calculation")
     };
-    let sum = CssCalcLength::sum(CssCalcLengthTerm::add(child), []);
-    let pure = CssTransformLength::try_new(CssLength::Calc(sum))
+    let sum = CssLengthPercentageCalculation::try_sum(child, []).unwrap();
+    let pure = CssTransformLength::try_new(CssLength::Calc(CssCalcLength::Typed(sum)))
         .expect("a sum retains valid pure-length cancellation in its exact child");
-    let CssLength::Calc(CssCalcLength::Sum(terms)) = pure.value() else {
-        panic!("expected retained authored sum");
+    let CssLength::Calc(CssCalcLength::Typed(calculation)) = pure.value() else {
+        panic!("expected retained checked sum");
     };
-    let CssCalcLength::Typed(calculation) = terms[0].value() else {
-        panic!("expected retained exact child");
+    assert_eq!(calculation.origin(), &CssValueOrigin::Programmatic);
+    assert_eq!(calculation.position(), None);
+    assert_eq!(
+        calculation.serialize().unwrap().as_css(),
+        "calc(calc(10% / 10% * 1px))"
+    );
+    let surgeist_css::CssComponentValueRef::Function(outer) =
+        calculation.components().items()[0].view()
+    else {
+        panic!("outer calc")
     };
-    assert_pure_tree_preserves_components(calculation, &components);
+    assert_eq!(outer.values(), &components);
+    assert_eq!(calculation.numeric_type().percent_hint(), None);
+    assert_eq!(
+        calculation
+            .numeric_type()
+            .exponent(CssNumericDimension::Length),
+        1
+    );
+    let (CssValueOrigin::Parsed(actual), CssValueOrigin::Parsed(original)) = (
+        outer.values().items()[0].origin(),
+        components.items()[0].origin(),
+    ) else {
+        panic!("original child source")
+    };
+    assert!(actual.source().same_snapshot(original.source()));
+    assert_eq!(actual.span(), original.span());
 }
 
 #[test]
@@ -86,12 +109,12 @@ fn pure_consumers_reject_uncancelled_percentage_context_even_inside_a_sum() {
             CssNonNegativeLength::try_new(value.clone()).is_none(),
             "{source}"
         );
-        let CssLength::Calc(child) = value else {
+        let CssLength::Calc(CssCalcLength::Typed(child)) = value else {
             panic!("expected calculation")
         };
-        let sum = CssCalcLength::sum(CssCalcLengthTerm::add(child), []);
+        let sum = CssLengthPercentageCalculation::try_sum(child, []).unwrap();
         assert!(
-            CssTransformLength::try_new(CssLength::Calc(sum)).is_none(),
+            CssTransformLength::try_new(CssLength::Calc(CssCalcLength::Typed(sum))).is_none(),
             "{source}"
         );
     }

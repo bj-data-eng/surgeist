@@ -71,7 +71,7 @@ fn public_flow_tolerance_consumer_preserves_checked_values_and_longhand_contribu
         String::from_utf8(output.stdout).expect("UTF-8 consumer output"),
         concat!(
             "checked symbolic and signed values: ok\n",
-            "legacy calculation construction boundary: ok\n",
+            "checked calculation construction: ok\n",
             "independent parsed and constructed semantics: ok\n",
             "component construction and provenance: ok\n",
             "ordered symbolic longhand normalization: ok\n",

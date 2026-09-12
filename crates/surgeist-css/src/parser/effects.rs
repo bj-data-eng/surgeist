@@ -7,7 +7,7 @@ use super::background::{
 use super::box_model::{expand_radius_components, parse_drop_shadow};
 use super::values::{
     CalculationRoot, LengthGrammar, checked_percentage_value, next_is_comma, next_is_delim,
-    next_is_ident, parse_length_with, parse_length_with_context, parse_length_with_context_legacy,
+    next_is_ident, parse_length_with, parse_length_with_context, parse_literal_length_with_context,
     parse_number, parse_numeric_function,
 };
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
@@ -662,7 +662,7 @@ pub(super) fn collect_authored_tokens<'i, 't>(
 }
 
 pub(super) fn validate_non_negative_length<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
-    parse_length_with_context_legacy(input, LengthGrammar::BorderWidth, "function length").is_ok()
+    parse_literal_length_with_context(input, LengthGrammar::BorderWidth, "function length").is_ok()
         && input.is_exhausted()
 }
 
@@ -1406,7 +1406,7 @@ fn legacy_basic_shape(name: &str, authored: &str) -> Option<CssBasicShape> {
 
 fn validate_legacy_shape_radius<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
     input.try_parse(parse_radial_extent).is_ok()
-        || parse_length_with_context_legacy(input, LengthGrammar::BackgroundSize, "shape radius")
+        || parse_literal_length_with_context(input, LengthGrammar::BackgroundSize, "shape radius")
             .is_ok()
 }
 
@@ -1452,8 +1452,12 @@ fn validate_legacy_inset_shape<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
     let mut count = 0;
     while !input.is_exhausted() && !next_is_ident(input, "round") {
         if count == 4
-            || parse_length_with_context_legacy(input, LengthGrammar::BackgroundSize, "inset shape")
-                .is_err()
+            || parse_literal_length_with_context(
+                input,
+                LengthGrammar::BackgroundSize,
+                "inset shape",
+            )
+            .is_err()
         {
             return false;
         }
@@ -1475,7 +1479,7 @@ fn validate_legacy_length_sequence<'i, 't>(
     let mut count = 0;
     while !input.is_exhausted() {
         if count == max
-            || parse_length_with_context_legacy(input, LengthGrammar::Position, "function length")
+            || parse_literal_length_with_context(input, LengthGrammar::Position, "function length")
                 .is_err()
         {
             return false;
@@ -1491,8 +1495,8 @@ fn validate_legacy_length_sequence<'i, 't>(
 fn validate_legacy_polygon_shape<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
     let mut points = 0;
     loop {
-        if parse_length_with_context_legacy(input, LengthGrammar::Position, "polygon x").is_err()
-            || parse_length_with_context_legacy(input, LengthGrammar::Position, "polygon y")
+        if parse_literal_length_with_context(input, LengthGrammar::Position, "polygon x").is_err()
+            || parse_literal_length_with_context(input, LengthGrammar::Position, "polygon y")
                 .is_err()
         {
             return false;

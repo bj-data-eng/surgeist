@@ -828,16 +828,6 @@
 //! }
 //! ```
 //!
-//! ```compile_fail
-//! use surgeist_css::CssCalcOperator;
-//!
-//! fn describe(value: CssCalcOperator) -> &'static str {
-//!     match value {
-//!         CssCalcOperator::Add => "add",
-//!         CssCalcOperator::Subtract => "subtract",
-//!     }
-//! }
-//! ```
 //!
 //! ```compile_fail
 //! use surgeist_css::CssAnimationDirection;

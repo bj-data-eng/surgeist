@@ -298,24 +298,28 @@ pub(super) fn parse_length_with_context<'i, 't>(
     grammar: LengthGrammar,
     context: &str,
 ) -> std::result::Result<CssLength, ParseError<'i, Error>> {
-    parse_length_with_context_mode(input, grammar, context, Some(numeric))
-}
-
-pub(super) fn parse_length_with_context_legacy<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    grammar: LengthGrammar,
-    context: &str,
-) -> std::result::Result<CssLength, ParseError<'i, Error>> {
-    parse_length_with_context_mode(input, grammar, context, None)
-}
-
-fn parse_length_with_context_mode<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    grammar: LengthGrammar,
-    context: &str,
-    numeric: Option<&NumericInputContext<'_>>,
-) -> std::result::Result<CssLength, ParseError<'i, Error>> {
     let before_opener = input.state();
+    if matches!(input.next().map_err(basic)?, Token::Function(name) if is_math_function(name)) {
+        let root = if grammar.allows_calc_percent() {
+            CalculationRoot::LengthPercentage
+        } else {
+            CalculationRoot::Length
+        };
+        let expression = parse_numeric_function(input, &before_opener, numeric, root)?;
+        return Ok(CssLength::Calc(CssCalcLength::Typed(
+            CssLengthPercentageCalculation::from_expression(expression),
+        )));
+    }
+    input.reset(&before_opener);
+    parse_literal_length_with_context(input, grammar, context)
+}
+
+/// Literal-only compatibility grammar; current calculations use the numeric owner.
+pub(super) fn parse_literal_length_with_context<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    grammar: LengthGrammar,
+    context: &str,
+) -> std::result::Result<CssLength, ParseError<'i, Error>> {
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
         Token::Dimension { value, .. } if !value.is_finite() => Err(unsupported_value_at(
@@ -376,27 +380,6 @@ fn parse_length_with_context_mode<'i, 't>(
                 format!("unsupported {context} `{ident}`"),
             )),
         },
-        Token::Function(name) if is_math_function(name) => {
-            if let Some(numeric) = numeric {
-                let root = if grammar.allows_calc_percent() {
-                    CalculationRoot::LengthPercentage
-                } else {
-                    CalculationRoot::Length
-                };
-                let expression = parse_numeric_function(input, &before_opener, numeric, root)?;
-                Ok(CssLength::Calc(CssCalcLength::Typed(
-                    CssLengthPercentageCalculation::from_expression(expression),
-                )))
-            } else if name.eq_ignore_ascii_case("calc") {
-                input
-                    .parse_nested_block(|input| {
-                        parse_legacy_calc_length_with_grammar(input, grammar)
-                    })
-                    .map(CssLength::Calc)
-            } else {
-                Err(calculation_error(location))
-            }
-        }
         Token::Function(name) => Err(unsupported_value_at(
             location,
             None,
@@ -431,98 +414,6 @@ pub(super) fn parse_numeric_function<'i, 't>(
 
 fn calculation_error<'i>(location: cssparser::SourceLocation) -> ParseError<'i, Error> {
     unsupported_value_at(location, None, "invalid typed calculation")
-}
-
-pub(super) fn parse_legacy_calc_length_with_grammar<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    grammar: LengthGrammar,
-) -> std::result::Result<CssCalcLength, ParseError<'i, Error>> {
-    let first = CssCalcLengthTerm::add(parse_calc_component(input, grammar)?);
-    let mut terms = Vec::new();
-
-    while !input.is_exhausted() {
-        let location = input.current_source_location();
-        let operator = match input.next().map_err(basic)? {
-            Token::Delim('+') => CssCalcLengthTerm::add,
-            Token::Delim('-') => CssCalcLengthTerm::sub,
-            token => {
-                return Err(unsupported_value_at(
-                    location,
-                    None,
-                    format!("expected calc operator, got `{}`", token.to_css_string()),
-                ));
-            }
-        };
-        let component = parse_calc_component(input, grammar)?;
-        terms.push(operator(component));
-    }
-
-    Ok(CssCalcLength::sum(first, terms))
-}
-
-pub(super) fn parse_calc_component<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    grammar: LengthGrammar,
-) -> std::result::Result<CssCalcLength, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Dimension { value, .. } if !value.is_finite() => Err(unsupported_value_at(
-            location,
-            None,
-            "unsupported non-finite calc length",
-        )),
-        Token::Dimension { value, unit, .. } => match classify_length_unit(unit) {
-            LengthUnitStatus::Supported(_) if grammar.requires_non_negative() && *value < 0.0 => {
-                Err(unsupported_value_at(
-                    location,
-                    None,
-                    "unsupported negative calc length",
-                ))
-            }
-            LengthUnitStatus::Supported(unit) => Ok(CssCalcLength::dimension(*value, unit)),
-            LengthUnitStatus::Unknown => Err(unsupported_value_at(
-                location,
-                None,
-                format!("unknown calc length unit `{unit}`"),
-            )),
-        },
-        Token::Percentage { unit_value, .. } => {
-            let value = checked_percentage_value(
-                location,
-                *unit_value,
-                "unsupported non-finite calc percentage",
-            )?;
-            if grammar.requires_non_negative() && value < 0.0 {
-                Err(unsupported_value_at(
-                    location,
-                    None,
-                    "unsupported negative calc percentage",
-                ))
-            } else if grammar.allows_calc_percent() {
-                Ok(CssCalcLength::percent(value))
-            } else {
-                Err(unsupported_value_at(
-                    location,
-                    None,
-                    "unsupported calc percentage",
-                ))
-            }
-        }
-        Token::Number { value, .. } if *value == 0.0 => Ok(CssCalcLength::px(0.0)),
-        Token::Function(name) if name.eq_ignore_ascii_case("calc") => {
-            input.parse_nested_block(|input| parse_legacy_calc_length_with_grammar(input, grammar))
-        }
-        Token::Function(name) => Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported calc function `{name}`"),
-        )),
-        token => Err(unsupported_value_at(
-            location,
-            None,
-            format!("unexpected calc token `{}`", token.to_css_string()),
-        )),
-    }
 }
 
 pub(super) fn parse_number<'i, 't>(

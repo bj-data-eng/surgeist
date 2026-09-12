@@ -1,191 +1,75 @@
 #![forbid(unsafe_code)]
-//! Values 4 (2024-03-12), section 10.8, requires a calc-sum to begin
-//! with an operand. In the public legacy representation that is an Add term,
-//! whose operand may itself be signed; every nested sum has the same invariant.
-//! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-syntax
-//! CssFlowTolerance::try_length_percentage already documents this distinction.
+//! Checked typed calculations retain symbolic values across authored consumers.
+//! Malformed raw sums are no longer constructible after their API retirement;
+//! checked assembly rejection is covered by typed_sum_construction.
 use surgeist_css::{
-    CssCalcLength, CssCalcLengthTerm, CssLength, CssLengthPercentageCalculation,
-    CssNonNegativeLength, CssTransformLength, CssTransformLengthPercentage,
-    CssTransformNonNegativeLength, parse_component_values,
+    CssCalcLength, CssCalculationSumOperator as Op, CssComponentValueRef, CssLength,
+    CssLengthPercentageCalculation as Calculation, CssNonNegativeLength, CssTransformLength,
+    CssTransformLengthPercentage, CssTransformNonNegativeLength, CssValueOrigin,
+    parse_component_values,
 };
 
-fn px(value: f32) -> CssCalcLength {
-    CssCalcLength::try_px(value).unwrap()
+fn operand(source: &str) -> Calculation {
+    Calculation::try_from_components(parse_component_values(source).unwrap()).unwrap()
 }
-
-fn empty() -> CssCalcLength {
-    CssCalcLength::Sum(vec![])
-}
-
-fn leading_subtraction() -> CssCalcLength {
-    CssCalcLength::sum(CssCalcLengthTerm::sub(px(1.0)), [])
-}
-
-// Each boundary gets a separately executed witness. All APIs already exist;
-// failures report real admission of malformed public values, not compilation.
-macro_rules! malformed_sums {
-    ($consumer:ty, $empty:ident, $leading:ident, $nested_first:ident, $nested_later:ident) => {
-        #[test]
-        fn $empty() {
-            assert!(<$consumer>::try_new(CssLength::Calc(empty())).is_none());
-        }
-
-        #[test]
-        fn $leading() {
-            assert!(<$consumer>::try_new(CssLength::Calc(leading_subtraction())).is_none());
-        }
-
-        #[test]
-        fn $nested_first() {
-            for malformed in [empty(), leading_subtraction()] {
-                let sum = CssCalcLength::sum(
-                    CssCalcLengthTerm::add(malformed),
-                    [CssCalcLengthTerm::sub(px(2.0))],
-                );
-                assert!(<$consumer>::try_new(CssLength::Calc(sum)).is_none());
-            }
-        }
-
-        #[test]
-        fn $nested_later() {
-            for malformed in [empty(), leading_subtraction()] {
-                let sum = CssCalcLength::sum(
-                    CssCalcLengthTerm::add(px(2.0)),
-                    [CssCalcLengthTerm::sub(malformed)],
-                );
-                assert!(<$consumer>::try_new(CssLength::Calc(sum)).is_none());
-            }
-        }
-    };
-}
-
-malformed_sums!(
-    CssTransformLengthPercentage,
-    transform_length_percentage_rejects_empty_sum,
-    transform_length_percentage_rejects_leading_subtraction,
-    transform_length_percentage_rejects_malformed_first_descendant,
-    transform_length_percentage_rejects_malformed_subtracted_descendant
-);
-malformed_sums!(
-    CssTransformLength,
-    transform_length_rejects_empty_sum,
-    transform_length_rejects_leading_subtraction,
-    transform_length_rejects_malformed_first_descendant,
-    transform_length_rejects_malformed_subtracted_descendant
-);
-malformed_sums!(
-    CssTransformNonNegativeLength,
-    transform_nonnegative_length_rejects_empty_sum,
-    transform_nonnegative_length_rejects_leading_subtraction,
-    transform_nonnegative_length_rejects_malformed_first_descendant,
-    transform_nonnegative_length_rejects_malformed_subtracted_descendant
-);
-malformed_sums!(
-    CssNonNegativeLength,
-    nonnegative_length_rejects_empty_sum,
-    nonnegative_length_rejects_leading_subtraction,
-    nonnegative_length_rejects_malformed_first_descendant,
-    nonnegative_length_rejects_malformed_subtracted_descendant
-);
-
-fn assert_admitted_unchanged(value: CssCalcLength, expected: &str) {
-    let value = CssLength::Calc(value);
-    let values = [
+fn admitted(value: Calculation) -> Vec<CssLength> {
+    let value = CssLength::Calc(CssCalcLength::Typed(value));
+    vec![
         CssTransformLengthPercentage::try_new(value.clone())
-            .expect("valid authored length-percentage calculation")
+            .unwrap()
             .value()
             .clone(),
         CssTransformLength::try_new(value.clone())
-            .expect("valid authored pure-length calculation")
+            .unwrap()
             .value()
             .clone(),
         CssTransformNonNegativeLength::try_new(value.clone())
-            .expect("symbolic transform calculation is not range-evaluated here")
+            .unwrap()
             .value()
             .clone(),
         CssNonNegativeLength::try_new(value)
-            .expect("symbolic calculation is not range-evaluated here")
+            .unwrap()
             .value()
             .clone(),
-    ];
-    for value in values {
-        let CssLength::Calc(calc) = value else {
-            panic!("calculation remains symbolic")
+    ]
+}
+#[test]
+fn signed_first_operands_and_later_subtraction_remain_symbolic() {
+    let first = Calculation::try_sum(operand("-1px"), []).unwrap();
+    let sum = Calculation::try_sum(first, [(Op::Subtract, operand("2px"))]).unwrap();
+    for value in admitted(sum) {
+        let CssLength::Calc(CssCalcLength::Typed(value)) = value else {
+            panic!("typed calculation")
         };
-        assert_eq!(calc.to_css_string(), expected);
+        assert_eq!(
+            value.serialize().unwrap().as_css(),
+            "calc(calc(-1px) - 2px)"
+        );
     }
 }
-
 #[test]
-fn a_signed_first_add_operand_remains_valid_without_range_evaluation() {
-    assert_admitted_unchanged(
-        CssCalcLength::sum(CssCalcLengthTerm::add(px(-1.0)), []),
-        "calc(-1px)",
-    );
-}
-
-#[test]
-fn later_subtraction_and_signed_nested_first_operands_remain_valid() {
-    let child = CssCalcLength::sum(CssCalcLengthTerm::add(px(-1.0)), []);
-    let sum = CssCalcLength::sum(
-        CssCalcLengthTerm::add(child),
-        [CssCalcLengthTerm::sub(px(2.0))],
-    );
-    assert_admitted_unchanged(sum, "calc(calc(-1px) - 2px)");
-}
-
-#[test]
-fn checked_typed_descendants_remain_valid_and_symbolic_inside_a_legacy_sum() {
-    let typed = CssLengthPercentageCalculation::try_from_components(
-        parse_component_values("calc(1em + 2px)").unwrap(),
-    )
-    .unwrap();
-    let sum = CssCalcLength::sum(
-        CssCalcLengthTerm::add(CssCalcLength::Typed(typed)),
-        [CssCalcLengthTerm::sub(px(3.0))],
-    );
-    assert_admitted_unchanged(sum, "calc(calc(1em + 2px) - 3px)");
-}
-
-#[test]
-fn pure_readmission_preserves_typed_descendant_components_and_original_snapshots() {
-    use surgeist_css::CssValueOrigin;
-    let components = parse_component_values("calc(/*😀*/1em + 2px)").unwrap();
-    let typed = CssLengthPercentageCalculation::try_from_components(components.clone()).unwrap();
-    let sum = CssLength::Calc(CssCalcLength::sum(
-        CssCalcLengthTerm::add(CssCalcLength::Typed(typed)),
-        [],
-    ));
-    let admitted = [
-        CssTransformLength::try_new(sum.clone())
-            .unwrap()
-            .value()
-            .clone(),
-        CssTransformNonNegativeLength::try_new(sum.clone())
-            .unwrap()
-            .value()
-            .clone(),
-        CssNonNegativeLength::try_new(sum).unwrap().value().clone(),
-    ];
-    for value in admitted {
-        let CssLength::Calc(CssCalcLength::Sum(terms)) = value else {
-            panic!("retained sum")
+fn pure_readmission_preserves_typed_child_components_and_original_snapshots() {
+    let child = operand("calc(10% / 10% * 1px)");
+    let original = child.components().clone();
+    let sum = Calculation::try_sum(child, []).unwrap();
+    for value in admitted(sum).into_iter().skip(1) {
+        let CssLength::Calc(CssCalcLength::Typed(typed)) = value else {
+            panic!("typed calculation")
         };
-        let CssCalcLength::Typed(typed) = terms[0].value() else {
-            panic!("retained typed child")
+        let CssComponentValueRef::Function(outer) = typed.components().items()[0].view() else {
+            panic!("outer calc")
         };
-        assert_eq!(typed.components(), &components);
-        let (CssValueOrigin::Parsed(actual), CssValueOrigin::Parsed(expected)) =
-            (typed.origin(), components.items().last().unwrap().origin())
-        else {
-            panic!("original parsed calc")
+        assert_eq!(outer.values(), &original);
+        let (CssValueOrigin::Parsed(actual), CssValueOrigin::Parsed(expected)) = (
+            outer.values().items()[0].origin(),
+            original.items()[0].origin(),
+        ) else {
+            panic!("original child")
         };
         assert!(actual.source().same_snapshot(expected.source()));
         assert_eq!(actual.span(), expected.span());
     }
 }
-
 // Each entry injects only the calculation under test. Other arguments satisfy
 // the owner's existing structure, cardinality, and range requirements.
 type CheckedOwner = (&'static str, fn(CssLength) -> bool);
@@ -364,68 +248,14 @@ fn checked_owners() -> Vec<CheckedOwner> {
     ]
 }
 
-fn assert_all_owners_reject(calc: CssCalcLength) {
-    let admitted: Vec<_> = checked_owners()
-        .into_iter()
-        .filter_map(|(name, admit)| admit(CssLength::Calc(calc.clone())).then_some(name))
-        .collect();
-    assert!(
-        admitted.is_empty(),
-        "malformed calculation admitted by {admitted:?}"
-    );
-}
-
 #[test]
-fn checked_length_owners_reject_empty_sum() {
-    assert_all_owners_reject(empty());
-}
-
-#[test]
-fn checked_length_owners_reject_leading_subtraction() {
-    assert_all_owners_reject(leading_subtraction());
-}
-
-#[test]
-fn checked_length_owners_reject_empty_first_descendant() {
-    assert_all_owners_reject(CssCalcLength::sum(
-        CssCalcLengthTerm::add(empty()),
-        [CssCalcLengthTerm::sub(px(1.0))],
-    ));
-}
-
-#[test]
-fn checked_length_owners_reject_subtracting_first_descendant() {
-    assert_all_owners_reject(CssCalcLength::sum(
-        CssCalcLengthTerm::add(leading_subtraction()),
-        [CssCalcLengthTerm::sub(px(1.0))],
-    ));
-}
-
-#[test]
-fn checked_length_owners_reject_empty_later_descendant() {
-    assert_all_owners_reject(CssCalcLength::sum(
-        CssCalcLengthTerm::add(px(2.0)),
-        [CssCalcLengthTerm::sub(empty())],
-    ));
-}
-
-#[test]
-fn checked_length_owners_reject_subtracting_later_descendant() {
-    assert_all_owners_reject(CssCalcLength::sum(
-        CssCalcLengthTerm::add(px(2.0)),
-        [CssCalcLengthTerm::sub(leading_subtraction())],
-    ));
-}
-
-#[test]
-fn checked_length_owner_controls_admit_valid_symbolic_subtraction() {
-    let sum = CssCalcLength::sum(
-        CssCalcLengthTerm::add(px(2.0)),
-        [CssCalcLengthTerm::sub(px(1.0))],
-    );
+fn checked_length_owners_admit_valid_typed_symbolic_subtraction() {
+    let sum = Calculation::try_sum(operand("2px"), [(Op::Subtract, operand("1px"))]).unwrap();
     let rejected: Vec<_> = checked_owners()
         .into_iter()
-        .filter_map(|(name, admit)| (!admit(CssLength::Calc(sum.clone()))).then_some(name))
+        .filter_map(|(name, admit)| {
+            (!admit(CssLength::Calc(CssCalcLength::Typed(sum.clone())))).then_some(name)
+        })
         .collect();
     assert!(
         rejected.is_empty(),
