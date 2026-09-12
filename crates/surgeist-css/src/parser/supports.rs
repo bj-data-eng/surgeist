@@ -1,4 +1,4 @@
-use cssparser::{ParseError, Parser, ParserInput, ParserState, Token};
+use cssparser::{ParseError, Parser, ParserState, Token};
 
 use super::recovery::RecoveryState;
 use super::selectors::{SelectorRecovery, parse_rule_selector};
@@ -20,10 +20,28 @@ enum ParenthesizedCondition {
     GeneralEnclosed,
 }
 
+fn terminal_error(error: &ParseError<'_, Error>) -> bool {
+    is_nesting_limit_error(error)
+        || matches!(&error.kind, cssparser::ParseErrorKind::Custom(error)
+            if matches!(error.kind(), crate::ErrorKind::InvalidComponentValue(_)))
+}
+
+/// Only a grammar mismatch permits another supports interpretation. A lexical
+/// or resource failure cannot become valid by selecting an opaque fallback.
+pub(super) fn grammar_probe<'i, T>(
+    result: Result<T, ParseError<'i, Error>>,
+) -> Result<Option<T>, ParseError<'i, Error>> {
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(error) if terminal_error(&error) => Err(error),
+        Err(_) => Ok(None),
+    }
+}
+
 pub(super) fn with_supports_prelude_context<'i>(
     error: ParseError<'i, Error>,
 ) -> ParseError<'i, Error> {
-    if is_nesting_limit_error(&error) {
+    if terminal_error(&error) {
         error
     } else {
         with_at_rule_prelude_context(
@@ -129,19 +147,19 @@ fn parse_condition_operand<'i, 't>(
     match token {
         Token::ParenthesisBlock => {
             let parsed = input.parse_nested_block(|nested| {
-                if let Ok(declaration) = nested.try_parse(|nested| {
+                if let Some(declaration) = grammar_probe(nested.try_parse(|nested| {
                     parse_supports_declaration(nested, recovery.source_snapshot())
-                }) {
+                }))? {
                     nested.expect_exhausted().map_err(basic)?;
                     return Ok(ParenthesizedCondition::Parsed(
                         CssSupportsConditionKind::Declaration(Box::new(declaration)),
                     ));
                 }
-                if let Ok(grouped) = nested.try_parse(|nested| {
+                if let Some(grouped) = grammar_probe(nested.try_parse(|nested| {
                     let grouped = parse_condition(source, nested, diagnostics, recovery)?;
                     nested.expect_exhausted().map_err(basic)?;
                     Ok::<_, ParseError<'i, Error>>(grouped)
-                }) {
+                }))? {
                     return Ok(ParenthesizedCondition::Parsed(grouped.into_kind()));
                 }
                 consume_all(nested);
@@ -162,13 +180,13 @@ fn parse_condition_operand<'i, 't>(
             let parsed = input.parse_nested_block(|nested| {
                 if is_selector {
                     let mut local_diagnostics = Vec::new();
-                    if let Ok(selector) = nested.try_parse(|nested| {
+                    if let Some(selector) = grammar_probe(nested.try_parse(|nested| {
                         let mut selector_recovery =
                             SelectorRecovery::new(source, &mut local_diagnostics, recovery.clone());
                         let selector = parse_rule_selector(nested, &mut selector_recovery)?;
                         nested.expect_exhausted().map_err(selector_basic)?;
                         Ok::<_, ParseError<'i, Error>>(selector)
-                    }) && local_diagnostics.is_empty()
+                    }))? && local_diagnostics.is_empty()
                     {
                         return Ok(Some(selector));
                     }
@@ -226,13 +244,23 @@ pub(super) fn parse_supports_declaration<'i, 't>(
     let name_end = input.position();
     let property = input.slice(name_start.position()..name_end).to_owned();
     input.expect_colon().map_err(basic)?;
-    consume_all(input);
+    let value_start = input.state();
+    // Component collection checks lexical validity throughout nested values;
+    // declaration punctuation restrictions apply only to this root sequence.
+    let values = crate::CssComponentValues::collect_from_parser(input, source_snapshot).map_err(
+        |error| crate::error::invalid_component_value(value_start.source_location(), error),
+    )?;
+    let importance = declaration_importance(&values).ok_or_else(|| {
+        invalid_syntax(
+            value_start.source_location(),
+            "expected a declaration value with an optional terminal !important",
+        )
+    })?;
     let authored = input.slice_from(start.position()).to_owned();
     let end = input.state();
     input.reset(&start);
-    let (known, parsed_importance) = parse_known_declaration(input, source_snapshot);
+    let known = parse_known_declaration(input, source_snapshot)?;
     input.reset(&end);
-    let importance = parsed_importance.unwrap_or_else(|| authored_importance(&authored));
     Ok(CssSupportsDeclaration::new(
         authored,
         property,
@@ -245,69 +273,62 @@ pub(super) fn parse_supports_declaration<'i, 't>(
     ))
 }
 
-fn parse_known_declaration(
-    parser: &mut Parser<'_, '_>,
+fn parse_known_declaration<'i>(
+    parser: &mut Parser<'i, '_>,
     source_snapshot: &crate::CssSourceSnapshot,
-) -> (Option<CssKnownDeclaration>, Option<CssImportance>) {
+) -> Result<Option<CssKnownDeclaration>, ParseError<'i, Error>> {
     let start = parser.state();
     let Ok(name) = parser.expect_ident_cloned() else {
-        return (None, None);
+        return Ok(None);
     };
     if parser.expect_colon().is_err() {
-        return (None, None);
+        return Ok(None);
     }
-    let Ok(parsed) = parse_declaration_core(
+    let Some(parsed) = grammar_probe(parse_declaration_core(
         DeclarationMode::Ordinary,
         name,
         parser,
         &start,
         source_snapshot,
-    ) else {
-        return (None, None);
+    ))?
+    else {
+        return Ok(None);
     };
     if !parser.is_exhausted() {
-        return (None, None);
+        return Ok(None);
     }
     let known = match parsed.body {
         CssDeclarationBody::Known(known) => Some(known),
         CssDeclarationBody::Custom(_) => None,
     };
-    (known, Some(parsed.importance))
+    Ok(known)
 }
 
-fn authored_importance(authored: &str) -> CssImportance {
-    let mut declaration_input = ParserInput::new(authored);
-    let mut declaration = Parser::new(&mut declaration_input);
-    if declaration.expect_ident_cloned().is_err() || declaration.expect_colon().is_err() {
-        return CssImportance::Normal;
-    }
-    let value = declaration.slice_from(declaration.position()).to_owned();
-    let mut input = ParserInput::new(&value);
-    let mut parser = Parser::new(&mut input);
-    let mut previous_was_bang = false;
-    let mut terminal_important = false;
-    while let Ok(token) = parser.next_including_whitespace_and_comments() {
-        match token {
-            Token::WhiteSpace(_) | Token::Comment(_) => {}
-            Token::Ident(name) if previous_was_bang && name.eq_ignore_ascii_case("important") => {
-                previous_was_bang = false;
-                terminal_important = true;
+fn declaration_importance(values: &crate::CssComponentValues) -> Option<CssImportance> {
+    use crate::{CssComponentValueRef as Component, CssValueTokenRef as Value};
+    let mut significant = values
+        .items()
+        .iter()
+        .map(crate::CssComponentValue::view)
+        .filter(|value| {
+            !matches!(
+                value,
+                Component::Comment(_) | Component::Token(Value::Whitespace(_))
+            )
+        });
+    while let Some(value) = significant.next() {
+        match value {
+            Component::Token(Value::Semicolon) => return None,
+            Component::Token(Value::Delim('!')) => {
+                return (matches!(significant.next(), Some(Component::Token(Value::Ident(name)))
+                    if name.eq_ignore_ascii_case("important"))
+                    && significant.next().is_none())
+                .then_some(CssImportance::Important);
             }
-            Token::Delim('!') => {
-                previous_was_bang = true;
-                terminal_important = false;
-            }
-            _ => {
-                previous_was_bang = false;
-                terminal_important = false;
-            }
+            _ => {}
         }
     }
-    if terminal_important {
-        CssImportance::Important
-    } else {
-        CssImportance::Normal
-    }
+    Some(CssImportance::Normal)
 }
 
 fn first_non_trivia_position(input: &mut Parser<'_, '_>) -> crate::CssSourcePosition {

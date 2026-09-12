@@ -2746,11 +2746,11 @@ fn parse_import_supports<'i, 't>(
     }
 
     let condition = input.parse_nested_block(|nested| {
-        if let Ok(declaration) = nested.try_parse(|nested| {
+        if let Some(declaration) = supports::grammar_probe(nested.try_parse(|nested| {
             let declaration = parse_supports_declaration(nested, recovery.source_snapshot())?;
             nested.expect_exhausted().map_err(basic)?;
             Ok::<_, ParseError<'i, Error>>(declaration)
-        }) {
+        }))? {
             let position = declaration.position();
             return Ok(CssSupportsCondition::new(
                 CssSupportsConditionKind::Declaration(Box::new(declaration)),

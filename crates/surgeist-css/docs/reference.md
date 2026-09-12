@@ -1650,6 +1650,17 @@ inserted into a style block. Invalid children recover within a valid conditional
 parent, while a malformed supports prelude drops that parent and leaves later
 siblings eligible.
 
+Declaration tests admit empty values, unknown properties and unsupported property
+values. Top-level semicolons and invalid importance annotations reject the
+declaration interpretation; nested punctuation remains value content. A terminal
+`!important` is preserved even when the optional known-property view is absent.
+Grammatically valid opaque contents can still select general-enclosed, so
+`(color:red;)` remains an opaque condition. In an import, `supports(color:red;)`
+can instead select the complete media alternative with no supports clause.
+Bad string and URL tokens cannot enter either branch. These distinctions follow
+the selected [Conditional Rules 3 grammar](https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#at-supports);
+they do not evaluate whether the renderer supports a declaration.
+
 ```rust
 use surgeist_css::{CssRule, CssSupportsConditionKind, parse_sheet};
 

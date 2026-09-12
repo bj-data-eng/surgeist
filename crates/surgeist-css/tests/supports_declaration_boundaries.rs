@@ -197,3 +197,62 @@ fn supports_bad_url_and_bad_string_tokens_cannot_be_declarations_or_opaque_fallb
         );
     }
 }
+
+#[test]
+fn supports_lexical_failures_preserve_typed_errors_and_original_token_positions() {
+    use surgeist_css::{CssComponentValueErrorKind, CssValueOrigin, ErrorKind};
+
+    for (payload, token, kind) in [
+        ("url(a b)", "url(", CssComponentValueErrorKind::BadUrl),
+        (
+            "\"broken\n",
+            "\"broken",
+            CssComponentValueErrorKind::BadString,
+        ),
+    ] {
+        for prelude in [
+            format!("@supports ((mystery:future([{payload}])))"),
+            format!("@supports future({payload})"),
+            format!("@supports selector({payload})"),
+            format!("@import 'x.css' supports(mystery:{payload})"),
+        ] {
+            let ending = if prelude.starts_with("@import") {
+                ";"
+            } else {
+                "{}"
+            };
+            let source = format!("/*😀*/\r\n{prelude}{ending} .after{{color:red}}");
+            let report = parse_sheet(&source);
+            assert!(
+                matches!(report.syntax().rules(), [CssRule::Style(_)]),
+                "{source}: {report:?}"
+            );
+            let [diagnostic] = report.diagnostics() else {
+                panic!("one terminal lexical failure: {source}: {report:?}");
+            };
+            let ErrorKind::InvalidComponentValue(detail) = diagnostic.error().kind() else {
+                panic!("typed lexical failure survives grammar probes: {source}: {diagnostic:?}");
+            };
+            assert_eq!(detail.kind(), kind);
+            let CssValueOrigin::Parsed(origin) = detail.origin() else {
+                panic!("original bad-token origin");
+            };
+            let offset = source.find(token).unwrap();
+            let line_start = source.find('\n').unwrap() + 1;
+            let position = origin.span().start();
+            assert_eq!(origin.source().as_str(), source);
+            assert_eq!(position.byte_offset().value(), offset);
+            assert_eq!(position.line().value(), 1);
+            assert_eq!(
+                position.column().value(),
+                source[line_start..offset].encode_utf16().count() as u32
+            );
+            assert_eq!(diagnostic.error().position(), position);
+            assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
+            assert_eq!(
+                validate_sheet(&source).unwrap_err().diagnostics(),
+                report.diagnostics()
+            );
+        }
+    }
+}
