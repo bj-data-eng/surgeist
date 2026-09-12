@@ -6029,7 +6029,7 @@ impl CssFlowTolerance {
             | CssLength::Dimension(_)
             | CssLength::Percent(_)
             | CssLength::Zero => true,
-            CssLength::Calc(calc) => flow_tolerance_calc_is_valid(calc),
+            CssLength::Calc(calc) => calc_has_valid_legacy_shape(calc),
             _ => false,
         };
         valid.then_some(Self {
@@ -6056,7 +6056,15 @@ impl Default for CssFlowTolerance {
     }
 }
 
-fn flow_tolerance_calc_is_valid(calc: &CssCalcLength) -> bool {
+/// Checks only legacy calculation shape, without changing symbolic values or origins.
+pub(crate) fn length_has_valid_calc_shape(value: &CssLength) -> bool {
+    match value {
+        CssLength::Calc(calc) => calc_has_valid_legacy_shape(calc),
+        _ => true,
+    }
+}
+
+fn calc_has_valid_legacy_shape(calc: &CssCalcLength) -> bool {
     let mut pending = vec![calc];
     while let Some(calc) = pending.pop() {
         if let CssCalcLength::Sum(terms) = calc {
@@ -6195,9 +6203,42 @@ pub struct CssGridTrackList {
     components: Vec<CssGridTrackComponent>,
 }
 
+fn grid_tracks_have_valid_calc_shape(components: &[CssGridTrackComponent]) -> bool {
+    let valid_breadth = |breadth: &CssGridTrackBreadth| match breadth {
+        CssGridTrackBreadth::Length(value) => length_has_valid_calc_shape(value),
+        _ => true,
+    };
+    let mut pending = vec![components];
+    while let Some(components) = pending.pop() {
+        for component in components {
+            let valid = match component {
+                CssGridTrackComponent::LineNames(_) => true,
+                CssGridTrackComponent::Repeat(repeat) => {
+                    pending.push(repeat.tracks().components());
+                    true
+                }
+                CssGridTrackComponent::TrackSize(size) => match size {
+                    CssGridTrackSize::Breadth(breadth) => valid_breadth(breadth),
+                    CssGridTrackSize::MinMax { min, max } => {
+                        valid_breadth(min) && valid_breadth(max)
+                    }
+                    CssGridTrackSize::FitContent(value) => length_has_valid_calc_shape(value),
+                },
+            };
+            if !valid {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 impl CssGridTrackList {
     #[must_use]
     pub fn try_new(components: Vec<CssGridTrackComponent>) -> Option<Self> {
+        if !grid_tracks_have_valid_calc_shape(&components) {
+            return None;
+        }
         if components.is_empty() {
             None
         } else {
@@ -8152,6 +8193,9 @@ pub struct CssTextIndent {
 impl CssTextIndent {
     #[must_use]
     pub fn try_new(length: CssLength, hanging: bool, each_line: bool) -> Option<Self> {
+        if !length_has_valid_calc_shape(&length) {
+            return None;
+        }
         if is_text_length(&length) {
             Some(Self::new(length, hanging, each_line))
         } else {
@@ -8206,6 +8250,9 @@ pub struct CssVerticalAlignLength {
 impl CssVerticalAlignLength {
     #[must_use]
     pub fn try_new(length: CssLength) -> Option<Self> {
+        if !length_has_valid_calc_shape(&length) {
+            return None;
+        }
         if is_vertical_align_length(&length) {
             Some(Self::new(length))
         } else {
@@ -9101,6 +9148,9 @@ pub struct CssFontSizeLengthPercentage {
 impl CssFontSizeLengthPercentage {
     #[must_use]
     pub fn try_new(value: CssLength) -> Option<Self> {
+        if !length_has_valid_calc_shape(&value) {
+            return None;
+        }
         is_non_negative_length_percentage(&value).then_some(Self { value })
     }
 
@@ -9133,6 +9183,9 @@ pub struct CssLineHeightLengthPercentage {
 impl CssLineHeightLengthPercentage {
     #[must_use]
     pub fn try_new(value: CssLength) -> Option<Self> {
+        if !length_has_valid_calc_shape(&value) {
+            return None;
+        }
         is_non_negative_length_percentage(&value).then_some(Self { value })
     }
 
@@ -9511,6 +9564,9 @@ pub struct CssTextDecorationThicknessLength {
 impl CssTextDecorationThicknessLength {
     #[must_use]
     pub fn try_new(length: CssLength) -> Option<Self> {
+        if !length_has_valid_calc_shape(&length) {
+            return None;
+        }
         if is_text_decoration_thickness_length(&length) {
             Some(Self::new(length))
         } else {
@@ -9992,6 +10048,9 @@ pub struct CssCornerRadius {
 impl CssCornerRadius {
     #[must_use]
     pub fn try_new(horizontal: CssLength, vertical: CssLength) -> Option<Self> {
+        if !(length_has_valid_calc_shape(&horizontal) && length_has_valid_calc_shape(&vertical)) {
+            return None;
+        }
         if is_radius_length(&horizontal) && is_radius_length(&vertical) {
             Some(Self::new(horizontal, vertical))
         } else {
@@ -10685,6 +10744,9 @@ pub struct CssBorderImageWidthLengthPercentage {
 impl CssBorderImageWidthLengthPercentage {
     #[must_use]
     pub fn try_new(value: CssLength) -> Option<Self> {
+        if !length_has_valid_calc_shape(&value) {
+            return None;
+        }
         is_non_negative_length_percentage(&value).then_some(Self { value })
     }
 
@@ -11057,6 +11119,9 @@ pub struct CssGradientLinePosition {
 impl CssGradientLinePosition {
     #[must_use]
     pub fn try_new(value: CssLength) -> Option<Self> {
+        if !length_has_valid_calc_shape(&value) {
+            return None;
+        }
         matches!(
             value,
             CssLength::Px(_)
@@ -11215,6 +11280,9 @@ pub struct CssRadialEllipseSize {
 impl CssRadialEllipseSize {
     #[must_use]
     pub fn try_new(horizontal: CssLength, vertical: CssLength) -> Option<Self> {
+        if !(length_has_valid_calc_shape(&horizontal) && length_has_valid_calc_shape(&vertical)) {
+            return None;
+        }
         let valid = |value: &CssLength| match value {
             CssLength::Px(value) | CssLength::Percent(value) => value.value() >= 0.0,
             CssLength::Dimension(value) => value.value() >= 0.0,
@@ -11326,6 +11394,9 @@ impl CssPositionOffset {
     /// Constructs an offset from a position-valid authored length or percentage.
     #[must_use]
     pub fn try_new(value: CssLength) -> Option<Self> {
+        if !length_has_valid_calc_shape(&value) {
+            return None;
+        }
         match value {
             CssLength::Px(_)
             | CssLength::Dimension(_)
@@ -11666,6 +11737,12 @@ pub struct CssPosition {
 impl CssPosition {
     #[must_use]
     pub fn try_new(components: Vec<CssPositionComponent>) -> Option<Self> {
+        if !components.iter().all(|component| match component {
+            CssPositionComponent::Length(value) => length_has_valid_calc_shape(value),
+            _ => true,
+        }) {
+            return None;
+        }
         if components.is_empty()
             || components.len() > 4
             || has_duplicate_axis_side_keywords(&components)
@@ -11932,6 +12009,17 @@ pub struct CssBackgroundSizeList {
 impl CssBackgroundSizeList {
     #[must_use]
     pub fn try_new(sizes: Vec<CssBackgroundSize>) -> Option<Self> {
+        if !sizes.iter().all(|size| match size {
+            CssBackgroundSize::Explicit { width, height } => std::iter::once(width)
+                .chain(height.iter())
+                .all(|component| match component {
+                    CssBackgroundSizeComponent::Length(value) => length_has_valid_calc_shape(value),
+                    CssBackgroundSizeComponent::Auto => true,
+                }),
+            _ => true,
+        }) {
+            return None;
+        }
         if sizes.is_empty() {
             None
         } else {
@@ -12236,6 +12324,12 @@ impl CssOutline {
         style: Option<CssOutlineStyle>,
         color: Option<CssColor>,
     ) -> Option<Self> {
+        if !width.as_ref().is_none_or(|width| match width {
+            CssOutlineWidth::Length(value) => length_has_valid_calc_shape(value),
+            _ => true,
+        }) {
+            return None;
+        }
         if width.is_none() && style.is_none() && color.is_none() {
             None
         } else {
@@ -12368,6 +12462,9 @@ pub struct CssTransformLengthPercentage {
 impl CssTransformLengthPercentage {
     #[must_use]
     pub fn try_new(value: CssLength) -> Option<Self> {
+        if !length_has_valid_calc_shape(&value) {
+            return None;
+        }
         if matches!(
             value,
             CssLength::Px(_)
@@ -12834,6 +12931,9 @@ pub struct CssTranslateValues {
 impl CssTranslateValues {
     #[must_use]
     pub fn try_new(values: Vec<CssLength>) -> Option<Self> {
+        if !values.iter().all(length_has_valid_calc_shape) {
+            return None;
+        }
         if values.is_empty() || values.len() > 3 {
             None
         } else {
@@ -13225,6 +13325,9 @@ pub struct CssShapeLengthPercentage {
 impl CssShapeLengthPercentage {
     #[must_use]
     pub fn try_new(value: CssLength) -> Option<Self> {
+        if !length_has_valid_calc_shape(&value) {
+            return None;
+        }
         let valid = match &value {
             CssLength::Px(value) | CssLength::Percent(value) => value.value() >= 0.0,
             CssLength::Dimension(value) => value.value() >= 0.0,
@@ -13380,6 +13483,9 @@ pub struct CssInsetShapeOffsets {
 impl CssInsetShapeOffsets {
     #[must_use]
     pub fn try_new(values: Vec<CssLength>) -> Option<Self> {
+        if !values.iter().all(length_has_valid_calc_shape) {
+            return None;
+        }
         ((1..=4).contains(&values.len()) && values.iter().all(is_shape_length_percentage))
             .then_some(Self { values })
     }
@@ -13432,6 +13538,9 @@ pub struct CssPolygonPoint {
 impl CssPolygonPoint {
     #[must_use]
     pub fn try_new(x: CssLength, y: CssLength) -> Option<Self> {
+        if !(length_has_valid_calc_shape(&x) && length_has_valid_calc_shape(&y)) {
+            return None;
+        }
         (is_shape_length_percentage(&x) && is_shape_length_percentage(&y)).then_some(Self { x, y })
     }
 

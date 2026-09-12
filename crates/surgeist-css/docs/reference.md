@@ -344,6 +344,20 @@ Calculation-root `result_type()`, sum and product `len()`, and sum-term and
 product-factor `operator()` accessors are also no longer `const fn`; call them
 at runtime.
 
+Checked owners accepting `CssLength` reject malformed legacy calculations: every
+`CssCalcLength::Sum` must be nonempty and its first term must use `Add`, including
+nested sums. This shape check also applies to fallible position, translate,
+outline, background-size-list, and grid-track-list construction; their other
+existing admission rules are unchanged. Signed first operands and later
+subtraction remain subject to each owner's existing value policy. The check
+traverses borrowed values iteratively and leaves typed calculations, symbolic
+semantics, and original component provenance intact.
+
+Raw public enum variants and infallible constructors still permit malformed or
+arbitrarily deep legacy trees. Their serialization, cloning, debugging, equality,
+and destruction remain recursive and unbounded; this checked-admission rule does
+not establish a resource guarantee for that raw representation.
+
 ## Authored flow tolerance
 
 The selected [Grid3 publication](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#placement-tolerance)
