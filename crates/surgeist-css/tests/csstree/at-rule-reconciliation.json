@@ -1,0 +1,5017 @@
+{
+  "basis": "11986007df313e0cda4ab4fafe64f0e5e63a920e",
+  "authority": {
+    "grammar": "Presence, cleanliness, and recovery decisions are independently justified by pinned-spec acceptance audit and the public parse_rule/report contract.",
+    "diagnostic_detail": "Exact codes and raw coordinates are statically derived public diagnostic behavior at the stated source basis, including context remapping and token inference. They are not numeric choices mandated by CSS specifications. Treat them as API-contract characterization; do not claim an independently normative conformance oracle for the numeric fields.",
+    "exact": "Exact covers complete ordered sequence of error code/action/error byte offset/recovery byte span, not all Error payload fields. No unspecified values are converted to empty or zero."
+  },
+  "shared_contract_evidence": [
+    "fragments.rs:535 documents whole original input, immutable namespace context, local retention, provisional closure suppression; :581-597 publishes only one rejection diagnostic after outer failure.",
+    "fragments.rs:27 constructs complete original-source recovery span. report.rs:118 allows end-position and zero-width diagnostic provenance; :26 orders diagnostics by error byte offset.",
+    "recovery.rs:30 appends independent unterminated-comment recovery; supplied independent audit establishes no original input has one. All 66 outer failures therefore have exactly one diagnostic.",
+    "error.rs:1019 resolve_source handles next-token and previous-token inference and at-keyword remapping; :1160 rule errors remap semicolon-terminated block-required cases. The requires-block set still excludes supports and layer.",
+    "font_face.rs:60-83 iterates descriptor units and retains ident-led malformed declarations locally. mod.rs:1594 recognizes their initial Ident; block_item_diagnostic uses unit_end minus failed_unit length. Neither font-face malformed original is an outer rejection.",
+    "queries.rs:98-193 recovers one media list member as Never and preserves member_start/member_end; :567 resets failed keyword probes, preserving trivia in spans; :633 identifies unsupported operand token origin.",
+    "mod.rs:2710 and :2802 select import clauses using detached probes and replay recovery only for the selected candidate. Invalid trailing string uses no optional clauses, at the original target-end cursor 14; recovery spans 14..21 and identifies string byte 15.",
+    "recovery.rs:413 creates UnexpectedEnd at EOF with zero-width EOF span for retained implicit block closures.",
+    "cssparser-0.37.0 parser.rs expect macro saves pre-token location, next skips whitespace, and stop-before delimiters report bounded EOF; rules_and_declarations.rs:424/455 implement single-rule and missing-block handling."
+  ],
+  "rows": [
+    {
+      "id": "atrule/atrule/container.json#/all together",
+      "input": "@container card (inline-size > 30em) and style(--responsive: true) {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/container.json",
+      "source_sha256": "84eb9c9bb9c05b2171506ccda7f51682c2cd0f42ed8148407084cf59739c3805",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/container.json",
+      "expectation_sha256": "7e030635dfda10b360a6567feb52d2862fcca860ebfd0de62ea78417a385fcf4",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "container"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Named/unnamed size or style condition with valid grouping and child rule syntax; unknown a/b terms remain symbolic.",
+      "sources": [
+        "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/container.json#/complex query",
+      "input": "@container not ( ( a : 500px) and ( not ( b : 500px) ) ) {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/container.json",
+      "source_sha256": "84eb9c9bb9c05b2171506ccda7f51682c2cd0f42ed8148407084cf59739c3805",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/container.json",
+      "expectation_sha256": "7e030635dfda10b360a6567feb52d2862fcca860ebfd0de62ea78417a385fcf4",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "container"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Named/unnamed size or style condition with valid grouping and child rule syntax; unknown a/b terms remain symbolic.",
+      "sources": [
+        "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/container.json#/error/0",
+      "input": "@container '' {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/container.json",
+      "source_sha256": "84eb9c9bb9c05b2171506ccda7f51682c2cd0f42ed8148407084cf59739c3805",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/container.json",
+      "expectation_sha256": "7e030635dfda10b360a6567feb52d2862fcca860ebfd0de62ea78417a385fcf4",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRulePrelude",
+          "error_byte_offset": 11,
+          "recovery_byte_span": [
+            0,
+            16
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "container"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "String, number, or bare declaration fails container-condition grammar.",
+      "sources": [
+        "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/container.json#/error/1",
+      "input": "@container 1 {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/container.json",
+      "source_sha256": "84eb9c9bb9c05b2171506ccda7f51682c2cd0f42ed8148407084cf59739c3805",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/container.json",
+      "expectation_sha256": "7e030635dfda10b360a6567feb52d2862fcca860ebfd0de62ea78417a385fcf4",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRulePrelude",
+          "error_byte_offset": 11,
+          "recovery_byte_span": [
+            0,
+            15
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "container"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "String, number, or bare declaration fails container-condition grammar.",
+      "sources": [
+        "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/container.json#/error/2",
+      "input": "@container flex: 1 {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/container.json",
+      "source_sha256": "84eb9c9bb9c05b2171506ccda7f51682c2cd0f42ed8148407084cf59739c3805",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/container.json",
+      "expectation_sha256": "7e030635dfda10b360a6567feb52d2862fcca860ebfd0de62ea78417a385fcf4",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRulePrelude",
+          "error_byte_offset": 15,
+          "recovery_byte_span": [
+            0,
+            21
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "container"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "String, number, or bare declaration fails container-condition grammar.",
+      "sources": [
+        "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/container.json#/query with a base feature",
+      "input": "@container (min-inline-size: 150px) { selector {} }",
+      "source_path": "corpus/csstree/source/atrule/atrule/container.json",
+      "source_sha256": "84eb9c9bb9c05b2171506ccda7f51682c2cd0f42ed8148407084cf59739c3805",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/container.json",
+      "expectation_sha256": "7e030635dfda10b360a6567feb52d2862fcca860ebfd0de62ea78417a385fcf4",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "container"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Named/unnamed size or style condition with valid grouping and child rule syntax; unknown a/b terms remain symbolic.",
+      "sources": [
+        "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/container.json#/query with a range feature",
+      "input": "@container (inline-size < 150px) { selector {} }",
+      "source_path": "corpus/csstree/source/atrule/atrule/container.json",
+      "source_sha256": "84eb9c9bb9c05b2171506ccda7f51682c2cd0f42ed8148407084cf59739c3805",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/container.json",
+      "expectation_sha256": "7e030635dfda10b360a6567feb52d2862fcca860ebfd0de62ea78417a385fcf4",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "container"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Named/unnamed size or style condition with valid grouping and child rule syntax; unknown a/b terms remain symbolic.",
+      "sources": [
+        "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/container.json#/style query",
+      "input": "@container style(--cards: small){}",
+      "source_path": "corpus/csstree/source/atrule/atrule/container.json",
+      "source_sha256": "84eb9c9bb9c05b2171506ccda7f51682c2cd0f42ed8148407084cf59739c3805",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/container.json",
+      "expectation_sha256": "7e030635dfda10b360a6567feb52d2862fcca860ebfd0de62ea78417a385fcf4",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "container"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Named/unnamed size or style condition with valid grouping and child rule syntax; unknown a/b terms remain symbolic.",
+      "sources": [
+        "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/container.json#/style query should case-insensitive",
+      "input": "@container STYLE(--cards: small){}",
+      "source_path": "corpus/csstree/source/atrule/atrule/container.json",
+      "source_sha256": "84eb9c9bb9c05b2171506ccda7f51682c2cd0f42ed8148407084cf59739c3805",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/container.json",
+      "expectation_sha256": "7e030635dfda10b360a6567feb52d2862fcca860ebfd0de62ea78417a385fcf4",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "container"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Named/unnamed size or style condition with valid grouping and child rule syntax; unknown a/b terms remain symbolic.",
+      "sources": [
+        "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/container.json#/with a container name",
+      "input": "@container my-layout (inline-size > 45em) { selector {} }",
+      "source_path": "corpus/csstree/source/atrule/atrule/container.json",
+      "source_sha256": "84eb9c9bb9c05b2171506ccda7f51682c2cd0f42ed8148407084cf59739c3805",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/container.json",
+      "expectation_sha256": "7e030635dfda10b360a6567feb52d2862fcca860ebfd0de62ea78417a385fcf4",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "container"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Named/unnamed size or style condition with valid grouping and child rule syntax; unknown a/b terms remain symbolic.",
+      "sources": [
+        "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/font-face.json#/@font-face with declaration looks like a rule in block",
+      "input": "@font-face { a:b {} }",
+      "source_path": "corpus/csstree/source/atrule/atrule/font-face.json",
+      "source_sha256": "8ed697572a465ba61475752bceab9bf8de08f20563b3272bf9c043b635f0fc7a",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/font-face.json",
+      "expectation_sha256": "f0a81e5a6400ec2fad1eba661c08da14233a615edf51eb2ed685c8d445dfe6ba",
+      "status": "active",
+      "present": true,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownDescriptor",
+          "error_byte_offset": 13,
+          "recovery_byte_span": [
+            13,
+            20
+          ],
+          "action": "DropDescriptor"
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "font_face"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_descriptor",
+            "action": "drop_descriptor",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Invalid descriptor/body item is discarded locally; retain enclosing font-face.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/font-face.json#/@font-face with no block is not an error",
+      "input": "@font-face;",
+      "source_path": "corpus/csstree/source/atrule/atrule/font-face.json",
+      "source_sha256": "8ed697572a465ba61475752bceab9bf8de08f20563b3272bf9c043b635f0fc7a",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/font-face.json",
+      "expectation_sha256": "f0a81e5a6400ec2fad1eba661c08da14233a615edf51eb2ed685c8d445dfe6ba",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRuleBody",
+          "error_byte_offset": 11,
+          "recovery_byte_span": [
+            0,
+            11
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "font_face"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_body",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Missing required block or forbidden prelude.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/font-face.json#/@font-face with prelude is not an error",
+      "input": "@font-face foo {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/font-face.json",
+      "source_sha256": "8ed697572a465ba61475752bceab9bf8de08f20563b3272bf9c043b635f0fc7a",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/font-face.json",
+      "expectation_sha256": "f0a81e5a6400ec2fad1eba661c08da14233a615edf51eb2ed685c8d445dfe6ba",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRulePrelude",
+          "error_byte_offset": 11,
+          "recovery_byte_span": [
+            0,
+            17
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "font_face"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Missing required block or forbidden prelude.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/font-face.json#/error/0",
+      "input": "@font-face { a {} }",
+      "source_path": "corpus/csstree/source/atrule/atrule/font-face.json",
+      "source_sha256": "8ed697572a465ba61475752bceab9bf8de08f20563b3272bf9c043b635f0fc7a",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/font-face.json",
+      "expectation_sha256": "f0a81e5a6400ec2fad1eba661c08da14233a615edf51eb2ed685c8d445dfe6ba",
+      "status": "active",
+      "present": true,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnexpectedToken",
+          "error_byte_offset": 15,
+          "recovery_byte_span": [
+            13,
+            18
+          ],
+          "action": "DropDescriptor"
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "font_face"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "drop_descriptor",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Invalid descriptor/body item is discarded locally; retain enclosing font-face.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/font-face.json#/several declarations",
+      "input": "@font-face{font-family:name;src:url(test.woff)}",
+      "source_path": "corpus/csstree/source/atrule/atrule/font-face.json",
+      "source_sha256": "8ed697572a465ba61475752bceab9bf8de08f20563b3272bf9c043b635f0fc7a",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/font-face.json",
+      "expectation_sha256": "f0a81e5a6400ec2fad1eba661c08da14233a615edf51eb2ed685c8d445dfe6ba",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "font_face"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid family/source descriptors; font activation completeness is downstream.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/font-face.json#/single declaration",
+      "input": "@font-face{font-family:\"name\"}",
+      "source_path": "corpus/csstree/source/atrule/atrule/font-face.json",
+      "source_sha256": "8ed697572a465ba61475752bceab9bf8de08f20563b3272bf9c043b635f0fc7a",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/font-face.json",
+      "expectation_sha256": "f0a81e5a6400ec2fad1eba661c08da14233a615edf51eb2ed685c8d445dfe6ba",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "font_face"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid family/source descriptors; font activation completeness is downstream.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/font-feature-values.json#/with all feature types",
+      "input": "@font-feature-values \"Another Font\"{@annotation{circled:1}@ornaments{fleuron:1}@stylistic{alt-a:1}@swash{swash1:1}@historical-forms{hist:1}}",
+      "source_path": "corpus/csstree/source/atrule/atrule/font-feature-values.json",
+      "source_sha256": "0be7ff601176527199c4d880f7b6f3a157d121b235f34c4fc5d3bf47b72b6a40",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/font-feature-values.json",
+      "expectation_sha256": "639da2bcdef001fa01667a49344bb0e0bdd19a46416380d5c0ee43602c3e6489",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "All five subsidiary block types, including historical-forms, are defined; supplied identifiers and singleton nonnegative integers satisfy their grammar.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/import.json#/@import with block is not an error",
+      "input": "@import 'test' {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/import.json",
+      "source_sha256": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/import.json",
+      "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRuleBody",
+          "error_byte_offset": 15,
+          "recovery_byte_span": [
+            0,
+            17
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "import"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_body",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Import lacks URL/string or illegally has a block.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/import.json#/@import with no prelude is not an error/0",
+      "input": "@import;",
+      "source_path": "corpus/csstree/source/atrule/atrule/import.json",
+      "source_sha256": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/import.json",
+      "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRulePrelude",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            8
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "import"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Import lacks URL/string or illegally has a block.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/import.json#/@import with no prelude is not an error/1",
+      "input": "@import  ;",
+      "source_path": "corpus/csstree/source/atrule/atrule/import.json",
+      "source_sha256": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/import.json",
+      "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRulePrelude",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            10
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "import"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Import lacks URL/string or illegally has a block.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/import.json#/error/0",
+      "input": "@import 'test' 'asd' ;",
+      "source_path": "corpus/csstree/source/atrule/atrule/import.json",
+      "source_sha256": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/import.json",
+      "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
+      "status": "active",
+      "present": true,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidMediaQuery",
+          "error_byte_offset": 15,
+          "recovery_byte_span": [
+            14,
+            21
+          ],
+          "action": "ReplaceMediaQueryWithNever"
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "import"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_media_query",
+            "action": "replace_media_query_with_never",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "URL is valid; remaining string is malformed media query, replaced locally with never.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/import.json#/should be case insensetive",
+      "input": "@ImpOrt 'test' all;",
+      "source_path": "corpus/csstree/source/atrule/atrule/import.json",
+      "source_sha256": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/import.json",
+      "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "import"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid isolated string/URL import and grammatical optional clauses; unsupported tested property does not invalidate supports condition.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/import.json#/white spaces and comment should not affect prelude consuming",
+      "input": "@import 'test' /* comment */ {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/import.json",
+      "source_sha256": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/import.json",
+      "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRuleBody",
+          "error_byte_offset": 29,
+          "recovery_byte_span": [
+            0,
+            31
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "import"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_body",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Import lacks URL/string or illegally has a block.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/import.json#/with anonymous layer",
+      "input": "@import url(test) layer;",
+      "source_path": "corpus/csstree/source/atrule/atrule/import.json",
+      "source_sha256": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/import.json",
+      "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "import"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid isolated string/URL import and grammatical optional clauses; unsupported tested property does not invalidate supports condition.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/import.json#/with bad layer()/0",
+      "input": "@import url(test) layer();",
+      "source_path": "corpus/csstree/source/atrule/atrule/import.json",
+      "source_sha256": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/import.json",
+      "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "import"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Optional layer/supports groups may be absent; remaining function matches media general-enclosed. See independent import-clause derivation.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534",
+        "/tmp/surgeist-import-clause-interpretation.md"
+      ]
+    },
+    {
+      "id": "atrule/atrule/import.json#/with bad layer()/1",
+      "input": "@import url(test) layer( 2px );",
+      "source_path": "corpus/csstree/source/atrule/atrule/import.json",
+      "source_sha256": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/import.json",
+      "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "import"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Optional layer/supports groups may be absent; remaining function matches media general-enclosed. See independent import-clause derivation.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534",
+        "/tmp/surgeist-import-clause-interpretation.md"
+      ]
+    },
+    {
+      "id": "atrule/atrule/import.json#/with bad supports()/0",
+      "input": "@import url(test) supports();",
+      "source_path": "corpus/csstree/source/atrule/atrule/import.json",
+      "source_sha256": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/import.json",
+      "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "import"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Optional layer/supports groups may be absent; remaining function matches media general-enclosed. See independent import-clause derivation.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534",
+        "/tmp/surgeist-import-clause-interpretation.md"
+      ]
+    },
+    {
+      "id": "atrule/atrule/import.json#/with bad supports()/1",
+      "input": "@import url(test) supports(  2px  );",
+      "source_path": "corpus/csstree/source/atrule/atrule/import.json",
+      "source_sha256": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/import.json",
+      "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "import"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Optional layer/supports groups may be absent; remaining function matches media general-enclosed. See independent import-clause derivation.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534",
+        "/tmp/surgeist-import-clause-interpretation.md"
+      ]
+    },
+    {
+      "id": "atrule/atrule/import.json#/with layer & supports",
+      "input": "@import url(test) layer(name) supports(foo:1);",
+      "source_path": "corpus/csstree/source/atrule/atrule/import.json",
+      "source_sha256": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/import.json",
+      "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "import"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid isolated string/URL import and grammatical optional clauses; unsupported tested property does not invalidate supports condition.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/import.json#/with layer & supports & media",
+      "input": "@import url(test) layer(name) supports(foo:1) screen and (min-width: 100px);",
+      "source_path": "corpus/csstree/source/atrule/atrule/import.json",
+      "source_sha256": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/import.json",
+      "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "import"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid isolated string/URL import and grammatical optional clauses; unsupported tested property does not invalidate supports condition.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/import.json#/with layer()",
+      "input": "@import url(test) layer(foo);",
+      "source_path": "corpus/csstree/source/atrule/atrule/import.json",
+      "source_sha256": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/import.json",
+      "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "import"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid isolated string/URL import and grammatical optional clauses; unsupported tested property does not invalidate supports condition.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/import.json#/with media",
+      "input": "@import 'test' all, screen and (min-width: 600px);",
+      "source_path": "corpus/csstree/source/atrule/atrule/import.json",
+      "source_sha256": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/import.json",
+      "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "import"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid isolated string/URL import and grammatical optional clauses; unsupported tested property does not invalidate supports condition.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/import.json#/with string",
+      "input": "@import \"test\";",
+      "source_path": "corpus/csstree/source/atrule/atrule/import.json",
+      "source_sha256": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/import.json",
+      "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "import"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid isolated string/URL import and grammatical optional clauses; unsupported tested property does not invalidate supports condition.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/import.json#/with supports(condition)",
+      "input": "@import url(test) supports(not (foo:1));",
+      "source_path": "corpus/csstree/source/atrule/atrule/import.json",
+      "source_sha256": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/import.json",
+      "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "import"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid isolated string/URL import and grammatical optional clauses; unsupported tested property does not invalidate supports condition.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/import.json#/with supports(declaration)",
+      "input": "@import url(test) supports(foo:1);",
+      "source_path": "corpus/csstree/source/atrule/atrule/import.json",
+      "source_sha256": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/import.json",
+      "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "import"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid isolated string/URL import and grammatical optional clauses; unsupported tested property does not invalidate supports condition.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/import.json#/with url",
+      "input": "@import url(test);",
+      "source_path": "corpus/csstree/source/atrule/atrule/import.json",
+      "source_sha256": "fc7795377b3494f184a64db03901264d764406cedd05b440358cbf815cf2bc2e",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/import.json",
+      "expectation_sha256": "2845e25128012e207716af6cc09c3f069139e3efca7677e426426b85ff29b474",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "import"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid isolated string/URL import and grammatical optional clauses; unsupported tested property does not invalidate supports condition.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/layer.json#/anonymous layer",
+      "input": "@layer;",
+      "source_path": "corpus/csstree/source/atrule/atrule/layer.json",
+      "source_sha256": "adb2a4b569a873179c4e1fdd042720170ae8eac0c1c2ddaca918d5dc797f55c6",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/layer.json",
+      "expectation_sha256": "1e669fb7d1958b10bc9700a11a96b356c7475ef1b4437859efa2e66c552d4e55",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnexpectedToken",
+          "error_byte_offset": 7,
+          "recovery_byte_span": [
+            0,
+            7
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Statement lacks a required name, or whitespace interrupts dotted layer-name.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/layer.json#/anonymous layer with block",
+      "input": "@layer { selector {} }",
+      "source_path": "corpus/csstree/source/atrule/atrule/layer.json",
+      "source_sha256": "adb2a4b569a873179c4e1fdd042720170ae8eac0c1c2ddaca918d5dc797f55c6",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/layer.json",
+      "expectation_sha256": "1e669fb7d1958b10bc9700a11a96b356c7475ef1b4437859efa2e66c552d4e55",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid layer name/list or anonymous block with valid child rule.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/layer.json#/error/0",
+      "input": "@layer foo . bar ;",
+      "source_path": "corpus/csstree/source/atrule/atrule/layer.json",
+      "source_sha256": "adb2a4b569a873179c4e1fdd042720170ae8eac0c1c2ddaca918d5dc797f55c6",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/layer.json",
+      "expectation_sha256": "1e669fb7d1958b10bc9700a11a96b356c7475ef1b4437859efa2e66c552d4e55",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRulePrelude",
+          "error_byte_offset": 11,
+          "recovery_byte_span": [
+            0,
+            18
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Statement lacks a required name, or whitespace interrupts dotted layer-name.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/layer.json#/layer name list",
+      "input": "@layer foo, foo.bar , foo.bar.baz;",
+      "source_path": "corpus/csstree/source/atrule/atrule/layer.json",
+      "source_sha256": "adb2a4b569a873179c4e1fdd042720170ae8eac0c1c2ddaca918d5dc797f55c6",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/layer.json",
+      "expectation_sha256": "1e669fb7d1958b10bc9700a11a96b356c7475ef1b4437859efa2e66c552d4e55",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid layer name/list or anonymous block with valid child rule.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/layer.json#/layer name with fullstop",
+      "input": "@layer foo.bar;",
+      "source_path": "corpus/csstree/source/atrule/atrule/layer.json",
+      "source_sha256": "adb2a4b569a873179c4e1fdd042720170ae8eac0c1c2ddaca918d5dc797f55c6",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/layer.json",
+      "expectation_sha256": "1e669fb7d1958b10bc9700a11a96b356c7475ef1b4437859efa2e66c552d4e55",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid layer name/list or anonymous block with valid child rule.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/layer.json#/one layer name",
+      "input": "@layer test;",
+      "source_path": "corpus/csstree/source/atrule/atrule/layer.json",
+      "source_sha256": "adb2a4b569a873179c4e1fdd042720170ae8eac0c1c2ddaca918d5dc797f55c6",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/layer.json",
+      "expectation_sha256": "1e669fb7d1958b10bc9700a11a96b356c7475ef1b4437859efa2e66c552d4e55",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid layer name/list or anonymous block with valid child rule.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/layer.json#/with a block",
+      "input": "@layer test { selector {} }",
+      "source_path": "corpus/csstree/source/atrule/atrule/layer.json",
+      "source_sha256": "adb2a4b569a873179c4e1fdd042720170ae8eac0c1c2ddaca918d5dc797f55c6",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/layer.json",
+      "expectation_sha256": "1e669fb7d1958b10bc9700a11a96b356c7475ef1b4437859efa2e66c552d4e55",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid layer name/list or anonymous block with valid child rule.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/media.json#/@media with no block is not an error",
+      "input": "@media;",
+      "source_path": "corpus/csstree/source/atrule/atrule/media.json",
+      "source_sha256": "502e8c3a1648931deaf6963049e87cdbe8e05d2fcf9d89e5f6c4f26ef6cba347",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/media.json",
+      "expectation_sha256": "01586dd60f9cb2a51046cc25fa9da56fd063f2fd2a921b6c03dfcde34e45a920",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRuleBody",
+          "error_byte_offset": 7,
+          "recovery_byte_span": [
+            0,
+            7
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "media"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_body",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Required media block absent; outer rejection suppresses provisional prelude/EOF diagnostics.",
+      "sources": [
+        "https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/media.json#/@media with no prelude is not an error",
+      "input": "@media {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/media.json",
+      "source_sha256": "502e8c3a1648931deaf6963049e87cdbe8e05d2fcf9d89e5f6c4f26ef6cba347",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/media.json",
+      "expectation_sha256": "01586dd60f9cb2a51046cc25fa9da56fd063f2fd2a921b6c03dfcde34e45a920",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "media"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid empty/list/type/condition grammar. Unknown features and false range relations do not trigger syntax recovery.",
+      "sources": [
+        "https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/media.json#/@media with unclosed parentheses is not an error",
+      "input": "@media (foo:1",
+      "source_path": "corpus/csstree/source/atrule/atrule/media.json",
+      "source_sha256": "502e8c3a1648931deaf6963049e87cdbe8e05d2fcf9d89e5f6c4f26ef6cba347",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/media.json",
+      "expectation_sha256": "01586dd60f9cb2a51046cc25fa9da56fd063f2fd2a921b6c03dfcde34e45a920",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnexpectedToken",
+          "error_byte_offset": 13,
+          "recovery_byte_span": [
+            0,
+            13
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "media"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Required media block absent; outer rejection suppresses provisional prelude/EOF diagnostics.",
+      "sources": [
+        "https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/media.json#/a list of conditions",
+      "input": "@media all and (min-width: 500px), only screen, (200px < width) and ((foo: 1/2) or (100px > width > 200px)) {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/media.json",
+      "source_sha256": "502e8c3a1648931deaf6963049e87cdbe8e05d2fcf9d89e5f6c4f26ef6cba347",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/media.json",
+      "expectation_sha256": "01586dd60f9cb2a51046cc25fa9da56fd063f2fd2a921b6c03dfcde34e45a920",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "media"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid empty/list/type/condition grammar. Unknown features and false range relations do not trigger syntax recovery.",
+      "sources": [
+        "https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/media.json#/error/0",
+      "input": "@media foo screen {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/media.json",
+      "source_sha256": "502e8c3a1648931deaf6963049e87cdbe8e05d2fcf9d89e5f6c4f26ef6cba347",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/media.json",
+      "expectation_sha256": "01586dd60f9cb2a51046cc25fa9da56fd063f2fd2a921b6c03dfcde34e45a920",
+      "status": "active",
+      "present": true,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidMediaQuery",
+          "error_byte_offset": 11,
+          "recovery_byte_span": [
+            6,
+            18
+          ],
+          "action": "ReplaceMediaQueryWithNever"
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "media"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_media_query",
+            "action": "replace_media_query_with_never",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Malformed media-list member replaced with never; valid outer media survives.",
+      "sources": [
+        "https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/media.json#/error/1",
+      "input": "@media (foo:1) ~",
+      "source_path": "corpus/csstree/source/atrule/atrule/media.json",
+      "source_sha256": "502e8c3a1648931deaf6963049e87cdbe8e05d2fcf9d89e5f6c4f26ef6cba347",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/media.json",
+      "expectation_sha256": "01586dd60f9cb2a51046cc25fa9da56fd063f2fd2a921b6c03dfcde34e45a920",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnexpectedToken",
+          "error_byte_offset": 16,
+          "recovery_byte_span": [
+            0,
+            16
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "media"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Required media block absent; outer rejection suppresses provisional prelude/EOF diagnostics.",
+      "sources": [
+        "https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/media.json#/error/2",
+      "input": "@media ! {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/media.json",
+      "source_sha256": "502e8c3a1648931deaf6963049e87cdbe8e05d2fcf9d89e5f6c4f26ef6cba347",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/media.json",
+      "expectation_sha256": "01586dd60f9cb2a51046cc25fa9da56fd063f2fd2a921b6c03dfcde34e45a920",
+      "status": "active",
+      "present": true,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidMediaQuery",
+          "error_byte_offset": 7,
+          "recovery_byte_span": [
+            6,
+            9
+          ],
+          "action": "ReplaceMediaQueryWithNever"
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "media"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_media_query",
+            "action": "replace_media_query_with_never",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Malformed media-list member replaced with never; valid outer media survives.",
+      "sources": [
+        "https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/media.json#/missed 'and' keyword",
+      "input": "@media screen (feature:1){}",
+      "source_path": "corpus/csstree/source/atrule/atrule/media.json",
+      "source_sha256": "502e8c3a1648931deaf6963049e87cdbe8e05d2fcf9d89e5f6c4f26ef6cba347",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/media.json",
+      "expectation_sha256": "01586dd60f9cb2a51046cc25fa9da56fd063f2fd2a921b6c03dfcde34e45a920",
+      "status": "active",
+      "present": true,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidMediaQuery",
+          "error_byte_offset": 14,
+          "recovery_byte_span": [
+            6,
+            25
+          ],
+          "action": "ReplaceMediaQueryWithNever"
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "media"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_media_query",
+            "action": "replace_media_query_with_never",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Malformed media-list member replaced with never; valid outer media survives.",
+      "sources": [
+        "https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/media.json#/should be case insensitive",
+      "input": "@mEdiA screen{}",
+      "source_path": "corpus/csstree/source/atrule/atrule/media.json",
+      "source_sha256": "502e8c3a1648931deaf6963049e87cdbe8e05d2fcf9d89e5f6c4f26ef6cba347",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/media.json",
+      "expectation_sha256": "01586dd60f9cb2a51046cc25fa9da56fd063f2fd2a921b6c03dfcde34e45a920",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "media"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid empty/list/type/condition grammar. Unknown features and false range relations do not trigger syntax recovery.",
+      "sources": [
+        "https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/media.json#/shouldn't parse an at-rule prelude when parseAtrulePrelude is false",
+      "input": "@media screen and (feature: 1){}",
+      "source_path": "corpus/csstree/source/atrule/atrule/media.json",
+      "source_sha256": "502e8c3a1648931deaf6963049e87cdbe8e05d2fcf9d89e5f6c4f26ef6cba347",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/media.json",
+      "expectation_sha256": "01586dd60f9cb2a51046cc25fa9da56fd063f2fd2a921b6c03dfcde34e45a920",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "unsupported",
+        "reason": "upstream_parser_option_without_public_css_equivalent",
+        "policy": {
+          "kind": "full_observation",
+          "retained_syntax": {
+            "extractor": {
+              "kind": "top_level_rule_kind",
+              "rule_kind": "media"
+            },
+            "predicate": {
+              "relation": "nonempty"
+            }
+          },
+          "is_clean": true,
+          "diagnostics": []
+        }
+      },
+      "rationale": "Valid empty/list/type/condition grammar. Unknown features and false range relations do not trigger syntax recovery.",
+      "sources": [
+        "https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/media.json#/single media type",
+      "input": "@media screen{}",
+      "source_path": "corpus/csstree/source/atrule/atrule/media.json",
+      "source_sha256": "502e8c3a1648931deaf6963049e87cdbe8e05d2fcf9d89e5f6c4f26ef6cba347",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/media.json",
+      "expectation_sha256": "01586dd60f9cb2a51046cc25fa9da56fd063f2fd2a921b6c03dfcde34e45a920",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "media"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid empty/list/type/condition grammar. Unknown features and false range relations do not trigger syntax recovery.",
+      "sources": [
+        "https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/media.json#/single media type with negation",
+      "input": "@media not screen{}",
+      "source_path": "corpus/csstree/source/atrule/atrule/media.json",
+      "source_sha256": "502e8c3a1648931deaf6963049e87cdbe8e05d2fcf9d89e5f6c4f26ef6cba347",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/media.json",
+      "expectation_sha256": "01586dd60f9cb2a51046cc25fa9da56fd063f2fd2a921b6c03dfcde34e45a920",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "media"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid empty/list/type/condition grammar. Unknown features and false range relations do not trigger syntax recovery.",
+      "sources": [
+        "https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/media.json#/single media type with only",
+      "input": "@media only screen{}",
+      "source_path": "corpus/csstree/source/atrule/atrule/media.json",
+      "source_sha256": "502e8c3a1648931deaf6963049e87cdbe8e05d2fcf9d89e5f6c4f26ef6cba347",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/media.json",
+      "expectation_sha256": "01586dd60f9cb2a51046cc25fa9da56fd063f2fd2a921b6c03dfcde34e45a920",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "media"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid empty/list/type/condition grammar. Unknown features and false range relations do not trigger syntax recovery.",
+      "sources": [
+        "https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/nest.json#/single media type",
+      "input": "@nest .bar:not(&) {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/nest.json",
+      "source_sha256": "ad3c3726a94528640735f9cf345d2eb7af109ae9e99af312fe20e2d99b752456",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/nest.json",
+      "expectation_sha256": "2b955d2752af54528afbd14e12a59ceb8f8fb39bff9d5f9ceda974f8181a80f2",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            20
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "unsupported",
+        "reason": "outside_selected_profile",
+        "policy": {
+          "kind": "full_observation",
+          "retained_syntax": {
+            "extractor": {
+              "kind": "at_rule"
+            },
+            "predicate": {
+              "relation": "empty"
+            }
+          },
+          "is_clean": false,
+          "diagnostics": [
+            {
+              "code": "unknown_at_rule",
+              "action": "reject_input",
+              "payload_relation": "intersects"
+            }
+          ]
+        }
+      },
+      "rationale": "Superseded @nest outer syntax; original media label retained.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/scope.json#/bad selectors",
+      "input": "@scope ( .a. ) to ( .b. ) {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/scope.json",
+      "source_sha256": "b3412cb8496073b8eab8df0755cabac8b4ca3706789a0e1b71a1ff7a1fc21ea3",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/scope.json",
+      "expectation_sha256": "400dc85535d113e9a9f4a65f751160a710f1cdf00996b871744ab37820a1a9c5",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRulePrelude",
+          "error_byte_offset": 11,
+          "recovery_byte_span": [
+            0,
+            28
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "scope"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Malformed selectors in unforgiving scope boundaries invalidate outer prelude.",
+      "sources": [
+        "https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/scope.json#/base syntax",
+      "input": "@scope (a) to (b) { c {} }",
+      "source_path": "corpus/csstree/source/atrule/atrule/scope.json",
+      "source_sha256": "b3412cb8496073b8eab8df0755cabac8b4ca3706789a0e1b71a1ff7a1fc21ea3",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/scope.json",
+      "expectation_sha256": "400dc85535d113e9a9f4a65f751160a710f1cdf00996b871744ab37820a1a9c5",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "scope"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid optional root/limit with ordinary type-selector child.",
+      "sources": [
+        "https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/scope.json#/only limit",
+      "input": "@scope to (limit){}",
+      "source_path": "corpus/csstree/source/atrule/atrule/scope.json",
+      "source_sha256": "b3412cb8496073b8eab8df0755cabac8b4ca3706789a0e1b71a1ff7a1fc21ea3",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/scope.json",
+      "expectation_sha256": "400dc85535d113e9a9f4a65f751160a710f1cdf00996b871744ab37820a1a9c5",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "scope"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid optional root/limit with ordinary type-selector child.",
+      "sources": [
+        "https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/scope.json#/only root",
+      "input": "@scope (root){}",
+      "source_path": "corpus/csstree/source/atrule/atrule/scope.json",
+      "source_sha256": "b3412cb8496073b8eab8df0755cabac8b4ca3706789a0e1b71a1ff7a1fc21ea3",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/scope.json",
+      "expectation_sha256": "400dc85535d113e9a9f4a65f751160a710f1cdf00996b871744ab37820a1a9c5",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "scope"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid optional root/limit with ordinary type-selector child.",
+      "sources": [
+        "https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/starting-style.json#/base syntax",
+      "input": "@starting-style { selector {} }",
+      "source_path": "corpus/csstree/source/atrule/atrule/starting-style.json",
+      "source_sha256": "4ade42d2187ca680f3d48a250b45da741cb7d46555eb50cc243326a2aa530b9d",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/starting-style.json",
+      "expectation_sha256": "eda1aecccedde005201e88d97b2adc197dfd1354644808b60cca50bd554adf93",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            31
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "unsupported",
+        "reason": "outside_selected_profile",
+        "policy": {
+          "kind": "full_observation",
+          "retained_syntax": {
+            "extractor": {
+              "kind": "at_rule"
+            },
+            "predicate": {
+              "relation": "empty"
+            }
+          },
+          "is_clean": false,
+          "diagnostics": [
+            {
+              "code": "unknown_at_rule",
+              "action": "reject_input",
+              "payload_relation": "intersects"
+            }
+          ]
+        }
+      },
+      "rationale": "Transitions2 grammar is outside selected profile.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/supports.json#/@supports with no block",
+      "input": "@supports (flex: 1)",
+      "source_path": "corpus/csstree/source/atrule/atrule/supports.json",
+      "source_sha256": "95a1acb2aa236bec7dec45723e8737844b53eb7ef1a304e050e65441516ad489",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/supports.json",
+      "expectation_sha256": "f4cecaea08b5a88286e135ae09b91d40f47a04ab888db4de3a1d26739522464e",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnexpectedToken",
+          "error_byte_offset": 19,
+          "recovery_byte_span": [
+            0,
+            19
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "supports"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Missing required condition/block or prelude outside supports-condition grammar.",
+      "sources": [
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/supports.json#/@supports with no block is not an error",
+      "input": "@supports;",
+      "source_path": "corpus/csstree/source/atrule/atrule/supports.json",
+      "source_sha256": "95a1acb2aa236bec7dec45723e8737844b53eb7ef1a304e050e65441516ad489",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/supports.json",
+      "expectation_sha256": "f4cecaea08b5a88286e135ae09b91d40f47a04ab888db4de3a1d26739522464e",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRulePrelude",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            10
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "supports"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Missing required condition/block or prelude outside supports-condition grammar.",
+      "sources": [
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/supports.json#/@supports with no prelude is not an error",
+      "input": "@supports {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/supports.json",
+      "source_sha256": "95a1acb2aa236bec7dec45723e8737844b53eb7ef1a304e050e65441516ad489",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/supports.json",
+      "expectation_sha256": "f4cecaea08b5a88286e135ae09b91d40f47a04ab888db4de3a1d26739522464e",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRulePrelude",
+          "error_byte_offset": 10,
+          "recovery_byte_span": [
+            0,
+            12
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "supports"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Missing required condition/block or prelude outside supports-condition grammar.",
+      "sources": [
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/supports.json#/@supports with selector()",
+      "input": "@supports selector(.example) {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/supports.json",
+      "source_sha256": "95a1acb2aa236bec7dec45723e8737844b53eb7ef1a304e050e65441516ad489",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/supports.json",
+      "expectation_sha256": "f4cecaea08b5a88286e135ae09b91d40f47a04ab888db4de3a1d26739522464e",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "supports"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid supports condition including declaration, negation, selector extension or general-enclosed; support evaluation does not emit syntax errors.",
+      "sources": [
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/supports.json#/@supports with selector() case-insensitive",
+      "input": "@supports SELECTOR(.example) {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/supports.json",
+      "source_sha256": "95a1acb2aa236bec7dec45723e8737844b53eb7ef1a304e050e65441516ad489",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/supports.json",
+      "expectation_sha256": "f4cecaea08b5a88286e135ae09b91d40f47a04ab888db4de3a1d26739522464e",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "supports"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid supports condition including declaration, negation, selector extension or general-enclosed; support evaluation does not emit syntax errors.",
+      "sources": [
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/supports.json#/base test",
+      "input": "@supports (flex:1){selector{color:green}}",
+      "source_path": "corpus/csstree/source/atrule/atrule/supports.json",
+      "source_sha256": "95a1acb2aa236bec7dec45723e8737844b53eb7ef1a304e050e65441516ad489",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/supports.json",
+      "expectation_sha256": "f4cecaea08b5a88286e135ae09b91d40f47a04ab888db4de3a1d26739522464e",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "supports"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid supports condition including declaration, negation, selector extension or general-enclosed; support evaluation does not emit syntax errors.",
+      "sources": [
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/supports.json#/base test with comments",
+      "input": "@supports not /*0*/(/*1*/flex :/*3*/1/*4*/)/*5*/{}",
+      "source_path": "corpus/csstree/source/atrule/atrule/supports.json",
+      "source_sha256": "95a1acb2aa236bec7dec45723e8737844b53eb7ef1a304e050e65441516ad489",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/supports.json",
+      "expectation_sha256": "f4cecaea08b5a88286e135ae09b91d40f47a04ab888db4de3a1d26739522464e",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "supports"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid supports condition including declaration, negation, selector extension or general-enclosed; support evaluation does not emit syntax errors.",
+      "sources": [
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/supports.json#/base test with spaces",
+      "input": "@supports  (  flex  :  1  )  {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/supports.json",
+      "source_sha256": "95a1acb2aa236bec7dec45723e8737844b53eb7ef1a304e050e65441516ad489",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/supports.json",
+      "expectation_sha256": "f4cecaea08b5a88286e135ae09b91d40f47a04ab888db4de3a1d26739522464e",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "supports"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid supports condition including declaration, negation, selector extension or general-enclosed; support evaluation does not emit syntax errors.",
+      "sources": [
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/supports.json#/complex prelude",
+      "input": "@supports (not (flex: 1)) or (grid: support) {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/supports.json",
+      "source_sha256": "95a1acb2aa236bec7dec45723e8737844b53eb7ef1a304e050e65441516ad489",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/supports.json",
+      "expectation_sha256": "f4cecaea08b5a88286e135ae09b91d40f47a04ab888db4de3a1d26739522464e",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "supports"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid supports condition including declaration, negation, selector extension or general-enclosed; support evaluation does not emit syntax errors.",
+      "sources": [
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/supports.json#/custom property",
+      "input": "@supports (--custom: 1){}",
+      "source_path": "corpus/csstree/source/atrule/atrule/supports.json",
+      "source_sha256": "95a1acb2aa236bec7dec45723e8737844b53eb7ef1a304e050e65441516ad489",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/supports.json",
+      "expectation_sha256": "f4cecaea08b5a88286e135ae09b91d40f47a04ab888db4de3a1d26739522464e",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "supports"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid supports condition including declaration, negation, selector extension or general-enclosed; support evaluation does not emit syntax errors.",
+      "sources": [
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/supports.json#/error/0",
+      "input": "@supports '' {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/supports.json",
+      "source_sha256": "95a1acb2aa236bec7dec45723e8737844b53eb7ef1a304e050e65441516ad489",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/supports.json",
+      "expectation_sha256": "f4cecaea08b5a88286e135ae09b91d40f47a04ab888db4de3a1d26739522464e",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRulePrelude",
+          "error_byte_offset": 10,
+          "recovery_byte_span": [
+            0,
+            15
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "supports"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Missing required condition/block or prelude outside supports-condition grammar.",
+      "sources": [
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/supports.json#/error/1",
+      "input": "@supports 1 {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/supports.json",
+      "source_sha256": "95a1acb2aa236bec7dec45723e8737844b53eb7ef1a304e050e65441516ad489",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/supports.json",
+      "expectation_sha256": "f4cecaea08b5a88286e135ae09b91d40f47a04ab888db4de3a1d26739522464e",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRulePrelude",
+          "error_byte_offset": 10,
+          "recovery_byte_span": [
+            0,
+            14
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "supports"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Missing required condition/block or prelude outside supports-condition grammar.",
+      "sources": [
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/supports.json#/error/2",
+      "input": "@supports flex: 1 {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/supports.json",
+      "source_sha256": "95a1acb2aa236bec7dec45723e8737844b53eb7ef1a304e050e65441516ad489",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/supports.json",
+      "expectation_sha256": "f4cecaea08b5a88286e135ae09b91d40f47a04ab888db4de3a1d26739522464e",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRulePrelude",
+          "error_byte_offset": 14,
+          "recovery_byte_span": [
+            0,
+            20
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "supports"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Missing required condition/block or prelude outside supports-condition grammar.",
+      "sources": [
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/supports.json#/should be case insensitive",
+      "input": "@SuppOrts (flex:1){}",
+      "source_path": "corpus/csstree/source/atrule/atrule/supports.json",
+      "source_sha256": "95a1acb2aa236bec7dec45723e8737844b53eb7ef1a304e050e65441516ad489",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/supports.json",
+      "expectation_sha256": "f4cecaea08b5a88286e135ae09b91d40f47a04ab888db4de3a1d26739522464e",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "supports"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid supports condition including declaration, negation, selector extension or general-enclosed; support evaluation does not emit syntax errors.",
+      "sources": [
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/supports.json#/simple supports with negation",
+      "input": "@supports not (flex: 1) {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/supports.json",
+      "source_sha256": "95a1acb2aa236bec7dec45723e8737844b53eb7ef1a304e050e65441516ad489",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/supports.json",
+      "expectation_sha256": "f4cecaea08b5a88286e135ae09b91d40f47a04ab888db4de3a1d26739522464e",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "supports"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid supports condition including declaration, negation, selector extension or general-enclosed; support evaluation does not emit syntax errors.",
+      "sources": [
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/supports.json#/using !important",
+      "input": "@supports (box-shadow: something var(--complex) !important) {}",
+      "source_path": "corpus/csstree/source/atrule/atrule/supports.json",
+      "source_sha256": "95a1acb2aa236bec7dec45723e8737844b53eb7ef1a304e050e65441516ad489",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/supports.json",
+      "expectation_sha256": "f4cecaea08b5a88286e135ae09b91d40f47a04ab888db4de3a1d26739522464e",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "supports"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid supports condition including declaration, negation, selector extension or general-enclosed; support evaluation does not emit syntax errors.",
+      "sources": [
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/supports.json#/using function",
+      "input": "@supports func(flex: 1){}",
+      "source_path": "corpus/csstree/source/atrule/atrule/supports.json",
+      "source_sha256": "95a1acb2aa236bec7dec45723e8737844b53eb7ef1a304e050e65441516ad489",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/supports.json",
+      "expectation_sha256": "f4cecaea08b5a88286e135ae09b91d40f47a04ab888db4de3a1d26739522464e",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "supports"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid supports condition including declaration, negation, selector extension or general-enclosed; support evaluation does not emit syntax errors.",
+      "sources": [
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/atrule/supports.json#/vendor property",
+      "input": "@supports (-vendor-name:1){}",
+      "source_path": "corpus/csstree/source/atrule/atrule/supports.json",
+      "source_sha256": "95a1acb2aa236bec7dec45723e8737844b53eb7ef1a304e050e65441516ad489",
+      "expectation_path": "corpus/csstree/expectations/atrule/atrule/supports.json",
+      "expectation_sha256": "f4cecaea08b5a88286e135ae09b91d40f47a04ab888db4de3a1d26739522464e",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "top_level_rule_kind",
+            "rule_kind": "supports"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid supports condition including declaration, negation, selector extension or general-enclosed; support evaluation does not emit syntax errors.",
+      "sources": [
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/block.json#/@page",
+      "input": "@page :left { margin: 5cm; }",
+      "source_path": "corpus/csstree/source/atrule/block.json",
+      "source_sha256": "70af8879a35fbd9ef0082ea417ee6f8e779f188dcfde1f34b6d0c4b24cb6f729",
+      "expectation_path": "corpus/csstree/expectations/atrule/block.json",
+      "expectation_sha256": "a3bd9afe1dc5a111ad857c5da0c22bea760c9eb7bf99a362818a26f29f88723f",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid CSS2 page prelude and margin declaration, or empty page block.",
+      "sources": [
+        "https://www.w3.org/TR/2011/REC-CSS2-20110607/page.html",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/block.json#/block at-rule #0",
+      "input": "@test{p:v}",
+      "source_path": "corpus/csstree/source/atrule/block.json",
+      "source_sha256": "70af8879a35fbd9ef0082ea417ee6f8e779f188dcfde1f34b6d0c4b24cb6f729",
+      "expectation_path": "corpus/csstree/expectations/atrule/block.json",
+      "expectation_sha256": "a3bd9afe1dc5a111ad857c5da0c22bea760c9eb7bf99a362818a26f29f88723f",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            10
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/block.json#/block at-rule #1",
+      "input": "@test x y {p:v}",
+      "source_path": "corpus/csstree/source/atrule/block.json",
+      "source_sha256": "70af8879a35fbd9ef0082ea417ee6f8e779f188dcfde1f34b6d0c4b24cb6f729",
+      "expectation_path": "corpus/csstree/expectations/atrule/block.json",
+      "expectation_sha256": "a3bd9afe1dc5a111ad857c5da0c22bea760c9eb7bf99a362818a26f29f88723f",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            15
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/block.json#/block at-rule #2",
+      "input": "@test x, y x(1+2) {p:v}",
+      "source_path": "corpus/csstree/source/atrule/block.json",
+      "source_sha256": "70af8879a35fbd9ef0082ea417ee6f8e779f188dcfde1f34b6d0c4b24cb6f729",
+      "expectation_path": "corpus/csstree/expectations/atrule/block.json",
+      "expectation_sha256": "a3bd9afe1dc5a111ad857c5da0c22bea760c9eb7bf99a362818a26f29f88723f",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            23
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/block.json#/block at-rule #c.0",
+      "input": "@test/*test*/{/*test*/p/*test*/:/*test*/v/*test*/}",
+      "source_path": "corpus/csstree/source/atrule/block.json",
+      "source_sha256": "70af8879a35fbd9ef0082ea417ee6f8e779f188dcfde1f34b6d0c4b24cb6f729",
+      "expectation_path": "corpus/csstree/expectations/atrule/block.json",
+      "expectation_sha256": "a3bd9afe1dc5a111ad857c5da0c22bea760c9eb7bf99a362818a26f29f88723f",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            50
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/block.json#/block at-rule #c.1",
+      "input": "@test/*test*/x/*test*/ y/*test*/{/*test*/p/*test*/:/*test*/v/*test*/}",
+      "source_path": "corpus/csstree/source/atrule/block.json",
+      "source_sha256": "70af8879a35fbd9ef0082ea417ee6f8e779f188dcfde1f34b6d0c4b24cb6f729",
+      "expectation_path": "corpus/csstree/expectations/atrule/block.json",
+      "expectation_sha256": "a3bd9afe1dc5a111ad857c5da0c22bea760c9eb7bf99a362818a26f29f88723f",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            69
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/block.json#/block at-rule #c.2",
+      "input": "@test/*test*/x/*test*/,/*test*/y/*test*/ x(/*test*/1/*test*/+/*test*/2/*test*/)/*test*/{/*test*/p/*test*/:/*test*/v/*test*/}",
+      "source_path": "corpus/csstree/source/atrule/block.json",
+      "source_sha256": "70af8879a35fbd9ef0082ea417ee6f8e779f188dcfde1f34b6d0c4b24cb6f729",
+      "expectation_path": "corpus/csstree/expectations/atrule/block.json",
+      "expectation_sha256": "a3bd9afe1dc5a111ad857c5da0c22bea760c9eb7bf99a362818a26f29f88723f",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            124
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/block.json#/block at-rule #s.0",
+      "input": "@test  {  p  :  v  }",
+      "source_path": "corpus/csstree/source/atrule/block.json",
+      "source_sha256": "70af8879a35fbd9ef0082ea417ee6f8e779f188dcfde1f34b6d0c4b24cb6f729",
+      "expectation_path": "corpus/csstree/expectations/atrule/block.json",
+      "expectation_sha256": "a3bd9afe1dc5a111ad857c5da0c22bea760c9eb7bf99a362818a26f29f88723f",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            20
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/block.json#/block at-rule #s.1",
+      "input": "@test  x  y  {  p  :  v  }",
+      "source_path": "corpus/csstree/source/atrule/block.json",
+      "source_sha256": "70af8879a35fbd9ef0082ea417ee6f8e779f188dcfde1f34b6d0c4b24cb6f729",
+      "expectation_path": "corpus/csstree/expectations/atrule/block.json",
+      "expectation_sha256": "a3bd9afe1dc5a111ad857c5da0c22bea760c9eb7bf99a362818a26f29f88723f",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            26
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/block.json#/block at-rule #s.2",
+      "input": "@test  x  ,  y  x(  1  +  2  )  {  p  :  v  }",
+      "source_path": "corpus/csstree/source/atrule/block.json",
+      "source_sha256": "70af8879a35fbd9ef0082ea417ee6f8e779f188dcfde1f34b6d0c4b24cb6f729",
+      "expectation_path": "corpus/csstree/expectations/atrule/block.json",
+      "expectation_sha256": "a3bd9afe1dc5a111ad857c5da0c22bea760c9eb7bf99a362818a26f29f88723f",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            45
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/block.json#/empty block at-rule",
+      "input": "@test{}",
+      "source_path": "corpus/csstree/source/atrule/block.json",
+      "source_sha256": "70af8879a35fbd9ef0082ea417ee6f8e779f188dcfde1f34b6d0c4b24cb6f729",
+      "expectation_path": "corpus/csstree/expectations/atrule/block.json",
+      "expectation_sha256": "a3bd9afe1dc5a111ad857c5da0c22bea760c9eb7bf99a362818a26f29f88723f",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            7
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/block.json#/error/0",
+      "input": "@atrule { a: 1",
+      "source_path": "corpus/csstree/source/atrule/block.json",
+      "source_sha256": "70af8879a35fbd9ef0082ea417ee6f8e779f188dcfde1f34b6d0c4b24cb6f729",
+      "expectation_path": "corpus/csstree/expectations/atrule/block.json",
+      "expectation_sha256": "a3bd9afe1dc5a111ad857c5da0c22bea760c9eb7bf99a362818a26f29f88723f",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            14
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/block.json#/should turn empty prelude to null",
+      "input": "@media{}",
+      "source_path": "corpus/csstree/source/atrule/block.json",
+      "source_sha256": "70af8879a35fbd9ef0082ea417ee6f8e779f188dcfde1f34b6d0c4b24cb6f729",
+      "expectation_path": "corpus/csstree/expectations/atrule/block.json",
+      "expectation_sha256": "a3bd9afe1dc5a111ad857c5da0c22bea760c9eb7bf99a362818a26f29f88723f",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid empty/list/type/condition grammar. Unknown features and false range relations do not trigger syntax recovery.",
+      "sources": [
+        "https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/block.json#/shouldn't create a raw node when no prelude and parseAtrulePrelude is false",
+      "input": "@test {}",
+      "source_path": "corpus/csstree/source/atrule/block.json",
+      "source_sha256": "70af8879a35fbd9ef0082ea417ee6f8e779f188dcfde1f34b6d0c4b24cb6f729",
+      "expectation_path": "corpus/csstree/expectations/atrule/block.json",
+      "expectation_sha256": "a3bd9afe1dc5a111ad857c5da0c22bea760c9eb7bf99a362818a26f29f88723f",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            8
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "unsupported",
+        "reason": "upstream_parser_option_without_public_css_equivalent",
+        "policy": {
+          "kind": "full_observation",
+          "retained_syntax": {
+            "extractor": {
+              "kind": "at_rule"
+            },
+            "predicate": {
+              "relation": "empty"
+            }
+          },
+          "is_clean": false,
+          "diagnostics": [
+            {
+              "code": "unknown_at_rule",
+              "action": "reject_input",
+              "payload_relation": "intersects"
+            }
+          ]
+        }
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/block.json#/shouldn't parse a atrule prelude when parseAtrulePrelude is false",
+      "input": "@test a b {}",
+      "source_path": "corpus/csstree/source/atrule/block.json",
+      "source_sha256": "70af8879a35fbd9ef0082ea417ee6f8e779f188dcfde1f34b6d0c4b24cb6f729",
+      "expectation_path": "corpus/csstree/expectations/atrule/block.json",
+      "expectation_sha256": "a3bd9afe1dc5a111ad857c5da0c22bea760c9eb7bf99a362818a26f29f88723f",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            12
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "unsupported",
+        "reason": "upstream_parser_option_without_public_css_equivalent",
+        "policy": {
+          "kind": "full_observation",
+          "retained_syntax": {
+            "extractor": {
+              "kind": "at_rule"
+            },
+            "predicate": {
+              "relation": "empty"
+            }
+          },
+          "is_clean": false,
+          "diagnostics": [
+            {
+              "code": "unknown_at_rule",
+              "action": "reject_input",
+              "payload_relation": "intersects"
+            }
+          ]
+        }
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/no-block.json#/atkeyword.1",
+      "input": "@atrule;",
+      "source_path": "corpus/csstree/source/atrule/no-block.json",
+      "source_sha256": "e0ffb02481d6b3603c12dc851bc4a09eda73021e4d52c21326275a2170a44393",
+      "expectation_path": "corpus/csstree/expectations/atrule/no-block.json",
+      "expectation_sha256": "fba114f32376821b09efa3072002ff3878ca698a31d52765c2f75f47eae84d74",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            8
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/no-block.json#/atrules.0",
+      "input": "@test;",
+      "source_path": "corpus/csstree/source/atrule/no-block.json",
+      "source_sha256": "e0ffb02481d6b3603c12dc851bc4a09eda73021e4d52c21326275a2170a44393",
+      "expectation_path": "corpus/csstree/expectations/atrule/no-block.json",
+      "expectation_sha256": "fba114f32376821b09efa3072002ff3878ca698a31d52765c2f75f47eae84d74",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            6
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/no-block.json#/atrules.1",
+      "input": "@test x y;",
+      "source_path": "corpus/csstree/source/atrule/no-block.json",
+      "source_sha256": "e0ffb02481d6b3603c12dc851bc4a09eda73021e4d52c21326275a2170a44393",
+      "expectation_path": "corpus/csstree/expectations/atrule/no-block.json",
+      "expectation_sha256": "fba114f32376821b09efa3072002ff3878ca698a31d52765c2f75f47eae84d74",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            10
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/no-block.json#/atrules.2",
+      "input": "@test \"blah\";",
+      "source_path": "corpus/csstree/source/atrule/no-block.json",
+      "source_sha256": "e0ffb02481d6b3603c12dc851bc4a09eda73021e4d52c21326275a2170a44393",
+      "expectation_path": "corpus/csstree/expectations/atrule/no-block.json",
+      "expectation_sha256": "fba114f32376821b09efa3072002ff3878ca698a31d52765c2f75f47eae84d74",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            13
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/no-block.json#/atrules.3",
+      "input": "@import url(http://example.com);",
+      "source_path": "corpus/csstree/source/atrule/no-block.json",
+      "source_sha256": "e0ffb02481d6b3603c12dc851bc4a09eda73021e4d52c21326275a2170a44393",
+      "expectation_path": "corpus/csstree/expectations/atrule/no-block.json",
+      "expectation_sha256": "fba114f32376821b09efa3072002ff3878ca698a31d52765c2f75f47eae84d74",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid isolated string/URL import and grammatical optional clauses; unsupported tested property does not invalidate supports condition.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/no-block.json#/atrules.c.0",
+      "input": "@test/*test*/;",
+      "source_path": "corpus/csstree/source/atrule/no-block.json",
+      "source_sha256": "e0ffb02481d6b3603c12dc851bc4a09eda73021e4d52c21326275a2170a44393",
+      "expectation_path": "corpus/csstree/expectations/atrule/no-block.json",
+      "expectation_sha256": "fba114f32376821b09efa3072002ff3878ca698a31d52765c2f75f47eae84d74",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            14
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/no-block.json#/atrules.c.1",
+      "input": "@test/*test*/x/*test*/ y;",
+      "source_path": "corpus/csstree/source/atrule/no-block.json",
+      "source_sha256": "e0ffb02481d6b3603c12dc851bc4a09eda73021e4d52c21326275a2170a44393",
+      "expectation_path": "corpus/csstree/expectations/atrule/no-block.json",
+      "expectation_sha256": "fba114f32376821b09efa3072002ff3878ca698a31d52765c2f75f47eae84d74",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            25
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/no-block.json#/atrules.s.0",
+      "input": "@test  ;",
+      "source_path": "corpus/csstree/source/atrule/no-block.json",
+      "source_sha256": "e0ffb02481d6b3603c12dc851bc4a09eda73021e4d52c21326275a2170a44393",
+      "expectation_path": "corpus/csstree/expectations/atrule/no-block.json",
+      "expectation_sha256": "fba114f32376821b09efa3072002ff3878ca698a31d52765c2f75f47eae84d74",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            8
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/no-block.json#/atrules.s.1",
+      "input": "@test  x  y;",
+      "source_path": "corpus/csstree/source/atrule/no-block.json",
+      "source_sha256": "e0ffb02481d6b3603c12dc851bc4a09eda73021e4d52c21326275a2170a44393",
+      "expectation_path": "corpus/csstree/expectations/atrule/no-block.json",
+      "expectation_sha256": "fba114f32376821b09efa3072002ff3878ca698a31d52765c2f75f47eae84d74",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            12
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/no-block.json#/error/0",
+      "input": "@atrule!;",
+      "source_path": "corpus/csstree/source/atrule/no-block.json",
+      "source_sha256": "e0ffb02481d6b3603c12dc851bc4a09eda73021e4d52c21326275a2170a44393",
+      "expectation_path": "corpus/csstree/expectations/atrule/no-block.json",
+      "expectation_sha256": "fba114f32376821b09efa3072002ff3878ca698a31d52765c2f75f47eae84d74",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            9
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/no-block.json#/no at-rule ending on eof is not an error",
+      "input": "@atrule url('..')",
+      "source_path": "corpus/csstree/source/atrule/no-block.json",
+      "source_sha256": "e0ffb02481d6b3603c12dc851bc4a09eda73021e4d52c21326275a2170a44393",
+      "expectation_path": "corpus/csstree/expectations/atrule/no-block.json",
+      "expectation_sha256": "fba114f32376821b09efa3072002ff3878ca698a31d52765c2f75f47eae84d74",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            17
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/no-block.json#/should turn empty prelude to null",
+      "input": "@import;",
+      "source_path": "corpus/csstree/source/atrule/no-block.json",
+      "source_sha256": "e0ffb02481d6b3603c12dc851bc4a09eda73021e4d52c21326275a2170a44393",
+      "expectation_path": "corpus/csstree/expectations/atrule/no-block.json",
+      "expectation_sha256": "fba114f32376821b09efa3072002ff3878ca698a31d52765c2f75f47eae84d74",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRulePrelude",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            8
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Import lacks URL/string or illegally has a block.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/no-block.json#/shouldn't create a raw node when no prelude and parseAtrulePrelude is false",
+      "input": "@test ;",
+      "source_path": "corpus/csstree/source/atrule/no-block.json",
+      "source_sha256": "e0ffb02481d6b3603c12dc851bc4a09eda73021e4d52c21326275a2170a44393",
+      "expectation_path": "corpus/csstree/expectations/atrule/no-block.json",
+      "expectation_sha256": "fba114f32376821b09efa3072002ff3878ca698a31d52765c2f75f47eae84d74",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            7
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "unsupported",
+        "reason": "upstream_parser_option_without_public_css_equivalent",
+        "policy": {
+          "kind": "full_observation",
+          "retained_syntax": {
+            "extractor": {
+              "kind": "at_rule"
+            },
+            "predicate": {
+              "relation": "empty"
+            }
+          },
+          "is_clean": false,
+          "diagnostics": [
+            {
+              "code": "unknown_at_rule",
+              "action": "reject_input",
+              "payload_relation": "intersects"
+            }
+          ]
+        }
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/no-block.json#/shouldn't parse a atrule prelude when parseAtrulePrelude is false",
+      "input": "@test a b;",
+      "source_path": "corpus/csstree/source/atrule/no-block.json",
+      "source_sha256": "e0ffb02481d6b3603c12dc851bc4a09eda73021e4d52c21326275a2170a44393",
+      "expectation_path": "corpus/csstree/expectations/atrule/no-block.json",
+      "expectation_sha256": "fba114f32376821b09efa3072002ff3878ca698a31d52765c2f75f47eae84d74",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            10
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "unsupported",
+        "reason": "upstream_parser_option_without_public_css_equivalent",
+        "policy": {
+          "kind": "full_observation",
+          "retained_syntax": {
+            "extractor": {
+              "kind": "at_rule"
+            },
+            "predicate": {
+              "relation": "empty"
+            }
+          },
+          "is_clean": false,
+          "diagnostics": [
+            {
+              "code": "unknown_at_rule",
+              "action": "reject_input",
+              "payload_relation": "intersects"
+            }
+          ]
+        }
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/stylesheet.json#/atruler.0",
+      "input": "@atrule {s{p:v}}",
+      "source_path": "corpus/csstree/source/atrule/stylesheet.json",
+      "source_sha256": "9dea1b7a814b11b4c501bfe96bb4d80aecd5e65320e66dc04f283cb095c759fd",
+      "expectation_path": "corpus/csstree/expectations/atrule/stylesheet.json",
+      "expectation_sha256": "4a86ee4e3bf85a7eae06721008a4fe1383fe028121683355397e293e995555d8",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            16
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/stylesheet.json#/atruler.1",
+      "input": "@atrule x y {s{p:v}}",
+      "source_path": "corpus/csstree/source/atrule/stylesheet.json",
+      "source_sha256": "9dea1b7a814b11b4c501bfe96bb4d80aecd5e65320e66dc04f283cb095c759fd",
+      "expectation_path": "corpus/csstree/expectations/atrule/stylesheet.json",
+      "expectation_sha256": "4a86ee4e3bf85a7eae06721008a4fe1383fe028121683355397e293e995555d8",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            20
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/stylesheet.json#/atruler.3",
+      "input": "@atrule x, y f(1+2) {s{p:v}}",
+      "source_path": "corpus/csstree/source/atrule/stylesheet.json",
+      "source_sha256": "9dea1b7a814b11b4c501bfe96bb4d80aecd5e65320e66dc04f283cb095c759fd",
+      "expectation_path": "corpus/csstree/expectations/atrule/stylesheet.json",
+      "expectation_sha256": "4a86ee4e3bf85a7eae06721008a4fe1383fe028121683355397e293e995555d8",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            28
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/stylesheet.json#/atruler.4",
+      "input": "@atrule { .a { p: v; } .b { p: v } }",
+      "source_path": "corpus/csstree/source/atrule/stylesheet.json",
+      "source_sha256": "9dea1b7a814b11b4c501bfe96bb4d80aecd5e65320e66dc04f283cb095c759fd",
+      "expectation_path": "corpus/csstree/expectations/atrule/stylesheet.json",
+      "expectation_sha256": "4a86ee4e3bf85a7eae06721008a4fe1383fe028121683355397e293e995555d8",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            36
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/stylesheet.json#/atruler.c.0",
+      "input": "@atrule/*test*/{/*test*/s/*test*/{/*test*/p/*test*/:/*test*/v/*test*/}/*test*/}",
+      "source_path": "corpus/csstree/source/atrule/stylesheet.json",
+      "source_sha256": "9dea1b7a814b11b4c501bfe96bb4d80aecd5e65320e66dc04f283cb095c759fd",
+      "expectation_path": "corpus/csstree/expectations/atrule/stylesheet.json",
+      "expectation_sha256": "4a86ee4e3bf85a7eae06721008a4fe1383fe028121683355397e293e995555d8",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            79
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/stylesheet.json#/atruler.c.1",
+      "input": "@atrule/*test*/x/*test*/ y/*test*/{/*test*/s/*test*/{/*test*/p/*test*/:/*test*/v/*test*/}/*test*/}",
+      "source_path": "corpus/csstree/source/atrule/stylesheet.json",
+      "source_sha256": "9dea1b7a814b11b4c501bfe96bb4d80aecd5e65320e66dc04f283cb095c759fd",
+      "expectation_path": "corpus/csstree/expectations/atrule/stylesheet.json",
+      "expectation_sha256": "4a86ee4e3bf85a7eae06721008a4fe1383fe028121683355397e293e995555d8",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            98
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/stylesheet.json#/atruler.c.2",
+      "input": "@atrule/*test*/x/*test*/,/*test*/y/*test*/ f(/*test*/1/*test*/+/*test*/2/*test*/)/*test*/{/*test*/s/*test*/{/*test*/p/*test*/:/*test*/v/*test*/}/*test*/}",
+      "source_path": "corpus/csstree/source/atrule/stylesheet.json",
+      "source_sha256": "9dea1b7a814b11b4c501bfe96bb4d80aecd5e65320e66dc04f283cb095c759fd",
+      "expectation_path": "corpus/csstree/expectations/atrule/stylesheet.json",
+      "expectation_sha256": "4a86ee4e3bf85a7eae06721008a4fe1383fe028121683355397e293e995555d8",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            153
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/stylesheet.json#/atruler.s.0",
+      "input": "@atrule  {  s  {  p  :  v  }  }",
+      "source_path": "corpus/csstree/source/atrule/stylesheet.json",
+      "source_sha256": "9dea1b7a814b11b4c501bfe96bb4d80aecd5e65320e66dc04f283cb095c759fd",
+      "expectation_path": "corpus/csstree/expectations/atrule/stylesheet.json",
+      "expectation_sha256": "4a86ee4e3bf85a7eae06721008a4fe1383fe028121683355397e293e995555d8",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            31
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/stylesheet.json#/atruler.s.1",
+      "input": "@atrule  x  y  {  s  {  p  :  v  }  }",
+      "source_path": "corpus/csstree/source/atrule/stylesheet.json",
+      "source_sha256": "9dea1b7a814b11b4c501bfe96bb4d80aecd5e65320e66dc04f283cb095c759fd",
+      "expectation_path": "corpus/csstree/expectations/atrule/stylesheet.json",
+      "expectation_sha256": "4a86ee4e3bf85a7eae06721008a4fe1383fe028121683355397e293e995555d8",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            37
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/stylesheet.json#/atruler.s.2",
+      "input": "@atrule  x  ,  y  f(  1    2  )  {  s  {  p  :  v  }  }",
+      "source_path": "corpus/csstree/source/atrule/stylesheet.json",
+      "source_sha256": "9dea1b7a814b11b4c501bfe96bb4d80aecd5e65320e66dc04f283cb095c759fd",
+      "expectation_path": "corpus/csstree/expectations/atrule/stylesheet.json",
+      "expectation_sha256": "4a86ee4e3bf85a7eae06721008a4fe1383fe028121683355397e293e995555d8",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            55
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/stylesheet.json#/webkit.keyfraymes.0",
+      "input": "@-webkit-keyframes pulsate {0% {opacity: .5}50% {opacity: 1}100% {opacity: .5}}",
+      "source_path": "corpus/csstree/source/atrule/stylesheet.json",
+      "source_sha256": "9dea1b7a814b11b4c501bfe96bb4d80aecd5e65320e66dc04f283cb095c759fd",
+      "expectation_path": "corpus/csstree/expectations/atrule/stylesheet.json",
+      "expectation_sha256": "4a86ee4e3bf85a7eae06721008a4fe1383fe028121683355397e293e995555d8",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            79
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "unsupported",
+        "reason": "vendor_or_host_specific_syntax",
+        "policy": {
+          "kind": "full_observation",
+          "retained_syntax": {
+            "extractor": {
+              "kind": "at_rule"
+            },
+            "predicate": {
+              "relation": "empty"
+            }
+          },
+          "is_clean": false,
+          "diagnostics": [
+            {
+              "code": "unknown_at_rule",
+              "action": "reject_input",
+              "payload_relation": "intersects"
+            }
+          ]
+        }
+      },
+      "rationale": "Vendor grammar outside ordinary selected production.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/tolerant.json#/at-rule (known) may have any content in prelude",
+      "input": "@import boom!;",
+      "source_path": "corpus/csstree/source/atrule/tolerant.json",
+      "source_sha256": "cf539182555382fceec25faf8f26f08a59d155dc093c8abf3d7c95b4b3352b67",
+      "expectation_path": "corpus/csstree/expectations/atrule/tolerant.json",
+      "expectation_sha256": "95ee984041fb97221a7c895098c6639c223f8deae74a676e3554cf5a89f03eb0",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRulePrelude",
+          "error_byte_offset": 8,
+          "recovery_byte_span": [
+            0,
+            14
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Import lacks URL/string or illegally has a block.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/tolerant.json#/at-rule (known) may have no a semicolon",
+      "input": "@import boom!",
+      "source_path": "corpus/csstree/source/atrule/tolerant.json",
+      "source_sha256": "cf539182555382fceec25faf8f26f08a59d155dc093c8abf3d7c95b4b3352b67",
+      "expectation_path": "corpus/csstree/expectations/atrule/tolerant.json",
+      "expectation_sha256": "95ee984041fb97221a7c895098c6639c223f8deae74a676e3554cf5a89f03eb0",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRulePrelude",
+          "error_byte_offset": 8,
+          "recovery_byte_span": [
+            0,
+            13
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Import lacks URL/string or illegally has a block.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/tolerant.json#/at-rule (known) with custom prelude parser",
+      "input": "@page {}",
+      "source_path": "corpus/csstree/source/atrule/tolerant.json",
+      "source_sha256": "cf539182555382fceec25faf8f26f08a59d155dc093c8abf3d7c95b4b3352b67",
+      "expectation_path": "corpus/csstree/expectations/atrule/tolerant.json",
+      "expectation_sha256": "95ee984041fb97221a7c895098c6639c223f8deae74a676e3554cf5a89f03eb0",
+      "status": "active",
+      "present": true,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale": "Valid CSS2 page prelude and margin declaration, or empty page block.",
+      "sources": [
+        "https://www.w3.org/TR/2011/REC-CSS2-20110607/page.html",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/tolerant.json#/at-rule (known) with no block may be followed by block",
+      "input": "@import {}",
+      "source_path": "corpus/csstree/source/atrule/tolerant.json",
+      "source_sha256": "cf539182555382fceec25faf8f26f08a59d155dc093c8abf3d7c95b4b3352b67",
+      "expectation_path": "corpus/csstree/expectations/atrule/tolerant.json",
+      "expectation_sha256": "95ee984041fb97221a7c895098c6639c223f8deae74a676e3554cf5a89f03eb0",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidAtRulePrelude",
+          "error_byte_offset": 8,
+          "recovery_byte_span": [
+            0,
+            10
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_at_rule_prelude",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Import lacks URL/string or illegally has a block.",
+      "sources": [
+        "https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/tolerant.json#/at-rule (unknown) may have any content in prelude",
+      "input": "@bada boom!;",
+      "source_path": "corpus/csstree/source/atrule/tolerant.json",
+      "source_sha256": "cf539182555382fceec25faf8f26f08a59d155dc093c8abf3d7c95b4b3352b67",
+      "expectation_path": "corpus/csstree/expectations/atrule/tolerant.json",
+      "expectation_sha256": "95ee984041fb97221a7c895098c6639c223f8deae74a676e3554cf5a89f03eb0",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            12
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/tolerant.json#/at-rule (unknown) may have no a semicolon",
+      "input": "@bada boom!",
+      "source_path": "corpus/csstree/source/atrule/tolerant.json",
+      "source_sha256": "cf539182555382fceec25faf8f26f08a59d155dc093c8abf3d7c95b4b3352b67",
+      "expectation_path": "corpus/csstree/expectations/atrule/tolerant.json",
+      "expectation_sha256": "95ee984041fb97221a7c895098c6639c223f8deae74a676e3554cf5a89f03eb0",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            11
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/tolerant.json#/unclosed block - known declaration at-rule",
+      "input": "@font-face {",
+      "source_path": "corpus/csstree/source/atrule/tolerant.json",
+      "source_sha256": "cf539182555382fceec25faf8f26f08a59d155dc093c8abf3d7c95b4b3352b67",
+      "expectation_path": "corpus/csstree/expectations/atrule/tolerant.json",
+      "expectation_sha256": "95ee984041fb97221a7c895098c6639c223f8deae74a676e3554cf5a89f03eb0",
+      "status": "active",
+      "present": true,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnexpectedEnd",
+          "error_byte_offset": 12,
+          "recovery_byte_span": [
+            12,
+            12
+          ],
+          "action": "RetainWithImplicitClosure"
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_end",
+            "action": "retain_with_implicit_closure",
+            "payload_relation": "ends_at"
+          }
+        ]
+      },
+      "rationale": "Empty font-face block retained with implicit EOF closure.",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/tolerant.json#/unclosed block - known rule at-rule",
+      "input": "@media {",
+      "source_path": "corpus/csstree/source/atrule/tolerant.json",
+      "source_sha256": "cf539182555382fceec25faf8f26f08a59d155dc093c8abf3d7c95b4b3352b67",
+      "expectation_path": "corpus/csstree/expectations/atrule/tolerant.json",
+      "expectation_sha256": "95ee984041fb97221a7c895098c6639c223f8deae74a676e3554cf5a89f03eb0",
+      "status": "active",
+      "present": true,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnexpectedEnd",
+          "error_byte_offset": 8,
+          "recovery_byte_span": [
+            8,
+            8
+          ],
+          "action": "RetainWithImplicitClosure"
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_end",
+            "action": "retain_with_implicit_closure",
+            "payload_relation": "ends_at"
+          }
+        ]
+      },
+      "rationale": "Empty media block retained with implicit EOF closure.",
+      "sources": [
+        "https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    },
+    {
+      "id": "atrule/tolerant.json#/unclosed block - unknown at-rule",
+      "input": "@atrule {",
+      "source_path": "corpus/csstree/source/atrule/tolerant.json",
+      "source_sha256": "cf539182555382fceec25faf8f26f08a59d155dc093c8abf3d7c95b4b3352b67",
+      "expectation_path": "corpus/csstree/expectations/atrule/tolerant.json",
+      "expectation_sha256": "95ee984041fb97221a7c895098c6639c223f8deae74a676e3554cf5a89f03eb0",
+      "status": "active",
+      "present": false,
+      "clean": false,
+      "diagnostics": [
+        {
+          "error_code": "UnknownAtRule",
+          "error_byte_offset": 0,
+          "recovery_byte_span": [
+            0,
+            9
+          ],
+          "action": "RejectInput"
+        }
+      ],
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale": "Unknown outer at-rule.",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "crates/surgeist-css/src/parser/fragments.rs:534"
+      ]
+    }
+  ],
+  "unresolved": {
+    "id": "atrule/atrule/font-feature-values.json#/with character-variant and styleset",
+    "input": "@font-feature-values InterVariable{@character-variant{cv01:1;cv02:2;cv03:3;alt-1:1;open-4:2;open-6:3}@styleset{ss01:1;ss02:2;ss03:3;open-digits:1;disambiguation:2;round-quotes-and-commas:3}}",
+    "source_path": "corpus/csstree/source/atrule/atrule/font-feature-values.json",
+    "source_sha256": "0be7ff601176527199c4d880f7b6f3a157d121b235f34c4fc5d3bf47b72b6a40",
+    "expectation_path": "corpus/csstree/expectations/atrule/atrule/font-feature-values.json",
+    "expectation_sha256": "639da2bcdef001fa01667a49344bb0e0bdd19a46416380d5c0ee43602c3e6489",
+    "status": "active",
+    "present": true,
+    "uncertainty": "Pinned Fonts4 singleton character-variant index conflict; outer presence is required, but cleanliness and complete diagnostic sequence remain undefined. Excluded from the 129-case correction slice."
+  }
+}
