@@ -11,8 +11,8 @@ use super::recovery::{
 };
 use super::variables::collect_authored_declaration_value;
 use crate::error::{
-    CssFeatureId, Error, basic, from_parse_error, invalid_syntax, unsupported_value_at,
-    with_media_query_context,
+    CssFeatureId, Error, basic, from_parse_error, invalid_syntax, is_nesting_limit_error,
+    unsupported_value_at, with_media_query_context,
 };
 use crate::syntax::*;
 
@@ -400,7 +400,7 @@ fn parse_typed_media_query<'i, 't>(
         .try_parse(|input| input.expect_ident_matching("and"))
         .is_ok()
     {
-        Some(parse_media_condition(source, input)?)
+        Some(parse_media_condition_without_or(source, input)?)
     } else {
         None
     };
@@ -473,19 +473,43 @@ fn parse_media_condition<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssMediaCondition, ParseError<'i, Error>> {
+    parse_media_condition_with_or(source, input, true)
+}
+
+fn parse_media_condition_without_or<'i, 't>(
+    source: &str,
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssMediaCondition, ParseError<'i, Error>> {
+    parse_media_condition_with_or(source, input, false)
+}
+
+fn parse_media_condition_with_or<'i, 't>(
+    source: &str,
+    input: &mut Parser<'i, 't>,
+    allow_or: bool,
+) -> std::result::Result<CssMediaCondition, ParseError<'i, Error>> {
     let position = first_non_trivia_parser_position(input);
-    let first = parse_media_condition_atom(source, input)?;
+    if input
+        .try_parse(|input| input.expect_ident_matching("not"))
+        .is_ok()
+    {
+        return Ok(CssMediaCondition::new(
+            CssMediaConditionKind::Not(Box::new(parse_media_in_parens(source, input)?)),
+            position,
+        ));
+    }
+    let first = parse_media_in_parens(source, input)?;
 
     if input
         .try_parse(|input| input.expect_ident_matching("and"))
         .is_ok()
     {
-        let mut conditions = vec![first, parse_media_condition_atom(source, input)?];
+        let mut conditions = vec![first, parse_media_in_parens(source, input)?];
         while input
             .try_parse(|input| input.expect_ident_matching("and"))
             .is_ok()
         {
-            conditions.push(parse_media_condition_atom(source, input)?);
+            conditions.push(parse_media_in_parens(source, input)?);
         }
         return Ok(CssMediaCondition::new(
             CssMediaConditionKind::And(CssMediaConditionList::new(conditions)),
@@ -493,16 +517,17 @@ fn parse_media_condition<'i, 't>(
         ));
     }
 
-    if input
-        .try_parse(|input| input.expect_ident_matching("or"))
-        .is_ok()
+    if allow_or
+        && input
+            .try_parse(|input| input.expect_ident_matching("or"))
+            .is_ok()
     {
-        let mut conditions = vec![first, parse_media_condition_atom(source, input)?];
+        let mut conditions = vec![first, parse_media_in_parens(source, input)?];
         while input
             .try_parse(|input| input.expect_ident_matching("or"))
             .is_ok()
         {
-            conditions.push(parse_media_condition_atom(source, input)?);
+            conditions.push(parse_media_in_parens(source, input)?);
         }
         return Ok(CssMediaCondition::new(
             CssMediaConditionKind::Or(CssMediaConditionList::new(conditions)),
@@ -513,24 +538,25 @@ fn parse_media_condition<'i, 't>(
     Ok(first)
 }
 
-fn parse_media_condition_atom<'i, 't>(
+fn parse_media_in_parens<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssMediaCondition, ParseError<'i, Error>> {
     let position = first_non_trivia_parser_position(input);
-    if input
-        .try_parse(|input| input.expect_ident_matching("not"))
-        .is_ok()
-    {
-        return Ok(CssMediaCondition::new(
-            CssMediaConditionKind::Not(Box::new(parse_media_condition_atom(source, input)?)),
-            position,
-        ));
-    }
-
     let expression_start = position.byte_offset().value();
     input.expect_parenthesis_block().map_err(basic)?;
     let parsed = input.parse_nested_block(|input| {
+        match input.try_parse(|input| {
+            let condition = parse_media_condition(source, input)?;
+            input.expect_exhausted()?;
+            Ok(condition)
+        }) {
+            Ok(condition) => {
+                return Ok(ParsedMediaConditionAtom::Parenthesized(Box::new(condition)));
+            }
+            Err(error) if is_nesting_limit_error(&error) => return Err(error),
+            Err(_) => {}
+        }
         let initial = input.state();
         match parse_media_feature_query(input) {
             Ok(feature) if input.is_exhausted() => Ok(ParsedMediaConditionAtom::Feature(feature)),
@@ -554,6 +580,9 @@ fn parse_media_condition_atom<'i, 't>(
         }
     })?;
     let kind = match parsed {
+        ParsedMediaConditionAtom::Parenthesized(condition) => {
+            CssMediaConditionKind::Parenthesized(condition)
+        }
         ParsedMediaConditionAtom::Feature(feature) => CssMediaConditionKind::Feature(feature),
         ParsedMediaConditionAtom::DefinedFalse(reason) => {
             let expression_end = input.position().byte_index();
@@ -569,6 +598,7 @@ fn parse_media_condition_atom<'i, 't>(
 }
 
 enum ParsedMediaConditionAtom {
+    Parenthesized(Box<CssMediaCondition>),
     Feature(CssMediaFeatureQuery),
     DefinedFalse(CssDefinedFalseMediaReason),
 }

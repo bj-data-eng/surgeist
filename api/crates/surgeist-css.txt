@@ -1750,6 +1750,7 @@ pub surgeist_css::CssMediaConditionKind::DefinedFalse(surgeist_css::CssDefinedFa
 pub surgeist_css::CssMediaConditionKind::Feature(surgeist_css::CssMediaFeatureQuery)
 pub surgeist_css::CssMediaConditionKind::Not(alloc::boxed::Box<surgeist_css::CssMediaCondition>)
 pub surgeist_css::CssMediaConditionKind::Or(surgeist_css::CssMediaConditionList)
+pub surgeist_css::CssMediaConditionKind::Parenthesized(alloc::boxed::Box<surgeist_css::CssMediaCondition>)
 #[non_exhaustive] pub enum surgeist_css::CssMediaFeatureKind
 pub surgeist_css::CssMediaFeatureKind::AspectRatio
 pub surgeist_css::CssMediaFeatureKind::Color

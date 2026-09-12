@@ -70,6 +70,17 @@ valid and clean; an empty single query is malformed.
 `CssMediaQueryList::try_new` also accepts an empty vector and preserves every
 supplied member in order. Its existing `Option` return type is retained.
 
+Media conditions preserve explicit grouping as
+`CssMediaConditionKind::Parenthesized`: the wrapper position identifies the outer
+opening parenthesis and the child retains its own first non-trivia position.
+`not` takes one parenthesized operand; `and` and `or` each join a homogeneous
+sequence of operands. Mixing operators at one level requires explicit grouping.
+Typed queries use the condition-without-or grammar after `and`, so
+`screen and ((color) or (monochrome))` is valid while
+`screen and (color) or (monochrome)` is malformed. Raw query fragments, stylesheet
+media rules, and import media tails share these productions. This grouping and
+operator contract does not complete general-enclosed or feature/value grammar.
+
 Fragments retain the shared 256-level structural limit and report
 `StopAtNestingLimit` without silently discarding neighboring media members.
 Deep parsing uses a bounded parser thread so ordinary callers need not allocate

@@ -3280,6 +3280,8 @@ impl CssMediaCondition {
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum CssMediaConditionKind {
+    /// An explicitly parenthesized condition, retaining the outer and inner positions.
+    Parenthesized(Box<CssMediaCondition>),
     Feature(CssMediaFeatureQuery),
     DefinedFalse(CssDefinedFalseMediaCondition),
     Not(Box<CssMediaCondition>),

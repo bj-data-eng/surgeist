@@ -389,14 +389,16 @@ fn specialized_boundary_media_depth_is_exact_at_255_256_and_257() {
         let source = nested_media(depth, true);
         let report = parse_sheet(&source);
         assert_eq!(report.syntax().rules().len(), 1);
-        let [diagnostic] = report.diagnostics() else {
-            panic!("expected one ordinary media recovery at depth {depth}")
-        };
-        assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidMediaQuery);
-        assert_eq!(
-            diagnostic.action(),
-            CssRecoveryAction::ReplaceMediaQueryWithNever
+        assert!(
+            report.is_clean(),
+            "depth {depth}: {:?}",
+            report.diagnostics()
         );
+        let [CssRule::Media(rule)] = report.syntax().rules() else {
+            panic!("expected retained grouped media condition at depth {depth}")
+        };
+        assert_eq!(rule.query().queries().len(), 1);
+        assert!(!rule.query().queries()[0].is_guaranteed_false());
     }
 
     let source = nested_media(257, true);
