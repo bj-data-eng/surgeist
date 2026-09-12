@@ -3735,6 +3735,26 @@ mod tests {
     }
 
     #[test]
+    fn raw_media_observation_preserves_unterminated_comment_diagnostic() {
+        // Pinned Syntax 3 section 4.3.2 consumes the comment and reports EOF.
+        let value = raw_fragment_observation(
+            "expectations/mediaQuery/MediaQuery.json",
+            Context::MediaQuery,
+            "screen/*",
+        );
+        assert_eq!(value["syntax_count"], 1);
+        assert_eq!(value["is_clean"], false);
+        assert_eq!(value["diagnostics"].as_array().unwrap().len(), 1);
+        let diagnostic = &value["diagnostics"][0];
+        assert_eq!(diagnostic["code"], "unexpected_end");
+        assert_eq!(diagnostic["action"], "ignore_unterminated_comment");
+        assert_eq!(diagnostic["byte_offset"], 8);
+        assert_eq!(diagnostic["span_start"], 6);
+        assert_eq!(diagnostic["span_end"], 8);
+        assert_eq!(diagnostic["payload_relation"], "recovery_ends_at");
+    }
+
+    #[test]
     fn raw_selector_observation_uses_a_named_namespace_without_injected_source() {
         let value = raw_fragment_observation(
             "expectations/selector/TypeSelector.json",
