@@ -778,6 +778,25 @@ and rules missing `font-family` or `src` remain valid authored syntax. Those two
 accessors return `Option`; their absence excludes the face from downstream font
 matching under the pinned Fonts 4 §4.1, rather than causing a grammar error.
 
+`unicode-range` checks the original token sequence before interpreting the
+tokens' original spellings, following
+[Syntax 3 §7.1](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#urange).
+Comments can separate tokens without changing their identity: `u+1/**/2`
+denotes U+0012, while `u+0/**/-ff` fails the token grammar. Whitespace is
+permitted around list items but not inside a range. Numeric spellings are
+interpreted as hexadecimal text, so `u+12e-130` denotes U+012E through U+0130.
+An invalid member drops the whole descriptor occurrence, preserving earlier
+valid occurrences and neighboring descriptors.
+
+Unicode-range diagnostics pair the responsible original token's start position
+with its exact spelling, including escapes and whitespace. A malformed
+representation points to the token containing its first invalid character;
+endpoint order or domain errors identify the token containing the invalid end
+endpoint. Wildcard domain errors identify the first token contributing to that
+endpoint. A genuinely missing token or endpoint retains the bounded input-end
+position with no encountered token. Recovery spans still cover the entire
+dropped descriptor.
+
 Under the selected Fonts 4 source-list processing rules, each comma-separated
 `src` member is validated independently. Invalid members receive
 `DropFontSourceListItem` diagnostics while valid fallbacks keep their authored

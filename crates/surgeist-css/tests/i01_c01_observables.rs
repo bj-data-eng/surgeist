@@ -16,6 +16,8 @@ const FIXTURE: &str = include_str!("fixtures/i01-c01-observables.tsv");
 // by https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/#layer-empty.
 // Deep style inputs retain each authored ancestor through parse_sheet's public
 // depth-256 boundary; dropping level 257 does not flatten its retained parents.
+// The Unicode-range boundary case identifies its original out-of-domain end
+// endpoint token, following Syntax 3 §7.1 and the descriptor token-origin contract.
 const HEADER: &str =
     "case_id\tentry\tfeature\tinput\tclean\tretained\tvalues\tauthored_declarations\tdiagnostics";
 

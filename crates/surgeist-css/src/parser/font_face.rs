@@ -1,8 +1,10 @@
 use cssparser::{
     AtRuleParser, BasicParseErrorKind, CowRcStr, DeclarationParser, Delimiter, ParseError, Parser,
     ParserState, QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, Token,
-    UnicodeRange as ParsedUnicodeRange, match_ignore_ascii_case,
+    match_ignore_ascii_case,
 };
+
+mod unicode_range;
 
 use super::recovery::{
     RecoveryLoopOutcome, RecoveryProgress, RecoveryState, comma_member_span,
@@ -11,8 +13,8 @@ use super::recovery::{
 use super::typography::{parse_font_feature_settings, parse_non_generic_font_family_name};
 use super::{block_item_diagnostic, is_declaration_recovery_unit, parse_descriptor_boundary};
 use crate::error::{
-    CssFeatureId, Error, basic, descriptor_name_error, from_parse_error, unsupported_value,
-    unsupported_value_at, with_descriptor_context,
+    CssFeatureId, Error, basic, descriptor_name_error, from_parse_error, incomplete_descriptor_at,
+    unsupported_value, unsupported_value_at, with_descriptor_context,
 };
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
@@ -603,30 +605,21 @@ fn parse_unicode_range_list<'i, 't>(
 ) -> std::result::Result<CssUnicodeRangeList, ParseError<'i, Error>> {
     let mut ranges = Vec::new();
     loop {
-        ranges.push(parse_unicode_range(input)?);
+        ranges.push(unicode_range::parse(input)?);
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
         }
         if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "unicode-range list has an empty item",
+            return Err(incomplete_descriptor_at(
+                input.current_source_location(),
+                "font-face",
+                "unicode-range",
             ));
         }
     }
 
     CssUnicodeRangeList::try_new(ranges)
         .ok_or_else(|| unsupported_value(input, None, "unicode-range list is empty"))
-}
-
-fn parse_unicode_range<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssUnicodeRange, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let range = ParsedUnicodeRange::parse(input).map_err(basic)?;
-    CssUnicodeRange::try_new(range.start, range.end)
-        .ok_or_else(|| unsupported_value_at(location, None, "invalid unicode-range"))
 }
 
 fn next_is_comma<'i, 't>(input: &mut Parser<'i, 't>) -> bool {

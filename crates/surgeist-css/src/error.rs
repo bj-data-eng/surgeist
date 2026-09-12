@@ -762,10 +762,19 @@ impl CssUnsupportedDescriptorError {
 /// value does not resolve resources, apply descriptor effects, or recover the value.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssDescriptorValueError {
+    origin: DiagnosticOrigin,
     at_rule: CssAtRuleName,
-    descriptor: CssDescriptorName,
+    // Keep the largest error payload compact when retaining explicit origins.
+    descriptor: Box<CssDescriptorName>,
     expectation: CssGrammarExpectation,
     encountered: Option<CssTokenSummary>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DiagnosticOrigin {
+    Inferred,
+    Token,
+    EndOfInput,
 }
 
 impl CssDescriptorValueError {
@@ -1020,6 +1029,15 @@ impl Error {
             };
             CssSourcePosition::from_source_location_in(source, source_location)
         };
+
+        // Explicit token spellings and missing-input positions are already paired
+        // by their grammar owner. Inference would replace whitespace tokens or
+        // rewind bounded EOF to a token from the preceding production.
+        if matches!(&self.kind, ErrorKind::InvalidDescriptorValue(detail)
+            if detail.origin != DiagnosticOrigin::Inferred)
+        {
+            return self;
+        }
 
         if let Some((start, summary)) = next_authored_token_at(source, self.position) {
             if let Some(token) = encountered_mut(&mut self.kind) {
@@ -1657,17 +1675,82 @@ pub(crate) fn with_descriptor_context<'i>(
     ) {
         return error;
     }
+    let origin = match &error.kind {
+        ParseErrorKind::Custom(Error {
+            kind: ErrorKind::InvalidDescriptorValue(detail),
+            ..
+        }) => detail.origin,
+        _ => DiagnosticOrigin::Inferred,
+    };
     let encountered = take_encountered(&mut error.kind);
-    error.kind = ParseErrorKind::Custom(Error::at(
+    let contextual = Error::at(
         error.location,
         ErrorKind::InvalidDescriptorValue(CssDescriptorValueError {
+            origin,
             at_rule: CssAtRuleName::new(at_rule),
-            descriptor: CssDescriptorName::new(descriptor),
+            descriptor: Box::new(CssDescriptorName::new(descriptor)),
             expectation: EXPECT_DESCRIPTOR_VALUE,
             encountered,
         }),
-    ));
+    );
+    error.kind = ParseErrorKind::Custom(contextual);
     error
+}
+
+pub(crate) fn invalid_descriptor_token_at<'i>(
+    location: cssparser::SourceLocation,
+    at_rule: &str,
+    descriptor: &str,
+    token: &Token<'_>,
+    authored: &str,
+) -> ParseError<'i, Error> {
+    explicit_descriptor_error(
+        location,
+        at_rule,
+        descriptor,
+        Some(CssTokenSummary {
+            kind: token_kind(token),
+            authored: authored.to_owned(),
+        }),
+        DiagnosticOrigin::Token,
+    )
+}
+
+pub(crate) fn incomplete_descriptor_at<'i>(
+    location: cssparser::SourceLocation,
+    at_rule: &str,
+    descriptor: &str,
+) -> ParseError<'i, Error> {
+    explicit_descriptor_error(
+        location,
+        at_rule,
+        descriptor,
+        None,
+        DiagnosticOrigin::EndOfInput,
+    )
+}
+
+fn explicit_descriptor_error<'i>(
+    location: cssparser::SourceLocation,
+    at_rule: &str,
+    descriptor: &str,
+    encountered: Option<CssTokenSummary>,
+    origin: DiagnosticOrigin,
+) -> ParseError<'i, Error> {
+    let error = Error::at(
+        location,
+        ErrorKind::InvalidDescriptorValue(CssDescriptorValueError {
+            origin,
+            at_rule: CssAtRuleName::new(at_rule),
+            descriptor: Box::new(CssDescriptorName::new(descriptor)),
+            expectation: EXPECT_DESCRIPTOR_VALUE,
+            encountered,
+        }),
+    );
+    ParseError {
+        location,
+        kind: ParseErrorKind::Custom(error),
+    }
 }
 
 pub(crate) fn invalid_known_declaration_annotation<'i>(
@@ -2162,8 +2245,9 @@ mod tests {
             ),
             (
                 ErrorKind::InvalidDescriptorValue(CssDescriptorValueError {
+                    origin: DiagnosticOrigin::Inferred,
                     at_rule: at_rule.clone(),
-                    descriptor: descriptor.clone(),
+                    descriptor: Box::new(descriptor.clone()),
                     expectation: EXPECT_DESCRIPTOR_VALUE,
                     encountered: None,
                 }),
