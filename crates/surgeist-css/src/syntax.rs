@@ -3007,13 +3007,13 @@ pub struct CssMediaQueryList {
 }
 
 impl CssMediaQueryList {
+    /// Constructs a list, including the valid empty media-query list.
+    ///
+    /// Every supplied member is retained in order. This returns `Some` for all
+    /// lists; the `Option` return type is preserved for compatibility.
     #[must_use]
     pub fn try_new(queries: Vec<CssMediaQuery>) -> Option<Self> {
-        if queries.is_empty() {
-            None
-        } else {
-            Some(Self::new(queries))
-        }
+        Some(Self::new(queries))
     }
 
     #[must_use]

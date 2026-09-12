@@ -511,14 +511,17 @@ fn mq3_defined_false_condition_survives_rule_eof_implicit_closure() {
 }
 
 #[test]
-fn empty_media_list_is_valid_authored_syntax_but_public_construction_stays_checked() {
+fn empty_media_list_is_valid_authored_and_constructed_syntax() {
     let report = parse_sheet("@media {} .after { color: red; }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Media(media), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("expected empty media rule and following style sibling")
     };
     assert!(media.query().queries().is_empty());
-    assert!(surgeist_css::CssMediaQueryList::try_new(Vec::new()).is_none());
+    assert_eq!(
+        surgeist_css::CssMediaQueryList::try_new(Vec::new()).as_ref(),
+        Some(media.query())
+    );
 
     assert_eq!(
         surgeist_css::validate_sheet("@media {} .after { color: red; }")

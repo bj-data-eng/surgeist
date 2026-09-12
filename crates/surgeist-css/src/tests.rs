@@ -4737,8 +4737,13 @@ fn constructor_invariants_reject_invalid_public_numeric_values() {
 }
 
 #[test]
-fn media_query_list_constructor_requires_queries() {
-    assert_eq!(CssMediaQueryList::try_new(Vec::new()), None);
+fn media_query_list_constructor_accepts_empty_and_nonempty_lists() {
+    assert!(
+        CssMediaQueryList::try_new(Vec::new())
+            .unwrap()
+            .queries()
+            .is_empty()
+    );
     assert!(
         CssMediaQueryList::try_new(vec![CssMediaQuery::Typed(CssTypedMediaQuery::new(
             None,

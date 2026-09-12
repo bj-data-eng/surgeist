@@ -66,9 +66,9 @@ constraints. Retain the context if later matching needs namespace names.
 `parse_media_query_list` recovers each root comma member independently, preserving
 valid neighbors. A grammatically valid unknown feature remains a defined-false
 condition rather than a malformed-query sentinel. An empty media query list is
-valid and clean; an empty single query is malformed. The checked
-`CssMediaQueryList::try_new` constructor still rejects an empty vector, so that
-construction-parsing parity gap remains unfinished.
+valid and clean; an empty single query is malformed.
+`CssMediaQueryList::try_new` also accepts an empty vector and preserves every
+supplied member in order. Its existing `Option` return type is retained.
 
 Fragments retain the shared 256-level structural limit and report
 `StopAtNestingLimit` without silently discarding neighboring media members.
