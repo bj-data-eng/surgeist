@@ -9378,44 +9378,30 @@
       "id": "selector/PseudoClassSelector.json#/pseudo element :first-letter",
       "expectation_sha256": "e30d97b73108f20ec9a51025cc91827befa433149a9be90fdec5688833e3c444",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_selector",
-            "action": "drop_qualified_rule",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {
       "id": "selector/PseudoClassSelector.json#/pseudo element :first-line",
       "expectation_sha256": "e30d97b73108f20ec9a51025cc91827befa433149a9be90fdec5688833e3c444",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_selector",
-            "action": "drop_qualified_rule",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {
@@ -9434,7 +9420,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -9456,7 +9442,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -9478,7 +9464,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -9500,7 +9486,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -9522,7 +9508,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -9544,7 +9530,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -9554,45 +9540,66 @@
       "id": "selector/PseudoElementSelector.json#/functional pseudo element",
       "expectation_sha256": "ed58200bc51e77ccad14bf7bb6bc435236fde9e6d3a69d65cfe49171abdcf6a1",
       "class": {
-        "kind": "clean",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "selector/PseudoElementSelector.json#/pseudo element #0",
       "expectation_sha256": "ed58200bc51e77ccad14bf7bb6bc435236fde9e6d3a69d65cfe49171abdcf6a1",
       "class": {
-        "kind": "clean",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "selector/PseudoElementSelector.json#/pseudo element #1",
       "expectation_sha256": "ed58200bc51e77ccad14bf7bb6bc435236fde9e6d3a69d65cfe49171abdcf6a1",
       "class": {
-        "kind": "clean",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {

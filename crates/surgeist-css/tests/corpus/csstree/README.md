@@ -59,6 +59,15 @@ selector `[b i]` is also rejected because a modifier requires a matcher and valu
 Rejected raw selectors carry `RejectInput` diagnostics; the basic-selector corpus
 checks separately preserve the 65 clean cases and the 22 rejected cases.
 
+The named-pseudo fixtures retain the defined `before`, `after`, `first-line`,
+and `first-letter` pseudo-elements, including their required legacy single-colon
+spellings. Undefined `test`, `test-test`, and `unknown()` constructs are rejected
+([pseudo-element syntax](https://www.w3.org/TR/2026/WD-selectors-4-20260122/#pseudo-element-syntax),
+[invalid selectors](https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid)).
+Their two fixture files contain six clean and nine rejected inputs. Rejections
+use the raw `RejectInput` action; functional argument contents cannot define an
+otherwise unknown pseudo name.
+
 The adapterless Combinator fixtures retain their explicit panic-freedom policy.
 The mixed `atrulePrelude` fixture resolves its adapter from validated options:
 `atrule: media` selects the raw media-query-list parser, while the unnamed generic
