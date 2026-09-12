@@ -67,9 +67,9 @@ const COLOR5_MIX_SUBSET: &str = "The preserved color-mix() subset requires an in
 const COLOR5_MIX_REMAINDER: &str =
     "Other valid forms of the dated CSS Color 5 color-mix() production remain unsupported.";
 const GRID_REPEAT_SUBSET: &str = "Non-recursive integer track and fixed repeats, plus one Grid 3 automatic repeat with general track-size content and fixed-size surroundings where the consumer permits it, are supported.";
-const GRID_REPEAT_REMAINDER: &str = "Subgrid name-repeat, empty line-name sets, wider Values math functions, and other unselected Grid forms remain unsupported.";
+const GRID_REPEAT_REMAINDER: &str = "Subgrid name-repeat, wider Values math functions, and other unselected Grid forms remain unsupported.";
 const GRID_PROPERTY_SUBSET: &str = "The structural grammar supports non-recursive integer track and fixed repeats, one Grid 3 automatic repeat with general track-size content and fixed-size surroundings where permitted, and repeat-free automatic track-size lists.";
-const GRID_PROPERTY_REMAINDER: &str = "Subgrid name-repeat, empty line-name sets, wider Values math functions, and other unselected Grid property grammar remain unsupported.";
+const GRID_PROPERTY_REMAINDER: &str = "Subgrid name-repeat, wider Values math functions, and other unselected Grid property grammar remain unsupported.";
 const KEYFRAMES_SUBSET: &str = "Keyframe names, literal selectors, empty rules and blocks, duplicate selectors and blocks in authored order, and supported declarations with recovery are supported.";
 const KEYFRAMES_REMAINDER: &str = "Calculation selectors, string names, and declaration-processing grammar not selected by C07 remain unsupported.";
 const FONT_WEIGHT_RANGE_SUBSET: &str =

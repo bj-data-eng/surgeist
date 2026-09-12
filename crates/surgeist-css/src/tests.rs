@@ -9570,7 +9570,10 @@ fn checked_grid_constructors_reject_parser_invalid_states() {
         CssCustomIdent::try_new("main"),
         Some(CssCustomIdent::new("main"))
     );
-    assert_eq!(CssGridLineNames::try_new(Vec::new()), None);
+    assert_eq!(
+        CssGridLineNames::try_new(Vec::new()),
+        Some(CssGridLineNames::new(Vec::new()))
+    );
     assert_eq!(CssGridTrackList::try_new(Vec::new()), None);
     assert_eq!(CssGridRepeatCount::try_integer(0), None);
     assert_eq!(

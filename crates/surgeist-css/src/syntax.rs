@@ -5933,13 +5933,10 @@ pub struct CssGridLineNames {
 }
 
 impl CssGridLineNames {
+    /// Creates an authored line-name group, including the valid empty group `[]`.
     #[must_use]
     pub fn try_new(names: Vec<CssCustomIdent>) -> Option<Self> {
-        if names.is_empty() {
-            None
-        } else {
-            Some(Self::new(names))
-        }
+        Some(Self::new(names))
     }
 
     #[must_use]

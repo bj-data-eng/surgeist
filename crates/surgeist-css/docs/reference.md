@@ -671,8 +671,13 @@ invalid selector still drops the smallest invalid keyframe block. These recovery
 observables replace older expectations that accepted structurally invalid Grid
 cross-products or discarded valid empty keyframe parents.
 
+Empty `[]` line-name groups are retained as ordered authored components in
+explicit tracks and repetitions, including their exact I01 projections.
+`CssGridLineNames::try_new(Vec::new())` accepts the same empty group. A group
+does not supply a required track size; reserved line names remain rejected.
+
 The Grid repetition value, the six Grid property records, and the keyframe rule
-record remain `Partial`. Subgrid name-repeat, empty line-name sets, wider Values
+record remain `Partial`. Subgrid name-repeat, wider Values
 math functions, and other unselected Grid property grammar remain unsupported.
 Calculation keyframe selectors, string names, and unselected declaration-processing
 grammar remain outside the keyframe boundary. Repetition counts and used track

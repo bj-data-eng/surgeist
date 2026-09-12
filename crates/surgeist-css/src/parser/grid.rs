@@ -123,11 +123,7 @@ pub(super) fn parse_grid_line_names<'i, 't>(
             location,
         )?);
     }
-    if names.is_empty() {
-        Err(unsupported_value(input, None, "grid line names are empty"))
-    } else {
-        Ok(CssGridLineNames::new(names))
-    }
+    Ok(CssGridLineNames::new(names))
 }
 
 fn parse_grid_repeat<'i, 't>(
