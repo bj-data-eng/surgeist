@@ -90,6 +90,14 @@ cutoff, despite its older bibliography date. CSS owns intrinsic type admission;
 arithmetic execution, unit resolution, rounding and contextual clamping remain
 downstream. Typed OM objects, DOM maps and JavaScript APIs are not imported.
 
+Media Queries 5 custom-media names require the extension-name production from
+CSS Extensions 1. The catalog pins an immutable pre-cutoff source revision for
+that definition because no published edition was found. It accepts identifiers
+starting with two hyphens, including the bare `--` name; custom-property name
+validation is a different grammar. Only this name definition is imported.
+Definition environments, cycle handling, evaluation and live APIs remain with
+style and root integration.
+
 ## Applying the catalog
 
 Read `selection_policy`, `authored_scope_definitions`, and `owners` before using

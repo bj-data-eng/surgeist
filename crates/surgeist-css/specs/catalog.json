@@ -137,6 +137,20 @@
         "latest_published_url": "https://www.w3.org/TR/css-typed-om-1/",
         "publication_history_url": "https://www.w3.org/standards/history/css-typed-om-1/",
         "source_resolution": "The latest published edition before the cutoff is 2024-03-21, established from W3C version metadata and publication history inspected on 2026-09-12. Values 4 links living numeric-type algorithms despite an older bibliography date; the catalog latest-published policy selects this dated edition for only the required numeric definitions. This does not select Typed OM browser APIs or the module in full."
+      },
+      {
+        "id": "css-extensions-1-extension-name-definition",
+        "kind": "immutable-specification-source",
+        "date": "2025-11-10T08:23:03Z",
+        "url": "https://raw.githubusercontent.com/w3c/csswg-drafts/22ffbbc3fb252a43a6ba991942b05c478f71a6fd/css-extensions-1/Overview.bs",
+        "sha256": "9a45c4c475c611b22a58393bdfaca1075560b8652eec18ed3f4cfd287aa5c641",
+        "bytes": 12384,
+        "repository": "https://github.com/w3c/csswg-drafts",
+        "revision": "22ffbbc3fb252a43a6ba991942b05c478f71a6fd",
+        "path": "css-extensions-1/Overview.bs",
+        "source_resolution": "The selected MQ5 custom-media grammar imports extension-name from CSS Extensions 1. No published edition was found in the W3C publication inventory or the linked editor document metadata inspected on 2026-09-12. The source identifies itself as an Exploring editor draft and has no TR publication metadata. Pin the latest source-file commit before the cutoff, using its committer timestamp, only for the required extension-name production. This does not select the module or its other extension APIs.",
+        "publication_discovery_url": "https://www.w3.org/Style/CSS/current-work",
+        "revision_discovery_url": "https://api.github.com/repos/w3c/csswg-drafts/commits?path=css-extensions-1%2FOverview.bs&until=2026-09-10T02%3A16%3A24Z&per_page=1"
       }
     ],
     "definitions": [
@@ -330,6 +344,33 @@
           "root"
         ],
         "downstream_requirements": "Arithmetic execution, environment-dependent substitution, unit resolution, integer rounding and contextual clamping remain downstream. CSSStyleValue objects, DOM maps, JavaScript reification and other Typed OM APIs are not imported."
+      },
+      {
+        "id": "custom-media-extension-name",
+        "source_id": "css-extensions-1-extension-name-definition",
+        "sections": [
+          {
+            "anchor": "extension-name",
+            "url": "https://github.com/w3c/csswg-drafts/blob/22ffbbc3fb252a43a6ba991942b05c478f71a6fd/css-extensions-1/Overview.bs#L35"
+          }
+        ],
+        "required_by": [
+          {
+            "module_id": "mediaqueries-5",
+            "section_url": "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#custom-mq",
+            "requirement": "Custom-media definition names use the extension-name production, and boolean media features reference those authored names."
+          }
+        ],
+        "authored_owner": "css",
+        "authored_requirements": [
+          "Accept an identifier whose decoded value starts with two U+002D HYPHEN-MINUS characters, including the bare two-hyphen identifier and identifiers consisting only of additional hyphens.",
+          "Preserve the authored identifier and source origin without borrowing the distinct custom-property-name exclusion of the bare two-hyphen identifier."
+        ],
+        "downstream_owners": [
+          "style",
+          "root"
+        ],
+        "downstream_requirements": "Definition environments, last-definition selection, cycle handling, logical query evaluation, script-defined extensions and live CSSOM behavior remain downstream. Custom selectors, custom properties and functions from CSS Extensions 1 are not imported."
       }
     ]
   },
