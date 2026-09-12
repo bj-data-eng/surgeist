@@ -18,10 +18,6 @@ fn source_position(line: u32, column: u32) -> CssSourcePosition {
     CssSourcePosition::from_cssparser(parser.position(), parser.current_source_location())
 }
 
-fn test_media_position() -> CssSourcePosition {
-    source_position(0, 0)
-}
-
 fn style_rule(rule: &CssRule) -> &CssStyleRule {
     match rule {
         CssRule::Style(rule) => rule,
@@ -756,12 +752,11 @@ fn scoped_group_rule_models_keep_scoped_children() {
         location,
     ));
     let scoped_children = CssScopedRuleList::from_rules(vec![child.clone()]);
-    let query = CssMediaQueryList::try_new(vec![CssMediaQuery::Typed(CssTypedMediaQuery::new(
-        None,
-        CssMediaType::Screen,
-        None,
-        test_media_position(),
-    ))])
+    let query = CssMediaQueryList::try_new(vec![
+        crate::parse_media_query("screen")
+            .into_validation_result()
+            .unwrap(),
+    ])
     .unwrap();
     let media = CssScopedMediaRule::new(query.clone(), scoped_children.clone(), location);
     assert_eq!(media.query(), &query);
@@ -852,12 +847,11 @@ fn import_target_constructors_reject_empty_values() {
 fn import_rule_accessors_expose_authored_structure() {
     let target = CssImportTarget::Url(CssImportUrl::try_new("theme.css").unwrap());
     let layer = CssImportLayer::Named(CssLayerName::try_new(["theme", "components"]).unwrap());
-    let media = CssMediaQueryList::try_new(vec![CssMediaQuery::Typed(CssTypedMediaQuery::new(
-        None,
-        CssMediaType::Screen,
-        None,
-        test_media_position(),
-    ))])
+    let media = CssMediaQueryList::try_new(vec![
+        crate::parse_media_query("screen")
+            .into_validation_result()
+            .unwrap(),
+    ])
     .unwrap();
     let location = source_position(3, 7);
     let rule = CssImportRule::new(
@@ -4745,12 +4739,11 @@ fn media_query_list_constructor_accepts_empty_and_nonempty_lists() {
             .is_empty()
     );
     assert!(
-        CssMediaQueryList::try_new(vec![CssMediaQuery::Typed(CssTypedMediaQuery::new(
-            None,
-            CssMediaType::Screen,
-            None,
-            test_media_position(),
-        ))])
+        CssMediaQueryList::try_new(vec![
+            crate::parse_media_query("screen")
+                .into_validation_result()
+                .unwrap()
+        ])
         .is_some()
     );
 }
@@ -4860,7 +4853,7 @@ fn media_query_parser_accepts_supported_types_ranges_and_conditions() {
 }
 
 #[test]
-fn media_query_parser_preserves_defined_false_and_rejects_malformed_conditions() {
+fn media_query_parser_preserves_unknown_and_rejects_malformed_conditions() {
     for css in [
         "future-screen",
         "(unknown-feature: yes)",
@@ -4872,7 +4865,11 @@ fn media_query_parser_preserves_defined_false_and_rejects_malformed_conditions()
         assert!(!matches!(query.queries(), [CssMediaQuery::Never(_)]));
     }
 
-    for css in ["(width >= )", "screen and", "screen or print"] {
+    let enclosed = parse_media_query_list_for_test("(width >= )").unwrap();
+    assert!(
+        matches!(enclosed.queries(), [CssMediaQuery::Condition(condition)] if matches!(condition.kind(), CssMediaConditionKind::GeneralEnclosed(value) if value.authored() == Some("(width >= )")))
+    );
+    for css in ["screen and", "screen or print"] {
         assert!(
             parse_media_query_list_for_test(css).is_err(),
             "{css} should reject"
@@ -5720,7 +5717,7 @@ fn media_rule_parser_accepts_nested_media_rule() {
 }
 
 #[test]
-fn media_rule_parser_retains_defined_false_features_and_rejects_invalid_bodies() {
+fn media_rule_parser_retains_unknown_features_and_rejects_invalid_bodies() {
     let sheet = parse_sheet("@media (unknown: yes) { .panel { color: black; } }").unwrap();
     let [rule] = sheet.rules() else {
         panic!("expected retained media rule")
@@ -5728,7 +5725,7 @@ fn media_rule_parser_retains_defined_false_features_and_rejects_invalid_bodies()
     assert!(matches!(
         media_rule(rule).query().queries(),
         [CssMediaQuery::Condition(condition)]
-            if matches!(condition.kind(), CssMediaConditionKind::DefinedFalse(_))
+            if matches!(condition.kind(), CssMediaConditionKind::UnknownFeature(_))
     ));
     assert!(parse_sheet("@media screen { .panel { made-up: value; } }").is_err());
 }

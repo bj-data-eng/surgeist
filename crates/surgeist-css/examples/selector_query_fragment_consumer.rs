@@ -459,22 +459,38 @@ fn assert_typed_query(query: &CssMediaQuery, expected: CssMediaType, offset: usi
         panic!("typed media query")
     };
     assert_eq!(query.media_type(), expected);
-    assert_eq!(query.position().byte_offset().value(), offset);
+    assert_eq!(
+        query
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
+        offset
+    );
 }
 
-fn assert_defined_false(query: &CssMediaQuery, source: &str, reason: CssDefinedFalseMediaReason) {
+fn assert_opaque_media(
+    query: &CssMediaQuery,
+    source: &str,
+    reason: Option<surgeist_css::CssUnknownMediaFeatureReason>,
+) {
     assert!(
         !query.is_guaranteed_false(),
-        "defined-false syntax is not a malformed-member sentinel"
+        "opaque syntax is not a malformed-member sentinel"
     );
     let CssMediaQuery::Condition(condition) = query else {
         panic!("authored media condition")
     };
-    let CssMediaConditionKind::DefinedFalse(value) = condition.kind() else {
-        panic!("defined-false media expression")
-    };
-    assert_eq!(value.as_css(), source);
-    assert_eq!(value.reason(), reason);
+    match (condition.kind(), reason) {
+        (CssMediaConditionKind::UnknownFeature(value), Some(reason)) => {
+            assert_eq!(value.authored(), Some(source));
+            assert_eq!(value.reason(), reason);
+        }
+        (CssMediaConditionKind::GeneralEnclosed(value), None) => {
+            assert_eq!(value.authored(), Some(source))
+        }
+        _ => panic!("expected exact opaque media grammar branch"),
+    }
 }
 
 fn media_admission_and_recovery() {
@@ -502,7 +518,12 @@ fn media_admission_and_recovery() {
             source.len()
         );
         assert_eq!(
-            single.syntax().position().byte_offset().value(),
+            single
+                .syntax()
+                .position()
+                .expect("parsed media position")
+                .byte_offset()
+                .value(),
             source.len()
         );
         assert_validation_parity(&single);
@@ -533,13 +554,22 @@ fn media_admission_and_recovery() {
     assert_validation_parity(&typed);
 
     for (source, reason) in [
-        ("(fo)", CssDefinedFalseMediaReason::UnknownFeature),
-        ("(width:2qu)", CssDefinedFalseMediaReason::UnknownValue),
+        (
+            "(fo)",
+            Some(surgeist_css::CssUnknownMediaFeatureReason::UnknownName),
+        ),
+        (
+            "(width:2qu)",
+            Some(surgeist_css::CssUnknownMediaFeatureReason::InvalidValue),
+        ),
     ] {
         let report = parse_media_query(source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-        assert_defined_false(report.syntax(), source, reason);
-        assert_position(report.syntax().position(), (0, 0, 0));
+        assert_opaque_media(report.syntax(), source, reason);
+        assert_position(
+            report.syntax().position().expect("parsed media position"),
+            (0, 0, 0),
+        );
         assert_validation_parity(&report);
     }
     let unknown = parse_media_query(r"only F\75ture-Screen");
@@ -552,7 +582,7 @@ fn media_admission_and_recovery() {
     let name = value.unknown_media_type().unwrap();
     assert_eq!(name.as_css(), r"F\75ture-Screen");
     assert_eq!(name.reason(), CssDefinedFalseMediaReason::UnknownType);
-    assert_position(name.position(), (5, 0, 5));
+    assert_position(name.position().expect("parsed media position"), (5, 0, 5));
     assert!(!unknown.syntax().is_guaranteed_false());
     assert_validation_parity(&unknown);
 
@@ -589,7 +619,14 @@ fn media_admission_and_recovery() {
     assert_typed_query(&queries[3], CssMediaType::Print, 12);
     for (index, offset) in [(0, 0), (2, 11), (4, 18)] {
         assert!(queries[index].is_guaranteed_false());
-        assert_eq!(queries[index].position().byte_offset().value(), offset);
+        assert_eq!(
+            queries[index]
+                .position()
+                .expect("parsed media position")
+                .byte_offset()
+                .value(),
+            offset
+        );
     }
     assert_eq!(list.diagnostics().len(), 3);
     for (diagnostic, (start, end, offset)) in
@@ -642,11 +679,7 @@ fn media_admission_and_recovery() {
     let balanced = parse_media_query_list("(unknown:f(a,b)),print");
     assert!(balanced.is_clean(), "{:?}", balanced.diagnostics());
     assert_eq!(balanced.syntax().queries().len(), 2);
-    assert_defined_false(
-        &balanced.syntax().queries()[0],
-        "(unknown:f(a,b))",
-        CssDefinedFalseMediaReason::UnknownFeature,
-    );
+    assert_opaque_media(&balanced.syntax().queries()[0], "(unknown:f(a,b))", None);
     assert_typed_query(&balanced.syntax().queries()[1], CssMediaType::Print, 17);
     assert_validation_parity(&balanced);
     println!("media exact admission and member recovery: ok");
@@ -654,10 +687,10 @@ fn media_admission_and_recovery() {
 
 fn media_actual_eof_and_coordinates() {
     let eof = parse_media_query("(fo");
-    assert_defined_false(
+    assert_opaque_media(
         eof.syntax(),
         "(fo",
-        CssDefinedFalseMediaReason::UnknownFeature,
+        Some(surgeist_css::CssUnknownMediaFeatureReason::UnknownName),
     );
     assert_eq!(eof.diagnostics().len(), 1);
     assert_eof_closures(&eof, 1, (3, 0, 3));
@@ -665,12 +698,17 @@ fn media_actual_eof_and_coordinates() {
     let list_eof = parse_media_query_list("print,(fo");
     assert_eq!(list_eof.syntax().queries().len(), 2);
     assert_typed_query(&list_eof.syntax().queries()[0], CssMediaType::Print, 0);
-    assert_defined_false(
+    assert_opaque_media(
         &list_eof.syntax().queries()[1],
         "(fo",
-        CssDefinedFalseMediaReason::UnknownFeature,
+        Some(surgeist_css::CssUnknownMediaFeatureReason::UnknownName),
     );
-    assert_position(list_eof.syntax().queries()[1].position(), (6, 0, 6));
+    assert_position(
+        list_eof.syntax().queries()[1]
+            .position()
+            .expect("parsed media position"),
+        (6, 0, 6),
+    );
     assert_eq!(list_eof.diagnostics().len(), 1);
     assert_eof_closures(&list_eof, 1, (9, 0, 9));
     assert_validation_parity(&list_eof);
@@ -679,8 +717,18 @@ fn media_actual_eof_and_coordinates() {
     let report = parse_media_query_list(source);
     assert_eq!(report.syntax().queries().len(), 2);
     assert!(report.syntax().queries()[0].is_guaranteed_false());
-    assert_position(report.syntax().queries()[0].position(), (16, 1, 5));
-    assert_position(report.syntax().queries()[1].position(), (20, 1, 9));
+    assert_position(
+        report.syntax().queries()[0]
+            .position()
+            .expect("parsed media position"),
+        (16, 1, 5),
+    );
+    assert_position(
+        report.syntax().queries()[1]
+            .position()
+            .expect("parsed media position"),
+        (20, 1, 9),
+    );
     let [diagnostic] = report.diagnostics() else {
         panic!("one malformed first member")
     };
@@ -694,24 +742,27 @@ fn media_actual_eof_and_coordinates() {
     assert_validation_parity(&report);
 
     let open = parse_media_query("/*😀*/\r\n/*é*/(fo");
-    assert_defined_false(
+    assert_opaque_media(
         open.syntax(),
         "(fo",
-        CssDefinedFalseMediaReason::UnknownFeature,
+        Some(surgeist_css::CssUnknownMediaFeatureReason::UnknownName),
     );
-    assert_position(open.syntax().position(), (16, 1, 5));
+    assert_position(
+        open.syntax().position().expect("parsed media position"),
+        (16, 1, 5),
+    );
     assert_eq!(open.diagnostics().len(), 1);
     assert_eof_closures(&open, 1, (19, 1, 8));
     assert_validation_parity(&open);
-    let malformed = parse_media_query("(width:");
-    assert!(malformed.syntax().is_guaranteed_false());
-    assert_eq!(malformed.diagnostics().len(), 1);
+    let incomplete = parse_media_query("(width:");
+    assert_opaque_media(incomplete.syntax(), "(width:", None);
+    assert_eq!(incomplete.diagnostics().len(), 1);
     assert_eq!(
-        malformed.diagnostics()[0].action(),
-        CssRecoveryAction::ReplaceMediaQueryWithNever
+        incomplete.diagnostics()[0].action(),
+        CssRecoveryAction::RetainWithImplicitClosure
     );
-    assert_eof_closures(&malformed, 0, (7, 0, 7));
-    assert_validation_parity(&malformed);
+    assert_eof_closures(&incomplete, 1, (7, 0, 7));
+    assert_validation_parity(&incomplete);
     println!("media actual EOF and source coordinates: ok");
 }
 
@@ -798,10 +849,14 @@ fn exact_depth_and_eof_on_an_ordinary_thread() {
 
                     let source = nested_media(depth, closed);
                     let single = parse_media_query(&source);
-                    assert_defined_false(
+                    assert_opaque_media(
                         single.syntax(),
                         &source,
-                        CssDefinedFalseMediaReason::UnknownFeature,
+                        if depth == 1 {
+                            Some(surgeist_css::CssUnknownMediaFeatureReason::UnknownName)
+                        } else {
+                            None
+                        },
                     );
                     assert_eq!(single.diagnostics().len(), if closed { 0 } else { depth });
                     assert_eof_closures(
@@ -879,7 +934,10 @@ fn exact_depth_and_eof_on_an_ordinary_thread() {
             assert_eq!(queries.len(), 3);
             assert_typed_query(&queries[0], CssMediaType::Print, 0);
             assert!(queries[1].is_guaranteed_false());
-            assert_position(queries[1].position(), (6, 0, 6));
+            assert_position(
+                queries[1].position().expect("parsed media position"),
+                (6, 0, 6),
+            );
             assert_typed_query(&queries[2], CssMediaType::Screen, 7 + nested.len());
             let [diagnostic] = report.diagnostics() else {
                 panic!("one over-limit media member")

@@ -27,6 +27,8 @@ mod multicolumn;
 mod nesting;
 mod page;
 mod queries;
+// Shared checked media construction uses the same private admission engine.
+pub(crate) use queries::{construct_media_condition, construct_media_query};
 mod recovery;
 mod selectors;
 mod supports;
@@ -2435,7 +2437,7 @@ fn parse_import_prelude<'i, 't>(
     let (media, implicit_media_closures) = if input.is_exhausted() {
         (None, Vec::new())
     } else {
-        recovery.check_specialized_components(source, input, "baseline.media.query-list")?;
+        queries::check_media_import_components(source, input, recovery)?;
         let parsed =
             queries::parse_media_query_list_with_closures(source, input, diagnostics, recovery)?;
         (Some(parsed.queries), parsed.implicit_closures)

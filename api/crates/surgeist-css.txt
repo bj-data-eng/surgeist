@@ -637,9 +637,7 @@ pub surgeist_css::CssDeclarationContextRef::Keyframe(surgeist_css::CssKnownPrope
 pub surgeist_css::CssDeclarationContextRef::KeyframeCustomProperty(&'a surgeist_css::CssCustomPropertyName)
 pub surgeist_css::CssDeclarationContextRef::KnownProperty(surgeist_css::CssKnownProperty)
 #[non_exhaustive] pub enum surgeist_css::CssDefinedFalseMediaReason
-pub surgeist_css::CssDefinedFalseMediaReason::UnknownFeature
 pub surgeist_css::CssDefinedFalseMediaReason::UnknownType
-pub surgeist_css::CssDefinedFalseMediaReason::UnknownValue
 #[non_exhaustive] pub enum surgeist_css::CssDelay
 pub surgeist_css::CssDelay::Calculation(surgeist_css::CssTimeCalculation)
 pub surgeist_css::CssDelay::Literal(surgeist_css::CssDelayLiteral)
@@ -1841,11 +1839,27 @@ pub surgeist_css::CssMediaColorGamut::Rec2020
 pub surgeist_css::CssMediaColorGamut::Srgb
 #[non_exhaustive] pub enum surgeist_css::CssMediaConditionKind
 pub surgeist_css::CssMediaConditionKind::And(surgeist_css::CssMediaConditionList)
-pub surgeist_css::CssMediaConditionKind::DefinedFalse(surgeist_css::CssDefinedFalseMediaCondition)
 pub surgeist_css::CssMediaConditionKind::Feature(surgeist_css::CssMediaFeatureQuery)
+pub surgeist_css::CssMediaConditionKind::GeneralEnclosed(surgeist_css::CssGeneralEnclosed)
 pub surgeist_css::CssMediaConditionKind::Not(alloc::boxed::Box<surgeist_css::CssMediaCondition>)
 pub surgeist_css::CssMediaConditionKind::Or(surgeist_css::CssMediaConditionList)
 pub surgeist_css::CssMediaConditionKind::Parenthesized(alloc::boxed::Box<surgeist_css::CssMediaCondition>)
+pub surgeist_css::CssMediaConditionKind::UnknownFeature(surgeist_css::CssUnknownMediaFeature)
+#[non_exhaustive] pub enum surgeist_css::CssMediaConstructionError
+pub surgeist_css::CssMediaConstructionError::Component(surgeist_css::CssComponentValueError)
+pub surgeist_css::CssMediaConstructionError::InvalidConditionGrammar
+pub surgeist_css::CssMediaConstructionError::InvalidConditionGrammar::origin: surgeist_css::CssValueOrigin
+pub surgeist_css::CssMediaConstructionError::InvalidQueryGrammar
+pub surgeist_css::CssMediaConstructionError::InvalidQueryGrammar::origin: surgeist_css::CssValueOrigin
+pub surgeist_css::CssMediaConstructionError::RecoveredInput
+pub surgeist_css::CssMediaConstructionError::RecoveredInput::origin: surgeist_css::CssValueOrigin
+impl surgeist_css::CssMediaConstructionError
+pub fn surgeist_css::CssMediaConstructionError::origin(&self) -> &surgeist_css::CssValueOrigin
+impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssMediaConstructionError
+pub fn surgeist_css::CssMediaConstructionError::from(error: surgeist_css::CssComponentValueError) -> Self
+impl core::error::Error for surgeist_css::CssMediaConstructionError
+impl core::fmt::Display for surgeist_css::CssMediaConstructionError
+pub fn surgeist_css::CssMediaConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssMediaDynamicRange
 pub surgeist_css::CssMediaDynamicRange::High
 pub surgeist_css::CssMediaDynamicRange::Standard
@@ -1957,7 +1971,12 @@ pub surgeist_css::CssMediaQuery::Never(surgeist_css::CssNeverMediaQuery)
 pub surgeist_css::CssMediaQuery::Typed(surgeist_css::CssTypedMediaQuery)
 impl surgeist_css::CssMediaQuery
 pub const fn surgeist_css::CssMediaQuery::is_guaranteed_false(&self) -> bool
-pub const fn surgeist_css::CssMediaQuery::position(&self) -> surgeist_css::CssSourcePosition
+pub const fn surgeist_css::CssMediaQuery::origin(&self) -> &surgeist_css::CssValueOrigin
+pub const fn surgeist_css::CssMediaQuery::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+impl surgeist_css::CssMediaQuery
+pub fn surgeist_css::CssMediaQuery::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssMediaSerializationError>
+pub fn surgeist_css::CssMediaQuery::try_from_components(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssMediaConstructionError>
+pub fn surgeist_css::CssMediaQuery::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssMediaConstructionError>
 #[non_exhaustive] pub enum surgeist_css::CssMediaQueryModifier
 pub surgeist_css::CssMediaQueryModifier::Not
 pub surgeist_css::CssMediaQueryModifier::Only
@@ -1994,6 +2013,17 @@ pub surgeist_css::CssMediaResolutionRef::Numeric(&'a surgeist_css::CssResolution
 pub surgeist_css::CssMediaScripting::Enabled
 pub surgeist_css::CssMediaScripting::InitialOnly
 pub surgeist_css::CssMediaScripting::None
+#[non_exhaustive] pub enum surgeist_css::CssMediaSerializationError
+pub surgeist_css::CssMediaSerializationError::Component(surgeist_css::CssComponentValueError)
+pub surgeist_css::CssMediaSerializationError::RecoveredNever
+pub surgeist_css::CssMediaSerializationError::RecoveredNever::origin: surgeist_css::CssValueOrigin
+impl surgeist_css::CssMediaSerializationError
+pub fn surgeist_css::CssMediaSerializationError::origin(&self) -> &surgeist_css::CssValueOrigin
+impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssMediaSerializationError
+pub fn surgeist_css::CssMediaSerializationError::from(error: surgeist_css::CssComponentValueError) -> Self
+impl core::error::Error for surgeist_css::CssMediaSerializationError
+impl core::fmt::Display for surgeist_css::CssMediaSerializationError
+pub fn surgeist_css::CssMediaSerializationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssMediaType
 pub surgeist_css::CssMediaType::All
 pub surgeist_css::CssMediaType::Aural
@@ -2007,6 +2037,9 @@ pub surgeist_css::CssMediaType::Speech
 pub surgeist_css::CssMediaType::Tty
 pub surgeist_css::CssMediaType::Tv
 pub surgeist_css::CssMediaType::Unknown
+impl surgeist_css::CssMediaType
+pub const fn surgeist_css::CssMediaType::is_defined_nonmatching(self) -> bool
+pub const fn surgeist_css::CssMediaType::name(self) -> &'static str
 #[non_exhaustive] pub enum surgeist_css::CssMediaUpdate
 pub surgeist_css::CssMediaUpdate::Fast
 pub surgeist_css::CssMediaUpdate::None
@@ -2648,6 +2681,13 @@ pub surgeist_css::CssUnicodeBidi::Isolate
 pub surgeist_css::CssUnicodeBidi::IsolateOverride
 pub surgeist_css::CssUnicodeBidi::Normal
 pub surgeist_css::CssUnicodeBidi::Plaintext
+#[non_exhaustive] pub enum surgeist_css::CssUnknownMediaFeatureReason
+pub surgeist_css::CssUnknownMediaFeatureReason::InvalidOperation
+pub surgeist_css::CssUnknownMediaFeatureReason::InvalidValue
+pub surgeist_css::CssUnknownMediaFeatureReason::UnknownName
+#[non_exhaustive] pub enum surgeist_css::CssUnknownMediaFeatureRef<'a>
+pub surgeist_css::CssUnknownMediaFeatureRef::Boolean
+pub surgeist_css::CssUnknownMediaFeatureRef::Range(&'a surgeist_css::CssMediaRange<surgeist_css::CssComponentValues>)
 #[non_exhaustive] pub enum surgeist_css::CssUrlModifier
 pub surgeist_css::CssUrlModifier::Function(surgeist_css::CssUrlModifierFunction)
 pub surgeist_css::CssUrlModifier::Ident(surgeist_css::CssIdent)
@@ -3666,6 +3706,10 @@ pub struct surgeist_css::CssComponentValueError
 impl surgeist_css::CssComponentValueError
 pub const fn surgeist_css::CssComponentValueError::kind(&self) -> surgeist_css::CssComponentValueErrorKind
 pub const fn surgeist_css::CssComponentValueError::origin(&self) -> &surgeist_css::CssValueOrigin
+impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssMediaConstructionError
+pub fn surgeist_css::CssMediaConstructionError::from(error: surgeist_css::CssComponentValueError) -> Self
+impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssMediaSerializationError
+pub fn surgeist_css::CssMediaSerializationError::from(error: surgeist_css::CssComponentValueError) -> Self
 impl core::error::Error for surgeist_css::CssComponentValueError
 impl core::fmt::Display for surgeist_css::CssComponentValueError
 pub fn surgeist_css::CssComponentValueError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -3909,11 +3953,6 @@ pub const fn surgeist_css::CssDeclarationList::len(&self) -> usize
 impl core::ops::deref::Deref for surgeist_css::CssDeclarationList
 pub type surgeist_css::CssDeclarationList::Target = [surgeist_css::CssDeclaration]
 pub fn surgeist_css::CssDeclarationList::deref(&self) -> &Self::Target
-pub struct surgeist_css::CssDefinedFalseMediaCondition
-impl surgeist_css::CssDefinedFalseMediaCondition
-pub fn surgeist_css::CssDefinedFalseMediaCondition::as_css(&self) -> &str
-pub const fn surgeist_css::CssDefinedFalseMediaCondition::position(&self) -> surgeist_css::CssSourcePosition
-pub const fn surgeist_css::CssDefinedFalseMediaCondition::reason(&self) -> surgeist_css::CssDefinedFalseMediaReason
 pub struct surgeist_css::CssDelayList
 impl surgeist_css::CssDelayList
 pub fn surgeist_css::CssDelayList::try_new(values: alloc::vec::Vec<surgeist_css::CssDelay>) -> core::option::Option<Self>
@@ -4934,7 +4973,12 @@ pub const fn surgeist_css::CssMaxWidthPropertyValue::i01_subset(&self) -> core::
 pub struct surgeist_css::CssMediaCondition
 impl surgeist_css::CssMediaCondition
 pub const fn surgeist_css::CssMediaCondition::kind(&self) -> &surgeist_css::CssMediaConditionKind
-pub const fn surgeist_css::CssMediaCondition::position(&self) -> surgeist_css::CssSourcePosition
+pub const fn surgeist_css::CssMediaCondition::origin(&self) -> &surgeist_css::CssValueOrigin
+pub const fn surgeist_css::CssMediaCondition::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+impl surgeist_css::CssMediaCondition
+pub fn surgeist_css::CssMediaCondition::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssMediaSerializationError>
+pub fn surgeist_css::CssMediaCondition::try_from_components(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssMediaConstructionError>
+pub fn surgeist_css::CssMediaCondition::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssMediaConstructionError>
 pub struct surgeist_css::CssMediaConditionList
 impl surgeist_css::CssMediaConditionList
 pub fn surgeist_css::CssMediaConditionList::conditions(&self) -> &[surgeist_css::CssMediaCondition]
@@ -4963,6 +5007,8 @@ pub struct surgeist_css::CssMediaQueryList
 impl surgeist_css::CssMediaQueryList
 pub fn surgeist_css::CssMediaQueryList::queries(&self) -> &[surgeist_css::CssMediaQuery]
 pub fn surgeist_css::CssMediaQueryList::try_new(queries: alloc::vec::Vec<surgeist_css::CssMediaQuery>) -> core::option::Option<Self>
+impl surgeist_css::CssMediaQueryList
+pub fn surgeist_css::CssMediaQueryList::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssMediaSerializationError>
 pub struct surgeist_css::CssMediaRange<T>
 impl<T> surgeist_css::CssMediaRange<T>
 pub fn surgeist_css::CssMediaRange<T>::view(&self) -> surgeist_css::CssMediaRangeRef<'_, T>
@@ -5023,6 +5069,7 @@ pub const fn surgeist_css::CssNestingLimitError::enclosing_production(&self) -> 
 pub const fn surgeist_css::CssNestingLimitError::limit(&self) -> u32
 pub struct surgeist_css::CssNeverMediaQuery
 impl surgeist_css::CssNeverMediaQuery
+pub const fn surgeist_css::CssNeverMediaQuery::origin(&self) -> &surgeist_css::CssValueOrigin
 pub const fn surgeist_css::CssNeverMediaQuery::position(&self) -> surgeist_css::CssSourcePosition
 pub struct surgeist_css::CssNonNegativeInteger
 impl surgeist_css::CssNonNegativeInteger
@@ -6020,7 +6067,8 @@ impl surgeist_css::CssTypedMediaQuery
 pub const fn surgeist_css::CssTypedMediaQuery::condition(&self) -> core::option::Option<&surgeist_css::CssMediaCondition>
 pub const fn surgeist_css::CssTypedMediaQuery::media_type(&self) -> surgeist_css::CssMediaType
 pub const fn surgeist_css::CssTypedMediaQuery::modifier(&self) -> core::option::Option<surgeist_css::CssMediaQueryModifier>
-pub const fn surgeist_css::CssTypedMediaQuery::position(&self) -> surgeist_css::CssSourcePosition
+pub const fn surgeist_css::CssTypedMediaQuery::origin(&self) -> &surgeist_css::CssValueOrigin
+pub const fn surgeist_css::CssTypedMediaQuery::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
 pub const fn surgeist_css::CssTypedMediaQuery::unknown_media_type(&self) -> core::option::Option<&surgeist_css::CssUnknownMediaType>
 pub struct surgeist_css::CssTypedRelativeColorExpression
 impl surgeist_css::CssTypedRelativeColorExpression
@@ -6063,10 +6111,21 @@ pub struct surgeist_css::CssUnknownDescriptorError
 impl surgeist_css::CssUnknownDescriptorError
 pub const fn surgeist_css::CssUnknownDescriptorError::at_rule(&self) -> &surgeist_css::CssAtRuleName
 pub const fn surgeist_css::CssUnknownDescriptorError::descriptor(&self) -> &surgeist_css::CssDescriptorName
+pub struct surgeist_css::CssUnknownMediaFeature
+impl surgeist_css::CssUnknownMediaFeature
+pub fn surgeist_css::CssUnknownMediaFeature::authored(&self) -> core::option::Option<&str>
+pub fn surgeist_css::CssUnknownMediaFeature::component(&self) -> &surgeist_css::CssComponentValue
+pub fn surgeist_css::CssUnknownMediaFeature::name(&self) -> &str
+pub fn surgeist_css::CssUnknownMediaFeature::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssUnknownMediaFeature::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub const fn surgeist_css::CssUnknownMediaFeature::reason(&self) -> surgeist_css::CssUnknownMediaFeatureReason
+pub fn surgeist_css::CssUnknownMediaFeature::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssMediaSerializationError>
+pub fn surgeist_css::CssUnknownMediaFeature::view(&self) -> surgeist_css::CssUnknownMediaFeatureRef<'_>
 pub struct surgeist_css::CssUnknownMediaType
 impl surgeist_css::CssUnknownMediaType
 pub fn surgeist_css::CssUnknownMediaType::as_css(&self) -> &str
-pub const fn surgeist_css::CssUnknownMediaType::position(&self) -> surgeist_css::CssSourcePosition
+pub const fn surgeist_css::CssUnknownMediaType::origin(&self) -> &surgeist_css::CssValueOrigin
+pub const fn surgeist_css::CssUnknownMediaType::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
 pub const fn surgeist_css::CssUnknownMediaType::reason(&self) -> surgeist_css::CssDefinedFalseMediaReason
 pub struct surgeist_css::CssUnknownPropertyError
 impl surgeist_css::CssUnknownPropertyError

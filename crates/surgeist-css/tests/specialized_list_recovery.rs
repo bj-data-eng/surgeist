@@ -298,7 +298,11 @@ fn specialized_list_media_members_become_never_in_authored_order() {
         assert!(queries[never_index].is_guaranteed_false(), "{source}");
         assert!(matches!(queries[never_index], CssMediaQuery::Never(_)));
         assert_eq!(
-            queries[never_index].position().byte_offset().value(),
+            queries[never_index]
+                .position()
+                .expect("parsed media position")
+                .byte_offset()
+                .value(),
             responsible,
             "{source}"
         );
@@ -375,7 +379,7 @@ fn specialized_list_repeated_failures_emit_one_ordered_action_per_member() {
 }
 
 #[test]
-fn specialized_list_defined_false_and_repeated_malformed_members_recover_locally() {
+fn specialized_list_unknown_features_and_repeated_malformed_members_recover_locally() {
     let source = "@media (unknown: yes),???,(width: calc(1px)),,print { .x { color: red; } }";
     let report = parse_sheet(source);
     let queries = media_rule(&report).query().queries();
@@ -387,7 +391,7 @@ fn specialized_list_defined_false_and_repeated_malformed_members_recover_locally
             CssMediaQuery::Condition(value),
             CssMediaQuery::Never(_),
             CssMediaQuery::Typed(_),
-        ] if matches!(unknown.kind(), CssMediaConditionKind::DefinedFalse(_))
+        ] if matches!(unknown.kind(), CssMediaConditionKind::UnknownFeature(_))
             && matches!(value.kind(), CssMediaConditionKind::Feature(surgeist_css::CssMediaFeatureQuery::Width(_)))
     ));
     let CssMediaQuery::Condition(condition) = &queries[2] else {
@@ -428,7 +432,14 @@ fn specialized_list_empty_media_member_uses_delimiter_and_end_position() {
 
     assert_eq!(queries.len(), 3);
     assert!(matches!(queries[1], CssMediaQuery::Never(_)));
-    assert_eq!(queries[1].position().byte_offset().value(), 14);
+    assert_eq!(
+        queries[1]
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
+        14
+    );
     assert_eq!(report.diagnostics().len(), 1);
     assert_specialized_diagnostic(
         source,
@@ -463,20 +474,27 @@ fn specialized_list_media_recovery_stops_at_balanced_nested_commas() {
 }
 
 #[test]
-fn specialized_list_defined_false_member_keeps_exact_text_and_position_without_recovery() {
+fn specialized_list_unknown_feature_keeps_exact_text_and_position_without_recovery() {
     let source = "@media screen,(unknown: yes),print { .x { color: red; } }";
     let report = parse_sheet(source);
     let queries = media_rule(&report).query().queries();
     let member_start = source.find('(').expect("member start");
     let CssMediaQuery::Condition(condition) = &queries[1] else {
-        panic!("expected defined-false condition")
+        panic!("expected unknown-feature condition")
     };
-    let CssMediaConditionKind::DefinedFalse(defined_false) = condition.kind() else {
-        panic!("expected defined-false condition details")
+    let CssMediaConditionKind::UnknownFeature(unknown) = condition.kind() else {
+        panic!("expected unknown-feature condition details")
     };
-    assert_eq!(condition.position().byte_offset().value(), member_start);
-    assert_eq!(defined_false.position(), condition.position());
-    assert_eq!(defined_false.as_css(), "(unknown: yes)");
+    assert_eq!(
+        condition
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
+        member_start
+    );
+    assert_eq!(unknown.position(), condition.position());
+    assert_eq!(unknown.authored(), Some("(unknown: yes)"));
     assert!(report.is_clean());
 }
 
@@ -534,14 +552,43 @@ fn specialized_list_media_positions_use_utf8_bytes_and_utf16_columns() {
     let member_end = source[responsible..].find(',').expect("next comma") + responsible;
 
     assert_eq!(
-        queries[0].position().byte_offset().value(),
+        queries[0]
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
         source.find("screen").unwrap()
     );
-    assert_eq!(queries[1].position().byte_offset().value(), responsible);
-    assert_eq!(queries[1].position().line().value(), 0);
-    assert_eq!(queries[1].position().column().value(), 22);
     assert_eq!(
-        queries[2].position().byte_offset().value(),
+        queries[1]
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
+        responsible
+    );
+    assert_eq!(
+        queries[1]
+            .position()
+            .expect("parsed media position")
+            .line()
+            .value(),
+        0
+    );
+    assert_eq!(
+        queries[1]
+            .position()
+            .expect("parsed media position")
+            .column()
+            .value(),
+        22
+    );
+    assert_eq!(
+        queries[2]
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
         source.find("print").unwrap()
     );
     assert_eq!(report.diagnostics().len(), 1);
@@ -571,11 +618,19 @@ fn specialized_list_clean_media_queries_are_positioned_and_never_false_sentinels
     assert!(!queries[0].is_guaranteed_false());
     assert!(!queries[1].is_guaranteed_false());
     assert_eq!(
-        queries[0].position().byte_offset().value(),
+        queries[0]
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
         source.find("screen").unwrap()
     );
     assert_eq!(
-        queries[1].position().byte_offset().value(),
+        queries[1]
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
         source.find('(').unwrap()
     );
 }
@@ -599,13 +654,48 @@ fn specialized_list_media_position_delegation_covers_condition_typed_and_never()
     };
     assert!(matches!(condition.kind(), CssMediaConditionKind::Not(_)));
     assert_eq!(condition.position(), queries[0].position());
-    assert_eq!(condition.position().byte_offset().value(), condition_offset);
-    assert_eq!(condition.position().line().value(), 0);
-    assert_eq!(condition.position().column().value(), 14);
+    assert_eq!(
+        condition
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
+        condition_offset
+    );
+    assert_eq!(
+        condition
+            .position()
+            .expect("parsed media position")
+            .line()
+            .value(),
+        0
+    );
+    assert_eq!(
+        condition
+            .position()
+            .expect("parsed media position")
+            .column()
+            .value(),
+        14
+    );
     assert_eq!(typed.position(), queries[1].position());
-    assert_eq!(typed.position().byte_offset().value(), typed_offset);
-    assert_eq!(typed.position().column().value(), 32);
-    assert_eq!(never.position(), queries[2].position());
+    assert_eq!(
+        typed
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
+        typed_offset
+    );
+    assert_eq!(
+        typed
+            .position()
+            .expect("parsed media position")
+            .column()
+            .value(),
+        32
+    );
+    assert_eq!(Some(never.position()), queries[2].position());
     assert_eq!(never.position().byte_offset().value(), never_offset);
     assert_eq!(never.position().column().value(), 45);
     assert!(!queries[0].is_guaranteed_false());

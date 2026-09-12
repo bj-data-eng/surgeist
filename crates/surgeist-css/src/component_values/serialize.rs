@@ -1,5 +1,88 @@
 use super::*;
 
+/// Recognized grammar syntax; opaque syntax must use original components instead.
+pub(crate) enum CssCanonicalToken<'a> {
+    Ident(&'a str),
+    Whitespace,
+    Comma,
+    Colon,
+    Delim(char),
+    OpenParen,
+    CloseParen,
+}
+
+pub(crate) struct CssCanonicalBuilder {
+    emitter: Emitter,
+}
+
+impl CssCanonicalBuilder {
+    pub(crate) fn new(max_bytes: usize) -> Self {
+        Self {
+            emitter: Emitter::new(max_bytes, true),
+        }
+    }
+
+    pub(crate) fn push_component(
+        &mut self,
+        component: &CssComponentValue,
+    ) -> Result<(), CssComponentValueError> {
+        self.emitter.component(component, &mut Vec::new())
+    }
+
+    pub(crate) fn push_grammar(
+        &mut self,
+        token: CssCanonicalToken<'_>,
+        origin: &CssValueOrigin,
+    ) -> Result<(), CssComponentValueError> {
+        let (text, kind, reverse_solidus) = match token {
+            CssCanonicalToken::OpenParen => ("(".into(), TokenSerializationType::OpenParen, false),
+            CssCanonicalToken::CloseParen => (")".into(), TokenSerializationType::Other, false),
+            other => {
+                let component = match other {
+                    CssCanonicalToken::Ident(value) => CssComponentValue::try_ident(value),
+                    CssCanonicalToken::Whitespace => CssComponentValue::try_token(" "),
+                    CssCanonicalToken::Comma => CssComponentValue::try_token(","),
+                    CssCanonicalToken::Colon => CssComponentValue::try_token(":"),
+                    CssCanonicalToken::Delim(character) => {
+                        let component = CssComponentValue::try_token(&character.to_string()).map_err(|error| CssComponentValueError::new(error.kind(), origin.clone()))?;
+                        if !matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Delim(actual)) if actual == character) {
+                            return Err(CssComponentValueError::new(CssComponentValueErrorKind::InvalidToken, origin.clone()));
+                        }
+                        Ok(component)
+                    }
+                    CssCanonicalToken::OpenParen | CssCanonicalToken::CloseParen => unreachable!(),
+                }.map_err(|error| CssComponentValueError::new(error.kind(), origin.clone()))?;
+                let ComponentData::Token(value) = component.data else {
+                    unreachable!("checked grammar token")
+                };
+                let kind = value.serialization_type();
+                let reverse_solidus = matches!(value.data, TokenData::Delim('\\'));
+                (value.spelling.text, kind, reverse_solidus)
+            }
+        };
+        self.emitter.token(
+            &Lexeme {
+                text,
+                origin: origin.clone(),
+            },
+            kind,
+            reverse_solidus,
+        )
+    }
+
+    pub(crate) fn finish(self) -> Result<CssSerializedValue, CssComponentValueError> {
+        self.emitter.finish()?;
+        Ok(CssSerializedValue {
+            css: self.emitter.css.expect("canonical output is retained"),
+            segments: self.emitter.segments.into_boxed_slice(),
+            end: CssSerializedOrigin::End(self.emitter.last_origin),
+            // Canonical output combines grammar tokens and multiple graphs. Its
+            // origins are complete, but it has no single source component path space.
+            component_paths: Box::new([]),
+        })
+    }
+}
+
 struct Emitter {
     css: Option<String>,
     segments: Vec<CssSerializedOriginSegment>,
@@ -11,7 +94,7 @@ struct Emitter {
     reverse_solidus: bool,
     cdo_prefix: u8,
     last_origin: Option<CssValueOrigin>,
-    component_paths: Vec<(usize, Vec<usize>)>,
+    component_paths: Vec<(Range<usize>, Vec<usize>)>,
 }
 
 impl Emitter {
@@ -166,49 +249,58 @@ impl Emitter {
     ) -> Result<(), CssComponentValueError> {
         for (index, item) in values.items.iter().enumerate() {
             path.push(index);
-            let first_segment = self.segments.len();
-            match &item.data {
-                ComponentData::Token(token) => {
-                    self.token(
-                        &token.spelling,
-                        token.serialization_type(),
-                        matches!(token.data, TokenData::Delim('\\')),
-                    )?;
-                    if let Some(ending) = &token.implicit_end {
-                        self.suffix(ending)?;
-                    }
-                }
-                ComponentData::Function(function) => {
-                    self.token(&function.opening, TokenSerializationType::Function, false)?;
-                    self.values(&function.values, path)?;
-                    self.token(&function.closing, TokenSerializationType::Other, false)?;
-                }
-                ComponentData::Block(block) => {
-                    let kind = match block.kind {
-                        CssBlockKind::Parenthesis => TokenSerializationType::OpenParen,
-                        CssBlockKind::SquareBracket | CssBlockKind::CurlyBracket => {
-                            TokenSerializationType::Other
-                        }
-                    };
-                    self.token(&block.opening, kind, false)?;
-                    self.values(&block.values, path)?;
-                    self.token(&block.closing, TokenSerializationType::Other, false)?;
-                }
-                ComponentData::Comment {
-                    spelling,
-                    implicit_end,
-                    ..
-                } => self.comment(spelling, implicit_end.as_ref())?,
-            }
-            if self.css.is_some()
-                && let Some(segment) = self.segments[first_segment..]
-                    .iter()
-                    .find(|s| matches!(s.origin, CssSerializedOrigin::Token(_)))
-            {
-                self.component_paths
-                    .push((segment.range.start, path.clone()));
-            }
+            self.component(item, path)?;
             path.pop();
+        }
+        Ok(())
+    }
+
+    fn component(
+        &mut self,
+        item: &CssComponentValue,
+        path: &mut Vec<usize>,
+    ) -> Result<(), CssComponentValueError> {
+        let first_segment = self.segments.len();
+        match &item.data {
+            ComponentData::Token(token) => {
+                self.token(
+                    &token.spelling,
+                    token.serialization_type(),
+                    matches!(token.data, TokenData::Delim('\\')),
+                )?;
+                if let Some(ending) = &token.implicit_end {
+                    self.suffix(ending)?;
+                }
+            }
+            ComponentData::Function(function) => {
+                self.token(&function.opening, TokenSerializationType::Function, false)?;
+                self.values(&function.values, path)?;
+                self.token(&function.closing, TokenSerializationType::Other, false)?;
+            }
+            ComponentData::Block(block) => {
+                let kind = match block.kind {
+                    CssBlockKind::Parenthesis => TokenSerializationType::OpenParen,
+                    CssBlockKind::SquareBracket | CssBlockKind::CurlyBracket => {
+                        TokenSerializationType::Other
+                    }
+                };
+                self.token(&block.opening, kind, false)?;
+                self.values(&block.values, path)?;
+                self.token(&block.closing, TokenSerializationType::Other, false)?;
+            }
+            ComponentData::Comment {
+                spelling,
+                implicit_end,
+                ..
+            } => self.comment(spelling, implicit_end.as_ref())?,
+        }
+        if self.css.is_some()
+            && let Some(segment) = self.segments[first_segment..]
+                .iter()
+                .find(|s| matches!(s.origin, CssSerializedOrigin::Token(_)))
+        {
+            self.component_paths
+                .push((segment.range.start..self.bytes, path.clone()));
         }
         Ok(())
     }
@@ -280,4 +372,108 @@ pub(super) fn serialize(
         end: CssSerializedOrigin::End(emitter.last_origin),
         component_paths: emitter.component_paths.into_boxed_slice(),
     })
+}
+
+#[cfg(test)]
+mod media_helpers_tests {
+    use super::*;
+
+    #[test]
+    fn subtree_ranges_distinguish_repeated_original_components_and_keep_trivia() {
+        let parsed = parse_component_values("future(a/**/b)").unwrap();
+        let component = parsed.items()[0].clone();
+        let values = CssComponentValues::try_new(vec![component.clone(), component]).unwrap();
+        let serialized = values.serialize().unwrap();
+        assert_eq!(serialized.as_css(), "future(a/**/b)future(a/**/b)");
+        assert_eq!(
+            serialized.component_paths_in_range(0..14).unwrap(),
+            vec![&[0][..]]
+        );
+        assert_eq!(
+            serialized.component_paths_in_range(14..28).unwrap(),
+            vec![&[1][..]]
+        );
+        assert_eq!(
+            serialized.component_paths_in_range(26..27).unwrap(),
+            vec![&[1, 2][..]]
+        );
+        assert_eq!(serialized.component_offset_for_path(&[1, 2]), Some(26));
+        assert_eq!(
+            serialized.component_paths_in_range(7..13).unwrap(),
+            vec![&[0, 0][..], &[0, 1][..], &[0, 2][..]]
+        );
+        assert!(serialized.component_paths_in_range(7..11).is_none());
+        assert!(serialized.component_paths_in_range(7..27).is_none());
+        assert_eq!(
+            values.component_at_path(&[1, 2]),
+            parsed.component_at_path(&[0, 2])
+        );
+    }
+
+    #[test]
+    fn attributed_grammar_uses_token_boundaries_and_original_sources() {
+        let number = parse_component_values("1").unwrap();
+        let identifier = parse_component_values("e3").unwrap();
+        let mut builder = CssCanonicalBuilder::new(7);
+        builder.push_component(&number.items()[0]).unwrap();
+        builder
+            .push_grammar(
+                CssCanonicalToken::Ident("e3"),
+                identifier.items()[0].origin(),
+            )
+            .unwrap();
+        let serialized = builder.finish().unwrap();
+        assert_eq!(serialized.as_css(), "1/**/e3");
+        assert_eq!(
+            serialized.value_origin_at(1),
+            Some(identifier.items()[0].origin())
+        );
+        assert!(
+            matches!(serialized.origin_at(1), Some(CssSerializedOrigin::Separator { before, after }) if before == number.items()[0].origin() && after == identifier.items()[0].origin())
+        );
+        assert_eq!(
+            serialized.value_origin_at(7),
+            Some(identifier.items()[0].origin())
+        );
+        let mut short = CssCanonicalBuilder::new(6);
+        short.push_component(&number.items()[0]).unwrap();
+        let error = short
+            .push_grammar(
+                CssCanonicalToken::Ident("e3"),
+                identifier.items()[0].origin(),
+            )
+            .unwrap_err();
+        assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+        assert_eq!(error.origin(), identifier.items()[0].origin());
+    }
+
+    #[test]
+    fn component_limit_causes_and_implicit_origins_stay_distinct() {
+        let parsed = parse_component_values("future(1px").unwrap();
+        let implicit = parsed.first_implicit_origin().unwrap();
+        assert!(matches!(implicit, CssValueOrigin::ImplicitClosure { .. }));
+        for (limits, kind) in [
+            (
+                CssComponentValueLimits::try_new(0, 10, 100).unwrap(),
+                CssComponentValueErrorKind::NestingLimit,
+            ),
+            (
+                CssComponentValueLimits::try_new(1, 1, 100).unwrap(),
+                CssComponentValueErrorKind::ComponentLimit,
+            ),
+            (
+                CssComponentValueLimits::try_new(1, 2, 10).unwrap(),
+                CssComponentValueErrorKind::ByteLimit,
+            ),
+        ] {
+            let error = parsed.validate_with_limits(limits).unwrap_err();
+            assert_eq!(error.kind(), kind);
+            assert!(!matches!(error.origin(), CssValueOrigin::Programmatic));
+        }
+        let mut builder = CssCanonicalBuilder::new(100);
+        builder.push_component(&parsed.items()[0]).unwrap();
+        let serialized = builder.finish().unwrap();
+        assert_eq!(serialized.as_css(), "future(1px)");
+        assert_eq!(serialized.value_origin_at(10), Some(implicit));
+    }
 }

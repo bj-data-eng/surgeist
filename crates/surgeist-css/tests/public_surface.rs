@@ -186,7 +186,7 @@ fn public_surface_exposes_private_field_supports_models_and_checked_lists() {
 }
 
 #[test]
-fn public_surface_exposes_parser_owned_defined_false_media_models() {
+fn public_surface_exposes_unknown_media_types_and_general_enclosures() {
     let source = "@media only F\\75ture and (unknown: calc(1foo + 2px)) {}";
     let report = parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -205,15 +205,11 @@ fn public_surface_exposes_parser_owned_defined_false_media_models() {
     );
 
     let condition = query.condition().expect("unknown type condition");
-    let CssMediaConditionKind::DefinedFalse(defined_false) = condition.kind() else {
-        panic!("expected defined-false condition")
+    let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+        panic!("expected general enclosure")
     };
-    assert_eq!(defined_false.as_css(), "(unknown: calc(1foo + 2px))");
-    assert_eq!(
-        defined_false.reason(),
-        CssDefinedFalseMediaReason::UnknownFeature
-    );
-    assert_eq!(defined_false.position(), condition.position());
+    assert_eq!(enclosed.authored(), Some("(unknown: calc(1foo + 2px))"));
+    assert_eq!(enclosed.position(), condition.position());
 }
 
 #[test]

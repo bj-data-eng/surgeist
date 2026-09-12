@@ -20,7 +20,7 @@ use surgeist_css::{
     CssComponentValue, CssComponentValues, CssContributionValueRef, CssContributions,
     CssCustomPropertyDeclaredValue, CssCustomPropertyName, CssDeclaration, CssExpansion,
     CssExpansionErrorKind, CssGlobalKeyword, CssImportance, CssKnownProperty as Property,
-    CssLength, CssLonghandContributions, CssLonghandValueRef, CssMediaQuery,
+    CssLength, CssLonghandContributions, CssLonghandValueRef, CssMediaConditionKind, CssMediaQuery,
     CssNormalizationErrorKind, CssNormalizationLimits, CssNormalizationResource,
     CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedSheet, CssPropertyNameRef,
     CssRecoveryAction, CssRule, CssRuleContext, CssRuleContextKindRef, CssScopedRule, CssSelector,
@@ -901,8 +901,9 @@ fn normalization_resource_boundaries() {
 }
 
 fn unchanged_recovery_diagnostics() {
-    let report =
-        parse_sheet(".a {margin:0; padding:nope; @media (width:) {padding:1px} margin-left:2px}");
+    let report = parse_sheet(
+        ".a {margin:0; padding:nope; @media (width:) and {padding:1px} margin-left:2px}",
+    );
     assert!(!report.is_clean());
     assert!(
         report
@@ -933,6 +934,26 @@ fn unchanged_recovery_diagnostics() {
     assert!(normalized_clean.is_clean());
     assert!(normalized_clean.diagnostics().is_empty());
     assert_eq!(declaration_items(normalized_clean.syntax()).len(), 1);
+    let opaque = parse_sheet(".a {@media (width:) {padding:1px}}");
+    assert!(opaque.is_clean(), "{:?}", opaque.diagnostics());
+    let normalized_opaque = normalize_report(&opaque).unwrap();
+    assert!(normalized_opaque.is_clean());
+    assert_eq!(normalized_opaque.diagnostics(), opaque.diagnostics());
+    assert_eq!(declaration_items(normalized_opaque.syntax()).len(), 1);
+    let opaque_media = rules(normalized_opaque.syntax())
+        .into_iter()
+        .find(|rule| matches!(rule.kind(), CssRuleContextKindRef::Media(_)))
+        .unwrap();
+    let CssRuleContextKindRef::Media(query) = opaque_media.kind() else {
+        unreachable!()
+    };
+    let [CssMediaQuery::Condition(condition)] = query.queries() else {
+        panic!("expected retained opaque media condition")
+    };
+    let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+        panic!("expected balanced general enclosure")
+    };
+    assert_eq!(enclosed.authored(), Some("(width:)"));
     println!("unchanged recovery diagnostics: ok");
 }
 

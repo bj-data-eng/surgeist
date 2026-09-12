@@ -2,7 +2,7 @@
 
 //! Focused MQ4/MQ5 grouping/operator correction using existing known MQ3 leaves.
 //! Grammar authority: pinned MQ4 2026-02-19 section 3, mq-syntax.
-//! General-enclosed and feature/value classification are outside this slice.
+//! Balanced enclosures retain their own grammar classification alongside grouping.
 
 use surgeist_css::{
     CssErrorCode, CssMediaConditionKind, CssMediaQuery, CssMediaType, CssRecoveryAction, CssRule,
@@ -94,13 +94,28 @@ fn grouped_query_and_malformed_neighbor_retain_exact_list_ownership() {
     assert!(middle.is_guaranteed_false());
     assert_eq!(last.media_type(), CssMediaType::Print);
     let offset = source.find("((color))").unwrap();
-    assert_eq!(first.position().byte_offset().value(), offset);
     assert_eq!(
-        first.position().column().value(),
+        first
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
+        offset
+    );
+    assert_eq!(
+        first
+            .position()
+            .expect("parsed media position")
+            .column()
+            .value(),
         u32::try_from(source[..offset].encode_utf16().count()).unwrap()
     );
     assert_eq!(
-        middle.position().byte_offset().value(),
+        middle
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
         source.find("not not").unwrap()
     );
     let [diagnostic] = report.diagnostics() else {

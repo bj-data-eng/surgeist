@@ -35,14 +35,14 @@ fn parsed_type(name: &str) -> CssMediaType {
 }
 
 #[test]
-fn defined_false_media_syntax_is_not_malformed_recovery() {
+fn balanced_opaque_media_syntax_is_not_malformed_recovery() {
     let report = parse_sheet(concat!(
         "@media only future-screen and (unknown-feature: calc(1foo + 2px)), ",
         "(width: calc(1px)), screen {}",
     ));
     assert!(
         report.is_clean(),
-        "balanced unknown MQ3 syntax is valid defined-false authored syntax: {:?}",
+        "balanced opaque syntax is retained without recovery: {:?}",
         report.diagnostics()
     );
     let [CssRule::Media(rule)] = report.syntax().rules() else {
@@ -54,7 +54,7 @@ fn defined_false_media_syntax_is_not_malformed_recovery() {
             .queries()
             .iter()
             .all(|query| !matches!(query, CssMediaQuery::Never(_))),
-        "defined-false members are distinct from malformed recovery"
+        "opaque members are distinct from malformed recovery"
     );
 
     for malformed in ["layer", "not", "and", "only", "or", "???", ""] {
@@ -407,92 +407,54 @@ fn mq3_named_queries_keep_exact_non_bmp_source_positions() {
     };
 
     let speech_offset = source.find("speech").expect("speech position");
-    assert_eq!(speech.position().byte_offset().value(), speech_offset);
     assert_eq!(
-        speech.position().column().value(),
+        speech
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
+        speech_offset
+    );
+    assert_eq!(
+        speech
+            .position()
+            .expect("parsed media position")
+            .column()
+            .value(),
         u32::try_from(source[..speech_offset].encode_utf16().count()).expect("UTF-16 column")
     );
     let device_offset = source.find("(device-width").expect("device position");
-    assert_eq!(device.position().byte_offset().value(), device_offset);
     assert_eq!(
-        device.position().column().value(),
+        device
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
+        device_offset
+    );
+    assert_eq!(
+        device
+            .position()
+            .expect("parsed media position")
+            .column()
+            .value(),
         u32::try_from(source[..device_offset].encode_utf16().count()).expect("UTF-16 column")
     );
 }
 
 #[test]
-fn mq3_structurally_malformed_features_recover_one_member_and_retain_siblings() {
-    for (invalid, responsible) in [
-        ("(min-width)", "min-width"),
-        ("(min-color)", "min-color"),
-        ("(width:)", ")"),
-        ("(width 1px)", "1px"),
+fn balanced_nonmatching_feature_bodies_preserve_unknown_or_general_enclosed_syntax() {
+    for (css, unknown) in [
+        ("(min-width)", true),
+        ("(min-color)", true),
+        ("(width:)", false),
+        ("(width 1px)", false),
     ] {
-        let source = format!("@media screen,{invalid},print {{ .x {{ color: red; }} }}");
-        let report = parse_sheet(&source);
-        let [CssRule::Media(rule)] = report.syntax().rules() else {
-            panic!("{invalid}: expected retained media rule")
-        };
-        assert!(matches!(
-            rule.query().queries(),
-            [
-                CssMediaQuery::Typed(_),
-                CssMediaQuery::Never(_),
-                CssMediaQuery::Typed(_)
-            ]
-        ));
-        let [diagnostic] = report.diagnostics() else {
-            panic!("{invalid}: expected exactly one query diagnostic")
-        };
-        assert_eq!(
-            diagnostic.action(),
-            CssRecoveryAction::ReplaceMediaQueryWithNever,
-            "{invalid}"
-        );
-        assert_eq!(
-            diagnostic.error().position().byte_offset().value(),
-            source.find(responsible).expect("responsible token"),
-            "{invalid}"
-        );
-
-        assert_eq!(
-            surgeist_css::validate_sheet(&source)
-                .expect_err("strict mode rejects recovered media syntax")
-                .diagnostics(),
-            report.diagnostics(),
-            "{invalid}"
-        );
-    }
-}
-
-#[test]
-fn mq3_unknown_features_and_complete_unknown_values_are_defined_false() {
-    for (css, reason) in [
-        (
-            "(future-feature)",
-            CssDefinedFalseMediaReason::UnknownFeature,
-        ),
-        (
-            "(min-future-feature: 1px)",
-            CssDefinedFalseMediaReason::UnknownFeature,
-        ),
-        (
-            "(future-feature: calc(1foo + 2px))",
-            CssDefinedFalseMediaReason::UnknownFeature,
-        ),
-        ("(width: 2qu)", CssDefinedFalseMediaReason::UnknownValue),
-        (
-            "(orientation: diagonal)",
-            CssDefinedFalseMediaReason::UnknownValue,
-        ),
-        ("(scan: raster)", CssDefinedFalseMediaReason::UnknownValue),
-        ("(grid: 2)", CssDefinedFalseMediaReason::UnknownValue),
-    ] {
-        let source = format!("@media screen,{css},print {{}}");
+        let source = format!("@media screen,{css},print {{ .x {{ color: red; }} }}");
         let report = parse_sheet(&source);
         assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
         let [CssRule::Media(rule)] = report.syntax().rules() else {
-            panic!("{css}: expected retained media rule")
+            panic!("retained media rule")
         };
         let [
             CssMediaQuery::Typed(_),
@@ -500,16 +462,83 @@ fn mq3_unknown_features_and_complete_unknown_values_are_defined_false() {
             CssMediaQuery::Typed(_),
         ] = rule.query().queries()
         else {
-            panic!("{css}: expected comma-local defined-false condition")
+            panic!("three intact ordered members")
         };
-        let CssMediaConditionKind::DefinedFalse(defined_false) = condition.kind() else {
-            panic!("{css}: expected defined-false authored condition")
-        };
-        assert_eq!(defined_false.as_css(), css, "{css}");
-        assert_eq!(defined_false.reason(), reason, "{css}");
-        assert_eq!(defined_false.position(), condition.position(), "{css}");
-        assert!(!rule.query().queries()[1].is_guaranteed_false(), "{css}");
+        match condition.kind() {
+            CssMediaConditionKind::UnknownFeature(value) if unknown => {
+                assert_eq!(
+                    value.reason(),
+                    surgeist_css::CssUnknownMediaFeatureReason::UnknownName
+                );
+                assert_eq!(value.authored(), Some(css));
+            }
+            CssMediaConditionKind::GeneralEnclosed(value) if !unknown => {
+                assert_eq!(value.authored(), Some(css));
+            }
+            _ => panic!("unexpected grammar classification for {css}"),
+        }
+        assert_eq!(
+            condition
+                .position()
+                .expect("parsed media position")
+                .byte_offset()
+                .value(),
+            source.find(css).unwrap()
+        );
+        assert_eq!(
+            surgeist_css::validate_sheet(&source).unwrap(),
+            *report.syntax()
+        );
     }
+}
+
+#[test]
+fn unknown_features_retain_names_values_and_failure_classification() {
+    use surgeist_css::CssUnknownMediaFeatureReason::{InvalidValue, UnknownName};
+    for (css, reason) in [
+        ("(future-feature)", UnknownName),
+        ("(min-future-feature: 1px)", UnknownName),
+        ("(future-feature: foo)", UnknownName),
+        ("(width: 2qu)", InvalidValue),
+        ("(orientation: diagonal)", InvalidValue),
+        ("(scan: raster)", InvalidValue),
+        ("(grid: 2)", InvalidValue),
+    ] {
+        let source = format!("@media screen,{css},print {{}}");
+        let report = parse_sheet(&source);
+        assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
+        let [CssRule::Media(rule)] = report.syntax().rules() else {
+            panic!("retained media rule")
+        };
+        let [
+            CssMediaQuery::Typed(_),
+            CssMediaQuery::Condition(condition),
+            CssMediaQuery::Typed(_),
+        ] = rule.query().queries()
+        else {
+            panic!("three ordered members")
+        };
+        let CssMediaConditionKind::UnknownFeature(value) = condition.kind() else {
+            panic!("unknown feature {css}")
+        };
+        assert_eq!(value.authored(), Some(css));
+        assert_eq!(value.reason(), reason);
+        assert_eq!(value.position(), condition.position());
+        assert!(!rule.query().queries()[1].is_guaranteed_false());
+    }
+    let source = "@media (future-feature: calc(1foo + 2px)) {}";
+    let report = parse_sheet(source);
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    let [CssRule::Media(rule)] = report.syntax().rules() else {
+        panic!("media rule")
+    };
+    let [CssMediaQuery::Condition(condition)] = rule.query().queries() else {
+        panic!("condition query")
+    };
+    let CssMediaConditionKind::GeneralEnclosed(value) = condition.kind() else {
+        panic!("no generic math value derivation")
+    };
+    assert_eq!(value.authored(), Some("(future-feature: calc(1foo + 2px))"));
 }
 
 #[test]
@@ -530,11 +559,18 @@ fn mq3_unknown_media_types_preserve_modifiers_exact_spelling_and_positions() {
     assert_eq!(only_type.as_css(), "F\\75ture-Screen");
     assert_eq!(only_type.reason(), CssDefinedFalseMediaReason::UnknownType);
     assert_eq!(
-        only.position().byte_offset().value(),
+        only.position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
         source.find("only").unwrap()
     );
     assert_eq!(
-        only_type.position().byte_offset().value(),
+        only_type
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
         source.find("F\\75ture-Screen").unwrap()
     );
 
@@ -550,7 +586,7 @@ fn mq3_unknown_media_types_preserve_modifiers_exact_spelling_and_positions() {
 }
 
 #[test]
-fn mq3_defined_false_balanced_nesting_obeys_the_255_256_257_boundary() {
+fn general_enclosed_balanced_nesting_obeys_the_255_256_257_boundary() {
     fn source_at_depth(depth: usize) -> String {
         let functions = depth.saturating_sub(1);
         format!(
@@ -574,7 +610,7 @@ fn mq3_defined_false_balanced_nesting_obeys_the_255_256_257_boundary() {
         assert!(matches!(
             rule.query().queries(),
             [CssMediaQuery::Condition(condition)]
-                if matches!(condition.kind(), CssMediaConditionKind::DefinedFalse(_))
+                if matches!(condition.kind(), CssMediaConditionKind::GeneralEnclosed(_))
         ));
     }
 
@@ -588,7 +624,7 @@ fn mq3_defined_false_balanced_nesting_obeys_the_255_256_257_boundary() {
 }
 
 #[test]
-fn mq3_defined_false_condition_survives_rule_eof_implicit_closure() {
+fn unknown_feature_condition_survives_rule_eof_implicit_closure() {
     let source = "@media (unknown: yes) {";
     let report = parse_sheet(source);
     let [CssRule::Media(rule)] = report.syntax().rules() else {
@@ -597,7 +633,7 @@ fn mq3_defined_false_condition_survives_rule_eof_implicit_closure() {
     assert!(matches!(
         rule.query().queries(),
         [CssMediaQuery::Condition(condition)]
-            if matches!(condition.kind(), CssMediaConditionKind::DefinedFalse(_))
+            if matches!(condition.kind(), CssMediaConditionKind::UnknownFeature(_))
     ));
     let [diagnostic] = report.diagnostics() else {
         panic!("expected only the rule-block EOF closure diagnostic")

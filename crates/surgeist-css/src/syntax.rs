@@ -10,6 +10,8 @@
 //! Downstream adapters can inspect either without depending on parser internals.
 
 use crate::CssFontFeatureValuesRule;
+use crate::CssValueOrigin;
+pub(crate) use crate::media::*;
 pub(crate) use crate::media_features::*;
 pub(crate) use crate::numeric::*;
 use std::collections::HashMap;
@@ -3242,6 +3244,7 @@ impl CssScopedLayerBlockRule {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssMediaQueryList {
     queries: Vec<CssMediaQuery>,
+    pub(crate) comma_origins: Vec<CssValueOrigin>,
 }
 
 impl CssMediaQueryList {
@@ -3256,7 +3259,20 @@ impl CssMediaQueryList {
 
     #[must_use]
     pub(crate) fn new(queries: Vec<CssMediaQuery>) -> Self {
-        Self { queries }
+        Self {
+            queries,
+            comma_origins: Vec::new(),
+        }
+    }
+
+    pub(crate) fn with_comma_origins(
+        queries: Vec<CssMediaQuery>,
+        comma_origins: Vec<CssValueOrigin>,
+    ) -> Self {
+        Self {
+            queries,
+            comma_origins,
+        }
     }
 
     #[must_use]
@@ -3280,11 +3296,14 @@ pub enum CssMediaQuery {
 impl CssMediaQuery {
     /// Returns the first non-trivia position of this authored or recovered query member.
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
+    pub const fn position(&self) -> Option<CssSourcePosition> {
+        crate::media::parsed_position(self.origin())
+    }
+    pub const fn origin(&self) -> &CssValueOrigin {
         match self {
-            Self::Condition(condition) => condition.position(),
-            Self::Typed(query) => query.position(),
-            Self::Never(query) => query.position(),
+            Self::Condition(v) => v.origin(),
+            Self::Typed(v) => v.origin(),
+            Self::Never(v) => v.origin(),
         }
     }
 
@@ -3310,23 +3329,26 @@ impl CssMediaQuery {
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssNeverMediaQuery {
-    position: CssSourcePosition,
+    origin: CssValueOrigin,
 }
-
 impl CssNeverMediaQuery {
-    #[must_use]
-    pub(crate) const fn new(position: CssSourcePosition) -> Self {
-        Self { position }
+    pub(crate) fn new(origin: crate::CssParsedOrigin) -> Self {
+        Self {
+            origin: CssValueOrigin::Parsed(origin),
+        }
     }
-
-    /// Returns the malformed member's first non-trivia position, or its end when empty.
-    #[must_use]
+    pub const fn origin(&self) -> &CssValueOrigin {
+        &self.origin
+    }
     pub const fn position(&self) -> CssSourcePosition {
-        self.position
+        match &self.origin {
+            CssValueOrigin::Parsed(v) => v.span().start(),
+            _ => panic!("parser-only recovery origin"),
+        }
     }
 }
 
-/// A parser-produced typed media query and its exact first non-trivia source position.
+/// A checked authored typed media query with parsed or programmatic provenance.
 ///
 /// Callers can inspect authored semantics but cannot construct or forge parser provenance.
 ///
@@ -3347,8 +3369,9 @@ pub struct CssTypedMediaQuery {
     modifier: Option<CssMediaQueryModifier>,
     media_type: CssMediaType,
     unknown_media_type: Option<CssUnknownMediaType>,
-    condition: Option<CssMediaCondition>,
-    position: CssSourcePosition,
+    condition: Option<Box<CssMediaCondition>>,
+    origin: CssValueOrigin,
+    pub(crate) syntax: Box<MediaTypedSyntax>,
 }
 
 impl CssTypedMediaQuery {
@@ -3357,15 +3380,17 @@ impl CssTypedMediaQuery {
         modifier: Option<CssMediaQueryModifier>,
         media_type: CssMediaType,
         condition: Option<CssMediaCondition>,
-        position: CssSourcePosition,
+        origin: CssValueOrigin,
+        syntax: MediaTypedSyntax,
     ) -> Self {
         debug_assert_ne!(media_type, CssMediaType::Unknown);
         Self {
             modifier,
             media_type,
             unknown_media_type: None,
-            condition,
-            position,
+            condition: condition.map(Box::new),
+            origin,
+            syntax: Box::new(syntax),
         }
     }
 
@@ -3374,14 +3399,16 @@ impl CssTypedMediaQuery {
         modifier: Option<CssMediaQueryModifier>,
         media_type: CssUnknownMediaType,
         condition: Option<CssMediaCondition>,
-        position: CssSourcePosition,
+        origin: CssValueOrigin,
+        syntax: MediaTypedSyntax,
     ) -> Self {
         Self {
             modifier,
             media_type: CssMediaType::Unknown,
             unknown_media_type: Some(media_type),
-            condition,
-            position,
+            condition: condition.map(Box::new),
+            origin,
+            syntax: Box::new(syntax),
         }
     }
 
@@ -3405,13 +3432,19 @@ impl CssTypedMediaQuery {
 
     #[must_use]
     pub const fn condition(&self) -> Option<&CssMediaCondition> {
-        self.condition.as_ref()
+        match &self.condition {
+            Some(condition) => Some(condition),
+            None => None,
+        }
     }
 
     /// Returns the first non-trivia position of the authored typed media query.
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
-        self.position
+    pub const fn position(&self) -> Option<CssSourcePosition> {
+        crate::media::parsed_position(&self.origin)
+    }
+    pub const fn origin(&self) -> &CssValueOrigin {
+        &self.origin
     }
 }
 
@@ -3440,22 +3473,45 @@ pub enum CssMediaType {
     Unknown,
 }
 
-/// A parser-owned unknown MQ3 media type with exact authored spelling and provenance.
+impl CssMediaType {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Screen => "screen",
+            Self::Print => "print",
+            Self::Aural => "aural",
+            Self::Braille => "braille",
+            Self::Embossed => "embossed",
+            Self::Handheld => "handheld",
+            Self::Projection => "projection",
+            Self::Speech => "speech",
+            Self::Tty => "tty",
+            Self::Tv => "tv",
+            Self::Unknown => "unknown",
+        }
+    }
+    /// Whether this type is defined not to match in the selected MQ5 profile.
+    pub const fn is_defined_nonmatching(self) -> bool {
+        !matches!(self, Self::All | Self::Screen | Self::Print)
+    }
+}
+
+/// A checked unknown media type with authored spelling and parsed or programmatic provenance.
 ///
 /// Unknown types are valid authored syntax with defined-false semantics. Private fields prevent
 /// callers from forging parser provenance or pairing this model with a known media type.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssUnknownMediaType {
     spelling: String,
-    position: CssSourcePosition,
+    origin: CssValueOrigin,
 }
 
 impl CssUnknownMediaType {
     #[must_use]
-    pub(crate) fn new(spelling: impl Into<String>, position: CssSourcePosition) -> Self {
+    pub(crate) fn new(spelling: impl Into<String>, origin: CssValueOrigin) -> Self {
         let spelling = spelling.into();
         debug_assert!(!spelling.is_empty());
-        Self { spelling, position }
+        Self { spelling, origin }
     }
 
     /// Returns the exact authored media-type token spelling, including escapes and casing.
@@ -3472,12 +3528,15 @@ impl CssUnknownMediaType {
 
     /// Returns the position of the authored unknown media-type token.
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
-        self.position
+    pub const fn position(&self) -> Option<CssSourcePosition> {
+        crate::media::parsed_position(&self.origin)
+    }
+    pub const fn origin(&self) -> &CssValueOrigin {
+        &self.origin
     }
 }
 
-/// A parser-produced authored media condition with exact first non-trivia provenance.
+/// A checked authored media condition with parsed or programmatic provenance.
 ///
 /// [`Self::kind`] exposes its semantic shape while private fields prevent callers from attaching a
 /// forged source position.
@@ -3492,25 +3551,29 @@ impl CssUnknownMediaType {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssMediaCondition {
     kind: CssMediaConditionKind,
-    position: CssSourcePosition,
+    origin: CssValueOrigin,
+    pub(crate) syntax: MediaConditionSyntax,
 }
-
 impl CssMediaCondition {
-    #[must_use]
-    pub(crate) const fn new(kind: CssMediaConditionKind, position: CssSourcePosition) -> Self {
-        Self { kind, position }
+    pub(crate) fn new(
+        kind: CssMediaConditionKind,
+        origin: CssValueOrigin,
+        syntax: MediaConditionSyntax,
+    ) -> Self {
+        Self {
+            kind,
+            origin,
+            syntax,
+        }
     }
-
-    /// Returns the authored condition shape without evaluating it.
-    #[must_use]
     pub const fn kind(&self) -> &CssMediaConditionKind {
         &self.kind
     }
-
-    /// Returns the first non-trivia position of the authored condition.
-    #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
-        self.position
+    pub const fn origin(&self) -> &CssValueOrigin {
+        &self.origin
+    }
+    pub const fn position(&self) -> Option<CssSourcePosition> {
+        crate::media::parsed_position(&self.origin)
     }
 }
 
@@ -3521,66 +3584,18 @@ pub enum CssMediaConditionKind {
     /// An explicitly parenthesized condition, retaining the outer and inner positions.
     Parenthesized(Box<CssMediaCondition>),
     Feature(CssMediaFeatureQuery),
-    DefinedFalse(CssDefinedFalseMediaCondition),
+    UnknownFeature(CssUnknownMediaFeature),
+    GeneralEnclosed(CssGeneralEnclosed),
     Not(Box<CssMediaCondition>),
     And(CssMediaConditionList),
     Or(CssMediaConditionList),
 }
 
-/// A syntactically valid MQ3 expression whose unknown feature or value is defined to be false.
-///
-/// The complete parenthesized expression is retained exactly as authored. This parser-produced
-/// value is distinct from [`CssNeverMediaQuery`], which represents malformed recovery and always
-/// has a paired diagnostic.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssDefinedFalseMediaCondition {
-    authored: String,
-    reason: CssDefinedFalseMediaReason,
-    position: CssSourcePosition,
-}
-
-impl CssDefinedFalseMediaCondition {
-    #[must_use]
-    pub(crate) fn new(
-        authored: impl Into<String>,
-        reason: CssDefinedFalseMediaReason,
-        position: CssSourcePosition,
-    ) -> Self {
-        let authored = authored.into();
-        debug_assert!(authored.starts_with('('));
-        Self {
-            authored,
-            reason,
-            position,
-        }
-    }
-
-    /// Returns the complete parenthesized expression exactly as authored.
-    #[must_use]
-    pub fn as_css(&self) -> &str {
-        &self.authored
-    }
-
-    /// Returns why this syntactically valid expression is defined to be false.
-    #[must_use]
-    pub const fn reason(&self) -> CssDefinedFalseMediaReason {
-        self.reason
-    }
-
-    /// Returns the position of the expression's opening parenthesis.
-    #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
-        self.position
-    }
-}
-
-/// Why syntactically valid MQ3 authored syntax is defined to be false.
+/// Why an unknown media type is defined to be nonmatching.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum CssDefinedFalseMediaReason {
     UnknownType,
-    UnknownFeature,
-    UnknownValue,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]

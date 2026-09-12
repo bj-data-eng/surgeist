@@ -17,7 +17,14 @@ fn condition(source: &str) -> CssMediaCondition {
 }
 
 fn boolean(value: &CssMediaCondition, name: CssMediaFeatureKind, offset: usize) {
-    assert_eq!(value.position().byte_offset().value(), offset);
+    assert_eq!(
+        value
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
+        offset
+    );
     assert!(
         matches!(value.kind(), CssMediaConditionKind::Feature(CssMediaFeatureQuery::Boolean(actual)) if *actual == name)
     );
@@ -33,14 +40,21 @@ fn main() {
         panic!("two Or operands");
     };
     assert_eq!(
-        left.position().byte_offset().value(),
+        left.position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
         source.find("(not").unwrap()
     );
     let CssMediaConditionKind::Parenthesized(negation) = left.kind() else {
         panic!("explicit left grouping");
     };
     assert_eq!(
-        negation.position().byte_offset().value(),
+        negation
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
         source.find("not ").unwrap()
     );
     let CssMediaConditionKind::Not(color) = negation.kind() else {
@@ -52,7 +66,11 @@ fn main() {
         source.find("(color)").unwrap(),
     );
     assert_eq!(
-        right.position().byte_offset().value(),
+        right
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
         source.find("((monochrome)").unwrap()
     );
     let CssMediaConditionKind::Parenthesized(conjunction) = right.kind() else {
@@ -62,7 +80,11 @@ fn main() {
         panic!("And inside group");
     };
     assert_eq!(
-        conjunction.position().byte_offset().value(),
+        conjunction
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
         source.find("(monochrome)").unwrap()
     );
     let [monochrome, width] = and.conditions() else {
@@ -87,14 +109,22 @@ fn main() {
     };
     let group = typed.condition().expect("typed condition");
     assert_eq!(
-        group.position().byte_offset().value(),
+        group
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
         source.find("((color)").unwrap()
     );
     let CssMediaConditionKind::Parenthesized(disjunction) = group.kind() else {
         panic!("typed grouped Or");
     };
     assert_eq!(
-        disjunction.position().byte_offset().value(),
+        disjunction
+            .position()
+            .expect("parsed media position")
+            .byte_offset()
+            .value(),
         source.find("(color)").unwrap()
     );
     let CssMediaConditionKind::Or(or) = disjunction.kind() else {

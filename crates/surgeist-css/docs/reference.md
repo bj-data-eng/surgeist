@@ -75,8 +75,8 @@ constraints. Retain the context if later matching needs namespace names.
 
 `parse_media_query` replaces a malformed complete query with `CssMediaQuery::Never`.
 `parse_media_query_list` recovers each root comma member independently, preserving
-valid neighbors. A grammatically valid unknown feature remains a defined-false
-condition rather than a malformed-query sentinel. An empty media query list is
+valid neighbors. A grammatically valid unknown feature remains an unknown
+condition. An empty media query list is
 valid and clean; an empty single query is malformed.
 `CssMediaQueryList::try_new` also accepts an empty vector and preserves every
 supplied member in order. Its existing `Option` return type is retained.
@@ -84,18 +84,22 @@ supplied member in order. Its existing `Option` return type is retained.
 Media conditions preserve explicit grouping as
 `CssMediaConditionKind::Parenthesized`: the wrapper position identifies the outer
 opening parenthesis and the child retains its own first non-trivia position.
-`not` takes one parenthesized operand; `and` and `or` each join a homogeneous
+`not` takes one media operand, including a general-enclosed function;
+`and` and `or` each join a homogeneous
 sequence of operands. Mixing operators at one level requires explicit grouping.
 Typed queries use the condition-without-or grammar after `and`, so
 `screen and ((color) or (monochrome))` is valid while
 `screen and (color) or (monochrome)` is malformed. Raw query fragments, stylesheet
-media rules, and import media tails share these productions. This grouping and
-operator contract does not complete general-enclosed or feature/value grammar.
+media rules, and import media tails share these productions. General-enclosed
+fallback is selected only after a complete condition or feature interpretation
+fails. Its contents preserve arbitrary checked component values; malformed outer
+query sequences still recover at their own comma boundary.
 
 Fragments retain the shared 256-level structural limit and report
 `StopAtNestingLimit` without silently discarding neighboring media members.
-Deep parsing uses a bounded parser thread so ordinary callers need not allocate
-a larger stack. Accepted EOF closures appear as recovery diagnostics; clean
+Deep parsing and media construction/serialization use a bounded worker thread
+so ordinary callers need not allocate a larger stack. Accepted EOF closures
+appear as recovery diagnostics; clean
 validation therefore rejects a report that needed them. Functions inside
 discarded forgiving-selector members do not produce retained-closure diagnostics;
 for example, `:is(???f(` reports only the retained `:is()` closure.
@@ -1516,18 +1520,21 @@ views. `CssMediaRatio::numerator()` and `denominator()` return shared number
 calculations; `denominator_is_omitted()` distinguishes an authored denominator
 from its default. The former integer-pair `CssMediaRatio::try_new` constructor
 and `Copy` implementation are removed; obtain the checked ratio through a parsed
-media query and borrow or clone it. Container-query range, length and ratio types retain their
-existing contracts. Complete checked media construction and canonical media
-serialization remain unfinished.
+or component-constructed media query and borrow or clone it. Container-query
+range, length and ratio types retain their existing contracts.
 
-Supported unknown-type, unknown-feature, and unknown-value forms use
-defined-false syntax: their exact authored text is preserved without a
-diagnostic. The following example shows that representation; it is not a claim
-that every balanced unknown form is currently accepted. This is distinct
-from `CssMediaQuery::Never`, which replaces a reserved or structurally malformed
-comma member and is paired with `ReplaceMediaQueryWithNever`. The replacement is
-comma-local, so later query members and the containing `@media` rule remain
-eligible.
+`CssMediaConditionKind::UnknownFeature` replaces the former `DefinedFalse`
+condition. It retains a validated generic feature expression and distinguishes
+an unknown name, invalid value and forbidden operation. General-enclosed syntax
+has its own variant. Both have unknown truth, including under negation; style
+owns eventual evaluation. Unknown media types remain a separate nonmatching
+type class. Neither class is a malformed-query sentinel.
+
+`CssMediaQuery::Never` replaces a reserved or structurally malformed comma member
+and is paired with `ReplaceMediaQueryWithNever`. The replacement is comma-local,
+so later query members and the containing `@media` rule remain eligible.
+Bad strings, bad URLs and unmatched delimiters preserve their typed component
+errors and original coordinates.
 
 ```rust
 use surgeist_css::{
@@ -1544,13 +1551,34 @@ assert!(matches!(
         CssMediaQuery::Condition(condition),
         CssMediaQuery::Never(_),
         CssMediaQuery::Typed(_),
-    ] if matches!(condition.kind(), CssMediaConditionKind::DefinedFalse(_))
+    ] if matches!(condition.kind(), CssMediaConditionKind::UnknownFeature(_))
 ));
 assert_eq!(
     report.diagnostics()[0].action(),
     CssRecoveryAction::ReplaceMediaQueryWithNever,
 );
 ```
+
+`CssMediaQuery::try_from_components` and
+`CssMediaCondition::try_from_components` validate checked Rust components through
+the same grammar. Their `try_from_components_with_limits` variants accept
+`CssComponentValueLimits` and retain distinct byte, component-count and nesting
+failures. The byte budget also covers canonical expansion, such as an omitted
+ratio denominator. Recovered components, including implicit EOF closures, are
+rejected.
+Media query, condition and typed-query positions are now optional: use `origin()`
+for parsed or programmatic provenance and inspect `position()` only when present.
+Cloned parsed components keep their original source coordinates inside
+programmatically constructed parents.
+
+Media query, condition and list `serialize()` methods return `CssSerializedValue`.
+Canonical output normalizes recognized names and grammar separators, preserves
+operand order and symbolic value spelling, and emits both ratio components.
+Opaque enclosures preserve their meaningful token boundaries and comments.
+Serialization fails with `RecoveredNever` if any list member is a recovery
+sentinel; it produces no partial list. Clean authored `not all` remains ordinary
+serializable syntax. These are authored-syntax contracts; custom media and the
+complete import-alternative grammar remain unfinished.
 
 `@supports` conditions expose declaration tests, `not`/`and`/`or` grouping,
 complete Selectors 3 plus the selected existing selector extensions as the typed

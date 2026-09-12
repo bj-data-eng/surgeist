@@ -223,9 +223,8 @@ pub fn parse_media_query(source: &str) -> crate::CssParseReport<CssMediaQuery> {
         let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
         let mut input = ParserInput::new(source);
         let mut input = Parser::new(&mut input);
-        let result = state
-            .check_comma_member_components(source, &input, "baseline.media.query-list")
-            .and_then(|openings| {
+        let result = queries::check_media_member_components(source, &mut input, &state).and_then(
+            |openings| {
                 let query = queries::parse_media_query(
                     source,
                     &mut input,
@@ -234,18 +233,25 @@ pub fn parse_media_query(source: &str) -> crate::CssParseReport<CssMediaQuery> {
                 input.expect_exhausted()?;
                 state.retain_component_closures(openings);
                 Ok(query)
-            });
+            },
+        );
         match result {
             Ok(query) => {
                 crate::CssParseReport::new(query, state.take_implicit_closure_diagnostics(source))
             }
             Err(error) => crate::CssParseReport::new(
                 CssMediaQuery::Never(CssNeverMediaQuery::new(
-                    recovery::first_non_trivia_position(source, 0, source.len()),
+                    crate::CssParsedOrigin::from_range(
+                        state.source_snapshot(),
+                        recovery::first_non_trivia_position(source, 0, source.len())
+                            .byte_offset()
+                            .value()..source.len(),
+                    )
+                    .expect("parsed media recovery origin"),
                 )),
                 vec![reject(
                     source,
-                    if is_nesting_limit_error(&error) {
+                    if queries::media_terminal_error(&error) {
                         error
                     } else {
                         with_media_query_context(error, None)
@@ -260,7 +266,7 @@ pub fn parse_media_query(source: &str) -> crate::CssParseReport<CssMediaQuery> {
 /// Parses a complete media query list with independent recovery for each comma member.
 ///
 /// An empty list is valid. Malformed members become `Never`, while grammatically
-/// valid unknown features remain symbolic defined-false conditions. This operation
+/// valid unknown features retain unknown truth. This operation
 /// performs no matching or contextual evaluation.
 pub fn parse_media_query_list(source: &str) -> crate::CssParseReport<CssMediaQueryList> {
     bounded(source, || {
@@ -285,7 +291,13 @@ pub fn parse_media_query_list(source: &str) -> crate::CssParseReport<CssMediaQue
                     crate::CssRecoveryAction::ReplaceMediaQueryWithNever,
                 ));
                 CssMediaQueryList::new(vec![CssMediaQuery::Never(CssNeverMediaQuery::new(
-                    recovery::first_non_trivia_position(source, 0, source.len()),
+                    crate::CssParsedOrigin::from_range(
+                        state.source_snapshot(),
+                        recovery::first_non_trivia_position(source, 0, source.len())
+                            .byte_offset()
+                            .value()..source.len(),
+                    )
+                    .expect("parsed media recovery origin"),
                 ))])
             }
         };

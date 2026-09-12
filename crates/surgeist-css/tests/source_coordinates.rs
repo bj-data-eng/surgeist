@@ -4,10 +4,10 @@ mod common;
 
 use common::CssParseReportTestExt;
 use surgeist_css::{
-    CssByteOffset, CssDefinedFalseMediaReason, CssErrorCode, CssKnownProperty, CssLineIndex,
-    CssMediaConditionKind, CssMediaQuery, CssMediaType, CssRecoveryAction, CssRule,
-    CssSourcePosition, CssSourceSpan, CssSupportsConditionKind, CssTokenKind, CssUtf16ColumnIndex,
-    ErrorKind, parse_sheet, parse_style_attribute,
+    CssByteOffset, CssErrorCode, CssKnownProperty, CssLineIndex, CssMediaConditionKind,
+    CssMediaQuery, CssMediaType, CssRecoveryAction, CssRule, CssSourcePosition, CssSourceSpan,
+    CssSupportsConditionKind, CssTokenKind, CssUtf16ColumnIndex, ErrorKind, parse_sheet,
+    parse_style_attribute,
 };
 
 fn assert_copy_hash_ord<T: Copy + Eq + Ord + Hash>() {}
@@ -19,7 +19,7 @@ fn assert_position(position: CssSourcePosition, byte_offset: usize, line: u32, c
 }
 
 #[test]
-fn defined_false_media_nodes_preserve_exact_non_bmp_byte_and_utf16_positions() {
+fn opaque_media_nodes_preserve_exact_non_bmp_byte_and_utf16_positions() {
     let source = "@media /*😀*/ only F\\75ture, /*😀*/ (UnKnOwN: CAlc(1foo + 2px)) {}";
     let report = parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -31,7 +31,7 @@ fn defined_false_media_nodes_preserve_exact_non_bmp_byte_and_utf16_positions() {
         CssMediaQuery::Condition(condition),
     ] = rule.query().queries()
     else {
-        panic!("expected unknown type and defined-false feature")
+        panic!("expected unknown type and general enclosure")
     };
 
     assert_eq!(typed.media_type(), CssMediaType::Unknown);
@@ -39,13 +39,13 @@ fn defined_false_media_nodes_preserve_exact_non_bmp_byte_and_utf16_positions() {
     let typed_offset = source.find("only").unwrap();
     let type_offset = source.find("F\\75ture").unwrap();
     assert_position(
-        typed.position(),
+        typed.position().expect("parsed media position"),
         typed_offset,
         0,
         u32::try_from(source[..typed_offset].encode_utf16().count()).unwrap(),
     );
     assert_position(
-        unknown_type.position(),
+        unknown_type.position().expect("parsed media position"),
         type_offset,
         0,
         u32::try_from(source[..type_offset].encode_utf16().count()).unwrap(),
@@ -53,21 +53,17 @@ fn defined_false_media_nodes_preserve_exact_non_bmp_byte_and_utf16_positions() {
     assert_eq!(unknown_type.as_css(), "F\\75ture");
 
     let condition_offset = source.find("(UnKnOwN").unwrap();
-    let CssMediaConditionKind::DefinedFalse(defined_false) = condition.kind() else {
-        panic!("expected defined-false details")
+    let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+        panic!("expected general enclosure details")
     };
     assert_position(
-        condition.position(),
+        condition.position().expect("parsed media position"),
         condition_offset,
         0,
         u32::try_from(source[..condition_offset].encode_utf16().count()).unwrap(),
     );
-    assert_eq!(defined_false.position(), condition.position());
-    assert_eq!(defined_false.as_css(), "(UnKnOwN: CAlc(1foo + 2px))");
-    assert_eq!(
-        defined_false.reason(),
-        CssDefinedFalseMediaReason::UnknownFeature
-    );
+    assert_eq!(enclosed.position(), condition.position());
+    assert_eq!(enclosed.authored(), Some("(UnKnOwN: CAlc(1foo + 2px))"));
 }
 
 #[test]

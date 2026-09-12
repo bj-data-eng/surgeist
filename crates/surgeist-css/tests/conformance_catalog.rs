@@ -1571,8 +1571,9 @@ const EXPECTED: &[ExpectedFeature] = &[
         unsupported_remainder: Some(QUERY_REMAINDER),
         recognized_code: None,
         positive: Some(Input::Sheet("@media (width >= 1px) { .x { color: red; } }")),
+        // Unknown features stay clean; an incomplete outer conjunction is invalid.
         negative: Some((
-            Input::Sheet("@media (min-width) { .x { color: red; } }"),
+            Input::Sheet("@media (width >= 1px) and { .x { color: red; } }"),
             CssErrorCode::InvalidMediaQuery,
         )),
     },
@@ -1591,8 +1592,11 @@ const EXPECTED: &[ExpectedFeature] = &[
         positive: Some(Input::Sheet(
             "@media (orientation: landscape) { .x { color: red; } }",
         )),
+        // Scripting is admitted, but typed queries prohibit an unwrapped outer `or`.
         negative: Some((
-            Input::Sheet("@media (scripting: enabled) { .x { color: red; } }"),
+            Input::Sheet(
+                "@media screen and (scripting: enabled) or (color) { .x { color: red; } }",
+            ),
             CssErrorCode::InvalidMediaQuery,
         )),
     },

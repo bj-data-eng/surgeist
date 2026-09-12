@@ -702,9 +702,12 @@
 //!
 //! # Media, supports, imports, and prelude recovery
 //!
-//! Media Queries 3 syntax preserves defined-false authored input without confusing it with
-//! malformed-member recovery. A balanced unknown feature or value is retained as
-//! [`CssMediaConditionKind::DefinedFalse`] with no diagnostic. A reserved or structurally
+//! Media syntax preserves unknown conditions separately from malformed-member recovery.
+//! A structurally valid unknown feature or value is retained as
+//! [`CssMediaConditionKind::UnknownFeature`] with no diagnostic. Arbitrary checked enclosures
+//! use [`CssMediaConditionKind::GeneralEnclosed`] when no preceding grammar branch applies.
+//! Both preserve unknown truth under negation; query evaluation belongs downstream.
+//! A reserved or structurally
 //! malformed list member becomes [`CssMediaQuery::Never`] and emits
 //! [`CssRecoveryAction::ReplaceMediaQueryWithNever`], allowing later comma siblings to survive.
 //!
@@ -723,7 +726,7 @@
 //!         CssMediaQuery::Condition(condition),
 //!         CssMediaQuery::Never(_),
 //!         CssMediaQuery::Typed(_),
-//!     ] if matches!(condition.kind(), CssMediaConditionKind::DefinedFalse(_))
+//!     ] if matches!(condition.kind(), CssMediaConditionKind::UnknownFeature(_))
 //! ));
 //! assert!(matches!(
 //!     report.diagnostics(),
@@ -1102,6 +1105,8 @@ mod conformance;
 mod error;
 mod expansion;
 mod font_feature_values;
+mod media;
+pub use media::*;
 mod media_features;
 mod normalization;
 pub use media_features::*;

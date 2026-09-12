@@ -6,6 +6,7 @@
 
 mod parse;
 mod serialize;
+pub(crate) use serialize::{CssCanonicalBuilder, CssCanonicalToken};
 
 use std::fmt;
 use std::ops::Range;
@@ -267,7 +268,7 @@ impl CssComponentValueError {
         &self.origin
     }
 
-    fn new(kind: CssComponentValueErrorKind, origin: CssValueOrigin) -> Self {
+    pub(crate) fn new(kind: CssComponentValueErrorKind, origin: CssValueOrigin) -> Self {
         Self { kind, origin }
     }
 
@@ -910,6 +911,75 @@ impl CssComponentValues {
         &self.items
     }
 
+    pub(crate) fn component_at_path(&self, path: &[usize]) -> Option<&CssComponentValue> {
+        let (first, rest) = path.split_first()?;
+        let mut component = self.items.get(*first)?;
+        for index in rest {
+            component = component.child_values()?.items.get(*index)?;
+        }
+        Some(component)
+    }
+
+    pub(crate) fn validate_with_limits(
+        &self,
+        limits: CssComponentValueLimits,
+    ) -> Result<(), CssComponentValueError> {
+        let mut pending: Vec<_> = self
+            .items
+            .iter()
+            .rev()
+            .map(|component| (component, 0))
+            .collect();
+        let mut count = 0usize;
+        while let Some((component, depth)) = pending.pop() {
+            count = count.checked_add(1).ok_or_else(|| {
+                CssComponentValueError::new(
+                    CssComponentValueErrorKind::CapacityOverflow,
+                    component.origin().clone(),
+                )
+            })?;
+            if count > limits.max_components {
+                return Err(CssComponentValueError::new(
+                    CssComponentValueErrorKind::ComponentLimit,
+                    component.origin().clone(),
+                ));
+            }
+            if let Some(children) = component.child_values() {
+                if depth >= limits.max_depth {
+                    return Err(CssComponentValueError::new(
+                        CssComponentValueErrorKind::NestingLimit,
+                        component.origin().clone(),
+                    ));
+                }
+                pending.extend(children.items.iter().rev().map(|child| (child, depth + 1)));
+            }
+        }
+        serialize::validate(self, limits.max_css_bytes)
+    }
+
+    pub(crate) fn first_implicit_origin(&self) -> Option<&CssValueOrigin> {
+        let mut pending: Vec<_> = self.items.iter().rev().collect();
+        while let Some(component) = pending.pop() {
+            let implicit = match &component.data {
+                ComponentData::Token(token) => {
+                    token.implicit_end.as_ref().map(|lexeme| &lexeme.origin)
+                }
+                ComponentData::Comment { implicit_end, .. } => {
+                    implicit_end.as_ref().map(|lexeme| &lexeme.origin)
+                }
+                ComponentData::Function(function) => Some(&function.closing.origin),
+                ComponentData::Block(block) => Some(&block.closing.origin),
+            };
+            if let Some(origin @ CssValueOrigin::ImplicitClosure { .. }) = implicit {
+                return Some(origin);
+            }
+            if let Some(children) = component.child_values() {
+                pending.extend(children.items.iter().rev());
+            }
+        }
+        None
+    }
+
     /// Returns the total component count including descendants and trivia.
     #[must_use]
     pub const fn component_count(&self) -> usize {
@@ -984,7 +1054,7 @@ pub struct CssSerializedValue {
     css: String,
     segments: Box<[CssSerializedOriginSegment]>,
     end: CssSerializedOrigin,
-    component_paths: Box<[(usize, Vec<usize>)]>,
+    component_paths: Box<[(Range<usize>, Vec<usize>)]>,
 }
 
 impl CssSerializedValue {
@@ -1021,15 +1091,85 @@ impl CssSerializedValue {
     pub(crate) fn component_path_at(&self, byte: usize) -> Option<&[usize]> {
         self.component_paths
             .iter()
-            .find(|(start, _)| *start == byte)
+            .find(|(range, _)| range.start == byte)
             .map(|(_, path)| path.as_slice())
     }
     pub(crate) fn component_offset_for_path(&self, path: &[usize]) -> Option<usize> {
         self.component_paths
             .iter()
             .find(|(_, candidate)| candidate.as_slice() == path)
-            .map(|(offset, _)| *offset)
+            .map(|(range, _)| range.start)
     }
+    /// Finds complete sibling components, never a token fragment or a reconstructed graph.
+    pub(crate) fn component_paths_in_range(&self, range: Range<usize>) -> Option<Vec<&[usize]>> {
+        if range.start > range.end || range.end > self.css.len() {
+            return None;
+        }
+        let mut candidates: Vec<_> = self
+            .component_paths
+            .iter()
+            .filter(|(candidate, _)| candidate.start >= range.start && candidate.end <= range.end)
+            .collect();
+        candidates
+            .sort_by_key(|(candidate, _)| (candidate.start, std::cmp::Reverse(candidate.end)));
+        let mut selected: Vec<&(Range<usize>, Vec<usize>)> = Vec::new();
+        for candidate in candidates {
+            if selected
+                .last()
+                .is_some_and(|previous| candidate.0.end <= previous.0.end)
+            {
+                continue;
+            }
+            selected.push(candidate);
+        }
+        if let Some(first) = selected.first() {
+            let parent = &first.1[..first.1.len() - 1];
+            for (index, candidate) in selected.iter().enumerate() {
+                if candidate.1.len() != first.1.len()
+                    || &candidate.1[..candidate.1.len() - 1] != parent
+                    || candidate.1.last().copied()?
+                        != first.1.last().copied()?.checked_add(index)?
+                {
+                    return None;
+                }
+            }
+        }
+        let mut selected_index = 0;
+        for segment in self
+            .segments
+            .iter()
+            .filter(|segment| segment.range.start < range.end && segment.range.end > range.start)
+        {
+            if matches!(segment.origin, CssSerializedOrigin::Separator { .. }) {
+                continue;
+            }
+            while selected
+                .get(selected_index)
+                .is_some_and(|(candidate, _)| candidate.end <= segment.range.start)
+            {
+                selected_index += 1;
+            }
+            let (candidate, _) = selected.get(selected_index)?;
+            if candidate.start > segment.range.start || candidate.end < segment.range.end {
+                return None;
+            }
+        }
+        Some(
+            selected
+                .into_iter()
+                .map(|(_, path)| path.as_slice())
+                .collect(),
+        )
+    }
+
+    pub(crate) fn value_origin_at(&self, byte: usize) -> Option<&CssValueOrigin> {
+        match self.origin_at(byte)? {
+            CssSerializedOrigin::Token(origin)
+            | CssSerializedOrigin::Separator { after: origin, .. } => Some(origin),
+            CssSerializedOrigin::End(origin) => origin.as_ref(),
+        }
+    }
+
     /// Returns the generated token-preserving CSS.
     #[must_use]
     pub fn as_css(&self) -> &str {

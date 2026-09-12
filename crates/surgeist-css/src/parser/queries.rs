@@ -14,9 +14,14 @@ use crate::error::{
     CssFeatureId, Error, basic, from_parse_error, invalid_syntax, is_nesting_limit_error,
     unsupported_value_at, with_media_query_context,
 };
+use crate::media::{MediaConditionSyntax, MediaFeatureShape, MediaFeatureSyntax, MediaTypedSyntax};
 use crate::media_features::{MediaRangeState, MediaValueFamily};
 use crate::numeric::{CalculationRoot, NumericInputContext};
 use crate::syntax::*;
+use crate::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssValueOrigin, CssValueTokenRef,
+};
 
 pub(super) static IMPLEMENTED_MEDIA: &[CssFeatureId] = &[
     CssFeatureId::new("baseline.media.type"),
@@ -90,15 +95,12 @@ pub(super) fn parse_media_query_list_with_closures<'i, 't>(
 
     let mut queries = Vec::new();
     let mut implicit_closures = Vec::new();
+    let mut comma_origins = Vec::new();
     let mut preceding_comma = None;
     loop {
         let member_start = input.position().byte_index();
         let result = input.parse_until_before(Delimiter::Comma, |member| {
-            let openings = recovery.check_comma_member_components(
-                source,
-                member,
-                "baseline.media.query-list",
-            )?;
+            let openings = check_media_member_components(source, member, recovery)?;
             let query = parse_media_query(
                 source,
                 member,
@@ -110,7 +112,16 @@ pub(super) fn parse_media_query_list_with_closures<'i, 't>(
         let member_end = input.position().byte_index();
         let comma_start = member_end;
         let following_comma = match input.next().cloned() {
-            Ok(Token::Comma) => Some((comma_start, input.position().byte_index())),
+            Ok(Token::Comma) => {
+                comma_origins.push(CssValueOrigin::Parsed(
+                    crate::CssParsedOrigin::from_range(
+                        recovery.source_snapshot(),
+                        comma_start..input.position().byte_index(),
+                    )
+                    .expect("parsed comma"),
+                ));
+                Some((comma_start, input.position().byte_index()))
+            }
             Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => None,
             Ok(token) => {
                 return Err(with_media_query_context(
@@ -131,7 +142,7 @@ pub(super) fn parse_media_query_list_with_closures<'i, 't>(
                     &error,
                     crate::CssRecoveryAction::ReplaceMediaQueryWithNever,
                 );
-                let error = if action == crate::CssRecoveryAction::StopAtNestingLimit {
+                let error = if media_terminal_error(&error) {
                     error
                 } else {
                     with_media_query_context(error, None)
@@ -161,7 +172,13 @@ pub(super) fn parse_media_query_list_with_closures<'i, 't>(
                     ));
                 };
                 diagnostics.push(diagnostic);
-                queries.push(CssMediaQuery::Never(CssNeverMediaQuery::new(position)));
+                queries.push(CssMediaQuery::Never(CssNeverMediaQuery::new(
+                    crate::CssParsedOrigin::from_range(
+                        recovery.source_snapshot(),
+                        position.byte_offset().value()..member_end,
+                    )
+                    .expect("media member origin"),
+                )));
             }
         }
 
@@ -171,7 +188,7 @@ pub(super) fn parse_media_query_list_with_closures<'i, 't>(
         preceding_comma = Some(comma);
     }
     Ok(ParsedMediaQueryList {
-        queries: CssMediaQueryList::new(queries),
+        queries: CssMediaQueryList::with_comma_origins(queries, comma_origins),
         implicit_closures,
     })
 }
@@ -387,40 +404,76 @@ pub(super) fn parse_media_query<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssMediaQuery, ParseError<'i, Error>> {
-    let position = first_non_trivia_parser_position(input);
-    match input.try_parse(|input| parse_typed_media_query(source, input, position, numeric)) {
+) -> Result<CssMediaQuery, ParseError<'i, Error>> {
+    parse_media_query_inner(
+        source,
+        input,
+        &MediaInput {
+            numeric,
+            limits: CssComponentValueLimits::default(),
+        },
+    )
+}
+fn parse_media_query_inner<'i, 't>(
+    source: &str,
+    input: &mut Parser<'i, 't>,
+    numeric: &MediaInput<'_>,
+) -> Result<CssMediaQuery, ParseError<'i, Error>> {
+    match input.try_parse(|p| parse_typed_media_query(source, p, numeric)) {
         Ok(query) => return Ok(CssMediaQuery::Typed(query)),
-        Err(error) if is_nesting_limit_error(&error) => return Err(error),
+        Err(error) if media_terminal_error(&error) => return Err(error),
         Err(_) => {}
     }
-
     parse_media_condition(source, input, numeric).map(CssMediaQuery::Condition)
 }
-
 fn parse_typed_media_query<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
-    position: crate::CssSourcePosition,
-    numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssTypedMediaQuery, ParseError<'i, Error>> {
+    numeric: &MediaInput<'_>,
+) -> Result<CssTypedMediaQuery, ParseError<'i, Error>> {
+    let start = input.state();
     let modifier = input.try_parse(parse_media_query_modifier).ok();
-    let media_type = parse_media_type(source, input)?;
-    let condition = if input
-        .try_parse(|input| input.expect_ident_matching("and"))
-        .is_ok()
-    {
+    let modifier_component = if modifier.is_some() {
+        let end = input.state();
+        input.reset(&start);
+        let component = numeric
+            .collect(input)
+            .map_err(|e| media_numeric_error(source, input, numeric, e))?;
+        input.reset(&end);
+        Some(component)
+    } else {
+        None
+    };
+    let type_start = input.state();
+    let media_type = parse_media_type(source, input, numeric)?;
+    let type_end = input.state();
+    input.reset(&type_start);
+    let component = numeric
+        .collect(input)
+        .map_err(|e| media_numeric_error(source, input, numeric, e))?;
+    input.reset(&type_end);
+    let conjunction = take_media_keyword(input, numeric, "and")?;
+    let condition = if conjunction.is_some() {
         Some(parse_media_condition_without_or(source, input, numeric)?)
     } else {
         None
     };
-
+    let origin = modifier_component
+        .as_ref()
+        .unwrap_or(&component)
+        .origin()
+        .clone();
+    let syntax = MediaTypedSyntax {
+        modifier: modifier_component,
+        media_type: component,
+        conjunction,
+    };
     Ok(match media_type {
-        ParsedMediaType::Known(media_type) => {
-            CssTypedMediaQuery::new(modifier, media_type, condition, position)
+        ParsedMediaType::Known(ty) => {
+            CssTypedMediaQuery::new(modifier, ty, condition, origin, syntax)
         }
-        ParsedMediaType::Unknown(media_type) => {
-            CssTypedMediaQuery::new_unknown(modifier, media_type, condition, position)
+        ParsedMediaType::Unknown(ty) => {
+            CssTypedMediaQuery::new_unknown(modifier, ty, condition, origin, syntax)
         }
     })
 }
@@ -449,6 +502,7 @@ enum ParsedMediaType {
 fn parse_media_type<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
+    numeric: &MediaInput<'_>,
 ) -> std::result::Result<ParsedMediaType, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let position = first_non_trivia_parser_position(input);
@@ -474,7 +528,7 @@ fn parse_media_type<'i, 't>(
             source
                 .get(position.byte_offset().value()..input.position().byte_index())
                 .unwrap_or(ident.as_ref()),
-            position,
+            numeric.origin_at(position.byte_offset().value()).expect("media type token origin"),
         ))),
     }
 }
@@ -482,7 +536,7 @@ fn parse_media_type<'i, 't>(
 fn parse_media_condition<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
+    numeric: &MediaInput<'_>,
 ) -> std::result::Result<CssMediaCondition, ParseError<'i, Error>> {
     parse_media_condition_with_or(source, input, true, numeric)
 }
@@ -490,168 +544,378 @@ fn parse_media_condition<'i, 't>(
 fn parse_media_condition_without_or<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
+    numeric: &MediaInput<'_>,
 ) -> std::result::Result<CssMediaCondition, ParseError<'i, Error>> {
     parse_media_condition_with_or(source, input, false, numeric)
 }
 
+fn take_media_keyword<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &MediaInput<'_>,
+    keyword: &str,
+) -> Result<Option<CssValueOrigin>, ParseError<'i, Error>> {
+    let start = input.state();
+    input.skip_whitespace();
+    let offset = input.position().byte_index();
+    if input
+        .try_parse(|p| p.expect_ident_matching(keyword))
+        .is_ok()
+    {
+        Ok(Some(
+            numeric
+                .origin_at(offset)
+                .expect("media keyword original origin"),
+        ))
+    } else {
+        input.reset(&start);
+        Ok(None)
+    }
+}
 fn parse_media_condition_with_or<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     allow_or: bool,
-    numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssMediaCondition, ParseError<'i, Error>> {
-    let position = first_non_trivia_parser_position(input);
-    if input
-        .try_parse(|input| input.expect_ident_matching("not"))
-        .is_ok()
-    {
+    numeric: &MediaInput<'_>,
+) -> Result<CssMediaCondition, ParseError<'i, Error>> {
+    if let Some(origin) = take_media_keyword(input, numeric, "not")? {
         return Ok(CssMediaCondition::new(
             CssMediaConditionKind::Not(Box::new(parse_media_in_parens(source, input, numeric)?)),
-            position,
+            origin,
+            MediaConditionSyntax::Not,
         ));
     }
     let first = parse_media_in_parens(source, input, numeric)?;
-
-    if input
-        .try_parse(|input| input.expect_ident_matching("and"))
-        .is_ok()
-    {
-        let mut conditions = vec![first, parse_media_in_parens(source, input, numeric)?];
-        while input
-            .try_parse(|input| input.expect_ident_matching("and"))
-            .is_ok()
-        {
-            conditions.push(parse_media_in_parens(source, input, numeric)?);
-        }
-        return Ok(CssMediaCondition::new(
-            CssMediaConditionKind::And(CssMediaConditionList::new(conditions)),
-            position,
-        ));
+    let origin = first.origin().clone();
+    let and = take_media_keyword(input, numeric, "and")?;
+    let (keyword, operator) = if let Some(operator) = and {
+        ("and", Some(operator))
+    } else if allow_or {
+        ("or", take_media_keyword(input, numeric, "or")?)
+    } else {
+        ("and", None)
+    };
+    let Some(operator) = operator else {
+        return Ok(first);
+    };
+    let mut operators = vec![operator];
+    let mut children = vec![first, parse_media_in_parens(source, input, numeric)?];
+    while let Some(operator) = take_media_keyword(input, numeric, keyword)? {
+        operators.push(operator);
+        children.push(parse_media_in_parens(source, input, numeric)?);
     }
-
-    if allow_or
-        && input
-            .try_parse(|input| input.expect_ident_matching("or"))
-            .is_ok()
-    {
-        let mut conditions = vec![first, parse_media_in_parens(source, input, numeric)?];
-        while input
-            .try_parse(|input| input.expect_ident_matching("or"))
-            .is_ok()
-        {
-            conditions.push(parse_media_in_parens(source, input, numeric)?);
-        }
-        return Ok(CssMediaCondition::new(
-            CssMediaConditionKind::Or(CssMediaConditionList::new(conditions)),
-            position,
-        ));
-    }
-
-    Ok(first)
+    let children = CssMediaConditionList::new(children);
+    let kind = if keyword == "and" {
+        CssMediaConditionKind::And(children)
+    } else {
+        CssMediaConditionKind::Or(children)
+    };
+    Ok(CssMediaCondition::new(
+        kind,
+        origin,
+        MediaConditionSyntax::Junction(operators),
+    ))
 }
-
 fn parse_media_in_parens<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssMediaCondition, ParseError<'i, Error>> {
-    let position = first_non_trivia_parser_position(input);
-    let expression_start = position.byte_offset().value();
-    input.expect_parenthesis_block().map_err(basic)?;
-    let parsed = input.parse_nested_block(|input| {
-        match input.try_parse(|input| {
-            let condition = parse_media_condition(source, input, numeric)?;
-            input.expect_exhausted()?;
-            Ok(condition)
-        }) {
-            Ok(condition) => {
-                return Ok(ParsedMediaConditionAtom::Parenthesized(Box::new(condition)));
-            }
-            Err(error) if is_nesting_limit_error(&error) => return Err(error),
-            Err(_) => {}
+    numeric: &MediaInput<'_>,
+) -> Result<CssMediaCondition, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let start = input.state();
+    let component = numeric
+        .collect(input)
+        .map_err(|e| media_numeric_error(source, input, numeric, e))?;
+    let end = input.state();
+    let origin = component.origin().clone();
+    let closing = match component.view() {
+        CssComponentValueRef::Function(_) => None,
+        CssComponentValueRef::Block(block) if block.kind() == crate::CssBlockKind::Parenthesis => {
+            Some(block.closing_origin().clone())
         }
-        let initial = input.state();
-        match parse_media_feature_query(source, input, numeric) {
-            Ok(feature) if input.is_exhausted() => Ok(ParsedMediaConditionAtom::Feature(feature)),
-            Ok(_) => {
-                let location = input.current_source_location();
-                input.reset(&initial);
-                parse_defined_false_media_reason(input)
-                    .map(ParsedMediaConditionAtom::DefinedFalse)
-                    .ok_or_else(|| {
-                        invalid_syntax(location, "unexpected token in media feature query")
-                    })
+        _ => {
+            return Err(invalid_syntax(
+                start.source_location(),
+                "expected media parenthesis or function",
+            ));
+        }
+    };
+    if let Some(closing) = closing {
+        input.reset(&start);
+        input.expect_parenthesis_block().map_err(basic)?;
+        let candidate = input.parse_nested_block(|p| {
+            let initial = p.state();
+            match p.try_parse(|p| {
+                let v = parse_media_condition(source, p, numeric)?;
+                p.expect_exhausted()?;
+                Ok(v)
+            }) {
+                Ok(inner) => {
+                    return Ok(Some((
+                        CssMediaConditionKind::Parenthesized(Box::new(inner)),
+                        MediaConditionSyntax::Group { closing },
+                    )));
+                }
+                Err(e) if media_terminal_error(&e) => return Err(e),
+                Err(_) => {}
             }
-            Err(error) if is_nesting_limit_error(&error) => Err(error),
-            Err(error) => {
-                input.reset(&initial);
-                if let Some(reason) = parse_defined_false_media_reason(input) {
-                    Ok(ParsedMediaConditionAtom::DefinedFalse(reason))
-                } else {
-                    Err(error)
+            p.reset(&initial);
+            let mut syntax =
+                match parse_generic_media_feature(source, p, numeric, component.clone()) {
+                    Ok(value) => value,
+                    Err(e) if media_terminal_error(&e) => return Err(e),
+                    Err(_) => {
+                        // The original complete component was validated above. Consume this
+                        // speculative parser before retaining that component as opaque syntax.
+                        while p.next_including_whitespace_and_comments().is_ok() {}
+                        return Ok(None);
+                    }
+                };
+            let known = known_generic_name(&syntax);
+            if let Some(name) = known {
+                syntax.canonical_name = Some(syntax.name_text.to_ascii_lowercase());
+                let discrete_range = name.id.family() == MediaValueFamily::Discrete
+                    && match &syntax.shape {
+                        MediaFeatureShape::Boolean => false,
+                        MediaFeatureShape::Range(r) => {
+                            !matches!(r.view(), CssMediaRangeRef::Plain { .. })
+                        }
+                    };
+                if discrete_range {
+                    return Ok(Some((
+                        CssMediaConditionKind::UnknownFeature(CssUnknownMediaFeature::new(
+                            syntax,
+                            CssUnknownMediaFeatureReason::InvalidOperation,
+                        )),
+                        MediaConditionSyntax::Enclosed,
+                    )));
+                }
+                p.reset(&initial);
+                match parse_media_feature_query(source, p, numeric) {
+                    Ok(feature) if p.is_exhausted() => {
+                        return Ok(Some((
+                            CssMediaConditionKind::Feature(feature),
+                            MediaConditionSyntax::Feature(Box::new(syntax)),
+                        )));
+                    }
+                    Err(e) if media_terminal_error(&e) => return Err(e),
+                    _ => {}
+                }
+                Ok(Some((
+                    CssMediaConditionKind::UnknownFeature(CssUnknownMediaFeature::new(
+                        syntax,
+                        CssUnknownMediaFeatureReason::InvalidValue,
+                    )),
+                    MediaConditionSyntax::Enclosed,
+                )))
+            } else {
+                Ok(Some((
+                    CssMediaConditionKind::UnknownFeature(CssUnknownMediaFeature::new(
+                        syntax,
+                        CssUnknownMediaFeatureReason::UnknownName,
+                    )),
+                    MediaConditionSyntax::Enclosed,
+                )))
+            }
+        })?;
+        input.reset(&end);
+        if let Some((kind, syntax)) = candidate {
+            return Ok(CssMediaCondition::new(kind, origin, syntax));
+        }
+    }
+    input.reset(&end);
+    let enclosed = CssGeneralEnclosed::try_from_component(component)
+        .map_err(|_| invalid_syntax(start.source_location(), "invalid media enclosure"))?;
+    Ok(CssMediaCondition::new(
+        CssMediaConditionKind::GeneralEnclosed(enclosed),
+        origin,
+        MediaConditionSyntax::Enclosed,
+    ))
+}
+fn known_generic_name(syntax: &MediaFeatureSyntax) -> Option<MediaFeatureName> {
+    if let Some(id) = CssMediaFeatureKind::from_name(&syntax.name_text) {
+        return Some(MediaFeatureName { id, prefix: None });
+    }
+    if matches!(&syntax.shape,MediaFeatureShape::Range(range) if matches!(range.view(),CssMediaRangeRef::Plain{..}))
+    {
+        MediaFeatureName::parse(&syntax.name_text)
+    } else {
+        None
+    }
+}
+fn parse_generic_media_feature<'i, 't>(
+    source: &str,
+    input: &mut Parser<'i, 't>,
+    numeric: &MediaInput<'_>,
+    component: CssComponentValue,
+) -> Result<MediaFeatureSyntax, ParseError<'i, Error>> {
+    let initial = input.state();
+    let first = input.try_parse(|p| generic_feature_first(source, p, numeric, component.clone()));
+    match &first {
+        Ok(v) if known_generic_name(v).is_some() => return first,
+        Err(e) if media_terminal_error(e) => return first,
+        _ => {}
+    }
+    input.reset(&initial);
+    let second = input.try_parse(|p| generic_value_first(source, p, numeric, component));
+    if let Err(e) = &second
+        && media_terminal_error(e)
+    {
+        return second;
+    }
+    match (first, second) {
+        (_, Ok(second)) if known_generic_name(&second).is_some() => Ok(second),
+        (Ok(first), _) => {
+            while input.next_including_whitespace_and_comments().is_ok() {}
+            Ok(first)
+        }
+        (_, other) => other,
+    }
+}
+fn generic_feature_first<'i, 't>(
+    source: &str,
+    input: &mut Parser<'i, 't>,
+    numeric: &MediaInput<'_>,
+    component: CssComponentValue,
+) -> Result<MediaFeatureSyntax, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let name_start = input.state();
+    let name_text = input.expect_ident_cloned().map_err(basic)?.to_string();
+    input.reset(&name_start);
+    let name = numeric
+        .collect(input)
+        .map_err(|e| media_numeric_error(source, input, numeric, e))?;
+    let mut separators = if input.is_exhausted() {
+        Vec::new()
+    } else {
+        vec![vec![numeric.next_origin(input)]]
+    };
+    let shape = if input.is_exhausted() {
+        MediaFeatureShape::Boolean
+    } else if input.try_parse(Parser::expect_colon).is_ok() {
+        MediaFeatureShape::Range(CssMediaRange::new(MediaRangeState::Plain {
+            value: generic_media_value(source, input, numeric)?,
+        }))
+    } else {
+        let (comparison, origins) = generic_comparison(input, numeric)?;
+        separators[0] = origins;
+        MediaFeatureShape::Range(CssMediaRange::new(MediaRangeState::FeatureFirst {
+            comparison,
+            value: generic_media_value(source, input, numeric)?,
+        }))
+    };
+    input.expect_exhausted()?;
+    Ok(MediaFeatureSyntax {
+        component,
+        name,
+        name_text,
+        canonical_name: None,
+        shape,
+        separators,
+    })
+}
+fn generic_value_first<'i, 't>(
+    source: &str,
+    input: &mut Parser<'i, 't>,
+    numeric: &MediaInput<'_>,
+    component: CssComponentValue,
+) -> Result<MediaFeatureSyntax, ParseError<'i, Error>> {
+    let left = generic_media_value(source, input, numeric)?;
+    let (comparison, origins) = generic_comparison(input, numeric)?;
+    let mut separators = vec![origins];
+    input.skip_whitespace();
+    let name_start = input.state();
+    let name_text = input.expect_ident_cloned().map_err(basic)?.to_string();
+    input.reset(&name_start);
+    let name = numeric
+        .collect(input)
+        .map_err(|e| media_numeric_error(source, input, numeric, e))?;
+    let state = if input.is_exhausted() {
+        MediaRangeState::ValueFirst {
+            value: left,
+            comparison,
+        }
+    } else {
+        let (second, origins) = generic_comparison(input, numeric)?;
+        separators.push(origins);
+        let right = generic_media_value(source, input, numeric)?;
+        use CssQueryComparison::{GreaterThan, GreaterThanOrEqual, LessThan, LessThanOrEqual};
+        match (comparison, second) {
+            (LessThan | LessThanOrEqual, LessThan | LessThanOrEqual) => {
+                MediaRangeState::Ascending {
+                    left,
+                    left_inclusive: comparison == LessThanOrEqual,
+                    right,
+                    right_inclusive: second == LessThanOrEqual,
                 }
             }
-        }
-    })?;
-    let kind = match parsed {
-        ParsedMediaConditionAtom::Parenthesized(condition) => {
-            CssMediaConditionKind::Parenthesized(condition)
-        }
-        ParsedMediaConditionAtom::Feature(feature) => CssMediaConditionKind::Feature(feature),
-        ParsedMediaConditionAtom::DefinedFalse(reason) => {
-            let expression_end = input.position().byte_index();
-            let authored = source
-                .get(expression_start..expression_end)
-                .unwrap_or_default();
-            CssMediaConditionKind::DefinedFalse(CssDefinedFalseMediaCondition::new(
-                authored, reason, position,
-            ))
+            (GreaterThan | GreaterThanOrEqual, GreaterThan | GreaterThanOrEqual) => {
+                MediaRangeState::Descending {
+                    left,
+                    left_inclusive: comparison == GreaterThanOrEqual,
+                    right,
+                    right_inclusive: second == GreaterThanOrEqual,
+                }
+            }
+            _ => {
+                return Err(invalid_syntax(
+                    input.current_source_location(),
+                    "invalid chained media comparison",
+                ));
+            }
         }
     };
-    Ok(CssMediaCondition::new(kind, position))
-}
-
-enum ParsedMediaConditionAtom {
-    Parenthesized(Box<CssMediaCondition>),
-    Feature(CssMediaFeatureQuery),
-    DefinedFalse(CssDefinedFalseMediaReason),
-}
-
-fn parse_defined_false_media_reason(
-    input: &mut Parser<'_, '_>,
-) -> Option<CssDefinedFalseMediaReason> {
-    let ident = input.expect_ident_cloned().ok()?;
-    if ident.eq_ignore_ascii_case("scripting") {
-        return None;
-    }
-
-    let feature_name = MediaFeatureName::parse(&ident);
-    if feature_name.is_some_and(|name| !name.is_mq3()) {
-        return None;
-    }
-    if input.is_exhausted() {
-        return feature_name
-            .is_none()
-            .then_some(CssDefinedFalseMediaReason::UnknownFeature);
-    }
-
-    let has_value_separator = match feature_name {
-        Some(name) if name.is_range() => {
-            parse_range_feature_comparison(input, name.prefix()).is_ok()
-        }
-        Some(_) | None => input.expect_colon().is_ok(),
-    };
-    if !has_value_separator || input.is_exhausted() {
-        return None;
-    }
-
-    while input.next_including_whitespace_and_comments().is_ok() {}
-    Some(if feature_name.is_some() {
-        CssDefinedFalseMediaReason::UnknownValue
-    } else {
-        CssDefinedFalseMediaReason::UnknownFeature
+    input.expect_exhausted()?;
+    Ok(MediaFeatureSyntax {
+        component,
+        name,
+        name_text,
+        canonical_name: None,
+        shape: MediaFeatureShape::Range(CssMediaRange::new(state)),
+        separators,
     })
+}
+fn generic_media_value<'i, 't>(
+    source: &str,
+    input: &mut Parser<'i, 't>,
+    numeric: &MediaInput<'_>,
+) -> Result<CssComponentValues, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let start = input.state();
+    let component = numeric
+        .collect(input)
+        .map_err(|e| media_numeric_error(source, input, numeric, e))?;
+    let can_ratio = match component.view() {
+        CssComponentValueRef::Token(CssValueTokenRef::Number(n)) => !negative_literal(n),
+        CssComponentValueRef::Token(
+            CssValueTokenRef::Dimension { .. } | CssValueTokenRef::Ident(_),
+        ) => false,
+        CssComponentValueRef::Function(_) => {
+            let values = CssComponentValues::try_new(vec![component.clone()]).map_err(|e| {
+                crate::error::invalid_component_value(input.current_source_location(), e)
+            })?;
+            let expression = numeric
+                .admit(values, CalculationRoot::NamedDimensionOrNumber)
+                .map_err(|e| media_numeric_error(source, input, numeric, e))?;
+            expression.result_type() == CssCalculationType::Number
+        }
+        _ => {
+            return Err(invalid_syntax(
+                start.source_location(),
+                "invalid generic media value",
+            ));
+        }
+    };
+    if can_ratio && input.try_parse(|p| p.expect_delim('/')).is_ok() {
+        let denominator = parse_media_numeric(source, input, numeric, CalculationRoot::Number)
+            .map(CssNumberCalculation::from_expression)?;
+        if media_literal_number(denominator.components()).is_some_and(negative_literal) {
+            return Err(invalid_syntax(
+                start.source_location(),
+                "negative ratio denominator",
+            ));
+        }
+    }
+    numeric.between(input, &start)
 }
 
 fn first_non_trivia_parser_position(input: &mut Parser<'_, '_>) -> crate::CssSourcePosition {
@@ -681,7 +945,7 @@ fn first_non_trivia_parser_position(input: &mut Parser<'_, '_>) -> crate::CssSou
 fn parse_media_feature_query<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
+    numeric: &MediaInput<'_>,
 ) -> Result<CssMediaFeatureQuery, ParseError<'i, Error>> {
     let initial = input.state();
     let first_name = input.try_parse(Parser::expect_ident_cloned).ok();
@@ -894,20 +1158,22 @@ fn parse_media_range<'i, 't, T>(
 fn media_numeric_error<'i>(
     source: &str,
     input: &Parser<'i, '_>,
-    numeric: &NumericInputContext<'_>,
+    numeric: &MediaInput<'_>,
     error: crate::CssNumericConstructionError,
 ) -> ParseError<'i, Error> {
-    if matches!(
-        error.kind(),
-        crate::CssNumericConstructionErrorKind::ResourceLimit
-    ) {
-        return crate::error::nesting_limit(
-            source,
-            input.position().byte_index(),
-            256,
-            "media numeric value",
-        );
+    if let Some(component) = error.component_error() {
+        // No component at a grammar boundary is an absent operand, not a bad
+        // authored token. Other component failures remain terminal and typed.
+        let absent = component.kind() == crate::CssComponentValueErrorKind::InvalidToken
+            && matches!(component.origin(), CssValueOrigin::Parsed(origin) if origin.span().start()==origin.span().end());
+        if !absent {
+            return crate::error::invalid_component_value(
+                input.current_source_location(),
+                component.clone(),
+            );
+        }
     }
+    let _ = source;
     unsupported_value_at(
         numeric.error_location(
             &error,
@@ -921,7 +1187,7 @@ fn media_numeric_error<'i>(
 fn parse_media_numeric<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
+    numeric: &MediaInput<'_>,
     root: CalculationRoot,
 ) -> Result<CssCalculationExpression, ParseError<'i, Error>> {
     let component = numeric
@@ -954,7 +1220,7 @@ fn negative_literal(number: crate::CssNumericTokenRef<'_>) -> bool {
 fn parse_media_ratio<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
+    numeric: &MediaInput<'_>,
 ) -> Result<CssMediaRatio, ParseError<'i, Error>> {
     let operand = |input: &mut Parser<'i, 't>| {
         let value = CssNumberCalculation::from_expression(parse_media_numeric(
@@ -995,7 +1261,7 @@ fn parse_media_ratio<'i, 't>(
 fn parse_media_grid<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
+    numeric: &MediaInput<'_>,
 ) -> Result<CssMediaGrid, ParseError<'i, Error>> {
     let calculation = CssIntegerCalculation::from_expression(parse_media_numeric(
         source,
@@ -1028,7 +1294,7 @@ fn parse_media_grid<'i, 't>(
 fn parse_media_discrete<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
+    numeric: &MediaInput<'_>,
     id: CssMediaFeatureKind,
 ) -> Result<CssMediaFeatureQuery, ParseError<'i, Error>> {
     match id {
@@ -1248,31 +1514,6 @@ impl MediaFeatureName {
     }
     fn boolean_kind(self) -> Option<CssMediaFeatureKind> {
         self.prefix.is_none().then_some(self.id)
-    }
-    fn prefix(self) -> Option<RangePrefix> {
-        self.prefix
-    }
-    fn is_range(self) -> bool {
-        self.id.family() != MediaValueFamily::Discrete
-    }
-    // Legacy unknown classification is replaced by the following admission slice.
-    fn is_mq3(self) -> bool {
-        matches!(
-            self.id,
-            CssMediaFeatureKind::Width
-                | CssMediaFeatureKind::Height
-                | CssMediaFeatureKind::DeviceWidth
-                | CssMediaFeatureKind::DeviceHeight
-                | CssMediaFeatureKind::AspectRatio
-                | CssMediaFeatureKind::DeviceAspectRatio
-                | CssMediaFeatureKind::Resolution
-                | CssMediaFeatureKind::Color
-                | CssMediaFeatureKind::ColorIndex
-                | CssMediaFeatureKind::Monochrome
-                | CssMediaFeatureKind::Orientation
-                | CssMediaFeatureKind::Scan
-                | CssMediaFeatureKind::Grid
-        )
     }
 }
 
@@ -1526,4 +1767,245 @@ fn parse_discrete_ident<'i, 't, T>(
             format!("unsupported {feature} value `{ident}`"),
         )
     })
+}
+
+struct MediaInput<'a> {
+    numeric: &'a NumericInputContext<'a>,
+    limits: CssComponentValueLimits,
+}
+impl MediaInput<'_> {
+    fn collect(
+        &self,
+        input: &mut Parser<'_, '_>,
+    ) -> Result<CssComponentValue, crate::CssNumericConstructionError> {
+        self.numeric.collect(input)
+    }
+    fn origin_at(&self, offset: usize) -> Option<CssValueOrigin> {
+        self.numeric.origin_at(offset)
+    }
+    fn next_origin(&self, input: &mut Parser<'_, '_>) -> CssValueOrigin {
+        input.skip_whitespace();
+        self.origin_at(input.position().byte_index())
+            .expect("checked media cursor origin")
+    }
+    fn admit(
+        &self,
+        values: CssComponentValues,
+        root: CalculationRoot,
+    ) -> Result<CssCalculationExpression, crate::CssNumericConstructionError> {
+        self.numeric.admit_with_limits(values, root, self.limits)
+    }
+    fn error_location(
+        &self,
+        error: &crate::CssNumericConstructionError,
+        fallback: cssparser::SourceLocation,
+        offset: usize,
+    ) -> cssparser::SourceLocation {
+        self.numeric.error_location(error, fallback, offset)
+    }
+    fn between<'i>(
+        &self,
+        input: &mut Parser<'i, '_>,
+        start: &cssparser::ParserState,
+    ) -> Result<CssComponentValues, ParseError<'i, Error>> {
+        let end = input.state();
+        let items = match self.numeric {
+            NumericInputContext::Parsed(snapshot) => {
+                input.reset(start);
+                let mut items = Vec::new();
+                while input.position().byte_index() < end.position().byte_index() {
+                    items.push(
+                        CssComponentValue::collect_from_parser(input, snapshot).map_err(|e| {
+                            crate::error::invalid_component_value(
+                                input.current_source_location(),
+                                e,
+                            )
+                        })?,
+                    );
+                }
+                input.reset(&end);
+                items
+            }
+            NumericInputContext::Components(values, serialized) => {
+                let paths = serialized
+                    .component_paths_in_range(
+                        start.position().byte_index()..end.position().byte_index(),
+                    )
+                    .ok_or_else(|| {
+                        invalid_syntax(
+                            start.source_location(),
+                            "media value is not a complete component slice",
+                        )
+                    })?;
+                paths
+                    .into_iter()
+                    .map(|path| {
+                        values
+                            .component_at_path(path)
+                            .expect("serialized original component path")
+                            .clone()
+                    })
+                    .collect()
+            }
+        };
+        CssComponentValues::try_new(items)
+            .map_err(|e| crate::error::invalid_component_value(input.current_source_location(), e))
+    }
+}
+pub(super) fn media_terminal_error(error: &ParseError<'_, Error>) -> bool {
+    is_nesting_limit_error(error)
+        || matches!(&error.kind,cssparser::ParseErrorKind::Custom(error) if matches!(error.kind(),crate::ErrorKind::InvalidComponentValue(_)))
+}
+pub(super) fn check_media_member_components<'i>(
+    source: &str,
+    input: &mut Parser<'i, '_>,
+    recovery: &RecoveryState,
+) -> Result<Vec<usize>, ParseError<'i, Error>> {
+    match recovery.check_comma_member_components(source, input, "baseline.media.query-list") {
+        Ok(openings) => Ok(openings),
+        Err(error) if is_nesting_limit_error(&error) => Err(error),
+        Err(error) => {
+            let start = input.state();
+            let mut component_error = None;
+            while !input.is_exhausted() {
+                if let Err(detail) =
+                    CssComponentValue::collect_from_parser(input, recovery.source_snapshot())
+                {
+                    component_error = Some(crate::error::invalid_component_value(
+                        input.current_source_location(),
+                        detail,
+                    ));
+                    break;
+                }
+            }
+            input.reset(&start);
+            Err(component_error.unwrap_or(error))
+        }
+    }
+}
+pub(super) fn check_media_import_components<'i>(
+    source: &str,
+    input: &mut Parser<'i, '_>,
+    recovery: &RecoveryState,
+) -> Result<(), ParseError<'i, Error>> {
+    match recovery.check_specialized_components(source, input, "baseline.media.query-list") {
+        Ok(_) => Ok(()),
+        Err(error) if is_nesting_limit_error(&error) => Err(error),
+        Err(error) => {
+            let start = input.state();
+            let result = (|| {
+                while !input.is_exhausted() {
+                    CssComponentValue::collect_from_parser(input, recovery.source_snapshot())
+                        .map_err(|detail| {
+                            crate::error::invalid_component_value(
+                                input.current_source_location(),
+                                detail,
+                            )
+                        })?;
+                }
+                Err(error)
+            })();
+            input.reset(&start);
+            result
+        }
+    }
+}
+pub(crate) fn construct_media_query(
+    values: CssComponentValues,
+    limits: CssComponentValueLimits,
+) -> Result<CssMediaQuery, CssMediaConstructionError> {
+    crate::media::with_media_stack(values.nesting_depth() >= 64, move || {
+        construct_media(values, limits, false)
+    })
+}
+pub(crate) fn construct_media_condition(
+    values: CssComponentValues,
+    limits: CssComponentValueLimits,
+) -> Result<CssMediaCondition, CssMediaConstructionError> {
+    match crate::media::with_media_stack(values.nesting_depth() >= 64, move || {
+        construct_media(values, limits, true)
+    })? {
+        CssMediaQuery::Condition(condition) => Ok(condition),
+        _ => unreachable!("condition construction context"),
+    }
+}
+fn construct_media(
+    values: CssComponentValues,
+    limits: CssComponentValueLimits,
+    condition_only: bool,
+) -> Result<CssMediaQuery, CssMediaConstructionError> {
+    values.validate_with_limits(limits)?;
+    if let Some(origin) = values.first_implicit_origin() {
+        return Err(CssMediaConstructionError::RecoveredInput {
+            origin: origin.clone(),
+        });
+    }
+    let serialized = values.serialize_with_limit(limits.max_css_bytes())?;
+    let source = serialized.as_css();
+    let numeric = NumericInputContext::components(&values, &serialized);
+    let context = MediaInput {
+        numeric: &numeric,
+        limits,
+    };
+    let mut parser_input = cssparser::ParserInput::new(source);
+    let mut input = Parser::new(&mut parser_input);
+    let result = (|| {
+        let query = if condition_only {
+            parse_media_condition(source, &mut input, &context).map(CssMediaQuery::Condition)?
+        } else {
+            parse_media_query_inner(source, &mut input, &context)?
+        };
+        input.expect_exhausted()?;
+        Ok(query)
+    })();
+    let query = result.map_err(|error: ParseError<'_, Error>| {
+        if let cssparser::ParseErrorKind::Custom(error) = &error.kind
+            && let crate::ErrorKind::InvalidComponentValue(component) = error.kind()
+        {
+            return CssMediaConstructionError::Component(component.as_ref().clone());
+        }
+        let error = from_parse_error(source, error);
+        let origin = serialized
+            .value_origin_at(error.position().byte_offset().value())
+            .cloned()
+            .unwrap_or(CssValueOrigin::Programmatic);
+        if condition_only {
+            CssMediaConstructionError::InvalidConditionGrammar { origin }
+        } else {
+            CssMediaConstructionError::InvalidQueryGrammar { origin }
+        }
+    })?;
+    crate::media::check_canonical_limit(&query, limits.max_css_bytes()).map_err(
+        |error| match error {
+            CssMediaSerializationError::Component(error) => {
+                CssMediaConstructionError::Component(error)
+            }
+            CssMediaSerializationError::RecoveredNever { origin } => {
+                CssMediaConstructionError::RecoveredInput { origin }
+            }
+        },
+    )?;
+    Ok(query)
+}
+
+fn generic_comparison<'i>(
+    input: &mut Parser<'i, '_>,
+    numeric: &MediaInput<'_>,
+) -> Result<(CssQueryComparison, Vec<CssValueOrigin>), ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let start = input.state();
+    let comparison = parse_media_comparison(input)?;
+    let components = numeric.between(input, &start)?;
+    let origins = components
+        .items()
+        .iter()
+        .filter(|c| {
+            matches!(
+                c.view(),
+                CssComponentValueRef::Token(CssValueTokenRef::Delim(_))
+            )
+        })
+        .map(|c| c.origin().clone())
+        .collect();
+    Ok((comparison, origins))
 }

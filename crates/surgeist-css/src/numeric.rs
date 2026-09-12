@@ -57,11 +57,32 @@ impl<'a> NumericInputContext<'a> {
         values: CssComponentValues,
         root: CalculationRoot,
     ) -> Result<CssCalculationExpression> {
+        self.admit_with_limits(values, root, CssComponentValueLimits::default())
+    }
+    pub(crate) fn admit_with_limits(
+        &self,
+        values: CssComponentValues,
+        root: CalculationRoot,
+        limits: CssComponentValueLimits,
+    ) -> Result<CssCalculationExpression> {
         let policy = match self {
             Self::Parsed(_) => AdmissionPolicy::RecoveredSyntax,
             Self::Components(..) => AdmissionPolicy::Strict,
         };
-        construct_with_policy(values, root, CssComponentValueLimits::default(), policy)
+        construct_with_policy(values, root, limits, policy)
+    }
+    pub(crate) fn origin_at(&self, offset: usize) -> Option<CssValueOrigin> {
+        match self {
+            Self::Components(_, serialized) => serialized.value_origin_at(offset).cloned(),
+            Self::Parsed(source) => {
+                let suffix = source.as_str().get(offset..)?;
+                let mut input = cssparser::ParserInput::new(suffix);
+                let mut parser = cssparser::Parser::new(&mut input);
+                let _ = parser.next_including_whitespace_and_comments();
+                let end = offset.checked_add(parser.position().byte_index())?;
+                crate::CssParsedOrigin::from_range(source, offset..end).map(CssValueOrigin::Parsed)
+            }
+        }
     }
     pub(crate) fn parsed(source: &'a crate::CssSourceSnapshot) -> Self {
         Self::Parsed(source)
@@ -353,6 +374,9 @@ impl CssNumericConstructionError {
     }
     pub fn origin(&self) -> Option<&CssValueOrigin> {
         self.origin.as_ref()
+    }
+    pub(crate) fn component_error(&self) -> Option<&CssComponentValueError> {
+        self.source.as_deref()
     }
     fn at(kind: CssNumericConstructionErrorKind, c: Option<&CssComponentValue>) -> Self {
         Self {
@@ -1194,6 +1218,7 @@ impl<'a> CssCalculationFunctionRef<'a> {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CalculationRoot {
+    NamedDimensionOrNumber,
     Number,
     Integer,
     Percentage,
@@ -1214,6 +1239,10 @@ impl CalculationRoot {
     }
     fn accepts(self, t: CssNumericType) -> bool {
         match self {
+            Self::NamedDimensionOrNumber => {
+                t.hint.is_none()
+                    && (t.is_number() || DIMENSIONS[..6].iter().any(|dimension| t.is(*dimension)))
+            }
             Self::Number | Self::Integer => t.is_number() && t.hint.is_none(),
             Self::Percentage => t.is(CssNumericDimension::Percentage) && t.hint.is_none(),
             Self::Length => t.is(CssNumericDimension::Length) && t.hint.is_none(),
@@ -1488,7 +1517,19 @@ impl<'a> Cursor<'a, '_> {
             }
             ty = ty
                 .product(right.ty, op == CssCalculationProductOperator::Divide)
-                .ok_or_else(|| self.err(CssNumericConstructionErrorKind::ResourceLimit))?;
+                .ok_or_else(|| {
+                    let error = self
+                        .parser
+                        .error(CssNumericConstructionErrorKind::ResourceLimit, right_site);
+                    CssNumericConstructionError::component(CssComponentValueError::new(
+                        CssComponentValueErrorKind::CapacityOverflow,
+                        error
+                            .origin
+                            .clone()
+                            .expect("a checked right operand has an origin"),
+                    ))
+                    .with_path(error.path)
+                })?;
             factors.push((Some(op), right));
         }
         if factors.len() == 1 {
@@ -1749,44 +1790,32 @@ fn validate_components(
     limits: CssComponentValueLimits,
     policy: AdmissionPolicy,
 ) -> Result<()> {
-    let mut pending: Vec<_> = values.items().iter().map(|c| (c, 0)).collect();
-    let mut count = 0usize;
-    while let Some((c, depth)) = pending.pop() {
-        count = count.checked_add(1).ok_or_else(|| {
-            CssNumericConstructionError::at(CssNumericConstructionErrorKind::ResourceLimit, Some(c))
-        })?;
-        if count > limits.max_components() || depth > limits.max_nesting_depth() {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::ResourceLimit,
-                Some(c),
-            ));
-        }
-        let nested = match c.view() {
-            CssComponentValueRef::Function(f) => Some((f.values(), f.closing_origin())),
-            CssComponentValueRef::Block(b) => Some((b.values(), b.closing_origin())),
-            _ => None,
-        };
-        if let Some((v, close)) = nested {
-            if depth >= limits.max_nesting_depth() {
-                return Err(CssNumericConstructionError::at(
-                    CssNumericConstructionErrorKind::ResourceLimit,
-                    Some(c),
-                ));
+    values
+        .validate_with_limits(limits)
+        .map_err(CssNumericConstructionError::component)?;
+    if policy == AdmissionPolicy::Strict {
+        let mut pending: Vec<_> = values.items().iter().collect();
+        while let Some(component) = pending.pop() {
+            let nested = match component.view() {
+                CssComponentValueRef::Function(function) => {
+                    Some((function.values(), function.closing_origin()))
+                }
+                CssComponentValueRef::Block(block) => {
+                    Some((block.values(), block.closing_origin()))
+                }
+                _ => None,
+            };
+            if let Some((children, closing)) = nested {
+                if matches!(closing, CssValueOrigin::ImplicitClosure { .. }) {
+                    return Err(CssNumericConstructionError::at(
+                        CssNumericConstructionErrorKind::RecoveredComponent,
+                        Some(component),
+                    ));
+                }
+                pending.extend(children.items());
             }
-            if policy == AdmissionPolicy::Strict
-                && matches!(close, CssValueOrigin::ImplicitClosure { .. })
-            {
-                return Err(CssNumericConstructionError::at(
-                    CssNumericConstructionErrorKind::RecoveredComponent,
-                    Some(c),
-                ));
-            }
-            pending.extend(v.items().iter().map(|c| (c, depth + 1)));
         }
     }
-    values
-        .serialize_with_limit(limits.max_css_bytes())
-        .map_err(CssNumericConstructionError::component)?;
     Ok(())
 }
 pub(crate) fn construct(
@@ -1855,10 +1884,15 @@ fn construct_with_policy(
             Some(c),
         ));
     }
-    if result.canonical_len(limits.max_css_bytes()).is_none() {
-        return Err(CssNumericConstructionError::at(
-            CssNumericConstructionErrorKind::ResourceLimit,
-            values.items().first(),
+    let canonical_bytes = result.canonical_len(usize::MAX).ok_or_else(|| {
+        CssNumericConstructionError::component(CssComponentValueError::new(
+            CssComponentValueErrorKind::CapacityOverflow,
+            c.origin().clone(),
+        ))
+    })?;
+    if canonical_bytes > limits.max_css_bytes() {
+        return Err(CssNumericConstructionError::component(
+            CssComponentValueError::new(CssComponentValueErrorKind::ByteLimit, c.origin().clone()),
         ));
     }
     result.components = Some(values);
@@ -2066,5 +2100,96 @@ impl CssFrequencyCalculation {
             crate::CssFrequencyUnit::Kilohertz => "khz",
         };
         Self::try_from_components(programmatic_dimension(value, unit)?).ok()
+    }
+}
+
+#[cfg(test)]
+mod media_helpers_tests {
+    use super::*;
+
+    #[test]
+    fn generic_media_numbers_admit_named_dimensions_but_not_percentages_or_products() {
+        for source in [
+            "calc(1)",
+            "calc(1px)",
+            "calc(1deg)",
+            "calc(1s)",
+            "calc(1Hz)",
+            "calc(1dppx)",
+            "calc(1fr)",
+        ] {
+            let values = crate::parse_component_values(source).unwrap();
+            let serialized = values.serialize().unwrap();
+            let context = NumericInputContext::components(&values, &serialized);
+            let expression = context
+                .admit_with_limits(
+                    values.clone(),
+                    CalculationRoot::NamedDimensionOrNumber,
+                    CssComponentValueLimits::default(),
+                )
+                .unwrap();
+            assert_eq!(expression.components.as_ref(), Some(&values));
+        }
+        for (source, expected) in [
+            (
+                "calc(1%)",
+                CssNumericConstructionErrorKind::RootDomainMismatch,
+            ),
+            (
+                "calc(1px * 1px)",
+                CssNumericConstructionErrorKind::InvalidArgumentType,
+            ),
+        ] {
+            let values = crate::parse_component_values(source).unwrap();
+            let error = construct(
+                values,
+                CalculationRoot::NamedDimensionOrNumber,
+                CssComponentValueLimits::default(),
+            )
+            .unwrap_err();
+            assert_eq!(error.kind(), &expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn numeric_resource_errors_retain_the_concrete_component_cause() {
+        let values = crate::parse_component_values("calc(1+ 2)").unwrap();
+        // Limits precede grammar admission, including malformed mathematics.
+        for (limits, kind) in [
+            (
+                CssComponentValueLimits::try_new(0, 100, 100).unwrap(),
+                CssComponentValueErrorKind::NestingLimit,
+            ),
+            (
+                CssComponentValueLimits::try_new(1, 1, 100).unwrap(),
+                CssComponentValueErrorKind::ComponentLimit,
+            ),
+            (
+                CssComponentValueLimits::try_new(1, 100, 1).unwrap(),
+                CssComponentValueErrorKind::ByteLimit,
+            ),
+        ] {
+            let error = construct(values.clone(), CalculationRoot::Number, limits).unwrap_err();
+            assert_eq!(
+                error.kind(),
+                &CssNumericConstructionErrorKind::ResourceLimit
+            );
+            assert_eq!(error.component_error().unwrap().kind(), kind);
+            assert_eq!(
+                error.origin(),
+                Some(error.component_error().unwrap().origin())
+            );
+        }
+        let compact = crate::parse_component_values("calc(1*2)").unwrap();
+        let error = construct(
+            compact,
+            CalculationRoot::Number,
+            CssComponentValueLimits::try_new(1, 10, 9).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.component_error().unwrap().kind(),
+            CssComponentValueErrorKind::ByteLimit
+        );
     }
 }
