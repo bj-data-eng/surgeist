@@ -63,11 +63,31 @@ pub(crate) fn parse_media_query_list<'i, 't>(
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
 ) -> std::result::Result<CssMediaQueryList, ParseError<'i, Error>> {
+    parse_media_query_list_with_closures(source, input, diagnostics, recovery)
+        .map(|parsed| parsed.queries)
+}
+
+/// Query syntax and tentative EOF closures, before the owning rule survives.
+pub(super) struct ParsedMediaQueryList {
+    pub(super) queries: CssMediaQueryList,
+    pub(super) implicit_closures: Vec<usize>,
+}
+
+pub(super) fn parse_media_query_list_with_closures<'i, 't>(
+    source: &str,
+    input: &mut Parser<'i, 't>,
+    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    recovery: &RecoveryState,
+) -> std::result::Result<ParsedMediaQueryList, ParseError<'i, Error>> {
     if input.is_exhausted() {
-        return Ok(CssMediaQueryList::new(Vec::new()));
+        return Ok(ParsedMediaQueryList {
+            queries: CssMediaQueryList::new(Vec::new()),
+            implicit_closures: Vec::new(),
+        });
     }
 
     let mut queries = Vec::new();
+    let mut implicit_closures = Vec::new();
     let mut preceding_comma = None;
     loop {
         let member_start = input.position().byte_index();
@@ -79,8 +99,7 @@ pub(crate) fn parse_media_query_list<'i, 't>(
             )?;
             let query = parse_media_query(source, member)?;
             member.expect_exhausted()?;
-            recovery.retain_component_closures(openings);
-            Ok(query)
+            Ok((query, openings))
         });
         let member_end = input.position().byte_index();
         let comma_start = member_end;
@@ -97,7 +116,10 @@ pub(crate) fn parse_media_query_list<'i, 't>(
         };
 
         match result {
-            Ok(query) => queries.push(query),
+            Ok((query, openings)) => {
+                queries.push(query);
+                implicit_closures.extend(openings);
+            }
             Err(error) => {
                 let action = recovery_action_for_error(
                     &error,
@@ -142,7 +164,10 @@ pub(crate) fn parse_media_query_list<'i, 't>(
         };
         preceding_comma = Some(comma);
     }
-    Ok(CssMediaQueryList::new(queries))
+    Ok(ParsedMediaQueryList {
+        queries: CssMediaQueryList::new(queries),
+        implicit_closures,
+    })
 }
 
 #[cfg(test)]

@@ -173,20 +173,27 @@ pub fn parse_media_query_list(source: &str) -> crate::CssParseReport<CssMediaQue
         let mut input = ParserInput::new(source);
         let mut input = Parser::new(&mut input);
         let mut diagnostics = Vec::new();
-        let query =
-            match queries::parse_media_query_list(source, &mut input, &mut diagnostics, &state) {
-                Ok(query) => query,
-                Err(error) => {
-                    diagnostics.push(reject(
-                        source,
-                        error,
-                        crate::CssRecoveryAction::ReplaceMediaQueryWithNever,
-                    ));
-                    CssMediaQueryList::new(vec![CssMediaQuery::Never(CssNeverMediaQuery::new(
-                        recovery::first_non_trivia_position(source, 0, source.len()),
-                    ))])
-                }
-            };
+        let query = match queries::parse_media_query_list_with_closures(
+            source,
+            &mut input,
+            &mut diagnostics,
+            &state,
+        ) {
+            Ok(parsed) => {
+                state.retain_component_closures(parsed.implicit_closures);
+                parsed.queries
+            }
+            Err(error) => {
+                diagnostics.push(reject(
+                    source,
+                    error,
+                    crate::CssRecoveryAction::ReplaceMediaQueryWithNever,
+                ));
+                CssMediaQueryList::new(vec![CssMediaQuery::Never(CssNeverMediaQuery::new(
+                    recovery::first_non_trivia_position(source, 0, source.len()),
+                ))])
+            }
+        };
         diagnostics.extend(state.take_implicit_closure_diagnostics(source));
         crate::CssParseReport::new(query, diagnostics)
     })

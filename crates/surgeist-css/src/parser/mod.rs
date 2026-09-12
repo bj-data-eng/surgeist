@@ -2358,16 +2358,10 @@ fn parse_import_prelude<'i, 't>(
     let (media, implicit_media_closures) = if input.is_exhausted() {
         (None, Vec::new())
     } else {
-        let diagnostic_count = diagnostics.len();
-        let implicit =
-            recovery.check_specialized_components(source, input, "baseline.media.query-list")?;
-        let media = parse_media_query_list_inner(source, input, diagnostics, recovery)?;
-        let implicit = if diagnostics.len() == diagnostic_count {
-            implicit
-        } else {
-            Vec::new()
-        };
-        (Some(media), implicit)
+        recovery.check_specialized_components(source, input, "baseline.media.query-list")?;
+        let parsed =
+            queries::parse_media_query_list_with_closures(source, input, diagnostics, recovery)?;
+        (Some(parsed.queries), parsed.implicit_closures)
     };
 
     if !input.is_exhausted() {
