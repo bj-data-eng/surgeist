@@ -18,6 +18,8 @@ const FIXTURE: &str = include_str!("fixtures/i01-c01-observables.tsv");
 // depth-256 boundary; dropping level 257 does not flatten its retained parents.
 // The Unicode-range boundary case identifies its original out-of-domain end
 // endpoint token, following Syntax 3 §7.1 and the descriptor token-origin contract.
+// Fonts 4 §6.9.1 also retains named font-feature-values rules and their valid
+// styleset entries, without projecting descriptors into property declarations.
 const HEADER: &str =
     "case_id\tentry\tfeature\tinput\tclean\tretained\tvalues\tauthored_declarations\tdiagnostics";
 
@@ -158,6 +160,7 @@ fn validate_retained_field(field: &str, case_id: &str) -> Result<(), String> {
                 && id != "later.rule.namespace"
                 && id != "later.rule.counter-style"
                 && id != "later.rule.page"
+                && id != "later.rule.font-feature-values"
                 && id != "nested-declarations"
             {
                 return Err(format!(
@@ -624,6 +627,7 @@ fn parse_semantic_values<'a>(
 
 struct FrozenDeclarationCursor<'a> {
     case_id: &'a str,
+    input: &'a str,
     semantic_values: Vec<FrozenSemanticValue<'a>>,
     authored_declarations: Vec<AuthoredDeclaration<'a>>,
     semantic_index: usize,
@@ -634,6 +638,7 @@ impl<'a> FrozenDeclarationCursor<'a> {
     fn new(row: &'a Row) -> Self {
         Self {
             case_id: &row.case_id,
+            input: &row.input,
             semantic_values: parse_semantic_values(&row.values, &row.case_id)
                 .expect("frozen semantic-value expectation"),
             authored_declarations: parse_authored_declarations(
@@ -1487,6 +1492,9 @@ fn rule_observables(
             }
         }
         CssRule::FontFace(_) => retained.push("rule:baseline.rule.font-face".to_owned()),
+        CssRule::FontFeatureValues(_) => {
+            retained.push("rule:later.rule.font-feature-values".to_owned())
+        }
         CssRule::Keyframes(rule) => {
             retained.push("rule:baseline.rule.keyframes".to_owned());
             for block in rule.blocks() {
@@ -1568,6 +1576,9 @@ fn scoped_rule_observables(
     frozen: &mut FrozenDeclarationCursor<'_>,
 ) {
     match rule {
+        CssScopedRule::FontFeatureValues(_) => {
+            retained.push("rule:later.rule.font-feature-values".to_owned())
+        }
         CssScopedRule::Style(rule) => {
             retained.push("rule:baseline.rule.style".to_owned());
             let ids =
@@ -1958,6 +1969,142 @@ fn assert_captured_font_metadata(
     }
 }
 
+// The six archived calculation witnesses predate exact lexical math trees.
+// Keep their captured payloads: independently construct the old literal model,
+// and check the current tree's operators, exact leaves, types and source spans.
+fn assert_captured_sum(
+    current: &surgeist_css::CssLength,
+    expected_css: &str,
+    first: (&str, bool),
+    second: (&str, bool),
+    subtract: bool,
+    source: &str,
+) -> surgeist_css::CssLength {
+    use surgeist_css::{
+        CssCalcLength, CssCalcLengthTerm, CssCalculationExpressionRef, CssCalculationSumOperator,
+        CssCalculationType, CssCalculationValueRef, CssLength, CssNumericDimension, CssValueOrigin,
+    };
+    let CssLength::Calc(CssCalcLength::Typed(calculation)) = current else {
+        panic!("captured calculation must retain the exact current tree");
+    };
+    assert_eq!(
+        calculation.result_type(),
+        CssCalculationType::LengthPercentage
+    );
+    assert_eq!(
+        calculation.numeric_type().percent_hint(),
+        Some(CssNumericDimension::Length)
+    );
+    let CssCalculationExpressionRef::NestedCalc(root) = calculation.expression() else {
+        panic!("expected whole calc function");
+    };
+    let CssCalculationExpressionRef::Sum(sum) = root.operand() else {
+        panic!("expected authored two-term sum");
+    };
+    assert_eq!(sum.len(), 2);
+    let start = source
+        .find(expected_css)
+        .expect("original captured calculation");
+    let CssValueOrigin::Parsed(whole) = calculation.components().items()[0].origin() else {
+        panic!("expected original function provenance");
+    };
+    assert_eq!(whole.source().as_str(), source);
+    assert_eq!(whole.span().start().byte_offset().value(), start);
+    assert_eq!(
+        whole.span().end().byte_offset().value(),
+        start + "calc(".len()
+    );
+    let surgeist_css::CssComponentValueRef::Function(function) =
+        calculation.components().items()[0].view()
+    else {
+        panic!("expected original function component");
+    };
+    let CssValueOrigin::Parsed(closing) = function.closing_origin() else {
+        panic!("expected authored closing delimiter");
+    };
+    assert!(closing.source().same_snapshot(whole.source()));
+    assert_eq!(
+        closing.span().start().byte_offset().value(),
+        start + expected_css.len() - 1
+    );
+    assert_eq!(
+        closing.span().end().byte_offset().value(),
+        start + expected_css.len()
+    );
+    let mut old_terms = Vec::new();
+    for (index, (number, percentage)) in [first, second].into_iter().enumerate() {
+        let term = sum.term(index).unwrap();
+        let expected_operator = if index == 0 {
+            None
+        } else if subtract {
+            Some(CssCalculationSumOperator::Subtract)
+        } else {
+            Some(CssCalculationSumOperator::Add)
+        };
+        assert_eq!(term.operator(), expected_operator);
+        if index == 0 {
+            assert_eq!(term.operator_origin(), None);
+        } else {
+            let Some(CssValueOrigin::Parsed(operator)) = term.operator_origin() else {
+                panic!("expected original sum operator provenance");
+            };
+            let offset = start + expected_css.find(if subtract { '-' } else { '+' }).unwrap();
+            assert!(operator.source().same_snapshot(whole.source()));
+            assert_eq!(operator.span().start().byte_offset().value(), offset);
+            assert_eq!(operator.span().end().byte_offset().value(), offset + 1);
+        }
+        let CssCalculationExpressionRef::Value(value) = term.expression() else {
+            panic!("expected exact numeric leaf");
+        };
+        let leaf = match (percentage, value) {
+            (true, CssCalculationValueRef::Percentage(leaf)) => leaf,
+            (false, CssCalculationValueRef::Length(leaf)) => leaf,
+            _ => panic!("captured numeric domain changed"),
+        };
+        assert_eq!(leaf.representation(), number);
+        assert_eq!(leaf.unit(), if percentage { None } else { Some("px") });
+        let token = format!("{number}{}", if percentage { "%" } else { "px" });
+        let offset = start + expected_css.find(&token).unwrap();
+        let CssValueOrigin::Parsed(origin) = leaf.origin() else {
+            panic!("expected original numeric token provenance");
+        };
+        assert!(origin.source().same_snapshot(whole.source()));
+        assert_eq!(origin.span().start().byte_offset().value(), offset);
+        assert_eq!(
+            origin.span().end().byte_offset().value(),
+            offset + token.len()
+        );
+        // These fixed archived operands are exactly representable small integers.
+        let old = if percentage {
+            CssCalcLength::try_percent(number.parse().unwrap()).unwrap()
+        } else {
+            CssCalcLength::try_px(number.parse().unwrap()).unwrap()
+        };
+        old_terms.push(if index == 1 && subtract {
+            CssCalcLengthTerm::sub(old)
+        } else {
+            CssCalcLengthTerm::add(old)
+        });
+    }
+    CssLength::Calc(CssCalcLength::sum(old_terms.remove(0), old_terms))
+}
+
+fn assert_captured_numeric_metadata(
+    id: &str,
+    css: &str,
+    old: &impl std::fmt::Debug,
+    semantic: Option<FrozenSemanticValue<'_>>,
+    authored: &AuthoredDeclaration<'_>,
+) {
+    assert_eq!(authored.id, id);
+    assert_eq!(authored.value_capability, "deferred-i01");
+    assert_eq!(css, authored.value);
+    if let Some(semantic) = semantic {
+        assert_eq!(semantic.id, id);
+        assert_eq!(semantic.payload, format!("typed:{old:?}"));
+    }
+}
+
 fn assert_known_property_value(
     property: surgeist_css::CssKnownProperty,
     value: surgeist_css::CssKnownPropertyValueRef<'_>,
@@ -1966,6 +2113,160 @@ fn assert_known_property_value(
     frozen: &mut FrozenDeclarationCursor<'_>,
 ) {
     match (property, &value) {
+        (
+            surgeist_css::CssKnownProperty::Width,
+            surgeist_css::CssKnownPropertyValueRef::Width(value),
+        ) if authored.value == "calc(100% - 12px)" => {
+            let old = assert_captured_sum(
+                value.i01_subset().unwrap(),
+                "calc(100% - 12px)",
+                ("100", true),
+                ("12", false),
+                true,
+                frozen.input,
+            );
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &old,
+                semantic,
+                authored,
+            );
+            return;
+        }
+
+        (
+            surgeist_css::CssKnownProperty::Left,
+            surgeist_css::CssKnownPropertyValueRef::Left(value),
+        ) if authored.value == "calc(3px + 4%)" => {
+            let old = assert_captured_sum(
+                value.i01_subset().unwrap(),
+                "calc(3px + 4%)",
+                ("3", false),
+                ("4", true),
+                false,
+                frozen.input,
+            );
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &old,
+                semantic,
+                authored,
+            );
+            return;
+        }
+
+        (
+            surgeist_css::CssKnownProperty::MarginLeft,
+            surgeist_css::CssKnownPropertyValueRef::MarginLeft(value),
+        ) if authored.value == "calc(3px + 4%)" => {
+            let old = assert_captured_sum(
+                value.i01_subset().unwrap(),
+                "calc(3px + 4%)",
+                ("3", false),
+                ("4", true),
+                false,
+                frozen.input,
+            );
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &old,
+                semantic,
+                authored,
+            );
+            return;
+        }
+
+        (
+            surgeist_css::CssKnownProperty::PaddingBottom,
+            surgeist_css::CssKnownPropertyValueRef::PaddingBottom(value),
+        ) if authored.value == "calc(3px + 4%)" => {
+            let old = assert_captured_sum(
+                value.i01_subset().unwrap(),
+                "calc(3px + 4%)",
+                ("3", false),
+                ("4", true),
+                false,
+                frozen.input,
+            );
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &old,
+                semantic,
+                authored,
+            );
+            return;
+        }
+
+        (
+            surgeist_css::CssKnownProperty::BorderBottomLeftRadius,
+            surgeist_css::CssKnownPropertyValueRef::BorderBottomLeftRadius(value),
+        ) if authored.value == "calc(1px + 2%)" => {
+            let current = value.i01_subset().unwrap();
+            let horizontal = assert_captured_sum(
+                current.horizontal(),
+                "calc(1px + 2%)",
+                ("1", false),
+                ("2", true),
+                false,
+                frozen.input,
+            );
+            let vertical = assert_captured_sum(
+                current.vertical(),
+                "calc(1px + 2%)",
+                ("1", false),
+                ("2", true),
+                false,
+                frozen.input,
+            );
+            let old = surgeist_css::CssCornerRadius::try_new(horizontal, vertical).unwrap();
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &old,
+                semantic,
+                authored,
+            );
+            return;
+        }
+        (
+            surgeist_css::CssKnownProperty::Padding,
+            surgeist_css::CssKnownPropertyValueRef::Padding(value),
+        ) if authored.value == "1px 2% calc(3px + 4%) 0" => {
+            let current = value.i01_subset().unwrap();
+            assert_eq!(current.top, surgeist_css::CssLength::try_px(1.0).unwrap());
+            assert_eq!(
+                current.right,
+                surgeist_css::CssLength::try_percent(2.0).unwrap()
+            );
+            assert_eq!(current.left, surgeist_css::CssLength::Zero);
+            let bottom = assert_captured_sum(
+                &current.bottom,
+                "calc(3px + 4%)",
+                ("3", false),
+                ("4", true),
+                false,
+                frozen.input,
+            );
+            let old = surgeist_css::CssEdges::new(
+                surgeist_css::CssLength::try_px(1.0).unwrap(),
+                surgeist_css::CssLength::try_percent(2.0).unwrap(),
+                bottom,
+                surgeist_css::CssLength::Zero,
+            );
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &old,
+                semantic,
+                authored,
+            );
+            return;
+        }
+
         (
             surgeist_css::CssKnownProperty::FontFamily,
             surgeist_css::CssKnownPropertyValueRef::FontFamily(value),

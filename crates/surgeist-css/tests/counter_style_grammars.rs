@@ -494,6 +494,7 @@ fn c11_rule_recovery_preserves_siblings_and_boundaries() {
             CssRule::Media(_),
             CssRule::Style(_),
             CssRule::Scope(_),
+            CssRule::FontFeatureValues(_),
             CssRule::Style(_),
         ]
     ));
@@ -509,6 +510,13 @@ fn c11_rule_recovery_preserves_siblings_and_boundaries() {
         panic!("expected recovered media parent")
     };
     assert!(matches!(media.rules(), [CssRule::Style(_)]));
+    // Fonts 4 §6.9.1 accepts a named family with an empty body at sheet level.
+    let CssRule::FontFeatureValues(tail) = &report.syntax().rules()[5] else {
+        panic!("expected retained font feature values")
+    };
+    assert_eq!(tail.families().len(), 1);
+    assert_eq!(tail.families()[0].as_str(), "Tail");
+    assert!(tail.items().is_empty());
 
     let expected = [
         (
@@ -551,10 +559,6 @@ fn c11_rule_recovery_preserves_siblings_and_boundaries() {
         (
             "@page :left { margin: 4cm; }",
             CssErrorCode::InvalidAtRulePlacement,
-        ),
-        (
-            "@font-feature-values Tail { }",
-            CssErrorCode::UnsupportedAtRule,
         ),
         ("@mystery-tail { }", CssErrorCode::UnknownAtRule),
     ];
