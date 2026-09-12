@@ -1,0 +1,1803 @@
+{
+  "schema_version": 1,
+  "basis": "5e74c3b17711360d38734f941ffe54777361eb1c",
+  "entry_contract": "parse_media_query(original), exactly one raw media query with default options; retained count includes Never. Grammar and authored retention are separate from downstream matching.",
+  "specifications": [
+    {
+      "url": "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+      "sha256": "413b27acb4e16721d28b487456359ecbcecba472c4310bd2f6a4939ad393738b",
+      "bytes": 511620,
+      "date": "2021-12-24",
+      "kind": "w3c-dated-publication",
+      "id": "css-syntax-3",
+      "hash_status": "catalog pin; web representation read without independently rehashing body"
+    },
+    {
+      "url": "https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/",
+      "sha256": "41310724809c30304b674442d35e09ec59b0b7b74ba6104bb1d90334953522e0",
+      "bytes": 409001,
+      "date": "2026-02-19",
+      "kind": "w3c-dated-publication",
+      "id": "mediaqueries-4",
+      "hash_status": "catalog pin; web representation read without independently rehashing body"
+    },
+    {
+      "url": "https://www.w3.org/TR/2024/WD-css-values-4-20240312/",
+      "sha256": "7b6b68c34d00d7f6945e66e4e2efa913266299f597d5825393cae85dac1cc78c",
+      "bytes": 823488,
+      "date": "2024-03-12",
+      "kind": "w3c-dated-publication",
+      "id": "css-values-4",
+      "hash_status": "catalog pin; web representation read without independently rehashing body"
+    },
+    {
+      "url": "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/",
+      "sha256": "9e761f96f6a9935591264b470bdf5e4c1b5b15874c376b9de70e670171671c95",
+      "bytes": 697033,
+      "date": "2026-02-19",
+      "kind": "w3c-dated-publication",
+      "id": "mediaqueries-5",
+      "hash_status": "catalog pin; web representation read without independently rehashing body"
+    }
+  ],
+  "rules": {
+    "unknown-feature": {
+      "rationale": "Generic feature grammar succeeds; unrecognized semantics remain retained authored syntax.",
+      "urls": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    "enclosed-fallback": {
+      "rationale": "Earlier branches fail; a balanced any-value enclosure succeeds.",
+      "urls": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+      ]
+    },
+    "conjoined-enclosed": {
+      "rationale": "Two enclosed operands joined by and.",
+      "urls": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    },
+    "custom-media-context": {
+      "rationale": "Custom media permits only boolean use; colon use is a syntax error.",
+      "urls": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#custom-mq",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    "missing-and": {
+      "rationale": "A media type and condition require and.",
+      "urls": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    "implicit-eof": {
+      "rationale": "EOF returns the unfinished block with a parse error; the retained identifier is a boolean feature.",
+      "urls": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-simple-block",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    },
+    "nonnegative-ratio": {
+      "rationale": "Literal ratio components are nonnegative; negative components make this enclosure use fallback. Zero and exponent numbers remain allowed.",
+      "urls": [
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#ratios",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    },
+    "calculation-value": {
+      "rationale": "Numeric calculations substitute for numeric values, including ratio components.",
+      "urls": [
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#math-function",
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#ratios",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    },
+    "escaped-unknown-unit": {
+      "rationale": "Zero escape becomes replacement-character unit in a dimension token. This value is unknown for width; no host syntax is necessary.",
+      "urls": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-escaped-code-point",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-numeric-token",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    }
+  },
+  "diagnostic_evidence": [
+    "crates/surgeist-css/AGENTS.md:10",
+    "crates/surgeist-css/src/report.rs:3",
+    "crates/surgeist-css/src/report.rs:95",
+    "crates/surgeist-css/src/parser/fragments.rs:224",
+    "crates/surgeist-css/src/parser/queries.rs:864",
+    "crates/surgeist-css/src/parser/queries.rs:1028",
+    "crates/surgeist-css/src/parser/queries.rs:1139",
+    "crates/surgeist-css/tests/support/csstree.rs:2060"
+  ],
+  "diagnostic_basis": "Source-characterized public report actions, ordered locations and payload relations; W3C defines syntax/recovery, not Rust diagnostic positions.",
+  "rows": [
+    {
+      "id": "mediaQuery/FeatureRange.json#/all three functions",
+      "input": "(calc(1   +   2) < calc() < max(1, 2))",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/FeatureRange.json",
+      "source_sha256": "c583c8eed30fc4103ff6cec5858f618996a1c44eeaa8ca0eceb16afb1419c92b",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/FeatureRange.json",
+      "expectation_sha256": "70fadb139452a724b3020f85073386e11a58318d90209ef6f9e30f9132b4a9d5",
+      "node": "Condition.GeneralEnclosed",
+      "feature_name": null,
+      "feature_reason": null,
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "enclosed-fallback",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+      ]
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/all three numbers",
+      "input": "(1 < 2 < 3)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/FeatureRange.json",
+      "source_sha256": "c583c8eed30fc4103ff6cec5858f618996a1c44eeaa8ca0eceb16afb1419c92b",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/FeatureRange.json",
+      "expectation_sha256": "70fadb139452a724b3020f85073386e11a58318d90209ef6f9e30f9132b4a9d5",
+      "node": "Condition.GeneralEnclosed",
+      "feature_name": null,
+      "feature_reason": null,
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "enclosed-fallback",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+      ]
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/all three ratio",
+      "input": "(1 / 2 < 1 /**/ / /**/ 3 < 1/**///**/4)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/FeatureRange.json",
+      "source_sha256": "c583c8eed30fc4103ff6cec5858f618996a1c44eeaa8ca0eceb16afb1419c92b",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/FeatureRange.json",
+      "expectation_sha256": "70fadb139452a724b3020f85073386e11a58318d90209ef6f9e30f9132b4a9d5",
+      "node": "Condition.GeneralEnclosed",
+      "feature_name": null,
+      "feature_reason": null,
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "enclosed-fallback",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+      ]
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/basic",
+      "input": "(foo>1)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/FeatureRange.json",
+      "source_sha256": "c583c8eed30fc4103ff6cec5858f618996a1c44eeaa8ca0eceb16afb1419c92b",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/FeatureRange.json",
+      "expectation_sha256": "70fadb139452a724b3020f85073386e11a58318d90209ef6f9e30f9132b4a9d5",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "unknown-feature",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/dimension first",
+      "input": "(1px<foo)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/FeatureRange.json",
+      "source_sha256": "c583c8eed30fc4103ff6cec5858f618996a1c44eeaa8ca0eceb16afb1419c92b",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/FeatureRange.json",
+      "expectation_sha256": "70fadb139452a724b3020f85073386e11a58318d90209ef6f9e30f9132b4a9d5",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "unknown-feature",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/error/0",
+      "input": "(foo > 123 123)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/FeatureRange.json",
+      "source_sha256": "c583c8eed30fc4103ff6cec5858f618996a1c44eeaa8ca0eceb16afb1419c92b",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/FeatureRange.json",
+      "expectation_sha256": "70fadb139452a724b3020f85073386e11a58318d90209ef6f9e30f9132b4a9d5",
+      "node": "Condition.GeneralEnclosed",
+      "feature_name": null,
+      "feature_reason": null,
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "enclosed-fallback",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+      ]
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/full form",
+      "input": "(100px<bar<200px)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/FeatureRange.json",
+      "source_sha256": "c583c8eed30fc4103ff6cec5858f618996a1c44eeaa8ca0eceb16afb1419c92b",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/FeatureRange.json",
+      "expectation_sha256": "70fadb139452a724b3020f85073386e11a58318d90209ef6f9e30f9132b4a9d5",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "bar",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "unknown-feature",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/function first",
+      "input": "(calc(1 + 2)<foo)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/FeatureRange.json",
+      "source_sha256": "c583c8eed30fc4103ff6cec5858f618996a1c44eeaa8ca0eceb16afb1419c92b",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/FeatureRange.json",
+      "expectation_sha256": "70fadb139452a724b3020f85073386e11a58318d90209ef6f9e30f9132b4a9d5",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "calculation-value",
+      "sources": [
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#math-function",
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#ratios",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/function in ratio/0",
+      "input": "(2/calc(1 + 2)<foo)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/FeatureRange.json",
+      "source_sha256": "c583c8eed30fc4103ff6cec5858f618996a1c44eeaa8ca0eceb16afb1419c92b",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/FeatureRange.json",
+      "expectation_sha256": "70fadb139452a724b3020f85073386e11a58318d90209ef6f9e30f9132b4a9d5",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "calculation-value",
+      "sources": [
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#math-function",
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#ratios",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/function in ratio/1",
+      "input": "(calc(1 + 2)/2<foo)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/FeatureRange.json",
+      "source_sha256": "c583c8eed30fc4103ff6cec5858f618996a1c44eeaa8ca0eceb16afb1419c92b",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/FeatureRange.json",
+      "expectation_sha256": "70fadb139452a724b3020f85073386e11a58318d90209ef6f9e30f9132b4a9d5",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "calculation-value",
+      "sources": [
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#math-function",
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#ratios",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/function in ratio/2",
+      "input": "(calc(1 + 2)/calc(1 + 2)<foo)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/FeatureRange.json",
+      "source_sha256": "c583c8eed30fc4103ff6cec5858f618996a1c44eeaa8ca0eceb16afb1419c92b",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/FeatureRange.json",
+      "expectation_sha256": "70fadb139452a724b3020f85073386e11a58318d90209ef6f9e30f9132b4a9d5",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "calculation-value",
+      "sources": [
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#math-function",
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#ratios",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/number first",
+      "input": "(1<foo)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/FeatureRange.json",
+      "source_sha256": "c583c8eed30fc4103ff6cec5858f618996a1c44eeaa8ca0eceb16afb1419c92b",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/FeatureRange.json",
+      "expectation_sha256": "70fadb139452a724b3020f85073386e11a58318d90209ef6f9e30f9132b4a9d5",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "unknown-feature",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    {
+      "id": "mediaQuery/FeatureRange.json#/ratio first",
+      "input": "(1/2<foo)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/FeatureRange.json",
+      "source_sha256": "c583c8eed30fc4103ff6cec5858f618996a1c44eeaa8ca0eceb16afb1419c92b",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/FeatureRange.json",
+      "expectation_sha256": "70fadb139452a724b3020f85073386e11a58318d90209ef6f9e30f9132b4a9d5",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "unknown-feature",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    {
+      "id": "mediaQuery/GeneralEnclosed.json#/empty function",
+      "input": "foo()",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/GeneralEnclosed.json",
+      "source_sha256": "bf204b31d82775114a6bad291ba2b444254986a1ed2839a8226acc78e55ee00e",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/GeneralEnclosed.json",
+      "expectation_sha256": "c98a9582873bb2e9c175d9c1a6501004d5e1b2a4a3e2eaf69e40e0521a355f19",
+      "node": "Condition.GeneralEnclosed",
+      "feature_name": null,
+      "feature_reason": null,
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "enclosed-fallback",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+      ]
+    },
+    {
+      "id": "mediaQuery/GeneralEnclosed.json#/empty parentheses",
+      "input": "()",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/GeneralEnclosed.json",
+      "source_sha256": "bf204b31d82775114a6bad291ba2b444254986a1ed2839a8226acc78e55ee00e",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/GeneralEnclosed.json",
+      "expectation_sha256": "c98a9582873bb2e9c175d9c1a6501004d5e1b2a4a3e2eaf69e40e0521a355f19",
+      "node": "Condition.GeneralEnclosed",
+      "feature_name": null,
+      "feature_reason": null,
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "enclosed-fallback",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+      ]
+    },
+    {
+      "id": "mediaQuery/GeneralEnclosed.json#/function",
+      "input": "foo(1 2)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/GeneralEnclosed.json",
+      "source_sha256": "bf204b31d82775114a6bad291ba2b444254986a1ed2839a8226acc78e55ee00e",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/GeneralEnclosed.json",
+      "expectation_sha256": "c98a9582873bb2e9c175d9c1a6501004d5e1b2a4a3e2eaf69e40e0521a355f19",
+      "node": "Condition.GeneralEnclosed",
+      "feature_name": null,
+      "feature_reason": null,
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "enclosed-fallback",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+      ]
+    },
+    {
+      "id": "mediaQuery/GeneralEnclosed.json#/mixed",
+      "input": "foo(1 2) and (1 2)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/GeneralEnclosed.json",
+      "source_sha256": "bf204b31d82775114a6bad291ba2b444254986a1ed2839a8226acc78e55ee00e",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/GeneralEnclosed.json",
+      "expectation_sha256": "c98a9582873bb2e9c175d9c1a6501004d5e1b2a4a3e2eaf69e40e0521a355f19",
+      "node": "Condition.And",
+      "feature_name": null,
+      "feature_reason": null,
+      "boolean_feature": false,
+      "enclosed_operands": [
+        "foo(1 2)",
+        "(1 2)"
+      ],
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "conjoined-enclosed",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    },
+    {
+      "id": "mediaQuery/GeneralEnclosed.json#/mixed empty",
+      "input": "foo() and ()",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/GeneralEnclosed.json",
+      "source_sha256": "bf204b31d82775114a6bad291ba2b444254986a1ed2839a8226acc78e55ee00e",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/GeneralEnclosed.json",
+      "expectation_sha256": "c98a9582873bb2e9c175d9c1a6501004d5e1b2a4a3e2eaf69e40e0521a355f19",
+      "node": "Condition.And",
+      "feature_name": null,
+      "feature_reason": null,
+      "boolean_feature": false,
+      "enclosed_operands": [
+        "foo()",
+        "()"
+      ],
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "conjoined-enclosed",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    },
+    {
+      "id": "mediaQuery/GeneralEnclosed.json#/parentheses",
+      "input": "(1 2)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/GeneralEnclosed.json",
+      "source_sha256": "bf204b31d82775114a6bad291ba2b444254986a1ed2839a8226acc78e55ee00e",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/GeneralEnclosed.json",
+      "expectation_sha256": "c98a9582873bb2e9c175d9c1a6501004d5e1b2a4a3e2eaf69e40e0521a355f19",
+      "node": "Condition.GeneralEnclosed",
+      "feature_name": null,
+      "feature_reason": null,
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "enclosed-fallback",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+      ]
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/boolean media feature",
+      "input": "(foo)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/MediaQuery.json",
+      "source_sha256": "3b7a2c6012aca62f947c66104425d510d7829515e9acc44ff247c5f93f9285d7",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/MediaQuery.json",
+      "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": true,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "unknown-feature",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/dashed name feature",
+      "input": "(--foo:2)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/MediaQuery.json",
+      "source_sha256": "3b7a2c6012aca62f947c66104425d510d7829515e9acc44ff247c5f93f9285d7",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/MediaQuery.json",
+      "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
+      "node": "Never",
+      "feature_name": null,
+      "feature_reason": null,
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_media_query",
+          "action": "replace_media_query_with_never",
+          "byte_offset": 1,
+          "span_start": 0,
+          "span_end": 9,
+          "multiplicity": 1,
+          "payload_relation": "intersects"
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_media_query",
+            "action": "replace_media_query_with_never",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale_rule": "custom-media-context",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#custom-mq",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/error/0",
+      "input": "(foo 123)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/MediaQuery.json",
+      "source_sha256": "3b7a2c6012aca62f947c66104425d510d7829515e9acc44ff247c5f93f9285d7",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/MediaQuery.json",
+      "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
+      "node": "Condition.GeneralEnclosed",
+      "feature_name": null,
+      "feature_reason": null,
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "enclosed-fallback",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+      ]
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/error/1",
+      "input": "(foo: bar baz)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/MediaQuery.json",
+      "source_sha256": "3b7a2c6012aca62f947c66104425d510d7829515e9acc44ff247c5f93f9285d7",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/MediaQuery.json",
+      "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
+      "node": "Condition.GeneralEnclosed",
+      "feature_name": null,
+      "feature_reason": null,
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "enclosed-fallback",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+      ]
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/error/2",
+      "input": "(foo: 'foo')",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/MediaQuery.json",
+      "source_sha256": "3b7a2c6012aca62f947c66104425d510d7829515e9acc44ff247c5f93f9285d7",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/MediaQuery.json",
+      "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
+      "node": "Condition.GeneralEnclosed",
+      "feature_name": null,
+      "feature_reason": null,
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "enclosed-fallback",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+      ]
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/error/3",
+      "input": "(fo",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/MediaQuery.json",
+      "source_sha256": "3b7a2c6012aca62f947c66104425d510d7829515e9acc44ff247c5f93f9285d7",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/MediaQuery.json",
+      "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "fo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": true,
+      "enclosed_operands": null,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "unexpected_end",
+          "action": "retain_with_implicit_closure",
+          "byte_offset": 3,
+          "span_start": 3,
+          "span_end": 3,
+          "multiplicity": 1,
+          "payload_relation": "ends_at"
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_end",
+            "action": "retain_with_implicit_closure",
+            "payload_relation": "ends_at"
+          }
+        ]
+      },
+      "rationale_rule": "implicit-eof",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-simple-block",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/media feature with comments",
+      "input": "all /*0*/ (/*1*/foo/*2*/:/*3*/1/*4*/)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/MediaQuery.json",
+      "source_sha256": "3b7a2c6012aca62f947c66104425d510d7829515e9acc44ff247c5f93f9285d7",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/MediaQuery.json",
+      "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
+      "node": "Never",
+      "feature_name": null,
+      "feature_reason": null,
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": false,
+      "diagnostics": [
+        {
+          "code": "invalid_media_query",
+          "action": "replace_media_query_with_never",
+          "byte_offset": 10,
+          "span_start": 0,
+          "span_end": 37,
+          "multiplicity": 1,
+          "payload_relation": "intersects"
+        }
+      ],
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_media_query",
+            "action": "replace_media_query_with_never",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "rationale_rule": "missing-and",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/media feature with dimension value",
+      "input": "(foo:2px)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/MediaQuery.json",
+      "source_sha256": "3b7a2c6012aca62f947c66104425d510d7829515e9acc44ff247c5f93f9285d7",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/MediaQuery.json",
+      "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "unknown-feature",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/media feature with identifier value",
+      "input": "(foo:bar)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/MediaQuery.json",
+      "source_sha256": "3b7a2c6012aca62f947c66104425d510d7829515e9acc44ff247c5f93f9285d7",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/MediaQuery.json",
+      "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "unknown-feature",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/media feature with number value",
+      "input": "(foo:1)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/MediaQuery.json",
+      "source_sha256": "3b7a2c6012aca62f947c66104425d510d7829515e9acc44ff247c5f93f9285d7",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/MediaQuery.json",
+      "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "unknown-feature",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/media feature with ratio",
+      "input": "(foo:3/4)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/MediaQuery.json",
+      "source_sha256": "3b7a2c6012aca62f947c66104425d510d7829515e9acc44ff247c5f93f9285d7",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/MediaQuery.json",
+      "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "unknown-feature",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/media feature with ratio and spaces",
+      "input": "(  foo  :  3  /  4  )",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/MediaQuery.json",
+      "source_sha256": "3b7a2c6012aca62f947c66104425d510d7829515e9acc44ff247c5f93f9285d7",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/MediaQuery.json",
+      "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "unknown-feature",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/media feature with spaces",
+      "input": "(  foo  :  1  )",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/MediaQuery.json",
+      "source_sha256": "3b7a2c6012aca62f947c66104425d510d7829515e9acc44ff247c5f93f9285d7",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/MediaQuery.json",
+      "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "unknown-feature",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/number with \\0 hack",
+      "input": "(min-width:0\\0)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/MediaQuery.json",
+      "source_sha256": "3b7a2c6012aca62f947c66104425d510d7829515e9acc44ff247c5f93f9285d7",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/MediaQuery.json",
+      "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "min-width",
+      "feature_reason": "InvalidValue",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "escaped-unknown-unit",
+      "sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-escaped-code-point",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-numeric-token",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/vendor media feature",
+      "input": "(-webkit-min-device-pixel-ratio:2)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/MediaQuery.json",
+      "source_sha256": "3b7a2c6012aca62f947c66104425d510d7829515e9acc44ff247c5f93f9285d7",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/MediaQuery.json",
+      "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "-webkit-min-device-pixel-ratio",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "unknown-feature",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/with function",
+      "input": "(  foo  :  calc( 3  /  4 + 2)  )",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/MediaQuery.json",
+      "source_sha256": "3b7a2c6012aca62f947c66104425d510d7829515e9acc44ff247c5f93f9285d7",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/MediaQuery.json",
+      "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "calculation-value",
+      "sources": [
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#math-function",
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#ratios",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/basic ratio",
+      "input": "(foo:1/2)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/Ratio.json",
+      "source_sha256": "f76d50c587cb053a60876ef57405c36c0178e5de0a8c38f68d70ca63544e5e1e",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/Ratio.json",
+      "expectation_sha256": "d6665463c0672b78dc693dd6db85d559c0cb98369343fd3a2fb6b82c423b1649",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "unknown-feature",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/error/0",
+      "input": "(foo: 1/)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/Ratio.json",
+      "source_sha256": "f76d50c587cb053a60876ef57405c36c0178e5de0a8c38f68d70ca63544e5e1e",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/Ratio.json",
+      "expectation_sha256": "d6665463c0672b78dc693dd6db85d559c0cb98369343fd3a2fb6b82c423b1649",
+      "node": "Condition.GeneralEnclosed",
+      "feature_name": null,
+      "feature_reason": null,
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "enclosed-fallback",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+      ]
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/fractional/0",
+      "input": "(foo:2.5/3)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/Ratio.json",
+      "source_sha256": "f76d50c587cb053a60876ef57405c36c0178e5de0a8c38f68d70ca63544e5e1e",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/Ratio.json",
+      "expectation_sha256": "d6665463c0672b78dc693dd6db85d559c0cb98369343fd3a2fb6b82c423b1649",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "unknown-feature",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/fractional/1",
+      "input": "(foo:3/1.6)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/Ratio.json",
+      "source_sha256": "f76d50c587cb053a60876ef57405c36c0178e5de0a8c38f68d70ca63544e5e1e",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/Ratio.json",
+      "expectation_sha256": "d6665463c0672b78dc693dd6db85d559c0cb98369343fd3a2fb6b82c423b1649",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "unknown-feature",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/fractional/2",
+      "input": "(foo:2.5/1.6)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/Ratio.json",
+      "source_sha256": "f76d50c587cb053a60876ef57405c36c0178e5de0a8c38f68d70ca63544e5e1e",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/Ratio.json",
+      "expectation_sha256": "d6665463c0672b78dc693dd6db85d559c0cb98369343fd3a2fb6b82c423b1649",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "unknown-feature",
+      "sources": [
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
+      ]
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/out of range/0",
+      "input": "(foo:0/1)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/Ratio.json",
+      "source_sha256": "f76d50c587cb053a60876ef57405c36c0178e5de0a8c38f68d70ca63544e5e1e",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/Ratio.json",
+      "expectation_sha256": "d6665463c0672b78dc693dd6db85d559c0cb98369343fd3a2fb6b82c423b1649",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "nonnegative-ratio",
+      "sources": [
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#ratios",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/out of range/1",
+      "input": "(foo:1e2/1)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/Ratio.json",
+      "source_sha256": "f76d50c587cb053a60876ef57405c36c0178e5de0a8c38f68d70ca63544e5e1e",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/Ratio.json",
+      "expectation_sha256": "d6665463c0672b78dc693dd6db85d559c0cb98369343fd3a2fb6b82c423b1649",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "nonnegative-ratio",
+      "sources": [
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#ratios",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/out of range/2",
+      "input": "(foo:-1/5)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/Ratio.json",
+      "source_sha256": "f76d50c587cb053a60876ef57405c36c0178e5de0a8c38f68d70ca63544e5e1e",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/Ratio.json",
+      "expectation_sha256": "d6665463c0672b78dc693dd6db85d559c0cb98369343fd3a2fb6b82c423b1649",
+      "node": "Condition.GeneralEnclosed",
+      "feature_name": null,
+      "feature_reason": null,
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "nonnegative-ratio",
+      "sources": [
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#ratios",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/out of range/3",
+      "input": "(foo:2/0)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/Ratio.json",
+      "source_sha256": "f76d50c587cb053a60876ef57405c36c0178e5de0a8c38f68d70ca63544e5e1e",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/Ratio.json",
+      "expectation_sha256": "d6665463c0672b78dc693dd6db85d559c0cb98369343fd3a2fb6b82c423b1649",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "nonnegative-ratio",
+      "sources": [
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#ratios",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/out of range/4",
+      "input": "(foo:1/1e2)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/Ratio.json",
+      "source_sha256": "f76d50c587cb053a60876ef57405c36c0178e5de0a8c38f68d70ca63544e5e1e",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/Ratio.json",
+      "expectation_sha256": "d6665463c0672b78dc693dd6db85d559c0cb98369343fd3a2fb6b82c423b1649",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "nonnegative-ratio",
+      "sources": [
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#ratios",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/out of range/5",
+      "input": "(foo:1/-5)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/Ratio.json",
+      "source_sha256": "f76d50c587cb053a60876ef57405c36c0178e5de0a8c38f68d70ca63544e5e1e",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/Ratio.json",
+      "expectation_sha256": "d6665463c0672b78dc693dd6db85d559c0cb98369343fd3a2fb6b82c423b1649",
+      "node": "Condition.GeneralEnclosed",
+      "feature_name": null,
+      "feature_reason": null,
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "nonnegative-ratio",
+      "sources": [
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#ratios",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/usingn with functions/0",
+      "input": "(foo:1/calc(2 + 3))",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/Ratio.json",
+      "source_sha256": "f76d50c587cb053a60876ef57405c36c0178e5de0a8c38f68d70ca63544e5e1e",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/Ratio.json",
+      "expectation_sha256": "d6665463c0672b78dc693dd6db85d559c0cb98369343fd3a2fb6b82c423b1649",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "calculation-value",
+      "sources": [
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#math-function",
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#ratios",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/usingn with functions/1",
+      "input": "(foo:calc(2 + 3)/1)",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/Ratio.json",
+      "source_sha256": "f76d50c587cb053a60876ef57405c36c0178e5de0a8c38f68d70ca63544e5e1e",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/Ratio.json",
+      "expectation_sha256": "d6665463c0672b78dc693dd6db85d559c0cb98369343fd3a2fb6b82c423b1649",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "calculation-value",
+      "sources": [
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#math-function",
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#ratios",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    },
+    {
+      "id": "mediaQuery/Ratio.json#/usingn with functions/2",
+      "input": "(foo:calc(2 + 3)/calc(2 + 3))",
+      "context": "mediaQuery",
+      "options": {},
+      "source_path": "corpus/csstree/source/mediaQuery/Ratio.json",
+      "source_sha256": "f76d50c587cb053a60876ef57405c36c0178e5de0a8c38f68d70ca63544e5e1e",
+      "expectation_path": "corpus/csstree/expectations/mediaQuery/Ratio.json",
+      "expectation_sha256": "d6665463c0672b78dc693dd6db85d559c0cb98369343fd3a2fb6b82c423b1649",
+      "node": "Condition.UnknownFeature",
+      "feature_name": "foo",
+      "feature_reason": "UnknownName",
+      "boolean_feature": false,
+      "enclosed_operands": null,
+      "clean": true,
+      "diagnostics": [],
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      },
+      "rationale_rule": "calculation-value",
+      "sources": [
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#math-function",
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#ratios",
+        "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
+      ]
+    }
+  ]
+}
