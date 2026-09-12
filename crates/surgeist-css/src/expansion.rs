@@ -1,6 +1,7 @@
 //! Intrinsic declaration expansion, before cascade or contextual resolution.
 //!
-//! The property schema selects the supported box, border and flow-tolerance slice and
+//! The property schema selects the supported box, border, flow-tolerance, color
+//! and inherited typography slice and
 //! owns its longhand types, initial values, shorthand members and reset-only
 //! members. Custom declarations retain their symbolic specified values.
 //! Unselected known properties return an explicit capability error.
@@ -72,10 +73,19 @@ impl std::error::Error for CssExpansionError {
     }
 }
 
-#[derive(Clone, Debug)]
-enum ContributionValue<T> {
-    Ordinary(T),
-    Global(CssGlobalKeyword),
+macro_rules! intrinsic_initial {
+    ($variant:ident, value, $initial:expr) => {
+        CssLonghandInitialValue {
+            value: InitialValue::Value(CssLonghandValue {
+                value: Box::new(OwnedLonghandValue::$variant($initial)),
+            }),
+        }
+    };
+    ($variant:ident, user_agent, $initial:expr) => {
+        CssLonghandInitialValue {
+            value: InitialValue::UserAgent($initial),
+        }
+    };
 }
 
 // First filter the full property inventory to annotated rows. The bounded
@@ -94,11 +104,11 @@ macro_rules! define_expansion_schema {
     (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*];
         $variant:ident, longhand {
             wrapper: $wrapper_kind:ident, value: $value:ty,
-            accessor: $accessor:ident, initial: $initial:expr
+            accessor: $accessor:ident, inherited: $inherited:literal, initial_kind: $initial_kind:ident, initial: $initial:expr
         }; $($rest:tt)*
     ) => {
         define_expansion_schema!(@collect
-            [$($longhands)* ($variant, $value, $accessor, $initial)]
+            [$($longhands)* ($variant, $value, $accessor, $inherited, $initial_kind, $initial)]
             [$($shorthands)*] [$($universal)*]; $($rest)*
         );
     };
@@ -126,25 +136,25 @@ macro_rules! define_expansion_schema {
         );
     };
     (@collect
-        [$(($longhand:ident, $value:ty, $accessor:ident, $initial:expr))*]
+        [$(($longhand:ident, $value:ty, $accessor:ident, $inherited:literal, $initial_kind:ident, $initial:expr))*]
         [$(($shorthand:ident, $shorthand_accessor:ident,
             [$($member:ident => $projection:expr),+], [$($reset:ident),*]))*]
         [($universal:ident, $exclude_custom:literal, [$($excluded:ident),+])];
     ) => {
-        #[derive(Clone, Copy, Debug)]
+        #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
         enum Longhand {
             $($longhand,)*
         }
 
-        #[derive(Clone, Debug)]
+        #[derive(Clone, Debug, PartialEq)]
         enum OwnedLonghandValue {
-            $($longhand(ContributionValue<$value>),)*
+            $($longhand($value),)*
         }
 
         /// A borrowed exact ordinary longhand value coupled to its property.
         ///
-        /// The variants are generated only for the selected box, border and
-        /// flow-tolerance longhands. Symbolic values stay unresolved.
+        /// The variants are generated only for schema-selected longhands.
+        /// Symbolic values stay unresolved.
         #[non_exhaustive]
         #[derive(Clone, Copy, Debug, PartialEq)]
         pub enum CssLonghandValueRef<'a> {
@@ -153,39 +163,94 @@ macro_rules! define_expansion_schema {
         }
 
         impl Longhand {
-            fn initial(self) -> OwnedLonghandValue {
+            fn initial(self) -> OwnedContributionValue {
+                OwnedContributionValue::from_initial(self.initial_value())
+            }
+
+            fn initial_value(self) -> CssLonghandInitialValue {
                 match self {
-                    $(Self::$longhand => OwnedLonghandValue::$longhand(
-                        ContributionValue::Ordinary($initial)
-                    ),)*
+                    $(Self::$longhand => intrinsic_initial!($longhand, $initial_kind, $initial),)*
                 }
             }
 
-            fn global(self, keyword: CssGlobalKeyword) -> OwnedLonghandValue {
-                match self {
-                    $(Self::$longhand => OwnedLonghandValue::$longhand(
-                        ContributionValue::Global(keyword)
-                    ),)*
-                }
+            const fn property(self) -> CssKnownProperty {
+                match self { $(Self::$longhand => CssKnownProperty::$longhand,)* }
+            }
+
+            const fn inherited(self) -> bool {
+                match self { $(Self::$longhand => $inherited,)* }
+            }
+
+            fn global(self, keyword: CssGlobalKeyword) -> OwnedContributionValue {
+                OwnedContributionValue::Global(CssLonghandProperty(self), keyword)
             }
         }
 
         impl OwnedLonghandValue {
-            const fn property(&self) -> CssKnownProperty {
+            const fn property(&self) -> CssLonghandProperty {
                 match self {
-                    $(Self::$longhand(_) => CssKnownProperty::$longhand,)*
+                    $(Self::$longhand(_) => CssLonghandProperty(Longhand::$longhand),)*
                 }
             }
 
-            const fn view(&self) -> CssContributionValueRef<'_> {
-                match self {
-                    $(Self::$longhand(ContributionValue::Ordinary(value)) => {
-                        CssContributionValueRef::Ordinary(CssLonghandValueRef::$longhand(value))
-                    }
-                    Self::$longhand(ContributionValue::Global(keyword)) => {
-                        CssContributionValueRef::Global(*keyword)
-                    })*
+            const fn view(&self) -> CssLonghandValueRef<'_> {
+                match self { $(Self::$longhand(value) => CssLonghandValueRef::$longhand(value),)* }
+            }
+        }
+
+        pub(crate) fn grammar_metadata(
+            grammar: crate::CssPropertyGrammar,
+        ) -> Result<&'static CssPropertyMetadata, CssPropertyMetadataError> {
+            match grammar.resolved() {
+                crate::properties::CssResolvedPropertyName::LegacyShorthand(
+                    crate::properties::CssLegacyPropertyAlias::GlyphOrientationVertical,
+                ) => {
+                    const METADATA: CssPropertyMetadata = CssPropertyMetadata {
+                        grammar: CssKnownProperty::TextOrientation.legacy_shorthands()[0],
+                        kind: CssPropertyKindRef::Shorthand(&CssShorthandMetadata {
+                            members: &[CssLonghandProperty(Longhand::TextOrientation)],
+                            settable: &[CssLonghandProperty(Longhand::TextOrientation)],
+                            reset: &[],
+                            legacy: true,
+                        }),
+                    };
+                    return Ok(&METADATA);
                 }
+                crate::properties::CssResolvedPropertyName::Canonical(_) => {}
+            }
+            match grammar.target_property() {
+                $(CssKnownProperty::$longhand => {
+                    const METADATA: CssPropertyMetadata = CssPropertyMetadata {
+                        grammar: CssKnownProperty::$longhand.grammar(),
+                        kind: CssPropertyKindRef::Longhand(&CssLonghandMetadata {
+                            property: CssLonghandProperty(Longhand::$longhand),
+                        }),
+                    };
+                    Ok(&METADATA)
+                },)*
+                $(CssKnownProperty::$shorthand => {
+                    const METADATA: CssPropertyMetadata = CssPropertyMetadata {
+                        grammar: CssKnownProperty::$shorthand.grammar(),
+                        kind: CssPropertyKindRef::Shorthand(&CssShorthandMetadata {
+                            members: &[
+                                $(CssLonghandProperty(Longhand::$member),)+
+                                $(CssLonghandProperty(Longhand::$reset),)*
+                            ],
+                            settable: &[$(CssLonghandProperty(Longhand::$member),)+],
+                            reset: &[$(CssLonghandProperty(Longhand::$reset),)*],
+                            legacy: false,
+                        }),
+                    };
+                    Ok(&METADATA)
+                },)*
+                CssKnownProperty::$universal => {
+                    const METADATA: CssPropertyMetadata = CssPropertyMetadata {
+                        grammar: CssKnownProperty::$universal.grammar(),
+                        kind: CssPropertyKindRef::UniversalReset(&CssUniversalResetMetadata { _private: () }),
+                    };
+                    Ok(&METADATA)
+                },
+                _ => Err(CssPropertyMetadataError::Unavailable(grammar)),
             }
         }
 
@@ -212,16 +277,16 @@ macro_rules! define_expansion_schema {
         fn ordinary_values(
             property: CssKnownProperty,
             value: CssKnownPropertyValueRef<'_>,
-        ) -> Result<Vec<OwnedLonghandValue>, CssExpansionError> {
+        ) -> Result<Vec<OwnedContributionValue>, CssExpansionError> {
             match value {
                 $(CssKnownPropertyValueRef::$longhand(value) => Ok(vec![
-                    OwnedLonghandValue::$longhand(ContributionValue::Ordinary(value.$accessor().to_owned()))
+                    OwnedContributionValue::Ordinary(CssLonghandValue { value: Box::new(OwnedLonghandValue::$longhand(value.$accessor().to_owned())) })
                 ]),)*
                 $(CssKnownPropertyValueRef::$shorthand(value) => {
                     let value = value.$shorthand_accessor();
                     Ok(vec![
                         $(match ($projection)(value) {
-                            Some(projected) => OwnedLonghandValue::$member(ContributionValue::Ordinary(projected)),
+                            Some(projected) => OwnedContributionValue::Ordinary(CssLonghandValue { value: Box::new(OwnedLonghandValue::$member(projected)) }),
                             None => Longhand::$member.initial(),
                         },)+
                         $(Longhand::$reset.initial(),)*
@@ -247,6 +312,8 @@ enum ExpansionShape {
 pub enum CssContributionValueRef<'a> {
     Ordinary(CssLonghandValueRef<'a>),
     Global(CssGlobalKeyword),
+    /// An intrinsic initial requiring a user-agent environment.
+    UserAgentInitial(CssUserAgentInitial),
 }
 
 #[derive(Debug)]
@@ -262,7 +329,7 @@ struct ContributionContext {
 /// expansion does not duplicate a complete component tree for each longhand.
 #[derive(Clone, Debug)]
 pub struct CssLonghandContribution {
-    value: OwnedLonghandValue,
+    value: OwnedContributionValue,
     context: Arc<ContributionContext>,
 }
 
@@ -277,6 +344,15 @@ impl CssLonghandContribution {
     #[must_use]
     pub fn value(&self) -> CssContributionValueRef<'_> {
         self.value.view()
+    }
+
+    /// Borrows the coupled ordinary value, excluding CSS-wide and UA initial states.
+    #[must_use]
+    pub fn ordinary_value(&self) -> Option<&CssLonghandValue> {
+        match &self.value {
+            OwnedContributionValue::Ordinary(value) => Some(value),
+            _ => None,
+        }
     }
 
     /// Returns the original declaration, including importance and occurrence identity.
@@ -417,8 +493,11 @@ impl CssPendingSubstitution {
                 CssExpansionErrorKind::ResidualSubstitution,
             ));
         }
-        let body = crate::property_value::checked_property_value_body(
-            self.source.property_name(),
+        let body = crate::property_value::checked_grammar_value_body(
+            self.source
+                .known()
+                .expect("pending known declaration")
+                .grammar(),
             &replacement,
         )
         .map_err(|error| {
@@ -439,7 +518,7 @@ impl CssPendingSubstitution {
     }
 }
 
-/// Expands custom declarations and selected box, border and flow-tolerance declarations.
+/// Expands custom declarations and the schema-selected intrinsic property slice.
 ///
 /// Ordinary shorthands contribute every member, applying intrinsic initial
 /// values to omissions. `border` also resets the five border-image longhands;
@@ -543,3 +622,230 @@ fn contains_substitution(values: &CssComponentValues) -> bool {
 #[cfg(test)]
 #[path = "expansion/metadata_initial_tests.rs"]
 mod metadata_initial_tests;
+
+/// A checked terminal property identity. Construction stays with the schema owner.
+/// ```compile_fail
+/// use surgeist_css::{CssKnownProperty, CssLonghandProperty};
+/// let _ = CssLonghandProperty(CssKnownProperty::Width);
+/// ```
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct CssLonghandProperty(Longhand);
+impl CssLonghandProperty {
+    /// Returns the corresponding canonical property identity.
+    #[must_use]
+    pub const fn known_property(self) -> CssKnownProperty {
+        self.0.property()
+    }
+}
+/// An owned ordinary value whose active payload determines its terminal property.
+/// ```compile_fail
+/// use surgeist_css::CssLonghandValue;
+/// let _ = CssLonghandValue { value: todo!() };
+/// ```
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssLonghandValue {
+    value: Box<OwnedLonghandValue>,
+}
+impl CssLonghandValue {
+    /// Returns the terminal property coupled to this value.
+    #[must_use]
+    pub fn property(&self) -> CssLonghandProperty {
+        self.value.property()
+    }
+    /// Borrows its exact symbolic ordinary payload.
+    #[must_use]
+    pub fn view(&self) -> CssLonghandValueRef<'_> {
+        self.value.view()
+    }
+}
+/// Intrinsic initial requirements resolved only by the downstream user agent.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssUserAgentInitial {
+    FontFamily,
+}
+impl CssUserAgentInitial {
+    /// Returns the terminal property requiring context.
+    #[must_use]
+    pub const fn property(self) -> CssLonghandProperty {
+        match self {
+            Self::FontFamily => CssLonghandProperty(Longhand::FontFamily),
+        }
+    }
+}
+#[derive(Clone, Debug, PartialEq)]
+enum InitialValue {
+    Value(CssLonghandValue),
+    UserAgent(CssUserAgentInitial),
+}
+/// An intrinsic initial, retaining either a symbolic ordinary value or a UA requirement.
+/// ```compile_fail
+/// use surgeist_css::CssLonghandInitialValue;
+/// let _ = CssLonghandInitialValue { value: todo!() };
+/// ```
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssLonghandInitialValue {
+    value: InitialValue,
+}
+/// A borrowed intrinsic initial without invented resolved values or provenance.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CssInitialValueRef<'a> {
+    Value(&'a CssLonghandValue),
+    UserAgent(CssUserAgentInitial),
+}
+impl CssLonghandInitialValue {
+    /// Returns the property determined by the active initial state.
+    #[must_use]
+    pub fn property(&self) -> CssLonghandProperty {
+        match &self.value {
+            InitialValue::Value(v) => v.property(),
+            InitialValue::UserAgent(v) => v.property(),
+        }
+    }
+    /// Borrows the initial without resolving external context.
+    #[must_use]
+    pub fn view(&self) -> CssInitialValueRef<'_> {
+        match &self.value {
+            InitialValue::Value(v) => CssInitialValueRef::Value(v),
+            InitialValue::UserAgent(v) => CssInitialValueRef::UserAgent(*v),
+        }
+    }
+}
+#[derive(Clone, Debug)]
+enum OwnedContributionValue {
+    Ordinary(CssLonghandValue),
+    Global(CssLonghandProperty, CssGlobalKeyword),
+    UserAgent(CssUserAgentInitial),
+}
+impl OwnedContributionValue {
+    fn from_initial(value: CssLonghandInitialValue) -> Self {
+        match value.value {
+            InitialValue::Value(v) => Self::Ordinary(v),
+            InitialValue::UserAgent(v) => Self::UserAgent(v),
+        }
+    }
+    fn property(&self) -> CssKnownProperty {
+        match self {
+            Self::Ordinary(v) => v.property(),
+            Self::Global(p, _) => *p,
+            Self::UserAgent(v) => v.property(),
+        }
+        .known_property()
+    }
+    fn view(&self) -> CssContributionValueRef<'_> {
+        match self {
+            Self::Ordinary(v) => CssContributionValueRef::Ordinary(v.view()),
+            Self::Global(_, v) => CssContributionValueRef::Global(*v),
+            Self::UserAgent(v) => CssContributionValueRef::UserAgentInitial(*v),
+        }
+    }
+}
+/// Intrinsic metadata availability is separate from recognition and parser support.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssPropertyMetadataError {
+    Unavailable(crate::CssPropertyGrammar),
+}
+impl fmt::Display for CssPropertyMetadataError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unavailable(g) => write!(f, "intrinsic metadata unavailable for {}", g.name()),
+        }
+    }
+}
+impl std::error::Error for CssPropertyMetadataError {}
+/// Schema-owned intrinsic grammar, initial and expansion metadata.
+#[derive(Debug)]
+pub struct CssPropertyMetadata {
+    grammar: crate::CssPropertyGrammar,
+    kind: CssPropertyKindRef<'static>,
+}
+impl CssPropertyMetadata {
+    /// Returns the authored grammar described by this metadata.
+    #[must_use]
+    pub const fn grammar(&self) -> crate::CssPropertyGrammar {
+        self.grammar
+    }
+    /// Returns the exact intrinsic property kind.
+    #[must_use]
+    pub const fn kind(&self) -> CssPropertyKindRef<'_> {
+        self.kind
+    }
+}
+/// Intrinsic metadata branches, never an unavailable placeholder.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug)]
+pub enum CssPropertyKindRef<'a> {
+    Longhand(&'a CssLonghandMetadata),
+    Shorthand(&'a CssShorthandMetadata),
+    UniversalReset(&'a CssUniversalResetMetadata),
+}
+/// A terminal property's inheritance and intrinsic initial.
+#[derive(Debug)]
+pub struct CssLonghandMetadata {
+    property: CssLonghandProperty,
+}
+impl CssLonghandMetadata {
+    /// Returns the terminal property identity.
+    #[must_use]
+    pub const fn property(&self) -> CssLonghandProperty {
+        self.property
+    }
+    /// Reports specified inheritance behavior, without performing cascade.
+    #[must_use]
+    pub const fn inherited_by_default(&self) -> bool {
+        self.property.0.inherited()
+    }
+    /// Constructs its intrinsic initial without a fabricated authored occurrence.
+    #[must_use]
+    pub fn initial_value(&self) -> CssLonghandInitialValue {
+        self.property.0.initial_value()
+    }
+}
+/// Ordered terminal members of a canonical or legacy shorthand.
+#[derive(Debug)]
+pub struct CssShorthandMetadata {
+    members: &'static [CssLonghandProperty],
+    settable: &'static [CssLonghandProperty],
+    reset: &'static [CssLonghandProperty],
+    legacy: bool,
+}
+impl CssShorthandMetadata {
+    /// Returns settable members followed by reset-only members.
+    #[must_use]
+    pub const fn members(&self) -> &'static [CssLonghandProperty] {
+        self.members
+    }
+    /// Returns members directly settable by the shorthand grammar.
+    #[must_use]
+    pub const fn settable_members(&self) -> &'static [CssLonghandProperty] {
+        self.settable
+    }
+    /// Returns reset-only terminal members.
+    #[must_use]
+    pub const fn reset_only_members(&self) -> &'static [CssLonghandProperty] {
+        self.reset
+    }
+    /// Reports a distinct legacy grammar rather than a name-equivalent alias.
+    #[must_use]
+    pub const fn is_legacy(&self) -> bool {
+        self.legacy
+    }
+}
+/// Intrinsic exclusions for `all`, before contextual target selection.
+/// ```compile_fail
+/// use surgeist_css::CssUniversalResetMetadata;
+/// let _ = CssUniversalResetMetadata { _private: () };
+/// ```
+#[derive(Debug)]
+pub struct CssUniversalResetMetadata {
+    _private: (),
+}
+impl CssUniversalResetMetadata {
+    /// Reports explicit schema exclusions without selecting cascade winners.
+    #[must_use]
+    pub fn excludes(&self, property: CssPropertyNameRef<'_>) -> bool {
+        universal_excludes(property)
+    }
+}

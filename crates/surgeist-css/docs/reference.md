@@ -205,7 +205,9 @@ unfinished. This property migration does not complete the other Grid3 families.
 
 `expand_declaration` currently covers custom declarations, physical margin and
 padding, border width, style and color, the four side-border shorthands, `border`,
-the five border-image longhands, `flow-tolerance`, and `all`. The shared property schema owns their
+the five border-image longhands, `flow-tolerance`, `color`, `font-family`,
+`text-orientation`, its legacy `glyph-orientation-vertical` grammar, and `all`.
+The shared property schema owns their
 member lists, initial values and reset-only components. Other known properties
 return typed unsupported errors preserving their identity. The stylesheet
 normalizer uses this same expansion boundary, so its complete property coverage
@@ -220,8 +222,9 @@ Migration: replace matches on the removed `UnsupportedCustomProperty` error with
 the custom contribution branch. Custom computed values remain unresolved until
 style supplies the required context.
 
-Completed longhand contributions expose a property-coupled `CssLonghandValueRef`
-or a symbolic CSS-wide keyword. Omitted border components use `medium`, `none`
+Completed longhand contributions expose a property-coupled `CssLonghandValueRef`,
+a symbolic CSS-wide keyword, or `UserAgentInitial`. `ordinary_value()` borrows
+an owned `CssLonghandValue` only for the ordinary branch. Omitted border components use `medium`, `none`
 and `currentcolor`; the specified width remains `medium` even when the style is
 `none`. The `border` shorthand also resets all five border-image longhands.
 CSS-wide shorthand keywords propagate to those reset-only components too.
@@ -243,6 +246,39 @@ through `source()`. Contributions from reentry share one replacement component
 tree, available through `replacement_components()`, including its original token
 origins. These operations preserve symbolic lengths, colors and images; style
 owns variable environments, invalid-at-computed-value handling and cascade.
+
+## Intrinsic metadata and authored grammar identity
+
+`CssKnownProperty::grammar()` returns the canonical grammar handle.
+`CssPropertyGrammar::from_name` accepts decoded names with ASCII case folding;
+it does not trim whitespace or parse escapes. Name-equivalent aliases share the
+canonical handle. `glyph-orientation-vertical` instead retains a distinct legacy
+shorthand handle targeting `TextOrientation`; its angle grammar remains active
+after substitution. `parse_property_value_for_grammar` uses that exact grammar
+with the same component limits, token boundaries and original-origin mapping as
+`parse_property_value`. `CssKnownDeclaration::grammar()` retains it for ordinary,
+CSS-wide and pending values. Migration: structural declaration equality now
+includes grammar identity. Occurrence identity and clone behavior are unchanged.
+
+`grammar.metadata()` and `CssKnownProperty::metadata()` return intrinsic metadata
+for the selected 29 longhands, ten canonical shorthands, `all`, and the legacy
+glyph shorthand. An unannotated recognized property returns
+`CssPropertyMetadataError::Unavailable`; the support catalog remains independently
+available through `property_support_metadata`. Metadata kind is always meaningful:
+a longhand, shorthand, or universal reset. Shorthand members are terminal IDs in
+settable-then-reset-only order. Legacy grammars are listed by
+`CssKnownProperty::legacy_shorthands()`. A grammar's feature ID identifies support
+metadata; the pinned source catalog owns standards revision identity.
+
+Longhand metadata reports inheritance and constructs a `CssLonghandInitialValue`
+without an invented authored occurrence. Initial `color` is symbolic `CanvasText`,
+`text-orientation` is `mixed`, and `font-family` is
+`CssUserAgentInitial::FontFamily`. Style later supplies the user-agent environment.
+The owner uses the same initial transition for shorthand omissions and reset-only
+members. An authored CSS-wide `initial` remains a global keyword contribution.
+Private fields couple every owned ordinary or initial value to its terminal
+property; metadata availability does not claim complete grammar or shorthand
+coverage beyond the selected slice.
 
 ## Immutable stylesheet normalization
 

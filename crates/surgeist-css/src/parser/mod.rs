@@ -3356,6 +3356,29 @@ pub(crate) fn parse_property_value_body(
     property: CssPropertyNameRef<'_>,
     source: &str,
 ) -> std::result::Result<CssDeclarationBody, Error> {
+    let grammar = match property {
+        CssPropertyNameRef::Known(property) => PropertyValueGrammar::Known(property.grammar()),
+        CssPropertyNameRef::Custom(name) => PropertyValueGrammar::Custom(name),
+    };
+    parse_property_value_body_selected(grammar, source)
+}
+
+pub(crate) fn parse_property_value_body_for_grammar(
+    grammar: CssPropertyGrammar,
+    source: &str,
+) -> std::result::Result<CssDeclarationBody, Error> {
+    parse_property_value_body_selected(PropertyValueGrammar::Known(grammar), source)
+}
+
+enum PropertyValueGrammar<'a> {
+    Known(CssPropertyGrammar),
+    Custom(&'a CssCustomPropertyName),
+}
+
+fn parse_property_value_body_selected(
+    grammar: PropertyValueGrammar<'_>,
+    source: &str,
+) -> std::result::Result<CssDeclarationBody, Error> {
     let mut input = ParserInput::new(source);
     let mut parser = Parser::new(&mut input);
     // Importance and declaration separators are outside a property value. The
@@ -3386,13 +3409,15 @@ pub(crate) fn parse_property_value_body(
         }
     }
     parser.reset(&start);
-    let body = match property {
-        CssPropertyNameRef::Known(property) => {
-            parse_known_declaration_body(CssResolvedPropertyName::Canonical(property), &mut parser)
+    let body = match grammar {
+        PropertyValueGrammar::Known(grammar) => {
+            parse_known_declaration_body(grammar.resolved(), &mut parser)
         }
-        CssPropertyNameRef::Custom(name) => parse_custom_property_value(&mut parser).map(|value| {
-            CssDeclarationBody::Custom(CssCustomDeclaration::new(name.clone(), value))
-        }),
+        PropertyValueGrammar::Custom(name) => {
+            parse_custom_property_value(&mut parser).map(|value| {
+                CssDeclarationBody::Custom(CssCustomDeclaration::new(name.clone(), value))
+            })
+        }
     }
     .map_err(|error| from_parse_error(source, error))?;
     parser
@@ -3415,7 +3440,8 @@ fn parse_known_declaration_body<'i, 't>(
             CssKnownDeclaration::from_substitution_dependent(
                 known_property,
                 CssSubstitutionDependentValue::new(authored),
-            ),
+            )
+            .with_grammar(CssPropertyGrammar::from_resolved(resolved_property)),
         ));
     }
     input.reset(&state);
@@ -3432,10 +3458,10 @@ fn parse_known_declaration_body<'i, 't>(
                     context_name,
                 ));
             }
-            return Ok(CssDeclarationBody::Known(CssKnownDeclaration::from_global(
-                known_property,
-                keyword,
-            )));
+            return Ok(CssDeclarationBody::Known(
+                CssKnownDeclaration::from_global(known_property, keyword)
+                    .with_grammar(CssPropertyGrammar::from_resolved(resolved_property)),
+            ));
         }
         input.reset(&state);
     } else {
@@ -3454,7 +3480,9 @@ fn parse_known_declaration_body<'i, 't>(
     input
         .expect_exhausted()
         .map_err(|error| with_property_context(error.into(), context_name))?;
-    Ok(CssDeclarationBody::Known(declaration))
+    Ok(CssDeclarationBody::Known(declaration.with_grammar(
+        CssPropertyGrammar::from_resolved(resolved_property),
+    )))
 }
 
 fn parse_legacy_property_alias_value<'i, 't>(

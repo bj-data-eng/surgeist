@@ -1105,8 +1105,11 @@ pub use conformance::*;
 pub use error::*;
 pub use expansion::{
     CssContributionValueRef, CssContributions, CssCustomPropertyContribution, CssExpansion,
-    CssExpansionError, CssExpansionErrorKind, CssLonghandContribution, CssLonghandContributions,
-    CssLonghandValueRef, CssPendingSubstitution, CssUniversalReset, expand_declaration,
+    CssExpansionError, CssExpansionErrorKind, CssInitialValueRef, CssLonghandContribution,
+    CssLonghandContributions, CssLonghandInitialValue, CssLonghandMetadata, CssLonghandProperty,
+    CssLonghandValue, CssLonghandValueRef, CssPendingSubstitution, CssPropertyKindRef,
+    CssPropertyMetadata, CssPropertyMetadataError, CssShorthandMetadata, CssUniversalReset,
+    CssUniversalResetMetadata, CssUserAgentInitial, expand_declaration,
 };
 pub use normalization::{
     CssNormalizationError, CssNormalizationErrorKind, CssNormalizationLimits,
@@ -1122,6 +1125,7 @@ pub use parser::{
 pub use properties::*;
 pub use property_value::{
     CssPropertyValueErrorKind, CssPropertyValueParseError, parse_property_value,
+    parse_property_value_for_grammar,
 };
 pub use report::*;
 pub use source::*;

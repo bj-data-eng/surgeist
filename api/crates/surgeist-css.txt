@@ -514,6 +514,7 @@ pub surgeist_css::CssContrastPreference::NoPreference
 #[non_exhaustive] pub enum surgeist_css::CssContributionValueRef<'a>
 pub surgeist_css::CssContributionValueRef::Global(surgeist_css::CssGlobalKeyword)
 pub surgeist_css::CssContributionValueRef::Ordinary(surgeist_css::CssLonghandValueRef<'a>)
+pub surgeist_css::CssContributionValueRef::UserAgentInitial(surgeist_css::CssUserAgentInitial)
 #[non_exhaustive] pub enum surgeist_css::CssContributions
 pub surgeist_css::CssContributions::Custom(surgeist_css::CssCustomPropertyContribution)
 pub surgeist_css::CssContributions::Longhands(surgeist_css::CssLonghandContributions)
@@ -1116,6 +1117,9 @@ pub surgeist_css::CssImportTarget::Url(surgeist_css::CssImportUrl)
 pub enum surgeist_css::CssImportance
 pub surgeist_css::CssImportance::Important
 pub surgeist_css::CssImportance::Normal
+#[non_exhaustive] pub enum surgeist_css::CssInitialValueRef<'a>
+pub surgeist_css::CssInitialValueRef::UserAgent(surgeist_css::CssUserAgentInitial)
+pub surgeist_css::CssInitialValueRef::Value(&'a surgeist_css::CssLonghandValue)
 #[non_exhaustive] pub enum surgeist_css::CssIntegerValue
 pub surgeist_css::CssIntegerValue::Calculation(surgeist_css::CssIntegerCalculation)
 pub surgeist_css::CssIntegerValue::Literal(i32)
@@ -1373,6 +1377,10 @@ pub const fn surgeist_css::CssKnownProperty::all() -> &'static [Self]
 pub const fn surgeist_css::CssKnownProperty::canonical_name(self) -> &'static str
 pub fn surgeist_css::CssKnownProperty::from_name(name: &str) -> core::option::Option<Self>
 pub const fn surgeist_css::CssKnownProperty::stable_id(self) -> &'static str
+impl surgeist_css::CssKnownProperty
+pub const fn surgeist_css::CssKnownProperty::grammar(self) -> surgeist_css::CssPropertyGrammar
+pub const fn surgeist_css::CssKnownProperty::legacy_shorthands(self) -> &'static [surgeist_css::CssPropertyGrammar]
+pub fn surgeist_css::CssKnownProperty::metadata(self) -> core::result::Result<&'static surgeist_css::CssPropertyMetadata, surgeist_css::CssPropertyMetadataError>
 #[non_exhaustive] pub enum surgeist_css::CssKnownPropertyValueRef<'a>
 pub surgeist_css::CssKnownPropertyValueRef::AlignContent(&'a surgeist_css::CssAlignContentPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::AlignItems(&'a surgeist_css::CssAlignItemsPropertyValue)
@@ -1724,7 +1732,9 @@ pub surgeist_css::CssLonghandValueRef::BorderRightWidth(&'a surgeist_css::CssLen
 pub surgeist_css::CssLonghandValueRef::BorderTopColor(&'a surgeist_css::CssAuthoredColor)
 pub surgeist_css::CssLonghandValueRef::BorderTopStyle(&'a surgeist_css::CssBorderStyle)
 pub surgeist_css::CssLonghandValueRef::BorderTopWidth(&'a surgeist_css::CssLength)
+pub surgeist_css::CssLonghandValueRef::Color(&'a surgeist_css::CssAuthoredColor)
 pub surgeist_css::CssLonghandValueRef::FlowTolerance(&'a surgeist_css::CssFlowTolerance)
+pub surgeist_css::CssLonghandValueRef::FontFamily(&'a surgeist_css::CssFontFamilyList)
 pub surgeist_css::CssLonghandValueRef::MarginBottom(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::MarginLeft(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::MarginRight(&'a surgeist_css::CssLength)
@@ -1733,6 +1743,7 @@ pub surgeist_css::CssLonghandValueRef::PaddingBottom(&'a surgeist_css::CssLength
 pub surgeist_css::CssLonghandValueRef::PaddingLeft(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::PaddingRight(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::PaddingTop(&'a surgeist_css::CssLength)
+pub surgeist_css::CssLonghandValueRef::TextOrientation(&'a surgeist_css::CssTextOrientation)
 #[non_exhaustive] pub enum surgeist_css::CssMediaConditionKind
 pub surgeist_css::CssMediaConditionKind::And(surgeist_css::CssMediaConditionList)
 pub surgeist_css::CssMediaConditionKind::DefinedFalse(surgeist_css::CssDefinedFalseMediaCondition)
@@ -1922,6 +1933,15 @@ pub surgeist_css::CssPredefinedColorSpace::Srgb
 pub surgeist_css::CssPredefinedColorSpace::SrgbLinear
 pub surgeist_css::CssPredefinedColorSpace::XyzD50
 pub surgeist_css::CssPredefinedColorSpace::XyzD65
+#[non_exhaustive] pub enum surgeist_css::CssPropertyKindRef<'a>
+pub surgeist_css::CssPropertyKindRef::Longhand(&'a surgeist_css::CssLonghandMetadata)
+pub surgeist_css::CssPropertyKindRef::Shorthand(&'a surgeist_css::CssShorthandMetadata)
+pub surgeist_css::CssPropertyKindRef::UniversalReset(&'a surgeist_css::CssUniversalResetMetadata)
+#[non_exhaustive] pub enum surgeist_css::CssPropertyMetadataError
+pub surgeist_css::CssPropertyMetadataError::Unavailable(surgeist_css::CssPropertyGrammar)
+impl core::error::Error for surgeist_css::CssPropertyMetadataError
+impl core::fmt::Display for surgeist_css::CssPropertyMetadataError
+pub fn surgeist_css::CssPropertyMetadataError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssPropertyNameRef<'a>
 pub surgeist_css::CssPropertyNameRef::Custom(&'a surgeist_css::CssCustomPropertyName)
 pub surgeist_css::CssPropertyNameRef::Known(surgeist_css::CssKnownProperty)
@@ -2394,6 +2414,10 @@ pub surgeist_css::CssUnicodeBidi::Plaintext
 #[non_exhaustive] pub enum surgeist_css::CssUrlModifier
 pub surgeist_css::CssUrlModifier::Function(surgeist_css::CssUrlModifierFunction)
 pub surgeist_css::CssUrlModifier::Ident(surgeist_css::CssIdent)
+#[non_exhaustive] pub enum surgeist_css::CssUserAgentInitial
+pub surgeist_css::CssUserAgentInitial::FontFamily
+impl surgeist_css::CssUserAgentInitial
+pub const fn surgeist_css::CssUserAgentInitial::property(self) -> surgeist_css::CssLonghandProperty
 #[non_exhaustive] pub enum surgeist_css::CssUserSelect
 pub surgeist_css::CssUserSelect::All
 pub surgeist_css::CssUserSelect::Auto
@@ -4351,6 +4375,7 @@ pub struct surgeist_css::CssKnownDeclaration
 impl surgeist_css::CssKnownDeclaration
 pub const fn surgeist_css::CssKnownDeclaration::declared_value(&self) -> surgeist_css::CssKnownDeclaredValueRef<'_>
 pub const fn surgeist_css::CssKnownDeclaration::global(&self) -> core::option::Option<surgeist_css::CssGlobalKeyword>
+pub const fn surgeist_css::CssKnownDeclaration::grammar(&self) -> surgeist_css::CssPropertyGrammar
 pub const fn surgeist_css::CssKnownDeclaration::property(&self) -> surgeist_css::CssKnownProperty
 pub const fn surgeist_css::CssKnownDeclaration::property_value(&self) -> core::option::Option<surgeist_css::CssKnownPropertyValueRef<'_>>
 pub const fn surgeist_css::CssKnownDeclaration::substitution_dependent(&self) -> core::option::Option<&surgeist_css::CssSubstitutionDependentValue>
@@ -4454,6 +4479,7 @@ pub fn surgeist_css::CssListStyleTypePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssListStyleTypePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssListStyleType>
 pub struct surgeist_css::CssLonghandContribution
 impl surgeist_css::CssLonghandContribution
+pub fn surgeist_css::CssLonghandContribution::ordinary_value(&self) -> core::option::Option<&surgeist_css::CssLonghandValue>
 pub fn surgeist_css::CssLonghandContribution::property(&self) -> surgeist_css::CssKnownProperty
 pub fn surgeist_css::CssLonghandContribution::replacement_components(&self) -> core::option::Option<&surgeist_css::CssComponentValues>
 pub fn surgeist_css::CssLonghandContribution::source(&self) -> &surgeist_css::CssDeclaration
@@ -4461,6 +4487,22 @@ pub fn surgeist_css::CssLonghandContribution::value(&self) -> surgeist_css::CssC
 pub struct surgeist_css::CssLonghandContributions
 impl surgeist_css::CssLonghandContributions
 pub fn surgeist_css::CssLonghandContributions::items(&self) -> &[surgeist_css::CssLonghandContribution]
+pub struct surgeist_css::CssLonghandInitialValue
+impl surgeist_css::CssLonghandInitialValue
+pub fn surgeist_css::CssLonghandInitialValue::property(&self) -> surgeist_css::CssLonghandProperty
+pub fn surgeist_css::CssLonghandInitialValue::view(&self) -> surgeist_css::CssInitialValueRef<'_>
+pub struct surgeist_css::CssLonghandMetadata
+impl surgeist_css::CssLonghandMetadata
+pub const fn surgeist_css::CssLonghandMetadata::inherited_by_default(&self) -> bool
+pub fn surgeist_css::CssLonghandMetadata::initial_value(&self) -> surgeist_css::CssLonghandInitialValue
+pub const fn surgeist_css::CssLonghandMetadata::property(&self) -> surgeist_css::CssLonghandProperty
+pub struct surgeist_css::CssLonghandProperty(_)
+impl surgeist_css::CssLonghandProperty
+pub const fn surgeist_css::CssLonghandProperty::known_property(self) -> surgeist_css::CssKnownProperty
+pub struct surgeist_css::CssLonghandValue
+impl surgeist_css::CssLonghandValue
+pub fn surgeist_css::CssLonghandValue::property(&self) -> surgeist_css::CssLonghandProperty
+pub fn surgeist_css::CssLonghandValue::view(&self) -> surgeist_css::CssLonghandValueRef<'_>
 pub struct surgeist_css::CssMarginBottomPropertyValue
 impl surgeist_css::CssMarginBottomPropertyValue
 pub fn surgeist_css::CssMarginBottomPropertyValue::as_css(&self) -> &str
@@ -4924,6 +4966,17 @@ pub const fn surgeist_css::CssPositiveNumber::value(self) -> f32
 pub struct surgeist_css::CssProductionId(_)
 impl surgeist_css::CssProductionId
 pub const fn surgeist_css::CssProductionId::as_str(self) -> &'static str
+pub struct surgeist_css::CssPropertyGrammar
+impl surgeist_css::CssPropertyGrammar
+pub const fn surgeist_css::CssPropertyGrammar::feature_id(self) -> surgeist_css::CssFeatureId
+pub fn surgeist_css::CssPropertyGrammar::from_name(name: &str) -> core::option::Option<Self>
+pub fn surgeist_css::CssPropertyGrammar::metadata(self) -> core::result::Result<&'static surgeist_css::CssPropertyMetadata, surgeist_css::CssPropertyMetadataError>
+pub const fn surgeist_css::CssPropertyGrammar::name(self) -> &'static str
+pub const fn surgeist_css::CssPropertyGrammar::target_property(self) -> surgeist_css::CssKnownProperty
+pub struct surgeist_css::CssPropertyMetadata
+impl surgeist_css::CssPropertyMetadata
+pub const fn surgeist_css::CssPropertyMetadata::grammar(&self) -> surgeist_css::CssPropertyGrammar
+pub const fn surgeist_css::CssPropertyMetadata::kind(&self) -> surgeist_css::CssPropertyKindRef<'_>
 pub struct surgeist_css::CssPropertyName(_)
 impl surgeist_css::CssPropertyName
 pub fn surgeist_css::CssPropertyName::as_str(&self) -> &str
@@ -5181,6 +5234,12 @@ impl surgeist_css::CssSheet
 pub const fn surgeist_css::CssSheet::encoding(&self) -> core::option::Option<&surgeist_css::CssEncodingDeclaration>
 pub const fn surgeist_css::CssSheet::new() -> Self
 pub fn surgeist_css::CssSheet::rules(&self) -> &[surgeist_css::CssRule]
+pub struct surgeist_css::CssShorthandMetadata
+impl surgeist_css::CssShorthandMetadata
+pub const fn surgeist_css::CssShorthandMetadata::is_legacy(&self) -> bool
+pub const fn surgeist_css::CssShorthandMetadata::members(&self) -> &'static [surgeist_css::CssLonghandProperty]
+pub const fn surgeist_css::CssShorthandMetadata::reset_only_members(&self) -> &'static [surgeist_css::CssLonghandProperty]
+pub const fn surgeist_css::CssShorthandMetadata::settable_members(&self) -> &'static [surgeist_css::CssLonghandProperty]
 pub struct surgeist_css::CssSideOrCorner
 impl surgeist_css::CssSideOrCorner
 pub const fn surgeist_css::CssSideOrCorner::horizontal(self) -> core::option::Option<surgeist_css::CssHorizontalGradientSide>
@@ -5561,6 +5620,9 @@ pub fn surgeist_css::CssUniversalReset::excludes(&self, property: surgeist_css::
 pub const fn surgeist_css::CssUniversalReset::keyword(&self) -> surgeist_css::CssGlobalKeyword
 pub fn surgeist_css::CssUniversalReset::replacement_components(&self) -> core::option::Option<&surgeist_css::CssComponentValues>
 pub fn surgeist_css::CssUniversalReset::source(&self) -> &surgeist_css::CssDeclaration
+pub struct surgeist_css::CssUniversalResetMetadata
+impl surgeist_css::CssUniversalResetMetadata
+pub fn surgeist_css::CssUniversalResetMetadata::excludes(&self, property: surgeist_css::CssPropertyNameRef<'_>) -> bool
 pub struct surgeist_css::CssUnknownAtRuleError
 impl surgeist_css::CssUnknownAtRuleError
 pub const fn surgeist_css::CssUnknownAtRuleError::name(&self) -> &surgeist_css::CssAtRuleName
@@ -5687,6 +5749,7 @@ pub fn surgeist_css::parse_component_values_with_limits(source: &str, limits: su
 pub fn surgeist_css::parse_media_query(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssMediaQuery>
 pub fn surgeist_css::parse_media_query_list(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssMediaQueryList>
 pub fn surgeist_css::parse_property_value(property: surgeist_css::CssPropertyNameRef<'_>, value: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
+pub fn surgeist_css::parse_property_value_for_grammar(grammar: surgeist_css::CssPropertyGrammar, value: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
 pub fn surgeist_css::parse_selector(source: &str, context: &surgeist_css::CssNamespaceContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssSelector>>
 pub fn surgeist_css::parse_selector_list(source: &str, context: &surgeist_css::CssNamespaceContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssStyleSelectorList>>
 pub fn surgeist_css::parse_sheet(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssSheet>

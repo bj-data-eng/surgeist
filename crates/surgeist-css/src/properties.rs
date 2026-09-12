@@ -75,7 +75,7 @@ macro_rules! property_schema {
             ColumnSpan, "column-span", [], "official.property.column-span", CssColumnSpan, CssColumnSpanPropertyValue, CssColumnSpanPropertyValueRepresentation, parse_column_span, { parse_column_span($input)? };
             ColumnWidth, "column-width", [], "official.property.column-width", CssColumnWidth, CssColumnWidthPropertyValue, CssColumnWidthPropertyValueRepresentation, parse_column_width, { parse_column_width($input)? };
             Columns, "columns", [], "official.property.columns", CssColumns, CssColumnsPropertyValue, CssColumnsPropertyValueRepresentation, parse_columns, { parse_columns($input)? };
-            FlowTolerance, "flow-tolerance", [], "ext.property.flow-tolerance", CssFlowTolerance, CssFlowTolerancePropertyValue, CssFlowTolerancePropertyValueRepresentation, parse_flow_tolerance, { parse_flow_tolerance($input)? }, expansion = longhand { wrapper: existing, value: CssFlowTolerance, accessor: value, initial: CssFlowTolerance::normal() };
+            FlowTolerance, "flow-tolerance", [], "ext.property.flow-tolerance", CssFlowTolerance, CssFlowTolerancePropertyValue, CssFlowTolerancePropertyValueRepresentation, parse_flow_tolerance, { parse_flow_tolerance($input)? }, expansion = longhand { wrapper: existing, value: CssFlowTolerance, accessor: value, inherited: false, initial_kind: value, initial: CssFlowTolerance::normal() };
             GridTemplateRows, "grid-template-rows", [], "baseline.property.grid-template-rows", CssGridTrackList, CssGridTemplateRowsPropertyValue, CssGridTemplateRowsPropertyValueRepresentation, parse_grid_track_list, { parse_grid_track_list($input)? };
             GridTemplateColumns, "grid-template-columns", [], "baseline.property.grid-template-columns", CssGridTrackList, CssGridTemplateColumnsPropertyValue, CssGridTemplateColumnsPropertyValueRepresentation, parse_grid_track_list, { parse_grid_track_list($input)? };
             GridTemplateAreas, "grid-template-areas", [], "baseline.property.grid-template-areas", CssGridTemplateAreas, CssGridTemplateAreasPropertyValue, CssGridTemplateAreasPropertyValueRepresentation, parse_grid_template_areas, { parse_grid_template_areas($input)? };
@@ -94,14 +94,14 @@ macro_rules! property_schema {
             FontSize, "font-size", [], "baseline.property.font-size", CssFontSize, CssFontSizePropertyValue, CssFontSizePropertyValueRepresentation, parse_font_size, { parse_font_size($input)? };
             LineHeight, "line-height", [], "baseline.property.line-height", CssLineHeight, CssLineHeightPropertyValue, CssLineHeightPropertyValueRepresentation, parse_line_height, { parse_line_height($input)? };
             TextCombineUpright, "text-combine-upright", [], "official.property.text-combine-upright", CssTextCombineUpright, CssTextCombineUprightPropertyValue, CssTextCombineUprightPropertyValueRepresentation, parse_text_combine_upright, { parse_text_combine_upright($input)? };
-            TextOrientation, "text-orientation", [], "official.property.text-orientation", CssTextOrientation, CssTextOrientationPropertyValue, CssTextOrientationPropertyValueRepresentation, parse_text_orientation, { parse_text_orientation($input)? };
+            TextOrientation, "text-orientation", [], "official.property.text-orientation", CssTextOrientation, CssTextOrientationPropertyValue, CssTextOrientationPropertyValueRepresentation, parse_text_orientation, { parse_text_orientation($input)? }, expansion = longhand { wrapper: existing, value: CssTextOrientation, accessor: orientation, inherited: true, initial_kind: value, initial: CssTextOrientation::Mixed };
             UnicodeBidi, "unicode-bidi", [], "official.property.unicode-bidi", CssUnicodeBidi, CssUnicodeBidiPropertyValue, CssUnicodeBidiPropertyValueRepresentation, parse_unicode_bidi, { parse_unicode_bidi($input)? };
             WritingMode, "writing-mode", [], "baseline.property.writing-mode", CssWritingMode, CssWritingModePropertyValue, CssWritingModePropertyValueRepresentation, parse_writing_mode, { parse_writing_mode($input)? };
             TextAlign, "text-align", [], "baseline.property.text-align", CssTextAlign, CssTextAlignPropertyValue, CssTextAlignPropertyValueRepresentation, parse_text_align, { parse_text_align($input)? };
             TextAlignLast, "text-align-last", [], "baseline.property.text-align-last", CssTextAlignLast, CssTextAlignLastPropertyValue, CssTextAlignLastPropertyValueRepresentation, parse_text_align_last, { parse_text_align_last($input)? };
             TextIndent, "text-indent", [], "baseline.property.text-indent", CssTextIndent, CssTextIndentPropertyValue, CssTextIndentPropertyValueRepresentation, parse_text_indent, { parse_text_indent($input)? };
             VerticalAlign, "vertical-align", [], "baseline.property.vertical-align", CssVerticalAlign, CssVerticalAlignPropertyValue, CssVerticalAlignPropertyValueRepresentation, parse_vertical_align, { parse_vertical_align($input)? };
-            FontFamily, "font-family", [], "baseline.property.font-family", CssFontFamilyList, CssFontFamilyPropertyValue, CssFontFamilyPropertyValueRepresentation, parse_font_family_list, { parse_font_family_list($input)? };
+            FontFamily, "font-family", [], "baseline.property.font-family", CssFontFamilyList, CssFontFamilyPropertyValue, CssFontFamilyPropertyValueRepresentation, parse_font_family_list, { parse_font_family_list($input)? }, expansion = longhand { wrapper: existing, value: CssFontFamilyList, accessor: families, inherited: true, initial_kind: user_agent, initial: CssUserAgentInitial::FontFamily };
             Font, "font", [], "baseline.property.font", CssFontValue, CssFontPropertyValue, CssFontPropertyValueRepresentation, parse_font, { parse_font($input)? };
             FontWeight, "font-weight", [], "baseline.property.font-weight", CssFontWeight, CssFontWeightPropertyValue, CssFontWeightPropertyValueRepresentation, parse_font_weight, { parse_font_weight($input)? };
             FontStyle, "font-style", [], "baseline.property.font-style", CssFontStyle, CssFontStylePropertyValue, CssFontStylePropertyValueRepresentation, parse_font_style, { parse_font_style($input)? };
@@ -136,33 +136,33 @@ macro_rules! property_schema {
             ZIndex, "z-index", [], "baseline.property.z-index", CssZIndex, CssZIndexPropertyValue, CssZIndexPropertyValueRepresentation, parse_z_index, { parse_z_index($input)? };
             BoxDecorationBreak, "box-decoration-break", [], "baseline.property.box-decoration-break", CssBoxDecorationBreak, CssBoxDecorationBreakPropertyValue, CssBoxDecorationBreakPropertyValueRepresentation, parse_box_decoration_break, { parse_box_decoration_break($input)? };
             Margin, "margin", [], "baseline.property.margin", CssEdges, CssMarginPropertyValue, CssMarginPropertyValueRepresentation, parse_edges, { parse_edges($input, parse_margin_component)? }, expansion = shorthand { wrapper: fallback, accessor: current, members: [ MarginTop => |value: &CssEdges| Some(value.top.clone()), MarginRight => |value: &CssEdges| Some(value.right.clone()), MarginBottom => |value: &CssEdges| Some(value.bottom.clone()), MarginLeft => |value: &CssEdges| Some(value.left.clone()) ], reset_only: [] };
-            MarginTop, "margin-top", [], "baseline.property.margin-top", CssLength, CssMarginTopPropertyValue, CssMarginTopPropertyValueRepresentation, parse_margin_component, { parse_margin_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, initial: CssLength::Zero };
-            MarginRight, "margin-right", [], "baseline.property.margin-right", CssLength, CssMarginRightPropertyValue, CssMarginRightPropertyValueRepresentation, parse_margin_component, { parse_margin_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, initial: CssLength::Zero };
-            MarginBottom, "margin-bottom", [], "baseline.property.margin-bottom", CssLength, CssMarginBottomPropertyValue, CssMarginBottomPropertyValueRepresentation, parse_margin_component, { parse_margin_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, initial: CssLength::Zero };
-            MarginLeft, "margin-left", [], "baseline.property.margin-left", CssLength, CssMarginLeftPropertyValue, CssMarginLeftPropertyValueRepresentation, parse_margin_component, { parse_margin_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, initial: CssLength::Zero };
+            MarginTop, "margin-top", [], "baseline.property.margin-top", CssLength, CssMarginTopPropertyValue, CssMarginTopPropertyValueRepresentation, parse_margin_component, { parse_margin_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, inherited: false, initial_kind: value, initial: CssLength::Zero };
+            MarginRight, "margin-right", [], "baseline.property.margin-right", CssLength, CssMarginRightPropertyValue, CssMarginRightPropertyValueRepresentation, parse_margin_component, { parse_margin_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, inherited: false, initial_kind: value, initial: CssLength::Zero };
+            MarginBottom, "margin-bottom", [], "baseline.property.margin-bottom", CssLength, CssMarginBottomPropertyValue, CssMarginBottomPropertyValueRepresentation, parse_margin_component, { parse_margin_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, inherited: false, initial_kind: value, initial: CssLength::Zero };
+            MarginLeft, "margin-left", [], "baseline.property.margin-left", CssLength, CssMarginLeftPropertyValue, CssMarginLeftPropertyValueRepresentation, parse_margin_component, { parse_margin_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, inherited: false, initial_kind: value, initial: CssLength::Zero };
             Padding, "padding", [], "baseline.property.padding", CssEdges, CssPaddingPropertyValue, CssPaddingPropertyValueRepresentation, parse_edges, { parse_edges($input, parse_padding_component)? }, expansion = shorthand { wrapper: fallback, accessor: current, members: [ PaddingTop => |value: &CssEdges| Some(value.top.clone()), PaddingRight => |value: &CssEdges| Some(value.right.clone()), PaddingBottom => |value: &CssEdges| Some(value.bottom.clone()), PaddingLeft => |value: &CssEdges| Some(value.left.clone()) ], reset_only: [] };
-            PaddingTop, "padding-top", [], "baseline.property.padding-top", CssLength, CssPaddingTopPropertyValue, CssPaddingTopPropertyValueRepresentation, parse_padding_component, { parse_padding_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, initial: CssLength::Zero };
-            PaddingRight, "padding-right", [], "baseline.property.padding-right", CssLength, CssPaddingRightPropertyValue, CssPaddingRightPropertyValueRepresentation, parse_padding_component, { parse_padding_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, initial: CssLength::Zero };
-            PaddingBottom, "padding-bottom", [], "baseline.property.padding-bottom", CssLength, CssPaddingBottomPropertyValue, CssPaddingBottomPropertyValueRepresentation, parse_padding_component, { parse_padding_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, initial: CssLength::Zero };
-            PaddingLeft, "padding-left", [], "baseline.property.padding-left", CssLength, CssPaddingLeftPropertyValue, CssPaddingLeftPropertyValueRepresentation, parse_padding_component, { parse_padding_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, initial: CssLength::Zero };
+            PaddingTop, "padding-top", [], "baseline.property.padding-top", CssLength, CssPaddingTopPropertyValue, CssPaddingTopPropertyValueRepresentation, parse_padding_component, { parse_padding_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, inherited: false, initial_kind: value, initial: CssLength::Zero };
+            PaddingRight, "padding-right", [], "baseline.property.padding-right", CssLength, CssPaddingRightPropertyValue, CssPaddingRightPropertyValueRepresentation, parse_padding_component, { parse_padding_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, inherited: false, initial_kind: value, initial: CssLength::Zero };
+            PaddingBottom, "padding-bottom", [], "baseline.property.padding-bottom", CssLength, CssPaddingBottomPropertyValue, CssPaddingBottomPropertyValueRepresentation, parse_padding_component, { parse_padding_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, inherited: false, initial_kind: value, initial: CssLength::Zero };
+            PaddingLeft, "padding-left", [], "baseline.property.padding-left", CssLength, CssPaddingLeftPropertyValue, CssPaddingLeftPropertyValueRepresentation, parse_padding_component, { parse_padding_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, inherited: false, initial_kind: value, initial: CssLength::Zero };
             Border, "border", [], "baseline.property.border", CssBorder, CssBorderPropertyValue, CssBorderPropertyValueRepresentation, parse_border, { parse_border($input)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ BorderTopWidth => |value: &CssBorder| value.width().cloned(), BorderRightWidth => |value: &CssBorder| value.width().cloned(), BorderBottomWidth => |value: &CssBorder| value.width().cloned(), BorderLeftWidth => |value: &CssBorder| value.width().cloned(), BorderTopStyle => |value: &CssBorder| value.style(), BorderRightStyle => |value: &CssBorder| value.style(), BorderBottomStyle => |value: &CssBorder| value.style(), BorderLeftStyle => |value: &CssBorder| value.style(), BorderTopColor => |value: &CssBorder| value.current_color().cloned(), BorderRightColor => |value: &CssBorder| value.current_color().cloned(), BorderBottomColor => |value: &CssBorder| value.current_color().cloned(), BorderLeftColor => |value: &CssBorder| value.current_color().cloned() ], reset_only: [ BorderImageSource, BorderImageSlice, BorderImageWidth, BorderImageOutset, BorderImageRepeat ] };
             BorderTop, "border-top", [], "baseline.property.border-top", CssBorder, CssBorderTopPropertyValue, CssBorderTopPropertyValueRepresentation, parse_border, { parse_border($input)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ BorderTopWidth => |value: &CssBorder| value.width().cloned(), BorderTopStyle => |value: &CssBorder| value.style(), BorderTopColor => |value: &CssBorder| value.current_color().cloned() ], reset_only: [  ] };
             BorderRight, "border-right", [], "baseline.property.border-right", CssBorder, CssBorderRightPropertyValue, CssBorderRightPropertyValueRepresentation, parse_border, { parse_border($input)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ BorderRightWidth => |value: &CssBorder| value.width().cloned(), BorderRightStyle => |value: &CssBorder| value.style(), BorderRightColor => |value: &CssBorder| value.current_color().cloned() ], reset_only: [  ] };
             BorderBottom, "border-bottom", [], "baseline.property.border-bottom", CssBorder, CssBorderBottomPropertyValue, CssBorderBottomPropertyValueRepresentation, parse_border, { parse_border($input)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ BorderBottomWidth => |value: &CssBorder| value.width().cloned(), BorderBottomStyle => |value: &CssBorder| value.style(), BorderBottomColor => |value: &CssBorder| value.current_color().cloned() ], reset_only: [  ] };
             BorderLeft, "border-left", [], "baseline.property.border-left", CssBorder, CssBorderLeftPropertyValue, CssBorderLeftPropertyValueRepresentation, parse_border, { parse_border($input)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ BorderLeftWidth => |value: &CssBorder| value.width().cloned(), BorderLeftStyle => |value: &CssBorder| value.style(), BorderLeftColor => |value: &CssBorder| value.current_color().cloned() ], reset_only: [  ] };
             BorderWidth, "border-width", [], "baseline.property.border-width", CssEdges, CssBorderWidthPropertyValue, CssBorderWidthPropertyValueRepresentation, parse_edges, { parse_edges($input, parse_border_width_component)? }, expansion = shorthand { wrapper: fallback, accessor: current, members: [ BorderTopWidth => |value: &CssEdges| Some(value.top.clone()), BorderRightWidth => |value: &CssEdges| Some(value.right.clone()), BorderBottomWidth => |value: &CssEdges| Some(value.bottom.clone()), BorderLeftWidth => |value: &CssEdges| Some(value.left.clone()) ], reset_only: [] };
-            BorderTopWidth, "border-top-width", [], "baseline.property.border-top-width", CssLength, CssBorderTopWidthPropertyValue, CssBorderTopWidthPropertyValueRepresentation, parse_border_width_component, { parse_border_width_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, initial: CssLength::Medium };
-            BorderRightWidth, "border-right-width", [], "baseline.property.border-right-width", CssLength, CssBorderRightWidthPropertyValue, CssBorderRightWidthPropertyValueRepresentation, parse_border_width_component, { parse_border_width_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, initial: CssLength::Medium };
-            BorderBottomWidth, "border-bottom-width", [], "baseline.property.border-bottom-width", CssLength, CssBorderBottomWidthPropertyValue, CssBorderBottomWidthPropertyValueRepresentation, parse_border_width_component, { parse_border_width_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, initial: CssLength::Medium };
-            BorderLeftWidth, "border-left-width", [], "baseline.property.border-left-width", CssLength, CssBorderLeftWidthPropertyValue, CssBorderLeftWidthPropertyValueRepresentation, parse_border_width_component, { parse_border_width_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, initial: CssLength::Medium };
-            Color, "color", [], "baseline.property.color", CssColor, CssColorPropertyValue, CssColorPropertyValueRepresentation, parse_color, { parse_color($input)? };
+            BorderTopWidth, "border-top-width", [], "baseline.property.border-top-width", CssLength, CssBorderTopWidthPropertyValue, CssBorderTopWidthPropertyValueRepresentation, parse_border_width_component, { parse_border_width_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, inherited: false, initial_kind: value, initial: CssLength::Medium };
+            BorderRightWidth, "border-right-width", [], "baseline.property.border-right-width", CssLength, CssBorderRightWidthPropertyValue, CssBorderRightWidthPropertyValueRepresentation, parse_border_width_component, { parse_border_width_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, inherited: false, initial_kind: value, initial: CssLength::Medium };
+            BorderBottomWidth, "border-bottom-width", [], "baseline.property.border-bottom-width", CssLength, CssBorderBottomWidthPropertyValue, CssBorderBottomWidthPropertyValueRepresentation, parse_border_width_component, { parse_border_width_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, inherited: false, initial_kind: value, initial: CssLength::Medium };
+            BorderLeftWidth, "border-left-width", [], "baseline.property.border-left-width", CssLength, CssBorderLeftWidthPropertyValue, CssBorderLeftWidthPropertyValueRepresentation, parse_border_width_component, { parse_border_width_component($input)? }, expansion = longhand { wrapper: fallback, value: CssLength, accessor: current, inherited: false, initial_kind: value, initial: CssLength::Medium };
+            Color, "color", [], "baseline.property.color", CssColor, CssColorPropertyValue, CssColorPropertyValueRepresentation, parse_color, { parse_color($input)? }, expansion = longhand { wrapper: existing, value: CssAuthoredColor, accessor: current, inherited: true, initial_kind: value, initial: CssAuthoredColor::from_system(CssAuthoredSystemColor::CanvasText) };
             Background, "background", [], "baseline.property.background", CssColor, CssBackgroundPropertyValue, CssBackgroundPropertyValueRepresentation, parse_background, { parse_background($input)? };
             BackgroundColor, "background-color", [], "baseline.property.background-color", CssColor, CssBackgroundColorPropertyValue, CssBackgroundColorPropertyValueRepresentation, parse_color, { parse_color($input)? };
             BorderColor, "border-color", [], "baseline.property.border-color", CssColor, CssBorderColorPropertyValue, CssBorderColorPropertyValueRepresentation, parse_border_colors, { parse_border_colors($input)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ BorderTopColor => |value: &CssBorderColors| Some(value.top().clone()), BorderRightColor => |value: &CssBorderColors| Some(value.right().clone()), BorderBottomColor => |value: &CssBorderColors| Some(value.bottom().clone()), BorderLeftColor => |value: &CssBorderColors| Some(value.left().clone()) ], reset_only: [] };
-            BorderTopColor, "border-top-color", [], "baseline.property.border-top-color", CssColor, CssBorderTopColorPropertyValue, CssBorderTopColorPropertyValueRepresentation, parse_color, { parse_color($input)? }, expansion = longhand { wrapper: existing, value: CssAuthoredColor, accessor: current, initial: CssAuthoredColor::current_color() };
-            BorderRightColor, "border-right-color", [], "baseline.property.border-right-color", CssColor, CssBorderRightColorPropertyValue, CssBorderRightColorPropertyValueRepresentation, parse_color, { parse_color($input)? }, expansion = longhand { wrapper: existing, value: CssAuthoredColor, accessor: current, initial: CssAuthoredColor::current_color() };
-            BorderBottomColor, "border-bottom-color", [], "baseline.property.border-bottom-color", CssColor, CssBorderBottomColorPropertyValue, CssBorderBottomColorPropertyValueRepresentation, parse_color, { parse_color($input)? }, expansion = longhand { wrapper: existing, value: CssAuthoredColor, accessor: current, initial: CssAuthoredColor::current_color() };
-            BorderLeftColor, "border-left-color", [], "baseline.property.border-left-color", CssColor, CssBorderLeftColorPropertyValue, CssBorderLeftColorPropertyValueRepresentation, parse_color, { parse_color($input)? }, expansion = longhand { wrapper: existing, value: CssAuthoredColor, accessor: current, initial: CssAuthoredColor::current_color() };
+            BorderTopColor, "border-top-color", [], "baseline.property.border-top-color", CssColor, CssBorderTopColorPropertyValue, CssBorderTopColorPropertyValueRepresentation, parse_color, { parse_color($input)? }, expansion = longhand { wrapper: existing, value: CssAuthoredColor, accessor: current, inherited: false, initial_kind: value, initial: CssAuthoredColor::current_color() };
+            BorderRightColor, "border-right-color", [], "baseline.property.border-right-color", CssColor, CssBorderRightColorPropertyValue, CssBorderRightColorPropertyValueRepresentation, parse_color, { parse_color($input)? }, expansion = longhand { wrapper: existing, value: CssAuthoredColor, accessor: current, inherited: false, initial_kind: value, initial: CssAuthoredColor::current_color() };
+            BorderBottomColor, "border-bottom-color", [], "baseline.property.border-bottom-color", CssColor, CssBorderBottomColorPropertyValue, CssBorderBottomColorPropertyValueRepresentation, parse_color, { parse_color($input)? }, expansion = longhand { wrapper: existing, value: CssAuthoredColor, accessor: current, inherited: false, initial_kind: value, initial: CssAuthoredColor::current_color() };
+            BorderLeftColor, "border-left-color", [], "baseline.property.border-left-color", CssColor, CssBorderLeftColorPropertyValue, CssBorderLeftColorPropertyValueRepresentation, parse_color, { parse_color($input)? }, expansion = longhand { wrapper: existing, value: CssAuthoredColor, accessor: current, inherited: false, initial_kind: value, initial: CssAuthoredColor::current_color() };
             BackgroundImage, "background-image", [], "baseline.property.background-image", CssImageLayerList, CssBackgroundImagePropertyValue, CssBackgroundImagePropertyValueRepresentation, parse_image_layer_list, { parse_image_layer_list($input)? };
             BackgroundPosition, "background-position", [], "baseline.property.background-position", CssBackgroundPositionList, CssBackgroundPositionPropertyValue, CssBackgroundPositionPropertyValueRepresentation, parse_background_position_list, { parse_background_position_list($input)? };
             ObjectPosition, "object-position", [], "official.property.object-position", CssObjectPosition, CssObjectPositionPropertyValue, CssObjectPositionPropertyValueRepresentation, parse_object_position, { parse_object_position($input)? };
@@ -172,19 +172,19 @@ macro_rules! property_schema {
             BackgroundClip, "background-clip", [], "baseline.property.background-clip", CssBackgroundBox, CssBackgroundClipPropertyValue, CssBackgroundClipPropertyValueRepresentation, parse_background_box_list, { parse_background_box_list($input)? };
             BackgroundAttachment, "background-attachment", [], "baseline.property.background-attachment", CssBackgroundAttachmentList, CssBackgroundAttachmentPropertyValue, CssBackgroundAttachmentPropertyValueRepresentation, parse_background_attachment_list, { parse_background_attachment_list($input)? };
             BorderImage, "border-image", [], "official.property.border-image", CssBorderImage, CssBorderImagePropertyValue, CssBorderImagePropertyValueRepresentation, parse_border_image, { parse_border_image($input)? };
-            BorderImageOutset, "border-image-outset", [], "official.property.border-image-outset", CssBorderImageOutset, CssBorderImageOutsetPropertyValue, CssBorderImageOutsetPropertyValueRepresentation, parse_border_image_outset, { parse_border_image_outset($input)? }, expansion = longhand { wrapper: existing, value: CssBorderImageOutset, accessor: outsets, initial: CssBorderImageOutset::try_new(vec![CssBorderImageOutsetComponent::Number(CssNonNegativeNumber::try_new(0.0).expect("0 is non-negative"))]).expect("one outset component is valid") };
-            BorderImageRepeat, "border-image-repeat", [], "official.property.border-image-repeat", CssBorderImageRepeat, CssBorderImageRepeatPropertyValue, CssBorderImageRepeatPropertyValueRepresentation, parse_border_image_repeat, { parse_border_image_repeat($input)? }, expansion = longhand { wrapper: existing, value: CssBorderImageRepeat, accessor: repeat, initial: CssBorderImageRepeat::new(CssBorderImageRepeatKeyword::Stretch, CssBorderImageRepeatKeyword::Stretch) };
-            BorderImageSlice, "border-image-slice", [], "official.property.border-image-slice", CssBorderImageSlice, CssBorderImageSlicePropertyValue, CssBorderImageSlicePropertyValueRepresentation, parse_border_image_slice, { parse_border_image_slice($input)? }, expansion = longhand { wrapper: existing, value: CssBorderImageSlice, accessor: slice, initial: CssBorderImageSlice::try_new(vec![CssBorderImageSliceComponent::Percentage(CssNonNegativeNumber::try_new(100.0).expect("100 is non-negative"))], false).expect("one slice component is valid") };
-            BorderImageSource, "border-image-source", [], "official.property.border-image-source", CssImageValue, CssBorderImageSourcePropertyValue, CssBorderImageSourcePropertyValueRepresentation, parse_border_image_source, { parse_border_image_source($input)? }, expansion = longhand { wrapper: existing, value: CssImageValue, accessor: source, initial: CssImageValue::None };
-            BorderImageWidth, "border-image-width", [], "official.property.border-image-width", CssBorderImageWidth, CssBorderImageWidthPropertyValue, CssBorderImageWidthPropertyValueRepresentation, parse_border_image_width, { parse_border_image_width($input)? }, expansion = longhand { wrapper: existing, value: CssBorderImageWidth, accessor: widths, initial: CssBorderImageWidth::try_new(vec![CssBorderImageWidthComponent::Number(CssNonNegativeNumber::try_new(1.0).expect("1 is non-negative"))]).expect("one width component is valid") };
+            BorderImageOutset, "border-image-outset", [], "official.property.border-image-outset", CssBorderImageOutset, CssBorderImageOutsetPropertyValue, CssBorderImageOutsetPropertyValueRepresentation, parse_border_image_outset, { parse_border_image_outset($input)? }, expansion = longhand { wrapper: existing, value: CssBorderImageOutset, accessor: outsets, inherited: false, initial_kind: value, initial: CssBorderImageOutset::try_new(vec![CssBorderImageOutsetComponent::Number(CssNonNegativeNumber::try_new(0.0).expect("0 is non-negative"))]).expect("one outset component is valid") };
+            BorderImageRepeat, "border-image-repeat", [], "official.property.border-image-repeat", CssBorderImageRepeat, CssBorderImageRepeatPropertyValue, CssBorderImageRepeatPropertyValueRepresentation, parse_border_image_repeat, { parse_border_image_repeat($input)? }, expansion = longhand { wrapper: existing, value: CssBorderImageRepeat, accessor: repeat, inherited: false, initial_kind: value, initial: CssBorderImageRepeat::new(CssBorderImageRepeatKeyword::Stretch, CssBorderImageRepeatKeyword::Stretch) };
+            BorderImageSlice, "border-image-slice", [], "official.property.border-image-slice", CssBorderImageSlice, CssBorderImageSlicePropertyValue, CssBorderImageSlicePropertyValueRepresentation, parse_border_image_slice, { parse_border_image_slice($input)? }, expansion = longhand { wrapper: existing, value: CssBorderImageSlice, accessor: slice, inherited: false, initial_kind: value, initial: CssBorderImageSlice::try_new(vec![CssBorderImageSliceComponent::Percentage(CssNonNegativeNumber::try_new(100.0).expect("100 is non-negative"))], false).expect("one slice component is valid") };
+            BorderImageSource, "border-image-source", [], "official.property.border-image-source", CssImageValue, CssBorderImageSourcePropertyValue, CssBorderImageSourcePropertyValueRepresentation, parse_border_image_source, { parse_border_image_source($input)? }, expansion = longhand { wrapper: existing, value: CssImageValue, accessor: source, inherited: false, initial_kind: value, initial: CssImageValue::None };
+            BorderImageWidth, "border-image-width", [], "official.property.border-image-width", CssBorderImageWidth, CssBorderImageWidthPropertyValue, CssBorderImageWidthPropertyValueRepresentation, parse_border_image_width, { parse_border_image_width($input)? }, expansion = longhand { wrapper: existing, value: CssBorderImageWidth, accessor: widths, inherited: false, initial_kind: value, initial: CssBorderImageWidth::try_new(vec![CssBorderImageWidthComponent::Number(CssNonNegativeNumber::try_new(1.0).expect("1 is non-negative"))]).expect("one width component is valid") };
             ImageOrientation, "image-orientation", [], "official.property.image-orientation", CssImageOrientation, CssImageOrientationPropertyValue, CssImageOrientationPropertyValueRepresentation, parse_image_orientation, { parse_image_orientation($input)? };
             ImageRendering, "image-rendering", [], "official.property.image-rendering", CssImageRendering, CssImageRenderingPropertyValue, CssImageRenderingPropertyValueRepresentation, parse_image_rendering, { parse_image_rendering($input)? };
             ObjectFit, "object-fit", [], "official.property.object-fit", CssObjectFit, CssObjectFitPropertyValue, CssObjectFitPropertyValueRepresentation, parse_object_fit, { parse_object_fit($input)? };
             BorderStyle, "border-style", [], "baseline.property.border-style", CssBorderStyles, CssBorderStylePropertyValue, CssBorderStylePropertyValueRepresentation, parse_border_styles, { parse_border_styles($input)? }, expansion = shorthand { wrapper: fallback, accessor: current, members: [ BorderTopStyle => |value: &CssBorderStyles| Some(value.top), BorderRightStyle => |value: &CssBorderStyles| Some(value.right), BorderBottomStyle => |value: &CssBorderStyles| Some(value.bottom), BorderLeftStyle => |value: &CssBorderStyles| Some(value.left) ], reset_only: [] };
-            BorderTopStyle, "border-top-style", [], "baseline.property.border-top-style", CssBorderStyle, CssBorderTopStylePropertyValue, CssBorderTopStylePropertyValueRepresentation, parse_border_style, { parse_border_style($input)? }, expansion = longhand { wrapper: fallback, value: CssBorderStyle, accessor: current, initial: CssBorderStyle::None };
-            BorderRightStyle, "border-right-style", [], "baseline.property.border-right-style", CssBorderStyle, CssBorderRightStylePropertyValue, CssBorderRightStylePropertyValueRepresentation, parse_border_style, { parse_border_style($input)? }, expansion = longhand { wrapper: fallback, value: CssBorderStyle, accessor: current, initial: CssBorderStyle::None };
-            BorderBottomStyle, "border-bottom-style", [], "baseline.property.border-bottom-style", CssBorderStyle, CssBorderBottomStylePropertyValue, CssBorderBottomStylePropertyValueRepresentation, parse_border_style, { parse_border_style($input)? }, expansion = longhand { wrapper: fallback, value: CssBorderStyle, accessor: current, initial: CssBorderStyle::None };
-            BorderLeftStyle, "border-left-style", [], "baseline.property.border-left-style", CssBorderStyle, CssBorderLeftStylePropertyValue, CssBorderLeftStylePropertyValueRepresentation, parse_border_style, { parse_border_style($input)? }, expansion = longhand { wrapper: fallback, value: CssBorderStyle, accessor: current, initial: CssBorderStyle::None };
+            BorderTopStyle, "border-top-style", [], "baseline.property.border-top-style", CssBorderStyle, CssBorderTopStylePropertyValue, CssBorderTopStylePropertyValueRepresentation, parse_border_style, { parse_border_style($input)? }, expansion = longhand { wrapper: fallback, value: CssBorderStyle, accessor: current, inherited: false, initial_kind: value, initial: CssBorderStyle::None };
+            BorderRightStyle, "border-right-style", [], "baseline.property.border-right-style", CssBorderStyle, CssBorderRightStylePropertyValue, CssBorderRightStylePropertyValueRepresentation, parse_border_style, { parse_border_style($input)? }, expansion = longhand { wrapper: fallback, value: CssBorderStyle, accessor: current, inherited: false, initial_kind: value, initial: CssBorderStyle::None };
+            BorderBottomStyle, "border-bottom-style", [], "baseline.property.border-bottom-style", CssBorderStyle, CssBorderBottomStylePropertyValue, CssBorderBottomStylePropertyValueRepresentation, parse_border_style, { parse_border_style($input)? }, expansion = longhand { wrapper: fallback, value: CssBorderStyle, accessor: current, inherited: false, initial_kind: value, initial: CssBorderStyle::None };
+            BorderLeftStyle, "border-left-style", [], "baseline.property.border-left-style", CssBorderStyle, CssBorderLeftStylePropertyValue, CssBorderLeftStylePropertyValueRepresentation, parse_border_style, { parse_border_style($input)? }, expansion = longhand { wrapper: fallback, value: CssBorderStyle, accessor: current, inherited: false, initial_kind: value, initial: CssBorderStyle::None };
             BorderRadius, "border-radius", [], "baseline.property.border-radius", CssBorderRadii, CssBorderRadiusPropertyValue, CssBorderRadiusPropertyValueRepresentation, parse_border_radius, { parse_border_radius($input)? };
             BorderTopLeftRadius, "border-top-left-radius", [], "baseline.property.border-top-left-radius", CssCornerRadius, CssBorderTopLeftRadiusPropertyValue, CssBorderTopLeftRadiusPropertyValueRepresentation, parse_corner_radius, { parse_corner_radius($input)? };
             BorderTopRightRadius, "border-top-right-radius", [], "baseline.property.border-top-right-radius", CssCornerRadius, CssBorderTopRightRadiusPropertyValue, CssBorderTopRightRadiusPropertyValueRepresentation, parse_corner_radius, { parse_corner_radius($input)? };
@@ -2723,8 +2723,9 @@ macro_rules! define_property_identity {
         /// A grammar-checked property-coupled known declaration in the authored syntax phase.
         ///
         /// Parsing and [`crate::parse_property_value`] construct this value through the same
-        /// property grammar. Its private field is the sole property identity and value
-        /// discriminator, so callers cannot construct or mutate a property/value mismatch.
+        /// property grammar. Its private value discriminator determines canonical property
+        /// identity; the coupled grammar handle additionally preserves legacy authored semantics.
+        /// Callers cannot construct or mutate a property/value/grammar mismatch.
         ///
         /// ```compile_fail
         /// use surgeist_css::CssKnownDeclaration;
@@ -2740,10 +2741,21 @@ macro_rules! define_property_identity {
         /// ```
         #[derive(Clone, Debug, PartialEq)]
         pub struct CssKnownDeclaration {
+            grammar: CssPropertyGrammar,
             value: CssKnownDeclarationValue,
         }
 
         impl CssKnownDeclaration {
+            /// Returns the exact authored grammar, including legacy shorthand identity.
+            #[must_use]
+            pub const fn grammar(&self) -> CssPropertyGrammar {
+                self.grammar
+            }
+            pub(crate) fn with_grammar(mut self, grammar: CssPropertyGrammar) -> Self {
+                assert_eq!(self.property(), grammar.target_property(), "grammar and parsed value share a target");
+                self.grammar = grammar;
+                self
+            }
             /// Returns the canonical property identity derived from the active value variant.
             #[must_use]
             pub const fn property(&self) -> CssKnownProperty {
@@ -2812,7 +2824,13 @@ macro_rules! define_property_identity {
             }
 
             pub(crate) const fn from_value(value: CssKnownDeclarationValue) -> Self {
-                Self { value }
+                Self {
+                    grammar: match &value {
+                        CssKnownDeclarationValue::All(_) => CssKnownProperty::All.grammar(),
+                        $(CssKnownDeclarationValue::$variant(_) => CssKnownProperty::$variant.grammar(),)*
+                    },
+                    value,
+                }
             }
 
             pub(crate) fn from_global(
@@ -2827,7 +2845,7 @@ macro_rules! define_property_identity {
                         CssKnownDeclarationValue::$variant(CssDeclaredValue::Global(keyword))
                     },)*
                 };
-                Self { value }
+                Self::from_value(value)
             }
 
             pub(crate) fn from_substitution_dependent(
@@ -2846,7 +2864,7 @@ macro_rules! define_property_identity {
                         )
                     },)*
                 };
-                Self { value }
+                Self::from_value(value)
             }
         }
 
@@ -2887,7 +2905,7 @@ macro_rules! define_property_identity {
 property_schema!(define_property_identity, schema_input);
 
 /// A reviewed authored property-name resolution outside name-equivalent schema aliases.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum CssResolvedPropertyName {
     Canonical(CssKnownProperty),
     LegacyShorthand(CssLegacyPropertyAlias),
@@ -2903,7 +2921,7 @@ impl CssResolvedPropertyName {
 }
 
 /// An explicitly parsed legacy shorthand whose value maps to a canonical longhand.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum CssLegacyPropertyAlias {
     GlyphOrientationVertical,
 }
@@ -2954,4 +2972,84 @@ pub enum CssOverflowI01PropertyValue {
     Single(CssOverflow),
     /// Two authored overflow values preserving distinct axes.
     Pair(CssOverflowAxes),
+}
+
+/// An immutable authored grammar identity, distinct from its canonical target.
+///
+/// This identifies grammar dispatch, not a standards revision. The pinned source
+/// catalog owns revisions. Name-equivalent aliases share an identity.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct CssPropertyGrammar {
+    resolved: CssResolvedPropertyName,
+}
+impl CssPropertyGrammar {
+    /// Looks up a decoded name without trimming whitespace or parsing escapes.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        resolve_property_name(name).map(|resolved| Self { resolved })
+    }
+    /// Returns the canonical spelling of this grammar.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self.resolved {
+            CssResolvedPropertyName::Canonical(p) => p.canonical_name(),
+            CssResolvedPropertyName::LegacyShorthand(
+                CssLegacyPropertyAlias::GlyphOrientationVertical,
+            ) => "glyph-orientation-vertical",
+        }
+    }
+    /// Returns the canonical property receiving this grammar's value.
+    #[must_use]
+    pub const fn target_property(self) -> CssKnownProperty {
+        self.resolved.property()
+    }
+    /// Returns support-catalog identity independently of intrinsic metadata availability.
+    #[must_use]
+    pub const fn feature_id(self) -> crate::CssFeatureId {
+        crate::CssFeatureId::new(match self.resolved {
+            CssResolvedPropertyName::Canonical(p) => p.stable_id(),
+            CssResolvedPropertyName::LegacyShorthand(
+                CssLegacyPropertyAlias::GlyphOrientationVertical,
+            ) => "official.property-alias.glyph-orientation-vertical",
+        })
+    }
+    /// Returns intrinsic metadata for the annotated schema slice.
+    pub fn metadata(
+        self,
+    ) -> Result<&'static crate::CssPropertyMetadata, crate::CssPropertyMetadataError> {
+        crate::expansion::grammar_metadata(self)
+    }
+    pub(crate) const fn resolved(self) -> CssResolvedPropertyName {
+        self.resolved
+    }
+    pub(crate) const fn from_resolved(resolved: CssResolvedPropertyName) -> Self {
+        Self { resolved }
+    }
+}
+impl CssKnownProperty {
+    /// Returns this property's canonical authored grammar.
+    #[must_use]
+    pub const fn grammar(self) -> CssPropertyGrammar {
+        CssPropertyGrammar {
+            resolved: CssResolvedPropertyName::Canonical(self),
+        }
+    }
+    /// Returns intrinsic metadata, or an explicit capability error.
+    pub fn metadata(
+        self,
+    ) -> Result<&'static crate::CssPropertyMetadata, crate::CssPropertyMetadataError> {
+        self.grammar().metadata()
+    }
+    /// Returns distinct legacy shorthand grammars targeting this property.
+    #[must_use]
+    pub const fn legacy_shorthands(self) -> &'static [CssPropertyGrammar] {
+        match self {
+            Self::TextOrientation => &[CssPropertyGrammar {
+                resolved: CssResolvedPropertyName::LegacyShorthand(
+                    CssLegacyPropertyAlias::GlyphOrientationVertical,
+                ),
+            }],
+            _ => &[],
+        }
+    }
 }

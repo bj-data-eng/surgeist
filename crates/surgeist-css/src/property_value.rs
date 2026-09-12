@@ -110,3 +110,27 @@ pub(crate) fn checked_property_value_body(
     crate::parser::parse_property_value_body(property, serialized.as_css())
         .map_err(|error| CssPropertyValueParseError::from_grammar(error, &serialized))
 }
+
+/// Checks components using an explicit canonical or legacy authored grammar.
+///
+/// This shares token-boundary preservation, limits, and original-origin mapping
+/// with [`parse_property_value`]. The constructed occurrence has programmatic
+/// declaration provenance; supplied component origins remain intact.
+pub fn parse_property_value_for_grammar(
+    grammar: crate::CssPropertyGrammar,
+    value: CssComponentValues,
+    importance: CssImportance,
+) -> Result<CssDeclaration, CssPropertyValueParseError> {
+    let body = checked_grammar_value_body(grammar, &value)?;
+    Ok(CssDeclaration::new_constructed(body, importance, value))
+}
+pub(crate) fn checked_grammar_value_body(
+    grammar: crate::CssPropertyGrammar,
+    value: &CssComponentValues,
+) -> Result<crate::CssDeclarationBody, CssPropertyValueParseError> {
+    let serialized = value
+        .serialize()
+        .map_err(CssPropertyValueParseError::from_component)?;
+    crate::parser::parse_property_value_body_for_grammar(grammar, serialized.as_css())
+        .map_err(|error| CssPropertyValueParseError::from_grammar(error, &serialized))
+}

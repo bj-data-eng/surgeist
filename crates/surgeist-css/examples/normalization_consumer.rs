@@ -725,17 +725,17 @@ fn ordered_terminal_payloads() {
 }
 
 fn atomic_unsupported_declaration() {
-    let css = ".a { margin:0; @media screen { color:red; padding:1px } }";
+    let css = ".a { margin:0; @media screen { width:1px; padding:1px } }";
     let report = parse_sheet(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
-    let error = normalize_sheet(report.syntax()).expect_err("color expansion is not yet selected");
+    let error = normalize_sheet(report.syntax()).expect_err("width expansion is not yet selected");
     let CssNormalizationErrorKind::UnsupportedDeclaration(expansion) = error.kind() else {
         panic!("typed expansion capability failure: {error:?}")
     };
     assert_eq!(
         expansion.kind(),
-        &CssExpansionErrorKind::UnsupportedProperty(Property::Color)
+        &CssExpansionErrorKind::UnsupportedProperty(Property::Width)
     );
     let [CssRule::Media(media)] = style(&report.syntax().rules()[0]).rules() else {
         unreachable!()
@@ -752,7 +752,7 @@ fn atomic_unsupported_declaration() {
     assert_eq!(error.declaration_order(), Some(1));
     assert_eq!(
         error.position().unwrap().byte_offset().value(),
-        css.find("color:").unwrap()
+        css.find("width:").unwrap()
     );
     assert_eq!(
         ancestors(error.rule_context().unwrap()),
