@@ -130,6 +130,14 @@ unforgiving failures reject the input. Ordered diagnostics preserve repeated
 invalid members. The tests bind original identity and source hashes and exercise
 the real adapter against these classes. The persisted oracle remains separate.
 
+The 49 raw media-query originals are bound by
+[`media-query-reconciliation.json`](../../csstree/media-query-reconciliation.json).
+The assertions distinguish unknown authored features, general enclosures, and
+recovery to `Never`, including original EOF closure diagnostics. An escaped
+unknown dimension unit remains ordinary feature syntax with unknown semantics;
+it does not require a vendor-specific parser mode. These expectations exercise
+the real adapter and preserve source identities without refreshing the oracle.
+
 The adapterless Combinator fixtures retain their explicit panic-freedom policy.
 The mixed `atrulePrelude` fixture resolves its adapter from validated options:
 `atrule: media` selects the raw media-query-list parser, while the unnamed generic

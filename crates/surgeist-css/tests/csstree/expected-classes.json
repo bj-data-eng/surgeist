@@ -5215,7 +5215,7 @@
       "id": "mediaQuery/FeatureRange.json#/error/0",
       "expectation_sha256": "70fadb139452a724b3020f85073386e11a58318d90209ef6f9e30f9132b4a9d5",
       "class": {
-        "kind": "recovered",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "media_query"
@@ -5223,14 +5223,7 @@
           "predicate": {
             "relation": "nonempty"
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_media_query",
-            "action": "replace_media_query_with_never",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {
@@ -5447,6 +5440,28 @@
       "id": "mediaQuery/MediaQuery.json#/dashed name feature",
       "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
       "class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_media_query",
+            "action": "replace_media_query_with_never",
+            "payload_relation": "intersects"
+          }
+        ]
+      }
+    },
+    {
+      "id": "mediaQuery/MediaQuery.json#/error/0",
+      "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
+      "class": {
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
@@ -5459,32 +5474,10 @@
       }
     },
     {
-      "id": "mediaQuery/MediaQuery.json#/error/0",
-      "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
-      "class": {
-        "kind": "recovered",
-        "retained_syntax": {
-          "extractor": {
-            "kind": "media_query"
-          },
-          "predicate": {
-            "relation": "nonempty"
-          }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_media_query",
-            "action": "replace_media_query_with_never",
-            "payload_relation": "intersects"
-          }
-        ]
-      }
-    },
-    {
       "id": "mediaQuery/MediaQuery.json#/error/1",
       "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
       "class": {
-        "kind": "recovered",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "media_query"
@@ -5492,21 +5485,14 @@
           "predicate": {
             "relation": "nonempty"
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_media_query",
-            "action": "replace_media_query_with_never",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {
       "id": "mediaQuery/MediaQuery.json#/error/2",
       "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
       "class": {
-        "kind": "recovered",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "media_query"
@@ -5514,14 +5500,7 @@
           "predicate": {
             "relation": "nonempty"
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_media_query",
-            "action": "replace_media_query_with_never",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {
@@ -5539,9 +5518,9 @@
         },
         "diagnostics": [
           {
-            "code": "invalid_media_query",
-            "action": "replace_media_query_with_never",
-            "payload_relation": "intersects"
+            "code": "unexpected_end",
+            "action": "retain_with_implicit_closure",
+            "payload_relation": "ends_at"
           }
         ]
       }
@@ -5550,7 +5529,7 @@
       "id": "mediaQuery/MediaQuery.json#/media feature with comments",
       "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
       "class": {
-        "kind": "clean",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
             "kind": "media_query"
@@ -5558,7 +5537,14 @@
           "predicate": {
             "relation": "nonempty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_media_query",
+            "action": "replace_media_query_with_never",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -5655,20 +5641,14 @@
       "id": "mediaQuery/MediaQuery.json#/number with \\0 hack",
       "expectation_sha256": "ef8d4ba8dc7a5c487da685519da4af14e485e962e672ae0f526129be695ab113",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "media_query"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "media_query"
           },
-          "is_clean": true,
-          "diagnostics": []
+          "predicate": {
+            "relation": "nonempty"
+          }
         }
       }
     },
@@ -5721,7 +5701,7 @@
       "id": "mediaQuery/Ratio.json#/error/0",
       "expectation_sha256": "d6665463c0672b78dc693dd6db85d559c0cb98369343fd3a2fb6b82c423b1649",
       "class": {
-        "kind": "recovered",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "media_query"
@@ -5729,14 +5709,7 @@
           "predicate": {
             "relation": "nonempty"
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_media_query",
-            "action": "replace_media_query_with_never",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {
