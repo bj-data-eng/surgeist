@@ -628,7 +628,7 @@ fn basic_shape_failures_report_clip_path_and_retain_valid_siblings() {
         ("circle(-1px)", "-1px", CssTokenKind::Dimension),
         ("ellipse(1px)", "1px", CssTokenKind::Dimension),
         ("polygon(round 10%, 0 0)", "10%", CssTokenKind::Percentage),
-        ("polygon(, 0 0, 100%)", "100%", CssTokenKind::Percentage),
+        ("polygon(0 0, 100%)", "100%", CssTokenKind::Percentage),
     ] {
         let source = format!("clip-path: {value}; color: red");
         let report = parse_style_attribute(&source);

@@ -4837,7 +4837,7 @@ fn clip_path_distinguishes_selected_and_deferred_shape_functions() {
         "inset(1px)",
         "circle(10px)",
         "ellipse(10px 20%)",
-        "polygon(, 0 0, 100% 0)",
+        "polygon(0 0, 100% 0)",
     ] {
         let report = parse_style_attribute(&format!("clip-path: {value}"));
         assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());

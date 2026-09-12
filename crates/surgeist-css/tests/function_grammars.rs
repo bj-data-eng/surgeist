@@ -166,11 +166,11 @@ fn basic_shape_radius_arity_and_separator_mutations_are_rejected() {
         "inset(1px round / 2px)",
         "inset(1px round 2px /)",
         "inset(1px round 2px / 3px / 4px)",
-        "polygon(0 0, 100% 0)",
+        "polygon(, 0 0, 100% 0)",
         "polygon(evenodd 0 0, 100% 0)",
         "polygon(round -1px, 0 0)",
         "polygon(round 10%, 0 0)",
-        "polygon(, 0 0, 100%)",
+        "polygon(0 0, 100%)",
     ] {
         assert_clip_path_rejected(value);
     }
@@ -301,7 +301,7 @@ fn omitted_shape_branches_are_explicit() {
         assert_eq!(inset.offsets().values().len(), count);
     }
 
-    let polygon = parsed_clip_path_property("polygon(, 0 0)");
+    let polygon = parsed_clip_path_property("polygon(0 0)");
     let Some(CssClipPathValue::BasicShape(CssBasicShapeValue::Polygon(polygon))) =
         polygon.current()
     else {

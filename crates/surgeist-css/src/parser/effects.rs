@@ -855,7 +855,9 @@ fn parse_polygon_shape<'i, 't>(
         break;
     }
 
-    input.expect_comma()?;
+    if fill_rule.is_some() || round.is_some() {
+        input.expect_comma()?;
+    }
     let mut points = Vec::new();
     loop {
         let x = parse_shape_length_percentage(input, "polygon x")?;
