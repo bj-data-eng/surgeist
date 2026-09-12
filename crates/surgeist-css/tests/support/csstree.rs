@@ -3298,6 +3298,57 @@ mod tests {
     }
 
     #[test]
+    fn raw_style_block_observation_rejects_extra_outer_input() {
+        // A real-brace style-block fragment consumes exactly one whole block.
+        // A recovered stylesheet containing that block is a different contract.
+        for source in ["{color:red};", "{color:red} a{color:blue}"] {
+            let value = raw_fragment_observation(
+                "expectations/block/Block.json",
+                Context::Block,
+                source,
+            );
+            assert_eq!(value["syntax_count"], 0, "{source}");
+            assert_eq!(value["is_clean"], false, "{source}");
+            let diagnostics = value["diagnostics"].as_array().unwrap();
+            assert_eq!(diagnostics.len(), 1, "{source}");
+            assert_eq!(diagnostics[0]["action"], "reject_input", "{source}");
+            assert_eq!(diagnostics[0]["span_start"], 0, "{source}");
+            assert_eq!(diagnostics[0]["span_end"], source.len(), "{source}");
+        }
+    }
+
+    #[test]
+    fn raw_style_block_observation_distinguishes_empty_retention_and_eof() {
+        for (source, action) in [
+            ("{}", None),
+            ("{color:red}", None),
+            ("{unknown:x}", Some("drop_declaration")),
+            ("{color:red", Some("retain_with_implicit_closure")),
+        ] {
+            let value = raw_fragment_observation(
+                "expectations/block/Block.json",
+                Context::Block,
+                source,
+            );
+            // This context observes block presence, not declaration cardinality.
+            assert_eq!(value["syntax_count"], 1, "{source}");
+            assert_eq!(value["is_clean"], action.is_none(), "{source}");
+            let diagnostics = value["diagnostics"].as_array().unwrap();
+            if let Some(action) = action {
+                assert_eq!(diagnostics.len(), 1, "{source}");
+                assert_eq!(diagnostics[0]["action"], action, "{source}");
+                if action == "retain_with_implicit_closure" {
+                    assert_eq!(diagnostics[0]["byte_offset"], source.len());
+                    assert_eq!(diagnostics[0]["span_start"], source.len());
+                    assert_eq!(diagnostics[0]["span_end"], source.len());
+                }
+            } else {
+                assert!(diagnostics.is_empty());
+            }
+        }
+    }
+
+    #[test]
     fn raw_rule_observation_rejects_extra_outer_input() {
         // Pinned Syntax 3 section 5.3.5 requires EOF after one rule, even when
         // stylesheet recovery could retain exactly one surviving sibling.
