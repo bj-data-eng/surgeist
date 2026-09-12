@@ -52,7 +52,12 @@ selector-list extractor counts retained members, and the query extractor counts
 one retained query, including malformed-query recovery syntax.
 
 The adapterless Combinator fixtures retain their explicit panic-freedom policy.
-The mixed generic/media `atrulePrelude` fixture is a separate adaptation boundary.
+The mixed `atrulePrelude` fixture resolves its adapter from validated options:
+`atrule: media` selects the raw media-query-list parser, while the unnamed generic
+prelude retains only a custom-property containment panic-freedom probe. Its text
+never supplies an implicit media grammar. Expected-class validation, observation,
+and oracle validation use this same resolution; oracle options cannot select a
+route different from the matched neutral case.
 Changes to entry points, extractors, or recovery actions require corresponding
 review of CSS-owned expected classes and oracle records. Expectations must be
 established independently of parser observations; an old oracle is not evidence

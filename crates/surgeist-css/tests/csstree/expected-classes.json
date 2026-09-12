@@ -2670,14 +2670,10 @@
       "id": "atrulePrelude/index.json#/base test",
       "expectation_sha256": "7ba876207b24a0200f22e37e243edf4c3b880351ac60757762045425dd030f30",
       "class": {
-        "kind": "clean",
-        "retained_syntax": {
-          "extractor": {
-            "kind": "media_queries"
-          },
-          "predicate": {
-            "relation": "nonempty"
-          }
+        "kind": "unsupported",
+        "reason": "generic_fragment_without_truthful_supported_property_or_descriptor",
+        "policy": {
+          "kind": "panic_freedom_only"
         }
       }
     },

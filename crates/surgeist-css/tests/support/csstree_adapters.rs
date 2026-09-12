@@ -14,6 +14,7 @@ pub enum EntryPoint {
     Selector,
     SelectorList,
     MediaQuery,
+    MediaQueryList,
 }
 
 impl EntryPoint {
@@ -24,6 +25,7 @@ impl EntryPoint {
             Self::Selector => "selector",
             Self::SelectorList => "selector_list",
             Self::MediaQuery => "media_query",
+            Self::MediaQueryList => "media_query_list",
         }
     }
 }
@@ -116,7 +118,7 @@ impl Adapter {
             | Self::SlottedSelector
             | Self::WhereSelector => ("", ""),
             Self::MediaQuery => ("", ""),
-            Self::MediaAtRulePrelude => ("@media ", "{}"),
+            Self::MediaAtRulePrelude => ("", ""),
             Self::PropertyValue => match property_or_descriptor {
                 Some(PropertyOrDescriptor::Property(property)) => {
                     return CompleteInput::from_owned_parts(
@@ -525,6 +527,9 @@ impl UnsupportedPolicy {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Mismatch {
+    UnsupportedOptions {
+        profile: OptionsProfile,
+    },
     MissingPropertyOrDescriptor {
         adapter: Adapter,
     },
@@ -585,6 +590,29 @@ impl RegistryEntry {
             index += 1;
         }
         false
+    }
+
+    /// Resolves the supported options without deriving a grammar from payload text.
+    pub fn resolve(mut self, profile: OptionsProfile) -> Result<Self, Mismatch> {
+        if !self.accepts_options(profile) {
+            return Err(Mismatch::UnsupportedOptions { profile });
+        }
+        if self.context == "atrulePrelude" && profile == OptionsProfile::AtruleMedia {
+            self.entry_point = EntryPoint::MediaQueryList;
+            self.adapter = Adapter::MediaAtRulePrelude;
+            self.extractor = Extractor::MediaQueries;
+            self.unsupported_policy = Some(UnsupportedPolicy::FullObservation);
+            self.unsupported_reason = None;
+        } else if self.context == "atrulePrelude" {
+            self.entry_point = EntryPoint::StyleAttribute;
+            self.adapter = Adapter::CustomPropertyContainment;
+            self.extractor = Extractor::DeclarationList;
+            self.unsupported_policy = Some(UnsupportedPolicy::PanicFreedomOnly);
+            self.unsupported_reason = Some(
+                UnsupportedReason::GenericFragmentWithoutTruthfulSupportedPropertyOrDescriptor,
+            );
+        }
+        Ok(self)
     }
 
     pub const fn unsupported_policy(self) -> Option<UnsupportedPolicy> {
@@ -680,7 +708,11 @@ impl RegistryEntry {
             ),
             "atrulePrelude" => matches!(
                 (self.entry_point, self.adapter),
-                (EntryPoint::Sheet, Adapter::MediaAtRulePrelude)
+                (EntryPoint::MediaQueryList, Adapter::MediaAtRulePrelude)
+                    | (
+                        EntryPoint::StyleAttribute,
+                        Adapter::CustomPropertyContainment
+                    )
             ),
             "value" => matches!(
                 (self.entry_point, self.adapter),
@@ -749,7 +781,11 @@ pub fn validate_closed_model() -> bool {
         && EntryPoint::Sheet.name() == "sheet"
         && UnsupportedPolicy::FullObservation.name() == "full_observation"
         && REGISTRY.iter().all(|entry| {
-            !entry.adapter_name().is_empty()
+            entry.options.iter().all(|&profile| {
+                entry
+                    .resolve(profile)
+                    .is_ok_and(|resolved| resolved.has_legal_context_combination())
+            }) && !entry.adapter_name().is_empty()
                 && !entry.entry_point_name().is_empty()
                 && !entry.extractor_name().is_empty()
                 && entry.unsupported_policy_name().is_some()
@@ -966,12 +1002,9 @@ pub const REGISTRY: &[RegistryEntry] = &[
         Extractor::SheetRules,
         EMPTY
     ),
-    entry!(
+    adapterless_entry!(
         "expectations/atrulePrelude/index.json",
         "atrulePrelude",
-        Sheet,
-        MediaAtRulePrelude,
-        Extractor::MediaQueries,
         ATRULE_MEDIA
     ),
     entry!(

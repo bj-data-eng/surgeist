@@ -18,8 +18,8 @@ use adapters::{
 };
 use surgeist_css::{
     CssErrorCode, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssRecoveryAction,
-    CssRecoveryDiagnostic, parse_media_query, parse_selector, parse_selector_list, parse_sheet,
-    parse_style_attribute,
+    CssRecoveryDiagnostic, parse_media_query, parse_media_query_list, parse_selector,
+    parse_selector_list, parse_sheet, parse_style_attribute,
 };
 use surgeist_css::{validate_sheet, validate_style_attribute};
 
@@ -875,12 +875,23 @@ pub(crate) fn validate_csstree_expected_classes_contract(
     })
 }
 
+fn resolve_case_registry(
+    case: &ValidatedCase,
+    registry: RegistryEntry,
+) -> Result<RegistryEntry, String> {
+    let profile = case.options.profile().map_err(str::to_owned)?;
+    registry
+        .resolve(profile)
+        .map_err(|error| format!("registry options mismatch for {}: {error:?}", case.id))
+}
+
 fn validate_expected_class(case: &ValidatedCase, expected: &ExpectedClass) -> Result<(), String> {
     let registry = REGISTRY
         .iter()
         .find(|entry| entry.fixture_path() == case.expectation_path)
         .copied()
         .ok_or_else(|| format!("missing registry entry for expected class {}", case.id))?;
+    let registry = resolve_case_registry(case, registry)?;
     match expected {
         ExpectedClass::Clean { retained_syntax } => {
             require_truthful_adapter(case, registry)?;
@@ -1375,6 +1386,13 @@ fn collect_oracle_contract_failures(
             Ok(_) => {}
             Err(error) => reject(OracleContractFailureKind::IllegalOptions, error.to_owned()),
         }
+        let registry = match resolve_case_registry(case, registry) {
+            Ok(registry) => registry,
+            Err(error) => {
+                reject(OracleContractFailureKind::RegistryOptionsMismatch, error);
+                continue;
+            }
+        };
         if let Err(error) = validate_probe(record, registry) {
             reject(OracleContractFailureKind::ProbeMismatch, error);
         }
@@ -1731,6 +1749,8 @@ fn observe_csstree_record(case: &ValidatedCase) -> Result<RawOracleRecord, Basel
                 "neutral expectation path has no explicit registry entry",
             )
         })?;
+    let registry = resolve_case_registry(case, registry)
+        .map_err(|error| BaselineFailure::new(case, BaselineFailureKind::AdapterMismatch, error))?;
     let complete = registry
         .adapter()
         .wrap(&case.input, registry.property_or_descriptor())
@@ -1974,6 +1994,16 @@ fn observe_public_parser(
                 RegistryExtractor::MediaQuery,
                 complete,
                 |_| 1,
+            )
+        }
+        EntryPoint::MediaQueryList => {
+            let report = parse_media_query_list(complete.source());
+            fragment_observation(
+                report,
+                registry,
+                RegistryExtractor::MediaQueries,
+                complete,
+                |syntax| syntax.queries().len(),
             )
         }
         EntryPoint::StyleAttribute => {
