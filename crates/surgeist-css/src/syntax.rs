@@ -993,20 +993,16 @@ pub struct CssImportUrl {
 }
 
 impl CssImportUrl {
+    /// Preserves a decoded authored URL, including empty or whitespace values.
+    /// Resource resolution and usability belong to the importing layer.
     #[must_use]
     pub fn try_new(value: impl Into<String>) -> Option<Self> {
-        let value = value.into();
-        if value.trim().is_empty() {
-            None
-        } else {
-            Some(Self::new(value))
-        }
+        Some(Self::new(value))
     }
 
     #[must_use]
     pub(crate) fn new(value: impl Into<String>) -> Self {
         let value = value.into();
-        debug_assert!(!value.trim().is_empty());
         Self { value }
     }
 
@@ -1022,20 +1018,16 @@ pub struct CssImportString {
 }
 
 impl CssImportString {
+    /// Preserves a decoded authored string, including empty or whitespace values.
+    /// Resource resolution and usability belong to the importing layer.
     #[must_use]
     pub fn try_new(value: impl Into<String>) -> Option<Self> {
-        let value = value.into();
-        if value.trim().is_empty() {
-            None
-        } else {
-            Some(Self::new(value))
-        }
+        Some(Self::new(value))
     }
 
     #[must_use]
     pub(crate) fn new(value: impl Into<String>) -> Self {
         let value = value.into();
-        debug_assert!(!value.trim().is_empty());
         Self { value }
     }
 

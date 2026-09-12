@@ -828,11 +828,11 @@ fn scoped_selector_model_preserves_authored_scope_anchor_marker() {
 }
 
 #[test]
-fn import_target_constructors_reject_empty_values() {
-    assert_eq!(CssImportUrl::try_new(""), None);
-    assert_eq!(CssImportUrl::try_new(" \t\n "), None);
-    assert_eq!(CssImportString::try_new(""), None);
-    assert_eq!(CssImportString::try_new(" \t\n "), None);
+fn import_target_constructors_preserve_decoded_values() {
+    for value in ["", " \t\n "] {
+        assert_eq!(CssImportUrl::try_new(value).unwrap().as_str(), value);
+        assert_eq!(CssImportString::try_new(value).unwrap().as_str(), value);
+    }
     assert_eq!(
         CssImportUrl::try_new("theme.css").unwrap().as_str(),
         "theme.css"

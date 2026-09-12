@@ -1512,8 +1512,8 @@ Media support metadata cites the selected published MQ5 edition as the effective
 source for query grammar and all 37 feature definitions. Historical feature IDs
 and baseline alias memberships remain stable; they do not select superseded
 semantics. The five existing range rows describe complete signed, symbolic and
-source-ordered comparison grammar. Metadata does not claim query evaluation,
-empty import targets or checked import construction.
+source-ordered comparison grammar. Metadata does not claim query evaluation
+or checked import construction.
 
 Media features retain authored query syntax, including all 37 known boolean
 feature names in the selected Media Queries 5 edition. Numeric feature operands
@@ -1721,8 +1721,16 @@ semicolon has programmatic provenance. Any recovered `Never` member returns
 `CssImportSerializationError::Media` without producing a partial rule. This does
 not emit output if the shared grammar cannot preserve its interpretation:
 `InterpretationChanged` reports that failure. The API does not yet provide a
-checked Rust import constructor or change the existing
-rejection of empty import targets.
+checked Rust import constructor.
+
+Import targets accept empty and whitespace-only decoded strings and URLs without
+trimming their contents. This follows the authored grammar in
+[Cascade 5](https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/#at-import)
+and the empty URL definition in
+[Values 4](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#empty-urls).
+An empty URL resolves to an invalid resource; that downstream result does not
+invalidate its authored syntax. Serialization here preserves authored target
+spelling, rather than performing computed-value URL serialization.
 
 These models are authored syntax only. `surgeist-css` does not evaluate media or
 supports conditions, match selectors, resolve URLs, load imported resources,

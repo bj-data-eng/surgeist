@@ -2497,8 +2497,12 @@ fn parse_import_prelude<'i, 't>(
         )?;
     input.reset(&target_end);
     queries::check_media_import_components(source, input, recovery)?;
+    // Include the accepted target in closure ownership: URL tokenization can
+    // succeed at EOF without consuming a closing parenthesis.
+    input.reset(&target_start);
     let prelude_closures =
         recovery.check_specialized_components(source, input, "baseline.media.query-list")?;
+    input.reset(&target_end);
     let selected = select_import_clauses(source, input, recovery)?;
     let probe = recovery.detached_probe();
     let mut diagnostics = selected.diagnostics;
@@ -2933,15 +2937,13 @@ fn parse_import_target<'i, 't>(
     let location = input.current_source_location();
 
     if let Ok(value) = input.try_parse(Parser::expect_string_cloned) {
-        return CssImportString::try_new(value.as_ref())
-            .map(CssImportTarget::String)
-            .ok_or_else(|| invalid_syntax(location, "import string target must not be empty"));
+        return Ok(CssImportTarget::String(CssImportString::new(
+            value.as_ref(),
+        )));
     }
 
     if let Ok(value) = input.try_parse(Parser::expect_url) {
-        return CssImportUrl::try_new(value.as_ref())
-            .map(CssImportTarget::Url)
-            .ok_or_else(|| invalid_syntax(location, "import URL target must not be empty"));
+        return Ok(CssImportTarget::Url(CssImportUrl::new(value.as_ref())));
     }
 
     Err(invalid_syntax(
