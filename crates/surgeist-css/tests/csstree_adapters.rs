@@ -10,6 +10,27 @@ use adapters::{
 use surgeist_css::{CssDeclarationList, CssRule, CssSheet, parse_sheet};
 
 #[test]
+fn style_block_adapter_preserves_raw_input_and_names_block_presence() {
+    let entry = adapters::REGISTRY
+        .iter()
+        .find(|entry| entry.fixture_path() == "expectations/block/Block.json")
+        .unwrap();
+    assert_eq!(entry.entry_point(), EntryPoint::StyleBlock);
+    assert_eq!(entry.extractor(), Extractor::StyleBlock);
+    assert_eq!(entry.extractor_name(), "style_block");
+    for source in ["{}", "{color:red};", " /*😀*/\r\n{color:red}", "{"] {
+        let complete = entry.adapter().wrap(source, None).unwrap();
+        assert_eq!(complete.source(), source);
+        assert_eq!(complete.payload_span(), 0..source.len());
+    }
+    assert!(
+        Extractor::StyleBlock
+            .extract_sheet(parse_sheet("a{}").syntax())
+            .is_err()
+    );
+}
+
+#[test]
 fn registry_covers_every_fixture_path() {
     let registry = adapters::REGISTRY;
     assert!(adapters::validate_closed_model());

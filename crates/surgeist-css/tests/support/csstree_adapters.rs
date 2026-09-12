@@ -11,6 +11,7 @@ use surgeist_css::{
 pub enum EntryPoint {
     Sheet,
     Rule,
+    StyleBlock,
     StyleAttribute,
     Declaration,
     PropertyValueText,
@@ -26,6 +27,7 @@ impl EntryPoint {
         match self {
             Self::Sheet => "sheet",
             Self::Rule => "rule",
+            Self::StyleBlock => "style_block",
             Self::StyleAttribute => "style_attribute",
             Self::Declaration => "declaration",
             Self::PropertyValueText => "property_value_text",
@@ -110,7 +112,7 @@ impl Adapter {
             Self::Stylesheet | Self::TopLevelRule | Self::TopLevelAtRule => ("", ""),
             Self::StyleDeclarationList => (".surgeist-corpus-probe{", "}"),
             Self::StyleDeclaration => ("", ""),
-            Self::StyleBlock => (".surgeist-corpus-probe", ""),
+            Self::StyleBlock => ("", ""),
             Self::SelectorList
             | Self::Selector
             | Self::NthSelector
@@ -270,6 +272,7 @@ impl PropertyOrDescriptor {
 pub enum Extractor {
     SheetRules,
     TopLevelRuleKind(TopLevelRuleKind),
+    StyleBlock,
     StyleDeclarations,
     StyleSelector,
     Selector,
@@ -294,6 +297,7 @@ impl Extractor {
         match self {
             Self::SheetRules => "sheet_rules",
             Self::TopLevelRuleKind(_) => "top_level_rule_kind",
+            Self::StyleBlock => "style_block",
             Self::StyleDeclarations => "style_declarations",
             Self::StyleSelector => "style_selector",
             Self::Selector => "selector",
@@ -383,7 +387,11 @@ impl Extractor {
                 .map_or(0, |declarations| {
                     known_declaration(declarations, index, property)
                 }),
-            Self::DeclarationList | Self::Selector | Self::SelectorList | Self::MediaQuery => {
+            Self::StyleBlock
+            | Self::DeclarationList
+            | Self::Selector
+            | Self::SelectorList
+            | Self::MediaQuery => {
                 return Err(Mismatch::ExtractorEntryPoint {
                     extractor: self,
                     entry_point: EntryPoint::Sheet,
@@ -674,7 +682,7 @@ impl RegistryEntry {
             ),
             "block" => matches!(
                 (self.entry_point, self.adapter),
-                (EntryPoint::Sheet, Adapter::StyleBlock)
+                (EntryPoint::StyleBlock, Adapter::StyleBlock)
             ),
             "selectorList" => matches!(
                 (self.entry_point, self.adapter),
@@ -1015,9 +1023,9 @@ pub const REGISTRY: &[RegistryEntry] = &[
     entry!(
         "expectations/block/Block.json",
         "block",
-        Sheet,
         StyleBlock,
-        Extractor::StyleDeclarations,
+        StyleBlock,
+        Extractor::StyleBlock,
         EMPTY
     ),
     entry!(

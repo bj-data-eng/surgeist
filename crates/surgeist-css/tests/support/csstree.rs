@@ -21,7 +21,7 @@ use surgeist_css::{
     CssPropertyNameRef, CssRecoveryAction, CssRecoveryDiagnostic, parse_declaration,
     parse_font_face_descriptor_value, parse_media_query, parse_media_query_list,
     parse_property_value_text, parse_rule, parse_selector, parse_selector_list, parse_sheet,
-    parse_style_attribute,
+    parse_style_attribute, parse_style_block,
 };
 use surgeist_css::{validate_sheet, validate_style_attribute};
 
@@ -1968,6 +1968,16 @@ fn observe_public_parser(
             )?;
             Ok::<Observation, String>(observation)
         }
+        EntryPoint::StyleBlock => {
+            let report = parse_style_block(complete.source(), &corpus_namespace_context());
+            fragment_observation(
+                report,
+                registry,
+                RegistryExtractor::StyleBlock,
+                complete,
+                |syntax| usize::from(syntax.is_some()),
+            )
+        }
         EntryPoint::Rule => {
             let report = parse_rule(complete.source(), &corpus_namespace_context());
             fragment_observation(
@@ -2244,6 +2254,7 @@ fn raw_extractor(extractor: RegistryExtractor) -> Extractor {
         RegistryExtractor::TopLevelRuleKind(kind) => Extractor::TopLevelRuleKind {
             rule_kind: kind.name().into(),
         },
+        RegistryExtractor::StyleBlock => Extractor::StyleBlock,
         RegistryExtractor::StyleDeclarations => Extractor::StyleDeclarations,
         RegistryExtractor::StyleSelector => Extractor::StyleSelector,
         RegistryExtractor::Selector => Extractor::Selector,
@@ -2514,6 +2525,7 @@ fn validate_payload(
 fn extractor_matches_registry(extractor: &Extractor, expected: RegistryExtractor) -> bool {
     match (extractor, expected) {
         (Extractor::SheetRules, RegistryExtractor::SheetRules)
+        | (Extractor::StyleBlock, RegistryExtractor::StyleBlock)
         | (Extractor::StyleDeclarations, RegistryExtractor::StyleDeclarations)
         | (Extractor::StyleSelector, RegistryExtractor::StyleSelector)
         | (Extractor::Selector, RegistryExtractor::Selector)
@@ -2548,6 +2560,7 @@ fn extractor_matches_registry(extractor: &Extractor, expected: RegistryExtractor
 fn validate_extractor(extractor: &Extractor, id: &str) -> Result<(), String> {
     match extractor {
         Extractor::SheetRules
+        | Extractor::StyleBlock
         | Extractor::StyleDeclarations
         | Extractor::StyleSelector
         | Extractor::Selector
@@ -2846,6 +2859,7 @@ impl Probe {
 enum Extractor {
     SheetRules,
     TopLevelRuleKind { rule_kind: String },
+    StyleBlock,
     StyleDeclarations,
     StyleSelector,
     Selector,
@@ -3302,11 +3316,8 @@ mod tests {
         // A real-brace style-block fragment consumes exactly one whole block.
         // A recovered stylesheet containing that block is a different contract.
         for source in ["{color:red};", "{color:red} a{color:blue}"] {
-            let value = raw_fragment_observation(
-                "expectations/block/Block.json",
-                Context::Block,
-                source,
-            );
+            let value =
+                raw_fragment_observation("expectations/block/Block.json", Context::Block, source);
             assert_eq!(value["syntax_count"], 0, "{source}");
             assert_eq!(value["is_clean"], false, "{source}");
             let diagnostics = value["diagnostics"].as_array().unwrap();
@@ -3325,11 +3336,8 @@ mod tests {
             ("{unknown:x}", Some("drop_declaration")),
             ("{color:red", Some("retain_with_implicit_closure")),
         ] {
-            let value = raw_fragment_observation(
-                "expectations/block/Block.json",
-                Context::Block,
-                source,
-            );
+            let value =
+                raw_fragment_observation("expectations/block/Block.json", Context::Block, source);
             // This context observes block presence, not declaration cardinality.
             assert_eq!(value["syntax_count"], 1, "{source}");
             assert_eq!(value["is_clean"], action.is_none(), "{source}");

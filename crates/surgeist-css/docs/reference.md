@@ -13,6 +13,7 @@ subset; it does not establish complete support for all CSS syntax.
 | --- | --- | --- |
 | `parse_sheet(&str)` | Default features | `CssParseReport<CssSheet>` |
 | `parse_style_attribute(&str)` | Default features | `CssParseReport<CssDeclarationList>` |
+| `parse_style_block(source, namespace_context)` | Default features | `CssParseReport<Option<CssStyleBlock>>` |
 | `parse_rule(source, namespace_context)` | Default features | `CssParseReport<Option<CssRule>>` |
 | `parse_declaration(&str)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
 | `parse_selector(&str, &CssNamespaceContext)` | Default features | `CssParseReport<Option<CssSelector>>` |
@@ -167,6 +168,28 @@ Namespace bindings are copied from the immutable supplied context without
 fabricating namespace declarations. Explicit `&` remains symbolic; leading
 relative combinators still require a nested style context. Parsing neither
 matches selectors nor applies cascade, substitution or CSSOM mutation.
+
+## Raw style blocks
+
+`parse_style_block(source, &CssNamespaceContext)` accepts exactly one real-brace
+block and optional surrounding whitespace/comments. The selected grammar is an
+ordinary style body: initial declarations, nested rules, and subsequent declaration
+runs retain their authored order. Relative child selectors and explicit `&` stay
+symbolic; no selector or parent list is fabricated.
+
+`CssStyleBlock::declarations()` returns the leading declarations, and `rules()`
+returns children plus later `CssRule::NestedDeclarations` runs. `origin()` includes
+the opening brace through the explicit closing brace or actual EOF. It excludes
+surrounding trivia while sharing the complete original source snapshot with
+parsed declarations and components. Equality compares contents and source text/span;
+it does not compare snapshot identity.
+
+Empty and recovered-empty blocks remain `Some`. Inner errors preserve the owning
+recovery actions, and implicit EOF closures are reported on retained blocks.
+Missing opening braces, another block or trailing nontrivia reject the complete input with
+`None` and `RejectInput`, discarding provisional inner diagnostics. Resource limits
+retain `StopAtNestingLimit` and recoverable ancestors. This is a style-body frontdoor,
+not a generic component block or a CSSOM mutation operation.
 
 ## Raw declaration fragments
 

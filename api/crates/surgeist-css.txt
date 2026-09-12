@@ -5315,6 +5315,11 @@ impl surgeist_css::CssSteps
 pub const fn surgeist_css::CssSteps::count(&self) -> &surgeist_css::CssStepCount
 pub const fn surgeist_css::CssSteps::position(&self) -> core::option::Option<surgeist_css::CssStepPosition>
 pub fn surgeist_css::CssSteps::try_new(count: surgeist_css::CssStepCount, position: core::option::Option<surgeist_css::CssStepPosition>) -> core::option::Option<Self>
+pub struct surgeist_css::CssStyleBlock
+impl surgeist_css::CssStyleBlock
+pub const fn surgeist_css::CssStyleBlock::declarations(&self) -> &surgeist_css::CssDeclarationList
+pub const fn surgeist_css::CssStyleBlock::origin(&self) -> &surgeist_css::CssParsedOrigin
+pub fn surgeist_css::CssStyleBlock::rules(&self) -> &[surgeist_css::CssRule]
 pub struct surgeist_css::CssStyleRule
 impl surgeist_css::CssStyleRule
 pub const fn surgeist_css::CssStyleRule::declarations(&self) -> &surgeist_css::CssDeclarationList
@@ -5782,6 +5787,7 @@ pub fn surgeist_css::parse_selector(source: &str, context: &surgeist_css::CssNam
 pub fn surgeist_css::parse_selector_list(source: &str, context: &surgeist_css::CssNamespaceContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssStyleSelectorList>>
 pub fn surgeist_css::parse_sheet(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssSheet>
 pub fn surgeist_css::parse_style_attribute(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssDeclarationList>
+pub fn surgeist_css::parse_style_block(source: &str, context: &surgeist_css::CssNamespaceContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssStyleBlock>>
 pub fn surgeist_css::property_support_metadata(name: &str) -> core::option::Option<surgeist_css::CssPropertySupportMetadata>
 pub fn surgeist_css::specification_source(id: &str) -> core::option::Option<&'static surgeist_css::CssSpecificationSource>
 pub const fn surgeist_css::specification_sources() -> &'static [surgeist_css::CssSpecificationSource]

@@ -1122,6 +1122,7 @@ pub use parser::{
     CssNamespaceContext, parse_declaration, parse_font_face_descriptor_value, parse_media_query,
     parse_media_query_list, parse_property_value_text, parse_property_value_text_for_grammar,
     parse_rule, parse_selector, parse_selector_list, parse_sheet, parse_style_attribute,
+    parse_style_block,
 };
 pub use properties::*;
 pub use property_value::{

@@ -43,24 +43,6 @@ pub(super) fn parse_style_rule_block<'i, 't>(
     })
 }
 
-pub(super) struct StyleContents {
-    pub(super) declarations: CssDeclarationList,
-    pub(super) rules: Vec<CssRule>,
-}
-
-impl StyleContents {
-    pub(super) fn into_nested_rules(self) -> Vec<CssRule> {
-        let mut rules = Vec::new();
-        if !self.declarations.is_empty() {
-            rules.push(CssRule::NestedDeclarations(CssNestedDeclarationsRule::new(
-                self.declarations,
-            )));
-        }
-        rules.extend(self.rules);
-        rules
-    }
-}
-
 pub(super) fn parse_style_contents<'i, 't>(
     source: &'i str,
     input: &mut Parser<'i, 't>,

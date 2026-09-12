@@ -16,7 +16,7 @@ mod fragments;
 pub use fragments::{
     parse_declaration, parse_font_face_descriptor_value, parse_media_query, parse_media_query_list,
     parse_property_value_text, parse_property_value_text_for_grammar, parse_rule, parse_selector,
-    parse_selector_list,
+    parse_selector_list, parse_style_block,
 };
 mod generated_content;
 mod grid;

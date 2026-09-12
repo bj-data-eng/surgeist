@@ -568,3 +568,63 @@ pub fn parse_rule(
         }
     })
 }
+
+/// Parses exactly one real-brace style block with supplied namespace bindings.
+///
+/// The source contains the braces and optional surrounding whitespace/comments,
+/// without a selector. Empty and recovered-empty blocks are retained. A second
+/// block, missing opening brace or trailing nontrivia rejects the complete input
+/// with `RejectInput`; resource failures preserve `StopAtNestingLimit`.
+///
+/// Inner declarations, nested rules and subsequent declaration runs use ordinary
+/// style-body grammar and preserve their recovery diagnostics. Relative child
+/// selectors and explicit anchors remain symbolic. No parent selector is invented.
+/// The block origin includes its actual braces or ends at implicit EOF, excludes
+/// surrounding trivia, and shares the original source snapshot with declarations.
+/// Implicit closure diagnostics are published only after the outer block survives.
+pub fn parse_style_block(
+    source: &str,
+    context: &CssNamespaceContext,
+) -> crate::CssParseReport<Option<CssStyleBlock>> {
+    bounded(source, || {
+        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+        if let Some(name) = &context.0.default {
+            state.activate_namespace(None, name.clone());
+        }
+        for (prefix, name) in &context.0.named {
+            state.activate_namespace(Some(prefix.clone()), name.clone());
+        }
+        let mut parser_input = ParserInput::new(source);
+        let mut input = Parser::new(&mut parser_input);
+        let result = (|| {
+            input.skip_whitespace();
+            let start = input.position().byte_index();
+            input.expect_curly_bracket_block()?;
+            let recovered = input.parse_nested_block(|input| {
+                let mut depth =
+                    state.enter_rule_block(source, input, "official.value.style-block")?;
+                let recovered = parse_style_contents(source, input, state.clone())?;
+                depth.retain();
+                Ok(recovered)
+            })?;
+            let end = input.position().byte_index();
+            input.expect_exhausted()?;
+            let origin = CssParsedOrigin::from_range(state.source_snapshot(), start..end)
+                .expect("consumed block boundaries belong to the original source");
+            Ok((
+                CssStyleBlock::new(recovered.syntax, origin),
+                recovered.diagnostics,
+            ))
+        })();
+        match result {
+            Ok((block, mut diagnostics)) => {
+                diagnostics.extend(state.take_implicit_closure_diagnostics(source));
+                crate::CssParseReport::new(Some(block), diagnostics)
+            }
+            Err(error) => crate::CssParseReport::new(
+                None,
+                vec![reject(source, error, crate::CssRecoveryAction::RejectInput)],
+            ),
+        }
+    })
+}

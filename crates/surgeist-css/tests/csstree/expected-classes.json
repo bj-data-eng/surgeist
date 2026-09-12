@@ -2696,13 +2696,13 @@
       "id": "block/Block.json#/at-rule in block",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
         },
         "diagnostics": [
@@ -2723,24 +2723,24 @@
       "id": "block/Block.json#/at-rule in the ending of block",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
         },
         "diagnostics": [
           {
-            "code": "unknown_at_rule",
-            "action": "drop_at_rule",
+            "code": "unknown_property",
+            "action": "drop_declaration",
             "payload_relation": "intersects"
           },
           {
-            "code": "unknown_property",
-            "action": "drop_declaration",
+            "code": "unknown_at_rule",
+            "action": "drop_at_rule",
             "payload_relation": "intersects"
           }
         ]
@@ -2750,35 +2750,13 @@
       "id": "block/Block.json#/at-rule with block in block",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "empty"
-          }
-        },
-        "diagnostics": [
-          {
-            "code": "unknown_at_rule",
-            "action": "drop_at_rule",
-            "payload_relation": "intersects"
-          }
-        ]
-      }
-    },
-    {
-      "id": "block/Block.json#/at-rule with block in the ending of block",
-      "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
-      "class": {
-        "kind": "strict_rejected",
-        "retained_syntax": {
-          "extractor": {
-            "kind": "style_declarations"
-          },
-          "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
         },
         "diagnostics": [
@@ -2796,16 +2774,43 @@
       }
     },
     {
+      "id": "block/Block.json#/at-rule with block in the ending of block",
+      "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
+      "class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_block"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unknown_at_rule",
+            "action": "drop_at_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      }
+    },
+    {
       "id": "block/Block.json#/bad declaration should include semicolon/0",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
         },
         "diagnostics": [
@@ -2821,13 +2826,13 @@
       "id": "block/Block.json#/bad declaration should include semicolon/1",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
         },
         "diagnostics": [
@@ -2843,13 +2848,13 @@
       "id": "block/Block.json#/bad declaration should not include whitespaces/0",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
         },
         "diagnostics": [
@@ -2865,29 +2870,35 @@
       "id": "block/Block.json#/bad declaration should not include whitespaces/1",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "clean",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "exact",
-            "value": 0
+            "relation": "nonempty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_end",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "block/Block.json#/bad declaration should not include whitespaces/2",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
         },
         "diagnostics": [
@@ -2903,29 +2914,35 @@
       "id": "block/Block.json#/bad symbol in a property name",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "clean",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "exact",
-            "value": 0
+            "relation": "nonempty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "block/Block.json#/bad value",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
         },
         "diagnostics": [
@@ -2944,11 +2961,10 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "exact",
-            "value": 0
+            "relation": "nonempty"
           }
         }
       }
@@ -2957,13 +2973,13 @@
       "id": "block/Block.json#/block.2",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
         },
         "diagnostics": [
@@ -2979,13 +2995,13 @@
       "id": "block/Block.json#/block.3",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
         },
         "diagnostics": [
@@ -3001,13 +3017,13 @@
       "id": "block/Block.json#/block.4",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
         },
         "diagnostics": [
@@ -3031,11 +3047,10 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "exact",
-            "value": 0
+            "relation": "nonempty"
           }
         }
       }
@@ -3047,11 +3062,10 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "exact",
-            "value": 0
+            "relation": "nonempty"
           }
         }
       }
@@ -3060,48 +3074,71 @@
       "id": "block/Block.json#/block.c.2",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "clean",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "exact",
-            "value": 0
+            "relation": "nonempty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "block/Block.json#/block.c.3",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "clean",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "exact",
-            "value": 0
+            "relation": "nonempty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "block/Block.json#/block.c.4",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "clean",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "exact",
-            "value": 0
+            "relation": "nonempty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -3111,11 +3148,10 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "exact",
-            "value": 0
+            "relation": "nonempty"
           }
         }
       }
@@ -3124,13 +3160,13 @@
       "id": "block/Block.json#/block.s.2",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
         },
         "diagnostics": [
@@ -3146,13 +3182,13 @@
       "id": "block/Block.json#/block.s.3",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
         },
         "diagnostics": [
@@ -3168,13 +3204,13 @@
       "id": "block/Block.json#/block.s.4",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
         },
         "diagnostics": [
@@ -3198,11 +3234,10 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "exact",
-            "value": 0
+            "relation": "nonempty"
           }
         }
       }
@@ -3214,11 +3249,10 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "exact",
-            "value": 0
+            "relation": "nonempty"
           }
         }
       }
@@ -3230,11 +3264,10 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "exact",
-            "value": 0
+            "relation": "nonempty"
           }
         }
       }
@@ -3243,13 +3276,13 @@
       "id": "block/Block.json#/hanging semicolons/3",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
         },
         "diagnostics": [
@@ -3265,13 +3298,13 @@
       "id": "block/Block.json#/uncomplete !important",
       "expectation_sha256": "f6911b476b4e327bcad4a0f56ec8e43ea3dbecd8ce8ca1390a00818cd56ea304",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "style_block"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
         },
         "diagnostics": [

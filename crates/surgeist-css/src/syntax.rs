@@ -3990,6 +3990,64 @@ impl CssQueryLength {
     }
 }
 
+// Shared parser-produced style-body payload. Syntax owns the declaration-run
+// invariant; both selector-bearing rules and raw blocks retain this same shape.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct StyleContents {
+    pub(crate) declarations: CssDeclarationList,
+    pub(crate) rules: Vec<CssRule>,
+}
+
+impl StyleContents {
+    pub(crate) fn into_nested_rules(self) -> Vec<CssRule> {
+        let mut rules = Vec::new();
+        if !self.declarations.is_empty() {
+            rules.push(CssRule::NestedDeclarations(CssNestedDeclarationsRule::new(
+                self.declarations,
+            )));
+        }
+        rules.extend(self.rules);
+        rules
+    }
+}
+
+/// One parser-produced style block with its genuine authored brace region.
+///
+/// Leading declarations precede the first retained child rule. Later declaration
+/// runs appear as [`CssRule::NestedDeclarations`] among [`Self::rules`]. Child
+/// selectors remain symbolic; no enclosing selector or parent list is fabricated.
+/// Equality compares content and origin source text/span, not snapshot identity.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssStyleBlock {
+    contents: StyleContents,
+    origin: CssParsedOrigin,
+}
+
+impl CssStyleBlock {
+    pub(crate) fn new(contents: StyleContents, origin: CssParsedOrigin) -> Self {
+        Self { contents, origin }
+    }
+
+    /// Returns the leading declarations, before the first retained child rule.
+    #[must_use]
+    pub const fn declarations(&self) -> &CssDeclarationList {
+        &self.contents.declarations
+    }
+
+    /// Returns child rules and subsequent declaration runs in authored order.
+    #[must_use]
+    pub fn rules(&self) -> &[CssRule] {
+        &self.contents.rules
+    }
+
+    /// Returns the opening brace through the explicit closing brace or actual EOF.
+    /// Surrounding trivia is excluded; the snapshot retains the entire original input.
+    #[must_use]
+    pub const fn origin(&self) -> &CssParsedOrigin {
+        &self.origin
+    }
+}
+
 /// One authored style rule with a complete selector list and ordered children.
 ///
 /// Leading declarations belong to this rule. Declaration runs after its first retained child
@@ -3998,8 +4056,7 @@ impl CssQueryLength {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssStyleRule {
     selectors: CssStyleSelectorList,
-    declarations: CssDeclarationList,
-    rules: Vec<CssRule>,
+    contents: StyleContents,
     position: CssSourcePosition,
 }
 
@@ -4012,8 +4069,10 @@ impl CssStyleRule {
     ) -> Self {
         Self {
             selectors,
-            declarations,
-            rules,
+            contents: StyleContents {
+                declarations,
+                rules,
+            },
             position,
         }
     }
@@ -4027,13 +4086,13 @@ impl CssStyleRule {
     /// Returns the leading declarations, before the first retained child rule.
     #[must_use]
     pub const fn declarations(&self) -> &CssDeclarationList {
-        &self.declarations
+        &self.contents.declarations
     }
 
     /// Returns nested rules and subsequent declaration runs in authored order.
     #[must_use]
     pub fn rules(&self) -> &[CssRule] {
-        &self.rules
+        &self.contents.rules
     }
 
     /// Returns the source position of the authored selector-list start.
