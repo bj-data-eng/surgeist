@@ -115,7 +115,21 @@ fn consume_values<'i, 't>(
                     .new_custom_error(error_at_token(CssComponentValueErrorKind::NestingLimit)));
             }
             let (children, closing_start) = input.parse_nested_block(|nested| {
-                consume_values(nested, source, limits, depth + 1, count, false)
+                let content_start = nested.position().byte_index();
+                // cssparser skips unvisited blocks with its own heap-backed
+                // stack. Keep this callback shallow, then construct descendants
+                // from their exact bounded source range without parser recursion.
+                while nested.next_including_whitespace_and_comments().is_ok() {}
+                let closing_start = nested.state();
+                let children = consume_range(
+                    source,
+                    content_start..closing_start.position().byte_index(),
+                    limits,
+                    depth + 1,
+                    count,
+                )
+                .map_err(|error| nested.new_custom_error(error))?;
+                Ok((children, closing_start))
             })?;
             let closing_end = input.state();
             let (_, closing_text) = kind.delimiters();
@@ -166,51 +180,216 @@ fn consume_values<'i, 't>(
             }
             continue;
         }
-        let invalid = match &token {
-            Token::BadString(_) => Some(CssComponentValueErrorKind::BadString),
-            Token::BadUrl(_) => Some(CssComponentValueErrorKind::BadUrl),
-            Token::CloseParenthesis | Token::CloseSquareBracket | Token::CloseCurlyBracket => {
-                Some(CssComponentValueErrorKind::UnmatchedClosingDelimiter)
-            }
-            _ => None,
-        };
-        if let Some(kind) = invalid {
-            return Err(input.new_custom_error(error_at_token(kind)));
-        }
-        let implicit_end = token_termination(&token, &spelling.text).map(|text| Lexeme {
-            text: text.into_boxed_str(),
-            origin: CssValueOrigin::ImplicitClosure {
-                opening: origin,
-                at: parsed_origin(source, &end, &end),
-            },
-        });
-        let data = if let Token::Comment(content) = token {
-            ComponentData::Comment {
-                content: content.into(),
-                spelling,
-                implicit_end,
-            }
-        } else {
-            let data = token_data(&token, &spelling.text).ok_or_else(|| {
-                input.new_custom_error(CssComponentValueError::new(
-                    CssComponentValueErrorKind::InvalidToken,
-                    spelling.origin.clone(),
-                ))
-            })?;
-            ComponentData::Token(ValueToken {
-                data,
-                spelling,
-                implicit_end,
-            })
-        };
-        items.push(CssComponentValue {
-            data,
-            parsed: Some(parsed_origin(source, &start, &end)),
-        });
+        items.push(
+            leaf(source, token, spelling, origin, end.position().byte_index())
+                .map_err(|error| input.new_custom_error(error))?,
+        );
         if single {
             return Ok((items, input.state()));
         }
     }
+}
+
+struct OpenFrame {
+    kind: CssBlockKind,
+    name: Option<Box<str>>,
+    opening: Lexeme,
+    origin: CssParsedOrigin,
+    children: Vec<CssComponentValue>,
+}
+
+impl OpenFrame {
+    fn finish(
+        self,
+        source: &CssSourceSnapshot,
+        closing_range: std::ops::Range<usize>,
+        limits: CssComponentValueLimits,
+    ) -> Result<CssComponentValue, CssComponentValueError> {
+        let end = closing_range.end;
+        let start = self.origin.span().start().byte_offset().value();
+        let closing = if closing_range.is_empty() {
+            Lexeme {
+                text: self.kind.delimiters().1.into(),
+                origin: CssValueOrigin::ImplicitClosure {
+                    opening: self.origin,
+                    at: range_origin(source, closing_range),
+                },
+            }
+        } else {
+            Lexeme {
+                text: source.as_str()[closing_range.clone()].into(),
+                origin: CssValueOrigin::Parsed(range_origin(source, closing_range)),
+            }
+        };
+        let values = CssComponentValues::from_items(self.children, limits)?;
+        let data = if let Some(name) = self.name {
+            ComponentData::Function(CssFunctionValue {
+                name,
+                opening: self.opening,
+                values,
+                closing,
+            })
+        } else {
+            ComponentData::Block(CssSimpleBlock {
+                kind: self.kind,
+                opening: self.opening,
+                values,
+                closing,
+            })
+        };
+        Ok(CssComponentValue {
+            data,
+            parsed: Some(range_origin(source, start..end)),
+        })
+    }
+}
+
+fn consume_range(
+    source: &CssSourceSnapshot,
+    range: std::ops::Range<usize>,
+    limits: CssComponentValueLimits,
+    base_depth: u32,
+    count: &mut usize,
+) -> Result<Vec<CssComponentValue>, CssComponentValueError> {
+    let mut items = Vec::new();
+    let mut frames: Vec<OpenFrame> = Vec::new();
+    let mut offset = range.start;
+    while offset < range.end {
+        // Restart only at a verified token boundary. Reading a single token
+        // exposes delimiters without cssparser automatically skipping a block;
+        // strings, comments, URLs and escapes retain dependency token semantics.
+        let mut parser_input = ParserInput::new(&source.as_str()[offset..range.end]);
+        let mut parser = Parser::new(&mut parser_input);
+        let token = parser
+            .next_including_whitespace_and_comments()
+            .expect("a nonempty token-boundary suffix contains a token")
+            .clone();
+        let end = offset + parser.position().byte_index();
+        let closing = match token {
+            Token::CloseParenthesis => Some(CssBlockKind::Parenthesis),
+            Token::CloseSquareBracket => Some(CssBlockKind::SquareBracket),
+            Token::CloseCurlyBracket => Some(CssBlockKind::CurlyBracket),
+            _ => None,
+        };
+        if let Some(frame) = frames.pop_if(|frame| Some(frame.kind) == closing) {
+            let value = frame.finish(source, offset..end, limits)?;
+            push_value(&mut items, &mut frames, value);
+            offset = end;
+            continue;
+        }
+        let origin = range_origin(source, offset..end);
+        let error_at_token =
+            |kind| CssComponentValueError::new(kind, CssValueOrigin::Parsed(origin.clone()));
+        *count = count
+            .checked_add(1)
+            .ok_or_else(|| error_at_token(CssComponentValueErrorKind::CapacityOverflow))?;
+        if *count > limits.max_components {
+            return Err(error_at_token(CssComponentValueErrorKind::ComponentLimit));
+        }
+        let spelling = Lexeme {
+            text: source.as_str()[offset..end].into(),
+            origin: CssValueOrigin::Parsed(origin.clone()),
+        };
+        let kind = match token {
+            Token::Function(_) | Token::ParenthesisBlock => Some(CssBlockKind::Parenthesis),
+            Token::SquareBracketBlock => Some(CssBlockKind::SquareBracket),
+            Token::CurlyBracketBlock => Some(CssBlockKind::CurlyBracket),
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            if frames.len() >= (limits.max_depth - base_depth) as usize {
+                return Err(error_at_token(CssComponentValueErrorKind::NestingLimit));
+            }
+            let name = if let Token::Function(name) = token {
+                Some(name.as_ref().into())
+            } else {
+                None
+            };
+            frames.push(OpenFrame {
+                kind,
+                name,
+                opening: spelling,
+                origin,
+                children: Vec::new(),
+            });
+        } else {
+            let value = leaf(source, token, spelling, origin, end)?;
+            push_value(&mut items, &mut frames, value);
+        }
+        offset = end;
+    }
+    while let Some(frame) = frames.pop() {
+        let value = frame.finish(source, range.end..range.end, limits)?;
+        push_value(&mut items, &mut frames, value);
+    }
+    Ok(items)
+}
+
+fn push_value(
+    items: &mut Vec<CssComponentValue>,
+    frames: &mut [OpenFrame],
+    value: CssComponentValue,
+) {
+    if let Some(frame) = frames.last_mut() {
+        frame.children.push(value);
+    } else {
+        items.push(value);
+    }
+}
+
+fn leaf(
+    source: &CssSourceSnapshot,
+    token: Token<'_>,
+    spelling: Lexeme,
+    origin: CssParsedOrigin,
+    end: usize,
+) -> Result<CssComponentValue, CssComponentValueError> {
+    let invalid = match &token {
+        Token::BadString(_) => Some(CssComponentValueErrorKind::BadString),
+        Token::BadUrl(_) => Some(CssComponentValueErrorKind::BadUrl),
+        Token::CloseParenthesis | Token::CloseSquareBracket | Token::CloseCurlyBracket => {
+            Some(CssComponentValueErrorKind::UnmatchedClosingDelimiter)
+        }
+        _ => None,
+    };
+    if let Some(kind) = invalid {
+        return Err(CssComponentValueError::new(kind, spelling.origin.clone()));
+    }
+    let implicit_end = token_termination(&token, &spelling.text).map(|text| Lexeme {
+        text: text.into_boxed_str(),
+        origin: CssValueOrigin::ImplicitClosure {
+            opening: origin.clone(),
+            at: range_origin(source, end..end),
+        },
+    });
+    let data = if let Token::Comment(content) = token {
+        ComponentData::Comment {
+            content: content.into(),
+            spelling,
+            implicit_end,
+        }
+    } else {
+        let data = token_data(&token, &spelling.text).ok_or_else(|| {
+            CssComponentValueError::new(
+                CssComponentValueErrorKind::InvalidToken,
+                spelling.origin.clone(),
+            )
+        })?;
+        ComponentData::Token(ValueToken {
+            data,
+            spelling,
+            implicit_end,
+        })
+    };
+    Ok(CssComponentValue {
+        data,
+        parsed: Some(origin),
+    })
+}
+
+fn range_origin(source: &CssSourceSnapshot, range: std::ops::Range<usize>) -> CssParsedOrigin {
+    CssParsedOrigin::from_range(source, range)
+        .expect("tokenizer positions are ordered UTF-8 boundaries in the original source")
 }
 
 fn parsed_origin(
@@ -399,4 +578,78 @@ pub(super) fn programmatic_token(
     let [value] =
         <[_; 1]>::try_from(values.items.into_vec()).expect("exactly one token was checked");
     Ok(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn component_admission_precedes_depth_checks_and_preserves_error_advancement() {
+        let source = "f(g(x)) tail";
+        for (depth, count, kind, start, end) in [
+            (0, 0, CssComponentValueErrorKind::ComponentLimit, 0, 2),
+            (0, 1, CssComponentValueErrorKind::NestingLimit, 0, 2),
+            (1, 1, CssComponentValueErrorKind::ComponentLimit, 2, 7),
+            (1, 2, CssComponentValueErrorKind::NestingLimit, 2, 7),
+        ] {
+            let snapshot = CssSourceSnapshot::new(source);
+            let mut parser_input = ParserInput::new(source);
+            let mut parser = Parser::new(&mut parser_input);
+            let limits = CssComponentValueLimits::try_new(depth, count, 100).unwrap();
+            let error = collect(&mut parser, &snapshot, limits).unwrap_err();
+            assert_eq!(error.kind(), kind);
+            let CssValueOrigin::Parsed(origin) = error.origin() else {
+                panic!("the rejected opening retains its source origin");
+            };
+            assert_eq!(origin.span().start().byte_offset().value(), start);
+            assert_eq!(origin.span().end().byte_offset().value(), start + 2);
+            assert_eq!(parser.position().byte_index(), end);
+        }
+    }
+
+    #[test]
+    fn single_collection_preserves_the_following_token_after_success_or_error() {
+        for (source, end, expected_error) in [
+            ("f([x]) tail", 6, None),
+            (
+                "f([x)]) tail",
+                7,
+                Some(CssComponentValueErrorKind::UnmatchedClosingDelimiter),
+            ),
+        ] {
+            let snapshot = CssSourceSnapshot::new(source);
+            let mut parser_input = ParserInput::new(source);
+            let mut parser = Parser::new(&mut parser_input);
+            let result = collect_one(&mut parser, &snapshot);
+            assert_eq!(result.err().map(|error| error.kind()), expected_error);
+            assert_eq!(parser.position().byte_index(), end);
+            assert_eq!(parser.expect_ident().unwrap().as_ref(), "tail");
+        }
+    }
+
+    #[test]
+    fn bounded_collection_preserves_the_outer_delimiter_and_source_coordinates() {
+        let source = "prefix;f([x]);tail";
+        let snapshot = CssSourceSnapshot::new(source);
+        let mut parser_input = ParserInput::new(source);
+        let mut parser = Parser::new(&mut parser_input);
+        parser.expect_ident_matching("prefix").unwrap();
+        parser.expect_semicolon().unwrap();
+        let values = parser
+            .parse_until_before(cssparser::Delimiter::Semicolon, |nested| {
+                collect(nested, &snapshot, CssComponentValueLimits::default())
+                    .map_err(|error| nested.new_custom_error::<_, CssComponentValueError>(error))
+            })
+            .unwrap();
+        assert_eq!(values.serialize().unwrap().as_css(), "f([x])");
+        let CssValueOrigin::Parsed(opening) = values.items()[0].origin() else {
+            panic!("the function has its original opening origin");
+        };
+        assert_eq!(opening.span().start().byte_offset().value(), 7);
+        assert_eq!(opening.span().end().byte_offset().value(), 9);
+        assert_eq!(parser.position().byte_index(), 13);
+        parser.expect_semicolon().unwrap();
+        assert_eq!(parser.expect_ident().unwrap().as_ref(), "tail");
+    }
 }

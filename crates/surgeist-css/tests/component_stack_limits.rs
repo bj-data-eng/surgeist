@@ -56,9 +56,12 @@ fn depth_256_parses_serializes_and_drops_on_an_ordinary_stack() {
             let values = parse_component_values(&source).expect("256 levels are admitted");
             assert_eq!(values.component_count(), 257);
             assert_eq!(values.nesting_depth(), 256);
+            let cloned = values.clone();
+            assert!(values == cloned);
             let serialized = values.serialize().expect("serialize the admitted value");
             assert_eq!(serialized.as_css(), source);
             drop(serialized);
+            drop(cloned);
             drop(values);
             drop(source);
         },
@@ -120,4 +123,38 @@ fn mixed_blocks_preserve_eof_closures_and_reject_mismatched_delimiters() {
     };
     assert_eq!(origin.span().start().byte_offset().value(), 4);
     assert_eq!(origin.span().end().byte_offset().value(), 5);
+}
+
+#[test]
+fn mixed_depth_256_preserves_escaped_tokens_and_implicit_closures() {
+    isolated(
+        "mixed_depth_256_preserves_escaped_tokens_and_implicit_closures",
+        || {
+            let openings = "f([{(".repeat(64);
+            let leaf = r#"\) "[)]" url(\)) /* }]) */"#;
+            let source = format!("{openings}{leaf}");
+            let values = parse_component_values(&source).expect("256 mixed levels are admitted");
+            assert_eq!(values.nesting_depth(), 256);
+            let expected = format!("{source}{}", ")}])".repeat(64));
+            assert_eq!(values.serialize().unwrap().as_css(), expected);
+            let mut children = &values;
+            for _ in 0..256 {
+                let (closing, nested) = match children.items()[0].view() {
+                    CssComponentValueRef::Function(value) => {
+                        (value.closing_origin(), value.values())
+                    }
+                    CssComponentValueRef::Block(value) => (value.closing_origin(), value.values()),
+                    _ => panic!("expected a mixed enclosing component"),
+                };
+                let CssValueOrigin::ImplicitClosure { at, .. } = closing else {
+                    panic!("all enclosing delimiters close at EOF");
+                };
+                assert_eq!(at.span().start().byte_offset().value(), source.len());
+                assert_eq!(at.span().end().byte_offset().value(), source.len());
+                children = nested;
+            }
+            assert_eq!(children.component_count(), 7);
+            drop(values);
+        },
+    );
 }
