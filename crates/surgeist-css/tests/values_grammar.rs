@@ -68,7 +68,7 @@ fn c14_remaining_shared_values_are_typed() {
     assert!(matches!(
         supports.condition().kind(),
         CssSupportsConditionKind::GeneralEnclosed(value)
-            if value.authored() == "future(fn({x; !}) [y])"
+            if value.authored() == Some("future(fn({x; !}) [y])")
     ));
 
     let nth = parse_sheet(".item:nth-child(-2n + 3) { color: red; }");

@@ -758,7 +758,7 @@
 //! assert!(matches!(
 //!     fallback.condition().kind(),
 //!     CssSupportsConditionKind::GeneralEnclosed(value)
-//!         if value.authored() == "future-layout(mode)"
+//!         if value.authored() == Some("future-layout(mode)")
 //! ));
 //! ```
 //!

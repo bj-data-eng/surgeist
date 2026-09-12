@@ -2658,29 +2658,149 @@ impl CssSupportsDeclaration {
     }
 }
 
-/// One exact balanced unsupported function or parenthesis condition unit.
+/// One checked function or parenthesis component, including EOF-implied closure.
+///
+/// This lexical wrapper does not select a supports or media grammar branch.
+/// Equality compares exact token spelling, children and source-text/span origins;
+/// it is not semantic equivalence or source snapshot identity.
+///
+/// ```compile_fail
+/// use surgeist_css::{CssComponentValue, CssGeneralEnclosed};
+/// let component = CssComponentValue::try_token("x").unwrap();
+/// let forged = CssGeneralEnclosed { component: Box::new(component) };
+/// ```
+///
+/// ```compile_fail
+/// use surgeist_css::{CssComponentValue, CssGeneralEnclosed, CssParsedOrigin};
+/// let parsed = CssParsedOrigin { source: todo!(), span: todo!() };
+/// let component = CssComponentValue { data: todo!(), parsed: Some(parsed) };
+/// let forged = CssGeneralEnclosed::try_from_component(component);
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssGeneralEnclosed {
-    authored: String,
-    position: CssSourcePosition,
+    component: Box<crate::CssComponentValue>,
+}
+
+/// Failure to construct one lexically enclosed component.
+#[non_exhaustive]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CssGeneralEnclosedError {
+    /// The outer component is neither a function nor a parenthesis block.
+    WrongOuterComponent {
+        /// The rejected component's token or opener origin.
+        origin: crate::CssValueOrigin,
+    },
+    /// The component owner rejected syntax or a resource limit.
+    Component(crate::CssComponentValueError),
+}
+
+impl CssGeneralEnclosedError {
+    /// Returns the responsible real parsed or programmatic origin.
+    #[must_use]
+    pub const fn origin(&self) -> &crate::CssValueOrigin {
+        match self {
+            Self::WrongOuterComponent { origin } => origin,
+            Self::Component(error) => error.origin(),
+        }
+    }
+}
+
+impl std::fmt::Display for CssGeneralEnclosedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::WrongOuterComponent { .. } => {
+                f.write_str("expected a function or parenthesis component")
+            }
+            Self::Component(error) => error.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for CssGeneralEnclosedError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Component(error) => Some(error),
+            Self::WrongOuterComponent { .. } => None,
+        }
+    }
 }
 
 impl CssGeneralEnclosed {
-    #[must_use]
-    pub(crate) fn new(authored: impl Into<String>, position: CssSourcePosition) -> Self {
-        let authored = authored.into();
-        debug_assert!(!authored.is_empty());
-        Self { authored, position }
+    /// Checks the outer lexical enclosure without changing any supplied origin.
+    pub fn try_from_component(
+        component: crate::CssComponentValue,
+    ) -> Result<Self, CssGeneralEnclosedError> {
+        let valid = match component.view() {
+            crate::CssComponentValueRef::Function(_) => true,
+            crate::CssComponentValueRef::Block(block) => {
+                block.kind() == crate::CssBlockKind::Parenthesis
+            }
+            _ => false,
+        };
+        if !valid {
+            return Err(CssGeneralEnclosedError::WrongOuterComponent {
+                origin: component.origin().clone(),
+            });
+        }
+        Ok(Self {
+            component: Box::new(component),
+        })
     }
 
-    #[must_use]
-    pub fn authored(&self) -> &str {
-        &self.authored
+    /// Constructs programmatic function delimiters while preserving child origins.
+    pub fn try_function(
+        name: impl Into<String>,
+        values: CssComponentValues,
+    ) -> Result<Self, CssGeneralEnclosedError> {
+        Self::try_from_component(
+            crate::CssComponentValue::try_function(name, values)
+                .map_err(CssGeneralEnclosedError::Component)?,
+        )
     }
 
+    /// Constructs programmatic parentheses while preserving child origins.
+    pub fn try_parenthesized(values: CssComponentValues) -> Result<Self, CssGeneralEnclosedError> {
+        Self::try_from_component(
+            crate::CssComponentValue::try_block(crate::CssBlockKind::Parenthesis, values)
+                .map_err(CssGeneralEnclosedError::Component)?,
+        )
+    }
+
+    /// Returns the immutable underlying component.
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
-        self.position
+    pub const fn component(&self) -> &crate::CssComponentValue {
+        &self.component
+    }
+
+    /// Returns the opener's real origin.
+    #[must_use]
+    pub const fn origin(&self) -> &crate::CssValueOrigin {
+        self.component.origin()
+    }
+
+    /// Returns coordinates only when the opener was parsed from source.
+    #[must_use]
+    pub fn position(&self) -> Option<CssSourcePosition> {
+        match self.origin() {
+            crate::CssValueOrigin::Parsed(origin) => Some(origin.span().start()),
+            _ => None,
+        }
+    }
+
+    /// Returns the complete original component slice, including unclosed EOF input.
+    /// Programmatic enclosures have no single authored slice, even with parsed children.
+    #[must_use]
+    pub fn authored(&self) -> Option<&str> {
+        let origin = self.component.parsed_origin()?;
+        Some(
+            &origin.source().as_str()[origin.span().start().byte_offset().value()
+                ..origin.span().end().byte_offset().value()],
+        )
+    }
+
+    /// Serializes tokens and explicit or EOF-implied delimiters with their origins.
+    pub fn serialize(&self) -> Result<crate::CssSerializedValue, crate::CssComponentValueError> {
+        CssComponentValues::try_new(vec![self.component().clone()])?.serialize()
     }
 }
 

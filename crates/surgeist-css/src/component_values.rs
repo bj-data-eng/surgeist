@@ -388,13 +388,13 @@ pub enum CssValueTokenRef<'a> {
     Cdc,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct Lexeme {
     text: Box<str>,
     origin: CssValueOrigin,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct ValueToken {
     data: TokenData,
     spelling: Lexeme,
@@ -509,7 +509,7 @@ impl CssBlockKind {
 }
 
 /// An immutable function, preserving its decoded name and component arguments.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssFunctionValue {
     name: Box<str>,
     opening: Lexeme,
@@ -538,7 +538,7 @@ impl CssFunctionValue {
 }
 
 /// An immutable simple block with a matched or EOF-implied closing delimiter.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSimpleBlock {
     kind: CssBlockKind,
     opening: Lexeme,
@@ -566,7 +566,7 @@ impl CssSimpleBlock {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum ComponentData {
     Token(ValueToken),
     Function(CssFunctionValue),
@@ -579,9 +579,14 @@ enum ComponentData {
 }
 
 /// One checked, owned component value. Private fields protect token identity.
-#[derive(Clone, Debug)]
+///
+/// Equality includes exact token spelling, child order, delimiter origins and
+/// the complete parsed span. Source text and span equality does not require
+/// snapshot identity; parsed and programmatic components remain distinct.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssComponentValue {
     data: ComponentData,
+    parsed: Option<CssParsedOrigin>,
 }
 
 /// A borrowed view of one immutable component value.
@@ -599,6 +604,17 @@ pub enum CssComponentValueRef<'a> {
 }
 
 impl CssComponentValue {
+    pub(crate) fn collect_from_parser(
+        input: &mut cssparser::Parser<'_, '_>,
+        source: &CssSourceSnapshot,
+    ) -> Result<Self, CssComponentValueError> {
+        parse::collect_one(input, source)
+    }
+
+    pub(crate) const fn parsed_origin(&self) -> Option<&CssParsedOrigin> {
+        self.parsed.as_ref()
+    }
+
     /// Inspects the semantic token or component without permitting mutation.
     #[must_use]
     pub fn view(&self) -> CssComponentValueRef<'_> {
@@ -767,6 +783,7 @@ impl CssComponentValue {
         }
         let opening = programmatic_lexeme(Token::Function(name.as_str().into()).to_css_string());
         Ok(Self {
+            parsed: None,
             data: ComponentData::Function(CssFunctionValue {
                 opening,
                 name: name.into_boxed_str(),
@@ -784,6 +801,7 @@ impl CssComponentValue {
         check_child_depth(&values)?;
         let (opening, closing) = kind.delimiters();
         Ok(Self {
+            parsed: None,
             data: ComponentData::Block(CssSimpleBlock {
                 kind,
                 opening: programmatic_lexeme(opening),
@@ -820,7 +838,7 @@ fn programmatic_lexeme(text: impl Into<Box<str>>) -> Lexeme {
 }
 
 /// A checked immutable sequence, including its whitespace and preserved comments.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssComponentValues {
     items: Box<[CssComponentValue]>,
     count: usize,

@@ -1012,6 +1012,16 @@ pub surgeist_css::CssForcedColorsMode::None
 #[non_exhaustive] pub enum surgeist_css::CssFrequencyUnit
 pub surgeist_css::CssFrequencyUnit::Hertz
 pub surgeist_css::CssFrequencyUnit::Kilohertz
+#[non_exhaustive] pub enum surgeist_css::CssGeneralEnclosedError
+pub surgeist_css::CssGeneralEnclosedError::Component(surgeist_css::CssComponentValueError)
+pub surgeist_css::CssGeneralEnclosedError::WrongOuterComponent
+pub surgeist_css::CssGeneralEnclosedError::WrongOuterComponent::origin: surgeist_css::CssValueOrigin
+impl surgeist_css::CssGeneralEnclosedError
+pub const fn surgeist_css::CssGeneralEnclosedError::origin(&self) -> &surgeist_css::CssValueOrigin
+impl core::error::Error for surgeist_css::CssGeneralEnclosedError
+pub fn surgeist_css::CssGeneralEnclosedError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssGeneralEnclosedError
+pub fn surgeist_css::CssGeneralEnclosedError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssGenericFontFamily
 pub surgeist_css::CssGenericFontFamily::Cursive
 pub surgeist_css::CssGenericFontFamily::Fangsong
@@ -4193,8 +4203,14 @@ pub fn surgeist_css::CssGapPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssGapPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
 pub struct surgeist_css::CssGeneralEnclosed
 impl surgeist_css::CssGeneralEnclosed
-pub fn surgeist_css::CssGeneralEnclosed::authored(&self) -> &str
-pub const fn surgeist_css::CssGeneralEnclosed::position(&self) -> surgeist_css::CssSourcePosition
+pub fn surgeist_css::CssGeneralEnclosed::authored(&self) -> core::option::Option<&str>
+pub const fn surgeist_css::CssGeneralEnclosed::component(&self) -> &surgeist_css::CssComponentValue
+pub const fn surgeist_css::CssGeneralEnclosed::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssGeneralEnclosed::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub fn surgeist_css::CssGeneralEnclosed::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssGeneralEnclosed::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssGeneralEnclosedError>
+pub fn surgeist_css::CssGeneralEnclosed::try_function(name: impl core::convert::Into<alloc::string::String>, values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssGeneralEnclosedError>
+pub fn surgeist_css::CssGeneralEnclosed::try_parenthesized(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssGeneralEnclosedError>
 pub struct surgeist_css::CssGradientColorStop
 impl surgeist_css::CssGradientColorStop
 pub const fn surgeist_css::CssGradientColorStop::color(&self) -> &surgeist_css::CssAuthoredColor

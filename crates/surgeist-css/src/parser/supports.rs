@@ -145,12 +145,11 @@ fn parse_condition_operand<'i, 't>(
                 consume_all(nested);
                 Ok(ParenthesizedCondition::GeneralEnclosed)
             })?;
-            let authored = input.slice_from(start.position()).to_owned();
             let kind = match parsed {
                 ParenthesizedCondition::GeneralEnclosed => {
-                    CssSupportsConditionKind::GeneralEnclosed(CssGeneralEnclosed::new(
-                        authored, position,
-                    ))
+                    CssSupportsConditionKind::GeneralEnclosed(collect_general_enclosed(
+                        input, &start, recovery,
+                    )?)
                 }
                 ParenthesizedCondition::Parsed(kind) => kind,
             };
@@ -182,10 +181,9 @@ fn parse_condition_operand<'i, 't>(
                 ))
             } else {
                 Ok(CssSupportsCondition::new(
-                    CssSupportsConditionKind::GeneralEnclosed(CssGeneralEnclosed::new(
-                        input.slice_from(start.position()),
-                        position,
-                    )),
+                    CssSupportsConditionKind::GeneralEnclosed(collect_general_enclosed(
+                        input, &start, recovery,
+                    )?),
                     position,
                 ))
             }
@@ -195,6 +193,20 @@ fn parse_condition_operand<'i, 't>(
             "expected a parenthesized or functional supports condition",
         )),
     }
+}
+
+fn collect_general_enclosed<'i>(
+    input: &mut Parser<'i, '_>,
+    start: &ParserState,
+    recovery: &RecoveryState,
+) -> Result<CssGeneralEnclosed, ParseError<'i, Error>> {
+    input.reset(start);
+    let component =
+        crate::CssComponentValue::collect_from_parser(input, recovery.source_snapshot()).map_err(
+            |error| crate::error::invalid_component_value(start.source_location(), error),
+        )?;
+    Ok(CssGeneralEnclosed::try_from_component(component)
+        .expect("supports fallback selected a function or parenthesis opener"))
 }
 
 pub(super) fn parse_supports_declaration<'i, 't>(

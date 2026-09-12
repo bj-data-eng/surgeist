@@ -1516,9 +1516,24 @@ assert!(matches!(
 assert!(matches!(
     fallback.condition().kind(),
     CssSupportsConditionKind::GeneralEnclosed(value)
-        if value.authored() == "future-layout(mode)"
+        if value.authored() == Some("future-layout(mode)")
 ));
 ```
+
+`CssGeneralEnclosed` wraps exactly one checked function or parenthesis component.
+Use `try_from_component`, `try_function`, or `try_parenthesized` to construct it;
+these lexical constructors do not choose a conditional grammar branch. `origin()`
+reports the opener's provenance and `position()` returns coordinates only for a
+parsed opener. `authored()` returns the complete original enclosure, including
+EOF-unclosed input, or `None` for programmatic enclosures. Parsed children under
+programmatic delimiters keep their individual origins. Cloning and reconstructing
+from `component()` preserves the same authored slice and equality.
+
+`serialize()` preserves token spelling and maps emitted delimiters, including
+EOF-implied closures, to their real origins. Structural equality includes exact
+lexemes and source-text/span provenance; it does not compare runtime meaning or
+require source snapshot identity. The optional `authored()` and `position()`
+accessors replace the earlier parser-only, unconditional accessors.
 
 An `@import` prelude is retained in exact target, optional `layer` or
 `layer(name)`, optional `supports(...)`, optional media-list order. A successful

@@ -137,7 +137,7 @@ fn supports_general_enclosed_and_selector_fallback_preserve_exact_units() {
         matches!(
             function.condition().kind(),
             CssSupportsConditionKind::GeneralEnclosed(value)
-                if value.authored() == "future( a, nested([x]) )"
+                if value.authored() == Some("future( a, nested([x]) )")
         ),
         "{:?}",
         function.condition().kind()
@@ -148,7 +148,7 @@ fn supports_general_enclosed_and_selector_fallback_preserve_exact_units() {
     assert!(matches!(
         parenthesis.condition().kind(),
         CssSupportsConditionKind::GeneralEnclosed(value)
-            if value.authored() == "(future stuff(\")\") [x])"
+            if value.authored() == Some("(future stuff(\")\") [x])")
     ));
     let CssRule::Supports(selector) = &rules[2] else {
         panic!("expected selector condition");
@@ -163,7 +163,7 @@ fn supports_general_enclosed_and_selector_fallback_preserve_exact_units() {
     assert!(matches!(
         fallback.condition().kind(),
         CssSupportsConditionKind::GeneralEnclosed(value)
-            if value.authored() == "selector(svg|a)"
+            if value.authored() == Some("selector(svg|a)")
     ));
 }
 
@@ -201,12 +201,12 @@ fn supports_selector_uses_active_names_and_falls_back_for_balanced_remainders() 
     assert!(matches!(
         undeclared.condition().kind(),
         CssSupportsConditionKind::GeneralEnclosed(value)
-            if value.authored() == "selector(undeclared|a)"
+            if value.authored() == Some("selector(undeclared|a)")
     ));
     assert!(matches!(
         remainder.condition().kind(),
         CssSupportsConditionKind::GeneralEnclosed(value)
-            if value.authored() == "selector(svg|a, svg|b)"
+            if value.authored() == Some("selector(svg|a, svg|b)")
     ));
 }
 

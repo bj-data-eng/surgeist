@@ -3052,7 +3052,7 @@ fn selectors3_and_namespace_metadata_are_truthful() {
     assert!(matches!(
         general_enclosed.condition().kind(),
         CssSupportsConditionKind::GeneralEnclosed(value)
-            if value.authored() == "selector(.x || .y)"
+            if value.authored() == Some("selector(.x || .y)")
     ));
 
     let assert_complete = |id: &str, kind: CssFeatureKind, source: &str, production: &str| {

@@ -28,7 +28,7 @@ pub(super) fn collect(
     limits: CssComponentValueLimits,
 ) -> Result<CssComponentValues, CssComponentValueError> {
     let mut count = 0;
-    let result = consume_values(parser, snapshot, limits, 0, &mut count);
+    let result = consume_values(parser, snapshot, limits, 0, &mut count, false);
     let (items, _) = result.map_err(|error| match error.kind {
         ParseErrorKind::Custom(error) => error,
         ParseErrorKind::Basic(_) => CssComponentValueError::new(
@@ -41,12 +41,41 @@ pub(super) fn collect(
     Ok(values)
 }
 
+pub(super) fn collect_one(
+    parser: &mut Parser<'_, '_>,
+    snapshot: &CssSourceSnapshot,
+) -> Result<CssComponentValue, CssComponentValueError> {
+    let limits = CssComponentValueLimits::default();
+    let (items, _) =
+        consume_values(parser, snapshot, limits, 0, &mut 0, true).map_err(|error| {
+            match error.kind {
+                ParseErrorKind::Custom(error) => error,
+                ParseErrorKind::Basic(_) => CssComponentValueError::new(
+                    CssComponentValueErrorKind::InvalidToken,
+                    CssValueOrigin::Parsed(parsed_origin(
+                        snapshot,
+                        &parser.state(),
+                        &parser.state(),
+                    )),
+                ),
+            }
+        })?;
+    let values = CssComponentValues::try_new(items)?;
+    values.items.into_vec().into_iter().next().ok_or_else(|| {
+        CssComponentValueError::new(
+            CssComponentValueErrorKind::InvalidToken,
+            CssValueOrigin::Parsed(parsed_origin(snapshot, &parser.state(), &parser.state())),
+        )
+    })
+}
+
 fn consume_values<'i, 't>(
     input: &mut Parser<'i, 't>,
     source: &CssSourceSnapshot,
     limits: CssComponentValueLimits,
     depth: u32,
     count: &mut usize,
+    single: bool,
 ) -> Result<(Vec<CssComponentValue>, ParserState), ParseError<'i, CssComponentValueError>> {
     let mut items = Vec::new();
     loop {
@@ -86,7 +115,7 @@ fn consume_values<'i, 't>(
                     .new_custom_error(error_at_token(CssComponentValueErrorKind::NestingLimit)));
             }
             let (children, closing_start) = input.parse_nested_block(|nested| {
-                consume_values(nested, source, limits, depth + 1, count)
+                consume_values(nested, source, limits, depth + 1, count, false)
             })?;
             let closing_end = input.state();
             let (_, closing_text) = kind.delimiters();
@@ -128,7 +157,13 @@ fn consume_values<'i, 't>(
                     closing,
                 })
             };
-            items.push(CssComponentValue { data });
+            items.push(CssComponentValue {
+                data,
+                parsed: Some(parsed_origin(source, &start, &closing_end)),
+            });
+            if single {
+                return Ok((items, input.state()));
+            }
             continue;
         }
         let invalid = match &token {
@@ -168,7 +203,13 @@ fn consume_values<'i, 't>(
                 implicit_end,
             })
         };
-        items.push(CssComponentValue { data });
+        items.push(CssComponentValue {
+            data,
+            parsed: Some(parsed_origin(source, &start, &end)),
+        });
+        if single {
+            return Ok((items, input.state()));
+        }
     }
 }
 
@@ -354,6 +395,7 @@ pub(super) fn programmatic_token(
         return Err(CssComponentValueError::programmatic(invalid_kind));
     }
     token.spelling.origin = CssValueOrigin::Programmatic;
+    values.items[0].parsed = None;
     let [value] =
         <[_; 1]>::try_from(values.items.into_vec()).expect("exactly one token was checked");
     Ok(value)
