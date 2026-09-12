@@ -18,6 +18,32 @@ fn local_x() -> CssFontFaceSourceList {
 }
 
 #[test]
+fn root_delimiters_after_font_functions_keep_their_own_token_origin() {
+    for (source, offset, token) in [
+        ("local(\"X\");", 10, ";"),
+        ("local(X)}", 8, "}"),
+        ("local(X){}", 8, "{"),
+        ("/*😀*/\r\nlocal(\"X\");", 20, ";"),
+    ] {
+        let report = parse_font_face_descriptor_value(source, Kind::Src);
+        assert!(report.syntax().is_none(), "{source}: {report:?}");
+        let [diagnostic] = report.diagnostics() else {
+            panic!("one outer rejection")
+        };
+        assert_eq!(diagnostic.action(), CssRecoveryAction::RejectInput);
+        assert_eq!(
+            diagnostic.error().position().byte_offset().value(),
+            offset,
+            "{source}"
+        );
+        let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
+            panic!("descriptor error")
+        };
+        assert_eq!(detail.encountered().unwrap().authored(), token, "{source}");
+    }
+}
+
+#[test]
 fn every_descriptor_kind_returns_its_source_neutral_typed_value() {
     let cases = [
         (
