@@ -2068,7 +2068,7 @@ fn programmatic_dimension(value: f32, unit: &str) -> Option<CssComponentValues> 
 struct SumAssemblyBudget {
     limits: CssComponentValueLimits,
     components: usize,
-    lexical_bytes: usize,
+    lexical: crate::component_values::CssCanonicalBuilder,
     canonical_bytes: usize,
 }
 impl SumAssemblyBudget {
@@ -2097,7 +2097,7 @@ impl SumAssemblyBudget {
         let mut budget = Self {
             limits,
             components: 0,
-            lexical_bytes: 0,
+            lexical: crate::component_values::CssCanonicalBuilder::counting(limits.max_css_bytes()),
             canonical_bytes: 0,
         };
         let origin = CssValueOrigin::Programmatic;
@@ -2114,23 +2114,20 @@ impl SumAssemblyBudget {
                 &origin,
             ));
         }
-        // Reserve both the programmatic `calc(` opener and its closing token.
-        budget.add_bytes(6, 6, &origin)?;
+        // Canonical numeric output includes both wrapper tokens. Lexical output
+        // carries shared boundary state, including any inserted separators.
+        budget.add_canonical_bytes(6, &origin)?;
+        budget
+            .lexical
+            .push_grammar(
+                crate::component_values::CssCanonicalToken::Function("calc"),
+                &origin,
+            )
+            .map_err(CssNumericConstructionError::component)?;
+        budget.reserve_closing()?;
         Ok(budget)
     }
-    fn add_bytes(
-        &mut self,
-        lexical: usize,
-        canonical: usize,
-        origin: &CssValueOrigin,
-    ) -> Result<()> {
-        Self::add(
-            &mut self.lexical_bytes,
-            lexical,
-            self.limits.max_css_bytes(),
-            CssComponentValueErrorKind::ByteLimit,
-            origin,
-        )?;
+    fn add_canonical_bytes(&mut self, canonical: usize, origin: &CssValueOrigin) -> Result<()> {
         Self::add(
             &mut self.canonical_bytes,
             canonical,
@@ -2139,7 +2136,18 @@ impl SumAssemblyBudget {
             origin,
         )
     }
-    fn separator(&mut self) -> Result<()> {
+    fn reserve_closing(&self) -> Result<()> {
+        let mut bytes = self.lexical.byte_len();
+        Self::add(
+            &mut bytes,
+            1,
+            self.limits.max_css_bytes(),
+            CssComponentValueErrorKind::ByteLimit,
+            &CssValueOrigin::Programmatic,
+        )
+    }
+    fn separator(&mut self, operator: CssCalculationSumOperator) -> Result<()> {
+        use crate::component_values::CssCanonicalToken;
         let origin = CssValueOrigin::Programmatic;
         Self::add(
             &mut self.components,
@@ -2148,7 +2156,28 @@ impl SumAssemblyBudget {
             CssComponentValueErrorKind::ComponentLimit,
             &origin,
         )?;
-        self.add_bytes(3, 3, &origin)
+        for token in [
+            CssCanonicalToken::Whitespace,
+            CssCanonicalToken::Delim(match operator {
+                CssCalculationSumOperator::Add => '+',
+                CssCalculationSumOperator::Subtract => '-',
+            }),
+            CssCanonicalToken::Whitespace,
+        ] {
+            self.lexical
+                .push_grammar(token, &origin)
+                .map_err(CssNumericConstructionError::component)?;
+        }
+        self.reserve_closing()?;
+        self.add_canonical_bytes(3, &origin)
+    }
+    fn finish(mut self) -> Result<()> {
+        self.lexical
+            .push_grammar(
+                crate::component_values::CssCanonicalToken::CloseParen,
+                &CssValueOrigin::Programmatic,
+            )
+            .map_err(CssNumericConstructionError::component)
     }
     fn operand(&mut self, value: &CssLengthPercentageCalculation) -> Result<()> {
         // Iterator frames keep traversal storage proportional to nesting depth.
@@ -2181,16 +2210,14 @@ impl SumAssemblyBudget {
                 pending.push((children.items().iter(), child_depth));
             }
         }
-        let mut lexical = crate::component_values::CssCanonicalBuilder::new(
-            self.limits.max_css_bytes() - self.lexical_bytes,
-        );
-        lexical
+        self.lexical
             .push_components(value.components().items())
             .map_err(CssNumericConstructionError::component)?;
+        self.reserve_closing()?;
         let canonical = value.expression.canonical_len(usize::MAX).ok_or_else(|| {
             Self::error(CssComponentValueErrorKind::CapacityOverflow, value.origin())
         })?;
-        self.add_bytes(lexical.byte_len(), canonical, value.origin())
+        self.add_canonical_bytes(canonical, value.origin())
     }
 }
 
@@ -2223,10 +2250,11 @@ impl CssLengthPercentageCalculation {
         budget.operand(&first)?;
         let mut operands = vec![(None, first)];
         for (operator, value) in rest {
-            budget.separator()?;
+            budget.separator(operator)?;
             budget.operand(&value)?;
             operands.push((Some(operator), value));
         }
+        budget.finish()?;
         let mut components = Vec::new();
         for (operator, value) in &operands {
             if let Some(operator) = operator {

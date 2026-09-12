@@ -3,6 +3,7 @@ use super::*;
 /// Recognized grammar syntax; opaque syntax must use original components instead.
 pub(crate) enum CssCanonicalToken<'a> {
     Ident(&'a str),
+    Function(&'a str),
     AtKeyword(&'a str),
     Semicolon,
     Whitespace,
@@ -21,6 +22,13 @@ impl CssCanonicalBuilder {
     pub(crate) fn new(max_bytes: usize) -> Self {
         Self {
             emitter: Emitter::new(max_bytes, true),
+        }
+    }
+
+    /// Measures the same joint token stream without retaining output or its map.
+    pub(crate) fn counting(max_bytes: usize) -> Self {
+        Self {
+            emitter: Emitter::new(max_bytes, false),
         }
     }
 
@@ -80,6 +88,15 @@ impl CssCanonicalBuilder {
         origin: &CssValueOrigin,
     ) -> Result<(), CssComponentValueError> {
         let (text, kind, reverse_solidus) = match token {
+            CssCanonicalToken::Function(name) => {
+                CssComponentValue::try_ident(name)
+                    .map_err(|error| CssComponentValueError::new(error.kind(), origin.clone()))?;
+                (
+                    Token::Function(name.into()).to_css_string().into(),
+                    TokenSerializationType::Function,
+                    false,
+                )
+            }
             CssCanonicalToken::OpenParen => ("(".into(), TokenSerializationType::OpenParen, false),
             CssCanonicalToken::CloseParen => (")".into(), TokenSerializationType::Other, false),
             other => {
@@ -103,7 +120,7 @@ impl CssCanonicalBuilder {
                         }
                         Ok(component)
                     }
-                    CssCanonicalToken::OpenParen | CssCanonicalToken::CloseParen => unreachable!(),
+                    CssCanonicalToken::Function(_) | CssCanonicalToken::OpenParen | CssCanonicalToken::CloseParen => unreachable!(),
                 }.map_err(|error| CssComponentValueError::new(error.kind(), origin.clone()))?;
                 let ComponentData::Token(value) = component.data else {
                     unreachable!("checked grammar token")
