@@ -12,6 +12,10 @@ mod box_model;
 mod counter_style;
 mod effects;
 mod font_face;
+mod fragments;
+pub use fragments::{
+    parse_media_query, parse_media_query_list, parse_selector, parse_selector_list,
+};
 mod generated_content;
 mod grid;
 mod keyframes;
@@ -50,7 +54,7 @@ use page::{parse_page_rule, parse_page_selector};
 pub(crate) use queries::parse_container_condition_for_test;
 #[cfg(test)]
 pub(crate) use queries::parse_media_query_list_for_test;
-use queries::{parse_container_condition, parse_media_query_list};
+use queries::{parse_container_condition, parse_media_query_list as parse_media_query_list_inner};
 use recovery::{
     GroupKind, RecoveryLoopOutcome, RecoveryProgress, RecoveryState, StructuralParent,
     StructuralPreflightOutcome, StyleContextCaptures, preflight_specialized_eof_limit,
@@ -1570,7 +1574,42 @@ impl TopLevelPreludePhase {
     }
 }
 
-#[derive(Default)]
+/// Immutable namespace bindings used to parse authored selector fragments.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CssNamespaceContext(CssNamespaceBindings);
+impl CssNamespaceContext {
+    /// Takes bindings in authored order; the last binding for each prefix wins.
+    pub fn from_bindings(
+        bindings: impl IntoIterator<Item = (Option<CssNamespacePrefix>, CssNamespaceName)>,
+    ) -> Self {
+        let mut result = Self::default();
+        for (prefix, name) in bindings {
+            result.0.activate(prefix, name);
+        }
+        result
+    }
+    /// Copies the retained top-level namespace declarations from a stylesheet.
+    pub fn from_sheet(sheet: &CssSheet) -> Self {
+        Self::from_bindings(sheet.rules().iter().filter_map(|rule| match rule {
+            CssRule::Namespace(rule) => Some((rule.prefix().cloned(), rule.name().clone())),
+            _ => None,
+        }))
+    }
+    /// Returns the default binding, distinguishing absence from the empty namespace.
+    pub fn default_namespace(&self) -> Option<&CssNamespaceName> {
+        self.0.default.as_ref()
+    }
+    /// Returns the case-sensitive named binding.
+    pub fn named_namespace(&self, prefix: &CssNamespacePrefix) -> Option<&CssNamespaceName> {
+        self.0
+            .named
+            .iter()
+            .find(|(p, _)| p == prefix)
+            .map(|(_, name)| name)
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct CssNamespaceBindings {
     default: Option<CssNamespaceName>,
     named: Vec<(CssNamespacePrefix, CssNamespaceName)>,
@@ -1960,7 +1999,7 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                 Ok(StrictAtRulePrelude::Keyframes(name))
             },
             "media" => {
-                let query = parse_media_query_list(
+                let query = parse_media_query_list_inner(
                     self.source,
                     input,
                     &mut self.diagnostics,
@@ -2322,7 +2361,7 @@ fn parse_import_prelude<'i, 't>(
         let diagnostic_count = diagnostics.len();
         let implicit =
             recovery.check_specialized_components(source, input, "baseline.media.query-list")?;
-        let media = parse_media_query_list(source, input, diagnostics, recovery)?;
+        let media = parse_media_query_list_inner(source, input, diagnostics, recovery)?;
         let implicit = if diagnostics.len() == diagnostic_count {
             implicit
         } else {
@@ -2797,7 +2836,7 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
     ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
         match_ignore_ascii_case! { &name,
             "media" => {
-                let query = parse_media_query_list(
+                let query = parse_media_query_list_inner(
                     self.source,
                     input,
                     &mut self.diagnostics,

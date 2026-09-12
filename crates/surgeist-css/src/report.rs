@@ -70,7 +70,8 @@ impl<T> CssParseReport<T> {
         (self.syntax, self.diagnostics)
     }
 
-    pub(crate) fn into_validation_result(self) -> Result<T, CssValidationFailure> {
+    /// Accepts exactly reports with no recovery diagnostics.
+    pub fn into_validation_result(self) -> Result<T, CssValidationFailure> {
         let (syntax, diagnostics) = self.into_parts();
         match CssValidationFailure::new(diagnostics) {
             Some(failure) => Err(failure),
@@ -88,6 +89,8 @@ impl<T> CssParseReport<T> {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum CssRecoveryAction {
+    /// The requested complete fragment was rejected.
+    RejectInput,
     /// The diagnostic phase discarded one invalid authored declaration.
     DropDeclaration,
     /// The diagnostic phase discarded one invalid authored at-rule descriptor.

@@ -72,12 +72,15 @@ pub(crate) fn parse_media_query_list<'i, 't>(
     loop {
         let member_start = input.position().byte_index();
         let result = input.parse_until_before(Delimiter::Comma, |member| {
-            let _ = recovery.check_specialized_components(
+            let openings = recovery.check_comma_member_components(
                 source,
                 member,
                 "baseline.media.query-list",
             )?;
-            parse_media_query(source, member)
+            let query = parse_media_query(source, member)?;
+            member.expect_exhausted()?;
+            recovery.retain_component_closures(openings);
+            Ok(query)
         });
         let member_end = input.position().byte_index();
         let comma_start = member_end;
@@ -349,7 +352,7 @@ fn parse_container_style_query<'i, 't>(
     })
 }
 
-fn parse_media_query<'i, 't>(
+pub(super) fn parse_media_query<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssMediaQuery, ParseError<'i, Error>> {

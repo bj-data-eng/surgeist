@@ -13,6 +13,10 @@ subset; it does not establish complete support for all CSS syntax.
 | --- | --- | --- |
 | `parse_sheet(&str)` | Default features | `CssParseReport<CssSheet>` |
 | `parse_style_attribute(&str)` | Default features | `CssParseReport<CssDeclarationList>` |
+| `parse_selector(&str, &CssNamespaceContext)` | Default features | `CssParseReport<Option<CssSelector>>` |
+| `parse_selector_list(&str, &CssNamespaceContext)` | Default features | `CssParseReport<Option<CssStyleSelectorList>>` |
+| `parse_media_query(&str)` | Default features | `CssParseReport<CssMediaQuery>` |
+| `parse_media_query_list(&str)` | Default features | `CssParseReport<CssMediaQueryList>` |
 | `validate_sheet(&str)` | Default features | `Result<CssSheet, CssValidationFailure>` |
 | `validate_style_attribute(&str)` | Default features | `Result<CssDeclarationList, CssValidationFailure>` |
 | `parse_component_values(&str)` | Default features | `Result<CssComponentValues, CssComponentValueError>` |
@@ -25,10 +29,59 @@ Clean-report validation is always available. Production dependencies are pinned 
 `cssparser = 0.37.0` and `cssparser-color = 0.5.0`; test-only JSON support uses
 `serde = 1.0.228` and `serde_json = 1.0.145`.
 
-`CssParseReport` exposes `syntax()`, `diagnostics()`, `is_clean()`, and
-`into_parts()`. `CssValidationFailure` exposes the complete nonempty diagnostic
+`CssParseReport` exposes `syntax()`, `diagnostics()`, `is_clean()`,
+`into_parts()`, and `into_validation_result()`. The consuming validation conversion
+returns the syntax exactly when the report is clean; otherwise it returns every
+recovery diagnostic. It does not rerun a grammar or test contextual usability.
+`CssValidationFailure` exposes the complete nonempty diagnostic
 sequence through `diagnostics()`, `first()`, and `into_diagnostics()`. See the
 [report definitions](../src/report.rs) for their contracts.
+
+## Selector and media query fragments
+
+The four fragment parsers consume the supplied source directly, with original
+UTF-8 byte offsets, zero-based lines and UTF-16 columns, and actual EOF. Callers do not need
+to synthesize a stylesheet rule around a selector or query. The single-item
+functions require exactly one complete grammar production; a root comma is an
+error even when a second item would be valid.
+
+`parse_selector` and `parse_selector_list` accept ordinary selectors. Relative
+selectors and nesting selectors require their owning stylesheet contexts.
+An invalid outer selector or unforgiving root list produces `None` and a
+`RejectInput` diagnostic spanning the complete input. A valid `:is()` or
+`:where()` can retain its valid members while reporting discarded forgiving
+members. These front doors reuse the implemented selector grammar; their
+availability does not establish complete Selectors 4 coverage.
+
+`CssNamespaceContext::default()` has no bindings. `from_bindings()` consumes
+optional prefixes and namespace names in authored order, with the last binding
+for each prefix winning. `from_sheet()` copies retained top-level namespace
+rules into an owned context that outlives the sheet. `default_namespace()` and
+`named_namespace()` expose shared references; named prefixes are case-sensitive,
+and an absent binding differs from a binding to the empty namespace. Parsing
+borrows the immutable context and preserves symbolic selector namespace
+constraints. Retain the context if later matching needs namespace names.
+
+`parse_media_query` replaces a malformed complete query with `CssMediaQuery::Never`.
+`parse_media_query_list` recovers each root comma member independently, preserving
+valid neighbors. A grammatically valid unknown feature remains a defined-false
+condition rather than a malformed-query sentinel. An empty media query list is
+valid and clean; an empty single query is malformed. The checked
+`CssMediaQueryList::try_new` constructor still rejects an empty vector, so that
+construction-parsing parity gap remains unfinished.
+
+Fragments retain the shared 256-level structural limit and report
+`StopAtNestingLimit` without silently discarding neighboring media members.
+Deep parsing uses a bounded parser thread so ordinary callers need not allocate
+a larger stack. Accepted EOF closures appear as recovery diagnostics; clean
+validation therefore rejects a report that needed them. One diagnostic edge
+remains unfinished: `:is(???f(` currently reports a closure for discarded `f()`
+as well as the retained `:is()` closure.
+
+These operations parse and validate authored grammar. They do not perform
+selector matching, media evaluation, cascade, substitution, or CSSOM mutation.
+The [public fragment consumer](../examples/selector_query_fragment_consumer.rs)
+contains concrete semantic, recovery, namespace, coordinate, and depth examples.
 
 ## Source coordinates and diagnostics
 

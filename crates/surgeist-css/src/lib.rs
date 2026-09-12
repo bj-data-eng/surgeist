@@ -1115,7 +1115,10 @@ pub use normalization::{
     CssSelectorBinding, CssSelectorContext, normalize_report, normalize_report_with_limits,
     normalize_sheet, normalize_sheet_with_limits,
 };
-pub use parser::{parse_sheet, parse_style_attribute};
+pub use parser::{
+    CssNamespaceContext, parse_media_query, parse_media_query_list, parse_selector,
+    parse_selector_list, parse_sheet, parse_style_attribute,
+};
 pub use properties::*;
 pub use property_value::{
     CssPropertyValueErrorKind, CssPropertyValueParseError, parse_property_value,

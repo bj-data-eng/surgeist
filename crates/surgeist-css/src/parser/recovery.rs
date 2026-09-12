@@ -320,6 +320,23 @@ impl RecoveryState {
         Ok(self.component_openings_in(start..end))
     }
 
+    pub(super) fn check_comma_member_components<'i>(
+        &self,
+        source: &str,
+        input: &Parser<'i, '_>,
+        enclosing_production: &'static str,
+    ) -> Result<Vec<usize>, ParseError<'i, Error>> {
+        let start = input.position().byte_index();
+        let end = scan_nested_tokens(
+            source,
+            start,
+            self.depth.get(),
+            enclosing_production,
+            ScanBoundary::CommaMember,
+        )?;
+        Ok(self.component_openings_in(start..end))
+    }
+
     fn component_openings_in(&self, range: std::ops::Range<usize>) -> Vec<usize> {
         // Keep the same opening identities as the structural scanner, including
         // escaped function names and URL tokens, within this grammar unit only.
@@ -734,6 +751,7 @@ enum ScanBoundary {
     DeclarationValue,
     FailedCurlyBlock,
     SpecializedPrelude,
+    CommaMember,
 }
 
 // Validate nesting and return the exclusive grammar-unit boundary. Token starts
@@ -776,8 +794,12 @@ fn scan_nested_tokens<'i>(
             return Ok(token_start);
         }
         if blocks.is_empty()
-            && matches!(boundary, ScanBoundary::SpecializedPrelude)
-            && matches!(token, Token::Semicolon | Token::CurlyBracketBlock)
+            && matches!(
+                boundary,
+                ScanBoundary::SpecializedPrelude | ScanBoundary::CommaMember
+            )
+            && (matches!(token, Token::Semicolon | Token::CurlyBracketBlock)
+                || matches!(boundary, ScanBoundary::CommaMember) && matches!(token, Token::Comma))
         {
             return Ok(token_start);
         }

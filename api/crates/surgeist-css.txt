@@ -2012,6 +2012,7 @@ pub surgeist_css::CssRecoveryAction::DropKeyframeBlock
 pub surgeist_css::CssRecoveryAction::DropQualifiedRule
 pub surgeist_css::CssRecoveryAction::DropSelectorListItem
 pub surgeist_css::CssRecoveryAction::IgnoreLegacyToken
+pub surgeist_css::CssRecoveryAction::RejectInput
 pub surgeist_css::CssRecoveryAction::ReplaceMediaQueryWithNever
 pub surgeist_css::CssRecoveryAction::RetainWithImplicitClosure
 pub surgeist_css::CssRecoveryAction::StopAtNestingLimit
@@ -4579,6 +4580,12 @@ pub const fn surgeist_css::CssMixBlendModePropertyValue::mode(&self) -> &surgeis
 pub struct surgeist_css::CssNamedColor
 impl surgeist_css::CssNamedColor
 pub fn surgeist_css::CssNamedColor::name(&self) -> &str
+pub struct surgeist_css::CssNamespaceContext(_)
+impl surgeist_css::CssNamespaceContext
+pub fn surgeist_css::CssNamespaceContext::default_namespace(&self) -> core::option::Option<&surgeist_css::CssNamespaceName>
+pub fn surgeist_css::CssNamespaceContext::from_bindings(bindings: impl core::iter::traits::collect::IntoIterator<Item = (core::option::Option<surgeist_css::CssNamespacePrefix>, surgeist_css::CssNamespaceName)>) -> Self
+pub fn surgeist_css::CssNamespaceContext::from_sheet(sheet: &surgeist_css::CssSheet) -> Self
+pub fn surgeist_css::CssNamespaceContext::named_namespace(&self, prefix: &surgeist_css::CssNamespacePrefix) -> core::option::Option<&surgeist_css::CssNamespaceName>
 pub struct surgeist_css::CssNamespaceName
 impl surgeist_css::CssNamespaceName
 pub fn surgeist_css::CssNamespaceName::as_str(&self) -> &str
@@ -4826,6 +4833,7 @@ pub struct surgeist_css::CssParseReport<T>
 impl<T> surgeist_css::CssParseReport<T>
 pub fn surgeist_css::CssParseReport<T>::diagnostics(&self) -> &[surgeist_css::CssRecoveryDiagnostic]
 pub fn surgeist_css::CssParseReport<T>::into_parts(self) -> (T, alloc::vec::Vec<surgeist_css::CssRecoveryDiagnostic>)
+pub fn surgeist_css::CssParseReport<T>::into_validation_result(self) -> core::result::Result<T, surgeist_css::CssValidationFailure>
 pub fn surgeist_css::CssParseReport<T>::is_clean(&self) -> bool
 pub const fn surgeist_css::CssParseReport<T>::syntax(&self) -> &T
 pub struct surgeist_css::CssParsedOrigin
@@ -5676,7 +5684,11 @@ pub fn surgeist_css::normalize_sheet(sheet: &surgeist_css::CssSheet) -> core::re
 pub fn surgeist_css::normalize_sheet_with_limits(sheet: &surgeist_css::CssSheet, limits: surgeist_css::CssNormalizationLimits) -> core::result::Result<surgeist_css::CssNormalizedSheet, surgeist_css::CssNormalizationError>
 pub fn surgeist_css::parse_component_values(source: &str) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::parse_component_values_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::parse_media_query(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssMediaQuery>
+pub fn surgeist_css::parse_media_query_list(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssMediaQueryList>
 pub fn surgeist_css::parse_property_value(property: surgeist_css::CssPropertyNameRef<'_>, value: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
+pub fn surgeist_css::parse_selector(source: &str, context: &surgeist_css::CssNamespaceContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssSelector>>
+pub fn surgeist_css::parse_selector_list(source: &str, context: &surgeist_css::CssNamespaceContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssStyleSelectorList>>
 pub fn surgeist_css::parse_sheet(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssSheet>
 pub fn surgeist_css::parse_style_attribute(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssDeclarationList>
 pub fn surgeist_css::property_metadata(name: &str) -> core::option::Option<surgeist_css::CssPropertyMetadata>
