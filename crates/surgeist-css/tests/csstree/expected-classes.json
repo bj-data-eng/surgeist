@@ -317,7 +317,7 @@
           "kind": "full_observation",
           "retained_syntax": {
             "extractor": {
-              "kind": "sheet_rules"
+              "kind": "at_rule"
             },
             "predicate": {
               "relation": "empty"
@@ -344,7 +344,7 @@
           "kind": "full_observation",
           "retained_syntax": {
             "extractor": {
-              "kind": "sheet_rules"
+              "kind": "at_rule"
             },
             "predicate": {
               "relation": "empty"
@@ -735,7 +735,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -757,7 +757,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "nonempty"
@@ -772,7 +772,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -794,7 +794,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "nonempty"
@@ -809,7 +809,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "nonempty"
@@ -824,7 +824,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "nonempty"
@@ -839,7 +839,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "nonempty"
@@ -1110,7 +1110,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "nonempty"
@@ -1199,7 +1199,7 @@
           "kind": "full_observation",
           "retained_syntax": {
             "extractor": {
-              "kind": "sheet_rules"
+              "kind": "at_rule"
             },
             "predicate": {
               "relation": "empty"
@@ -1553,7 +1553,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "nonempty"
@@ -1568,7 +1568,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -1595,7 +1595,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -1622,7 +1622,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -1649,7 +1649,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -1671,7 +1671,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -1693,7 +1693,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -1715,7 +1715,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -1742,7 +1742,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -1769,7 +1769,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -1796,7 +1796,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -1818,7 +1818,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -1845,7 +1845,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "nonempty"
@@ -1863,7 +1863,7 @@
           "kind": "full_observation",
           "retained_syntax": {
             "extractor": {
-              "kind": "sheet_rules"
+              "kind": "at_rule"
             },
             "predicate": {
               "relation": "empty"
@@ -1890,7 +1890,7 @@
           "kind": "full_observation",
           "retained_syntax": {
             "extractor": {
-              "kind": "sheet_rules"
+              "kind": "at_rule"
             },
             "predicate": {
               "relation": "empty"
@@ -1914,7 +1914,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -1936,7 +1936,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -1958,7 +1958,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -1980,7 +1980,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -2002,7 +2002,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "nonempty"
@@ -2017,7 +2017,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -2039,7 +2039,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -2061,7 +2061,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -2083,7 +2083,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -2105,7 +2105,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -2127,7 +2127,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -2149,7 +2149,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "nonempty"
@@ -2167,7 +2167,7 @@
           "kind": "full_observation",
           "retained_syntax": {
             "extractor": {
-              "kind": "sheet_rules"
+              "kind": "at_rule"
             },
             "predicate": {
               "relation": "empty"
@@ -2194,7 +2194,7 @@
           "kind": "full_observation",
           "retained_syntax": {
             "extractor": {
-              "kind": "sheet_rules"
+              "kind": "at_rule"
             },
             "predicate": {
               "relation": "empty"
@@ -2218,7 +2218,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -2245,7 +2245,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -2272,7 +2272,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -2299,7 +2299,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -2331,7 +2331,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -2353,7 +2353,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -2375,7 +2375,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -2397,7 +2397,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -2424,7 +2424,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -2451,7 +2451,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -2481,7 +2481,7 @@
           "kind": "full_observation",
           "retained_syntax": {
             "extractor": {
-              "kind": "sheet_rules"
+              "kind": "at_rule"
             },
             "predicate": {
               "relation": "empty"
@@ -2505,7 +2505,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "nonempty"
@@ -2520,7 +2520,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -2542,7 +2542,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "nonempty"
@@ -2557,7 +2557,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "nonempty"
@@ -2572,7 +2572,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -2594,7 +2594,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"
@@ -2621,7 +2621,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "nonempty"
@@ -2636,7 +2636,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "nonempty"
@@ -2651,7 +2651,7 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "sheet_rules"
+            "kind": "at_rule"
           },
           "predicate": {
             "relation": "empty"

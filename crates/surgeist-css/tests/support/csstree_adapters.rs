@@ -271,6 +271,7 @@ impl PropertyOrDescriptor {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Extractor {
     SheetRules,
+    AtRule,
     TopLevelRuleKind(TopLevelRuleKind),
     StyleBlock,
     StyleDeclarations,
@@ -296,6 +297,7 @@ impl Extractor {
     pub const fn name(self) -> &'static str {
         match self {
             Self::SheetRules => "sheet_rules",
+            Self::AtRule => "at_rule",
             Self::TopLevelRuleKind(_) => "top_level_rule_kind",
             Self::StyleBlock => "style_block",
             Self::StyleDeclarations => "style_declarations",
@@ -387,7 +389,8 @@ impl Extractor {
                 .map_or(0, |declarations| {
                     known_declaration(declarations, index, property)
                 }),
-            Self::StyleBlock
+            Self::AtRule
+            | Self::StyleBlock
             | Self::DeclarationList
             | Self::Selector
             | Self::SelectorList
@@ -399,6 +402,47 @@ impl Extractor {
             }
         };
         Ok(count)
+    }
+
+    /// Observes one retained ordinary at-rule, never stylesheet cardinality.
+    pub fn extract_at_rule(self, rule: &Option<CssRule>) -> Result<usize, Mismatch> {
+        if !matches!(self, Self::AtRule | Self::TopLevelRuleKind(_)) {
+            return Err(Mismatch::ExtractorEntryPoint {
+                extractor: self,
+                entry_point: EntryPoint::Rule,
+            });
+        }
+        let Some(rule) = rule else {
+            return Ok(0);
+        };
+        // Enumerate positively: styles, nested declarations and future variants
+        // must fail visibly until this test-owned observer explicitly supports them.
+        let is_at_rule = matches!(
+            rule,
+            CssRule::Import(_)
+                | CssRule::Namespace(_)
+                | CssRule::CounterStyle(_)
+                | CssRule::Page(_)
+                | CssRule::LayerStatement(_)
+                | CssRule::LayerBlock(_)
+                | CssRule::FontFace(_)
+                | CssRule::Keyframes(_)
+                | CssRule::Media(_)
+                | CssRule::Supports(_)
+                | CssRule::Container(_)
+                | CssRule::Scope(_)
+        );
+        if is_at_rule
+            && match self {
+                Self::AtRule => true,
+                Self::TopLevelRuleKind(kind) => kind.matches_rule(rule),
+                _ => false,
+            }
+        {
+            Ok(1)
+        } else {
+            Err(Mismatch::AtRuleSyntax { extractor: self })
+        }
     }
 
     pub fn extract_declaration_list(
@@ -546,6 +590,9 @@ pub enum Mismatch {
         adapter: Adapter,
     },
     PayloadNotContiguous,
+    AtRuleSyntax {
+        extractor: Extractor,
+    },
     ExtractorEntryPoint {
         extractor: Extractor,
         entry_point: EntryPoint,
@@ -670,7 +717,7 @@ impl RegistryEntry {
             ),
             "atrule" => matches!(
                 (self.entry_point, self.adapter),
-                (EntryPoint::Sheet, Adapter::TopLevelAtRule)
+                (EntryPoint::Rule, Adapter::TopLevelAtRule)
             ),
             "declarationList" => matches!(
                 (self.entry_point, self.adapter),
@@ -777,6 +824,9 @@ pub fn validate_closed_model() -> bool {
         Extractor::ScopeChildren,
         Extractor::LayerBlockChildren,
     ];
+    if Extractor::AtRule.extract_at_rule(&None) != Ok(0) {
+        return false;
+    }
     let declaration_extractor: fn(Extractor, &CssDeclarationList) -> Result<usize, Mismatch> =
         Extractor::extract_declaration_list;
     let _ = declaration_extractor;
@@ -906,7 +956,7 @@ pub const REGISTRY: &[RegistryEntry] = &[
     entry!(
         "expectations/atrule/atrule/container.json",
         "atrule",
-        Sheet,
+        Rule,
         TopLevelAtRule,
         Extractor::TopLevelRuleKind(TopLevelRuleKind::Container),
         EMPTY
@@ -914,7 +964,7 @@ pub const REGISTRY: &[RegistryEntry] = &[
     entry!(
         "expectations/atrule/atrule/font-face.json",
         "atrule",
-        Sheet,
+        Rule,
         TopLevelAtRule,
         Extractor::TopLevelRuleKind(TopLevelRuleKind::FontFace),
         EMPTY
@@ -922,15 +972,15 @@ pub const REGISTRY: &[RegistryEntry] = &[
     entry!(
         "expectations/atrule/atrule/font-feature-values.json",
         "atrule",
-        Sheet,
+        Rule,
         TopLevelAtRule,
-        Extractor::SheetRules,
+        Extractor::AtRule,
         EMPTY
     ),
     entry!(
         "expectations/atrule/atrule/import.json",
         "atrule",
-        Sheet,
+        Rule,
         TopLevelAtRule,
         Extractor::TopLevelRuleKind(TopLevelRuleKind::Import),
         EMPTY
@@ -938,15 +988,15 @@ pub const REGISTRY: &[RegistryEntry] = &[
     entry!(
         "expectations/atrule/atrule/layer.json",
         "atrule",
-        Sheet,
+        Rule,
         TopLevelAtRule,
-        Extractor::SheetRules,
+        Extractor::AtRule,
         EMPTY
     ),
     entry!(
         "expectations/atrule/atrule/media.json",
         "atrule",
-        Sheet,
+        Rule,
         TopLevelAtRule,
         Extractor::TopLevelRuleKind(TopLevelRuleKind::Media),
         EMPTY_OR_NO_ATRULE_PRELUDE
@@ -954,15 +1004,15 @@ pub const REGISTRY: &[RegistryEntry] = &[
     entry!(
         "expectations/atrule/atrule/nest.json",
         "atrule",
-        Sheet,
+        Rule,
         TopLevelAtRule,
-        Extractor::SheetRules,
+        Extractor::AtRule,
         EMPTY
     ),
     entry!(
         "expectations/atrule/atrule/scope.json",
         "atrule",
-        Sheet,
+        Rule,
         TopLevelAtRule,
         Extractor::TopLevelRuleKind(TopLevelRuleKind::Scope),
         EMPTY
@@ -970,15 +1020,15 @@ pub const REGISTRY: &[RegistryEntry] = &[
     entry!(
         "expectations/atrule/atrule/starting-style.json",
         "atrule",
-        Sheet,
+        Rule,
         TopLevelAtRule,
-        Extractor::SheetRules,
+        Extractor::AtRule,
         EMPTY
     ),
     entry!(
         "expectations/atrule/atrule/supports.json",
         "atrule",
-        Sheet,
+        Rule,
         TopLevelAtRule,
         Extractor::TopLevelRuleKind(TopLevelRuleKind::Supports),
         EMPTY
@@ -986,33 +1036,33 @@ pub const REGISTRY: &[RegistryEntry] = &[
     entry!(
         "expectations/atrule/block.json",
         "atrule",
-        Sheet,
+        Rule,
         TopLevelAtRule,
-        Extractor::SheetRules,
+        Extractor::AtRule,
         EMPTY_OR_NO_ATRULE_PRELUDE
     ),
     entry!(
         "expectations/atrule/no-block.json",
         "atrule",
-        Sheet,
+        Rule,
         TopLevelAtRule,
-        Extractor::SheetRules,
+        Extractor::AtRule,
         EMPTY_OR_NO_ATRULE_PRELUDE
     ),
     entry!(
         "expectations/atrule/stylesheet.json",
         "atrule",
-        Sheet,
+        Rule,
         TopLevelAtRule,
-        Extractor::SheetRules,
+        Extractor::AtRule,
         EMPTY
     ),
     entry!(
         "expectations/atrule/tolerant.json",
         "atrule",
-        Sheet,
+        Rule,
         TopLevelAtRule,
-        Extractor::SheetRules,
+        Extractor::AtRule,
         EMPTY
     ),
     adapterless_entry!(

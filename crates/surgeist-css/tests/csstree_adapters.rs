@@ -7,7 +7,77 @@ use adapters::{
     EntryPoint, Extractor, FontFaceDescriptorKind, OptionsProfile, PropertyOrDescriptor,
     TopLevelRuleKind, UnsupportedPolicy, UnsupportedReason,
 };
-use surgeist_css::{CssDeclarationList, CssRule, CssSheet, parse_sheet};
+use surgeist_css::{
+    CssDeclarationList, CssNamespaceContext, CssRule, CssSheet, parse_rule, parse_sheet,
+};
+
+// Registry metadata and the closed extractor discriminator are corpus contracts.
+#[test]
+fn full_at_rule_adapters_preserve_raw_input_and_single_rule_presence() {
+    let entries: Vec<_> = adapters::REGISTRY
+        .iter()
+        .filter(|entry| entry.context() == "atrule")
+        .collect();
+    assert_eq!(entries.len(), 14);
+    for entry in entries {
+        assert_eq!(entry.entry_point(), EntryPoint::Rule);
+        assert!(entry.has_legal_context_combination());
+        assert!(matches!(
+            entry.extractor(),
+            Extractor::AtRule | Extractor::TopLevelRuleKind(_)
+        ));
+        for source in [
+            "@media{}",
+            "@media{} ;",
+            " /*😀*/\r\n@media{",
+            "@unknown x;",
+        ] {
+            let complete = entry.adapter().wrap(source, None).unwrap();
+            assert_eq!(complete.source(), source);
+            assert_eq!(complete.payload_span(), 0..source.len());
+        }
+    }
+    assert_eq!(Extractor::AtRule.name(), "at_rule");
+}
+
+#[test]
+fn at_rule_extraction_reports_style_wrong_family_and_entry_point_misuse() {
+    let context = CssNamespaceContext::default();
+    let style = parse_rule("a{}", &context);
+    let media = parse_rule("@media{}", &context);
+    for extractor in [
+        Extractor::AtRule,
+        Extractor::TopLevelRuleKind(TopLevelRuleKind::Style),
+    ] {
+        assert_eq!(
+            extractor.extract_at_rule(style.syntax()),
+            Err(adapters::Mismatch::AtRuleSyntax { extractor })
+        );
+    }
+    let wrong_family = Extractor::TopLevelRuleKind(TopLevelRuleKind::Supports);
+    assert_eq!(
+        wrong_family.extract_at_rule(media.syntax()),
+        Err(adapters::Mismatch::AtRuleSyntax {
+            extractor: wrong_family
+        })
+    );
+    assert_eq!(Extractor::AtRule.extract_at_rule(media.syntax()), Ok(1));
+    assert_eq!(
+        Extractor::TopLevelRuleKind(TopLevelRuleKind::Media).extract_at_rule(media.syntax()),
+        Ok(1)
+    );
+    assert_eq!(Extractor::AtRule.extract_at_rule(&None), Ok(0));
+    assert!(
+        Extractor::SheetRules
+            .extract_at_rule(media.syntax())
+            .is_err()
+    );
+    assert!(
+        Extractor::AtRule
+            .extract_sheet(parse_sheet("@media{}").syntax())
+            .is_err()
+    );
+}
 
 #[test]
 fn style_block_adapter_preserves_raw_input_and_names_block_presence() {
@@ -450,9 +520,9 @@ fn csstree_group_registry_counts_retained_outer_rules() {
             fixture.path
         );
         for &(label, input, _) in fixture.cases {
-            let report = parse_sheet(input);
+            let report = parse_rule(input, &CssNamespaceContext::default());
             assert_eq!(
-                entry.extractor().extract_sheet(report.syntax()),
+                entry.extractor().extract_at_rule(report.syntax()),
                 Ok(1),
                 "{}: registry must observe the outer rule",
                 group_case_id(fixture, label)

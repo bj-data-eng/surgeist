@@ -1980,13 +1980,27 @@ fn observe_public_parser(
         }
         EntryPoint::Rule => {
             let report = parse_rule(complete.source(), &corpus_namespace_context());
-            fragment_observation(
-                report,
-                registry,
-                RegistryExtractor::SheetRules,
-                complete,
-                |syntax| usize::from(syntax.is_some()),
-            )
+            match registry.adapter() {
+                Adapter::TopLevelAtRule => {
+                    let count = registry
+                        .extractor()
+                        .extract_at_rule(report.syntax())
+                        .map_err(|mismatch| {
+                            format!("public at-rule extractor failed: {mismatch:?}")
+                        })?;
+                    fragment_observation(report, registry, registry.extractor(), complete, |_| {
+                        count
+                    })
+                }
+                Adapter::TopLevelRule => fragment_observation(
+                    report,
+                    registry,
+                    RegistryExtractor::SheetRules,
+                    complete,
+                    |syntax| usize::from(syntax.is_some()),
+                ),
+                adapter => Err(format!("public rule adapter mismatch: {adapter:?}")),
+            }
         }
         EntryPoint::Declaration => {
             let report = parse_declaration(complete.source());
@@ -2251,6 +2265,7 @@ fn observation_from_report(
 fn raw_extractor(extractor: RegistryExtractor) -> Extractor {
     match extractor {
         RegistryExtractor::SheetRules => Extractor::SheetRules,
+        RegistryExtractor::AtRule => Extractor::AtRule {},
         RegistryExtractor::TopLevelRuleKind(kind) => Extractor::TopLevelRuleKind {
             rule_kind: kind.name().into(),
         },
@@ -2525,6 +2540,7 @@ fn validate_payload(
 fn extractor_matches_registry(extractor: &Extractor, expected: RegistryExtractor) -> bool {
     match (extractor, expected) {
         (Extractor::SheetRules, RegistryExtractor::SheetRules)
+        | (Extractor::AtRule {}, RegistryExtractor::AtRule)
         | (Extractor::StyleBlock, RegistryExtractor::StyleBlock)
         | (Extractor::StyleDeclarations, RegistryExtractor::StyleDeclarations)
         | (Extractor::StyleSelector, RegistryExtractor::StyleSelector)
@@ -2560,6 +2576,7 @@ fn extractor_matches_registry(extractor: &Extractor, expected: RegistryExtractor
 fn validate_extractor(extractor: &Extractor, id: &str) -> Result<(), String> {
     match extractor {
         Extractor::SheetRules
+        | Extractor::AtRule {}
         | Extractor::StyleBlock
         | Extractor::StyleDeclarations
         | Extractor::StyleSelector
@@ -2858,6 +2875,7 @@ impl Probe {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Extractor {
     SheetRules,
+    AtRule {},
     TopLevelRuleKind { rule_kind: String },
     StyleBlock,
     StyleDeclarations,
@@ -3314,11 +3332,8 @@ mod tests {
     fn assert_raw_at_rule_rejects_trailing_input(source: &str) {
         // Syntax 3 single-rule admission requires EOF after the at-rule;
         // retaining siblings through stylesheet recovery is not this contract.
-        let value = raw_fragment_observation(
-            "expectations/atrule/block.json",
-            Context::Atrule,
-            source,
-        );
+        let value =
+            raw_fragment_observation("expectations/atrule/block.json", Context::Atrule, source);
         assert_eq!(value["syntax_count"], 0, "{source}");
         assert_eq!(value["is_clean"], false, "{source}");
         let diagnostics = value["diagnostics"].as_array().unwrap();
@@ -3348,6 +3363,109 @@ mod tests {
         assert_eq!(value["syntax_count"], 1);
         assert_eq!(value["is_clean"], true);
         assert!(value["diagnostics"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn at_rule_extractor_schema_round_trips_and_rejects_extra_fields() {
+        let value = serde_json::json!({ "kind": "at_rule" });
+        let extractor: Extractor = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(extractor, Extractor::AtRule {});
+        assert_eq!(serde_json::to_value(&extractor).unwrap(), value);
+        assert!(extractor_matches_registry(
+            &extractor,
+            RegistryExtractor::AtRule
+        ));
+        assert!(!extractor_matches_registry(
+            &extractor,
+            RegistryExtractor::SheetRules
+        ));
+        assert!(
+            serde_json::from_value::<Extractor>(serde_json::json!({
+                "kind": "at_rule", "rule_kind": "media"
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn raw_at_rule_observation_preserves_inner_recovery_and_eof() {
+        for (source, action) in [
+            ("@media{a{unknown:x}}", "drop_declaration"),
+            ("@media{@unknown x;}", "drop_at_rule"),
+            ("@media{", "retain_with_implicit_closure"),
+        ] {
+            let value =
+                raw_fragment_observation("expectations/atrule/block.json", Context::Atrule, source);
+            assert_eq!(value["extractor"]["kind"], "at_rule");
+            assert_eq!(value["syntax_count"], 1, "{source}");
+            assert_eq!(value["is_clean"], false, "{source}");
+            let diagnostics = value["diagnostics"].as_array().unwrap();
+            assert_eq!(diagnostics.len(), 1, "{source}");
+            assert_eq!(diagnostics[0]["action"], action, "{source}");
+            if source == "@media{" {
+                assert_eq!(diagnostics[0]["byte_offset"], source.len());
+                assert_eq!(diagnostics[0]["span_end"], source.len());
+            }
+        }
+    }
+
+    #[test]
+    fn raw_at_rule_observation_rejects_outer_grammar_without_retained_closure() {
+        for source in [
+            "@unknown x;",
+            "@unknown {",
+            "@charset \"UTF-8\";",
+            "@media{} @media{}",
+            "@media{a{unknown:x}} ;",
+        ] {
+            assert_raw_at_rule_rejects_trailing_input(source);
+        }
+    }
+
+    #[test]
+    fn raw_at_rule_observation_retains_isolated_import_namespace_and_empty_font_face() {
+        for source in [
+            "@import \"a.css\";",
+            "@namespace ns \"urn:test\";",
+            "@font-face{}",
+            "@media{ns|a{}}",
+        ] {
+            let value =
+                raw_fragment_observation("expectations/atrule/block.json", Context::Atrule, source);
+            assert_eq!(value["syntax_count"], 1, "{source}");
+            assert_eq!(value["is_clean"], true, "{source}");
+            assert_eq!(value["diagnostics"], serde_json::json!([]), "{source}");
+        }
+    }
+
+    #[test]
+    fn raw_at_rule_observation_preserves_original_unicode_crlf_coordinates() {
+        let source = "/*😀*/\r\n/*é*/@media{a{unknown:x}}";
+        let value =
+            raw_fragment_observation("expectations/atrule/block.json", Context::Atrule, source);
+        assert_eq!(value["syntax_count"], 1);
+        assert_eq!(
+            value["diagnostics"][0]["byte_offset"],
+            source.find("unknown").unwrap()
+        );
+        assert_eq!(
+            value["diagnostics"][0]["span_start"],
+            source.find("unknown").unwrap()
+        );
+        let report = parse_rule(source, &corpus_namespace_context());
+        let Some(surgeist_css::CssRule::Media(media)) = report.syntax() else {
+            panic!("expected retained media rule");
+        };
+        assert_eq!(
+            media.position().byte_offset().value(),
+            source.find('@').unwrap()
+        );
+        assert_eq!(media.position().line().value(), 1);
+        assert_eq!(media.position().column().value(), 5);
+        let [surgeist_css::CssRule::Style(style)] = media.rules() else {
+            panic!("expected retained style child");
+        };
+        assert!(style.declarations().is_empty());
     }
 
     #[test]
@@ -4439,8 +4557,21 @@ mod tests {
     #[test]
     fn oracle_loader_rejects_full_observation_without_observation() {
         const ID: &str = "atrule/block.json#/shouldn't create a raw node when no prelude and parseAtrulePrelude is false";
-        let mut artifacts =
-            oracle_record_test_artifacts(include_bytes!("../csstree/expected-classes.json"));
+        let mut expected: Value =
+            serde_json::from_slice(include_bytes!("../csstree/expected-classes.json")).unwrap();
+        let expected_record = expected["records"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|record| record["id"] == ID)
+            .unwrap();
+        // The fixture tests the oracle loader independently of the unfinished
+        // corpus audit. An unknown outer rule rejects the whole raw request.
+        expected_record["class"]["policy"]["diagnostics"][0]["action"] =
+            Value::String("reject_input".into());
+        let expected: RawExpectedClasses = serde_json::from_value(expected).unwrap();
+        let expected = format!("{}\n", serde_json::to_string_pretty(&expected).unwrap());
+        let mut artifacts = oracle_record_test_artifacts(expected.as_bytes());
         // Independently specify the complete observation for an unknown @test
         // rule. This record's upstream parser option has no public equivalent,
         // so its existing expected class requires full observation.
@@ -4458,9 +4589,9 @@ mod tests {
             );
             record["probe"] = serde_json::json!({
                 "kind": "active",
-                "entry_point": "sheet",
+                "entry_point": "rule",
                 "adapter": "top_level_at_rule",
-                "extractor": { "kind": "sheet_rules" },
+                "extractor": { "kind": "at_rule" },
                 "property_or_descriptor": null,
                 "options": { "parseAtrulePrelude": false },
                 "payload": { "prefix": "", "suffix": "", "input_byte_length": 8 },
@@ -4471,12 +4602,12 @@ mod tests {
                 "policy": "full_observation",
             });
             record["observation"] = serde_json::json!({
-                "extractor": { "kind": "sheet_rules" },
+                "extractor": { "kind": "at_rule" },
                 "syntax_count": 0,
                 "is_clean": false,
                 "diagnostics": [{
                     "code": "unknown_at_rule",
-                    "action": "drop_at_rule",
+                    "action": "reject_input",
                     "byte_offset": 0,
                     "span_start": 0,
                     "span_end": 8,
