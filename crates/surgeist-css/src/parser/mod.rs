@@ -2756,8 +2756,20 @@ fn parse_layer_name<'i, 't>(
     let location = input.current_source_location();
     let mut components = vec![input.expect_ident_cloned().map_err(basic)?.to_string()];
 
-    while input.try_parse(|input| input.expect_delim('.')).is_ok() {
-        components.push(input.expect_ident_cloned().map_err(basic)?.to_string());
+    loop {
+        let boundary = input.state();
+        if !matches!(input.next_including_whitespace(), Ok(Token::Delim('.'))) {
+            input.reset(&boundary);
+            break;
+        }
+
+        let component_location = input.current_source_location();
+        match input.next_including_whitespace().map_err(basic)? {
+            Token::Ident(component) => components.push(component.to_string()),
+            token => {
+                return Err(component_location.new_unexpected_token_error(token.clone()));
+            }
+        }
     }
 
     CssLayerName::try_new(components).ok_or_else(|| invalid_syntax(location, "invalid layer name"))
