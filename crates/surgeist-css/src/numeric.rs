@@ -2063,7 +2063,204 @@ fn programmatic_dimension(value: f32, unit: &str) -> Option<CssComponentValues> 
     ])
     .ok()
 }
+/// Resource accounting for assembling already admitted roots. No child graph is
+/// cloned until the complete iterator has passed these aggregate checks.
+struct SumAssemblyBudget {
+    limits: CssComponentValueLimits,
+    components: usize,
+    lexical_bytes: usize,
+    canonical_bytes: usize,
+}
+impl SumAssemblyBudget {
+    fn error(
+        kind: CssComponentValueErrorKind,
+        origin: &CssValueOrigin,
+    ) -> CssNumericConstructionError {
+        CssNumericConstructionError::component(CssComponentValueError::new(kind, origin.clone()))
+    }
+    fn add(
+        total: &mut usize,
+        amount: usize,
+        limit: usize,
+        kind: CssComponentValueErrorKind,
+        origin: &CssValueOrigin,
+    ) -> Result<()> {
+        *total = total
+            .checked_add(amount)
+            .ok_or_else(|| Self::error(CssComponentValueErrorKind::CapacityOverflow, origin))?;
+        if *total > limit {
+            return Err(Self::error(kind, origin));
+        }
+        Ok(())
+    }
+    fn new(limits: CssComponentValueLimits) -> Result<Self> {
+        let mut budget = Self {
+            limits,
+            components: 0,
+            lexical_bytes: 0,
+            canonical_bytes: 0,
+        };
+        let origin = CssValueOrigin::Programmatic;
+        Self::add(
+            &mut budget.components,
+            1,
+            limits.max_components(),
+            CssComponentValueErrorKind::ComponentLimit,
+            &origin,
+        )?;
+        if limits.max_nesting_depth() == 0 {
+            return Err(Self::error(
+                CssComponentValueErrorKind::NestingLimit,
+                &origin,
+            ));
+        }
+        // Reserve both the programmatic `calc(` opener and its closing token.
+        budget.add_bytes(6, 6, &origin)?;
+        Ok(budget)
+    }
+    fn add_bytes(
+        &mut self,
+        lexical: usize,
+        canonical: usize,
+        origin: &CssValueOrigin,
+    ) -> Result<()> {
+        Self::add(
+            &mut self.lexical_bytes,
+            lexical,
+            self.limits.max_css_bytes(),
+            CssComponentValueErrorKind::ByteLimit,
+            origin,
+        )?;
+        Self::add(
+            &mut self.canonical_bytes,
+            canonical,
+            self.limits.max_css_bytes(),
+            CssComponentValueErrorKind::ByteLimit,
+            origin,
+        )
+    }
+    fn separator(&mut self) -> Result<()> {
+        let origin = CssValueOrigin::Programmatic;
+        Self::add(
+            &mut self.components,
+            3,
+            self.limits.max_components(),
+            CssComponentValueErrorKind::ComponentLimit,
+            &origin,
+        )?;
+        self.add_bytes(3, 3, &origin)
+    }
+    fn operand(&mut self, value: &CssLengthPercentageCalculation) -> Result<()> {
+        // Iterator frames keep traversal storage proportional to nesting depth.
+        let mut pending = vec![(value.components().items().iter(), 1u32)];
+        while let Some((items, depth)) = pending.last_mut() {
+            let Some(component) = items.next() else {
+                pending.pop();
+                continue;
+            };
+            Self::add(
+                &mut self.components,
+                1,
+                self.limits.max_components(),
+                CssComponentValueErrorKind::ComponentLimit,
+                component.origin(),
+            )?;
+            let children = match component.view() {
+                CssComponentValueRef::Function(function) => Some(function.values()),
+                CssComponentValueRef::Block(block) => Some(block.values()),
+                _ => None,
+            };
+            if let Some(children) = children {
+                if *depth >= self.limits.max_nesting_depth() {
+                    return Err(Self::error(
+                        CssComponentValueErrorKind::NestingLimit,
+                        component.origin(),
+                    ));
+                }
+                let child_depth = *depth + 1;
+                pending.push((children.items().iter(), child_depth));
+            }
+        }
+        let mut lexical = crate::component_values::CssCanonicalBuilder::new(
+            self.limits.max_css_bytes() - self.lexical_bytes,
+        );
+        lexical
+            .push_components(value.components().items())
+            .map_err(CssNumericConstructionError::component)?;
+        let canonical = value.expression.canonical_len(usize::MAX).ok_or_else(|| {
+            Self::error(CssComponentValueErrorKind::CapacityOverflow, value.origin())
+        })?;
+        self.add_bytes(lexical.byte_len(), canonical, value.origin())
+    }
+}
+
 impl CssLengthPercentageCalculation {
+    /// Assembles a symbolic sum while preserving every operand's original components.
+    ///
+    /// The first operand has no binary operator. Even a single operand receives
+    /// a programmatic `calc()` wrapper. Root-only unitless zero is rechecked as
+    /// an arithmetic operand and can fail ordinary numeric type admission.
+    pub fn try_sum(
+        first: Self,
+        rest: impl IntoIterator<Item = (CssCalculationSumOperator, Self)>,
+    ) -> Result<Self> {
+        Self::try_sum_with_limits(first, rest, CssComponentValueLimits::default())
+    }
+
+    /// Assembles a sum under aggregate component, nesting and output-byte limits.
+    ///
+    /// Limits include inserted punctuation and whitespace. Admission stops
+    /// consuming operands when a limit is exceeded, before cloning child graphs.
+    /// Unlimited count and byte limits do not bound an arbitrary input iterator.
+    /// Already admitted recovery origins remain intact; the public component
+    /// constructor continues to reject recovered input.
+    pub fn try_sum_with_limits(
+        first: Self,
+        rest: impl IntoIterator<Item = (CssCalculationSumOperator, Self)>,
+        limits: CssComponentValueLimits,
+    ) -> Result<Self> {
+        let mut budget = SumAssemblyBudget::new(limits)?;
+        budget.operand(&first)?;
+        let mut operands = vec![(None, first)];
+        for (operator, value) in rest {
+            budget.separator()?;
+            budget.operand(&value)?;
+            operands.push((Some(operator), value));
+        }
+        let mut components = Vec::new();
+        for (operator, value) in &operands {
+            if let Some(operator) = operator {
+                for token in [
+                    " ",
+                    match operator {
+                        CssCalculationSumOperator::Add => "+",
+                        CssCalculationSumOperator::Subtract => "-",
+                    },
+                    " ",
+                ] {
+                    components.push(
+                        CssComponentValue::try_token(token)
+                            .map_err(CssNumericConstructionError::component)?,
+                    );
+                }
+            }
+            components.extend(value.components().items().iter().cloned());
+        }
+        let children = CssComponentValues::try_new(components)
+            .map_err(CssNumericConstructionError::component)?;
+        let function = CssComponentValue::try_function("calc", children)
+            .map_err(CssNumericConstructionError::component)?;
+        let values = CssComponentValues::try_new(vec![function])
+            .map_err(CssNumericConstructionError::component)?;
+        construct_with_policy(
+            values,
+            CalculationRoot::LengthPercentage,
+            limits,
+            AdmissionPolicy::RecoveredSyntax,
+        )
+        .map(Self::from_expression)
+    }
+
     pub fn try_dimension(value: f32, unit: CssLengthUnit) -> Option<Self> {
         Self::try_from_components(programmatic_dimension(value, unit.as_css_str())?).ok()
     }

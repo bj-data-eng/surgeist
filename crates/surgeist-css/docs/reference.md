@@ -344,6 +344,25 @@ Calculation-root `result_type()`, sum and product `len()`, and sum-term and
 product-factor `operator()` accessors are also no longer `const fn`; call them
 at runtime.
 
+`CssLengthPercentageCalculation::try_sum(first, rest)` assembles checked roots
+using a first operand and subsequent `(CssCalculationSumOperator, operand)`
+pairs. `try_sum_with_limits` applies aggregate depth, component-count and byte
+limits before cloning the assembled graph. These budgets include the new
+`calc()` wrapper and whitespace/operator separators, all original child trivia,
+and canonical numeric output. A single operand still receives the wrapper.
+Finite exhausted limits stop further iterator consumption; default unlimited
+count and byte limits do not guarantee termination for an arbitrary iterator.
+
+Assembly preserves original child components, lexical spelling, snapshots and
+recovery origins. Only the wrapper and separators are programmatic. Numeric
+serialization retains its existing canonical policy, including lowercase units;
+the original lexical spelling remains available through `components()`. The numeric
+owner rechecks the assembled arithmetic grammar without evaluation; a unitless
+zero admitted only at a calculation root can therefore fail as an operand,
+whereas `0px` remains valid. Trusted checked children may retain recovered
+closures during assembly; direct public construction from recovered components
+continues to reject them.
+
 Checked owners accepting `CssLength` reject malformed legacy calculations: every
 `CssCalcLength::Sum` must be nonempty and its first term must use `Add`, including
 nested sums. This shape check also applies to fallible position, translate,

@@ -4978,6 +4978,8 @@ pub fn surgeist_css::CssLengthPercentageCalculation::try_from_components_with_li
 impl surgeist_css::CssLengthPercentageCalculation
 pub fn surgeist_css::CssLengthPercentageCalculation::try_dimension(value: f32, unit: surgeist_css::CssLengthUnit) -> core::option::Option<Self>
 pub fn surgeist_css::CssLengthPercentageCalculation::try_percentage(value: f32) -> core::option::Option<Self>
+pub fn surgeist_css::CssLengthPercentageCalculation::try_sum(first: Self, rest: impl core::iter::traits::collect::IntoIterator<Item = (surgeist_css::CssCalculationSumOperator, Self)>) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssLengthPercentageCalculation::try_sum_with_limits(first: Self, rest: impl core::iter::traits::collect::IntoIterator<Item = (surgeist_css::CssCalculationSumOperator, Self)>, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub struct surgeist_css::CssLetterSpacingLength
 impl surgeist_css::CssLetterSpacingLength
 pub const fn surgeist_css::CssLetterSpacingLength::length(&self) -> &surgeist_css::CssLength
