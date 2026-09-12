@@ -3562,6 +3562,77 @@ mod tests {
     }
 
     #[test]
+    fn original_at_rule_eof_rejections_agree_with_payload_relations() {
+        // TopLevelAtRule preserves the entire input as [0,N). An error at N
+        // with nonempty recovery [0,N) is recovery_ends_at, not intersects or
+        // the zero-width ends_at relation. Exercise the real registry adapter
+        // and expected-class admission together, independently of oracle.json.
+        let inventory = load_neutral_csstree_inventory().unwrap();
+        let cases = [
+            (
+                "atrule/atrule/font-face.json#/@font-face with no block is not an error",
+                "@font-face;",
+                "invalid_at_rule_body",
+            ),
+            (
+                "atrule/atrule/layer.json#/anonymous layer",
+                "@layer;",
+                "unexpected_token",
+            ),
+            (
+                "atrule/atrule/media.json#/@media with no block is not an error",
+                "@media;",
+                "invalid_at_rule_body",
+            ),
+            (
+                "atrule/atrule/media.json#/@media with unclosed parentheses is not an error",
+                "@media (foo:1",
+                "unexpected_token",
+            ),
+            (
+                "atrule/atrule/media.json#/error/1",
+                "@media (foo:1) ~",
+                "unexpected_token",
+            ),
+            (
+                "atrule/atrule/supports.json#/@supports with no block",
+                "@supports (flex: 1)",
+                "unexpected_token",
+            ),
+        ];
+        let mut mismatches = Vec::new();
+        for (id, source, code) in cases {
+            let case = inventory.cases.iter().find(|case| case.id == id).unwrap();
+            assert_eq!(case.input, source);
+            let observed =
+                raw_fragment_observation(&case.expectation_path, Context::Atrule, source);
+            assert_eq!(observed["syntax_count"], 0, "{id}");
+            assert_eq!(observed["is_clean"], false, "{id}");
+            assert_eq!(
+                observed["diagnostics"],
+                serde_json::json!([{
+                    "code": code,
+                    "action": "reject_input",
+                    "byte_offset": source.len(),
+                    "span_start": 0,
+                    "span_end": source.len(),
+                    "multiplicity": 1,
+                    "payload_relation": "recovery_ends_at"
+                }]),
+                "{id}"
+            );
+            if let Err(error) = observe_csstree_record(case) {
+                mismatches.push(error.summary());
+            }
+        }
+        assert!(
+            mismatches.is_empty(),
+            "{} original EOF class mismatches: {mismatches:#?}",
+            mismatches.len()
+        );
+    }
+
+    #[test]
     fn raw_property_value_observation_rejects_authored_delimiters() {
         // Property values exclude declaration separators and annotations;
         // separate property identity and importance cannot excuse these tokens.
