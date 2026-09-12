@@ -3229,6 +3229,31 @@ mod tests {
     }
 
     #[test]
+    fn raw_font_face_value_observation_keeps_incomplete_range_eof_in_payload() {
+        // Original UnicodeRange fixtures: Syntax 3 section 7.1 requires a
+        // continuation after u and +. Missing input belongs to the raw EOF,
+        // not an injected descriptor terminator or surrounding font-face rule.
+        let path = "expectations/value/UnicodeRange.json";
+        for source in ["U+", "u"] {
+            let value = raw_fragment_observation(path, Context::Value, source);
+            assert_eq!(value["syntax_count"], 0);
+            assert_eq!(value["is_clean"], false);
+            assert_eq!(value["diagnostics"].as_array().unwrap().len(), 1);
+            let error = &value["diagnostics"][0];
+            assert_eq!(error["code"], "invalid_descriptor_value");
+            assert_eq!(error["action"], "reject_input");
+            assert_eq!(error["byte_offset"], source.len());
+            assert_eq!(error["span_start"], 0);
+            assert_eq!(error["span_end"], source.len());
+            assert_eq!(error["payload_relation"], "recovery_ends_at");
+        }
+        let value = raw_fragment_observation(path, Context::Value, "u+?");
+        assert_eq!(value["syntax_count"], 1);
+        assert_eq!(value["is_clean"], true);
+        assert_eq!(value["diagnostics"], serde_json::json!([]));
+    }
+
+    #[test]
     fn raw_selector_observation_rejects_a_second_root_at_the_authored_comma() {
         let value = raw_fragment_observation(
             "expectations/selector/Selector.json",
