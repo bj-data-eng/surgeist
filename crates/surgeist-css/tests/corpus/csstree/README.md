@@ -108,6 +108,11 @@ unchanged. Unsupported upstream options and vendor syntax keep their explicit
 policies; superseded `@nest` and unselected Transitions2 `@starting-style` remain
 outside the selected grammar.
 
+The six whole-rule rejections diagnosed at the original EOF use
+`recovery_ends_at`: their error offset equals the payload end, while the
+recovery span covers the nonempty original rule. The adapter-observation test
+checks this relation together with expected-class admission.
+
 The complex container-query original retains its unknown enclosed operands
 within the authored Boolean structure. The Fonts4 character-variant singleton
 original independently requires a retained `@font-feature-values` outer rule,

@@ -440,7 +440,7 @@
           {
             "code": "invalid_at_rule_body",
             "action": "reject_input",
-            "payload_relation": "intersects"
+            "payload_relation": "recovery_ends_at"
           }
         ]
       },
@@ -1303,7 +1303,7 @@
           {
             "code": "unexpected_token",
             "action": "reject_input",
-            "payload_relation": "intersects"
+            "payload_relation": "recovery_ends_at"
           }
         ]
       },
@@ -1534,7 +1534,7 @@
           {
             "code": "invalid_at_rule_body",
             "action": "reject_input",
-            "payload_relation": "intersects"
+            "payload_relation": "recovery_ends_at"
           }
         ]
       },
@@ -1609,7 +1609,7 @@
           {
             "code": "unexpected_token",
             "action": "reject_input",
-            "payload_relation": "intersects"
+            "payload_relation": "recovery_ends_at"
           }
         ]
       },
@@ -1730,7 +1730,7 @@
           {
             "code": "unexpected_token",
             "action": "reject_input",
-            "payload_relation": "intersects"
+            "payload_relation": "recovery_ends_at"
           }
         ]
       },
@@ -2252,7 +2252,7 @@
           {
             "code": "unexpected_token",
             "action": "reject_input",
-            "payload_relation": "intersects"
+            "payload_relation": "recovery_ends_at"
           }
         ]
       },
