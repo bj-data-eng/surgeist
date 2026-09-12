@@ -1211,6 +1211,31 @@ pub surgeist_css::CssImageRendering::Pixelated
 pub surgeist_css::CssImageValue::Gradient(surgeist_css::CssGradient)
 pub surgeist_css::CssImageValue::None
 pub surgeist_css::CssImageValue::Url(surgeist_css::CssUrl)
+#[non_exhaustive] pub enum surgeist_css::CssImportConstructionError
+pub surgeist_css::CssImportConstructionError::Component(surgeist_css::CssComponentValueError)
+pub surgeist_css::CssImportConstructionError::InvalidRuleGrammar
+pub surgeist_css::CssImportConstructionError::InvalidRuleGrammar::origin: surgeist_css::CssValueOrigin
+pub surgeist_css::CssImportConstructionError::Media(surgeist_css::CssMediaConstructionError)
+pub surgeist_css::CssImportConstructionError::RecoveredInput
+pub surgeist_css::CssImportConstructionError::RecoveredInput::origin: surgeist_css::CssValueOrigin
+pub surgeist_css::CssImportConstructionError::Serialization(surgeist_css::CssImportSerializationError)
+pub surgeist_css::CssImportConstructionError::Supports(surgeist_css::CssSupportsConstructionError)
+pub surgeist_css::CssImportConstructionError::WorkerUnavailable
+pub surgeist_css::CssImportConstructionError::WorkerUnavailable::origin: surgeist_css::CssValueOrigin
+impl surgeist_css::CssImportConstructionError
+pub fn surgeist_css::CssImportConstructionError::origin(&self) -> &surgeist_css::CssValueOrigin
+impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssImportConstructionError
+pub fn surgeist_css::CssImportConstructionError::from(error: surgeist_css::CssComponentValueError) -> Self
+impl core::convert::From<surgeist_css::CssImportSerializationError> for surgeist_css::CssImportConstructionError
+pub fn surgeist_css::CssImportConstructionError::from(error: surgeist_css::CssImportSerializationError) -> Self
+impl core::convert::From<surgeist_css::CssMediaConstructionError> for surgeist_css::CssImportConstructionError
+pub fn surgeist_css::CssImportConstructionError::from(error: surgeist_css::CssMediaConstructionError) -> Self
+impl core::convert::From<surgeist_css::CssSupportsConstructionError> for surgeist_css::CssImportConstructionError
+pub fn surgeist_css::CssImportConstructionError::from(error: surgeist_css::CssSupportsConstructionError) -> Self
+impl core::error::Error for surgeist_css::CssImportConstructionError
+pub fn surgeist_css::CssImportConstructionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssImportConstructionError
+pub fn surgeist_css::CssImportConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssImportLayer
 pub surgeist_css::CssImportLayer::Anonymous
 pub surgeist_css::CssImportLayer::Named(surgeist_css::CssLayerName)
@@ -1223,6 +1248,8 @@ impl surgeist_css::CssImportSerializationError
 pub fn surgeist_css::CssImportSerializationError::origin(&self) -> &surgeist_css::CssValueOrigin
 impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssImportSerializationError
 pub fn surgeist_css::CssImportSerializationError::from(value: surgeist_css::CssComponentValueError) -> Self
+impl core::convert::From<surgeist_css::CssImportSerializationError> for surgeist_css::CssImportConstructionError
+pub fn surgeist_css::CssImportConstructionError::from(error: surgeist_css::CssImportSerializationError) -> Self
 impl core::convert::From<surgeist_css::CssMediaSerializationError> for surgeist_css::CssImportSerializationError
 pub fn surgeist_css::CssImportSerializationError::from(value: surgeist_css::CssMediaSerializationError) -> Self
 impl core::error::Error for surgeist_css::CssImportSerializationError
@@ -1913,6 +1940,8 @@ impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css:
 pub fn surgeist_css::CssMediaConstructionError::from(error: surgeist_css::CssComponentValueError) -> Self
 impl core::convert::From<surgeist_css::CssMediaConstructionError> for surgeist_css::CssCustomMediaConstructionError
 pub fn surgeist_css::CssCustomMediaConstructionError::from(e: surgeist_css::CssMediaConstructionError) -> Self
+impl core::convert::From<surgeist_css::CssMediaConstructionError> for surgeist_css::CssImportConstructionError
+pub fn surgeist_css::CssImportConstructionError::from(error: surgeist_css::CssMediaConstructionError) -> Self
 impl core::error::Error for surgeist_css::CssMediaConstructionError
 impl core::fmt::Display for surgeist_css::CssMediaConstructionError
 pub fn surgeist_css::CssMediaConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -2560,6 +2589,8 @@ impl surgeist_css::CssSupportsConstructionError
 pub fn surgeist_css::CssSupportsConstructionError::origin(&self) -> &surgeist_css::CssValueOrigin
 impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssSupportsConstructionError
 pub fn surgeist_css::CssSupportsConstructionError::from(error: surgeist_css::CssComponentValueError) -> Self
+impl core::convert::From<surgeist_css::CssSupportsConstructionError> for surgeist_css::CssImportConstructionError
+pub fn surgeist_css::CssImportConstructionError::from(error: surgeist_css::CssSupportsConstructionError) -> Self
 impl core::error::Error for surgeist_css::CssSupportsConstructionError
 pub fn surgeist_css::CssSupportsConstructionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_css::CssSupportsConstructionError
@@ -3792,6 +3823,8 @@ impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css:
 pub fn surgeist_css::CssCustomMediaConstructionError::from(e: surgeist_css::CssComponentValueError) -> Self
 impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssCustomMediaSerializationError
 pub fn surgeist_css::CssCustomMediaSerializationError::from(e: surgeist_css::CssComponentValueError) -> Self
+impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssImportConstructionError
+pub fn surgeist_css::CssImportConstructionError::from(error: surgeist_css::CssComponentValueError) -> Self
 impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssImportSerializationError
 pub fn surgeist_css::CssImportSerializationError::from(value: surgeist_css::CssComponentValueError) -> Self
 impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssMediaConstructionError
@@ -4760,11 +4793,15 @@ pub struct surgeist_css::CssImportRule
 impl surgeist_css::CssImportRule
 pub const fn surgeist_css::CssImportRule::layer(&self) -> core::option::Option<&surgeist_css::CssImportLayer>
 pub const fn surgeist_css::CssImportRule::media(&self) -> core::option::Option<&surgeist_css::CssMediaQueryList>
-pub const fn surgeist_css::CssImportRule::position(&self) -> surgeist_css::CssSourcePosition
+pub const fn surgeist_css::CssImportRule::origin(&self) -> &surgeist_css::CssValueOrigin
+pub const fn surgeist_css::CssImportRule::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
 pub const fn surgeist_css::CssImportRule::supports(&self) -> core::option::Option<&surgeist_css::CssImportSupports>
 pub const fn surgeist_css::CssImportRule::target(&self) -> &surgeist_css::CssImportTarget
 impl surgeist_css::CssImportRule
 pub fn surgeist_css::CssImportRule::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssImportSerializationError>
+pub fn surgeist_css::CssImportRule::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssImportSerializationError>
+pub fn surgeist_css::CssImportRule::try_from_components(values: surgeist_css::CssComponentValues, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssImportConstructionError>
+pub fn surgeist_css::CssImportRule::try_from_components_with_limits(values: surgeist_css::CssComponentValues, context: &surgeist_css::CssNamespaceContext, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssImportConstructionError>
 pub struct surgeist_css::CssImportString
 impl surgeist_css::CssImportString
 pub fn surgeist_css::CssImportString::as_str(&self) -> &str

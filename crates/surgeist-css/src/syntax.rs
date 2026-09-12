@@ -929,7 +929,6 @@ pub struct CssImportRule {
     supports: Option<CssImportSupports>,
     media: Option<CssMediaQueryList>,
     pub(crate) syntax: Box<crate::imports::ImportSyntax>,
-    position: CssSourcePosition,
 }
 
 impl CssImportRule {
@@ -940,7 +939,6 @@ impl CssImportRule {
         supports: Option<CssImportSupports>,
         media: Option<CssMediaQueryList>,
         syntax: crate::imports::ImportSyntax,
-        position: CssSourcePosition,
     ) -> Self {
         Self {
             target,
@@ -948,7 +946,6 @@ impl CssImportRule {
             supports,
             media,
             syntax: Box::new(syntax),
-            position,
         }
     }
 
@@ -975,8 +972,13 @@ impl CssImportRule {
     }
 
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
-        self.position
+    pub const fn origin(&self) -> &CssValueOrigin {
+        self.syntax.at_keyword.origin()
+    }
+
+    #[must_use]
+    pub const fn position(&self) -> Option<CssSourcePosition> {
+        crate::media::parsed_position(self.origin())
     }
 }
 

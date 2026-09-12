@@ -863,7 +863,7 @@ fn import_rule_accessors_expose_authored_structure() {
     assert_eq!(media.modifier(), None);
     assert_eq!(media.media_type(), CssMediaType::Screen);
     assert_eq!(media.condition(), None);
-    assert_eq!(rule.position(), location);
+    assert_eq!(rule.position(), Some(location));
     let owned_rule = rule.clone();
     assert_eq!(
         CssRule::Import(owned_rule.clone()),

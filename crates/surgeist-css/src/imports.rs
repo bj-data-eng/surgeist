@@ -56,10 +56,121 @@ impl From<CssMediaSerializationError> for CssImportSerializationError {
         Self::Media(value)
     }
 }
+/// A complete import construction failure located in the original input.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssImportConstructionError {
+    InvalidRuleGrammar { origin: CssValueOrigin },
+    RecoveredInput { origin: CssValueOrigin },
+    Component(CssComponentValueError),
+    Supports(CssSupportsConstructionError),
+    Media(CssMediaConstructionError),
+    Serialization(CssImportSerializationError),
+    WorkerUnavailable { origin: CssValueOrigin },
+}
+impl CssImportConstructionError {
+    pub fn origin(&self) -> &CssValueOrigin {
+        match self {
+            Self::InvalidRuleGrammar { origin }
+            | Self::RecoveredInput { origin }
+            | Self::WorkerUnavailable { origin } => origin,
+            Self::Component(error) => error.origin(),
+            Self::Supports(error) => error.origin(),
+            Self::Media(error) => error.origin(),
+            Self::Serialization(error) => error.origin(),
+        }
+    }
+}
+impl fmt::Display for CssImportConstructionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "invalid authored import construction: {self:?}")
+    }
+}
+impl std::error::Error for CssImportConstructionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Component(error) => Some(error),
+            Self::Supports(error) => Some(error),
+            Self::Media(error) => Some(error),
+            Self::Serialization(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+impl From<CssComponentValueError> for CssImportConstructionError {
+    fn from(error: CssComponentValueError) -> Self {
+        Self::Component(error)
+    }
+}
+impl From<CssSupportsConstructionError> for CssImportConstructionError {
+    fn from(error: CssSupportsConstructionError) -> Self {
+        Self::Supports(error)
+    }
+}
+impl From<CssMediaConstructionError> for CssImportConstructionError {
+    fn from(error: CssMediaConstructionError) -> Self {
+        Self::Media(error)
+    }
+}
+impl From<CssImportSerializationError> for CssImportConstructionError {
+    fn from(error: CssImportSerializationError) -> Self {
+        Self::Serialization(error)
+    }
+}
+
 impl CssImportRule {
+    /// Checks one complete import, including its explicit semicolon. Surrounding
+    /// trivia is allowed and counted against input limits; canonical output may omit it.
+    pub fn try_from_components(
+        values: CssComponentValues,
+        context: &CssNamespaceContext,
+    ) -> Result<Self, CssImportConstructionError> {
+        Self::try_from_components_with_limits(values, context, CssComponentValueLimits::default())
+    }
+    /// Checks lexical input and canonical output under the supplied resource limits.
+    /// Recovered components and malformed media are rejected before any rule escapes.
+    pub fn try_from_components_with_limits(
+        values: CssComponentValues,
+        context: &CssNamespaceContext,
+        limits: CssComponentValueLimits,
+    ) -> Result<Self, CssImportConstructionError> {
+        if values.nesting_depth() < 32 {
+            return crate::parser::construct_import(values, context, limits);
+        }
+        let mut values = Some(values);
+        std::thread::scope(|scope| {
+            let worker = std::thread::Builder::new()
+                .name("surgeist-css-import".into())
+                .stack_size(16 * 1024 * 1024)
+                .spawn_scoped(scope, || {
+                    crate::parser::construct_import(
+                        values.take().expect("single import worker"),
+                        context,
+                        limits,
+                    )
+                })
+                .map_err(|_| CssImportConstructionError::WorkerUnavailable {
+                    origin: CssValueOrigin::Programmatic,
+                })?;
+            match worker.join() {
+                Ok(result) => result,
+                Err(panic) => std::panic::resume_unwind(panic),
+            }
+        })
+    }
+
     /// Serializes authored clauses and symbolic media without evaluating or loading them.
     /// Recovered media members prevent serialization of the entire rule.
     pub fn serialize(&self) -> Result<CssSerializedValue, CssImportSerializationError> {
+        self.serialize_with_limit(usize::MAX)
+    }
+    /// Applies a byte limit to canonical output, including inserted syntax and
+    /// expanded symbolic media representations. No partial output is returned.
+    /// This caps output bytes, not temporary allocation for interpretation probes.
+    pub fn serialize_with_limit(
+        &self,
+        max_css_bytes: usize,
+    ) -> Result<CssSerializedValue, CssImportSerializationError> {
         // Both original clauses and symbolic media can contain deep component trees.
         let deep = [&self.syntax.prelude.target]
             .into_iter()
@@ -69,9 +180,12 @@ impl CssImportRule {
             || self
                 .media()
                 .is_some_and(|media| media.queries().iter().any(crate::media::query_is_deep));
-        crate::media::with_media_stack(deep, || self.serialize_import())
+        crate::media::with_media_stack(deep, || self.serialize_import(max_css_bytes))
     }
-    fn serialize_import(&self) -> Result<CssSerializedValue, CssImportSerializationError> {
+    fn serialize_import(
+        &self,
+        max_css_bytes: usize,
+    ) -> Result<CssSerializedValue, CssImportSerializationError> {
         if let Some(media) = self.media()
             && let Some(CssMediaQuery::Never(value)) = media
                 .queries()
@@ -104,7 +218,7 @@ impl CssImportRule {
             }
             true
         };
-        let mut out = CssCanonicalBuilder::new(usize::MAX);
+        let mut out = CssCanonicalBuilder::new(max_css_bytes);
         out.push_grammar(
             CssCanonicalToken::AtKeyword("import"),
             self.syntax.at_keyword.origin(),
@@ -122,6 +236,8 @@ impl CssImportRule {
         &self,
         protect: bool,
     ) -> Result<(CssSerializedValue, [Option<usize>; 2]), CssImportSerializationError> {
+        // Clause interpretation probes do not consume the complete-rule budget.
+        // Only final ordered emission can identify its first overflowing token.
         let mut out = CssCanonicalBuilder::new(usize::MAX);
         let expected = self.emit_import_tail(&mut out, protect)?;
         Ok((out.finish()?, expected))

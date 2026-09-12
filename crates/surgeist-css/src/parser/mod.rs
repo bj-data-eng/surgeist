@@ -1277,7 +1277,7 @@ fn rule_start(rule: &CssRule) -> usize {
                 .byte_offset()
                 .value();
         }
-        CssRule::Import(rule) => rule.position(),
+        CssRule::Import(rule) => rule.position().expect("parsed import rule"),
         CssRule::Namespace(rule) => rule.position(),
         CssRule::CounterStyle(rule) => rule.position(),
         CssRule::Page(rule) => rule.position(),
@@ -2195,10 +2195,6 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                         at_keyword,
                         prelude: prelude.syntax,
                     },
-                    crate::source::CssSourcePosition::from_cssparser(
-                        start.position(),
-                        start.source_location(),
-                    ),
                 ));
                 self.mark_successful_import();
                 Ok(vec![rule])
@@ -2479,6 +2475,236 @@ impl<'i> RuleBodyItemParser<'i, Vec<CssRule>, Error> for StrictRuleParser<'i> {
     fn parse_qualified(&self) -> bool {
         true
     }
+}
+
+// Component construction uses the same finite selector as parsing. Transport
+// models only classify clauses; only original components back the returned rule.
+pub(crate) fn construct_import(
+    values: crate::CssComponentValues,
+    context: &CssNamespaceContext,
+    limits: crate::CssComponentValueLimits,
+) -> Result<CssImportRule, crate::CssImportConstructionError> {
+    use crate::{CssComponentValueRef as Component, CssValueTokenRef as Value};
+    values.validate_with_limits(limits)?;
+    if let Some(origin) = values.first_implicit_origin() {
+        return Err(crate::CssImportConstructionError::RecoveredInput {
+            origin: origin.clone(),
+        });
+    }
+    let items = values.items();
+    let first = items
+        .iter()
+        .position(|value| !crate::supports::trivia(value))
+        .ok_or_else(|| import_construction_grammar(&crate::CssValueOrigin::Programmatic))?;
+    if !matches!(items[first].view(), Component::Token(Value::AtKeyword(name)) if name.eq_ignore_ascii_case("import"))
+    {
+        return Err(import_construction_grammar(items[first].origin()));
+    }
+    let semicolon = items
+        .iter()
+        .position(|value| matches!(value.view(), Component::Token(Value::Semicolon)))
+        .ok_or_else(|| {
+            import_construction_grammar(items.last().expect("nonempty import input").origin())
+        })?;
+    if let Some(value) = items[semicolon + 1..]
+        .iter()
+        .find(|value| !crate::supports::trivia(value))
+    {
+        return Err(import_construction_grammar(value.origin()));
+    }
+    let serialized = values.serialize_with_limit(limits.max_css_bytes())?;
+    let selected = classify_constructed_import(&serialized, context)?;
+    let target_component = &items[selected.target_index];
+    let layer_component = selected.layer_index.map(|index| items[index].clone());
+    let supports_component = selected.supports_index.map(|index| items[index].clone());
+    let supports = if let Some(index) = selected.supports_index {
+        let Component::Function(function) = items[index].view() else {
+            unreachable!("selected supports function")
+        };
+        let body = function.values().clone();
+        let condition = if selected.bare_supports_declaration {
+            let declaration =
+                CssSupportsDeclaration::try_from_components_with_limits(body, limits)?;
+            let lexical = declaration.lexical().clone();
+            CssSupportsCondition::new(
+                CssSupportsConditionKind::Declaration(Box::new(declaration)),
+                lexical,
+                true,
+            )
+        } else {
+            CssSupportsCondition::try_from_components_with_limits(body, context, limits)?
+        };
+        Some(CssImportSupports::new(condition))
+    } else {
+        None
+    };
+    let last_clause = selected
+        .supports_index
+        .or(selected.layer_index)
+        .unwrap_or(selected.target_index);
+    let media = construct_import_media(&items[last_clause + 1..semicolon], limits)?;
+    let rule = CssImportRule::new(
+        selected.target,
+        selected.layer,
+        supports,
+        media,
+        crate::imports::ImportSyntax {
+            at_keyword: items[first].clone(),
+            prelude: crate::imports::ImportPreludeSyntax {
+                target: target_component.clone(),
+                layer: layer_component,
+                supports: supports_component,
+                semicolon: items[semicolon].origin().clone(),
+            },
+        },
+    );
+    rule.serialize_with_limit(limits.max_css_bytes())?;
+    Ok(rule)
+}
+fn import_construction_grammar(
+    origin: &crate::CssValueOrigin,
+) -> crate::CssImportConstructionError {
+    crate::CssImportConstructionError::InvalidRuleGrammar {
+        origin: origin.clone(),
+    }
+}
+struct ConstructedImportSelection {
+    target: CssImportTarget,
+    layer: Option<CssImportLayer>,
+    target_index: usize,
+    layer_index: Option<usize>,
+    supports_index: Option<usize>,
+    bare_supports_declaration: bool,
+}
+fn classify_constructed_import(
+    serialized: &crate::CssSerializedValue,
+    context: &CssNamespaceContext,
+) -> Result<ConstructedImportSelection, crate::CssImportConstructionError> {
+    let source = serialized.as_css();
+    let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+    if let Some(name) = &context.0.default {
+        recovery.activate_namespace(None, name.clone());
+    }
+    for (prefix, name) in &context.0.named {
+        recovery.activate_namespace(Some(prefix.clone()), name.clone());
+    }
+    let mut buffer = ParserInput::new(source);
+    let mut input = Parser::new(&mut buffer);
+    let result = (|| {
+        input.next()?; // The original component envelope proved the at-keyword.
+        input.parse_until_before(Delimiter::Semicolon, |input| {
+            input.skip_whitespace();
+            let target_start = input.position().byte_index();
+            let target = parse_import_target(input)?;
+            let selected = select_import_clauses(source, input, &recovery)?;
+            let index_at = |offset| {
+                let path = serialized
+                    .component_path_at(offset)
+                    .expect("selected complete original component");
+                debug_assert_eq!(path.len(), 1);
+                path[0]
+            };
+            let index = |component: Option<&crate::CssComponentValue>| {
+                component.map(|component| {
+                    index_at(
+                        component
+                            .parsed_origin()
+                            .expect("transport component")
+                            .span()
+                            .start()
+                            .byte_offset()
+                            .value(),
+                    )
+                })
+            };
+            let layer_index = index(selected.layer_component.as_ref());
+            let supports_index = index(selected.supports_component.as_ref());
+            let bare_supports_declaration = selected
+                .supports
+                .as_ref()
+                .is_some_and(|supports| supports.condition().bare_declaration());
+            // parse_until_before requires complete consumption; media is checked
+            // strictly against its original components after classification.
+            while input.next_including_whitespace_and_comments().is_ok() {}
+            Ok(ConstructedImportSelection {
+                target,
+                layer: selected.layer,
+                target_index: index_at(target_start),
+                layer_index,
+                supports_index,
+                bare_supports_declaration,
+            })
+        })
+    })();
+    result.map_err(|error: ParseError<'_, Error>| {
+        let error = from_parse_error(source, error);
+        let offset = match error.kind() {
+            crate::ErrorKind::InvalidComponentValue(component) => {
+                crate::media::parsed_position(component.origin())
+                    .map_or(error.position().byte_offset().value(), |position| {
+                        position.byte_offset().value()
+                    })
+            }
+            _ => error.position().byte_offset().value(),
+        };
+        let origin = serialized
+            .value_origin_at(offset)
+            .cloned()
+            .unwrap_or(crate::CssValueOrigin::Programmatic);
+        let kind = match error.kind() {
+            crate::ErrorKind::InvalidComponentValue(component) => Some(component.kind()),
+            crate::ErrorKind::NestingLimit(_) => {
+                Some(crate::CssComponentValueErrorKind::NestingLimit)
+            }
+            _ => None,
+        };
+        match kind {
+            Some(kind) => crate::CssImportConstructionError::Component(
+                crate::CssComponentValueError::new(kind, origin),
+            ),
+            None => import_construction_grammar(&origin),
+        }
+    })
+}
+fn construct_import_media(
+    items: &[crate::CssComponentValue],
+    limits: crate::CssComponentValueLimits,
+) -> Result<Option<CssMediaQueryList>, crate::CssImportConstructionError> {
+    if items.iter().all(crate::supports::trivia) {
+        return Ok(None);
+    }
+    let mut queries = Vec::new();
+    let mut commas = Vec::new();
+    let mut start = 0;
+    for end in 0..=items.len() {
+        if end != items.len()
+            && !matches!(
+                items[end].view(),
+                crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Comma)
+            )
+        {
+            continue;
+        }
+        let member = &items[start..end];
+        if member.iter().all(crate::supports::trivia) {
+            let origin = items
+                .get(end)
+                .or_else(|| start.checked_sub(1).and_then(|index| items.get(index)))
+                .map_or(crate::CssValueOrigin::Programmatic, |value| {
+                    value.origin().clone()
+                });
+            return Err(crate::CssMediaConstructionError::InvalidQueryGrammar { origin }.into());
+        }
+        let values = crate::CssComponentValues::try_new_with_limits(member.to_vec(), limits)?;
+        queries.push(CssMediaQuery::try_from_components_with_limits(
+            values, limits,
+        )?);
+        if let Some(comma) = items.get(end) {
+            commas.push(comma.origin().clone());
+        }
+        start = end + 1;
+    }
+    Ok(Some(CssMediaQueryList::with_comma_origins(queries, commas)))
 }
 
 fn parse_import_prelude<'i, 't>(

@@ -1155,14 +1155,14 @@ fn source_public_nodes_expose_zero_based_byte_line_and_utf16_coordinates() {
     let CssRule::Import(rule) = &sheet.rules()[0] else {
         panic!("expected import rule");
     };
-    assert_position(rule.position(), 8, 1, 4);
+    assert_position(rule.position().unwrap(), 8, 1, 4);
 
     let sheet = parse_sheet("/*😀*/@import \"x\" supports(display: grid);")
         .expect("valid conditional import");
     let CssRule::Import(rule) = &sheet.rules()[0] else {
         panic!("expected conditional import rule");
     };
-    assert_position(rule.position(), 8, 0, 6);
+    assert_position(rule.position().unwrap(), 8, 0, 6);
     assert_position(
         rule.supports()
             .expect("import supports")

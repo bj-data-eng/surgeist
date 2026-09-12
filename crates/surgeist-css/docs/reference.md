@@ -1759,11 +1759,12 @@ Optional clauses are selected from complete grammar alternatives. For example,
 `layer(theme) print` has a named layer and a media type. A later `layer()` or
 `supports()` function can be an opaque media operand. When several complete
 alternatives fit, this API prefers a present layer clause, then a present
-supports clause. If none fits, media recovery runs once after the first valid
-clause combination, retaining the import with invalid media members represented
-by `Never`. Lexical and resource failures remain terminal, with their original
-error categories and source positions. EOF-implied closures remain diagnostics
-on the selected interpretation; speculative alternatives do not add diagnostics.
+supports clause. In stylesheet parsing, if none fits, media recovery runs once
+after the first valid clause combination, retaining the import with invalid media
+members represented by `Never`. Lexical and resource failures remain terminal,
+with their original error categories and source positions. EOF-implied closures
+remain diagnostics on the selected interpretation; speculative alternatives do
+not add diagnostics.
 
 `CssImportRule::serialize()` returns canonical `CssSerializedValue` output with
 the same optional-clause interpretation. It preserves target spelling, checked
@@ -1771,8 +1772,35 @@ clause components, symbolic media and original token origins. An added EOF
 semicolon has programmatic provenance. Any recovered `Never` member returns
 `CssImportSerializationError::Media` without producing a partial rule. This does
 not emit output if the shared grammar cannot preserve its interpretation:
-`InterpretationChanged` reports that failure. The API does not yet provide a
-checked Rust import constructor.
+`InterpretationChanged` reports that failure. `serialize_with_limit` additionally
+bounds the complete canonical output, including inserted separators and the
+terminating semicolon. This is an output limit, not a bound on temporary
+allocations used to verify the clause interpretation.
+
+`CssImportRule::try_from_components` constructs one complete import from checked
+component values and an explicit `CssNamespaceContext`. Include the `@import`
+at-keyword and an explicit semicolon; surrounding trivia is accepted. Additional
+rules, nontrivia after the terminator, and malformed complete media lists are
+rejected. Checked construction never creates recovered `Never` media members.
+It uses the same optional-clause selection as parsing, so a malformed optional
+clause can still be retained as an opaque media operand when that complete
+alternative is valid.
+
+The explicit-limits constructor validates all supplied components, including
+trivia, before rejecting recovered input and checking the rule grammar. Limits
+also apply to canonical output: a media value's canonical expansion can exceed
+the byte budget even when its input fits. Construction failures distinguish
+grammar rejection, recovery, component limits and errors from the supports,
+media, serialization or deep-worker boundaries. Errors retain original origins
+and nested error sources. No partially constructed rule is returned.
+
+The rule's `origin()` belongs to its original at-keyword. `position()` now returns
+`Option<CssSourcePosition>`; handle `None` for programmatic at-keywords. Parsed
+at-keywords retain their original positions even when combined with programmatic
+children. Target, supports and media components keep their original snapshots;
+temporary grammar transport never becomes their public source provenance.
+Canonical output omits surrounding trivia. Normalization preserves the optional
+rule position and intact import payload without loading its target.
 
 Import targets accept empty and whitespace-only decoded strings and URLs without
 trimming their contents. This follows the authored grammar in

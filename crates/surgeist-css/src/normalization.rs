@@ -1087,7 +1087,7 @@ fn ordinary_position(rule: &CssRule) -> Option<CssSourcePosition> {
                 .first()
                 .and_then(CssDeclaration::position);
         }
-        CssRule::Import(value) => value.position(),
+        CssRule::Import(value) => return value.position(),
         CssRule::Namespace(value) => value.position(),
         CssRule::CounterStyle(value) => value.position(),
         CssRule::Page(value) => value.position(),
@@ -1205,5 +1205,71 @@ fn pseudo_has_anchor(pseudo: &CssPseudoClass, kind: AnchorKind) -> bool {
         | CssPseudoClass::ReadWrite
         | CssPseudoClass::InRange
         | CssPseudoClass::OutOfRange => false,
+    }
+}
+
+#[cfg(test)]
+mod import_construction_tests {
+    use super::*;
+    use crate::{
+        CssComponentValue, CssComponentValues, CssNamespaceContext, CssValueOrigin,
+        parse_component_values,
+    };
+
+    #[test]
+    fn programmatic_and_parsed_import_origins_survive_normalization() {
+        let parsed_keyword = parse_component_values("/*😀*/@import")
+            .unwrap()
+            .items()
+            .last()
+            .unwrap()
+            .clone();
+        let original_origin = parsed_keyword.origin().clone();
+        let mut sheet = CssSheet::new();
+        for (keyword, target) in [
+            (CssComponentValue::try_token("@import").unwrap(), "'a'"),
+            (parsed_keyword, "'b'"),
+        ] {
+            let components = CssComponentValues::try_new(vec![
+                keyword,
+                CssComponentValue::try_token(" ").unwrap(),
+                CssComponentValue::try_token(target).unwrap(),
+                CssComponentValue::try_token(";").unwrap(),
+            ])
+            .unwrap();
+            sheet.push_rule(CssRule::Import(
+                CssImportRule::try_from_components(components, &CssNamespaceContext::default())
+                    .unwrap(),
+            ));
+        }
+        let normalized = normalize_sheet(&sheet).unwrap();
+        drop(sheet);
+        let [
+            CssNormalizedItem::Rule(first),
+            CssNormalizedItem::Rule(second),
+        ] = normalized.items()
+        else {
+            panic!("two intact import occurrences in authored order")
+        };
+        assert_eq!(first.position(), None);
+        let CssRuleContextKindRef::Import(first_import) = first.kind() else {
+            panic!("programmatic import")
+        };
+        assert_eq!(first_import.origin(), &CssValueOrigin::Programmatic);
+        assert_eq!(first_import.serialize().unwrap().as_css(), "@import 'a';");
+        let CssRuleContextKindRef::Import(second_import) = second.kind() else {
+            panic!("import with original parsed at-keyword")
+        };
+        let (CssValueOrigin::Parsed(actual), CssValueOrigin::Parsed(expected)) =
+            (second_import.origin(), &original_origin)
+        else {
+            panic!("original parsed keyword provenance")
+        };
+        assert!(actual.source().same_snapshot(expected.source()));
+        assert_eq!(actual.span(), expected.span());
+        assert_eq!(second.position(), Some(expected.span().start()));
+        assert_eq!(second_import.serialize().unwrap().as_css(), "@import 'b';");
+        assert!(first.parent().is_none());
+        assert!(second.parent().is_none());
     }
 }
