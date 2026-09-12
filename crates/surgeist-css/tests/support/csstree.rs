@@ -18,8 +18,9 @@ use adapters::{
 };
 use surgeist_css::{
     CssErrorCode, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssRecoveryAction,
-    CssRecoveryDiagnostic, parse_media_query, parse_media_query_list, parse_selector,
-    parse_selector_list, parse_sheet, parse_style_attribute,
+    CssRecoveryDiagnostic, parse_font_face_descriptor_value, parse_media_query,
+    parse_media_query_list, parse_selector, parse_selector_list, parse_sheet,
+    parse_style_attribute,
 };
 use surgeist_css::{validate_sheet, validate_style_attribute};
 
@@ -2004,6 +2005,28 @@ fn observe_public_parser(
                 RegistryExtractor::MediaQueries,
                 complete,
                 |syntax| syntax.queries().len(),
+            )
+        }
+        EntryPoint::FontFaceDescriptorValue => {
+            let Some(PropertyOrDescriptor::FontFaceDescriptor(kind)) =
+                registry.property_or_descriptor()
+            else {
+                return Err("font-face value entry point requires descriptor context".into());
+            };
+            let report = parse_font_face_descriptor_value(complete.source(), kind.css_kind());
+            if report
+                .syntax()
+                .as_ref()
+                .is_some_and(|value| value.kind() != kind.css_kind())
+            {
+                return Err("font-face value does not match its descriptor context".into());
+            }
+            fragment_observation(
+                report,
+                registry,
+                RegistryExtractor::FontFaceDescriptor(kind),
+                complete,
+                |syntax| usize::from(syntax.is_some()),
             )
         }
         EntryPoint::StyleAttribute => {

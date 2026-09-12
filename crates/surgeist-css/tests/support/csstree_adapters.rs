@@ -2,8 +2,8 @@ use std::ops::Range;
 
 use serde::{Deserialize, Serialize};
 use surgeist_css::{
-    CssDeclarationList, CssFontFaceDescriptorRef, CssKnownProperty, CssPropertyNameRef, CssRule,
-    CssSheet,
+    CssDeclarationList, CssFontFaceDescriptorKind, CssFontFaceDescriptorRef, CssKnownProperty,
+    CssPropertyNameRef, CssRule, CssSheet,
 };
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -15,6 +15,7 @@ pub enum EntryPoint {
     SelectorList,
     MediaQuery,
     MediaQueryList,
+    FontFaceDescriptorValue,
 }
 
 impl EntryPoint {
@@ -26,6 +27,7 @@ impl EntryPoint {
             Self::SelectorList => "selector_list",
             Self::MediaQuery => "media_query",
             Self::MediaQueryList => "media_query_list",
+            Self::FontFaceDescriptorValue => "font_face_descriptor_value",
         }
     }
 }
@@ -130,16 +132,8 @@ impl Adapter {
                 _ => return Err(Mismatch::MissingPropertyOrDescriptor { adapter: self }),
             },
             Self::FontFaceDescriptorValue => match property_or_descriptor {
-                Some(PropertyOrDescriptor::FontFaceDescriptor(descriptor)) => {
-                    let prefix = if descriptor == FontFaceDescriptorKind::UnicodeRange {
-                        "@FONT-FACE{FONT-FAMILY:X;SRC:URL(X);UNICODE-RANGE:".to_owned()
-                    } else {
-                        format!(
-                            "@font-face{{font-family:surgeist-corpus-probe;src:url(surgeist-corpus-probe);{}:",
-                            descriptor.css_name()
-                        )
-                    };
-                    return CompleteInput::from_owned_parts(prefix, input, ";}".to_owned());
+                Some(PropertyOrDescriptor::FontFaceDescriptor(_)) => {
+                    return CompleteInput::from_parts("", input, "");
                 }
                 _ => return Err(Mismatch::MissingPropertyOrDescriptor { adapter: self }),
             },
@@ -217,15 +211,19 @@ impl FontFaceDescriptorKind {
     }
 
     const fn css_name(self) -> &'static str {
+        self.css_kind().css_name()
+    }
+
+    pub const fn css_kind(self) -> CssFontFaceDescriptorKind {
         match self {
-            Self::FontFamily => "font-family",
-            Self::Src => "src",
-            Self::FontWeight => "font-weight",
-            Self::FontStyle => "font-style",
-            Self::FontStretch => "font-stretch",
-            Self::FontDisplay => "font-display",
-            Self::UnicodeRange => "unicode-range",
-            Self::FontFeatureSettings => "font-feature-settings",
+            Self::FontFamily => CssFontFaceDescriptorKind::FontFamily,
+            Self::Src => CssFontFaceDescriptorKind::Src,
+            Self::FontWeight => CssFontFaceDescriptorKind::FontWeight,
+            Self::FontStyle => CssFontFaceDescriptorKind::FontStyle,
+            Self::FontStretch => CssFontFaceDescriptorKind::FontStretch,
+            Self::FontDisplay => CssFontFaceDescriptorKind::FontDisplay,
+            Self::UnicodeRange => CssFontFaceDescriptorKind::UnicodeRange,
+            Self::FontFeatureSettings => CssFontFaceDescriptorKind::FontFeatureSettings,
         }
     }
 
@@ -719,7 +717,10 @@ impl RegistryEntry {
                 (
                     EntryPoint::StyleAttribute,
                     Adapter::PropertyValue | Adapter::CustomPropertyContainment
-                ) | (EntryPoint::Sheet, Adapter::FontFaceDescriptorValue)
+                ) | (
+                    EntryPoint::FontFaceDescriptorValue,
+                    Adapter::FontFaceDescriptorValue
+                )
             ),
             _ => false,
         }
@@ -1383,7 +1384,7 @@ pub const REGISTRY: &[RegistryEntry] = &[
     RegistryEntry {
         fixture_path: "expectations/value/UnicodeRange.json",
         context: "value",
-        entry_point: EntryPoint::Sheet,
+        entry_point: EntryPoint::FontFaceDescriptorValue,
         adapter: Adapter::FontFaceDescriptorValue,
         extractor: Extractor::FontFaceDescriptor(FontFaceDescriptorKind::UnicodeRange),
         property_or_descriptor: Some(PropertyOrDescriptor::FontFaceDescriptor(

@@ -198,3 +198,84 @@ pub fn parse_media_query_list(source: &str) -> crate::CssParseReport<CssMediaQue
         crate::CssParseReport::new(query, diagnostics)
     })
 }
+
+/// Parses one complete raw `@font-face` descriptor value in the selected grammar.
+///
+/// The source contains only the value, without a descriptor name, annotation or
+/// declaration delimiter. The returned typed value has no fabricated name position.
+/// Diagnostics use the original source's UTF-8 bytes, zero-based UTF-16 columns and
+/// actual EOF. Invalid outer values return `None` with `RejectInput`; resource limits
+/// retain `StopAtNestingLimit`. A retained `src` list can report discarded members.
+/// Implicit closures are reported only for retained components. This does not require
+/// surrounding `font-family` or `src` descriptors, match fonts, or load resources.
+pub fn parse_font_face_descriptor_value(
+    source: &str,
+    descriptor: CssFontFaceDescriptorKind,
+) -> crate::CssParseReport<Option<CssFontFaceDescriptorValue>> {
+    bounded(source, || {
+        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+        let mut parser_input = ParserInput::new(source);
+        let mut input = Parser::new(&mut parser_input);
+        let mut diagnostics = Vec::new();
+        let result = (|| {
+            let mut openings = state.check_component_values(source, &input, "css.descriptor")?;
+            // A stylesheet parser bounds descriptor values before semicolons. A raw
+            // value has no such enclosing parser; reject its own delimiters before
+            // src member recovery could discard them as part of an invalid member.
+            let start = input.state();
+            loop {
+                let token_start = input.position();
+                let location = input.current_source_location();
+                let Ok(token) = input.next_including_whitespace_and_comments().cloned() else {
+                    break;
+                };
+                if matches!(
+                    token,
+                    Token::Semicolon
+                        | Token::CurlyBracketBlock
+                        | Token::CloseCurlyBracket
+                        | Token::CloseParenthesis
+                        | Token::CloseSquareBracket
+                ) {
+                    return Err(crate::error::invalid_descriptor_token_at(
+                        location,
+                        "font-face",
+                        descriptor.css_name(),
+                        &token,
+                        input.slice_from(token_start),
+                    ));
+                }
+            }
+            input.reset(&start);
+            let value = font_face::parse_font_face_value(
+                source,
+                &mut input,
+                descriptor,
+                &mut diagnostics,
+                &mut openings,
+            )?;
+            input.expect_exhausted().map_err(|error| {
+                crate::error::with_descriptor_context(
+                    error.into(),
+                    "font-face",
+                    descriptor.css_name(),
+                )
+            })?;
+            state.retain_component_closures(openings);
+            Ok(value)
+        })();
+        let syntax = match result {
+            Ok(value) => {
+                diagnostics.extend(state.take_implicit_closure_diagnostics(source));
+                Some(value)
+            }
+            Err(error) => {
+                // Failed enclosing values cannot claim partial member retention.
+                diagnostics.clear();
+                diagnostics.push(reject(source, error, crate::CssRecoveryAction::RejectInput));
+                None
+            }
+        };
+        crate::CssParseReport::new(syntax, diagnostics)
+    })
+}

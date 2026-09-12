@@ -75,6 +75,14 @@ not join a coefficient, sign, or integer across tokens
 The corpus checks verify the coefficients, pseudo-class kind, and authored
 `of` filter for 25 clean inputs, and raw rejection for 39 invalid inputs.
 
+Unicode-range values use the raw font-face descriptor-value parser with typed
+descriptor context. No descriptor name, neighboring descriptors, or rule wrapper
+is inserted. Ten original inputs retain independently checked numeric ranges;
+twenty are rejected. The incomplete values `U+` and `u` report original EOF with
+`RecoveryEndsAt`; other rejected values identify an original token. In particular,
+`u+?` is the valid range 0–15 and the original representation `u+12e-130` denotes
+302–304 ([Syntax 3](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#urange)).
+
 The adapterless Combinator fixtures retain their explicit panic-freedom policy.
 The mixed `atrulePrelude` fixture resolves its adapter from validated options:
 `atrule: media` selects the raw media-query-list parser, while the unnamed generic

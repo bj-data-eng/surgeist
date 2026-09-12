@@ -14,7 +14,8 @@ mod effects;
 mod font_face;
 mod fragments;
 pub use fragments::{
-    parse_media_query, parse_media_query_list, parse_selector, parse_selector_list,
+    parse_font_face_descriptor_value, parse_media_query, parse_media_query_list, parse_selector,
+    parse_selector_list,
 };
 mod generated_content;
 mod grid;

@@ -140,78 +140,66 @@ impl<'i> DeclarationParser<'i> for FontFaceDescriptorParser<'i> {
             declaration_start.position(),
             declaration_start.source_location(),
         );
+        let kind = CssFontFaceDescriptorKind::from_css_name(&name).ok_or_else(|| {
+            descriptor_name_error(
+                declaration_start.source_location(),
+                "font-face",
+                name.as_ref(),
+            )
+        })?;
         let mut member_diagnostics = Vec::new();
-        let result = (|| {
-            Ok(match_ignore_ascii_case! { &name,
-                "font-family" => CssFontFaceDescriptor::FontFamily(
-                    CssDescriptorOccurrence::new(
-                        parse_descriptor_boundary(input, "font-face", "font-family", parse_font_face_family)?,
-                        position,
-                    ),
-                ),
-                "src" => CssFontFaceDescriptor::Src(
-                    CssDescriptorOccurrence::new(
-                        parse_descriptor_boundary(input, "font-face", "src", |input| {
-                            parse_font_face_source_list(self.source, input, &mut member_diagnostics, &mut implicit_closures)
-                        })?,
-                        position,
-                    ),
-                ),
-                "font-weight" => CssFontFaceDescriptor::FontWeight(
-                    CssDescriptorOccurrence::new(
-                        parse_descriptor_boundary(input, "font-face", "font-weight", parse_font_face_weight)?,
-                        position,
-                    ),
-                ),
-                "font-style" => CssFontFaceDescriptor::FontStyle(
-                    CssDescriptorOccurrence::new(
-                        parse_descriptor_boundary(input, "font-face", "font-style", parse_font_face_style)?,
-                        position,
-                    ),
-                ),
-                "font-stretch" => CssFontFaceDescriptor::FontStretch(
-                    CssDescriptorOccurrence::new(
-                        parse_descriptor_boundary(input, "font-face", "font-stretch", parse_font_face_stretch)?,
-                        position,
-                    ),
-                ),
-                "font-display" => CssFontFaceDescriptor::FontDisplay(
-                    CssDescriptorOccurrence::new(
-                        parse_descriptor_boundary(input, "font-face", "font-display", parse_font_display)?,
-                        position,
-                    ),
-                ),
-                "unicode-range" => CssFontFaceDescriptor::UnicodeRange(
-                    CssDescriptorOccurrence::new(
-                        parse_descriptor_boundary(input, "font-face", "unicode-range", parse_unicode_range_list)?,
-                        position,
-                    ),
-                ),
-                "font-feature-settings" => CssFontFaceDescriptor::FontFeatureSettings(
-                    CssDescriptorOccurrence::new(
-                        parse_descriptor_boundary(
-                            input,
-                            "font-face",
-                            "font-feature-settings",
-                            parse_font_feature_settings,
-                        )?,
-                        position,
-                    ),
-                ),
-                _ => return Err(descriptor_name_error(
-                    declaration_start.source_location(),
-                    "font-face",
-                    name.as_ref(),
-                )),
-            })
-        })()
+        let value = parse_font_face_value(
+            self.source,
+            input,
+            kind,
+            &mut member_diagnostics,
+            &mut implicit_closures,
+        )
         .map_err(|error| with_descriptor_context(error, "font-face", name.as_ref()))?;
-        // A rejected enclosing descriptor did not retain any of these sources.
-        // Publish member recovery only after its annotation and value boundary pass.
+        // Only an enclosing value that passed its complete boundary retains members.
         self.diagnostics.extend(member_diagnostics);
         self.recovery.retain_component_closures(implicit_closures);
-        Ok(result)
+        Ok(value.into_occurrence(position))
     }
+}
+
+/// Shared value grammar; callers commit recovery only after their complete boundary succeeds.
+pub(super) fn parse_font_face_value<'i, 't>(
+    source: &str,
+    input: &mut Parser<'i, 't>,
+    kind: CssFontFaceDescriptorKind,
+    member_diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    implicit_closures: &mut Vec<usize>,
+) -> Result<CssFontFaceDescriptorValue, ParseError<'i, Error>> {
+    parse_descriptor_boundary(input, "font-face", kind.css_name(), |input| {
+        Ok(match kind {
+            CssFontFaceDescriptorKind::FontFamily => {
+                CssFontFaceDescriptorValue::FontFamily(parse_font_face_family(input)?)
+            }
+            CssFontFaceDescriptorKind::Src => CssFontFaceDescriptorValue::Src(
+                parse_font_face_source_list(source, input, member_diagnostics, implicit_closures)?,
+            ),
+            CssFontFaceDescriptorKind::FontWeight => {
+                CssFontFaceDescriptorValue::FontWeight(parse_font_face_weight(input)?)
+            }
+            CssFontFaceDescriptorKind::FontStyle => {
+                CssFontFaceDescriptorValue::FontStyle(parse_font_face_style(input)?)
+            }
+            CssFontFaceDescriptorKind::FontStretch => {
+                CssFontFaceDescriptorValue::FontStretch(parse_font_face_stretch(input)?)
+            }
+            CssFontFaceDescriptorKind::FontDisplay => {
+                CssFontFaceDescriptorValue::FontDisplay(parse_font_display(input)?)
+            }
+            CssFontFaceDescriptorKind::UnicodeRange => {
+                CssFontFaceDescriptorValue::UnicodeRange(parse_unicode_range_list(input)?)
+            }
+            CssFontFaceDescriptorKind::FontFeatureSettings => {
+                CssFontFaceDescriptorValue::FontFeatureSettings(parse_font_feature_settings(input)?)
+            }
+        })
+    })
+    .map_err(|error| with_descriptor_context(error, "font-face", kind.css_name()))
 }
 
 fn parse_font_face_family<'i, 't>(

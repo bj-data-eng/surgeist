@@ -16071,7 +16071,7 @@
         "diagnostics": [
           {
             "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16097,23 +16097,16 @@
       "id": "value/UnicodeRange.json#/a single question mark",
       "expectation_sha256": "928904ab464533c4c483f1591eed4c447ba1944228acc8c1aec873dc1719c8f6",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "font_face_descriptor",
             "descriptor": "unicode_range"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {
@@ -16133,8 +16126,8 @@
         "diagnostics": [
           {
             "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "payload_relation": "intersects"
+            "action": "reject_input",
+            "payload_relation": "recovery_ends_at"
           }
         ]
       }
@@ -16156,7 +16149,7 @@
         "diagnostics": [
           {
             "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16179,7 +16172,7 @@
         "diagnostics": [
           {
             "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16202,7 +16195,7 @@
         "diagnostics": [
           {
             "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16225,7 +16218,7 @@
         "diagnostics": [
           {
             "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16248,7 +16241,7 @@
         "diagnostics": [
           {
             "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16271,7 +16264,7 @@
         "diagnostics": [
           {
             "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16294,7 +16287,7 @@
         "diagnostics": [
           {
             "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16317,7 +16310,7 @@
         "diagnostics": [
           {
             "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16340,7 +16333,7 @@
         "diagnostics": [
           {
             "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16363,7 +16356,7 @@
         "diagnostics": [
           {
             "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16386,7 +16379,7 @@
         "diagnostics": [
           {
             "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16409,7 +16402,7 @@
         "diagnostics": [
           {
             "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16432,7 +16425,7 @@
         "diagnostics": [
           {
             "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16455,7 +16448,7 @@
         "diagnostics": [
           {
             "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16478,7 +16471,7 @@
         "diagnostics": [
           {
             "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16501,7 +16494,7 @@
         "diagnostics": [
           {
             "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16524,7 +16517,7 @@
         "diagnostics": [
           {
             "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16547,8 +16540,8 @@
         "diagnostics": [
           {
             "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "payload_relation": "intersects"
+            "action": "reject_input",
+            "payload_relation": "recovery_ends_at"
           }
         ]
       }

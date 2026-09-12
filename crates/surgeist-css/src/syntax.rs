@@ -1283,6 +1283,119 @@ impl CssKeyframePercent {
     }
 }
 
+/// Selects an authored `@font-face` descriptor-value grammar.
+///
+/// This context has no source position: its name is not part of a raw value input.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssFontFaceDescriptorKind {
+    FontFamily,
+    Src,
+    FontWeight,
+    FontStyle,
+    FontStretch,
+    FontDisplay,
+    UnicodeRange,
+    FontFeatureSettings,
+}
+
+impl CssFontFaceDescriptorKind {
+    /// Returns the canonical CSS descriptor name.
+    #[must_use]
+    pub const fn css_name(self) -> &'static str {
+        match self {
+            Self::FontFamily => "font-family",
+            Self::Src => "src",
+            Self::FontWeight => "font-weight",
+            Self::FontStyle => "font-style",
+            Self::FontStretch => "font-stretch",
+            Self::FontDisplay => "font-display",
+            Self::UnicodeRange => "unicode-range",
+            Self::FontFeatureSettings => "font-feature-settings",
+        }
+    }
+
+    pub(crate) fn from_css_name(name: &str) -> Option<Self> {
+        [
+            Self::FontFamily,
+            Self::Src,
+            Self::FontWeight,
+            Self::FontStyle,
+            Self::FontStretch,
+            Self::FontDisplay,
+            Self::UnicodeRange,
+            Self::FontFeatureSettings,
+        ]
+        .into_iter()
+        .find(|kind| kind.css_name().eq_ignore_ascii_case(name))
+    }
+}
+
+/// An owned validated descriptor value without parsed occurrence provenance.
+///
+/// These values contain no descriptor-name position. Raw parsing reports source
+/// positions separately in diagnostics; stylesheet occurrences retain their real
+/// authored name positions in [`CssDescriptorOccurrence`]. Values remain authored:
+/// they do not perform font matching, loading, or contextual usability checks.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum CssFontFaceDescriptorValue {
+    FontFamily(CssFontFaceFamily),
+    Src(CssFontFaceSourceList),
+    FontWeight(CssFontFaceWeight),
+    FontStyle(CssFontFaceStyle),
+    FontStretch(CssFontFaceStretch),
+    FontDisplay(CssFontDisplay),
+    UnicodeRange(CssUnicodeRangeList),
+    FontFeatureSettings(CssAuthoredFontFeatureSettings),
+}
+
+impl CssFontFaceDescriptorValue {
+    /// Returns the descriptor grammar represented by this typed value.
+    #[must_use]
+    pub const fn kind(&self) -> CssFontFaceDescriptorKind {
+        match self {
+            Self::FontFamily(_) => CssFontFaceDescriptorKind::FontFamily,
+            Self::Src(_) => CssFontFaceDescriptorKind::Src,
+            Self::FontWeight(_) => CssFontFaceDescriptorKind::FontWeight,
+            Self::FontStyle(_) => CssFontFaceDescriptorKind::FontStyle,
+            Self::FontStretch(_) => CssFontFaceDescriptorKind::FontStretch,
+            Self::FontDisplay(_) => CssFontFaceDescriptorKind::FontDisplay,
+            Self::UnicodeRange(_) => CssFontFaceDescriptorKind::UnicodeRange,
+            Self::FontFeatureSettings(_) => CssFontFaceDescriptorKind::FontFeatureSettings,
+        }
+    }
+
+    pub(crate) fn into_occurrence(self, position: CssSourcePosition) -> CssFontFaceDescriptor {
+        match self {
+            Self::FontFamily(value) => {
+                CssFontFaceDescriptor::FontFamily(CssDescriptorOccurrence::new(value, position))
+            }
+            Self::Src(value) => {
+                CssFontFaceDescriptor::Src(CssDescriptorOccurrence::new(value, position))
+            }
+            Self::FontWeight(value) => {
+                CssFontFaceDescriptor::FontWeight(CssDescriptorOccurrence::new(value, position))
+            }
+            Self::FontStyle(value) => {
+                CssFontFaceDescriptor::FontStyle(CssDescriptorOccurrence::new(value, position))
+            }
+            Self::FontStretch(value) => {
+                CssFontFaceDescriptor::FontStretch(CssDescriptorOccurrence::new(value, position))
+            }
+            Self::FontDisplay(value) => {
+                CssFontFaceDescriptor::FontDisplay(CssDescriptorOccurrence::new(value, position))
+            }
+            Self::UnicodeRange(value) => {
+                CssFontFaceDescriptor::UnicodeRange(CssDescriptorOccurrence::new(value, position))
+            }
+            Self::FontFeatureSettings(value) => CssFontFaceDescriptor::FontFeatureSettings(
+                CssDescriptorOccurrence::new(value, position),
+            ),
+        }
+    }
+}
+
 /// The validated semantic aggregate of authored `@font-face` descriptor occurrences.
 ///
 /// Every valid occurrence retains its authored order, typed value, and descriptor-name position.

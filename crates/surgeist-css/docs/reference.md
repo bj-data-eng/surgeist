@@ -17,6 +17,7 @@ subset; it does not establish complete support for all CSS syntax.
 | `parse_selector_list(&str, &CssNamespaceContext)` | Default features | `CssParseReport<Option<CssStyleSelectorList>>` |
 | `parse_media_query(&str)` | Default features | `CssParseReport<CssMediaQuery>` |
 | `parse_media_query_list(&str)` | Default features | `CssParseReport<CssMediaQueryList>` |
+| `parse_font_face_descriptor_value(&str, CssFontFaceDescriptorKind)` | Default features | `CssParseReport<Option<CssFontFaceDescriptorValue>>` |
 | `validate_sheet(&str)` | Default features | `Result<CssSheet, CssValidationFailure>` |
 | `validate_style_attribute(&str)` | Default features | `Result<CssDeclarationList, CssValidationFailure>` |
 | `parse_component_values(&str)` | Default features | `Result<CssComponentValues, CssComponentValueError>` |
@@ -766,6 +767,22 @@ family model does not yet provide canonical CSS serialization. A serializer must
 literal name or escape each identifier token independently, and must keep
 quoted reserved names distinct from generic families. Rejecting decoded U+0000
 avoids claiming preservation of a character that CSS replaces with U+FFFD.
+
+`parse_font_face_descriptor_value(source, kind)` parses a complete raw value
+using one of the eight `CssFontFaceDescriptorKind` grammars. It returns an owned
+`CssFontFaceDescriptorValue` without an invented descriptor-name position.
+Diagnostics refer directly to the supplied source, including actual EOF; keep
+the source when interpreting those positions. Descriptor names, semicolons and
+`!important` are outside this value input. Grammar rejection returns `None` with
+`RejectInput`; resource limits retain `StopAtNestingLimit`.
+
+A partially valid `src` list retains valid sources and reports
+`DropFontSourceListItem`. Member recovery and implicit-closure diagnostics are
+published only when the enclosing value is retained. These typed values require
+no surrounding family/source descriptors and do not perform font matching or
+loading. This raw-source parser is distinct from component-based
+`parse_property_value`, whose errors use component origins; descriptor values
+carry no parsed occurrence provenance.
 
 `@font-face` retains every valid descriptor occurrence in authored order;
 effective typed accessors return the last valid occurrence. Source-list grammar

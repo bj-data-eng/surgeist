@@ -212,8 +212,42 @@ fn extractor_inventory_uses_only_public_accessors() {
             != Some(PropertyOrDescriptor::FontFaceDescriptor(
                 FontFaceDescriptorKind::UnicodeRange,
             ))
-            || entry.entry_point() == EntryPoint::Sheet
+            || entry.entry_point() == EntryPoint::FontFaceDescriptorValue
     }));
+}
+
+#[test]
+fn font_descriptor_adapter_keeps_raw_source_and_typed_context() {
+    let entry = adapters::REGISTRY
+        .iter()
+        .find(|entry| entry.fixture_path() == "expectations/value/UnicodeRange.json")
+        .unwrap();
+    assert_eq!(entry.entry_point(), EntryPoint::FontFaceDescriptorValue);
+    assert!(entry.has_legal_context_combination());
+    let context = entry.property_or_descriptor();
+    assert_eq!(
+        context,
+        Some(PropertyOrDescriptor::FontFaceDescriptor(
+            FontFaceDescriptorKind::UnicodeRange
+        )),
+    );
+    for source in ["", "u", "U+", "u+?", " /*é*/ U+0-7f "] {
+        let complete = entry.adapter().wrap(source, context).unwrap();
+        assert_eq!(complete.source(), source);
+        assert_eq!(complete.payload_span(), 0..source.len());
+    }
+    assert!(entry.adapter().wrap("u+?", None).is_err());
+    assert!(
+        entry
+            .adapter()
+            .wrap(
+                "u+?",
+                Some(PropertyOrDescriptor::Property(
+                    surgeist_css::CssKnownProperty::Width
+                )),
+            )
+            .is_err(),
+    );
 }
 
 struct GroupFixture {

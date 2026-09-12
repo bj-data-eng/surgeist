@@ -1119,8 +1119,9 @@ pub use normalization::{
     normalize_sheet, normalize_sheet_with_limits,
 };
 pub use parser::{
-    CssNamespaceContext, parse_media_query, parse_media_query_list, parse_selector,
-    parse_selector_list, parse_sheet, parse_style_attribute,
+    CssNamespaceContext, parse_font_face_descriptor_value, parse_media_query,
+    parse_media_query_list, parse_selector, parse_selector_list, parse_sheet,
+    parse_style_attribute,
 };
 pub use properties::*;
 pub use property_value::{
