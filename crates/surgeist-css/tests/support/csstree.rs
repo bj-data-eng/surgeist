@@ -4156,4 +4156,82 @@ mod tests {
         });
         assert_rejected(artifacts, "lacks observation");
     }
+
+    // Options establish a media grammar only for the explicit atrule: media case.
+    fn prelude_contract_case(source: &str, options: Value, class: Value) -> ValidatedCase {
+        ValidatedCase {
+            id: "atrulePrelude/index.json#raw-contract".into(),
+            expectation_path: "expectations/atrulePrelude/index.json".into(),
+            expectation_sha256: String::new(),
+            source: "source/atrulePrelude/index.json".into(),
+            context: Context::AtrulePrelude,
+            _label: None,
+            input: source.into(),
+            _upstream_outcome: UpstreamOutcome::Parsed,
+            _canonical_css: None,
+            options: serde_json::from_value(options).unwrap(),
+            expected_class: Some(serde_json::from_value(class).unwrap()),
+        }
+    }
+
+    fn prelude_clean_class(count: usize) -> Value {
+        serde_json::json!({"kind":"clean", "retained_syntax":{
+            "extractor":{"kind":"media_queries"},
+            "predicate":{"relation":"exact", "value":count}
+        }})
+    }
+
+    #[test]
+    fn prelude_media_options_select_raw_list_admission_and_payload() {
+        for (source, count) in [("screen", 1), ("screen,print", 2), ("", 0)] {
+            let case = prelude_contract_case(
+                source,
+                serde_json::json!({"atrule":"media"}),
+                prelude_clean_class(count),
+            );
+            validate_expected_class(&case, case.expected_class.as_ref().unwrap()).unwrap();
+            let observed = observe_csstree_record(&case)
+                .expect("explicit media prelude has a raw query-list adapter");
+            let value = serde_json::to_value(observed).unwrap();
+            assert_eq!(value["probe"]["entry_point"], "media_query_list");
+            assert_eq!(value["probe"]["adapter"], "media_at_rule_prelude");
+            assert_eq!(value["probe"]["payload"]["prefix"], "");
+            assert_eq!(value["probe"]["payload"]["suffix"], "");
+            assert_eq!(value["probe"]["payload"]["input_byte_length"], source.len());
+            assert_eq!(value["observation"]["syntax_count"], count);
+            assert_eq!(value["observation"]["is_clean"], true);
+            assert_eq!(value["observation"]["diagnostics"], serde_json::json!([]));
+        }
+    }
+
+    #[test]
+    fn prelude_without_rule_name_has_only_generic_panic_freedom_evidence() {
+        let class = serde_json::json!({"kind":"unsupported", "reason":"generic_fragment_without_truthful_supported_property_or_descriptor", "policy":{"kind":"panic_freedom_only"}});
+        let case = prelude_contract_case("foo bar", serde_json::json!({}), class);
+        validate_expected_class(&case, case.expected_class.as_ref().unwrap())
+            .expect("a generic unnamed prelude cannot claim a media grammar");
+        let value = serde_json::to_value(observe_csstree_record(&case).unwrap()).unwrap();
+        assert_eq!(value["probe"]["kind"], "panic_freedom");
+        assert_eq!(value["probe"]["entry_point"], "style_attribute");
+        assert_eq!(value["probe"]["adapter"], "custom_property_containment");
+        assert_eq!(
+            value["probe"]["payload"]["prefix"],
+            "--surgeist-corpus-probe:"
+        );
+        assert_eq!(value["probe"]["payload"]["suffix"], ";");
+        assert_eq!(value["observation"], Value::Null);
+        assert_eq!(value["outcome"]["kind"], "unsupported");
+        assert_eq!(value["outcome"]["policy"], "panic_freedom_only");
+    }
+
+    #[test]
+    fn prelude_unrecognized_options_cannot_select_the_default_media_route() {
+        let case = prelude_contract_case(
+            "screen",
+            serde_json::json!({"parseValue":false}),
+            prelude_clean_class(1),
+        );
+        assert!(validate_expected_class(&case, case.expected_class.as_ref().unwrap()).is_err());
+        assert!(observe_csstree_record(&case).is_err());
+    }
 }
