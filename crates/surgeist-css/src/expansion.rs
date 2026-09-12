@@ -539,3 +539,7 @@ fn contains_substitution(values: &CssComponentValues) -> bool {
         CssComponentValueRef::Token(_) | CssComponentValueRef::Comment(_) => false,
     })
 }
+
+#[cfg(test)]
+#[path = "expansion/metadata_initial_tests.rs"]
+mod metadata_initial_tests;
