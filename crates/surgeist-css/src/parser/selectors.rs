@@ -6,6 +6,7 @@ use cssparser::{
 use super::recovery::{RecoveryState, comma_member_span, recovery_action_for_error};
 use crate::error::{
     CssFeatureId, Error, from_parse_error, invalid_selector, invalid_selector_at, selector_basic,
+    selector_component_error,
 };
 use crate::syntax::*;
 
@@ -81,6 +82,22 @@ impl<'a> SelectorRecovery<'a> {
         self.state
             .check_specialized_components(self.source, input, "baseline.selector.complex")
             .map(|_| ())
+    }
+
+    fn check_forgiving_envelope<'i>(
+        &self,
+        input: &mut Parser<'i, '_>,
+    ) -> Result<(), ParseError<'i, Error>> {
+        // Selectors 4 checks the complete <any-value>? envelope before member
+        // forgiveness. The component owner sees bad tokens and mismatched
+        // closers at every depth, while allowing missing EOF delimiters.
+        let start = input.state();
+        let result =
+            crate::CssComponentValues::collect_from_parser(input, self.state.source_snapshot());
+        input.reset(&start);
+        result
+            .map(|_| ())
+            .map_err(|error| selector_component_error(start.source_location(), error))
     }
 
     fn drop_forgiving_member(
@@ -1247,6 +1264,7 @@ fn parse_forgiving_pseudo_selector_list<'i, 't>(
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssPseudoSelectorList, ParseError<'i, Error>> {
+    recovery.check_forgiving_envelope(input)?;
     let mut selectors = Vec::new();
     let mut preceding_comma = None;
     loop {

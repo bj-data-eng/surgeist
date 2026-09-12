@@ -61,7 +61,12 @@ parent through `CssSelectorContext::parent()` rather than manufacturing one.
 An invalid outer selector or unforgiving root list produces `None` and a
 `RejectInput` diagnostic spanning the complete input. A valid `:is()` or
 `:where()` can retain its valid members while reporting discarded forgiving
-members. These front doors reuse the implemented selector grammar; their
+members. Before that recovery, the complete function argument must satisfy the
+lexical `<any-value>?` envelope: bad strings, bad URLs and unmatched closing
+delimiters at any depth reject the selector, even when another member is valid.
+A missing EOF delimiter alone remains recoverable. This gate uses original
+components and preserves the offending token's coordinates; nested forgiving
+lists cannot hide an invalid outer envelope. These front doors reuse the implemented selector grammar; their
 availability does not establish complete Selectors 4 coverage.
 
 `CssNamespaceContext::default()` has no bindings. `from_bindings()` consumes

@@ -1328,6 +1328,49 @@ pub(crate) fn selector_basic<'i>(error: BasicParseError<'i>) -> ParseError<'i, E
     )
 }
 
+/// Keep lexical envelope rejection in the selector domain without inferring a
+/// different token from a bounded closing delimiter. Resource failures retain
+/// their component error and original provenance instead of becoming grammar.
+pub(crate) fn selector_component_error<'i>(
+    fallback: cssparser::SourceLocation,
+    detail: crate::CssComponentValueError,
+) -> ParseError<'i, Error> {
+    let crate::CssValueOrigin::Parsed(origin) = detail.origin() else {
+        return invalid_component_value(fallback, detail);
+    };
+    let authored = &origin.source().as_str()
+        [origin.span().start().byte_offset().value()..origin.span().end().byte_offset().value()];
+    let kind = match detail.kind() {
+        crate::CssComponentValueErrorKind::BadString => CssTokenKind::BadString,
+        crate::CssComponentValueErrorKind::BadUrl => CssTokenKind::BadUrl,
+        crate::CssComponentValueErrorKind::UnmatchedClosingDelimiter => match authored {
+            ")" => CssTokenKind::CloseParenthesis,
+            "]" => CssTokenKind::CloseSquareBracket,
+            "}" => CssTokenKind::CloseCurlyBracket,
+            _ => return invalid_component_value(fallback, detail),
+        },
+        _ => return invalid_component_value(fallback, detail),
+    };
+    let position = origin.span().start();
+    ParseError {
+        location: cssparser::SourceLocation {
+            line: position.line().value(),
+            column: position.column().value().saturating_add(1),
+        },
+        kind: ParseErrorKind::Custom(Error {
+            position,
+            kind: ErrorKind::InvalidSelector(CssSelectorError {
+                production: Some(SELECTOR_LIST),
+                expectation: EXPECT_SELECTOR,
+                encountered: Some(CssTokenSummary {
+                    kind,
+                    authored: authored.to_owned(),
+                }),
+            }),
+        }),
+    }
+}
+
 pub(crate) fn invalid_component_value<'i>(
     location: cssparser::SourceLocation,
     detail: crate::CssComponentValueError,

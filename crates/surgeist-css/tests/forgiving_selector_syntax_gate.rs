@@ -24,6 +24,13 @@ fn assert_rejected(source: &str) {
     assert_eq!(rejection.error().code(), CssErrorCode::InvalidSelector);
     assert_eq!(rejection.span().start().byte_offset().value(), 0);
     assert_eq!(rejection.span().end().byte_offset().value(), source.len());
+    assert!(
+        !report
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.action() == CssRecoveryAction::RetainWithImplicitClosure),
+        "rejected syntax cannot claim retained EOF closures"
+    );
     assert!(report.clone().into_validation_result().is_err());
 }
 
@@ -161,5 +168,38 @@ fn bad_tokens_are_not_forgiven_and_the_responsible_unicode_source_position_is_re
             u32::try_from(source[line_start..expected_offset].encode_utf16().count()).unwrap()
         );
         assert!(report.into_validation_result().is_err());
+    }
+}
+
+#[test]
+fn an_outer_forgiving_list_cannot_swallow_a_lexically_invalid_inner_envelope() {
+    for source in [":is(.ok,:where(.a{))", ":where(.ok,:is(url(a b)))"] {
+        assert_rejected(source);
+    }
+}
+
+#[test]
+fn a_lexically_valid_nested_invalid_selector_still_allows_the_outer_valid_sibling() {
+    // :not() is unforgiving, so its invalid :unknown() member invalidates that
+    // whole outer-list member. The lexical envelope itself remains well formed.
+    for source in [
+        ":is(.ok,:not(:unknown(x)))",
+        ":where(.ok,:not(:unknown(x)))",
+    ] {
+        let report = parse_selector(source, &CssNamespaceContext::default());
+        assert_eq!(
+            retained_members(report.syntax()),
+            [CssSelector::Class("ok".into())]
+        );
+        assert!(
+            report
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| diagnostic.action() == CssRecoveryAction::DropSelectorListItem)
+        );
+        assert!(!report.diagnostics().iter().any(|diagnostic| matches!(
+            diagnostic.action(),
+            CssRecoveryAction::RejectInput | CssRecoveryAction::RetainWithImplicitClosure
+        )));
     }
 }
