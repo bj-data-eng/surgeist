@@ -17,7 +17,9 @@ use adapters::{
     REGISTRY, RegistryEntry, UnsupportedPolicy as RegistryUnsupportedPolicy,
 };
 use surgeist_css::{
-    CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, parse_sheet, parse_style_attribute,
+    CssErrorCode, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssRecoveryAction,
+    CssRecoveryDiagnostic, parse_media_query, parse_selector, parse_selector_list, parse_sheet,
+    parse_style_attribute,
 };
 use surgeist_css::{validate_sheet, validate_style_attribute};
 
@@ -1944,6 +1946,36 @@ fn observe_public_parser(
             )?;
             Ok::<Observation, String>(observation)
         }
+        EntryPoint::Selector => {
+            let report = parse_selector(complete.source(), &corpus_namespace_context());
+            fragment_observation(
+                report,
+                registry,
+                RegistryExtractor::Selector,
+                complete,
+                |syntax| usize::from(syntax.is_some()),
+            )
+        }
+        EntryPoint::SelectorList => {
+            let report = parse_selector_list(complete.source(), &corpus_namespace_context());
+            fragment_observation(
+                report,
+                registry,
+                RegistryExtractor::SelectorList,
+                complete,
+                |syntax| syntax.as_ref().map_or(0, |list| list.selectors().len()),
+            )
+        }
+        EntryPoint::MediaQuery => {
+            let report = parse_media_query(complete.source());
+            fragment_observation(
+                report,
+                registry,
+                RegistryExtractor::MediaQuery,
+                complete,
+                |_| 1,
+            )
+        }
         EntryPoint::StyleAttribute => {
             let report = parse_style_attribute(complete.source());
             let count = registry
@@ -1985,6 +2017,39 @@ fn observe_public_parser(
             "public parser or extractor unwound",
         )),
     }
+}
+
+fn corpus_namespace_context() -> CssNamespaceContext {
+    CssNamespaceContext::from_bindings([(
+        Some(CssNamespacePrefix::try_new("ns").expect("fixed corpus namespace prefix")),
+        CssNamespaceName::new("surgeist-corpus-probe"),
+    )])
+}
+
+fn fragment_observation<T>(
+    report: surgeist_css::CssParseReport<T>,
+    registry: RegistryEntry,
+    expected_extractor: RegistryExtractor,
+    complete: &adapters::CompleteInput,
+    count: impl FnOnce(&T) -> usize,
+) -> Result<Observation, String> {
+    if registry.extractor() != expected_extractor {
+        return Err(format!(
+            "public fragment extractor mismatch: {:?}",
+            registry.extractor()
+        ));
+    }
+    let observation = observation_from_report(
+        raw_extractor(expected_extractor),
+        count(report.syntax()),
+        report.is_clean(),
+        report.diagnostics(),
+        complete,
+    )?;
+    let clean = report.is_clean();
+    let diagnostics = report.diagnostics().to_vec();
+    validate_strict_parity(clean, &diagnostics, report.into_validation_result())?;
+    Ok(observation)
 }
 
 fn validate_strict_parity<T>(
@@ -2082,6 +2147,9 @@ fn raw_extractor(extractor: RegistryExtractor) -> Extractor {
         },
         RegistryExtractor::StyleDeclarations => Extractor::StyleDeclarations,
         RegistryExtractor::StyleSelector => Extractor::StyleSelector,
+        RegistryExtractor::Selector => Extractor::Selector,
+        RegistryExtractor::SelectorList => Extractor::SelectorList,
+        RegistryExtractor::MediaQuery => Extractor::MediaQuery,
         RegistryExtractor::DeclarationList => Extractor::DeclarationList,
         RegistryExtractor::MediaQueries => Extractor::MediaQueries,
         RegistryExtractor::MediaChildren => Extractor::MediaChildren,
@@ -2134,6 +2202,7 @@ fn css_error_code_name(code: CssErrorCode) -> Result<CssErrorCodeName, String> {
 
 fn css_recovery_action_name(action: CssRecoveryAction) -> Result<CssRecoveryActionName, String> {
     match action {
+        CssRecoveryAction::RejectInput => Ok(CssRecoveryActionName::RejectInput),
         CssRecoveryAction::DropDeclaration => Ok(CssRecoveryActionName::DropDeclaration),
         CssRecoveryAction::DropDescriptor => Ok(CssRecoveryActionName::DropDescriptor),
         CssRecoveryAction::DropQualifiedRule => Ok(CssRecoveryActionName::DropQualifiedRule),
@@ -2348,6 +2417,9 @@ fn extractor_matches_registry(extractor: &Extractor, expected: RegistryExtractor
         (Extractor::SheetRules, RegistryExtractor::SheetRules)
         | (Extractor::StyleDeclarations, RegistryExtractor::StyleDeclarations)
         | (Extractor::StyleSelector, RegistryExtractor::StyleSelector)
+        | (Extractor::Selector, RegistryExtractor::Selector)
+        | (Extractor::SelectorList, RegistryExtractor::SelectorList)
+        | (Extractor::MediaQuery, RegistryExtractor::MediaQuery)
         | (Extractor::DeclarationList, RegistryExtractor::DeclarationList)
         | (Extractor::MediaQueries, RegistryExtractor::MediaQueries)
         | (Extractor::MediaChildren, RegistryExtractor::MediaChildren)
@@ -2379,6 +2451,9 @@ fn validate_extractor(extractor: &Extractor, id: &str) -> Result<(), String> {
         Extractor::SheetRules
         | Extractor::StyleDeclarations
         | Extractor::StyleSelector
+        | Extractor::Selector
+        | Extractor::SelectorList
+        | Extractor::MediaQuery
         | Extractor::DeclarationList
         | Extractor::MediaQueries
         | Extractor::MediaChildren
@@ -2674,6 +2749,9 @@ enum Extractor {
     TopLevelRuleKind { rule_kind: String },
     StyleDeclarations,
     StyleSelector,
+    Selector,
+    SelectorList,
+    MediaQuery,
     DeclarationList,
     MediaQueries,
     MediaChildren,
@@ -2809,6 +2887,7 @@ enum CssErrorCodeName {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum CssRecoveryActionName {
+    RejectInput,
     DropDeclaration,
     DropDescriptor,
     DropQualifiedRule,
@@ -3244,9 +3323,12 @@ mod tests {
 
     #[test]
     fn payload_observation_rejects_recovery_after_consuming_wrapper_suffix() {
-        let complete = adapters::Adapter::Selector
-            .wrap(":has(.a{)", None)
-            .expect("selector adapter preserves its payload");
+        let complete = adapters::CompleteInput::from_parts(
+            "@namespace ns \"surgeist-corpus-probe\";",
+            ":has(.a{)",
+            "{--surgeist-corpus-probe:0;}",
+        )
+        .expect("deliberately wrapped negative control preserves its payload");
         let report = parse_sheet(complete.source());
         assert!(report.diagnostics().iter().any(|diagnostic| {
             diagnostic.error().position().byte_offset().value() > complete.payload_span().end

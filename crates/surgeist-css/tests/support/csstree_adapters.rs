@@ -11,6 +11,9 @@ use surgeist_css::{
 pub enum EntryPoint {
     Sheet,
     StyleAttribute,
+    Selector,
+    SelectorList,
+    MediaQuery,
 }
 
 impl EntryPoint {
@@ -18,6 +21,9 @@ impl EntryPoint {
         match self {
             Self::Sheet => "sheet",
             Self::StyleAttribute => "style_attribute",
+            Self::Selector => "selector",
+            Self::SelectorList => "selector_list",
+            Self::MediaQuery => "media_query",
         }
     }
 }
@@ -108,11 +114,8 @@ impl Adapter {
             | Self::MatchesSelector
             | Self::NotSelector
             | Self::SlottedSelector
-            | Self::WhereSelector => (
-                "@namespace ns \"surgeist-corpus-probe\";",
-                "{--surgeist-corpus-probe:0;}",
-            ),
-            Self::MediaQuery => ("@media ", "{}"),
+            | Self::WhereSelector => ("", ""),
+            Self::MediaQuery => ("", ""),
             Self::MediaAtRulePrelude => ("@media ", "{}"),
             Self::PropertyValue => match property_or_descriptor {
                 Some(PropertyOrDescriptor::Property(property)) => {
@@ -266,6 +269,9 @@ pub enum Extractor {
     TopLevelRuleKind(TopLevelRuleKind),
     StyleDeclarations,
     StyleSelector,
+    Selector,
+    SelectorList,
+    MediaQuery,
     DeclarationList,
     MediaQueries,
     MediaChildren,
@@ -287,6 +293,9 @@ impl Extractor {
             Self::TopLevelRuleKind(_) => "top_level_rule_kind",
             Self::StyleDeclarations => "style_declarations",
             Self::StyleSelector => "style_selector",
+            Self::Selector => "selector",
+            Self::SelectorList => "selector_list",
+            Self::MediaQuery => "media_query",
             Self::DeclarationList => "declaration_list",
             Self::MediaQueries => "media_queries",
             Self::MediaChildren => "media_children",
@@ -371,7 +380,7 @@ impl Extractor {
                 .map_or(0, |declarations| {
                     known_declaration(declarations, index, property)
                 }),
-            Self::DeclarationList => {
+            Self::DeclarationList | Self::Selector | Self::SelectorList | Self::MediaQuery => {
                 return Err(Mismatch::ExtractorEntryPoint {
                     extractor: self,
                     entry_point: EntryPoint::Sheet,
@@ -441,7 +450,7 @@ pub struct CompleteInput {
 }
 
 impl CompleteInput {
-    fn from_parts(prefix: &str, input: &str, suffix: &str) -> Result<Self, Mismatch> {
+    pub(super) fn from_parts(prefix: &str, input: &str, suffix: &str) -> Result<Self, Mismatch> {
         Self::from_owned_parts(prefix.to_owned(), input, suffix.to_owned())
     }
 
@@ -640,12 +649,12 @@ impl RegistryEntry {
             ),
             "selectorList" => matches!(
                 (self.entry_point, self.adapter),
-                (EntryPoint::Sheet, Adapter::SelectorList)
+                (EntryPoint::SelectorList, Adapter::SelectorList)
             ),
             "selector" => matches!(
                 (self.entry_point, self.adapter),
                 (
-                    EntryPoint::Sheet,
+                    EntryPoint::Selector,
                     Adapter::Selector
                         | Adapter::NthSelector
                         | Adapter::MozAnySelector
@@ -667,7 +676,7 @@ impl RegistryEntry {
             ),
             "mediaQuery" => matches!(
                 (self.entry_point, self.adapter),
-                (EntryPoint::Sheet, Adapter::MediaQuery)
+                (EntryPoint::MediaQuery, Adapter::MediaQuery)
             ),
             "atrulePrelude" => matches!(
                 (self.entry_point, self.adapter),
@@ -1032,33 +1041,33 @@ pub const REGISTRY: &[RegistryEntry] = &[
     entry!(
         "expectations/mediaQuery/FeatureRange.json",
         "mediaQuery",
-        Sheet,
         MediaQuery,
-        Extractor::MediaQueries,
+        MediaQuery,
+        Extractor::MediaQuery,
         EMPTY
     ),
     entry!(
         "expectations/mediaQuery/GeneralEnclosed.json",
         "mediaQuery",
-        Sheet,
         MediaQuery,
-        Extractor::MediaQueries,
+        MediaQuery,
+        Extractor::MediaQuery,
         EMPTY
     ),
     entry!(
         "expectations/mediaQuery/MediaQuery.json",
         "mediaQuery",
-        Sheet,
         MediaQuery,
-        Extractor::MediaQueries,
+        MediaQuery,
+        Extractor::MediaQuery,
         EMPTY
     ),
     entry!(
         "expectations/mediaQuery/Ratio.json",
         "mediaQuery",
-        Sheet,
         MediaQuery,
-        Extractor::MediaQueries,
+        MediaQuery,
+        Extractor::MediaQuery,
         EMPTY
     ),
     entry!(
@@ -1104,170 +1113,170 @@ pub const REGISTRY: &[RegistryEntry] = &[
     entry!(
         "expectations/selector/AttributeSelector.json",
         "selector",
-        Sheet,
         Selector,
-        Extractor::StyleSelector,
+        Selector,
+        Extractor::Selector,
         EMPTY
     ),
     entry!(
         "expectations/selector/ClassSelector.json",
         "selector",
-        Sheet,
         Selector,
-        Extractor::StyleSelector,
+        Selector,
+        Extractor::Selector,
         EMPTY
     ),
     adapterless_entry!("expectations/selector/Combinator.json", "selector", EMPTY),
     entry!(
         "expectations/selector/IdSelector.json",
         "selector",
-        Sheet,
         Selector,
-        Extractor::StyleSelector,
+        Selector,
+        Extractor::Selector,
         EMPTY
     ),
     entry!(
         "expectations/selector/Nth.json",
         "selector",
-        Sheet,
+        Selector,
         NthSelector,
-        Extractor::StyleSelector,
+        Extractor::Selector,
         EMPTY
     ),
     entry!(
         "expectations/selector/PseudoClassSelector.json",
         "selector",
-        Sheet,
         Selector,
-        Extractor::StyleSelector,
+        Selector,
+        Extractor::Selector,
         EMPTY
     ),
     entry!(
         "expectations/selector/PseudoElementSelector.json",
         "selector",
-        Sheet,
         Selector,
-        Extractor::StyleSelector,
+        Selector,
+        Extractor::Selector,
         EMPTY
     ),
     entry!(
         "expectations/selector/Selector.json",
         "selector",
-        Sheet,
         Selector,
-        Extractor::StyleSelector,
+        Selector,
+        Extractor::Selector,
         EMPTY
     ),
     entry!(
         "expectations/selector/TypeSelector.json",
         "selector",
-        Sheet,
         Selector,
-        Extractor::StyleSelector,
+        Selector,
+        Extractor::Selector,
         EMPTY
     ),
     entry!(
         "expectations/selector/functional-pseudo/-moz-any.json",
         "selector",
-        Sheet,
+        Selector,
         MozAnySelector,
-        Extractor::StyleSelector,
+        Extractor::Selector,
         EMPTY
     ),
     entry!(
         "expectations/selector/functional-pseudo/-webkit-any.json",
         "selector",
-        Sheet,
+        Selector,
         WebkitAnySelector,
-        Extractor::StyleSelector,
+        Extractor::Selector,
         EMPTY
     ),
     entry!(
         "expectations/selector/functional-pseudo/dir.json",
         "selector",
-        Sheet,
+        Selector,
         DirSelector,
-        Extractor::StyleSelector,
+        Extractor::Selector,
         EMPTY
     ),
     entry!(
         "expectations/selector/functional-pseudo/has.json",
         "selector",
-        Sheet,
+        Selector,
         HasSelector,
-        Extractor::StyleSelector,
+        Extractor::Selector,
         EMPTY
     ),
     entry!(
         "expectations/selector/functional-pseudo/host-context.json",
         "selector",
-        Sheet,
+        Selector,
         HostContextSelector,
-        Extractor::StyleSelector,
+        Extractor::Selector,
         EMPTY
     ),
     entry!(
         "expectations/selector/functional-pseudo/host.json",
         "selector",
-        Sheet,
+        Selector,
         HostSelector,
-        Extractor::StyleSelector,
+        Extractor::Selector,
         EMPTY
     ),
     entry!(
         "expectations/selector/functional-pseudo/is.json",
         "selector",
-        Sheet,
+        Selector,
         IsSelector,
-        Extractor::StyleSelector,
+        Extractor::Selector,
         EMPTY
     ),
     entry!(
         "expectations/selector/functional-pseudo/lang.json",
         "selector",
-        Sheet,
+        Selector,
         LangSelector,
-        Extractor::StyleSelector,
+        Extractor::Selector,
         EMPTY
     ),
     entry!(
         "expectations/selector/functional-pseudo/matches.json",
         "selector",
-        Sheet,
+        Selector,
         MatchesSelector,
-        Extractor::StyleSelector,
+        Extractor::Selector,
         EMPTY
     ),
     entry!(
         "expectations/selector/functional-pseudo/not.json",
         "selector",
-        Sheet,
+        Selector,
         NotSelector,
-        Extractor::StyleSelector,
+        Extractor::Selector,
         EMPTY
     ),
     entry!(
         "expectations/selector/functional-pseudo/slotted.json",
         "selector",
-        Sheet,
+        Selector,
         SlottedSelector,
-        Extractor::StyleSelector,
+        Extractor::Selector,
         EMPTY
     ),
     entry!(
         "expectations/selector/functional-pseudo/where.json",
         "selector",
-        Sheet,
+        Selector,
         WhereSelector,
-        Extractor::StyleSelector,
+        Extractor::Selector,
         EMPTY
     ),
     entry!(
         "expectations/selectorList/Selector.json",
         "selectorList",
-        Sheet,
         SelectorList,
-        Extractor::StyleSelector,
+        SelectorList,
+        Extractor::SelectorList,
         EMPTY
     ),
     entry!(

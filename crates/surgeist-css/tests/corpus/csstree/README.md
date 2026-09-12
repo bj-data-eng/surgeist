@@ -40,3 +40,20 @@ exact source path, expectation path, context, options, and input. A provider
 maintenance change that alters any of those bindings must update the oracle in
 the same reviewed change; the ordinary offline tests validate the complete
 935-record contract without running the parser or generator.
+
+The CSS-owned adapter registry sends ordinary `selector`, `selectorList`, and
+`mediaQuery` fixtures directly to their matching raw fragment parsers. Inputs
+and diagnostic coordinates remain unchanged. Selector probes provide only the
+named namespace binding `ns` to `surgeist-corpus-probe`, without injecting a
+namespace rule into source. Functional-pseudo and Nth fixture inputs already
+contain complete selectors; their adapter names do not select argument grammars.
+Single-selector and single-query probes require complete singular input. The
+selector-list extractor counts retained members, and the query extractor counts
+one retained query, including malformed-query recovery syntax.
+
+The adapterless Combinator fixtures retain their explicit panic-freedom policy.
+The mixed generic/media `atrulePrelude` fixture is a separate adaptation boundary.
+Changes to entry points, extractors, or recovery actions require corresponding
+review of CSS-owned expected classes and oracle records. Expectations must be
+established independently of parser observations; an old oracle is not evidence
+that a synthetic wrapper preserved the original fragment grammar.
