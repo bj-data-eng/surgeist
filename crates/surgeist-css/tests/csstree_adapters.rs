@@ -398,3 +398,39 @@ fn csstree_group_expected_classes_bind_retained_outer_rules() {
         }
     }
 }
+
+// CompleteInput and registry profiles are declared corpus artifacts consumed
+// by the parser/oracle pipeline.
+#[test]
+fn raw_selector_and_media_adapters_preserve_the_complete_authored_input() {
+    let mut visited = 0;
+    for entry in adapters::REGISTRY.iter().filter(|entry| {
+        (entry.context() == "selector"
+            && entry.adapter() != adapters::Adapter::CustomPropertyContainment)
+            || entry.context() == "selectorList"
+            || entry.context() == "mediaQuery"
+    }) {
+        visited += 1;
+        let expected_entry = match entry.context() {
+            "selector" => "selector",
+            "selectorList" => "selector_list",
+            "mediaQuery" => "media_query",
+            _ => unreachable!(),
+        };
+        assert_eq!(
+            entry.entry_point_name(),
+            expected_entry,
+            "{}",
+            entry.fixture_path()
+        );
+        for input in ["", "ns|λ", ".a,.b", ".a,", "(fo", "/*😀*/\r\n/*é*/(fo"] {
+            let complete = entry
+                .adapter()
+                .wrap(input, entry.property_or_descriptor())
+                .unwrap();
+            assert_eq!(complete.source(), input, "{}", entry.fixture_path());
+            assert_eq!(complete.payload_span(), 0..input.len());
+        }
+    }
+    assert!(visited > 0, "raw contexts must actually be exercised");
+}

@@ -3089,6 +3089,123 @@ mod tests {
     use super::*;
     use serde_json::Value;
 
+    // These expectations follow exact raw-fragment admission, source-coordinate
+    // preservation, and Media Queries/Syntax EOF recovery contracts. Fixture identity
+    // is retained only to select the owning corpus adapter; no oracle is consulted.
+    fn raw_fragment_observation(path: &str, context: Context, source: &str) -> serde_json::Value {
+        let registry = *REGISTRY
+            .iter()
+            .find(|entry| entry.fixture_path() == path)
+            .unwrap();
+        let case = ValidatedCase {
+            id: format!("{path}#raw-contract"),
+            expectation_path: path.into(),
+            expectation_sha256: String::new(),
+            source: path.into(),
+            context,
+            _label: None,
+            input: source.into(),
+            _upstream_outcome: UpstreamOutcome::Parsed,
+            _canonical_css: None,
+            options: serde_json::from_str("{}").unwrap(),
+            expected_class: None,
+        };
+        let complete = registry
+            .adapter()
+            .wrap(source, registry.property_or_descriptor())
+            .unwrap();
+        let observation = observe_public_parser(&case, registry, &complete)
+            .expect("raw observation must retain payload-local diagnostics");
+        serde_json::to_value(observation).unwrap()
+    }
+
+    #[test]
+    fn raw_selector_observation_rejects_a_second_root_at_the_authored_comma() {
+        let value = raw_fragment_observation(
+            "expectations/selector/Selector.json",
+            Context::Selector,
+            ".a,.b",
+        );
+        assert_eq!(value["syntax_count"], 0);
+        assert_eq!(value["is_clean"], false);
+        assert_eq!(value["diagnostics"].as_array().unwrap().len(), 1);
+        let error = &value["diagnostics"][0];
+        assert_eq!(error["code"], "invalid_selector");
+        assert_eq!(error["action"], "reject_input");
+        assert_eq!(error["byte_offset"], 2);
+        assert_eq!(error["span_start"], 0);
+        assert_eq!(error["span_end"], 5);
+        assert_eq!(error["payload_relation"], "intersects");
+    }
+
+    #[test]
+    fn raw_selector_list_observation_counts_members_and_preserves_empty_tail_error() {
+        let path = "expectations/selectorList/Selector.json";
+        let value = raw_fragment_observation(path, Context::SelectorList, ".a,.b");
+        assert_eq!(value["syntax_count"], 2);
+        assert_eq!(value["is_clean"], true);
+        assert_eq!(value["diagnostics"], serde_json::json!([]));
+        let value = raw_fragment_observation(path, Context::SelectorList, ".a,");
+        assert_eq!(value["syntax_count"], 0);
+        assert_eq!(value["is_clean"], false);
+        assert_eq!(value["diagnostics"].as_array().unwrap().len(), 1);
+        let error = &value["diagnostics"][0];
+        assert_eq!(error["code"], "invalid_selector");
+        assert_eq!(error["action"], "reject_input");
+        assert_eq!(error["byte_offset"], 3);
+        assert_eq!(error["span_start"], 0);
+        assert_eq!(error["span_end"], 3);
+        assert_eq!(error["payload_relation"], "recovery_ends_at");
+    }
+
+    #[test]
+    fn raw_media_observation_retains_actual_eof_without_a_synthetic_rule_block() {
+        let value = raw_fragment_observation(
+            "expectations/mediaQuery/MediaQuery.json",
+            Context::MediaQuery,
+            "(fo",
+        );
+        assert_eq!(value["syntax_count"], 1);
+        assert_eq!(value["is_clean"], false);
+        assert_eq!(value["diagnostics"].as_array().unwrap().len(), 1);
+        let closure = &value["diagnostics"][0];
+        assert_eq!(closure["code"], "unexpected_end");
+        assert_eq!(closure["action"], "retain_with_implicit_closure");
+        assert_eq!(closure["byte_offset"], 3);
+        assert_eq!(closure["span_start"], 3);
+        assert_eq!(closure["span_end"], 3);
+        assert_eq!(closure["payload_relation"], "ends_at");
+    }
+
+    #[test]
+    fn raw_selector_observation_uses_a_named_namespace_without_injected_source() {
+        let value = raw_fragment_observation(
+            "expectations/selector/TypeSelector.json",
+            Context::Selector,
+            "ns|λ",
+        );
+        assert_eq!(value["syntax_count"], 1);
+        assert_eq!(value["is_clean"], true);
+        assert_eq!(value["diagnostics"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn raw_single_media_observation_replaces_comma_separated_input_as_one_query() {
+        let value = raw_fragment_observation(
+            "expectations/mediaQuery/MediaQuery.json",
+            Context::MediaQuery,
+            "screen,print",
+        );
+        assert_eq!(value["syntax_count"], 1);
+        assert_eq!(value["is_clean"], false);
+        assert_eq!(value["diagnostics"].as_array().unwrap().len(), 1);
+        assert_eq!(value["diagnostics"][0]["code"], "invalid_media_query");
+        assert_eq!(
+            value["diagnostics"][0]["action"],
+            "replace_media_query_with_never"
+        );
+    }
+
     type OracleMutation = (&'static str, OracleContractFailureKind, fn(&mut Value));
 
     #[test]
