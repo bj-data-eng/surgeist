@@ -51,6 +51,8 @@ fn invalid_unicode_ranges_point_to_the_responsible_original_token() {
         ("u+ /**/?", " /**/?", " "),  // Actual whitespace, not a comment.
         (r"u+/**/\61", r"\61", r"\61"), // Preserve original escaped representation.
         ("u+/**/😀", "😀", "😀"),
+        ("u+12-", "-", "-"), // A lone hyphen is a Delim after Number(+12).
+        ("u+12-/**/", "-", "-"),
         ("u+0g", "+0g", "+0g"), // Bad character within the original Dimension token.
         ("u+110000", "+110000", "+110000"),
         ("u+0/**/-110000", "-110000", "-110000"),
@@ -125,7 +127,7 @@ fn incomplete_unicode_range_lists_drop_the_whole_descriptor() {
 
 #[test]
 fn incomplete_unicode_ranges_keep_their_genuine_end_position() {
-    for value in ["u+", "u+12-", "u+/**/", "u+12-/**/"] {
+    for value in ["u+", "u+ab-", "u+/**/", "u+ab-/**/"] {
         let source = format!("@font-face{{unicode-range:{value};font-display:swap}}");
         let report = parse_sheet(&source);
         let [diagnostic] = report.diagnostics() else {
