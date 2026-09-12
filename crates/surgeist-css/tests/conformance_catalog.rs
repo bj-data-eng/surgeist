@@ -1549,8 +1549,8 @@ const EXPECTED: &[ExpectedFeature] = &[
         id: "baseline.media.type",
         kind: CssFeatureKind::MediaQuery,
         spelling: "all, aural, braille, embossed, handheld, print, projection, screen, speech, tty, tv",
-        source: ExpectedSource::Id("O-MEDIA3"),
-        production: "#media1",
+        source: ExpectedSource::Id("X-MEDIA5"),
+        production: "#media-types",
         status: CssSupportStatus::Complete,
         supported_subset: None,
         unsupported_remainder: None,
@@ -1720,11 +1720,6 @@ fn c14_amended_ledger_public_metadata_is_reconciled() {
         "ext.descriptor.font-stretch-range",
         "ext.property.font-weight-range",
         "ext.supports.selector",
-        "ext.media.range.width",
-        "ext.media.range.height",
-        "ext.media.range.resolution",
-        "ext.media.range.color",
-        "ext.media.range.monochrome",
     ] {
         let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
         assert_eq!(metadata.id().as_str(), id, "{id} identity");
@@ -2170,31 +2165,6 @@ fn c14_retained_partial_extensions_have_direct_public_evidence() {
             "ext.supports.selector",
             CssFeatureKind::Selector,
             Input::Sheet("@supports selector(.card:is(.primary, .secondary)) {}"),
-        ),
-        (
-            "ext.media.range.width",
-            CssFeatureKind::MediaQuery,
-            Input::Sheet("@media (width >= 1px) {}"),
-        ),
-        (
-            "ext.media.range.height",
-            CssFeatureKind::MediaQuery,
-            Input::Sheet("@media (height < 100vh) {}"),
-        ),
-        (
-            "ext.media.range.resolution",
-            CssFeatureKind::MediaQuery,
-            Input::Sheet("@media (resolution >= 2dppx) {}"),
-        ),
-        (
-            "ext.media.range.color",
-            CssFeatureKind::MediaQuery,
-            Input::Sheet("@media (color > 0) {}"),
-        ),
-        (
-            "ext.media.range.monochrome",
-            CssFeatureKind::MediaQuery,
-            Input::Sheet("@media (monochrome = 1) {}"),
         ),
     ] {
         let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
@@ -2805,6 +2775,25 @@ fn animation_metadata_matches_c03_shorthand_behavior_and_c05_remainder() {
 }
 
 #[test]
+fn complete_media_range_metadata_preserves_original_comparison_evidence() {
+    for (name, css) in [
+        ("width", "(width >= 1px)"),
+        ("height", "(height < 100vh)"),
+        ("resolution", "(resolution >= 2dppx)"),
+        ("color", "(color > 0)"),
+        ("monochrome", "(monochrome = 1)"),
+    ] {
+        let id = format!("ext.media.range.{name}");
+        let metadata = feature_metadata(&id).expect("range metadata");
+        assert_eq!(metadata.status(), CssSupportStatus::Complete);
+        assert_eq!(metadata.source().id().as_str(), "X-MEDIA5");
+        assert_eq!(metadata.supported_subset(), None);
+        assert_eq!(metadata.unsupported_remainder(), None);
+        assert!(parse_sheet(&format!("@media {css} {{}}")).is_clean());
+    }
+}
+
+#[test]
 fn media_conditional_and_import_metadata_are_truthful() {
     for source in [
         "@media speech and (device-width: 800px) and (resolution: 2dpcm) { .x { color: red; } }",
@@ -2839,91 +2828,91 @@ fn media_conditional_and_import_metadata_are_truthful() {
     assert_complete(
         "official.media.query-list-core",
         CssFeatureKind::MediaQuery,
-        "O-MEDIA3",
-        "#syntax",
+        "X-MEDIA5",
+        "#mq-syntax",
     );
     assert_complete(
         "baseline.media.type",
         CssFeatureKind::MediaQuery,
-        "O-MEDIA3",
-        "#media1",
+        "X-MEDIA5",
+        "#media-types",
     );
     assert_complete(
         "official.media.feature.width",
         CssFeatureKind::MediaQuery,
-        "O-MEDIA3",
+        "X-MEDIA5",
         "#width",
     );
     assert_complete(
         "official.media.feature.height",
         CssFeatureKind::MediaQuery,
-        "O-MEDIA3",
+        "X-MEDIA5",
         "#height",
     );
     assert_complete(
         "official.media.feature.device-width",
         CssFeatureKind::MediaQuery,
-        "O-MEDIA3",
+        "X-MEDIA5",
         "#device-width",
     );
     assert_complete(
         "official.media.feature.device-height",
         CssFeatureKind::MediaQuery,
-        "O-MEDIA3",
+        "X-MEDIA5",
         "#device-height",
     );
     assert_complete(
         "official.media.feature.orientation",
         CssFeatureKind::MediaQuery,
-        "O-MEDIA3",
+        "X-MEDIA5",
         "#orientation",
     );
     assert_complete(
         "official.media.feature.aspect-ratio",
         CssFeatureKind::MediaQuery,
-        "O-MEDIA3",
+        "X-MEDIA5",
         "#aspect-ratio",
     );
     assert_complete(
         "official.media.feature.device-aspect-ratio",
         CssFeatureKind::MediaQuery,
-        "O-MEDIA3",
+        "X-MEDIA5",
         "#device-aspect-ratio",
     );
     assert_complete(
         "official.media.feature.color",
         CssFeatureKind::MediaQuery,
-        "O-MEDIA3",
+        "X-MEDIA5",
         "#color",
     );
     assert_complete(
         "official.media.feature.color-index",
         CssFeatureKind::MediaQuery,
-        "O-MEDIA3",
+        "X-MEDIA5",
         "#color-index",
     );
     assert_complete(
         "official.media.feature.monochrome",
         CssFeatureKind::MediaQuery,
-        "O-MEDIA3",
+        "X-MEDIA5",
         "#monochrome",
     );
     assert_complete(
         "official.media.feature.resolution",
         CssFeatureKind::MediaQuery,
-        "O-MEDIA3",
+        "X-MEDIA5",
         "#resolution",
     );
     assert_complete(
         "official.media.feature.scan",
         CssFeatureKind::MediaQuery,
-        "O-MEDIA3",
+        "X-MEDIA5",
         "#scan",
     );
     assert_complete(
         "official.media.feature.grid",
         CssFeatureKind::MediaQuery,
-        "O-MEDIA3",
+        "X-MEDIA5",
         "#grid",
     );
 
@@ -2955,7 +2944,7 @@ fn media_conditional_and_import_metadata_are_truthful() {
     assert_complete(
         "ext.media.resolution.dppx",
         CssFeatureKind::MediaQuery,
-        "R-MEDIA4",
+        "X-MEDIA5",
         "#resolution",
     );
     assert_complete(
@@ -4086,92 +4075,92 @@ fn every_alias_atomic_target_has_declared_metadata_and_public_parser_evidence() 
         ),
         (
             "official.media.query-list-core",
-            "O-MEDIA3",
+            "X-MEDIA5",
             "@media screen, print { .x { color: red; } }",
         ),
         (
             "ext.media.condition-syntax",
-            "R-MEDIA4",
+            "X-MEDIA5",
             "@media not screen and (width: 1px) { .x { color: red; } }",
         ),
         (
             "official.media.feature.width",
-            "O-MEDIA3",
+            "X-MEDIA5",
             "@media (min-width: 1px) { .x { color: red; } }",
         ),
         (
             "official.media.feature.height",
-            "O-MEDIA3",
+            "X-MEDIA5",
             "@media (max-height: 2px) { .x { color: red; } }",
         ),
         (
             "official.media.feature.resolution",
-            "O-MEDIA3",
+            "X-MEDIA5",
             "@media (resolution: 192dpi) { .x { color: red; } }",
         ),
         (
             "ext.media.resolution.dppx",
-            "R-MEDIA4",
+            "X-MEDIA5",
             "@media (resolution: 2dppx) { .x { color: red; } }",
         ),
         (
             "official.media.feature.color",
-            "O-MEDIA3",
+            "X-MEDIA5",
             "@media (color: 8) { .x { color: red; } }",
         ),
         (
             "official.media.feature.monochrome",
-            "O-MEDIA3",
+            "X-MEDIA5",
             "@media (monochrome: 1) { .x { color: red; } }",
         ),
         (
             "ext.media.range.width",
-            "R-MEDIA4",
+            "X-MEDIA5",
             "@media (width >= 1px) { .x { color: red; } }",
         ),
         (
             "ext.media.range.height",
-            "R-MEDIA4",
+            "X-MEDIA5",
             "@media (height < 2px) { .x { color: red; } }",
         ),
         (
             "ext.media.range.resolution",
-            "R-MEDIA4",
+            "X-MEDIA5",
             "@media (resolution > 1dppx) { .x { color: red; } }",
         ),
         (
             "ext.media.range.color",
-            "R-MEDIA4",
+            "X-MEDIA5",
             "@media (color >= 8) { .x { color: red; } }",
         ),
         (
             "ext.media.range.monochrome",
-            "R-MEDIA4",
+            "X-MEDIA5",
             "@media (monochrome = 1) { .x { color: red; } }",
         ),
         (
             "official.media.feature.orientation",
-            "O-MEDIA3",
+            "X-MEDIA5",
             "@media (orientation: portrait) { .x { color: red; } }",
         ),
         (
             "ext.media.hover",
-            "R-MEDIA4",
+            "X-MEDIA5",
             "@media (hover: hover) { .x { color: red; } }",
         ),
         (
             "ext.media.any-hover",
-            "R-MEDIA4",
+            "X-MEDIA5",
             "@media (any-hover: none) { .x { color: red; } }",
         ),
         (
             "ext.media.pointer",
-            "R-MEDIA4",
+            "X-MEDIA5",
             "@media (pointer: fine) { .x { color: red; } }",
         ),
         (
             "ext.media.any-pointer",
-            "R-MEDIA4",
+            "X-MEDIA5",
             "@media (any-pointer: coarse) { .x { color: red; } }",
         ),
         (
@@ -4201,7 +4190,7 @@ fn every_alias_atomic_target_has_declared_metadata_and_public_parser_evidence() 
         ),
         (
             "ext.media.display-mode",
-            "X-DISPLAY-MODE-BASE",
+            "X-MEDIA5",
             "@media (display-mode: picture-in-picture) { .x { color: red; } }",
         ),
     ];
@@ -4216,7 +4205,7 @@ fn every_alias_atomic_target_has_declared_metadata_and_public_parser_evidence() 
 
     let malformed = feature_metadata("ext.media.malformed-member-never")
         .expect("malformed-member recovery target");
-    assert_eq!(malformed.source().id().as_str(), "R-MEDIA4");
+    assert_eq!(malformed.source().id().as_str(), "X-MEDIA5");
     assert!(malformed.baseline_alias_targets().is_empty());
     let source = "@media screen, ??? { .x { color: red; } }";
     let report = parse_sheet(source);

@@ -1455,18 +1455,19 @@ The preserved extension records `ext.value.relative-color`,
 `ext.value.color-mix`, `ext.value.grid-repeat`, `ext.value.basic-shape`,
 `ext.descriptor.font-weight-range`, `ext.descriptor.font-style-oblique-range`,
 `ext.descriptor.font-stretch-range`,
-`ext.property.font-weight-range`, `ext.supports.selector`,
-`ext.media.range.width`, `ext.media.range.height`,
-`ext.media.range.resolution`, `ext.media.range.color`, and
-`ext.media.range.monochrome` remain `Partial`, with both subset and remainder
-metadata. The `@font-feature-values` record is `Partial`: its authored parser,
+`ext.property.font-weight-range`, and `ext.supports.selector` remain `Partial`,
+with both subset and remainder metadata. The five `ext.media.range.*` records
+for width, height, resolution, color and monochrome are now `Complete`, covering
+signed symbolic operands and source-ordered chained comparisons.
+The `@font-feature-values` record is `Partial`: its authored parser,
 checked model and normalization are implemented under the pinned Fonts 4 edition;
 three conflicting grammar requirements retain a documented provisional policy.
 General rule serialization remains unfinished.
 
-The preceding public support catalog contained 456 records. With the 31
-additions above, the current public support catalog contains 487 records, as
-declared in [the catalog source](../src/conformance.rs). That
+The preceding public support catalog contained 456 records. The 31 additions
+above brought it to 487; fourteen additional media feature records bring the
+current public support catalog to 501 records, as declared in
+[the catalog source](../src/conformance.rs). That
 catalog cardinality is distinct from the immutable official inventory of
 exactly 162 property units (161 canonical properties plus the custom-property
 family), one normative legacy shorthand, and 167 non-property units. All 219
@@ -1496,6 +1497,13 @@ which supersedes the overlapping Containment 3 grammar. Their coverage remains
 partial: general-enclosed conditions, complete size/style/scroll-state features,
 name-only queries, and query lists still need authored support. Container
 selection and condition evaluation belong to style.
+
+Media support metadata cites the selected published MQ5 edition as the effective
+source for query grammar and all 37 feature definitions. Historical feature IDs
+and baseline alias memberships remain stable; they do not select superseded
+semantics. The five existing range rows describe complete signed, symbolic and
+source-ordered comparison grammar. Metadata does not claim query evaluation,
+custom-media support, empty import targets or checked import construction.
 
 Media features retain authored query syntax, including all 37 known boolean
 feature names in the selected Media Queries 5 edition. Numeric feature operands

@@ -57,6 +57,20 @@ pub(super) static IMPLEMENTED_MEDIA: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.prefers-contrast"),
     CssFeatureId::new("ext.media.forced-colors"),
     CssFeatureId::new("ext.media.display-mode"),
+    CssFeatureId::new("ext.media.horizontal-viewport-segments"),
+    CssFeatureId::new("ext.media.vertical-viewport-segments"),
+    CssFeatureId::new("ext.media.update"),
+    CssFeatureId::new("ext.media.overflow-block"),
+    CssFeatureId::new("ext.media.overflow-inline"),
+    CssFeatureId::new("ext.media.color-gamut"),
+    CssFeatureId::new("ext.media.video-color-gamut"),
+    CssFeatureId::new("ext.media.dynamic-range"),
+    CssFeatureId::new("ext.media.video-dynamic-range"),
+    CssFeatureId::new("ext.media.environment-blending"),
+    CssFeatureId::new("ext.media.inverted-colors"),
+    CssFeatureId::new("ext.media.nav-controls"),
+    CssFeatureId::new("ext.media.scripting"),
+    CssFeatureId::new("ext.media.prefers-reduced-data"),
 ];
 
 pub(super) static IMPLEMENTED_CONTAINER_EXTENSIONS: &[CssFeatureId] = &[

@@ -38,6 +38,18 @@
   },
   "supersession_records": [
     {
+      "older": "mediaqueries-4",
+      "effective": "mediaqueries-5",
+      "scope": "The selected MQ5 edition explicitly extends and supersedes MQ4 features. Use its effective query and feature definitions once while retaining MQ4 module membership and historical feature/source identities. Custom media and execution requirements remain separately owned and must not be inferred complete from implemented feature rows.",
+      "evidence": "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#abstract"
+    },
+    {
+      "older": "mediaqueries-3",
+      "effective": "mediaqueries-5",
+      "scope": "MQ5 section 1.1 explicitly supersedes MQ3 as well as MQ4. Retain MQ3 Snapshot membership, the historical source and stable feature IDs while attributing current authored grammar to MQ5.",
+      "evidence": "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#placement"
+    },
+    {
       "older": "css-contain-3",
       "effective": "css-conditional-5",
       "scope": "Container-query definitions moved to Conditional Rules 5. Preserve Containment 3 membership as source history and use one effective grammar.",
