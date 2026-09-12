@@ -3288,6 +3288,50 @@ mod tests {
     }
 
     #[test]
+    fn raw_rule_observation_rejects_extra_outer_input() {
+        // Pinned Syntax 3 section 5.3.5 requires EOF after one rule, even when
+        // stylesheet recovery could retain exactly one surviving sibling.
+        for source in [
+            "a{} b{}",
+            "a{} @unknown x;",
+            "@unknown x; a{}",
+            "a{} ;",
+            "a{unknown:x} b{}",
+        ] {
+            let value =
+                raw_fragment_observation("expectations/rule/Rule.json", Context::Rule, source);
+            assert_eq!(value["syntax_count"], 0, "{source}");
+            assert_eq!(value["is_clean"], false, "{source}");
+            let diagnostics = value["diagnostics"].as_array().unwrap();
+            assert_eq!(diagnostics.len(), 1, "{source}");
+            assert_eq!(diagnostics[0]["action"], "reject_input", "{source}");
+            assert_eq!(diagnostics[0]["span_start"], 0, "{source}");
+            assert_eq!(diagnostics[0]["span_end"], source.len(), "{source}");
+        }
+    }
+
+    #[test]
+    fn raw_rule_observation_retains_inner_recovery_and_actual_eof() {
+        for (source, action) in [
+            ("a{color:red}", None),
+            ("a{unknown:x;color:red}", Some("drop_declaration")),
+            ("a{color:red", Some("retain_with_implicit_closure")),
+        ] {
+            let value =
+                raw_fragment_observation("expectations/rule/Rule.json", Context::Rule, source);
+            assert_eq!(value["syntax_count"], 1, "{source}");
+            assert_eq!(value["is_clean"], action.is_none(), "{source}");
+            let diagnostics = value["diagnostics"].as_array().unwrap();
+            if let Some(action) = action {
+                assert_eq!(diagnostics.len(), 1, "{source}");
+                assert_eq!(diagnostics[0]["action"], action, "{source}");
+            } else {
+                assert!(diagnostics.is_empty());
+            }
+        }
+    }
+
+    #[test]
     fn raw_property_value_observation_rejects_authored_delimiters() {
         // Property values exclude declaration separators and annotations;
         // separate property identity and importance cannot excuse these tokens.
