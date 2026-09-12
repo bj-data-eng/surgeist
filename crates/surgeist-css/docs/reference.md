@@ -74,9 +74,9 @@ Fragments retain the shared 256-level structural limit and report
 `StopAtNestingLimit` without silently discarding neighboring media members.
 Deep parsing uses a bounded parser thread so ordinary callers need not allocate
 a larger stack. Accepted EOF closures appear as recovery diagnostics; clean
-validation therefore rejects a report that needed them. One diagnostic edge
-remains unfinished: `:is(???f(` currently reports a closure for discarded `f()`
-as well as the retained `:is()` closure.
+validation therefore rejects a report that needed them. Functions inside
+discarded forgiving-selector members do not produce retained-closure diagnostics;
+for example, `:is(???f(` reports only the retained `:is()` closure.
 
 These operations parse and validate authored grammar. They do not perform
 selector matching, media evaluation, cascade, substitution, or CSSOM mutation.

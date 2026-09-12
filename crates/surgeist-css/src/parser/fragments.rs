@@ -59,7 +59,7 @@ fn selector_fragment<'i, T>(
     } else {
         state.check_specialized_components(source, &input, "baseline.selector.complex")
     };
-    let result = openings.and_then(|openings| {
+    let result = openings.and_then(|mut openings| {
         let value = parse(
             &mut input,
             &mut SelectorRecovery::new(source, &mut diagnostics, state.clone()),
@@ -67,6 +67,15 @@ fn selector_fragment<'i, T>(
         input
             .expect_exhausted()
             .map_err(crate::error::selector_basic)?;
+        // Preflight sees every lexical opening. Forgiving recovery can discard
+        // a whole member, so its functions must not claim semantic retention.
+        openings.retain(|opening| {
+            !diagnostics.iter().any(|diagnostic| {
+                diagnostic.action() == crate::CssRecoveryAction::DropSelectorListItem
+                    && diagnostic.span().start().byte_offset().value() <= *opening
+                    && *opening < diagnostic.span().end().byte_offset().value()
+            })
+        });
         state.retain_component_closures(openings);
         Ok(value)
     });
