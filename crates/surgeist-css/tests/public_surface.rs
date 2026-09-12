@@ -126,7 +126,7 @@ fn public_surface_exposes_checked_selectors3_language_pseudos_and_ordered_ids() 
     assert_eq!(selector.key().map(String::as_str), Some("second"));
     assert!(matches!(
         selector.pseudo_classes(),
-        [CssPseudoClass::Lang(range)] if range.as_str() == "en"
+        [CssPseudoClass::Lang(range)] if range.ranges()[0].as_str() == "en"
     ));
     assert_eq!(
         selector
@@ -137,13 +137,13 @@ fn public_surface_exposes_checked_selectors3_language_pseudos_and_ordered_ids() 
     );
 
     assert_eq!(
-        CssLanguageRange::try_new("en-US")
+        CssLanguageRange::try_ident("en-US")
             .expect("one decoded CSS identifier")
             .as_str(),
         "en-US"
     );
-    assert!(CssLanguageRange::try_new("").is_none());
-    assert!(CssLanguageRange::try_new("en US").is_none());
+    assert!(CssLanguageRange::try_ident("").is_err());
+    assert!(CssLanguageRange::try_ident("en US").is_ok());
 }
 
 #[test]

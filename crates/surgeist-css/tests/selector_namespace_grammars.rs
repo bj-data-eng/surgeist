@@ -91,7 +91,7 @@ fn selectors3_pseudos_legacy_forms_and_repeated_ids_are_typed() {
     let language = compound_selector(&report.syntax().rules()[1]);
     assert!(matches!(
         language.pseudo_classes(),
-        [CssPseudoClass::Lang(range)] if range.as_str() == "en"
+        [CssPseudoClass::Lang(range)] if range.ranges()[0].as_str() == "en"
     ));
     let visited = compound_selector(&report.syntax().rules()[2]);
     assert!(matches!(
@@ -136,12 +136,12 @@ fn selectors3_pseudos_legacy_forms_and_repeated_ids_are_typed() {
     ));
 
     assert_eq!(
-        CssLanguageRange::try_new("en-US")
+        CssLanguageRange::try_ident("en-US")
             .expect("decoded identifier")
             .as_str(),
         "en-US"
     );
-    assert!(CssLanguageRange::try_new("en US").is_none());
+    assert!(CssLanguageRange::try_ident("en US").is_ok());
 }
 
 #[test]
@@ -166,7 +166,7 @@ fn selectors3_official_pseudo_matrix_and_escaped_language_identifier_are_clean()
     assert_eq!(pseudos.selectors().selectors().len(), 24);
     assert!(matches!(
         pseudos.selectors().selectors()[4].selector(),
-        CssSelector::PseudoClass(CssPseudoClass::Lang(range)) if range.as_str() == "en"
+        CssSelector::PseudoClass(CssPseudoClass::Lang(range)) if range.ranges()[0].as_str() == "en"
     ));
 }
 

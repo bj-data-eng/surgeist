@@ -27,6 +27,7 @@ pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] = &[
     CssFeatureId::new("official.selector.dynamic"),
     CssFeatureId::new("official.selector.target"),
     CssFeatureId::new("official.selector.lang"),
+    CssFeatureId::new("ext.selector.dir"),
     CssFeatureId::new("official.selector.ui-state"),
     CssFeatureId::new("official.selector.structural"),
     CssFeatureId::new("official.selector.negation"),
@@ -1213,7 +1214,8 @@ fn parse_function_pseudo_class<'i, 't>(
         "nth-last-child" => CssPseudoClass::NthLastChild(parse_nth_child_pattern(input, options, recovery)?),
         "nth-of-type" => CssPseudoClass::NthOfType(parse_nth_pattern(input)?),
         "nth-last-of-type" => CssPseudoClass::NthLastOfType(parse_nth_pattern(input)?),
-        "lang" => CssPseudoClass::Lang(parse_language_range(input)?),
+        "dir" => CssPseudoClass::Dir(parse_directionality(input, recovery)?),
+        "lang" => CssPseudoClass::Lang(parse_language_ranges(input, recovery)?),
         "not" => CssPseudoClass::Not(parse_pseudo_selector_list_with_options(input, options.without_pseudo_elements(), recovery)?),
         "is" => CssPseudoClass::Is(parse_forgiving_pseudo_selector_list(input, options.without_pseudo_elements(), recovery)?),
         "where" => CssPseudoClass::Where(parse_forgiving_pseudo_selector_list(input, options.without_pseudo_elements(), recovery)?),
@@ -1225,12 +1227,40 @@ fn parse_function_pseudo_class<'i, 't>(
     Ok(pseudo_class)
 }
 
-fn parse_language_range<'i, 't>(
+fn parse_directionality<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssLanguageRange, ParseError<'i, Error>> {
-    let value = input.expect_ident_cloned().map_err(selector_basic)?;
-    CssLanguageRange::try_new(value.to_string())
-        .ok_or_else(|| invalid_selector(input, "`:lang()` requires one CSS identifier"))
+    recovery: &SelectorRecovery<'_>,
+) -> std::result::Result<CssDirectionality, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let start = input.state();
+    input.expect_ident().map_err(selector_basic)?;
+    input.reset(&start);
+    crate::CssComponentValue::collect_from_parser(input, recovery.state.source_snapshot())
+        .and_then(CssDirectionality::from_component)
+        .map_err(|error| selector_component_error(start.source_location(), error))
+}
+
+fn parse_language_ranges<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    recovery: &SelectorRecovery<'_>,
+) -> std::result::Result<CssLanguageRangeList, ParseError<'i, Error>> {
+    let mut ranges = Vec::new();
+    loop {
+        input.skip_whitespace();
+        let start = input.state();
+        input.expect_ident_or_string().map_err(selector_basic)?;
+        input.reset(&start);
+        let range =
+            crate::CssComponentValue::collect_from_parser(input, recovery.state.source_snapshot())
+                .and_then(CssLanguageRange::from_component)
+                .map_err(|error| selector_component_error(start.source_location(), error))?;
+        ranges.push(range);
+        if input.try_parse(Parser::expect_comma).is_err() {
+            break;
+        }
+    }
+    CssLanguageRangeList::try_new(ranges)
+        .map_err(|_| invalid_selector(input, "`:lang()` requires at least one range"))
 }
 
 fn parse_pseudo_selector_list_with_options<'i, 't>(

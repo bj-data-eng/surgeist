@@ -1764,6 +1764,9 @@ pub surgeist_css::CssKnownPropertyValueRef::WordBreak(&'a surgeist_css::CssWordB
 pub surgeist_css::CssKnownPropertyValueRef::WordSpacing(&'a surgeist_css::CssWordSpacingPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::WritingMode(&'a surgeist_css::CssWritingModePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ZIndex(&'a surgeist_css::CssZIndexPropertyValue)
+pub enum surgeist_css::CssLanguageRangeKind
+pub surgeist_css::CssLanguageRangeKind::Identifier
+pub surgeist_css::CssLanguageRangeKind::String
 #[non_exhaustive] pub enum surgeist_css::CssLayoutPosition
 pub surgeist_css::CssLayoutPosition::Absolute
 pub surgeist_css::CssLayoutPosition::Fixed
@@ -2309,6 +2312,7 @@ pub surgeist_css::CssPropertyValueErrorKind::Grammar(surgeist_css::ErrorKind)
 pub surgeist_css::CssPseudoClass::Active
 pub surgeist_css::CssPseudoClass::Checked
 pub surgeist_css::CssPseudoClass::Default
+pub surgeist_css::CssPseudoClass::Dir(surgeist_css::CssDirectionality)
 pub surgeist_css::CssPseudoClass::Disabled
 pub surgeist_css::CssPseudoClass::Empty
 pub surgeist_css::CssPseudoClass::Enabled
@@ -2324,7 +2328,7 @@ pub surgeist_css::CssPseudoClass::InRange
 pub surgeist_css::CssPseudoClass::Indeterminate
 pub surgeist_css::CssPseudoClass::Invalid
 pub surgeist_css::CssPseudoClass::Is(surgeist_css::CssPseudoSelectorList)
-pub surgeist_css::CssPseudoClass::Lang(surgeist_css::CssLanguageRange)
+pub surgeist_css::CssPseudoClass::Lang(surgeist_css::CssLanguageRangeList)
 pub surgeist_css::CssPseudoClass::LastChild
 pub surgeist_css::CssPseudoClass::LastOfType
 pub surgeist_css::CssPseudoClass::Link
@@ -4143,6 +4147,12 @@ pub struct surgeist_css::CssDirectionPropertyValue
 impl surgeist_css::CssDirectionPropertyValue
 pub fn surgeist_css::CssDirectionPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssDirectionPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssDirection>
+pub struct surgeist_css::CssDirectionality
+impl surgeist_css::CssDirectionality
+pub fn surgeist_css::CssDirectionality::as_str(&self) -> &str
+pub fn surgeist_css::CssDirectionality::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssDirectionality::to_css_string(&self) -> alloc::string::String
+pub fn surgeist_css::CssDirectionality::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
 pub struct surgeist_css::CssDisplayPropertyValue
 impl surgeist_css::CssDisplayPropertyValue
 pub fn surgeist_css::CssDisplayPropertyValue::as_css(&self) -> &str
@@ -4201,6 +4211,10 @@ pub struct surgeist_css::CssEmptyCellsPropertyValue
 impl surgeist_css::CssEmptyCellsPropertyValue
 pub fn surgeist_css::CssEmptyCellsPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssEmptyCellsPropertyValue::cells(&self) -> &surgeist_css::CssEmptyCells
+pub struct surgeist_css::CssEmptyLanguageRangeList
+impl core::error::Error for surgeist_css::CssEmptyLanguageRangeList
+impl core::fmt::Display for surgeist_css::CssEmptyLanguageRangeList
+pub fn surgeist_css::CssEmptyLanguageRangeList::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssEncodingDeclaration
 impl surgeist_css::CssEncodingDeclaration
 pub fn surgeist_css::CssEncodingDeclaration::label(&self) -> &str
@@ -4924,7 +4938,17 @@ pub fn surgeist_css::CssLabColor::try_new(lightness: core::option::Option<f32>, 
 pub struct surgeist_css::CssLanguageRange
 impl surgeist_css::CssLanguageRange
 pub fn surgeist_css::CssLanguageRange::as_str(&self) -> &str
-pub fn surgeist_css::CssLanguageRange::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub fn surgeist_css::CssLanguageRange::kind(&self) -> surgeist_css::CssLanguageRangeKind
+pub fn surgeist_css::CssLanguageRange::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssLanguageRange::to_css_string(&self) -> alloc::string::String
+pub fn surgeist_css::CssLanguageRange::try_ident(value: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssLanguageRange::try_string(value: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub struct surgeist_css::CssLanguageRangeList
+impl surgeist_css::CssLanguageRangeList
+pub fn surgeist_css::CssLanguageRangeList::ranges(&self) -> &[surgeist_css::CssLanguageRange]
+pub fn surgeist_css::CssLanguageRangeList::single(range: surgeist_css::CssLanguageRange) -> Self
+pub fn surgeist_css::CssLanguageRangeList::to_css_string(&self) -> alloc::string::String
+pub fn surgeist_css::CssLanguageRangeList::try_new(ranges: alloc::vec::Vec<surgeist_css::CssLanguageRange>) -> core::result::Result<Self, surgeist_css::CssEmptyLanguageRangeList>
 pub struct surgeist_css::CssLayerBlockRule
 impl surgeist_css::CssLayerBlockRule
 pub const fn surgeist_css::CssLayerBlockRule::name(&self) -> core::option::Option<&surgeist_css::CssLayerName>

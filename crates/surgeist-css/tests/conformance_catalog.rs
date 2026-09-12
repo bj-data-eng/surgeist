@@ -44,7 +44,7 @@ const BASELINE_RULE_REMAINDER: &str =
     "Other valid forms of the cited rule production are outside the I01 subset.";
 const SELECTOR_REMAINDER: &str =
     "Other valid forms of the cited Selectors production are outside the I01 subset.";
-const SUPPORTS_SELECTOR_SUBSET: &str = "selector() accepts complete Selectors 3 plus the selected I01 extensions: i and s attribute modifiers; :scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :modal, :fullscreen, :popover-open, :default, :indeterminate, :read-only, :read-write, :in-range, and :out-of-range; :is(), :where(), :has(), selector-list :not(), and nth-child of lists; and ::marker, ::selection, ::backdrop, and generated-marker sequences.";
+const SUPPORTS_SELECTOR_SUBSET: &str = "selector() accepts complete Selectors 3 plus the selected I01 extensions: i and s attribute modifiers; :scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :modal, :fullscreen, :popover-open, :default, :indeterminate, :read-only, :read-write, :in-range, and :out-of-range; :is(), :where(), :has(), selector-list :not(), and nth-child of lists; and ::marker, ::selection, ::backdrop, and generated-marker sequences. Directionality accepts one identifier and language accepts nonempty comma-separated identifier or string ranges.";
 const SUPPORTS_SELECTOR_REMAINDER: &str = "The || combinator, unselected Selectors 4 pseudo-classes and pseudo-elements, and syntax outside those atomic extension rows remain outside the typed subset; balanced content is preserved as general-enclosed authored syntax.";
 const QUERY_REMAINDER: &str =
     "Other valid forms of the cited query production are outside the I01 subset.";
@@ -1431,7 +1431,7 @@ const EXPECTED: &[ExpectedFeature] = &[
         recognized_code: None,
         positive: Some(Input::Sheet(".item:nth-child(2n+1) { color: red; }")),
         negative: Some((
-            Input::Sheet(".item:dir(ltr) { color: red; }"),
+            Input::Sheet(".item:dir(1) { color: red; }"),
             CssErrorCode::InvalidSelector,
         )),
     },
@@ -3123,8 +3123,8 @@ fn selectors3_and_namespace_metadata_are_truthful() {
     assert_complete(
         "official.selector.lang",
         CssFeatureKind::Selector,
-        "O-SELECTORS3",
-        "#lang-pseudo",
+        "I-SELECTORS4",
+        "#the-lang-pseudo",
     );
     assert_complete(
         "official.selector.ui-state",
@@ -5483,5 +5483,42 @@ fn c13_background_image_metadata_is_truthful() {
         assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id}");
         assert_eq!(metadata.supported_subset(), None, "{id}");
         assert_eq!(metadata.unsupported_remainder(), None, "{id}");
+    }
+}
+
+#[test]
+fn linguistic_selector_metadata_matches_effective_authored_grammar() {
+    for (id, spelling, production) in [
+        ("official.selector.lang", ":lang()", "#the-lang-pseudo"),
+        ("ext.selector.dir", ":dir()", "#the-dir-pseudo"),
+    ] {
+        let metadata = feature_metadata(id).expect("linguistic selector metadata");
+        assert_eq!(metadata.kind(), CssFeatureKind::Selector);
+        assert_eq!(metadata.spelling(), spelling);
+        assert_eq!(metadata.status(), CssSupportStatus::Complete);
+        assert_eq!(metadata.source().id().as_str(), "I-SELECTORS4");
+        assert_eq!(metadata.production(), production);
+    }
+    for selector in [
+        ":dir(ltr)",
+        ":dir(future)",
+        ":lang(en)",
+        ":lang('')",
+        ":lang(en, 'de-DE')",
+    ] {
+        let source = format!("{selector} {{ color: red; }}");
+        let report = parse_sheet(&source);
+        assert!(report.is_clean(), "{source}: {report:?}");
+        assert_eq!(report.syntax().rules().len(), 1);
+    }
+    for selector in [":dir(1)", ":dir('ltr')", ":lang(en en)", ":lang(en,)"] {
+        let source = format!("{selector} {{ color: red; }}");
+        let report = parse_sheet(&source);
+        assert!(!report.is_clean(), "{source}");
+        assert!(report.syntax().rules().is_empty(), "{source}");
+        assert_eq!(
+            report.diagnostics()[0].error().code(),
+            CssErrorCode::InvalidSelector
+        );
     }
 }

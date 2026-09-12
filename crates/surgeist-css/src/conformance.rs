@@ -1973,6 +1973,7 @@ static OFFICIAL_NON_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
     active_coverage!("official.selector.dynamic"),
     active_coverage!("official.selector.target"),
     active_coverage!("official.selector.lang"),
+    active_coverage!("ext.selector.dir"),
     active_coverage!("official.selector.ui-state"),
     active_coverage!("official.selector.structural"),
     active_coverage!("official.selector.negation"),
@@ -2155,7 +2156,7 @@ const BASELINE_RULE_REMAINDER: &str =
     "Other valid forms of the cited rule production are outside the I01 subset.";
 const SELECTOR_REMAINDER: &str =
     "Other valid forms of the cited Selectors production are outside the I01 subset.";
-const SUPPORTS_SELECTOR_SUBSET: &str = "selector() accepts complete Selectors 3 plus the selected I01 extensions: i and s attribute modifiers; :scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :modal, :fullscreen, :popover-open, :default, :indeterminate, :read-only, :read-write, :in-range, and :out-of-range; :is(), :where(), :has(), selector-list :not(), and nth-child of lists; and ::marker, ::selection, ::backdrop, and generated-marker sequences.";
+const SUPPORTS_SELECTOR_SUBSET: &str = "selector() accepts complete Selectors 3 plus the selected I01 extensions: i and s attribute modifiers; :scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :modal, :fullscreen, :popover-open, :default, :indeterminate, :read-only, :read-write, :in-range, and :out-of-range; :is(), :where(), :has(), selector-list :not(), and nth-child of lists; and ::marker, ::selection, ::backdrop, and generated-marker sequences. Directionality accepts one identifier and language accepts nonempty comma-separated identifier or string ranges.";
 const SUPPORTS_SELECTOR_REMAINDER: &str = "The || combinator, unselected Selectors 4 pseudo-classes and pseudo-elements, and syntax outside those atomic extension rows remain outside the typed subset; balanced content is preserved as general-enclosed authored syntax.";
 const QUERY_REMAINDER: &str =
     "Other valid forms of the cited query production are outside the I01 subset.";
@@ -2611,7 +2612,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 503] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 504] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -5397,8 +5398,15 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 503] = [
         "official.selector.lang",
         CssFeatureKind::Selector,
         ":lang()",
-        O_SELECTORS3,
-        "#lang-pseudo",
+        I_SELECTORS4,
+        "#the-lang-pseudo",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.selector.dir",
+        CssFeatureKind::Selector,
+        ":dir()",
+        I_SELECTORS4,
+        "#the-dir-pseudo",
     ),
     CssFeatureMetadata::complete(
         "official.selector.ui-state",

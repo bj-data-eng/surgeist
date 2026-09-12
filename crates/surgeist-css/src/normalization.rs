@@ -1173,6 +1173,7 @@ fn pseudo_has_anchor(pseudo: &CssPseudoClass, kind: AnchorKind) -> bool {
         | CssPseudoClass::Link
         | CssPseudoClass::Visited
         | CssPseudoClass::Target
+        | CssPseudoClass::Dir(_)
         | CssPseudoClass::Lang(_)
         | CssPseudoClass::Hover
         | CssPseudoClass::Active

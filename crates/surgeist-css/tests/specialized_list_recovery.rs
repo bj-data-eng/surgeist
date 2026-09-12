@@ -239,7 +239,7 @@ fn selectors3_pseudos_preserve_forgiving_and_unforgiving_list_recovery() {
             CssSelector::PseudoClass(CssPseudoClass::Target),
             CssSelector::PseudoClass(CssPseudoClass::Lang(range)),
             CssSelector::PseudoClass(CssPseudoClass::Visited),
-        ] if range.as_str() == "en"
+        ] if range.ranges()[0].as_str() == "en"
     ));
     let [diagnostic] = report.diagnostics() else {
         panic!("expected one dropped double-colon-only pseudo member")

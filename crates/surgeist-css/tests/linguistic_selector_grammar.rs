@@ -86,7 +86,7 @@ fn original_identifier_language_controls_preserve_decoded_payload() {
         let Some(CssSelector::PseudoClass(CssPseudoClass::Lang(range))) = report.syntax() else {
             panic!("language pseudo: {source}: {report:?}")
         };
-        assert_eq!(range.as_str(), expected);
+        assert_eq!(range.ranges()[0].as_str(), expected);
     }
 }
 #[test]

@@ -16935,7 +16935,8 @@ pub enum CssPseudoClass {
     Link,
     Visited,
     Target,
-    Lang(CssLanguageRange),
+    Dir(CssDirectionality),
+    Lang(CssLanguageRangeList),
     Hover,
     Active,
     Focus,
@@ -16989,6 +16990,7 @@ impl CssPseudoClass {
             | Self::Link
             | Self::Visited
             | Self::Target
+            | Self::Dir(_)
             | Self::Lang(_)
             | Self::Hover
             | Self::Active
@@ -17025,27 +17027,193 @@ impl CssPseudoClass {
     }
 }
 
-/// One checked, decoded identifier authored as a Selectors 3 `:lang()` range.
-///
-/// This value preserves selector syntax only. It does not compare languages or
-/// resolve inherited language metadata.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+/// A checked decoded directionality identifier; unknown values remain authored syntax.
+/// Equality retains component spelling and provenance, without evaluating direction.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssDirectionality {
+    component: Box<crate::CssComponentValue>,
+}
+
+impl CssDirectionality {
+    /// Constructs a decoded identifier, escaping it as needed. Empty and NUL fail.
+    pub fn try_new(value: impl Into<String>) -> Result<Self, crate::CssComponentValueError> {
+        Self::from_component(crate::CssComponentValue::try_ident(value)?)
+    }
+
+    pub(crate) fn from_component(
+        component: crate::CssComponentValue,
+    ) -> Result<Self, crate::CssComponentValueError> {
+        if matches!(
+            component.view(),
+            crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Ident(_))
+        ) {
+            Ok(Self {
+                component: Box::new(component),
+            })
+        } else {
+            Err(crate::CssComponentValueError::new(
+                crate::CssComponentValueErrorKind::InvalidIdentifier,
+                component.origin().clone(),
+            ))
+        }
+    }
+
+    /// Returns the decoded, case-preserving identifier.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self.component.view() {
+            crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Ident(value)) => value,
+            _ => unreachable!("checked directionality identifier"),
+        }
+    }
+
+    /// Returns the original token origin or explicit programmatic provenance.
+    #[must_use]
+    pub fn origin(&self) -> &CssValueOrigin {
+        self.component.origin()
+    }
+
+    /// Serializes the argument as a canonical identifier, without the pseudo-class.
+    #[must_use]
+    pub fn to_css_string(&self) -> String {
+        cssparser::ToCss::to_css_string(&cssparser::Token::Ident(self.as_str().into()))
+    }
+}
+
+/// The authored token form of a language range.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssLanguageRangeKind {
+    Identifier,
+    String,
+}
+
+/// One checked identifier or string in a Selectors 4 language list.
+/// Equality includes exact token spelling and provenance; it is not language matching.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssLanguageRange {
-    value: String,
+    component: crate::CssComponentValue,
 }
 
 impl CssLanguageRange {
-    /// Constructs a language range from exactly one decoded CSS identifier.
-    #[must_use]
-    pub fn try_new(value: impl Into<String>) -> Option<Self> {
-        let value = value.into();
-        is_exact_css_identifier(&value).then_some(Self { value })
+    /// Constructs a decoded identifier, escaping punctuation or spaces as needed.
+    pub fn try_ident(value: impl Into<String>) -> Result<Self, crate::CssComponentValueError> {
+        Self::from_component(crate::CssComponentValue::try_ident(value)?)
     }
 
-    /// Returns the exact decoded identifier.
+    /// Constructs a decoded string, including empty strings; NUL is rejected.
+    pub fn try_string(value: impl Into<String>) -> Result<Self, crate::CssComponentValueError> {
+        Self::from_component(crate::CssComponentValue::try_string(value)?)
+    }
+
+    pub(crate) fn from_component(
+        component: crate::CssComponentValue,
+    ) -> Result<Self, crate::CssComponentValueError> {
+        if matches!(
+            component.view(),
+            crate::CssComponentValueRef::Token(
+                crate::CssValueTokenRef::Ident(_) | crate::CssValueTokenRef::String(_)
+            )
+        ) {
+            Ok(Self { component })
+        } else {
+            Err(crate::CssComponentValueError::new(
+                crate::CssComponentValueErrorKind::InvalidToken,
+                component.origin().clone(),
+            ))
+        }
+    }
+
+    /// Returns the decoded range, without case folding or language validation.
     #[must_use]
     pub fn as_str(&self) -> &str {
-        &self.value
+        match self.component.view() {
+            crate::CssComponentValueRef::Token(
+                crate::CssValueTokenRef::Ident(value) | crate::CssValueTokenRef::String(value),
+            ) => value,
+            _ => unreachable!("checked language range token"),
+        }
+    }
+
+    /// Returns the identifier or string token form.
+    #[must_use]
+    pub fn kind(&self) -> CssLanguageRangeKind {
+        match self.component.view() {
+            crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Ident(_)) => {
+                CssLanguageRangeKind::Identifier
+            }
+            crate::CssComponentValueRef::Token(crate::CssValueTokenRef::String(_)) => {
+                CssLanguageRangeKind::String
+            }
+            _ => unreachable!("checked language range token"),
+        }
+    }
+
+    /// Returns the original token origin or explicit programmatic provenance.
+    #[must_use]
+    pub fn origin(&self) -> &CssValueOrigin {
+        self.component.origin()
+    }
+
+    /// Serializes the argument token canonically, preserving its token form.
+    #[must_use]
+    pub fn to_css_string(&self) -> String {
+        let token = match self.kind() {
+            CssLanguageRangeKind::Identifier => cssparser::Token::Ident(self.as_str().into()),
+            CssLanguageRangeKind::String => cssparser::Token::QuotedString(self.as_str().into()),
+        };
+        cssparser::ToCss::to_css_string(&token)
+    }
+}
+
+/// Construction failed because a language range list was empty.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CssEmptyLanguageRangeList;
+
+impl std::fmt::Display for CssEmptyLanguageRangeList {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a language range list must contain at least one range")
+    }
+}
+impl std::error::Error for CssEmptyLanguageRangeList {}
+
+/// A nonempty authored list, preserving range order, duplicates and token origins.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssLanguageRangeList {
+    ranges: Vec<CssLanguageRange>,
+}
+
+impl CssLanguageRangeList {
+    /// Constructs a nonempty list of independently checked ranges.
+    pub fn try_new(ranges: Vec<CssLanguageRange>) -> Result<Self, CssEmptyLanguageRangeList> {
+        if ranges.is_empty() {
+            Err(CssEmptyLanguageRangeList)
+        } else {
+            Ok(Self { ranges })
+        }
+    }
+
+    /// Constructs a singleton list without discarding its token origin.
+    #[must_use]
+    pub fn single(range: CssLanguageRange) -> Self {
+        Self {
+            ranges: vec![range],
+        }
+    }
+
+    /// Returns the complete ordered, immutable range list.
+    #[must_use]
+    pub fn ranges(&self) -> &[CssLanguageRange] {
+        &self.ranges
+    }
+
+    /// Serializes the arguments with comma-space separators, without `:lang()`.
+    #[must_use]
+    pub fn to_css_string(&self) -> String {
+        self.ranges
+            .iter()
+            .map(CssLanguageRange::to_css_string)
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 }
 

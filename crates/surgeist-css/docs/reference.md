@@ -69,6 +69,33 @@ components and preserves the offending token's coordinates; nested forgiving
 lists cannot hide an invalid outer envelope. These front doors reuse the implemented selector grammar; their
 availability does not establish complete Selectors 4 coverage.
 
+Linguistic selectors preserve authored argument tokens. `CssPseudoClass::Dir`
+contains `CssDirectionality`; its checked `try_new` accepts a decoded identifier,
+including unknown direction names. `CssPseudoClass::Lang` now contains a nonempty
+`CssLanguageRangeList`. Use `ranges()` to inspect each `CssLanguageRange`,
+`try_ident` for a decoded identifier, or `try_string` for a decoded string.
+Strings may be empty or contain spaces; identifiers may require escaping.
+No constructor evaluates directionality, BCP47 matching, or document inheritance.
+
+The scalar constructors return `CssComponentValueError` with programmatic
+provenance for invalid values: identifiers reject empty values and NUL, while
+strings reject NUL. `CssLanguageRangeList::try_new` returns
+`CssEmptyLanguageRangeList` for an empty list; `single` is infallible. Lists
+preserve order and duplicates. Each scalar exposes `origin()`, preserving parsed
+token spans without manufacturing source positions for constructed values.
+`kind()` distinguishes identifier and string language ranges. `to_css_string()`
+serializes an argument or argument list canonically, escaping decoded values and
+using comma-space separators; it does not serialize an entire selector.
+
+Migration from the identifier-only language API changes `Lang(range)` to
+`Lang(list)` and `range.as_str()` to `list.ranges()[0].as_str()` for a known
+singleton. Replace `CssLanguageRange::try_new` with `try_ident`; the latter takes
+decoded values and escapes spaces or punctuation instead of treating them as raw
+CSS source. The old `Hash` implementation is removed. Equality now includes
+component spelling and provenance, so identically decoded parsed and programmatic
+arguments need not compare equal. Canonical serialization preserves meaning and
+token form while intentionally normalizing escape spelling and string quotes.
+
 `CssNamespaceContext::default()` has no bindings. `from_bindings()` consumes
 optional prefixes and namespace names in authored order, with the last binding
 for each prefix winning. `from_sheet()` copies retained top-level namespace
