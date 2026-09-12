@@ -12792,7 +12792,9 @@ pub enum CssFilterAmount {
     Percentage(CssFilterPercentage),
 }
 
-/// A checked authored filter blur length.
+/// A checked specified filter blur length, including the omitted radius's 0px default.
+///
+/// The property's authored components preserve whether the radius was omitted.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFilterBlur {
     length: CssLength,

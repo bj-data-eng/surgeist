@@ -1034,7 +1034,13 @@ fn parse_filter_function_value<'i, 't>(
 ) -> std::result::Result<CssFilterFunctionValue, ParseError<'i, Error>> {
     match name.to_ascii_lowercase().as_str() {
         "blur" => {
-            let length = super::values::parse_shadow_blur_length(input)?;
+            let length = if input.is_exhausted() {
+                // Filter Effects 1 supplies 0px for an omitted radius. The
+                // property's authored components still preserve the omission.
+                CssLength::try_px(0.0).expect("zero pixels is a finite length")
+            } else {
+                super::values::parse_shadow_blur_length(input)?
+            };
             input.expect_exhausted().map_err(basic)?;
             CssFilterBlur::try_new(length)
                 .map(CssFilterFunctionValue::Blur)

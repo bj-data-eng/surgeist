@@ -611,7 +611,7 @@ fn drop_shadow_retains_an_authored_color_mix_without_a_lossy_filter_projection()
 fn filter_lists_reject_empty_unknown_repeated_and_trailing_mutations() {
     for value in [
         "none blur(1px)",
-        "blur()",
+        "blur(,)",
         "hue-rotate()",
         "hue-rotate(1deg, 2deg)",
         "drop-shadow()",
