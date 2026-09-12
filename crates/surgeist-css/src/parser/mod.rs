@@ -72,6 +72,7 @@ use supports::{
 };
 use timing::*;
 use typography::*;
+pub(crate) use values::numeric_relative_channel;
 use values::*;
 use variables::{
     collect_authored_declaration_value, parse_custom_property_name, parse_custom_property_value,
@@ -311,7 +312,7 @@ pub(crate) const fn atomic_implementation_inventories()
 }
 
 macro_rules! define_property_dispatch {
-    ($input:ident;
+    ($input:ident, $numeric:ident;
         All, $all_canonical:literal, [$($all_alias:literal),*], $all_stable_id:literal,
         $all_value:ty, $all_wrapper:ident, $all_representation:ident,
         $all_parser:ident, $all_dispatch:block $(, expansion = $all_expansion:ident { $($all_metadata:tt)* })?;
@@ -324,6 +325,7 @@ macro_rules! define_property_dispatch {
             property: crate::CssKnownProperty,
             authored: CssAuthoredDeclarationValue,
             $input: &mut Parser<'i, 't>,
+            $numeric: &crate::numeric::NumericInputContext<'_>,
         ) -> std::result::Result<CssKnownDeclaration, ParseError<'i, Error>> {
             match property {
                 crate::CssKnownProperty::All => {
@@ -348,7 +350,7 @@ macro_rules! define_property_dispatch {
     };
 }
 
-property_schema!(define_property_dispatch, input);
+property_schema!(define_property_dispatch, input, numeric);
 
 fn parse_all_property<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -2470,7 +2472,7 @@ fn parse_import_supports<'i, 't>(
 
     let condition = input.parse_nested_block(|nested| {
         if let Ok(declaration) = nested.try_parse(|nested| {
-            let declaration = parse_supports_declaration(nested)?;
+            let declaration = parse_supports_declaration(nested, recovery.source_snapshot())?;
             nested.expect_exhausted().map_err(basic)?;
             Ok::<_, ParseError<'i, Error>>(declaration)
         }) {
@@ -3455,7 +3457,11 @@ pub(super) fn parse_declaration_core<'i, 't>(
         let ((body, components, origin), importance) =
             parse_declaration_boundary(input, &context, |input| {
                 collect_declaration_value(input, source_snapshot, |input| {
-                    parse_known_declaration_body(resolved_property, input)
+                    parse_known_declaration_body(
+                        resolved_property,
+                        input,
+                        &crate::numeric::NumericInputContext::parsed(source_snapshot),
+                    )
                 })
             })?;
         (body, importance, components, origin)
@@ -3493,19 +3499,21 @@ fn collect_declaration_value<'i, 't, T>(
 pub(crate) fn parse_property_value_body(
     property: CssPropertyNameRef<'_>,
     source: &str,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssDeclarationBody, Error> {
     let grammar = match property {
         CssPropertyNameRef::Known(property) => PropertyValueGrammar::Known(property.grammar()),
         CssPropertyNameRef::Custom(name) => PropertyValueGrammar::Custom(name),
     };
-    parse_property_value_body_selected(grammar, source)
+    parse_property_value_body_selected(grammar, source, numeric)
 }
 
 pub(crate) fn parse_property_value_body_for_grammar(
     grammar: CssPropertyGrammar,
     source: &str,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssDeclarationBody, Error> {
-    parse_property_value_body_selected(PropertyValueGrammar::Known(grammar), source)
+    parse_property_value_body_selected(PropertyValueGrammar::Known(grammar), source, numeric)
 }
 
 enum PropertyValueGrammar<'a> {
@@ -3516,10 +3524,11 @@ enum PropertyValueGrammar<'a> {
 fn parse_property_value_body_selected(
     grammar: PropertyValueGrammar<'_>,
     source: &str,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssDeclarationBody, Error> {
     let mut input = ParserInput::new(source);
     let mut parser = Parser::new(&mut input);
-    parse_property_value_from_parser(grammar, source, &mut parser)
+    parse_property_value_from_parser(grammar, source, &mut parser, numeric)
         .map_err(|error| from_parse_error(source, error))
 }
 
@@ -3527,6 +3536,7 @@ fn parse_property_value_from_parser<'i>(
     grammar: PropertyValueGrammar<'_>,
     source: &'i str,
     parser: &mut Parser<'i, '_>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssDeclarationBody, ParseError<'i, Error>> {
     // Reject root boundaries before the symbolic-substitution shortcut. Nested
     // punctuation remains data, including custom-property curly blocks.
@@ -3553,7 +3563,7 @@ fn parse_property_value_from_parser<'i>(
     parser.reset(&start);
     let body = match grammar {
         PropertyValueGrammar::Known(grammar) => {
-            parse_known_declaration_body(grammar.resolved(), parser)
+            parse_known_declaration_body(grammar.resolved(), parser, numeric)
         }
         PropertyValueGrammar::Custom(name) => parse_custom_property_value(parser).map(|value| {
             CssDeclarationBody::Custom(CssCustomDeclaration::new(name.clone(), value))
@@ -3566,6 +3576,7 @@ fn parse_property_value_from_parser<'i>(
 fn parse_known_declaration_body<'i, 't>(
     resolved_property: CssResolvedPropertyName,
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssDeclarationBody, ParseError<'i, Error>> {
     let known_property = resolved_property.property();
     let context_name = known_property.canonical_name();
@@ -3607,7 +3618,7 @@ fn parse_known_declaration_body<'i, 't>(
 
     let declaration = match resolved_property {
         CssResolvedPropertyName::Canonical(_) => {
-            parse_known_property_value(known_property, authored, input)
+            parse_known_property_value(known_property, authored, input, numeric)
         }
         CssResolvedPropertyName::LegacyShorthand(alias) => {
             parse_legacy_property_alias_value(alias, authored, input)

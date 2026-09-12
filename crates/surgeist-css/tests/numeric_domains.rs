@@ -100,8 +100,6 @@ fn opacity_rejects_non_finite_and_unrelated_numeric_domains() {
     for (value, responsible, token_kind) in [
         ("1e999", "1e999", CssTokenKind::Number),
         ("1e999%", "1e999%", CssTokenKind::Percentage),
-        ("calc(1e999)", "1e999", CssTokenKind::Number),
-        ("calc(1e999%)", "1e999%", CssTokenKind::Percentage),
         ("1px", "1px", CssTokenKind::Dimension),
     ] {
         let source = format!("opacity: {value}; color: red");
@@ -131,6 +129,19 @@ fn opacity_rejects_non_finite_and_unrelated_numeric_domains() {
         let encountered = detail.encountered().expect("responsible numeric token");
         assert_eq!(encountered.kind(), token_kind, "{source}");
         assert_eq!(encountered.authored(), responsible, "{source}");
+    }
+}
+
+#[test]
+fn calculations_preserve_finite_decimal_spellings_beyond_float_storage() {
+    for source in [
+        "opacity: calc(1e999); color: red",
+        "opacity: calc(1e999%); color: red",
+        "flow-tolerance: calc(3.5e38%); color: red",
+    ] {
+        let report = parse_style_attribute(source);
+        assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
+        assert_eq!(report.syntax().len(), 2);
     }
 }
 
@@ -236,12 +247,6 @@ fn percentage_conversion_overflow_drops_each_declaration_and_retains_siblings() 
             "3.5e38%",
             CssKnownProperty::FlowTolerance,
             0,
-        ),
-        (
-            "flow-tolerance",
-            "calc(3.5e38%)",
-            CssKnownProperty::FlowTolerance,
-            "calc(".len(),
         ),
         (
             "grid-template-columns",

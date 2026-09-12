@@ -170,7 +170,7 @@
 //! assert!(matches!(
 //!     angle.expression(),
 //!     CssCalculationExpressionRef::Value(CssCalculationValueRef::Angle(value))
-//!         if value.value() == -0.5 && value.unit() == CssAngleUnit::Turns
+//!         if value.representation() == "-0.5" && value.unit() == Some("turn")
 //! ));
 //! ```
 //!
@@ -1103,12 +1103,24 @@ mod error;
 mod expansion;
 mod font_feature_values;
 mod normalization;
+mod numeric;
 mod parser;
 mod properties;
 mod property_value;
 mod report;
 mod source;
 mod syntax;
+pub use numeric::{
+    CssAngleCalculation, CssCalculationConstantRef, CssCalculationExpressionRef,
+    CssCalculationFunctionRef, CssCalculationProductFactorRef, CssCalculationProductOperator,
+    CssCalculationProductRef, CssCalculationSumOperator, CssCalculationSumRef,
+    CssCalculationSumTermRef, CssCalculationType, CssCalculationUnaryRef, CssCalculationValueRef,
+    CssCalculationVariableRef, CssFrequencyCalculation, CssIntegerCalculation,
+    CssLengthCalculation, CssLengthPercentageCalculation, CssMathFunction, CssNumberCalculation,
+    CssNumericConstant, CssNumericConstructionError, CssNumericConstructionErrorKind,
+    CssNumericDimension, CssNumericLiteralRef, CssNumericType, CssNumericUnit,
+    CssPercentageCalculation, CssResolutionCalculation, CssRoundingStrategy, CssTimeCalculation,
+};
 #[cfg(test)]
 mod test_support;
 mod validation;

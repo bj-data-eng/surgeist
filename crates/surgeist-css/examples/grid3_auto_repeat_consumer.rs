@@ -14,8 +14,8 @@ use surgeist_css::{
     CssAuthoredGridTrackRepeatContent, CssAuthoredGridTrackSize, CssCalcLength,
     CssCalculationExpressionRef, CssCalculationProductOperator, CssCalculationType,
     CssCalculationValueRef, CssDeclaration, CssGridAutoFlowAxis, CssImportance,
-    CssKnownProperty as Property, CssKnownPropertyValueRef, CssLength, CssLengthUnit,
-    CssPropertyNameRef, parse_component_values, parse_property_value, parse_style_attribute,
+    CssKnownProperty as Property, CssKnownPropertyValueRef, CssLength, CssPropertyNameRef,
+    parse_component_values, parse_property_value, parse_style_attribute,
 };
 
 fn columns(declaration: &CssDeclaration) -> &surgeist_css::CssGridTemplateColumnsPropertyValue {
@@ -159,7 +159,10 @@ fn automatic_calculations_and_names_remain_symbolic() {
         panic!("the authored typed calculation is preserved");
     };
     assert_eq!(calculation.result_type(), CssCalculationType::Length);
-    let CssCalculationExpressionRef::Product(product) = calculation.expression() else {
+    let CssCalculationExpressionRef::NestedCalc(root) = calculation.expression() else {
+        panic!("expected calc root")
+    };
+    let CssCalculationExpressionRef::Product(product) = root.operand() else {
         panic!("the multiplication stays symbolic");
     };
     assert_eq!(product.len(), 2);
@@ -170,8 +173,8 @@ fn automatic_calculations_and_names_remain_symbolic() {
     else {
         panic!("the first operand is 1px");
     };
-    assert_eq!(length.value(), 1.0);
-    assert_eq!(length.unit(), CssLengthUnit::Px);
+    assert_eq!(length.representation(), "1");
+    assert_eq!(length.unit(), Some("px"));
     let second = product.factor(1).unwrap();
     assert_eq!(
         second.operator(),
@@ -179,7 +182,7 @@ fn automatic_calculations_and_names_remain_symbolic() {
     );
     assert!(matches!(
         second.expression(),
-        CssCalculationExpressionRef::Value(CssCalculationValueRef::Integer(2))
+        CssCalculationExpressionRef::Value(CssCalculationValueRef::Integer(v)) if v.representation() == "2"
     ));
     println!("symbolic automatic calculation and line names: ok");
 }

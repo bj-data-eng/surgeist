@@ -3,7 +3,7 @@ use cssparser::{ParseError, Parser, ParserState, ToCss, Token, match_ignore_asci
 use super::box_model::parse_border_style;
 use super::values::{
     CalculationRoot, LengthGrammar, next_is_comma, next_is_delim, parse_color, parse_length_with,
-    parse_length_with_context, parse_length_with_context_legacy, parse_typed_calculation,
+    parse_length_with_context, parse_length_with_context_legacy, parse_numeric_function,
 };
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
@@ -34,11 +34,12 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
 
 pub(super) fn parse_image_layer_list<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssParsedImageValueList, ParseError<'i, Error>> {
     let mut images = Vec::new();
     let mut i01_layers = Some(Vec::new());
     loop {
-        let image = parse_image_value(input)?;
+        let image = parse_image_value(input, numeric)?;
         match (&image, i01_layers.as_mut()) {
             (CssImageValue::None, Some(layers)) => layers.push(CssImageLayer::None),
             (CssImageValue::Url(url), Some(layers)) => {
@@ -67,12 +68,13 @@ pub(super) fn parse_image_layer_list<'i, 't>(
 
 pub(super) fn parse_background<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssParsedBackground, ParseError<'i, Error>> {
     let mut layers = Vec::new();
     let mut color_projections = Vec::new();
 
     loop {
-        let (layer, color_projection, color_location) = parse_background_layer(input)?;
+        let (layer, color_projection, color_location) = parse_background_layer(input, numeric)?;
         let has_comma = input.try_parse(Parser::expect_comma).is_ok();
         if has_comma && let Some(location) = color_location {
             return Err(unsupported_value_at(
@@ -107,6 +109,7 @@ pub(super) fn parse_background<'i, 't>(
 
 fn parse_background_layer<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<
     (
         CssBackgroundLayer,
@@ -127,13 +130,13 @@ fn parse_background_layer<'i, 't>(
 
     while !input.is_exhausted() && !next_is_comma(input) {
         if image.is_none() && next_starts_background_image(input) {
-            image = Some(parse_image_value(input)?);
+            image = Some(parse_image_value(input, numeric)?);
             continue;
         }
         if position.is_none() && next_starts_background_position(input) {
-            position = Some(parse_background_position_prefix(input)?);
+            position = Some(parse_background_position_prefix(input, numeric)?);
             if input.try_parse(|input| input.expect_delim('/')).is_ok() {
-                size = Some(parse_background_size_prefix(input)?);
+                size = Some(parse_background_size_prefix(input, numeric)?);
             }
             continue;
         }
@@ -155,7 +158,7 @@ fn parse_background_layer<'i, 't>(
         }
         if color.is_none() {
             let location = input.current_source_location();
-            if let Ok(parsed) = input.try_parse(parse_color) {
+            if let Ok(parsed) = input.try_parse(|input| parse_color(input, numeric)) {
                 let (current, i01_subset) = parsed.into_parts();
                 color = Some(current);
                 color_projection = i01_subset;
@@ -226,7 +229,7 @@ fn next_starts_background_position<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
         ),
         Ok(Token::Dimension { .. } | Token::Percentage { .. }) => true,
         Ok(Token::Number { value, .. }) => *value == 0.0,
-        Ok(Token::Function(name)) => name.eq_ignore_ascii_case("calc"),
+        Ok(Token::Function(name)) => crate::numeric::is_math_function(name),
         Ok(_) | Err(_) => false,
     };
     input.reset(&state);
@@ -235,12 +238,13 @@ fn next_starts_background_position<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
 
 fn parse_background_position_prefix<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackgroundPosition, ParseError<'i, Error>> {
     let mut atoms = Vec::new();
     let mut states = Vec::new();
     while atoms.len() < 4 && next_starts_background_position(input) {
         states.push(input.state());
-        atoms.push(parse_generic_position_atom(input)?);
+        atoms.push(parse_generic_position_atom(input, numeric)?);
     }
     build_background_position(&atoms).ok_or_else(|| {
         invalid_generic_position_atom(input, &states[invalid_background_atom_index(&atoms)])
@@ -283,13 +287,14 @@ fn parse_background_repeat_prefix<'i, 't>(
 
 fn parse_background_size_prefix<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackgroundSize, ParseError<'i, Error>> {
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         return match_ignore_ascii_case! { &ident,
             "cover" => Ok(CssBackgroundSize::Cover),
             "contain" => Ok(CssBackgroundSize::Contain),
             "auto" => {
-                let height = input.try_parse(parse_background_size_component).ok();
+                let height = input.try_parse(|input| parse_background_size_component(input, numeric)).ok();
                 Ok(CssBackgroundSize::Explicit {
                     width: CssBackgroundSizeComponent::Auto,
                     height,
@@ -303,13 +308,16 @@ fn parse_background_size_prefix<'i, 't>(
         };
     }
 
-    let width = parse_background_size_component(input)?;
-    let height = input.try_parse(parse_background_size_component).ok();
+    let width = parse_background_size_component(input, numeric)?;
+    let height = input
+        .try_parse(|input| parse_background_size_component(input, numeric))
+        .ok();
     Ok(CssBackgroundSize::Explicit { width, height })
 }
 
 pub(super) fn parse_image_value<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssImageValue, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
@@ -318,19 +326,21 @@ pub(super) fn parse_image_value<'i, 't>(
         return Ok(CssImageValue::None);
     }
     if next_is_gradient(input) {
-        return parse_gradient(input).map(CssImageValue::Gradient);
+        return parse_gradient(input, numeric).map(CssImageValue::Gradient);
     }
     parse_url(input).map(CssImageValue::Url)
 }
 
 pub(super) fn parse_border_image_source<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssImageValue, ParseError<'i, Error>> {
-    parse_image_value(input)
+    parse_image_value(input, numeric)
 }
 
 pub(super) fn parse_border_image_slice<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageSlice, ParseError<'i, Error>> {
     let mut values = Vec::new();
     let mut fill = false;
@@ -344,7 +354,7 @@ pub(super) fn parse_border_image_slice<'i, 't>(
             fill = true;
             continue;
         }
-        match input.try_parse(parse_border_image_slice_component) {
+        match input.try_parse(|input| parse_border_image_slice_component(input, numeric)) {
             Ok(value) => values.push(value),
             Err(_) => break,
         }
@@ -363,7 +373,9 @@ pub(super) fn parse_border_image_slice<'i, 't>(
 
 fn parse_border_image_slice_component<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageSliceComponent, ParseError<'i, Error>> {
+    let numeric_start = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)?.clone() {
         Token::Number { value, .. } => CssNonNegativeNumber::try_new(value)
@@ -376,20 +388,15 @@ fn parse_border_image_slice_component<'i, 't>(
             .ok_or_else(|| {
                 unsupported_value_at(location, None, "border-image-slice must be non-negative")
             }),
-        Token::Function(name) if name.eq_ignore_ascii_case("calc") => {
+        Token::Function(name) if crate::numeric::is_math_function(&name) => {
             if let Ok(expression) = input.try_parse(|input| {
-                input.parse_nested_block(|input| {
-                    parse_typed_calculation(input, CalculationRoot::Number)
-                })
+                parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)
             }) {
                 return Ok(CssBorderImageSliceComponent::NumberCalculation(
                     CssNumberCalculation::from_expression(expression),
                 ));
             }
-            input
-                .parse_nested_block(|input| {
-                    parse_typed_calculation(input, CalculationRoot::Percentage)
-                })
+            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Percentage)
                 .map(CssPercentageCalculation::from_expression)
                 .map(CssBorderImageSliceComponent::PercentageCalculation)
         }
@@ -406,10 +413,11 @@ fn parse_border_image_slice_component<'i, 't>(
 
 pub(super) fn parse_border_image_width<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageWidth, ParseError<'i, Error>> {
     let mut values = Vec::new();
     while !input.is_exhausted() && values.len() < 4 {
-        values.push(parse_border_image_width_component(input)?);
+        values.push(parse_border_image_width_component(input, numeric)?);
     }
     CssBorderImageWidth::try_new(values)
         .ok_or_else(|| unsupported_value(input, None, "border-image-width is missing a value"))
@@ -417,6 +425,7 @@ pub(super) fn parse_border_image_width<'i, 't>(
 
 fn parse_border_image_width_component<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageWidthComponent, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("auto"))
@@ -424,9 +433,9 @@ fn parse_border_image_width_component<'i, 't>(
     {
         return Ok(CssBorderImageWidthComponent::Auto);
     }
-    if let Ok(number) =
-        input.try_parse(|input| parse_border_image_non_negative_number(input, "border-image-width"))
-    {
+    if let Ok(number) = input.try_parse(|input| {
+        parse_border_image_non_negative_number(input, numeric, "border-image-width")
+    }) {
         return Ok(match number {
             CssNonNegativeNumberValue::Literal(value) => {
                 CssBorderImageWidthComponent::Number(value)
@@ -437,8 +446,12 @@ fn parse_border_image_width_component<'i, 't>(
         });
     }
     let location = input.current_source_location();
-    let value =
-        parse_length_with_context(input, LengthGrammar::BackgroundSize, "border-image-width")?;
+    let value = parse_length_with_context(
+        input,
+        numeric,
+        LengthGrammar::BackgroundSize,
+        "border-image-width",
+    )?;
     CssBorderImageWidthLengthPercentage::try_new(value)
         .map(CssBorderImageWidthComponent::LengthPercentage)
         .ok_or_else(|| {
@@ -452,10 +465,11 @@ fn parse_border_image_width_component<'i, 't>(
 
 pub(super) fn parse_border_image_outset<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageOutset, ParseError<'i, Error>> {
     let mut values = Vec::new();
     while !input.is_exhausted() && values.len() < 4 {
-        values.push(parse_border_image_outset_component(input)?);
+        values.push(parse_border_image_outset_component(input, numeric)?);
     }
     CssBorderImageOutset::try_new(values)
         .ok_or_else(|| unsupported_value(input, None, "border-image-outset is missing a value"))
@@ -463,10 +477,11 @@ pub(super) fn parse_border_image_outset<'i, 't>(
 
 fn parse_border_image_outset_component<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageOutsetComponent, ParseError<'i, Error>> {
-    if let Ok(number) = input
-        .try_parse(|input| parse_border_image_non_negative_number(input, "border-image-outset"))
-    {
+    if let Ok(number) = input.try_parse(|input| {
+        parse_border_image_non_negative_number(input, numeric, "border-image-outset")
+    }) {
         return Ok(match number {
             CssNonNegativeNumberValue::Literal(value) => {
                 CssBorderImageOutsetComponent::Number(value)
@@ -477,8 +492,12 @@ fn parse_border_image_outset_component<'i, 't>(
         });
     }
     let location = input.current_source_location();
-    let value =
-        parse_length_with_context(input, LengthGrammar::BorderWidth, "border-image-outset")?;
+    let value = parse_length_with_context(
+        input,
+        numeric,
+        LengthGrammar::BorderWidth,
+        "border-image-outset",
+    )?;
     CssBorderImageOutsetLength::try_new(value)
         .map(CssBorderImageOutsetComponent::Length)
         .ok_or_else(|| {
@@ -492,8 +511,10 @@ fn parse_border_image_outset_component<'i, 't>(
 
 fn parse_border_image_non_negative_number<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
     context: &str,
 ) -> std::result::Result<CssNonNegativeNumberValue, ParseError<'i, Error>> {
+    let numeric_start = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)?.clone() {
         Token::Number { value, .. } => CssNonNegativeNumber::try_new(value)
@@ -501,10 +522,11 @@ fn parse_border_image_non_negative_number<'i, 't>(
             .ok_or_else(|| {
                 unsupported_value_at(location, None, format!("{context} must be non-negative"))
             }),
-        Token::Function(name) if name.eq_ignore_ascii_case("calc") => input
-            .parse_nested_block(|input| parse_typed_calculation(input, CalculationRoot::Number))
-            .map(CssNumberCalculation::from_expression)
-            .map(CssNonNegativeNumberValue::Calculation),
+        Token::Function(name) if crate::numeric::is_math_function(&name) => {
+            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)
+                .map(CssNumberCalculation::from_expression)
+                .map(CssNonNegativeNumberValue::Calculation)
+        }
         token => Err(unsupported_value_at(
             location,
             None,
@@ -564,7 +586,7 @@ fn next_starts_border_image_slice<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
     let starts = match input.next() {
         Ok(Token::Number { .. } | Token::Percentage { .. }) => true,
         Ok(Token::Ident(value)) => value.eq_ignore_ascii_case("fill"),
-        Ok(Token::Function(name)) => name.eq_ignore_ascii_case("calc"),
+        Ok(Token::Function(name)) => crate::numeric::is_math_function(name),
         Ok(_) | Err(_) => false,
     };
     input.reset(&state);
@@ -573,6 +595,7 @@ fn next_starts_border_image_slice<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
 
 pub(super) fn parse_border_image<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImage, ParseError<'i, Error>> {
     let mut source = None;
     let mut slice = None;
@@ -582,18 +605,18 @@ pub(super) fn parse_border_image<'i, 't>(
 
     while !input.is_exhausted() {
         if source.is_none() && next_starts_background_image(input) {
-            source = Some(parse_image_value(input)?);
+            source = Some(parse_image_value(input, numeric)?);
             continue;
         }
         if slice.is_none() && next_starts_border_image_slice(input) {
-            slice = Some(parse_border_image_slice_prefix(input)?);
+            slice = Some(parse_border_image_slice_prefix(input, numeric)?);
             if input.try_parse(|input| input.expect_delim('/')).is_ok() {
                 if input.try_parse(|input| input.expect_delim('/')).is_ok() {
-                    outset = Some(parse_border_image_outset_prefix(input)?);
+                    outset = Some(parse_border_image_outset_prefix(input, numeric)?);
                 } else {
-                    width = Some(parse_border_image_width_prefix(input)?);
+                    width = Some(parse_border_image_width_prefix(input, numeric)?);
                     if input.try_parse(|input| input.expect_delim('/')).is_ok() {
-                        outset = Some(parse_border_image_outset_prefix(input)?);
+                        outset = Some(parse_border_image_outset_prefix(input, numeric)?);
                     }
                 }
             }
@@ -623,6 +646,7 @@ pub(super) fn parse_border_image<'i, 't>(
 
 fn parse_border_image_slice_prefix<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageSlice, ParseError<'i, Error>> {
     let mut values = Vec::new();
     let mut fill = false;
@@ -634,7 +658,7 @@ fn parse_border_image_slice_prefix<'i, 't>(
         {
             fill = true;
         } else {
-            values.push(parse_border_image_slice_component(input)?);
+            values.push(parse_border_image_slice_component(input, numeric)?);
         }
     }
     if !fill
@@ -650,10 +674,11 @@ fn parse_border_image_slice_prefix<'i, 't>(
 
 fn parse_border_image_width_prefix<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageWidth, ParseError<'i, Error>> {
     let mut values = Vec::new();
     while values.len() < 4 {
-        match input.try_parse(parse_border_image_width_component) {
+        match input.try_parse(|input| parse_border_image_width_component(input, numeric)) {
             Ok(value) => values.push(value),
             Err(_) => break,
         }
@@ -664,10 +689,11 @@ fn parse_border_image_width_prefix<'i, 't>(
 
 fn parse_border_image_outset_prefix<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageOutset, ParseError<'i, Error>> {
     let mut values = Vec::new();
     while values.len() < 4 {
-        match input.try_parse(parse_border_image_outset_component) {
+        match input.try_parse(|input| parse_border_image_outset_component(input, numeric)) {
             Ok(value) => values.push(value),
             Err(_) => break,
         }
@@ -688,6 +714,7 @@ fn parse_border_image_repeat_prefix<'i, 't>(
 
 pub(super) fn parse_image_orientation<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssImageOrientation, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("from-image"))
@@ -701,7 +728,7 @@ pub(super) fn parse_image_orientation<'i, 't>(
     {
         return Ok(CssImageOrientation::Flip(None));
     }
-    let angle = parse_image_orientation_angle(input)?;
+    let angle = parse_image_orientation_angle(input, numeric)?;
     if input
         .try_parse(|input| input.expect_ident_matching("flip"))
         .is_ok()
@@ -714,7 +741,9 @@ pub(super) fn parse_image_orientation<'i, 't>(
 
 fn parse_image_orientation_angle<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssImageOrientationAngle, ParseError<'i, Error>> {
+    let numeric_start = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)?.clone() {
         Token::Number { value: 0.0, .. } => Ok(CssImageOrientationAngle::Zero),
@@ -738,10 +767,11 @@ fn parse_image_orientation_angle<'i, 't>(
                     unsupported_value_at(location, None, "image-orientation angle must be finite")
                 })
         }
-        Token::Function(name) if name.eq_ignore_ascii_case("calc") => input
-            .parse_nested_block(|input| parse_typed_calculation(input, CalculationRoot::Angle))
-            .map(CssAngleCalculation::from_expression)
-            .map(CssImageOrientationAngle::Calculation),
+        Token::Function(name) if crate::numeric::is_math_function(&name) => {
+            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Angle)
+                .map(CssAngleCalculation::from_expression)
+                .map(CssImageOrientationAngle::Calculation)
+        }
         token => Err(unsupported_value_at(
             location,
             None,
@@ -806,21 +836,22 @@ fn next_is_gradient<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
 
 fn parse_gradient<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssGradient, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let name = input.expect_function().map_err(basic)?.to_ascii_lowercase();
     match name.as_str() {
         "linear-gradient" => input
-            .parse_nested_block(parse_linear_gradient)
+            .parse_nested_block(|input| parse_linear_gradient(input, numeric))
             .map(CssGradient::Linear),
         "repeating-linear-gradient" => input
-            .parse_nested_block(parse_linear_gradient)
+            .parse_nested_block(|input| parse_linear_gradient(input, numeric))
             .map(CssGradient::RepeatingLinear),
         "radial-gradient" => input
-            .parse_nested_block(parse_radial_gradient)
+            .parse_nested_block(|input| parse_radial_gradient(input, numeric))
             .map(CssGradient::Radial),
         "repeating-radial-gradient" => input
-            .parse_nested_block(parse_radial_gradient)
+            .parse_nested_block(|input| parse_radial_gradient(input, numeric))
             .map(CssGradient::RepeatingRadial),
         _ => Err(unsupported_value_at(
             location,
@@ -832,15 +863,16 @@ fn parse_gradient<'i, 't>(
 
 fn parse_linear_gradient<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssLinearGradient, ParseError<'i, Error>> {
     let direction = if next_starts_linear_gradient_direction(input) {
-        let direction = parse_linear_gradient_direction(input)?;
+        let direction = parse_linear_gradient_direction(input, numeric)?;
         input.expect_comma().map_err(basic)?;
         Some(direction)
     } else {
         None
     };
-    let stops = parse_color_stop_list(input)?;
+    let stops = parse_color_stop_list(input, numeric)?;
     Ok(CssLinearGradient::new(direction, stops))
 }
 
@@ -849,7 +881,7 @@ fn next_starts_linear_gradient_direction<'i, 't>(input: &mut Parser<'i, 't>) -> 
     let starts = match input.next() {
         Ok(Token::Ident(value)) => value.eq_ignore_ascii_case("to"),
         Ok(Token::Number { .. } | Token::Dimension { .. }) => true,
-        Ok(Token::Function(name)) => name.eq_ignore_ascii_case("calc"),
+        Ok(Token::Function(name)) => crate::numeric::is_math_function(name),
         Ok(_) | Err(_) => false,
     };
     input.reset(&state);
@@ -858,6 +890,7 @@ fn next_starts_linear_gradient_direction<'i, 't>(input: &mut Parser<'i, 't>) -> 
 
 fn parse_linear_gradient_direction<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssLinearGradientDirection, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("to"))
@@ -865,12 +898,14 @@ fn parse_linear_gradient_direction<'i, 't>(
     {
         return parse_side_or_corner(input).map(CssLinearGradientDirection::SideOrCorner);
     }
-    parse_gradient_angle(input).map(CssLinearGradientDirection::Angle)
+    parse_gradient_angle(input, numeric).map(CssLinearGradientDirection::Angle)
 }
 
 fn parse_gradient_angle<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssGradientAngle, ParseError<'i, Error>> {
+    let numeric_start = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
         Token::Number { value, .. } if *value == 0.0 => Ok(CssGradientAngle::Zero),
@@ -894,21 +929,11 @@ fn parse_gradient_angle<'i, 't>(
                     unsupported_value_at(location, None, "gradient angle must be finite")
                 })
         }
-        Token::Function(name) if name.eq_ignore_ascii_case("calc") => input
-            .parse_nested_block(|input| {
-                let location = input.current_source_location();
-                let expression = parse_typed_calculation(input, CalculationRoot::Angle)?;
-                if expression.result_type() != CssCalculationType::Angle {
-                    return Err(unsupported_value_at(
-                        location,
-                        None,
-                        "gradient angle calculation must have an angle result",
-                    ));
-                }
-                Ok(expression)
-            })
-            .map(CssAngleCalculation::from_expression)
-            .map(CssGradientAngle::Calculation),
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Angle)
+                .map(CssAngleCalculation::from_expression)
+                .map(CssGradientAngle::Calculation)
+        }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
 }
@@ -950,9 +975,10 @@ fn parse_side_or_corner<'i, 't>(
 
 fn parse_color_stop_list<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssColorStopList, ParseError<'i, Error>> {
     let mut items = vec![CssColorStopListItem::Stop(Box::new(
-        parse_gradient_color_stop(input)?,
+        parse_gradient_color_stop(input, numeric)?,
     ))];
     while input.try_parse(Parser::expect_comma).is_ok() {
         if input.is_exhausted() {
@@ -964,7 +990,7 @@ fn parse_color_stop_list<'i, 't>(
         }
         if let Ok(hint) =
             input.try_parse(|input| -> std::result::Result<_, ParseError<'i, Error>> {
-                let hint = parse_gradient_line_position(input)?;
+                let hint = parse_gradient_line_position(input, numeric)?;
                 input.expect_comma().map_err(basic)?;
                 Ok(hint)
             })
@@ -972,7 +998,7 @@ fn parse_color_stop_list<'i, 't>(
             items.push(CssColorStopListItem::Hint(hint));
         }
         items.push(CssColorStopListItem::Stop(Box::new(
-            parse_gradient_color_stop(input)?,
+            parse_gradient_color_stop(input, numeric)?,
         )));
     }
     CssColorStopList::try_new(items)
@@ -981,17 +1007,22 @@ fn parse_color_stop_list<'i, 't>(
 
 fn parse_gradient_color_stop<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssGradientColorStop, ParseError<'i, Error>> {
-    let color = parse_color(input)?;
-    let position = input.try_parse(parse_gradient_line_position).ok();
+    let color = parse_color(input, numeric)?;
+    let position = input
+        .try_parse(|input| parse_gradient_line_position(input, numeric))
+        .ok();
     Ok(CssGradientColorStop::new(color, position))
 }
 
 fn parse_gradient_line_position<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssGradientLinePosition, ParseError<'i, Error>> {
     let location = input.current_source_location();
-    let value = parse_length_with_context(input, LengthGrammar::Position, "gradient stop")?;
+    let value =
+        parse_length_with_context(input, numeric, LengthGrammar::Position, "gradient stop")?;
     CssGradientLinePosition::try_new(value).ok_or_else(|| {
         unsupported_value_at(location, None, "gradient stop requires a length-percentage")
     })
@@ -1008,16 +1039,17 @@ enum ParsedRadialSize {
 
 fn parse_radial_gradient<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssRadialGradient, ParseError<'i, Error>> {
     let prelude = if next_starts_radial_prelude(input) {
-        let prelude = parse_radial_gradient_prelude(input)?;
+        let prelude = parse_radial_gradient_prelude(input, numeric)?;
         input.expect_comma().map_err(basic)?;
         Some(prelude)
     } else {
         None
     };
     let (shape, size, position) = prelude.unwrap_or((None, None, None));
-    let stops = parse_color_stop_list(input)?;
+    let stops = parse_color_stop_list(input, numeric)?;
     Ok(CssRadialGradient::new(shape, size, position, stops))
 }
 
@@ -1036,7 +1068,7 @@ fn next_starts_radial_prelude<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
         ),
         Ok(Token::Dimension { .. } | Token::Percentage { .. }) => true,
         Ok(Token::Number { value, .. }) => *value == 0.0,
-        Ok(Token::Function(name)) => name.eq_ignore_ascii_case("calc"),
+        Ok(Token::Function(name)) => crate::numeric::is_math_function(name),
         Ok(_) | Err(_) => false,
     };
     input.reset(&state);
@@ -1051,6 +1083,7 @@ type RadialPrelude = (
 
 fn parse_radial_gradient_prelude<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<RadialPrelude, ParseError<'i, Error>> {
     let start = input.current_source_location();
     let mut shape = None;
@@ -1064,7 +1097,7 @@ fn parse_radial_gradient_prelude<'i, 't>(
                 .try_parse(|input| input.expect_ident_matching("at"))
                 .is_ok()
         {
-            position = Some(parse_css_position_value(input)?);
+            position = Some(parse_css_position_value(input, numeric)?);
             consumed = true;
             break;
         }
@@ -1076,7 +1109,8 @@ fn parse_radial_gradient_prelude<'i, 't>(
             continue;
         }
         if size.is_none()
-            && let Ok(parsed_size) = input.try_parse(parse_radial_size_input)
+            && let Ok(parsed_size) =
+                input.try_parse(|input| parse_radial_size_input(input, numeric))
         {
             size = Some(parsed_size);
             consumed = true;
@@ -1120,15 +1154,26 @@ fn parse_radial_shape<'i, 't>(
 
 fn parse_radial_size_input<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<ParsedRadialSize, ParseError<'i, Error>> {
     if let Ok(extent) = input.try_parse(parse_radial_extent) {
         return Ok(ParsedRadialSize::Extent(extent));
     }
     let location = input.current_source_location();
-    let first = parse_length_with_context(input, LengthGrammar::Position, "radial-gradient size")?;
+    let first = parse_length_with_context(
+        input,
+        numeric,
+        LengthGrammar::Position,
+        "radial-gradient size",
+    )?;
     let mut values = vec![first];
     if let Ok(second) = input.try_parse(|input| {
-        parse_length_with_context(input, LengthGrammar::Position, "radial-gradient size")
+        parse_length_with_context(
+            input,
+            numeric,
+            LengthGrammar::Position,
+            "radial-gradient size",
+        )
     }) {
         values.push(second);
     }
@@ -1293,10 +1338,11 @@ fn consume_url_modifier_components<'i, 't>(
 
 pub(super) fn parse_mask_position_list<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssMaskPositionList, ParseError<'i, Error>> {
     let mut positions = Vec::new();
     loop {
-        let (current, legacy) = parse_generic_position(input)?;
+        let (current, legacy) = parse_generic_position(input, numeric)?;
         let legacy = (!position_has_typed_calculation(&legacy)).then_some(legacy);
         positions.push(CssMaskPosition::new(current, legacy));
         if input.try_parse(Parser::expect_comma).is_err() {
@@ -1316,10 +1362,11 @@ pub(super) fn parse_mask_position_list<'i, 't>(
 
 pub(super) fn parse_background_position_list<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackgroundPositionList, ParseError<'i, Error>> {
     let mut positions = Vec::new();
     loop {
-        positions.push(parse_background_position(input)?);
+        positions.push(parse_background_position(input, numeric)?);
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
         }
@@ -1337,14 +1384,16 @@ pub(super) fn parse_background_position_list<'i, 't>(
 
 pub(super) fn parse_object_position<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssObjectPosition, ParseError<'i, Error>> {
-    parse_generic_position(input).map(|(position, _)| CssObjectPosition::new(position))
+    parse_generic_position(input, numeric).map(|(position, _)| CssObjectPosition::new(position))
 }
 
 pub(super) fn parse_transform_origin<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTransformOrigin, ParseError<'i, Error>> {
-    let (atoms, states) = parse_position_atoms(input)?;
+    let (atoms, states) = parse_position_atoms(input, numeric)?;
 
     if atoms.len() <= 2
         && let Some((position, legacy)) = build_generic_position(&atoms)
@@ -1374,27 +1423,23 @@ pub(super) fn parse_transform_origin<'i, 't>(
 
 pub(super) fn parse_css_position<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
-    parse_generic_position(input).map(|(_, legacy)| legacy)
+    parse_generic_position(input, numeric).map(|(_, legacy)| legacy)
 }
 
 pub(super) fn parse_css_position_legacy<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
-    parse_css_position_legacy_components(input, false)
+    parse_css_position_legacy_components(input)
 }
 
 fn parse_css_position_legacy_components<'i, 't>(
     input: &mut Parser<'i, 't>,
-    allow_typed_calculation: bool,
 ) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
     let mut components = Vec::new();
     while !input.is_exhausted() && !next_is_comma(input) && !next_is_delim(input, '/') {
-        components.push(parse_legacy_position_component(
-            input,
-            &components,
-            allow_typed_calculation,
-        )?);
+        components.push(parse_legacy_position_component(input, &components)?);
         if components.len() > 4 {
             return Err(unsupported_value(
                 input,
@@ -1410,7 +1455,6 @@ fn parse_css_position_legacy_components<'i, 't>(
 fn parse_legacy_position_component<'i, 't>(
     input: &mut Parser<'i, 't>,
     previous: &[CssPositionComponent],
-    allow_typed_calculation: bool,
 ) -> std::result::Result<CssPositionComponent, ParseError<'i, Error>> {
     let state = input.state();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
@@ -1435,12 +1479,8 @@ fn parse_legacy_position_component<'i, 't>(
         };
     }
     input.reset(&state);
-    if allow_typed_calculation {
-        parse_length_with(input, LengthGrammar::Position)
-    } else {
-        parse_length_with_context_legacy(input, LengthGrammar::Position, "position")
-    }
-    .map(CssPositionComponent::Length)
+    parse_length_with_context_legacy(input, LengthGrammar::Position, "position")
+        .map(CssPositionComponent::Length)
 }
 
 #[derive(Clone, Debug)]
@@ -1453,20 +1493,22 @@ enum GenericPositionAtom {
 
 fn parse_generic_position<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<(CssPositionValue, CssPosition), ParseError<'i, Error>> {
-    let (atoms, states) = parse_position_atoms(input)?;
+    let (atoms, states) = parse_position_atoms(input, numeric)?;
     build_generic_position(&atoms)
         .ok_or_else(|| invalid_generic_position_atom(input, &states[invalid_atom_index(&atoms)]))
 }
 
 fn parse_position_atoms<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<(Vec<GenericPositionAtom>, Vec<ParserState>), ParseError<'i, Error>> {
     let mut atoms = Vec::new();
     let mut states = Vec::new();
     while !input.is_exhausted() && !next_is_comma(input) && !next_is_delim(input, '/') {
         states.push(input.state());
-        atoms.push(parse_generic_position_atom(input)?);
+        atoms.push(parse_generic_position_atom(input, numeric)?);
         if atoms.len() > 4 {
             return Err(invalid_generic_position_atom(input, &states[4]));
         }
@@ -1479,8 +1521,9 @@ fn parse_position_atoms<'i, 't>(
 
 fn parse_background_position<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackgroundPosition, ParseError<'i, Error>> {
-    let (atoms, states) = parse_position_atoms(input)?;
+    let (atoms, states) = parse_position_atoms(input, numeric)?;
     build_background_position(&atoms).ok_or_else(|| {
         invalid_generic_position_atom(input, &states[invalid_background_atom_index(&atoms)])
     })
@@ -1488,12 +1531,14 @@ fn parse_background_position<'i, 't>(
 
 pub(super) fn parse_css_position_value<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssPositionValue, ParseError<'i, Error>> {
-    parse_generic_position(input).map(|(current, _)| current)
+    parse_generic_position(input, numeric).map(|(current, _)| current)
 }
 
 fn parse_generic_position_atom<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<GenericPositionAtom, ParseError<'i, Error>> {
     let state = input.state();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
@@ -1510,7 +1555,7 @@ fn parse_generic_position_atom<'i, 't>(
         };
     }
     input.reset(&state);
-    let value = parse_length_with(input, LengthGrammar::Position)?;
+    let value = parse_length_with(input, numeric, LengthGrammar::Position)?;
     let Some(offset) = CssPositionOffset::try_new(value) else {
         return Err(invalid_generic_position_atom(input, &state));
     };
@@ -1907,10 +1952,11 @@ fn vertical_edge_offset(
 
 pub(super) fn parse_background_size_list<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackgroundSizeList, ParseError<'i, Error>> {
     let mut sizes = Vec::new();
     loop {
-        sizes.push(parse_background_size(input)?);
+        sizes.push(parse_background_size(input, numeric)?);
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
         }
@@ -1928,6 +1974,7 @@ pub(super) fn parse_background_size_list<'i, 't>(
 
 pub(super) fn parse_background_size<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackgroundSize, ParseError<'i, Error>> {
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         return match_ignore_ascii_case! { &ident,
@@ -1935,7 +1982,7 @@ pub(super) fn parse_background_size<'i, 't>(
             "contain" => Ok(CssBackgroundSize::Contain),
             "auto" => {
                 let height = if !input.is_exhausted() && !next_is_comma(input) {
-                    Some(parse_background_size_component(input)?)
+                    Some(parse_background_size_component(input, numeric)?)
                 } else {
                     None
                 };
@@ -1952,9 +1999,9 @@ pub(super) fn parse_background_size<'i, 't>(
         };
     }
 
-    let width = parse_background_size_component(input)?;
+    let width = parse_background_size_component(input, numeric)?;
     let height = if !input.is_exhausted() && !next_is_comma(input) {
-        Some(parse_background_size_component(input)?)
+        Some(parse_background_size_component(input, numeric)?)
     } else {
         None
     };
@@ -1963,6 +2010,7 @@ pub(super) fn parse_background_size<'i, 't>(
 
 pub(super) fn parse_background_size_component<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackgroundSizeComponent, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("auto"))
@@ -1970,7 +2018,7 @@ pub(super) fn parse_background_size_component<'i, 't>(
     {
         Ok(CssBackgroundSizeComponent::Auto)
     } else {
-        parse_length_with(input, LengthGrammar::BackgroundSize)
+        parse_length_with(input, numeric, LengthGrammar::BackgroundSize)
             .map(CssBackgroundSizeComponent::Length)
     }
 }
@@ -2207,13 +2255,14 @@ pub(super) fn parse_user_select<'i, 't>(
 
 pub(super) fn parse_outline<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssOutline, ParseError<'i, Error>> {
     let mut width = None;
     let mut style = None;
     let mut color = None;
     while !input.is_exhausted() {
         if width.is_none()
-            && let Ok(parsed_width) = input.try_parse(parse_outline_width)
+            && let Ok(parsed_width) = input.try_parse(|input| parse_outline_width(input, numeric))
         {
             width = Some(parsed_width);
             continue;
@@ -2225,7 +2274,7 @@ pub(super) fn parse_outline<'i, 't>(
             continue;
         }
         if color.is_none()
-            && let Ok(parsed_color) = input.try_parse(parse_color)
+            && let Ok(parsed_color) = input.try_parse(|input| parse_color(input, numeric))
         {
             color = Some(parsed_color);
             continue;
@@ -2259,6 +2308,7 @@ pub(super) fn parse_outline_style<'i, 't>(
 
 pub(super) fn parse_outline_width<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssOutlineWidth, ParseError<'i, Error>> {
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         return match_ignore_ascii_case! { &ident,
@@ -2272,7 +2322,7 @@ pub(super) fn parse_outline_width<'i, 't>(
             )),
         };
     }
-    parse_length_with_context(input, LengthGrammar::BorderWidth, "outline-width")
+    parse_length_with_context(input, numeric, LengthGrammar::BorderWidth, "outline-width")
         .map(CssOutlineWidth::Length)
 }
 
@@ -2283,10 +2333,12 @@ mod tests {
     use super::*;
 
     fn parse_current(source: &str) -> CssPositionValue {
+        let snapshot = crate::CssSourceSnapshot::new(source);
+        let numeric = crate::numeric::NumericInputContext::parsed(&snapshot);
         let mut input = ParserInput::new(source);
         let mut parser = Parser::new(&mut input);
         parser
-            .parse_entirely(parse_css_position_value)
+            .parse_entirely(|input| parse_css_position_value(input, &numeric))
             .expect("valid generic position")
     }
 

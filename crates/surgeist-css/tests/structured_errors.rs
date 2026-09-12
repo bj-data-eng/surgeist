@@ -553,7 +553,7 @@ fn repeated_filter_failures_make_progress_to_valid_filter_and_color_siblings() {
     let source = concat!(
         "filter: drop-shadow(inset 1px 2px); ",
         "filter: brightness(-1); ",
-        "filter: blur(); ",
+        "filter: blur(1px, 2px); ",
         "filter: opacity(50%); color: red",
     );
     let report = parse_style_attribute(source);
@@ -1081,9 +1081,9 @@ fn typed_calculation_type_error_has_exact_non_bmp_coordinates_span_and_recovery(
         CssErrorCode::InvalidPropertyValue
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_eq!(diagnostic.error().position().byte_offset().value(), 25);
+    assert_eq!(diagnostic.error().position().byte_offset().value(), 20);
     assert_eq!(diagnostic.error().position().line().value(), 0);
-    assert_eq!(diagnostic.error().position().column().value(), 23);
+    assert_eq!(diagnostic.error().position().column().value(), 18);
     assert_eq!(diagnostic.span().start().byte_offset().value(), 11);
     assert_eq!(diagnostic.span().start().column().value(), 9);
     assert_eq!(diagnostic.span().end().byte_offset().value(), 36);
@@ -1092,9 +1092,9 @@ fn typed_calculation_type_error_has_exact_non_bmp_coordinates_span_and_recovery(
         panic!("expected structured property-value error");
     };
     assert_eq!(detail.property(), CssKnownProperty::Opacity);
-    let encountered = detail.encountered().expect("responsible typed leaf");
-    assert_eq!(encountered.kind(), CssTokenKind::Dimension);
-    assert_eq!(encountered.authored(), "1px");
+    let encountered = detail.encountered().expect("responsible calculation root");
+    assert_eq!(encountered.kind(), CssTokenKind::Function);
+    assert_eq!(encountered.authored(), "calc(");
     {
         let failure = surgeist_css::validate_style_attribute(source)
             .expect_err("strict validation must reject recovered typed calculation input");
@@ -1103,25 +1103,19 @@ fn typed_calculation_type_error_has_exact_non_bmp_coordinates_span_and_recovery(
 }
 
 #[test]
-fn typed_calculation_operator_and_divisor_errors_retain_later_siblings() {
+fn typed_calculation_root_domain_errors_retain_later_siblings() {
     for (source, property, authored, kind) in [
         (
             "width: calc(1px * 2px); color: red",
             CssKnownProperty::Width,
-            "*",
-            CssTokenKind::Delim,
-        ),
-        (
-            "order: calc(1 / 0); color: red",
-            CssKnownProperty::Order,
-            "/",
-            CssTokenKind::Delim,
+            "calc(",
+            CssTokenKind::Function,
         ),
         (
             "width: calc(1px / 1px); color: red",
             CssKnownProperty::Width,
-            "/",
-            CssTokenKind::Delim,
+            "calc(",
+            CssTokenKind::Function,
         ),
     ] {
         let report = parse_style_attribute(source);
@@ -1138,9 +1132,50 @@ fn typed_calculation_operator_and_divisor_errors_retain_later_siblings() {
             panic!("{source}: expected property-value detail");
         };
         assert_eq!(detail.property(), property, "{source}");
-        let encountered = detail.encountered().expect("responsible operator");
+        let encountered = detail.encountered().expect("responsible calculation root");
         assert_eq!(encountered.authored(), authored, "{source}");
         assert_eq!(encountered.kind(), kind, "{source}");
+    }
+}
+
+#[test]
+fn typed_integer_zero_divisor_remains_symbolic_and_retains_its_sibling() {
+    use surgeist_css::{
+        CssCalculationExpressionRef as Expr, CssCalculationProductOperator, CssCalculationType,
+        CssIntegerValue, CssKnownPropertyValueRef,
+    };
+    let report = parse_style_attribute("order: calc(1 / 0); color: red");
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    assert_eq!(report.syntax().len(), 2);
+    let CssKnownPropertyValueRef::Order(value) = report.syntax()[0]
+        .known()
+        .unwrap()
+        .property_value()
+        .unwrap()
+    else {
+        panic!("order")
+    };
+    let CssIntegerValue::Calculation(calculation) = value.value() else {
+        panic!("symbolic integer")
+    };
+    assert_eq!(calculation.result_type(), CssCalculationType::Number);
+    assert!(calculation.requires_rounding());
+    let Expr::NestedCalc(root) = calculation.expression() else {
+        panic!("calc root")
+    };
+    let Expr::Product(terms) = root.operand() else {
+        panic!("division")
+    };
+    assert_eq!(terms.len(), 2);
+    assert_eq!(
+        terms.factor(1).unwrap().operator(),
+        Some(CssCalculationProductOperator::Divide)
+    );
+    for (index, expected) in ["1", "0"].into_iter().enumerate() {
+        let Expr::Value(value) = terms.factor(index).unwrap().expression() else {
+            panic!("literal")
+        };
+        assert_eq!(value.literal().representation(), expected);
     }
 }
 

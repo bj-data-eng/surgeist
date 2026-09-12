@@ -193,8 +193,11 @@ fn timing_longhands_expose_exact_current_values_and_lossy_i01_boundaries() {
         panic!("expected duration calculation");
     };
     assert_eq!(calculation.result_type(), CssCalculationType::Time);
+    let CssCalculationExpressionRef::NestedCalc(root) = calculation.expression() else {
+        panic!("expected calc root")
+    };
     assert!(matches!(
-        calculation.expression(),
+        root.operand(),
         CssCalculationExpressionRef::Product(_)
     ));
     assert!(value.i01_subset().is_none());
@@ -663,20 +666,6 @@ fn every_invalid_timing_category_has_exact_public_diagnostics_and_strict_parity(
             encountered: Some((CssTokenKind::Dimension, "-1e999s")),
         },
         InvalidTimingCase {
-            source: "animation-duration: calc(1e999s); color: red",
-            property: CssKnownProperty::AnimationDuration,
-            position: 25,
-            span_end: 33,
-            encountered: Some((CssTokenKind::Dimension, "1e999s")),
-        },
-        InvalidTimingCase {
-            source: "animation-delay: calc(-1e999s); color: red",
-            property: CssKnownProperty::AnimationDelay,
-            position: 22,
-            span_end: 31,
-            encountered: Some((CssTokenKind::Dimension, "-1e999s")),
-        },
-        InvalidTimingCase {
             source: "animation-iteration-count: 1e999; color: red",
             property: CssKnownProperty::AnimationIterationCount,
             position: 27,
@@ -684,25 +673,18 @@ fn every_invalid_timing_category_has_exact_public_diagnostics_and_strict_parity(
             encountered: Some((CssTokenKind::Number, "1e999")),
         },
         InvalidTimingCase {
-            source: "animation-iteration-count: calc(1e999); color: red",
-            property: CssKnownProperty::AnimationIterationCount,
-            position: 32,
-            span_end: 39,
-            encountered: Some((CssTokenKind::Number, "1e999")),
-        },
-        InvalidTimingCase {
             source: "transition-duration: calc(1px + 2px); color: red",
             property: CssKnownProperty::TransitionDuration,
-            position: 26,
+            position: 21,
             span_end: 37,
-            encountered: Some((CssTokenKind::Dimension, "1px")),
+            encountered: Some((CssTokenKind::Function, "calc(")),
         },
         InvalidTimingCase {
             source: "animation-iteration-count: calc(1s + 2s); color: red",
             property: CssKnownProperty::AnimationIterationCount,
-            position: 32,
+            position: 27,
             span_end: 41,
-            encountered: Some((CssTokenKind::Dimension, "1s")),
+            encountered: Some((CssTokenKind::Function, "calc(")),
         },
         InvalidTimingCase {
             source: "transition-duration: 1s,; color: red",
@@ -815,5 +797,18 @@ fn repeated_timing_failures_and_depth_255_256_257_have_exact_recovery_behavior()
         let failure = surgeist_css::validate_style_attribute(&source)
             .expect_err("strict validation rejects depth 257");
         assert_eq!(failure.diagnostics(), report.diagnostics());
+    }
+}
+
+#[test]
+fn timing_calculations_preserve_extreme_finite_spellings_for_resolution() {
+    for source in [
+        "animation-duration: calc(1e999s); color: red",
+        "animation-delay: calc(-1e999s); color: red",
+        "animation-iteration-count: calc(1e999); color: red",
+    ] {
+        let report = parse_style_attribute(source);
+        assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
+        assert_eq!(report.syntax().len(), 2);
     }
 }

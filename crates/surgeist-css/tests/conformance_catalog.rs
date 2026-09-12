@@ -2493,7 +2493,8 @@ fn mask_position_property_metadata_matches_generic_layer_behavior() {
 #[test]
 fn official_integer_metadata_matches_checked_integer_behavior() {
     let value = CssIntegerCalculation::literal(-3);
-    assert_eq!(value.result_type(), CssCalculationType::Integer);
+    assert_eq!(value.result_type(), CssCalculationType::Number);
+    assert!(!value.requires_rounding());
     assert_c03_value_metadata(
         "official.value.integer",
         "<integer>",

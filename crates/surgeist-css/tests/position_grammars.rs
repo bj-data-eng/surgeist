@@ -1,10 +1,10 @@
 use surgeist_css::{
     CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize, CssCalcLength, CssErrorCode,
     CssHorizontalPosition, CssHorizontalPositionKeyword, CssImageLayer, CssKnownProperty,
-    CssKnownPropertyValueRef, CssLength, CssLengthCalculation, CssLengthUnit, CssMaskLayer,
-    CssMaskList, CssObjectPosition, CssPosition, CssPositionComponent, CssPositionOffset,
-    CssRecoveryAction, CssTokenKind, CssTransformOrigin, CssTransformOriginZ, CssUrl,
-    CssVerticalPosition, CssVerticalPositionKeyword, ErrorKind, parse_style_attribute,
+    CssKnownPropertyValueRef, CssLength, CssLengthPercentageCalculation, CssLengthUnit,
+    CssMaskLayer, CssMaskList, CssObjectPosition, CssPosition, CssPositionComponent,
+    CssPositionOffset, CssRecoveryAction, CssTokenKind, CssTransformOrigin, CssTransformOriginZ,
+    CssUrl, CssVerticalPosition, CssVerticalPositionKeyword, ErrorKind, parse_style_attribute,
 };
 
 fn object_position(value: &str) -> CssObjectPosition {
@@ -340,7 +340,7 @@ fn transform_origin_z_construction_accepts_only_authored_lengths() {
         CssLength::try_dimension(-2.0, CssLengthUnit::Em).expect("finite dimension"),
         CssLength::Zero,
         CssLength::Calc(CssCalcLength::Typed(
-            CssLengthCalculation::try_dimension(2.0, CssLengthUnit::Px)
+            CssLengthPercentageCalculation::try_dimension(2.0, CssLengthUnit::Px)
                 .expect("finite length calculation"),
         )),
     ] {
@@ -351,7 +351,8 @@ fn transform_origin_z_construction_accepts_only_authored_lengths() {
     for value in [
         CssLength::try_percent(25.0).expect("finite percentage"),
         CssLength::Calc(CssCalcLength::Typed(
-            CssLengthCalculation::try_percentage(40.0).expect("finite percentage calculation"),
+            CssLengthPercentageCalculation::try_percentage(40.0)
+                .expect("finite percentage calculation"),
         )),
         CssLength::Auto,
         CssLength::Normal,
@@ -521,7 +522,7 @@ fn position_offset_construction_accepts_only_authored_length_percentages() {
         CssLength::try_percent(25.0).expect("finite percentage"),
         CssLength::Zero,
         CssLength::Calc(CssCalcLength::Typed(
-            CssLengthCalculation::try_percentage(40.0).expect("finite calculation leaf"),
+            CssLengthPercentageCalculation::try_percentage(40.0).expect("finite calculation leaf"),
         )),
     ] {
         let offset = CssPositionOffset::try_new(value.clone()).expect("position-valid offset");

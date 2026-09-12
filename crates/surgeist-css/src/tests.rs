@@ -7460,30 +7460,37 @@ fn parses_nested_calc_width_with_subtraction_as_css_syntax() {
 #[test]
 fn exposes_nested_calc_terms_structurally() {
     let value = declaration_value!(".panel { width: calc(100% - calc(12px + 3%)); }", Width);
-
-    let calc = match value {
-        CssLength::Calc(calc) => calc,
-        other => panic!("expected nested calc length, got {other:?}"),
+    let CssLength::Calc(CssCalcLength::Typed(calc)) = value else {
+        panic!("expected exact calc")
     };
-
-    let terms = match calc {
-        CssCalcLength::Sum(terms) => terms,
-        other => panic!("expected calc sum, got {other:?}"),
+    let CssCalculationExpressionRef::NestedCalc(root) = calc.expression() else {
+        panic!("expected calc root")
+    };
+    let CssCalculationExpressionRef::Sum(terms) = root.operand() else {
+        panic!("expected sum")
     };
     assert_eq!(terms.len(), 2);
-    assert_eq!(terms[0].operator(), CssCalcOperator::Add);
-    assert_eq!(terms[0].value(), &CssCalcLength::percent(100.0));
-    assert_eq!(terms[1].operator(), CssCalcOperator::Subtract);
-
-    let nested_terms = match terms[1].value() {
-        CssCalcLength::Sum(terms) => terms,
-        other => panic!("expected nested calc sum, got {other:?}"),
+    assert!(
+        matches!(terms.term(0).unwrap().expression(), CssCalculationExpressionRef::Value(CssCalculationValueRef::Percentage(v)) if v.representation() == "100")
+    );
+    assert_eq!(
+        terms.term(1).unwrap().operator(),
+        Some(CssCalculationSumOperator::Subtract)
+    );
+    let CssCalculationExpressionRef::NestedCalc(nested) = terms.term(1).unwrap().expression()
+    else {
+        panic!("expected nested calc")
     };
-    assert_eq!(nested_terms.len(), 2);
-    assert_eq!(nested_terms[0].operator(), CssCalcOperator::Add);
-    assert_eq!(nested_terms[0].value(), &CssCalcLength::px(12.0));
-    assert_eq!(nested_terms[1].operator(), CssCalcOperator::Add);
-    assert_eq!(nested_terms[1].value(), &CssCalcLength::percent(3.0));
+    let CssCalculationExpressionRef::Sum(terms) = nested.operand() else {
+        panic!("expected nested sum")
+    };
+    assert_eq!(terms.len(), 2);
+    assert!(
+        matches!(terms.term(0).unwrap().expression(), CssCalculationExpressionRef::Value(CssCalculationValueRef::Length(v)) if v.representation() == "12" && v.unit() == Some("px"))
+    );
+    assert!(
+        matches!(terms.term(1).unwrap().expression(), CssCalculationExpressionRef::Value(CssCalculationValueRef::Percentage(v)) if v.representation() == "3")
+    );
 }
 
 #[test]
@@ -7550,19 +7557,29 @@ fn parses_supported_calc_length_units_as_authored_dimensions() {
             Width
         );
 
-        let CssLength::Calc(CssCalcLength::Sum(terms)) = value else {
-            panic!("expected calc length for {authored}");
+        let CssLength::Calc(CssCalcLength::Typed(calc)) = value else {
+            panic!("expected exact calc length")
+        };
+        let CssCalculationExpressionRef::NestedCalc(root) = calc.expression() else {
+            panic!("expected calc root")
+        };
+        let CssCalculationExpressionRef::Sum(terms) = root.operand() else {
+            panic!("expected sum")
         };
         assert_eq!(terms.len(), 2);
-        match terms[0].value() {
-            CssCalcLength::Dimension(length) => {
-                assert_eq!(length.value(), expected_value);
-                assert_eq!(length.unit(), expected_unit);
-                assert_eq!(length.to_css_string(), authored);
-            }
-            other => panic!("expected authored calc dimension for {authored}, got {other:?}"),
-        }
-        assert_eq!(terms[1].value(), &CssCalcLength::px(2.0));
+        let CssCalculationExpressionRef::Value(CssCalculationValueRef::Length(length)) =
+            terms.term(0).unwrap().expression()
+        else {
+            panic!("expected dimension")
+        };
+        assert_eq!(length.representation(), expected_value.to_string());
+        assert_eq!(
+            length.canonical_unit(),
+            Some(CssNumericUnit::Length(expected_unit))
+        );
+        assert!(
+            matches!(terms.term(1).unwrap().expression(), CssCalculationExpressionRef::Value(CssCalculationValueRef::Length(v)) if v.representation() == "2" && v.unit() == Some("px"))
+        );
     }
 }
 
@@ -7586,19 +7603,23 @@ fn unit_matrix_accepts_every_supported_length_unit_in_calc_contexts() {
     for unit in supported_length_units() {
         let authored = format!("calc(1{} + 2px)", unit.as_css_str());
         let declaration = parse_single_declaration("width", &authored);
-
-        assert_eq!(declaration.property(), &CssProperty::Width);
-        let CssLength::Calc(CssCalcLength::Sum(terms)) = declaration_payload!(declaration, Width)
+        let CssLength::Calc(CssCalcLength::Typed(calc)) = declaration_payload!(declaration, Width)
         else {
-            panic!("{authored} should parse as a calc length");
+            panic!("expected exact calc")
+        };
+        let CssCalculationExpressionRef::NestedCalc(root) = calc.expression() else {
+            panic!("expected calc root")
+        };
+        let CssCalculationExpressionRef::Sum(terms) = root.operand() else {
+            panic!("expected sum")
         };
         assert_eq!(terms.len(), 2);
-        assert_eq!(
-            terms[0].value(),
-            &CssCalcLength::dimension(1.0, unit),
-            "{authored} should preserve its supported calc length unit",
+        assert!(
+            matches!(terms.term(0).unwrap().expression(), CssCalculationExpressionRef::Value(CssCalculationValueRef::Length(v)) if v.representation() == "1" && v.canonical_unit() == Some(CssNumericUnit::Length(unit)))
         );
-        assert_eq!(terms[1].value(), &CssCalcLength::px(2.0));
+        assert!(
+            matches!(terms.term(1).unwrap().expression(), CssCalculationExpressionRef::Value(CssCalculationValueRef::Length(v)) if v.representation() == "2" && v.unit() == Some("px"))
+        );
     }
 }
 
@@ -7959,7 +7980,7 @@ fn flow_tolerance_calc_is_preserved_as_css_syntax() {
 
 #[test]
 fn rejects_unknown_calc_functions() {
-    let error = parse_sheet(".panel { width: min(10px, 20px); }").unwrap_err();
+    let error = parse_sheet(".panel { width: unknown-math(10px, 20px); }").unwrap_err();
     assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
 }
 
@@ -8941,13 +8962,13 @@ fn parses_spacing_inset_and_z_index_values() {
             CssLength::px(10.0),
         )
     );
-    assert_eq!(
-        declaration_value!(".panel { top: calc(10px + 5%); }", Top),
-        CssLength::Calc(CssCalcLength::sum(
-            CssCalcLengthTerm::add(CssCalcLength::px(10.0)),
-            [CssCalcLengthTerm::add(CssCalcLength::percent(5.0))]
-        ))
-    );
+    let CssLength::Calc(CssCalcLength::Typed(top)) =
+        declaration_value!(".panel { top: calc(10px + 5%); }", Top)
+    else {
+        panic!("expected exact inset calculation")
+    };
+    assert_eq!(top.result_type(), CssCalculationType::LengthPercentage);
+    assert_eq!(top.serialize().unwrap().as_css(), "calc(10px + 5%)");
     assert_eq!(
         declaration_value!(".panel { z-index: -2; }", ZIndex),
         CssZIndex::Integer(-2)

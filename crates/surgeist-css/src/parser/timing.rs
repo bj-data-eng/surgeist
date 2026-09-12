@@ -1,7 +1,7 @@
 use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
 
 use super::values::{
-    CalculationRoot, next_is_comma, parse_custom_ident_from_str_at, parse_typed_calculation,
+    CalculationRoot, next_is_comma, parse_custom_ident_from_str_at, parse_numeric_function,
 };
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
@@ -16,10 +16,11 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
 
 pub(super) fn parse_duration_list<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssDurationList, ParseError<'i, Error>> {
     let mut values = Vec::new();
     loop {
-        values.push(parse_duration(input)?);
+        values.push(parse_duration(input, numeric)?);
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
         }
@@ -37,10 +38,11 @@ pub(super) fn parse_duration_list<'i, 't>(
 
 pub(super) fn parse_delay_list<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssDelayList, ParseError<'i, Error>> {
     let mut values = Vec::new();
     loop {
-        values.push(parse_delay(input)?);
+        values.push(parse_delay(input, numeric)?);
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
         }
@@ -58,7 +60,9 @@ pub(super) fn parse_delay_list<'i, 't>(
 
 pub(super) fn parse_duration<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssDuration, ParseError<'i, Error>> {
+    let numeric_start = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
         Token::Dimension { value, unit, .. } if unit.eq_ignore_ascii_case("s") => {
@@ -88,19 +92,20 @@ pub(super) fn parse_duration<'i, 't>(
             None,
             format!("unsupported duration unit `{unit}`"),
         )),
-        Token::Function(name) if name.eq_ignore_ascii_case("calc") => input
-            .parse_nested_block(|input| {
-                parse_typed_calculation(input, CalculationRoot::Time)
-                    .map(CssTimeCalculation::from_expression)
-            })
-            .map(CssDuration::Calculation),
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Time)
+                .map(CssTimeCalculation::from_expression)
+                .map(CssDuration::Calculation)
+        }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
 }
 
 pub(super) fn parse_delay<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssDelay, ParseError<'i, Error>> {
+    let numeric_start = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
         Token::Dimension { value, unit, .. } if unit.eq_ignore_ascii_case("s") => {
@@ -118,23 +123,23 @@ pub(super) fn parse_delay<'i, 't>(
             None,
             format!("unsupported delay unit `{unit}`"),
         )),
-        Token::Function(name) if name.eq_ignore_ascii_case("calc") => input
-            .parse_nested_block(|input| {
-                parse_typed_calculation(input, CalculationRoot::Time)
-                    .map(CssTimeCalculation::from_expression)
-            })
-            .map(CssDelay::Calculation),
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Time)
+                .map(CssTimeCalculation::from_expression)
+                .map(CssDelay::Calculation)
+        }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
 }
 
 pub(super) fn parse_easing_list<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssParsedEasingList, ParseError<'i, Error>> {
     let mut current = Vec::new();
     let mut legacy = Some(Vec::new());
     loop {
-        let parsed = parse_easing(input)?;
+        let parsed = parse_easing(input, numeric)?;
         let (current_easing, legacy_easing) = parsed.into_parts();
         current.push(current_easing);
         match (legacy.as_mut(), legacy_easing) {
@@ -161,6 +166,7 @@ pub(super) fn parse_easing_list<'i, 't>(
 
 pub(super) fn parse_easing<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssParsedEasing, ParseError<'i, Error>> {
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         let (current, legacy) = match_ignore_ascii_case! { &ident,
@@ -204,9 +210,9 @@ pub(super) fn parse_easing<'i, 't>(
         input.reset(&state);
         let current = match kind {
             CssEasingFunctionKind::CubicBezier => {
-                CssEasingValue::CubicBezier(parse_cubic_bezier(input)?)
+                CssEasingValue::CubicBezier(parse_cubic_bezier(input, numeric)?)
             }
-            CssEasingFunctionKind::Steps => CssEasingValue::Steps(parse_steps(input)?),
+            CssEasingFunctionKind::Steps => CssEasingValue::Steps(parse_steps(input, numeric)?),
         };
         Ok((
             current,
@@ -277,32 +283,36 @@ fn collect_easing_authored_tokens<'i, 't>(
 
 fn parse_easing_number<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssEasingNumber, ParseError<'i, Error>> {
+    let numeric_start = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
         Token::Number { value, .. } => CssFiniteNumber::try_new(*value)
             .map(CssEasingNumber::Literal)
             .ok_or_else(|| unsupported_value_at(location, None, "easing number must be finite")),
-        Token::Function(name) if name.eq_ignore_ascii_case("calc") => input
-            .parse_nested_block(|input| parse_typed_calculation(input, CalculationRoot::Number))
-            .map(CssNumberCalculation::from_expression)
-            .map(CssEasingNumber::Calculation),
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)
+                .map(CssNumberCalculation::from_expression)
+                .map(CssEasingNumber::Calculation)
+        }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
 }
 
 fn parse_cubic_bezier<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssCubicBezier, ParseError<'i, Error>> {
     let x1_location = input.current_source_location();
-    let x1 = parse_easing_number(input)?;
+    let x1 = parse_easing_number(input, numeric)?;
     input.expect_comma().map_err(basic)?;
-    let y1 = parse_easing_number(input)?;
+    let y1 = parse_easing_number(input, numeric)?;
     input.expect_comma().map_err(basic)?;
     let x2_location = input.current_source_location();
-    let x2 = parse_easing_number(input)?;
+    let x2 = parse_easing_number(input, numeric)?;
     input.expect_comma().map_err(basic)?;
-    let y2 = parse_easing_number(input)?;
+    let y2 = parse_easing_number(input, numeric)?;
     input.expect_exhausted().map_err(basic)?;
 
     if CssCubicBezierX::try_new(x1.clone()).is_none() {
@@ -330,7 +340,9 @@ fn parse_cubic_bezier<'i, 't>(
 
 fn parse_steps<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssSteps, ParseError<'i, Error>> {
+    let numeric_start = input.state();
     let count_location = input.current_source_location();
     let count = match input.next().map_err(basic)? {
         Token::Number {
@@ -350,12 +362,10 @@ fn parse_steps<'i, 't>(
                 "steps() count must be an integer",
             ));
         }
-        Token::Function(name) if name.eq_ignore_ascii_case("calc") => {
-            let calculation = input
-                .parse_nested_block(|input| {
-                    parse_typed_calculation(input, CalculationRoot::Integer)
-                })
-                .map(CssIntegerCalculation::from_expression)?;
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            let calculation =
+                parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Integer)
+                    .map(CssIntegerCalculation::from_expression)?;
             CssStepCount::from_calculation(calculation)
         }
         token => return Err(count_location.new_unexpected_token_error::<Error>(token.clone())),
@@ -427,10 +437,11 @@ pub(super) fn parse_transition_property<'i, 't>(
 
 pub(super) fn parse_transition_value_list<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTransitionValueList, ParseError<'i, Error>> {
     let mut items = Vec::new();
     loop {
-        items.push(parse_single_transition_value(input)?);
+        items.push(parse_single_transition_value(input, numeric)?);
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
         }
@@ -448,6 +459,7 @@ pub(super) fn parse_transition_value_list<'i, 't>(
 
 pub(super) fn parse_single_transition_value<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTransitionValue, ParseError<'i, Error>> {
     let mut property = None;
     let mut duration = None;
@@ -455,20 +467,20 @@ pub(super) fn parse_single_transition_value<'i, 't>(
     let mut timing_function = None;
     while !input.is_exhausted() && !next_is_comma(input) {
         if duration.is_none()
-            && let Ok(value) = input.try_parse(parse_duration)
+            && let Ok(value) = input.try_parse(|input| parse_duration(input, numeric))
         {
             duration = Some(value);
             continue;
         }
         if duration.is_some()
             && delay.is_none()
-            && let Ok(value) = input.try_parse(parse_delay)
+            && let Ok(value) = input.try_parse(|input| parse_delay(input, numeric))
         {
             delay = Some(value);
             continue;
         }
         if timing_function.is_none()
-            && let Ok(easing) = input.try_parse(parse_easing)
+            && let Ok(easing) = input.try_parse(|input| parse_easing(input, numeric))
         {
             timing_function = Some(easing);
             continue;
@@ -531,10 +543,11 @@ pub(super) fn parse_animation_name<'i, 't>(
 
 pub(super) fn parse_animation_iteration_value_list<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssAnimationIterationValueList, ParseError<'i, Error>> {
     let mut counts = Vec::new();
     loop {
-        counts.push(parse_animation_iteration_value(input)?);
+        counts.push(parse_animation_iteration_value(input, numeric)?);
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
         }
@@ -552,7 +565,9 @@ pub(super) fn parse_animation_iteration_value_list<'i, 't>(
 
 pub(super) fn parse_animation_iteration_value<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssAnimationIterationValue, ParseError<'i, Error>> {
+    let numeric_start = input.state();
     if input
         .try_parse(|input| input.expect_ident_matching("infinite"))
         .is_ok()
@@ -570,12 +585,11 @@ pub(super) fn parse_animation_iteration_value<'i, 't>(
                     "animation iteration count must be finite and non-negative",
                 )
             }),
-        Token::Function(name) if name.eq_ignore_ascii_case("calc") => input
-            .parse_nested_block(|input| {
-                parse_typed_calculation(input, CalculationRoot::Number)
-                    .map(CssNumberCalculation::from_expression)
-            })
-            .map(CssAnimationIterationValue::Calculation),
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)
+                .map(CssNumberCalculation::from_expression)
+                .map(CssAnimationIterationValue::Calculation)
+        }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
 }
@@ -694,10 +708,11 @@ pub(super) fn parse_animation_play_state<'i, 't>(
 
 pub(super) fn parse_animation_value_list<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssAnimationValueList, ParseError<'i, Error>> {
     let mut items = Vec::new();
     loop {
-        items.push(parse_single_animation_value(input)?);
+        items.push(parse_single_animation_value(input, numeric)?);
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
         }
@@ -715,6 +730,7 @@ pub(super) fn parse_animation_value_list<'i, 't>(
 
 pub(super) fn parse_single_animation_value<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssAnimationValue, ParseError<'i, Error>> {
     let mut name = None;
     let mut duration = None;
@@ -727,26 +743,27 @@ pub(super) fn parse_single_animation_value<'i, 't>(
 
     while !input.is_exhausted() && !next_is_comma(input) {
         if duration.is_none()
-            && let Ok(value) = input.try_parse(parse_duration)
+            && let Ok(value) = input.try_parse(|input| parse_duration(input, numeric))
         {
             duration = Some(value);
             continue;
         }
         if duration.is_some()
             && delay.is_none()
-            && let Ok(value) = input.try_parse(parse_delay)
+            && let Ok(value) = input.try_parse(|input| parse_delay(input, numeric))
         {
             delay = Some(value);
             continue;
         }
         if timing_function.is_none()
-            && let Ok(easing) = input.try_parse(parse_easing)
+            && let Ok(easing) = input.try_parse(|input| parse_easing(input, numeric))
         {
             timing_function = Some(easing);
             continue;
         }
         if iteration_count.is_none()
-            && let Ok(count) = input.try_parse(parse_animation_iteration_value)
+            && let Ok(count) =
+                input.try_parse(|input| parse_animation_iteration_value(input, numeric))
         {
             iteration_count = Some(count);
             continue;

@@ -462,16 +462,16 @@ fn timing_type_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
         CssErrorCode::InvalidPropertyValue
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_position(diagnostic.error().position(), 37, 0, 35);
+    assert_position(diagnostic.error().position(), 32, 0, 30);
     assert_position(diagnostic.span().start(), 11, 0, 9);
     assert_position(diagnostic.span().end(), 48, 0, 46);
     let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
         panic!("expected structured timing property error");
     };
     assert_eq!(detail.property(), CssKnownProperty::TransitionDuration);
-    let encountered = detail.encountered().expect("responsible length token");
-    assert_eq!(encountered.kind(), CssTokenKind::Dimension);
-    assert_eq!(encountered.authored(), "1px");
+    let encountered = detail.encountered().expect("responsible calculation root");
+    assert_eq!(encountered.kind(), CssTokenKind::Function);
+    assert_eq!(encountered.authored(), "calc(");
 
     {
         let failure = surgeist_css::validate_style_attribute(source)

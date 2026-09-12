@@ -2,7 +2,7 @@ use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
 
 use super::values::{
     CalculationRoot, LengthGrammar, checked_percentage_value, parse_box_size_value,
-    parse_length_with, parse_typed_calculation,
+    parse_length_with, parse_numeric_function,
 };
 use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
@@ -87,12 +87,13 @@ pub(super) fn parse_border_collapse<'i, 't>(
 
 pub(super) fn parse_border_spacing<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderSpacing, ParseError<'i, Error>> {
-    let horizontal = parse_length_with(input, LengthGrammar::BorderSpacing)?;
+    let horizontal = parse_length_with(input, numeric, LengthGrammar::BorderSpacing)?;
     let vertical = if input.is_exhausted() {
         horizontal.clone()
     } else {
-        parse_length_with(input, LengthGrammar::BorderSpacing)?
+        parse_length_with(input, numeric, LengthGrammar::BorderSpacing)?
     };
     CssBorderSpacing::try_new(horizontal, vertical).ok_or_else(|| {
         unsupported_value(
@@ -135,8 +136,10 @@ pub(super) fn parse_empty_cells<'i, 't>(
 
 pub(super) fn parse_page_line_minimum<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
     property: &str,
 ) -> std::result::Result<CssPageLineMinimum, ParseError<'i, Error>> {
+    let numeric_start = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
         Token::Number {
@@ -154,10 +157,11 @@ pub(super) fn parse_page_line_minimum<'i, 't>(
             None,
             format!("{property} must be an integer"),
         )),
-        Token::Function(name) if name.eq_ignore_ascii_case("calc") => input
-            .parse_nested_block(|input| parse_typed_calculation(input, CalculationRoot::Integer))
-            .map(CssIntegerCalculation::from_expression)
-            .map(CssPageLineMinimum::from_calculation),
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Integer)
+                .map(CssIntegerCalculation::from_expression)
+                .map(CssPageLineMinimum::from_calculation)
+        }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
 }
@@ -684,7 +688,9 @@ pub(super) fn parse_content_visibility<'i, 't>(
 
 pub(super) fn parse_opacity<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssOpacityValue, ParseError<'i, Error>> {
+    let numeric_start = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
         Token::Number { value, .. } => {
@@ -707,20 +713,15 @@ pub(super) fn parse_opacity<'i, 't>(
                     unsupported_value_at(location, None, "opacity percentage must be finite")
                 })
         }
-        Token::Function(name) if name.eq_ignore_ascii_case("calc") => {
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
             if let Ok(calculation) = input.try_parse(|input| {
-                input.parse_nested_block(|input| {
-                    parse_typed_calculation(input, CalculationRoot::Number)
-                })
+                parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)
             }) {
                 return Ok(CssOpacityValue::Calculation(
                     CssNumberCalculation::from_expression(calculation),
                 ));
             }
-            input
-                .parse_nested_block(|input| {
-                    parse_typed_calculation(input, CalculationRoot::Percentage)
-                })
+            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Percentage)
                 .map(CssPercentageCalculation::from_expression)
                 .map(CssOpacityValue::PercentageCalculation)
         }
@@ -730,8 +731,10 @@ pub(super) fn parse_opacity<'i, 't>(
 
 pub(super) fn parse_flex_factor<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
     context: &str,
 ) -> std::result::Result<CssNonNegativeNumberValue, ParseError<'i, Error>> {
+    let numeric_start = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
         Token::Number { value, .. } => CssNonNegativeNumber::try_new(*value)
@@ -743,17 +746,20 @@ pub(super) fn parse_flex_factor<'i, 't>(
                     format!("{context} must be a finite non-negative number"),
                 )
             }),
-        Token::Function(name) if name.eq_ignore_ascii_case("calc") => input
-            .parse_nested_block(|input| parse_typed_calculation(input, CalculationRoot::Number))
-            .map(CssNumberCalculation::from_expression)
-            .map(CssNonNegativeNumberValue::Calculation),
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)
+                .map(CssNumberCalculation::from_expression)
+                .map(CssNonNegativeNumberValue::Calculation)
+        }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
 }
 
 pub(super) fn parse_aspect_ratio<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssAspectRatioValue, ParseError<'i, Error>> {
+    let numeric_start = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
         Token::Number { value, .. } => CssAspectRatio::try_new(*value)
@@ -765,10 +771,11 @@ pub(super) fn parse_aspect_ratio<'i, 't>(
                     "aspect-ratio must be a finite positive number",
                 )
             }),
-        Token::Function(name) if name.eq_ignore_ascii_case("calc") => input
-            .parse_nested_block(|input| parse_typed_calculation(input, CalculationRoot::Number))
-            .map(CssNumberCalculation::from_expression)
-            .map(CssAspectRatioValue::Calculation),
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)
+                .map(CssNumberCalculation::from_expression)
+                .map(CssAspectRatioValue::Calculation)
+        }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
 }
@@ -798,7 +805,9 @@ pub(super) fn parse_scrollbar_width<'i, 't>(
 
 pub(super) fn parse_order<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssIntegerValue, ParseError<'i, Error>> {
+    let numeric_start = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
         Token::Number {
@@ -810,16 +819,18 @@ pub(super) fn parse_order<'i, 't>(
             None,
             "order must be an integer",
         )),
-        Token::Function(name) if name.eq_ignore_ascii_case("calc") => input
-            .parse_nested_block(|input| parse_typed_calculation(input, CalculationRoot::Integer))
-            .map(CssIntegerCalculation::from_expression)
-            .map(CssIntegerValue::Calculation),
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Integer)
+                .map(CssIntegerCalculation::from_expression)
+                .map(CssIntegerValue::Calculation)
+        }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
 }
 
 pub(super) fn parse_flex<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssFlexValue, ParseError<'i, Error>> {
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         return match_ignore_ascii_case! { &ident,
@@ -833,18 +844,19 @@ pub(super) fn parse_flex<'i, 't>(
         };
     }
 
-    let grow = parse_flex_factor(input, "flex-grow")?;
+    let grow = parse_flex_factor(input, numeric, "flex-grow")?;
     let mut shrink = None;
     let mut basis = None;
     if !input.is_exhausted() {
-        if let Ok(parsed_shrink) = input.try_parse(|input| parse_flex_factor(input, "flex-shrink"))
+        if let Ok(parsed_shrink) =
+            input.try_parse(|input| parse_flex_factor(input, numeric, "flex-shrink"))
         {
             shrink = Some(parsed_shrink);
             if !input.is_exhausted() {
-                basis = Some(parse_box_size_value(input)?);
+                basis = Some(parse_box_size_value(input, numeric)?);
             }
         } else {
-            basis = Some(parse_box_size_value(input)?);
+            basis = Some(parse_box_size_value(input, numeric)?);
         }
     }
     Ok(CssFlexValue::Components(CssFlexComponents::new(
@@ -854,7 +866,9 @@ pub(super) fn parse_flex<'i, 't>(
 
 pub(super) fn parse_z_index<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssZIndexValue, ParseError<'i, Error>> {
+    let numeric_start = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
         Token::Ident(ident) if ident.eq_ignore_ascii_case("auto") => Ok(CssZIndexValue::Auto),
@@ -877,11 +891,12 @@ pub(super) fn parse_z_index<'i, 't>(
             None,
             format!("unsupported z-index length unit `{unit}`"),
         )),
-        Token::Function(name) if name.eq_ignore_ascii_case("calc") => input
-            .parse_nested_block(|input| parse_typed_calculation(input, CalculationRoot::Integer))
-            .map(CssIntegerCalculation::from_expression)
-            .map(CssIntegerValue::Calculation)
-            .map(CssZIndexValue::Integer),
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Integer)
+                .map(CssIntegerCalculation::from_expression)
+                .map(CssIntegerValue::Calculation)
+                .map(CssZIndexValue::Integer)
+        }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
 }

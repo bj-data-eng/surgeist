@@ -106,10 +106,11 @@ pub(super) fn parse_border_styles<'i, 't>(
 
 pub(super) fn parse_border_colors<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssParsedBorderColors, ParseError<'i, Error>> {
     let mut colors = Vec::new();
     while !input.is_exhausted() {
-        colors.push(parse_color(input)?);
+        colors.push(parse_color(input, numeric)?);
         if colors.len() == 4 {
             input.expect_exhausted().map_err(basic)?;
             break;
@@ -145,13 +146,16 @@ pub(super) fn parse_border_style<'i, 't>(
 
 pub(super) fn parse_border<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorder, ParseError<'i, Error>> {
     let mut width = None;
     let mut style = None;
     let mut color = None;
 
     while !input.is_exhausted() {
-        if let Ok(parsed_width) = input.try_parse(parse_border_width_component) {
+        if let Ok(parsed_width) =
+            input.try_parse(|input| parse_border_width_component(input, numeric))
+        {
             if width.replace(parsed_width).is_some() {
                 return Err(unsupported_value(input, None, "duplicate border width"));
             }
@@ -163,7 +167,7 @@ pub(super) fn parse_border<'i, 't>(
             }
             continue;
         }
-        if let Ok(parsed_color) = input.try_parse(parse_color) {
+        if let Ok(parsed_color) = input.try_parse(|input| parse_color(input, numeric)) {
             if color.replace(parsed_color).is_some() {
                 return Err(unsupported_value(input, None, "duplicate border color"));
             }
@@ -190,20 +194,22 @@ pub(super) fn parse_border<'i, 't>(
 
 pub(super) fn parse_corner_radius<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssCornerRadius, ParseError<'i, Error>> {
-    let horizontal = parse_radius_component(input)?;
+    let horizontal = parse_radius_component(input, numeric)?;
     let vertical = if input.is_exhausted() {
         horizontal.clone()
     } else {
-        parse_radius_component(input)?
+        parse_radius_component(input, numeric)?
     };
     Ok(CssCornerRadius::new(horizontal, vertical))
 }
 
 pub(super) fn parse_border_radius<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderRadii, ParseError<'i, Error>> {
-    let horizontal = parse_radius_component_list(input)?;
+    let horizontal = parse_radius_component_list(input, numeric)?;
     if horizontal.is_empty() {
         return Err(unsupported_value(
             input,
@@ -213,7 +219,7 @@ pub(super) fn parse_border_radius<'i, 't>(
     }
 
     let vertical = if input.try_parse(|input| input.expect_delim('/')).is_ok() {
-        let vertical = parse_radius_component_list(input)?;
+        let vertical = parse_radius_component_list(input, numeric)?;
         if vertical.is_empty() {
             return Err(unsupported_value(
                 input,
@@ -241,6 +247,7 @@ pub(super) fn parse_border_radius<'i, 't>(
 
 pub(super) fn parse_radius_component_list<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<Vec<CssLength>, ParseError<'i, Error>> {
     let mut values = Vec::new();
     while !input.is_exhausted() {
@@ -250,7 +257,7 @@ pub(super) fn parse_radius_component_list<'i, 't>(
             break;
         }
 
-        values.push(parse_radius_component(input)?);
+        values.push(parse_radius_component(input, numeric)?);
         if values.len() == 4 && !input.is_exhausted() {
             let state = input.state();
             let slash_is_next = input.try_parse(|input| input.expect_delim('/')).is_ok();
@@ -297,6 +304,7 @@ pub(super) fn expand_radius_components(
 
 pub(super) fn parse_box_shadow<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBoxShadow, ParseError<'i, Error>> {
     let state = input.state();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned)
@@ -309,7 +317,7 @@ pub(super) fn parse_box_shadow<'i, 't>(
 
     let mut shadows = Vec::new();
     loop {
-        shadows.push(parse_shadow(input)?);
+        shadows.push(parse_shadow(input, numeric)?);
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
         }
@@ -329,6 +337,7 @@ pub(super) fn parse_box_shadow<'i, 't>(
 
 pub(super) fn parse_shadow<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssShadow, ParseError<'i, Error>> {
     let mut inset = false;
     let mut color = None;
@@ -352,7 +361,7 @@ pub(super) fn parse_shadow<'i, 't>(
             continue;
         }
 
-        if let Ok(parsed_color) = input.try_parse(parse_color) {
+        if let Ok(parsed_color) = input.try_parse(|input| parse_color(input, numeric)) {
             if color.replace(parsed_color).is_some() {
                 return Err(unsupported_value(input, None, "duplicate box-shadow color"));
             }
@@ -360,8 +369,12 @@ pub(super) fn parse_shadow<'i, 't>(
         }
 
         let parsed_length = match lengths.len() {
-            0 | 1 | 3 => input.try_parse(parse_shadow_length).ok(),
-            2 => input.try_parse(parse_shadow_blur_length).ok(),
+            0 | 1 | 3 => input
+                .try_parse(|input| parse_shadow_length(input, numeric))
+                .ok(),
+            2 => input
+                .try_parse(|input| parse_shadow_blur_length(input, numeric))
+                .ok(),
             _ => None,
         };
         if let Some(parsed_length) = parsed_length {
@@ -411,12 +424,13 @@ pub(super) fn parse_shadow<'i, 't>(
 
 pub(super) fn parse_drop_shadow<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssDropShadow, ParseError<'i, Error>> {
     let mut color = None;
     let mut lengths = Vec::new();
 
     while !input.is_exhausted() {
-        if let Ok(parsed_color) = input.try_parse(parse_color) {
+        if let Ok(parsed_color) = input.try_parse(|input| parse_color(input, numeric)) {
             if color.replace(parsed_color).is_some() {
                 return Err(unsupported_value(
                     input,
@@ -428,8 +442,12 @@ pub(super) fn parse_drop_shadow<'i, 't>(
         }
 
         let parsed_length = match lengths.len() {
-            0 | 1 => input.try_parse(parse_shadow_length).ok(),
-            2 => input.try_parse(parse_shadow_blur_length).ok(),
+            0 | 1 => input
+                .try_parse(|input| parse_shadow_length(input, numeric))
+                .ok(),
+            2 => input
+                .try_parse(|input| parse_shadow_blur_length(input, numeric))
+                .ok(),
             _ => None,
         };
         if let Some(parsed_length) = parsed_length {

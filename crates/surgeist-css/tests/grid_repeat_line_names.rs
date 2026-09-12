@@ -17,7 +17,7 @@ use surgeist_css::{
     CssCalculationExpressionRef, CssCalculationProductOperator, CssCalculationType,
     CssCalculationValueRef, CssCustomIdent, CssGridLineNames, CssGridRepeat, CssGridRepeatCount,
     CssGridTrackBreadth, CssGridTrackComponent, CssGridTrackList, CssGridTrackSize, CssImportance,
-    CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssLengthUnit, parse_style_attribute,
+    CssKnownProperty, CssKnownPropertyValueRef, CssLength, parse_style_attribute,
     validate_style_attribute,
 };
 
@@ -227,7 +227,10 @@ fn assert_one_pixel_times_two(length: &CssLength) {
         panic!("retain the typed calculation rather than evaluating it to a literal");
     };
     assert_eq!(calculation.result_type(), CssCalculationType::Length);
-    let CssCalculationExpressionRef::Product(product) = calculation.expression() else {
+    let CssCalculationExpressionRef::NestedCalc(root) = calculation.expression() else {
+        panic!("expected calc root")
+    };
+    let CssCalculationExpressionRef::Product(product) = root.operand() else {
         panic!("retain the authored multiplication");
     };
     assert_eq!(product.len(), 2);
@@ -238,8 +241,8 @@ fn assert_one_pixel_times_two(length: &CssLength) {
     else {
         panic!("the first factor is an authored length");
     };
-    assert_eq!(value.value(), 1.0);
-    assert_eq!(value.unit(), CssLengthUnit::Px);
+    assert_eq!(value.representation(), "1");
+    assert_eq!(value.unit(), Some("px"));
     let second = product.factor(1).expect("the authored 2 factor");
     assert_eq!(
         second.operator(),
@@ -247,7 +250,7 @@ fn assert_one_pixel_times_two(length: &CssLength) {
     );
     assert!(matches!(
         second.expression(),
-        CssCalculationExpressionRef::Value(CssCalculationValueRef::Integer(2))
+        CssCalculationExpressionRef::Value(CssCalculationValueRef::Integer(v)) if v.representation() == "2"
     ));
 }
 

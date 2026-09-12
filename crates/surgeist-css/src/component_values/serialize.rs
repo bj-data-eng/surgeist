@@ -11,6 +11,7 @@ struct Emitter {
     reverse_solidus: bool,
     cdo_prefix: u8,
     last_origin: Option<CssValueOrigin>,
+    component_paths: Vec<(usize, Vec<usize>)>,
 }
 
 impl Emitter {
@@ -26,6 +27,7 @@ impl Emitter {
             reverse_solidus: false,
             cdo_prefix: 0,
             last_origin: None,
+            component_paths: Vec::new(),
         }
     }
 
@@ -157,8 +159,14 @@ impl Emitter {
         Ok(())
     }
 
-    fn values(&mut self, values: &CssComponentValues) -> Result<(), CssComponentValueError> {
-        for item in &values.items {
+    fn values(
+        &mut self,
+        values: &CssComponentValues,
+        path: &mut Vec<usize>,
+    ) -> Result<(), CssComponentValueError> {
+        for (index, item) in values.items.iter().enumerate() {
+            path.push(index);
+            let first_segment = self.segments.len();
             match &item.data {
                 ComponentData::Token(token) => {
                     self.token(
@@ -172,7 +180,7 @@ impl Emitter {
                 }
                 ComponentData::Function(function) => {
                     self.token(&function.opening, TokenSerializationType::Function, false)?;
-                    self.values(&function.values)?;
+                    self.values(&function.values, path)?;
                     self.token(&function.closing, TokenSerializationType::Other, false)?;
                 }
                 ComponentData::Block(block) => {
@@ -183,7 +191,7 @@ impl Emitter {
                         }
                     };
                     self.token(&block.opening, kind, false)?;
-                    self.values(&block.values)?;
+                    self.values(&block.values, path)?;
                     self.token(&block.closing, TokenSerializationType::Other, false)?;
                 }
                 ComponentData::Comment {
@@ -192,6 +200,15 @@ impl Emitter {
                     ..
                 } => self.comment(spelling, implicit_end.as_ref())?,
             }
+            if self.css.is_some()
+                && let Some(segment) = self.segments[first_segment..]
+                    .iter()
+                    .find(|s| matches!(s.origin, CssSerializedOrigin::Token(_)))
+            {
+                self.component_paths
+                    .push((segment.range.start, path.clone()));
+            }
+            path.pop();
         }
         Ok(())
     }
@@ -242,7 +259,7 @@ pub(super) fn validate(
     max_bytes: usize,
 ) -> Result<(), CssComponentValueError> {
     let mut emitter = Emitter::new(max_bytes, false);
-    emitter.values(values)?;
+    emitter.values(values, &mut Vec::new())?;
     emitter.finish()
 }
 
@@ -253,7 +270,7 @@ pub(super) fn serialize(
     // Bound the result before allocating the output text or map.
     validate(values, max_bytes)?;
     let mut emitter = Emitter::new(max_bytes, true);
-    emitter.values(values)?;
+    emitter.values(values, &mut Vec::new())?;
     emitter.finish()?;
     Ok(CssSerializedValue {
         css: emitter
@@ -261,5 +278,6 @@ pub(super) fn serialize(
             .expect("retained serialization requested output"),
         segments: emitter.segments.into_boxed_slice(),
         end: CssSerializedOrigin::End(emitter.last_origin),
+        component_paths: emitter.component_paths.into_boxed_slice(),
     })
 }

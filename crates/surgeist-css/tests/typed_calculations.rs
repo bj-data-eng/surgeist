@@ -5,9 +5,9 @@ use surgeist_css::{
     CssFilterFunctionValue, CssFilterNumber, CssFilterPercentage, CssFilterValue, CssFlexValue,
     CssFlowToleranceRef, CssFontSize, CssFrequencyCalculation, CssFrequencyUnit,
     CssIntegerCalculation, CssIntegerValue, CssKnownPropertyValueRef, CssLength,
-    CssLengthCalculation, CssLengthUnit, CssLineHeight, CssNonNegativeNumberValue,
-    CssNumberCalculation, CssOpacityValue, CssPercentageCalculation, CssPositiveNumber,
-    CssPositiveNumberValue, CssRecoveryAction, CssRelativeColorChannel,
+    CssLengthCalculation, CssLengthPercentageCalculation, CssLengthUnit, CssLineHeight,
+    CssNonNegativeNumberValue, CssNumberCalculation, CssOpacityValue, CssPercentageCalculation,
+    CssPositiveNumber, CssPositiveNumberValue, CssRecoveryAction, CssRelativeColorChannel,
     CssRelativeColorExpressionValue, CssRelativeColorResultDomain, CssTimeCalculation, CssTimeUnit,
     CssZIndexValue, parse_style_attribute,
 };
@@ -188,9 +188,9 @@ fn number_calculation_literal_preserves_finite_authored_value() {
         CssNumberCalculation::try_literal(-3.5).expect("finite authored number calculation");
 
     assert_eq!(calculation.result_type(), CssCalculationType::Number);
-    match calculation.expression() {
+    match calculation_body(calculation.expression()) {
         CssCalculationExpressionRef::Value(CssCalculationValueRef::Number(value)) => {
-            assert_eq!(value.value(), -3.5);
+            assert_eq!(value.representation(), "-3.5");
         }
         _ => panic!("expected an authored number leaf"),
     }
@@ -222,15 +222,15 @@ fn property_consumers_accept_typed_products_and_groups_with_later_siblings() {
 fn typed_calculation_roots_enforce_checked_literal_boundaries() {
     let integer_min = CssIntegerCalculation::literal(i32::MIN);
     let integer_max = CssIntegerCalculation::literal(i32::MAX);
-    assert_eq!(integer_min.result_type(), CssCalculationType::Integer);
-    assert_eq!(integer_max.result_type(), CssCalculationType::Integer);
+    assert_eq!(integer_min.result_type(), CssCalculationType::Number);
+    assert_eq!(integer_max.result_type(), CssCalculationType::Number);
     assert!(matches!(
         integer_min.expression(),
-        CssCalculationExpressionRef::Value(CssCalculationValueRef::Integer(i32::MIN))
+        CssCalculationExpressionRef::Value(CssCalculationValueRef::Integer(value)) if value.representation() == "-2147483648"
     ));
     assert!(matches!(
         integer_max.expression(),
-        CssCalculationExpressionRef::Value(CssCalculationValueRef::Integer(i32::MAX))
+        CssCalculationExpressionRef::Value(CssCalculationValueRef::Integer(value)) if value.representation() == "2147483647"
     ));
 
     for value in [f32::MIN, -0.0, f32::MAX] {
@@ -238,8 +238,8 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
         assert_eq!(number.result_type(), CssCalculationType::Number);
         assert!(matches!(
             number.expression(),
-            CssCalculationExpressionRef::Value(CssCalculationValueRef::Number(inner))
-                if inner.value() == value
+            CssCalculationExpressionRef::Value(inner)
+                if inner.literal().representation() == value.to_string()
         ));
     }
 
@@ -247,7 +247,7 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
         assert!(CssNumberCalculation::try_literal(value).is_none());
         assert!(CssPercentageCalculation::try_literal(value).is_none());
         assert!(CssLengthCalculation::try_dimension(value, CssLengthUnit::Rem).is_none());
-        assert!(CssLengthCalculation::try_percentage(value).is_none());
+        assert!(CssLengthPercentageCalculation::try_percentage(value).is_none());
         assert!(CssAngleCalculation::try_literal(value, CssAngleUnit::Degrees).is_none());
         assert!(CssTimeCalculation::try_literal(value, CssTimeUnit::Seconds).is_none());
         assert!(CssFrequencyCalculation::try_literal(value, CssFrequencyUnit::Hertz).is_none());
@@ -260,7 +260,7 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
         assert!(matches!(
             percentage.expression(),
             CssCalculationExpressionRef::Value(CssCalculationValueRef::Percentage(inner))
-                if inner.value() == value
+                if inner.representation() == value.to_string()
         ));
 
         let length = CssLengthCalculation::try_dimension(value, CssLengthUnit::Cqw)
@@ -269,7 +269,7 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
         assert!(matches!(
             length.expression(),
             CssCalculationExpressionRef::Value(CssCalculationValueRef::Length(inner))
-                if inner.value() == value && inner.unit() == CssLengthUnit::Cqw
+                if inner.representation() == value.to_string() && inner.unit() == Some("cqw")
         ));
 
         let angle = CssAngleCalculation::try_literal(value, CssAngleUnit::Turns)
@@ -278,7 +278,7 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
         assert!(matches!(
             angle.expression(),
             CssCalculationExpressionRef::Value(CssCalculationValueRef::Angle(inner))
-                if inner.value() == value && inner.unit() == CssAngleUnit::Turns
+                if inner.representation() == value.to_string() && inner.unit() == Some("turn")
         ));
 
         let time = CssTimeCalculation::try_literal(value, CssTimeUnit::Milliseconds)
@@ -287,7 +287,7 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
         assert!(matches!(
             time.expression(),
             CssCalculationExpressionRef::Value(CssCalculationValueRef::Time(inner))
-                if inner.value() == value && inner.unit() == CssTimeUnit::Milliseconds
+                if inner.representation() == value.to_string() && inner.unit() == Some("ms")
         ));
 
         let frequency = CssFrequencyCalculation::try_literal(value, CssFrequencyUnit::Kilohertz)
@@ -296,20 +296,20 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
         assert!(matches!(
             frequency.expression(),
             CssCalculationExpressionRef::Value(CssCalculationValueRef::Frequency(inner))
-                if inner.value() == value && inner.unit() == CssFrequencyUnit::Kilohertz
+                if inner.representation() == value.to_string() && inner.unit() == Some("khz")
         ));
     }
 
     let percentage_length =
-        CssLengthCalculation::try_percentage(-25.0).expect("finite signed percentage");
+        CssLengthPercentageCalculation::try_percentage(-25.0).expect("finite signed percentage");
     assert_eq!(
         percentage_length.result_type(),
-        CssCalculationType::Percentage
+        CssCalculationType::LengthPercentage
     );
     assert!(matches!(
         percentage_length.expression(),
         CssCalculationExpressionRef::Value(CssCalculationValueRef::Percentage(value))
-            if value.value() == -25.0
+            if value.representation() == "-25"
     ));
 }
 
@@ -408,7 +408,7 @@ fn opacity_percentage_calculation_preserves_exact_depth_boundary() {
 }
 
 #[test]
-fn typed_length_consumer_exposes_products_and_preserves_simple_sum_compatibility() {
+fn typed_length_consumer_exposes_exact_products_and_sums() {
     let report =
         parse_style_attribute("width: calc(1px + 2%); height: calc((1px + 2%) * 3); color: red");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -417,8 +417,11 @@ fn typed_length_consumer_exposes_products_and_preserves_simple_sum_compatibility
     let CssKnownPropertyValueRef::Width(width) = width.property_value().unwrap() else {
         panic!("expected width wrapper");
     };
-    let CssLength::Calc(CssCalcLength::Sum(terms)) = width.i01_subset().unwrap() else {
-        panic!("the frozen simple sum must keep its exact I01 projection");
+    let CssLength::Calc(CssCalcLength::Typed(calculation)) = width.i01_subset().unwrap() else {
+        panic!("the sum must use the exact numeric owner");
+    };
+    let CssCalculationExpressionRef::Sum(terms) = calculation_body(calculation.expression()) else {
+        panic!("expected exact sum")
     };
     assert_eq!(terms.len(), 2);
 
@@ -438,7 +441,8 @@ fn typed_length_consumer_exposes_products_and_preserves_simple_sum_compatibility
         calculation.result_type(),
         CssCalculationType::LengthPercentage
     );
-    let CssCalculationExpressionRef::Product(product) = calculation.expression() else {
+    let CssCalculationExpressionRef::Product(product) = calculation_body(calculation.expression())
+    else {
         panic!("expected typed length product");
     };
     assert_eq!(product.len(), 2);
@@ -540,7 +544,7 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
         panic!("expected deferred aspect-ratio calculation");
     };
     assert!(matches!(
-        calculation.expression(),
+        calculation_body(calculation.expression()),
         CssCalculationExpressionRef::Product(_)
     ));
     assert!(value.i01_subset().is_none());
@@ -605,7 +609,7 @@ fn opacity_keeps_number_and_percentage_calculation_roots_symbolic() {
     };
     assert_eq!(number_calculation.result_type(), CssCalculationType::Number);
     assert!(matches!(
-        number_calculation.expression(),
+        calculation_body(number_calculation.expression()),
         CssCalculationExpressionRef::Product(_)
     ));
     assert!(number.i01_subset().is_none());
@@ -626,7 +630,7 @@ fn opacity_keeps_number_and_percentage_calculation_roots_symbolic() {
         CssCalculationType::Percentage
     );
     assert!(matches!(
-        percentage_calculation.expression(),
+        calculation_body(percentage_calculation.expression()),
         CssCalculationExpressionRef::Product(_)
     ));
     assert!(percentage.i01_subset().is_none());
@@ -754,8 +758,8 @@ fn positive_number_model_checks_literals_while_calculation_range_stays_authored(
         CssPositiveNumberValue::Calculation(value)
             if matches!(
                 value.expression(),
-                CssCalculationExpressionRef::Value(CssCalculationValueRef::Number(number))
-                    if number.value() == -2.0
+                CssCalculationExpressionRef::Value(CssCalculationValueRef::Integer(number))
+                    if number.representation() == "-2"
             )
     ));
 
@@ -797,4 +801,157 @@ fn filter_amount_calculations_keep_number_and_percentage_roots_symbolic() {
         ))
     ));
     assert!(filter.i01_subset().is_none());
+}
+
+fn calculation_body(
+    expression: CssCalculationExpressionRef<'_>,
+) -> CssCalculationExpressionRef<'_> {
+    match expression {
+        CssCalculationExpressionRef::NestedCalc(root) => root.operand(),
+        other => other,
+    }
+}
+
+#[test]
+fn exact_construction_preserves_mixed_origins_and_canonical_operator_mapping() {
+    use surgeist_css::{
+        CssComponentValue, CssComponentValues, CssValueOrigin, parse_component_values,
+    };
+    let children = parse_component_values("1px + 2px").unwrap();
+    let original = children.items()[0].origin().clone();
+    let operator = children.items()[2].origin().clone();
+    let function = CssComponentValue::try_function("CALC", children).unwrap();
+    let calculation = CssLengthCalculation::try_from_components(
+        CssComponentValues::try_new(vec![function]).unwrap(),
+    )
+    .unwrap();
+    assert!(matches!(calculation.origin(), CssValueOrigin::Programmatic));
+    let rebuilt =
+        CssLengthCalculation::try_from_components(calculation.components().clone()).unwrap();
+    assert_eq!(calculation, rebuilt);
+    let CssCalculationExpressionRef::Sum(sum) = calculation_body(calculation.expression()) else {
+        panic!("expected sum")
+    };
+    assert_eq!(sum.term(1).unwrap().operator_origin(), Some(&operator));
+    let CssCalculationExpressionRef::Value(leaf) = sum.term(0).unwrap().expression() else {
+        panic!("expected leaf")
+    };
+    let CssValueOrigin::Parsed(found) = leaf.literal().origin() else {
+        panic!("expected parsed leaf")
+    };
+    let CssValueOrigin::Parsed(original) = original else {
+        panic!("expected parsed source")
+    };
+    assert!(found.source().same_snapshot(original.source()));
+    let serialized = calculation.serialize().unwrap();
+    assert_eq!(serialized.as_css(), "calc(1px + 2px)");
+    assert!(
+        matches!(serialized.origin_at(9), Some(surgeist_css::CssSerializedOrigin::Token(origin)) if origin == &operator)
+    );
+}
+
+#[test]
+fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_distinct() {
+    use surgeist_css::{
+        CssNumericConstant, CssNumericConstructionErrorKind as Kind, CssResolutionCalculation,
+        parse_component_values,
+    };
+    let integer = CssIntegerCalculation::try_from_components(
+        parse_component_values("1234567890123456789012345678901234567890").unwrap(),
+    )
+    .unwrap();
+    assert!(!integer.requires_rounding());
+    let CssCalculationExpressionRef::Value(leaf) = integer.expression() else {
+        panic!("expected exact integer")
+    };
+    assert_eq!(
+        leaf.literal().representation(),
+        "1234567890123456789012345678901234567890"
+    );
+    let rounded =
+        CssIntegerCalculation::try_from_components(parse_component_values("calc(1.5)").unwrap())
+            .unwrap();
+    assert!(rounded.requires_rounding());
+    let finite =
+        CssNumberCalculation::try_from_components(parse_component_values("calc(1e99999)").unwrap())
+            .unwrap();
+    assert!(
+        matches!(calculation_body(finite.expression()), CssCalculationExpressionRef::Value(v) if v.literal().representation() == "1e99999")
+    );
+    let symbolic = CssNumberCalculation::try_from_components(
+        parse_component_values("calc(infinity)").unwrap(),
+    )
+    .unwrap();
+    assert!(
+        matches!(calculation_body(symbolic.expression()), CssCalculationExpressionRef::Constant(v) if v.value() == CssNumericConstant::Infinity)
+    );
+    let zero =
+        CssNumberCalculation::try_from_components(parse_component_values("-0").unwrap()).unwrap();
+    assert!(
+        matches!(zero.expression(), CssCalculationExpressionRef::Value(v) if v.literal().representation() == "-0")
+    );
+    assert_eq!(
+        CssResolutionCalculation::try_from_components(
+            parse_component_values("calc(-1dppx / 0)").unwrap()
+        )
+        .unwrap()
+        .serialize()
+        .unwrap()
+        .as_css(),
+        "calc(-1dppx / 0)"
+    );
+    assert_eq!(
+        CssLengthCalculation::try_from_components(
+            parse_component_values("calc(1px + 2%)").unwrap()
+        )
+        .unwrap_err()
+        .kind(),
+        &Kind::RootDomainMismatch
+    );
+    assert!(
+        CssLengthPercentageCalculation::try_from_components(
+            parse_component_values("calc(1px + 2%)").unwrap()
+        )
+        .is_ok()
+    );
+}
+
+#[test]
+fn checked_numeric_construction_reports_resource_substitution_and_recovery_failures() {
+    use surgeist_css::{
+        CssComponentValueLimits, CssNumericConstructionErrorKind as Kind, parse_component_values,
+    };
+    let components = parse_component_values("calc(1*2)").unwrap();
+    for limits in [
+        CssComponentValueLimits::try_new(0, 4, 11).unwrap(),
+        CssComponentValueLimits::try_new(1, 3, 11).unwrap(),
+        CssComponentValueLimits::try_new(1, 4, 9).unwrap(),
+    ] {
+        let error =
+            CssNumberCalculation::try_from_components_with_limits(components.clone(), limits)
+                .unwrap_err();
+        assert_eq!(error.kind(), &Kind::ResourceLimit);
+        assert!(error.origin().is_some());
+    }
+    assert!(
+        CssNumberCalculation::try_from_components_with_limits(
+            components,
+            CssComponentValueLimits::try_new(1, 4, 11).unwrap()
+        )
+        .is_ok()
+    );
+    for (source, kind) in [
+        ("calc(var(--n))", Kind::SubstitutionRequired),
+        ("calc(1", Kind::RecoveredComponent),
+        ("1 + 2", Kind::MultipleValues),
+        ("min()", Kind::Arity),
+    ] {
+        assert_eq!(
+            CssNumberCalculation::try_from_components(parse_component_values(source).unwrap())
+                .unwrap_err()
+                .kind(),
+            &kind,
+            "{source}"
+        );
+    }
 }

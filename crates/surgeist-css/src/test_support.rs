@@ -61,7 +61,7 @@ impl<T> CssParseReportTestExt<T> for CssParseReport<T> {
     }
 }
 macro_rules! define_test_property {
-    ($input:ident; $(
+    ($input:ident, $numeric:ident; $(
         $variant:ident, $canonical:literal, [$($alias:literal),*], $stable_id:literal,
         $value:ty, $wrapper:ident, $representation:ident, $parser:ident, $dispatch:block
         $(, expansion = $expansion:ident { $($metadata:tt)* })?;
@@ -82,7 +82,7 @@ macro_rules! define_test_property {
     };
 }
 
-crate::properties::property_schema!(define_test_property, test_input);
+crate::properties::property_schema!(define_test_property, test_input, numeric_input);
 
 impl PartialEq<&CssProperty> for CssProperty {
     fn eq(&self, other: &&CssProperty) -> bool {

@@ -129,7 +129,9 @@ fn parse_condition_operand<'i, 't>(
     match token {
         Token::ParenthesisBlock => {
             let parsed = input.parse_nested_block(|nested| {
-                if let Ok(declaration) = nested.try_parse(parse_supports_declaration) {
+                if let Ok(declaration) = nested.try_parse(|nested| {
+                    parse_supports_declaration(nested, recovery.source_snapshot())
+                }) {
                     nested.expect_exhausted().map_err(basic)?;
                     return Ok(ParenthesizedCondition::Parsed(
                         CssSupportsConditionKind::Declaration(Box::new(declaration)),
@@ -211,6 +213,7 @@ fn collect_general_enclosed<'i>(
 
 pub(super) fn parse_supports_declaration<'i, 't>(
     input: &mut Parser<'i, 't>,
+    source_snapshot: &crate::CssSourceSnapshot,
 ) -> Result<CssSupportsDeclaration, ParseError<'i, Error>> {
     let start = input.state();
     let (name_start, token) = next_non_trivia(input)?;
@@ -225,7 +228,10 @@ pub(super) fn parse_supports_declaration<'i, 't>(
     input.expect_colon().map_err(basic)?;
     consume_all(input);
     let authored = input.slice_from(start.position()).to_owned();
-    let (known, parsed_importance) = parse_known_declaration(&authored);
+    let end = input.state();
+    input.reset(&start);
+    let (known, parsed_importance) = parse_known_declaration(input, source_snapshot);
+    input.reset(&end);
     let importance = parsed_importance.unwrap_or_else(|| authored_importance(&authored));
     Ok(CssSupportsDeclaration::new(
         authored,
@@ -239,9 +245,10 @@ pub(super) fn parse_supports_declaration<'i, 't>(
     ))
 }
 
-fn parse_known_declaration(authored: &str) -> (Option<CssKnownDeclaration>, Option<CssImportance>) {
-    let mut input = ParserInput::new(authored);
-    let mut parser = Parser::new(&mut input);
+fn parse_known_declaration(
+    parser: &mut Parser<'_, '_>,
+    source_snapshot: &crate::CssSourceSnapshot,
+) -> (Option<CssKnownDeclaration>, Option<CssImportance>) {
     let start = parser.state();
     let Ok(name) = parser.expect_ident_cloned() else {
         return (None, None);
@@ -252,9 +259,9 @@ fn parse_known_declaration(authored: &str) -> (Option<CssKnownDeclaration>, Opti
     let Ok(parsed) = parse_declaration_core(
         DeclarationMode::Ordinary,
         name,
-        &mut parser,
+        parser,
         &start,
-        &crate::CssSourceSnapshot::new(authored),
+        source_snapshot,
     ) else {
         return (None, None);
     };

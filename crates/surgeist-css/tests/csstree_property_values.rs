@@ -349,10 +349,10 @@ fn raw_property_corpus_obeys_selected_grammar_and_original_coordinates() {
             CssKnownProperty::Width,
             Reject(
                 CssErrorCode::InvalidPropertyValue,
-                CssTokenKind::Number,
-                5,
+                CssTokenKind::Function,
                 0,
-                5,
+                0,
+                0,
             ),
         ),
         (

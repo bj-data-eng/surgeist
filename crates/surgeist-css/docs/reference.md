@@ -284,6 +284,53 @@ have no invented coordinates. Declaration accessors are no longer `const fn`
 because their shared occurrence storage is allocated. Rule, descriptor and
 keyframe-declaration position APIs retain their existing contracts.
 
+## Exact authored calculations
+
+Calculation roots accept checked component values through `try_from_components`
+and `try_from_components_with_limits`. Their `components()` accessor retains the
+original graph, including independently originating children. `expression()`
+exposes borrowed exact numeric leaves, symbolic constants, groups, operators,
+and functions. A parsed `calc(...)` retains its outer `NestedCalc` node; inspect
+`operand()` to reach its body. Leaf `representation()` preserves signs, exponent
+spelling, and decimal precision. `unit()` retains the decoded authored unit;
+`canonical_unit()` exposes its checked unit identity.
+
+The pure number, percentage, length, angle, time, frequency, and resolution
+wrappers check their named domains. `CssLengthPercentageCalculation` supplies the
+length percentage context. `numeric_type()` exposes dimensional exponents and
+any percentage hint, including intermediate products and quotients. Integer
+calculations have numeric type `Number`; `requires_rounding()` records the
+integer consumer's deferred conversion requirement. No arithmetic is evaluated
+during admission: division by zero, symbolic infinity and NaN, range clamping,
+and integer rounding belong to later resolution.
+
+The shared Values 4 grammar admits `calc`, `min`, `max`, `clamp`, `round`, `mod`,
+`rem`, the trigonometric functions, `pow`, `sqrt`, `hypot`, `log`, `exp`, `abs`, and
+`sign`, with their intrinsic arity and type rules. Binary addition and subtraction
+require actual whitespace on both sides; comments alone are insufficient.
+Standalone delimiter negation such as `-(1px)` is invalid. Substitution-dependent
+declarations remain pending upstream; exact constructors reject residual `var()`.
+
+Construction errors distinguish component, grammar, arity, type, domain, and
+resource failures and retain responsible origins. Explicit byte, component, and
+depth limits apply before admission. `serialize()` emits canonical authored
+syntax with a map to original token and delimiter origins. Equality compares the
+authored graph and provenance, not evaluated numeric equivalence.
+
+Migration: parser-produced `CssCalcLength` values now use `Typed`, including
+simple sums. Its payload is `CssLengthPercentageCalculation`. Percentage
+construction moved from the pure `CssLengthCalculation` to that mixed wrapper.
+Borrowed leaf views replace float or integer payloads; use exact representations
+and unit identities instead of numeric `value()` accessors. Finite convenience
+constructors remain available and delegate to checked programmatic components.
+`CssCalculationType::Integer` is removed: use `Number` with the integer wrapper
+and its `requires_rounding()` flag. `CssCalculationExpressionRef::Negate` is
+removed; signs belong to numeric tokens or the subtraction and product grammar.
+`CssIntegerCalculation::literal` now allocates and is no longer a `const fn`.
+Calculation-root `result_type()`, sum and product `len()`, and sum-term and
+product-factor `operator()` accessors are also no longer `const fn`; call them
+at runtime.
+
 ## Authored flow tolerance
 
 The selected [Grid3 publication](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#placement-tolerance)

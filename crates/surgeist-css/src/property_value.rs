@@ -107,8 +107,12 @@ pub(crate) fn checked_property_value_body(
     let serialized = value
         .serialize()
         .map_err(CssPropertyValueParseError::from_component)?;
-    crate::parser::parse_property_value_body(property, serialized.as_css())
-        .map_err(|error| CssPropertyValueParseError::from_grammar(error, &serialized))
+    crate::parser::parse_property_value_body(
+        property,
+        serialized.as_css(),
+        &crate::numeric::NumericInputContext::components(value, &serialized),
+    )
+    .map_err(|error| CssPropertyValueParseError::from_grammar(error, &serialized))
 }
 
 /// Checks components using an explicit canonical or legacy authored grammar.
@@ -131,6 +135,10 @@ pub(crate) fn checked_grammar_value_body(
     let serialized = value
         .serialize()
         .map_err(CssPropertyValueParseError::from_component)?;
-    crate::parser::parse_property_value_body_for_grammar(grammar, serialized.as_css())
-        .map_err(|error| CssPropertyValueParseError::from_grammar(error, &serialized))
+    crate::parser::parse_property_value_body_for_grammar(
+        grammar,
+        serialized.as_css(),
+        &crate::numeric::NumericInputContext::components(value, &serialized),
+    )
+    .map_err(|error| CssPropertyValueParseError::from_grammar(error, &serialized))
 }

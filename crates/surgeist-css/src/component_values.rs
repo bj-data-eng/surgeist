@@ -984,9 +984,52 @@ pub struct CssSerializedValue {
     css: String,
     segments: Box<[CssSerializedOriginSegment]>,
     end: CssSerializedOrigin,
+    component_paths: Box<[(usize, Vec<usize>)]>,
 }
 
 impl CssSerializedValue {
+    pub(crate) fn from_numeric_tokens(
+        tokens: Vec<(String, CssValueOrigin)>,
+    ) -> Result<Self, CssComponentValueError> {
+        let mut css = String::new();
+        let mut segments = Vec::new();
+        let mut last = None;
+        for (text, origin) in tokens {
+            let start = css.len();
+            let end = start.checked_add(text.len()).ok_or_else(|| {
+                CssComponentValueError::new(
+                    CssComponentValueErrorKind::CapacityOverflow,
+                    origin.clone(),
+                )
+            })?;
+            css.push_str(&text);
+            if start != end {
+                segments.push(CssSerializedOriginSegment {
+                    range: start..end,
+                    origin: CssSerializedOrigin::Token(origin.clone()),
+                });
+            }
+            last = Some(origin);
+        }
+        Ok(Self {
+            css,
+            segments: segments.into_boxed_slice(),
+            end: CssSerializedOrigin::End(last),
+            component_paths: Box::new([]),
+        })
+    }
+    pub(crate) fn component_path_at(&self, byte: usize) -> Option<&[usize]> {
+        self.component_paths
+            .iter()
+            .find(|(start, _)| *start == byte)
+            .map(|(_, path)| path.as_slice())
+    }
+    pub(crate) fn component_offset_for_path(&self, path: &[usize]) -> Option<usize> {
+        self.component_paths
+            .iter()
+            .find(|(_, candidate)| candidate.as_slice() == path)
+            .map(|(offset, _)| *offset)
+    }
     /// Returns the generated token-preserving CSS.
     #[must_use]
     pub fn as_css(&self) -> &str {

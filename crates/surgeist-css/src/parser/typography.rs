@@ -2,7 +2,7 @@ use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::values::{
     CalculationRoot, LengthGrammar, next_is_comma, parse_color, parse_integer, parse_length_with,
-    parse_typed_calculation,
+    parse_numeric_function,
 };
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
@@ -16,6 +16,7 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] =
 
 pub(super) fn parse_caret_color<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssCaretColor, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("auto"))
@@ -23,12 +24,13 @@ pub(super) fn parse_caret_color<'i, 't>(
     {
         return Ok(CssCaretColor::Auto);
     }
-    let (color, _) = parse_color(input)?.into_parts();
+    let (color, _) = parse_color(input, numeric)?.into_parts();
     Ok(CssCaretColor::Color(Box::new(color)))
 }
 
 pub(super) fn parse_font_size<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssFontSize, ParseError<'i, Error>> {
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         return match_ignore_ascii_case! { &ident,
@@ -49,7 +51,7 @@ pub(super) fn parse_font_size<'i, 't>(
         };
     }
 
-    let value = parse_length_with(input, LengthGrammar::FontSize)?;
+    let value = parse_length_with(input, numeric, LengthGrammar::FontSize)?;
     CssFontSizeLengthPercentage::try_new(value)
         .map(CssFontSize::LengthPercentage)
         .ok_or_else(|| unsupported_value(input, None, "font-size must be non-negative"))
@@ -57,6 +59,7 @@ pub(super) fn parse_font_size<'i, 't>(
 
 pub(super) fn parse_line_height<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssLineHeight, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("normal"))
@@ -65,11 +68,11 @@ pub(super) fn parse_line_height<'i, 't>(
         return Ok(CssLineHeight::Normal);
     }
 
-    if let Ok(number) = input.try_parse(parse_line_height_number) {
+    if let Ok(number) = input.try_parse(|input| parse_line_height_number(input, numeric)) {
         return Ok(CssLineHeight::Number(number));
     }
 
-    let value = parse_length_with(input, LengthGrammar::LineHeight)?;
+    let value = parse_length_with(input, numeric, LengthGrammar::LineHeight)?;
     CssLineHeightLengthPercentage::try_new(value)
         .map(CssLineHeight::LengthPercentage)
         .ok_or_else(|| unsupported_value(input, None, "line-height must be non-negative"))
@@ -77,7 +80,9 @@ pub(super) fn parse_line_height<'i, 't>(
 
 fn parse_line_height_number<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssNonNegativeNumberValue, ParseError<'i, Error>> {
+    let numeric_start = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
         Token::Number { value, .. } => CssNonNegativeNumber::try_new(*value)
@@ -85,10 +90,11 @@ fn parse_line_height_number<'i, 't>(
             .ok_or_else(|| {
                 unsupported_value_at(location, None, "line-height must be non-negative")
             }),
-        Token::Function(name) if name.eq_ignore_ascii_case("calc") => input
-            .parse_nested_block(|input| parse_typed_calculation(input, CalculationRoot::Number))
-            .map(CssNumberCalculation::from_expression)
-            .map(CssNonNegativeNumberValue::Calculation),
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)
+                .map(CssNumberCalculation::from_expression)
+                .map(CssNonNegativeNumberValue::Calculation)
+        }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
 }
@@ -230,8 +236,9 @@ pub(super) fn parse_text_align_last<'i, 't>(
 
 pub(super) fn parse_text_indent<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextIndent, ParseError<'i, Error>> {
-    let length = parse_length_with(input, LengthGrammar::TextIndent)?;
+    let length = parse_length_with(input, numeric, LengthGrammar::TextIndent)?;
     let mut hanging = false;
     let mut each_line = false;
 
@@ -253,6 +260,7 @@ pub(super) fn parse_text_indent<'i, 't>(
 
 pub(super) fn parse_vertical_align<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssVerticalAlign, ParseError<'i, Error>> {
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         return match_ignore_ascii_case! { &ident,
@@ -272,7 +280,7 @@ pub(super) fn parse_vertical_align<'i, 't>(
         };
     }
 
-    parse_length_with(input, LengthGrammar::VerticalAlign)
+    parse_length_with(input, numeric, LengthGrammar::VerticalAlign)
         .map(CssVerticalAlignLength::new)
         .map(CssVerticalAlign::Length)
 }
@@ -361,6 +369,7 @@ fn parse_font_family_name_with_generics<'i, 't>(
 
 pub(super) fn parse_font<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssFontValue, ParseError<'i, Error>> {
     if let Ok(system) = input.try_parse(parse_system_font) {
         return Ok(CssFontValue::System(system));
@@ -382,7 +391,7 @@ pub(super) fn parse_font<'i, 't>(
             ));
         }
 
-        if let Ok(parsed_size) = input.try_parse(parse_font_size) {
+        if let Ok(parsed_size) = input.try_parse(|input| parse_font_size(input, numeric)) {
             size = parsed_size;
             break;
         }
@@ -453,7 +462,7 @@ pub(super) fn parse_font<'i, 't>(
     }
 
     let line_height = if input.try_parse(|input| input.expect_delim('/')).is_ok() {
-        Some(parse_line_height(input)?)
+        Some(parse_line_height(input, numeric)?)
     } else {
         None
     };
@@ -1109,6 +1118,7 @@ pub(super) fn parse_font_feature<'i, 't>(
 
 pub(super) fn parse_letter_spacing<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssLetterSpacing, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("normal"))
@@ -1116,7 +1126,7 @@ pub(super) fn parse_letter_spacing<'i, 't>(
     {
         Ok(CssLetterSpacing::Normal)
     } else {
-        parse_length_with(input, LengthGrammar::LetterSpacing)
+        parse_length_with(input, numeric, LengthGrammar::LetterSpacing)
             .map(CssLetterSpacingLength::new)
             .map(CssLetterSpacing::Length)
     }
@@ -1124,6 +1134,7 @@ pub(super) fn parse_letter_spacing<'i, 't>(
 
 pub(super) fn parse_word_spacing<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssWordSpacing, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("normal"))
@@ -1132,7 +1143,7 @@ pub(super) fn parse_word_spacing<'i, 't>(
         Ok(CssWordSpacing::Normal)
     } else {
         let location = input.current_source_location();
-        let value = parse_length_with(input, LengthGrammar::WordSpacing)?;
+        let value = parse_length_with(input, numeric, LengthGrammar::WordSpacing)?;
         CssWordSpacingLength::try_new(value)
             .map(CssWordSpacing::Length)
             .ok_or_else(|| unsupported_value_at(location, None, "word-spacing requires a length"))
@@ -1226,6 +1237,7 @@ pub(super) fn parse_text_overflow<'i, 't>(
 
 pub(super) fn parse_text_decoration<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextDecoration, ParseError<'i, Error>> {
     let mut line_components = Vec::new();
     let mut line_none = false;
@@ -1273,13 +1285,14 @@ pub(super) fn parse_text_decoration<'i, 't>(
             continue;
         }
         if thickness.is_none()
-            && let Ok(parsed_thickness) = input.try_parse(parse_text_decoration_thickness)
+            && let Ok(parsed_thickness) =
+                input.try_parse(|input| parse_text_decoration_thickness(input, numeric))
         {
             thickness = Some(parsed_thickness);
             continue;
         }
         if color.is_none()
-            && let Ok(parsed_color) = input.try_parse(parse_color)
+            && let Ok(parsed_color) = input.try_parse(|input| parse_color(input, numeric))
         {
             color = Some(parsed_color);
             continue;
@@ -1374,6 +1387,7 @@ pub(super) fn parse_text_decoration_style<'i, 't>(
 
 pub(super) fn parse_text_decoration_thickness<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextDecorationThickness, ParseError<'i, Error>> {
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         return match_ignore_ascii_case! { &ident,
@@ -1387,7 +1401,7 @@ pub(super) fn parse_text_decoration_thickness<'i, 't>(
         };
     }
 
-    parse_length_with(input, LengthGrammar::TextDecorationThickness)
+    parse_length_with(input, numeric, LengthGrammar::TextDecorationThickness)
         .map(CssTextDecorationThicknessLength::new)
         .map(CssTextDecorationThickness::Length)
 }

@@ -92,7 +92,7 @@ macro_rules! intrinsic_initial {
 // collector then emits complete enums and matches; macros never expand to
 // partial enum variants or match arms, and no second property registry exists.
 macro_rules! define_expansion_schema {
-    ($input:ident; $(
+    ($input:ident, $numeric:ident; $(
         $variant:ident, $canonical:literal, [$($alias:literal),*], $stable_id:literal,
         $value:ty, $wrapper:ident, $representation:ident, $parser:ident, $dispatch:block
         $(, expansion = $kind:ident { $($metadata:tt)* })?;
@@ -298,7 +298,7 @@ macro_rules! define_expansion_schema {
     };
 }
 
-crate::properties::property_schema!(define_expansion_schema, expansion_input);
+crate::properties::property_schema!(define_expansion_schema, expansion_input, numeric_input);
 
 #[derive(Clone, Copy, Debug)]
 enum ExpansionShape {

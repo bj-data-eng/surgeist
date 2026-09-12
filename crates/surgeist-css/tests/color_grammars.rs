@@ -339,8 +339,6 @@ fn relative_color_channels_reject_foreign_names_dimensions_and_malformed_grammar
         "rgb(from red 1e999 g b)",
         "rgb(from red r 1e999% b)",
         "hsl(from red 1e999deg s l)",
-        "rgb(from red calc(1e999 + 1) g b)",
-        "rgb(from red calc(3e38 * 3e38) g b)",
         "color(from red --custom r g b)",
         "alpha(from red r g b)",
     ] {
@@ -358,6 +356,86 @@ fn relative_color_channels_reject_foreign_names_dimensions_and_malformed_grammar
             Some(CssKnownProperty::Opacity),
             "{invalid}",
         );
+    }
+}
+
+#[test]
+fn relative_color_math_preserves_exact_values_without_float_range_evaluation() {
+    use surgeist_css::{
+        CssCalculationExpressionRef as Expr, CssCalculationProductOperator,
+        CssCalculationSumOperator, CssCalculationType, CssRelativeColorExpressionValue,
+        CssValueOrigin,
+    };
+
+    for (math, expected, product) in [
+        ("calc(1e999 + 1)", ["1e999", "1"], false),
+        ("calc(3e38 * 3e38)", ["3e38", "3e38"], true),
+    ] {
+        let source = format!("color: rgb(from red {math} g b); opacity: 0.5");
+        let report = parse_style_attribute(&source);
+        assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
+        assert_eq!(report.syntax().len(), 2);
+        let value = color_value(&source);
+        let relative = value.current().relative_value().unwrap();
+        let CssRelativeColorExpressionValue::Calculation(calculation) =
+            relative.channels()[0].value()
+        else {
+            panic!("expected exact relative-color calculation");
+        };
+        assert_eq!(calculation.result_type(), CssCalculationType::Number);
+        assert!(calculation.references().is_empty());
+        let Expr::NestedCalc(root) = calculation.expression() else {
+            panic!("calc root")
+        };
+        let leaves = match root.operand() {
+            Expr::Product(terms) if product => {
+                assert_eq!(terms.len(), 2);
+                assert_eq!(
+                    terms.factor(1).unwrap().operator(),
+                    Some(CssCalculationProductOperator::Multiply)
+                );
+                [
+                    terms.factor(0).unwrap().expression(),
+                    terms.factor(1).unwrap().expression(),
+                ]
+            }
+            Expr::Sum(terms) if !product => {
+                assert_eq!(terms.len(), 2);
+                assert_eq!(
+                    terms.term(1).unwrap().operator(),
+                    Some(CssCalculationSumOperator::Add)
+                );
+                [
+                    terms.term(0).unwrap().expression(),
+                    terms.term(1).unwrap().expression(),
+                ]
+            }
+            _ => panic!("expected authored operator"),
+        };
+        let CssValueOrigin::Parsed(root_origin) = calculation.expression().origin() else {
+            panic!("parsed root")
+        };
+        assert_eq!(root_origin.source().as_str(), source);
+        assert_eq!(
+            root_origin.span().start().byte_offset().value(),
+            source.find("calc(").unwrap()
+        );
+        for (leaf, spelling) in leaves.into_iter().zip(expected) {
+            let Expr::Value(value) = leaf else {
+                panic!("exact lexical leaf")
+            };
+            let literal = value.literal();
+            assert_eq!(literal.representation(), spelling);
+            let CssValueOrigin::Parsed(origin) = literal.origin() else {
+                panic!("parsed leaf")
+            };
+            assert!(origin.source().same_snapshot(root_origin.source()));
+            assert_eq!(
+                &source[origin.span().start().byte_offset().value()
+                    ..origin.span().end().byte_offset().value()],
+                spelling
+            );
+        }
     }
 }
 

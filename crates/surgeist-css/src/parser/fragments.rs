@@ -420,7 +420,12 @@ fn property_value_text(
             let openings = state.check_component_values(source, &input, "css.declaration")?;
             let (body, components, origin) =
                 collect_declaration_value(&mut input, state.source_snapshot(), |input| {
-                    parse_property_value_from_parser(grammar, source, input)
+                    parse_property_value_from_parser(
+                        grammar,
+                        source,
+                        input,
+                        &crate::numeric::NumericInputContext::parsed(state.source_snapshot()),
+                    )
                 })?;
             input.expect_exhausted()?;
             state.retain_component_closures(openings);

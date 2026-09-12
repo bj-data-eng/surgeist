@@ -12,15 +12,15 @@
 //! below are asserted independently of serialization followed by reparsing.
 
 use surgeist_css::{
-    CssCalcLength, CssCalcLengthTerm, CssCalcOperator, CssCalculationExpressionRef,
-    CssCalculationProductOperator, CssCalculationType, CssCalculationValueRef, CssComponentValue,
-    CssComponentValues, CssContributionValueRef, CssContributions, CssDeclaration, CssExpansion,
-    CssExpansionErrorKind, CssFlowTolerance, CssFlowToleranceRef, CssGlobalKeyword, CssImportance,
-    CssKnownProperty as Property, CssKnownPropertyValueRef, CssLength, CssLengthCalculation,
-    CssLengthUnit, CssLonghandContribution, CssLonghandValueRef, CssNormalizedItem,
-    CssPropertyNameRef, CssPropertyValueErrorKind, CssSerializedOrigin, CssValueOrigin,
-    expand_declaration, normalize_report, parse_component_values, parse_property_value,
-    parse_sheet, parse_style_attribute,
+    CssCalcLength, CssCalcLengthTerm, CssCalculationExpressionRef, CssCalculationProductOperator,
+    CssCalculationType, CssCalculationValueRef, CssComponentValue, CssComponentValues,
+    CssContributionValueRef, CssContributions, CssDeclaration, CssExpansion, CssExpansionErrorKind,
+    CssFlowTolerance, CssFlowToleranceRef, CssGlobalKeyword, CssImportance,
+    CssKnownProperty as Property, CssKnownPropertyValueRef, CssLength,
+    CssLengthPercentageCalculation, CssLengthUnit, CssLonghandContribution, CssLonghandValueRef,
+    CssNormalizedItem, CssPropertyNameRef, CssPropertyValueErrorKind, CssSerializedOrigin,
+    CssValueOrigin, expand_declaration, normalize_report, parse_component_values,
+    parse_property_value, parse_sheet, parse_style_attribute,
 };
 
 fn value(declaration: &CssDeclaration) -> &CssFlowTolerance {
@@ -84,10 +84,10 @@ fn constructors_preserve_symbolic_keywords_and_signed_numeric_payloads() {
         CssLength::Calc(CssCalcLength::try_percent(-4.0).unwrap()),
         CssLength::Calc(CssCalcLength::try_dimension(-5.0, CssLengthUnit::Em).unwrap()),
         CssLength::Calc(CssCalcLength::Typed(
-            CssLengthCalculation::try_dimension(-6.0, CssLengthUnit::Rem).unwrap(),
+            CssLengthPercentageCalculation::try_dimension(-6.0, CssLengthUnit::Rem).unwrap(),
         )),
         CssLength::Calc(CssCalcLength::Typed(
-            CssLengthCalculation::try_percentage(-7.0).unwrap(),
+            CssLengthPercentageCalculation::try_percentage(-7.0).unwrap(),
         )),
     ] {
         let tolerance = CssFlowTolerance::try_length_percentage(expected.clone())
@@ -199,14 +199,26 @@ fn parsed_and_constructed_payloads_match_independent_signed_expectations() {
 
     let report = parse_style_attribute("flow-tolerance:calc(-2px - 3%)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let CssLength::Calc(CssCalcLength::Sum(terms)) = length(value(&report.syntax()[0])) else {
-        panic!("the ordinary signed sum retains both operands");
+    let CssLength::Calc(CssCalcLength::Typed(calc)) = length(value(&report.syntax()[0])) else {
+        panic!("expected exact signed sum")
+    };
+    let CssCalculationExpressionRef::NestedCalc(root) = calc.expression() else {
+        panic!("expected calc root")
+    };
+    let CssCalculationExpressionRef::Sum(terms) = root.operand() else {
+        panic!("expected signed sum")
     };
     assert_eq!(terms.len(), 2);
-    assert_eq!(terms[0].operator(), CssCalcOperator::Add);
-    assert_eq!(terms[0].value(), &CssCalcLength::try_px(-2.0).unwrap());
-    assert_eq!(terms[1].operator(), CssCalcOperator::Subtract);
-    assert_eq!(terms[1].value(), &CssCalcLength::try_percent(3.0).unwrap());
+    assert!(
+        matches!(terms.term(0).unwrap().expression(), CssCalculationExpressionRef::Value(CssCalculationValueRef::Length(v)) if v.representation() == "-2" && v.unit() == Some("px"))
+    );
+    assert_eq!(
+        terms.term(1).unwrap().operator(),
+        Some(surgeist_css::CssCalculationSumOperator::Subtract)
+    );
+    assert!(
+        matches!(terms.term(1).unwrap().expression(), CssCalculationExpressionRef::Value(CssCalculationValueRef::Percentage(v)) if v.representation() == "3")
+    );
 
     let report = parse_style_attribute("flow-tolerance:calc(-2 * 3px)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -215,7 +227,10 @@ fn parsed_and_constructed_payloads_match_independent_signed_expectations() {
         panic!("the dimensional product retains its typed authored calculation");
     };
     assert_eq!(calculation.result_type(), CssCalculationType::Length);
-    let CssCalculationExpressionRef::Product(product) = calculation.expression() else {
+    let CssCalculationExpressionRef::NestedCalc(root) = calculation.expression() else {
+        panic!("expected calc root")
+    };
+    let CssCalculationExpressionRef::Product(product) = root.operand() else {
         panic!("the authored multiplication is retained");
     };
     assert_eq!(product.len(), 2);
@@ -223,7 +238,7 @@ fn parsed_and_constructed_payloads_match_independent_signed_expectations() {
     assert_eq!(first.operator(), None);
     assert!(matches!(
         first.expression(),
-        CssCalculationExpressionRef::Value(CssCalculationValueRef::Integer(-2))
+        CssCalculationExpressionRef::Value(CssCalculationValueRef::Integer(v)) if v.representation() == "-2"
     ));
     let second = product.factor(1).unwrap();
     assert_eq!(
@@ -232,7 +247,7 @@ fn parsed_and_constructed_payloads_match_independent_signed_expectations() {
     );
     assert!(matches!(second.expression(),
         CssCalculationExpressionRef::Value(CssCalculationValueRef::Length(length))
-            if length.value() == 3.0 && length.unit() == CssLengthUnit::Px));
+            if length.representation() == "3" && length.unit() == Some("px")));
     println!("independent parsed and constructed semantics: ok");
 }
 
@@ -400,15 +415,35 @@ fn pending_reentry_preserves_original_and_replacement_origins_and_is_retryable()
                 item.value(),
                 CssContributionValueRef::Global(CssGlobalKeyword::Initial)
             )),
-            "calc(-2px - 3%)" => assert_eq!(
-                length(contribution(item)),
-                &CssLength::Calc(CssCalcLength::sum(
-                    CssCalcLengthTerm::add(CssCalcLength::try_px(-2.0).unwrap()),
-                    [CssCalcLengthTerm::sub(
-                        CssCalcLength::try_percent(3.0).unwrap()
-                    )],
-                ))
-            ),
+            "calc(-2px - 3%)" => {
+                let CssLength::Calc(CssCalcLength::Typed(calculation)) = length(contribution(item))
+                else {
+                    panic!("exact calculation")
+                };
+                assert_eq!(
+                    calculation.result_type(),
+                    CssCalculationType::LengthPercentage
+                );
+                let CssCalculationExpressionRef::NestedCalc(root) = calculation.expression() else {
+                    panic!("calc root")
+                };
+                let CssCalculationExpressionRef::Sum(terms) = root.operand() else {
+                    panic!("signed sum")
+                };
+                assert_eq!(terms.len(), 2);
+                assert_eq!(terms.term(0).unwrap().operator(), None);
+                assert!(
+                    matches!(terms.term(0).unwrap().expression(), CssCalculationExpressionRef::Value(CssCalculationValueRef::Length(v)) if v.representation() == "-2" && v.unit() == Some("px"))
+                );
+                assert_eq!(
+                    terms.term(1).unwrap().operator(),
+                    Some(surgeist_css::CssCalculationSumOperator::Subtract)
+                );
+                assert!(
+                    matches!(terms.term(1).unwrap().expression(), CssCalculationExpressionRef::Value(CssCalculationValueRef::Percentage(v)) if v.representation() == "3")
+                );
+                assert_eq!(calculation.components(), &replacement);
+            }
             _ => unreachable!(),
         }
         assert!(item.source().same_occurrence(authored));
