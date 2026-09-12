@@ -3262,6 +3262,48 @@ mod tests {
     }
 
     #[test]
+    fn raw_property_value_observation_rejects_authored_delimiters() {
+        // Property values exclude declaration separators and annotations;
+        // separate property identity and importance cannot excuse these tokens.
+        let path = "expectations/value/Dimension.json";
+        for source in ["10px;", "var(--width)!important"] {
+            let value = raw_fragment_observation(path, Context::Value, source);
+            assert_eq!(value["syntax_count"], 0, "{source}");
+            assert_eq!(value["is_clean"], false, "{source}");
+            let diagnostics = value["diagnostics"].as_array().unwrap();
+            assert!(!diagnostics.is_empty(), "{source}");
+            for diagnostic in diagnostics {
+                assert_eq!(diagnostic["action"], "reject_input", "{source}");
+                assert_eq!(diagnostic["span_start"], 0, "{source}");
+                assert_eq!(diagnostic["span_end"], source.len(), "{source}");
+            }
+        }
+        let value = raw_fragment_observation(path, Context::Value, "10px");
+        assert_eq!(value["syntax_count"], 1);
+        assert_eq!(value["is_clean"], true);
+    }
+
+    #[test]
+    fn raw_property_value_observation_retains_valid_eof_closure() {
+        // Syntax closes a retained function at the caller's actual EOF. No
+        // synthetic declaration terminator may become part of its arguments.
+        let source = "var(--width";
+        let value = raw_fragment_observation(
+            "expectations/value/function/var.json",
+            Context::Value,
+            source,
+        );
+        assert_eq!(value["syntax_count"], 1);
+        assert_eq!(value["is_clean"], false);
+        let diagnostics = value["diagnostics"].as_array().unwrap();
+        assert!(!diagnostics.is_empty());
+        for diagnostic in diagnostics {
+            assert_eq!(diagnostic["action"], "retain_with_implicit_closure");
+            assert_eq!(diagnostic["span_end"], source.len());
+        }
+    }
+
+    #[test]
     fn raw_declaration_observation_rejects_original_invalid_values_in_payload() {
         // Syntax 3's declaration-value grammar rejects unmatched nested closers;
         // Filter Effects 1 does not define the proprietary alpha() function.
