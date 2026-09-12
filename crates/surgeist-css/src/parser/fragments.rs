@@ -35,7 +35,7 @@ fn reject(
         .expect("fragment errors originate within the complete source")
 }
 
-fn finish_nested_component<'i>(
+pub(super) fn finish_nested_component<'i>(
     input: &mut Parser<'i, '_>,
     token: &Token<'i>,
 ) -> Result<(), ParseError<'i, Error>> {
@@ -367,5 +367,74 @@ pub fn parse_font_face_descriptor_value(
             }
         };
         crate::CssParseReport::new(syntax, diagnostics)
+    })
+}
+
+/// Parses a complete raw property value using a supplied semantic property name.
+///
+/// Importance is supplied separately: root annotations, semicolons and stray
+/// closing delimiters reject the entire source, including after substitutions.
+/// Empty custom values and nested custom-property punctuation are accepted.
+/// The declaration has no parsed name or name position; its parsed value and
+/// components share the original source snapshot. No source wrapper or value
+/// serialization is introduced. Values remain authored and symbolic.
+/// Invalid grammar returns `None` with `RejectInput`; resource exhaustion uses
+/// `StopAtNestingLimit`. Implicit EOF closures are reported only on retention.
+pub fn parse_property_value_text(
+    source: &str,
+    property: CssPropertyNameRef<'_>,
+    importance: CssImportance,
+) -> crate::CssParseReport<Option<CssDeclaration>> {
+    let grammar = match property {
+        CssPropertyNameRef::Known(property) => PropertyValueGrammar::Known(property.grammar()),
+        CssPropertyNameRef::Custom(name) => PropertyValueGrammar::Custom(name),
+    };
+    property_value_text(source, grammar, importance)
+}
+
+/// Parses a complete raw value with an explicit canonical or legacy grammar.
+///
+/// This shares source provenance, separate importance, resource bounds and
+/// complete-input rejection with [`parse_property_value_text`]. The declaration
+/// retains the selected grammar for ordinary, CSS-wide and symbolic values.
+pub fn parse_property_value_text_for_grammar(
+    source: &str,
+    grammar: CssPropertyGrammar,
+    importance: CssImportance,
+) -> crate::CssParseReport<Option<CssDeclaration>> {
+    property_value_text(source, PropertyValueGrammar::Known(grammar), importance)
+}
+
+fn property_value_text(
+    source: &str,
+    grammar: PropertyValueGrammar<'_>,
+    importance: CssImportance,
+) -> crate::CssParseReport<Option<CssDeclaration>> {
+    bounded(source, || {
+        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+        let mut parser_input = ParserInput::new(source);
+        let mut input = Parser::new(&mut parser_input);
+        let result = (|| {
+            let openings = state.check_component_values(source, &input, "css.declaration")?;
+            let (body, components, origin) =
+                collect_declaration_value(&mut input, state.source_snapshot(), |input| {
+                    parse_property_value_from_parser(grammar, source, input)
+                })?;
+            input.expect_exhausted()?;
+            state.retain_component_closures(openings);
+            Ok(CssDeclaration::new_parsed_value(
+                body, importance, components, origin,
+            ))
+        })();
+        match result {
+            Ok(declaration) => crate::CssParseReport::new(
+                Some(declaration),
+                state.take_implicit_closure_diagnostics(source),
+            ),
+            Err(error) => crate::CssParseReport::new(
+                None,
+                vec![reject(source, error, crate::CssRecoveryAction::RejectInput)],
+            ),
+        }
     })
 }

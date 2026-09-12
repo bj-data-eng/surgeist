@@ -15,7 +15,8 @@ mod font_face;
 mod fragments;
 pub use fragments::{
     parse_declaration, parse_font_face_descriptor_value, parse_media_query, parse_media_query_list,
-    parse_selector, parse_selector_list,
+    parse_property_value_text, parse_property_value_text_for_grammar, parse_selector,
+    parse_selector_list,
 };
 mod generated_content;
 mod grid;
@@ -3382,48 +3383,47 @@ fn parse_property_value_body_selected(
 ) -> std::result::Result<CssDeclarationBody, Error> {
     let mut input = ParserInput::new(source);
     let mut parser = Parser::new(&mut input);
-    // Importance and declaration separators are outside a property value. The
-    // substitution shortcut must not hide them; nested punctuation stays data.
+    parse_property_value_from_parser(grammar, source, &mut parser)
+        .map_err(|error| from_parse_error(source, error))
+}
+
+fn parse_property_value_from_parser<'i>(
+    grammar: PropertyValueGrammar<'_>,
+    source: &'i str,
+    parser: &mut Parser<'i, '_>,
+) -> Result<CssDeclarationBody, ParseError<'i, Error>> {
+    // Reject root boundaries before the symbolic-substitution shortcut. Nested
+    // punctuation remains data, including custom-property curly blocks.
     let start = parser.state();
-    while !parser.is_exhausted() {
+    loop {
         let offset = parser.position().byte_index();
-        let token = parser
-            .next_including_whitespace_and_comments()
-            .map_err(|error| from_parse_error(source, error.into()))?
-            .clone();
-        if matches!(token, Token::Delim('!') | Token::Semicolon) {
-            return Err(crate::error::unexpected_token_at(source, offset, &token));
-        }
+        let location = parser.current_source_location();
+        let Ok(token) = parser.next_including_whitespace_and_comments().cloned() else {
+            break;
+        };
         if matches!(
             token,
-            Token::Function(_)
-                | Token::ParenthesisBlock
-                | Token::SquareBracketBlock
-                | Token::CurlyBracketBlock
+            Token::Delim('!')
+                | Token::Semicolon
+                | Token::CloseCurlyBracket
+                | Token::CloseParenthesis
+                | Token::CloseSquareBracket
         ) {
-            parser
-                .parse_nested_block(|nested| {
-                    while nested.next_including_whitespace_and_comments().is_ok() {}
-                    Ok::<_, ParseError<'_, Error>>(())
-                })
-                .map_err(|error| from_parse_error(source, error))?;
+            return Err(location
+                .new_custom_error(crate::error::unexpected_token_at(source, offset, &token)));
         }
+        fragments::finish_nested_component(parser, &token)?;
     }
     parser.reset(&start);
     let body = match grammar {
         PropertyValueGrammar::Known(grammar) => {
-            parse_known_declaration_body(grammar.resolved(), &mut parser)
+            parse_known_declaration_body(grammar.resolved(), parser)
         }
-        PropertyValueGrammar::Custom(name) => {
-            parse_custom_property_value(&mut parser).map(|value| {
-                CssDeclarationBody::Custom(CssCustomDeclaration::new(name.clone(), value))
-            })
-        }
-    }
-    .map_err(|error| from_parse_error(source, error))?;
-    parser
-        .expect_exhausted()
-        .map_err(|error| from_parse_error(source, error.into()))?;
+        PropertyValueGrammar::Custom(name) => parse_custom_property_value(parser).map(|value| {
+            CssDeclarationBody::Custom(CssCustomDeclaration::new(name.clone(), value))
+        }),
+    }?;
+    parser.expect_exhausted()?;
     Ok(body)
 }
 

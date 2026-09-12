@@ -17,9 +17,10 @@ use adapters::{
     REGISTRY, RegistryEntry, UnsupportedPolicy as RegistryUnsupportedPolicy,
 };
 use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssRecoveryAction,
-    CssRecoveryDiagnostic, parse_declaration, parse_font_face_descriptor_value, parse_media_query,
-    parse_media_query_list, parse_selector, parse_selector_list, parse_sheet,
+    CssErrorCode, CssImportance, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
+    CssPropertyNameRef, CssRecoveryAction, CssRecoveryDiagnostic, parse_declaration,
+    parse_font_face_descriptor_value, parse_media_query, parse_media_query_list,
+    parse_property_value_text, parse_selector, parse_selector_list, parse_sheet,
     parse_style_attribute,
 };
 use surgeist_css::{validate_sheet, validate_style_attribute};
@@ -1973,6 +1974,31 @@ fn observe_public_parser(
                 report,
                 registry,
                 RegistryExtractor::StyleDeclarations,
+                complete,
+                |syntax| usize::from(syntax.is_some()),
+            )
+        }
+        EntryPoint::PropertyValueText => {
+            let Some(PropertyOrDescriptor::Property(property)) = registry.property_or_descriptor()
+            else {
+                return Err("raw property value entry requires property context".into());
+            };
+            let report = parse_property_value_text(
+                complete.source(),
+                CssPropertyNameRef::Known(property),
+                CssImportance::Normal,
+            );
+            if report
+                .syntax()
+                .as_ref()
+                .is_some_and(|value| value.property_name() != CssPropertyNameRef::Known(property))
+            {
+                return Err("raw value does not match its property context".into());
+            }
+            fragment_observation(
+                report,
+                registry,
+                RegistryExtractor::KnownDeclaration { index: 0, property },
                 complete,
                 |syntax| usize::from(syntax.is_some()),
             )

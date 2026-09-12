@@ -4364,6 +4364,9 @@ enum DeclarationProvenance {
         name: CssParsedOrigin,
         value: CssParsedOrigin,
     },
+    ParsedValue {
+        value: CssParsedOrigin,
+    },
     Constructed,
 }
 
@@ -4390,6 +4393,22 @@ impl CssDeclaration {
                 importance,
                 components,
                 provenance: DeclarationProvenance::Parsed { name, value },
+            }),
+        }
+    }
+
+    pub(crate) fn new_parsed_value(
+        body: CssDeclarationBody,
+        importance: CssImportance,
+        components: CssComponentValues,
+        value: CssParsedOrigin,
+    ) -> Self {
+        Self {
+            occurrence: Arc::new(DeclarationOccurrence {
+                body,
+                importance,
+                components,
+                provenance: DeclarationProvenance::ParsedValue { value },
             }),
         }
     }
@@ -4442,35 +4461,38 @@ impl CssDeclaration {
         }
     }
 
-    /// Returns importance recognized from source or supplied to checked construction.
+    /// Returns importance recognized from source or supplied by the caller.
     #[must_use]
     pub fn importance(&self) -> CssImportance {
         self.occurrence.importance
     }
 
-    /// Returns the original property-name start, or `None` for checked construction.
+    /// Returns the original property-name start, or `None` when the name was supplied.
     #[must_use]
     pub fn position(&self) -> Option<CssSourcePosition> {
         self.parsed_name().map(|origin| origin.span().start())
     }
 
     /// Returns the consumed property-name token's original source span.
+    /// Raw value parsing and checked construction have no parsed property name.
     #[must_use]
     pub fn parsed_name(&self) -> Option<&CssParsedOrigin> {
         match &self.occurrence.provenance {
             DeclarationProvenance::Parsed { name, .. } => Some(name),
-            DeclarationProvenance::Constructed => None,
+            DeclarationProvenance::ParsedValue { .. } | DeclarationProvenance::Constructed => None,
         }
     }
 
     /// Returns the parsed value region, excluding its annotation and declaration delimiter.
     ///
+    /// Raw value parsing retains its original value source without a fabricated name.
     /// Checked construction has no single declaration-source region, even when individual
     /// supplied tokens have parsed origins. Empty parsed custom values retain a zero-width span.
     #[must_use]
     pub fn parsed_value(&self) -> Option<&CssParsedOrigin> {
         match &self.occurrence.provenance {
-            DeclarationProvenance::Parsed { value, .. } => Some(value),
+            DeclarationProvenance::Parsed { value, .. }
+            | DeclarationProvenance::ParsedValue { value } => Some(value),
             DeclarationProvenance::Constructed => None,
         }
     }

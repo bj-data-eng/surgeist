@@ -14358,29 +14358,24 @@
       "id": "value/Dimension.json#/IE hack",
       "expectation_sha256": "62510bcc75f37153d39ea3c45975ce0f2aaf399b256415e018fc84a9c8c6b00a",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "known_declaration",
-              "index": 0,
-              "property": "width"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "known_declaration",
+            "index": 0,
+            "property": "width"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "invalid_property_value",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_property_value",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -14796,7 +14791,7 @@
         "diagnostics": [
           {
             "code": "invalid_color_syntax",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -14820,7 +14815,7 @@
         "diagnostics": [
           {
             "code": "invalid_color_syntax",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -14844,7 +14839,7 @@
         "diagnostics": [
           {
             "code": "invalid_color_syntax",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -14868,7 +14863,7 @@
         "diagnostics": [
           {
             "code": "invalid_color_syntax",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -14892,7 +14887,7 @@
         "diagnostics": [
           {
             "code": "invalid_color_syntax",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -14916,7 +14911,7 @@
         "diagnostics": [
           {
             "code": "invalid_color_syntax",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -14940,7 +14935,7 @@
         "diagnostics": [
           {
             "code": "invalid_color_syntax",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -14964,7 +14959,7 @@
         "diagnostics": [
           {
             "code": "invalid_color_syntax",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -14974,87 +14969,72 @@
       "id": "value/HexColor.json#/edge cases/6",
       "expectation_sha256": "7e0b7c92f81995425e63a7660d12bbe5dfb66c033e4c9b260322e70393509b92",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "known_declaration",
-              "index": 0,
-              "property": "color"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "known_declaration",
+            "index": 0,
+            "property": "color"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "invalid_color_syntax",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_color_syntax",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "value/HexColor.json#/edge cases/7",
       "expectation_sha256": "7e0b7c92f81995425e63a7660d12bbe5dfb66c033e4c9b260322e70393509b92",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "known_declaration",
-              "index": 0,
-              "property": "color"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "known_declaration",
+            "index": 0,
+            "property": "color"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "invalid_color_syntax",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_color_syntax",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "value/HexColor.json#/edge cases/8",
       "expectation_sha256": "7e0b7c92f81995425e63a7660d12bbe5dfb66c033e4c9b260322e70393509b92",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "known_declaration",
-              "index": 0,
-              "property": "color"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "known_declaration",
+            "index": 0,
+            "property": "color"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "invalid_color_syntax",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_color_syntax",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -15092,7 +15072,7 @@
         "diagnostics": [
           {
             "code": "invalid_color_syntax",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -15116,7 +15096,7 @@
         "diagnostics": [
           {
             "code": "invalid_color_syntax",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -15140,7 +15120,7 @@
         "diagnostics": [
           {
             "code": "invalid_color_syntax",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -15677,7 +15657,7 @@
         "diagnostics": [
           {
             "code": "invalid_property_value",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16384,7 +16364,7 @@
       "id": "value/Url.json#/error/0",
       "expectation_sha256": "fe9b0dc51fd028f34261f851352c43609edfe3adb68f76107b1293c41c77c9c3",
       "class": {
-        "kind": "clean",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "known_declaration",
@@ -16392,9 +16372,16 @@
             "property": "background-image"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_property_value",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -16414,8 +16401,8 @@
         },
         "diagnostics": [
           {
-            "code": "invalid_property_value",
-            "action": "drop_declaration",
+            "code": "unexpected_token",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16439,7 +16426,7 @@
         "diagnostics": [
           {
             "code": "invalid_property_value",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16449,7 +16436,7 @@
       "id": "value/Url.json#/uri escaping",
       "expectation_sha256": "fe9b0dc51fd028f34261f851352c43609edfe3adb68f76107b1293c41c77c9c3",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "known_declaration",
@@ -16457,16 +16444,9 @@
             "property": "background-image"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_property_value",
-            "action": "drop_declaration",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {
@@ -16733,7 +16713,7 @@
         "diagnostics": [
           {
             "code": "invalid_property_value",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -16977,22 +16957,16 @@
       "id": "value/function/var.json#/empty fallback (parseCustomProperty:true)",
       "expectation_sha256": "1b288ed1494305d299f6c476754efcfb4a3516123d8bc88ab0b153f2aa5e5da6",
       "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "known_declaration",
-              "index": 0,
-              "property": "width"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "known_declaration",
+            "index": 0,
+            "property": "width"
           },
-          "is_clean": true,
-          "diagnostics": []
+          "predicate": {
+            "relation": "nonempty"
+          }
         }
       }
     },
@@ -17014,7 +16988,7 @@
         "diagnostics": [
           {
             "code": "invalid_property_value",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -17038,7 +17012,7 @@
         "diagnostics": [
           {
             "code": "invalid_property_value",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -17062,7 +17036,7 @@
         "diagnostics": [
           {
             "code": "invalid_property_value",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -17089,22 +17063,16 @@
       "id": "value/function/var.json#/only comments (parseCustomProperty:true)",
       "expectation_sha256": "1b288ed1494305d299f6c476754efcfb4a3516123d8bc88ab0b153f2aa5e5da6",
       "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "known_declaration",
-              "index": 0,
-              "property": "width"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "known_declaration",
+            "index": 0,
+            "property": "width"
           },
-          "is_clean": true,
-          "diagnostics": []
+          "predicate": {
+            "relation": "nonempty"
+          }
         }
       }
     },
@@ -17126,7 +17094,7 @@
         "diagnostics": [
           {
             "code": "invalid_property_value",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -17136,7 +17104,7 @@
       "id": "value/function/var.json#/should ignore everything inside falback's block",
       "expectation_sha256": "1b288ed1494305d299f6c476754efcfb4a3516123d8bc88ab0b153f2aa5e5da6",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "known_declaration",
@@ -17144,38 +17112,25 @@
             "property": "width"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_property_value",
-            "action": "drop_declaration",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {
       "id": "value/function/var.json#/should parse a fallback value when parseCustomProperty is true",
       "expectation_sha256": "1b288ed1494305d299f6c476754efcfb4a3516123d8bc88ab0b153f2aa5e5da6",
       "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "known_declaration",
-              "index": 0,
-              "property": "width"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "known_declaration",
+            "index": 0,
+            "property": "width"
           },
-          "is_clean": true,
-          "diagnostics": []
+          "predicate": {
+            "relation": "nonempty"
+          }
         }
       }
     },
@@ -17200,22 +17155,16 @@
       "id": "value/function/var.json#/should preserve single spaces (parseCustomProperty:true)",
       "expectation_sha256": "1b288ed1494305d299f6c476754efcfb4a3516123d8bc88ab0b153f2aa5e5da6",
       "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "known_declaration",
-              "index": 0,
-              "property": "width"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "known_declaration",
+            "index": 0,
+            "property": "width"
           },
-          "is_clean": true,
-          "diagnostics": []
+          "predicate": {
+            "relation": "nonempty"
+          }
         }
       }
     },
@@ -17240,96 +17189,21 @@
       "id": "value/function/var.json#/spaces and comments #2 (parseCustomProperty:true)",
       "expectation_sha256": "1b288ed1494305d299f6c476754efcfb4a3516123d8bc88ab0b153f2aa5e5da6",
       "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "known_declaration",
-              "index": 0,
-              "property": "width"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "known_declaration",
+            "index": 0,
+            "property": "width"
           },
-          "is_clean": true,
-          "diagnostics": []
+          "predicate": {
+            "relation": "nonempty"
+          }
         }
       }
     },
     {
       "id": "value/function/var.json#/spaces and comments #3 (parseCustomProperty:true)",
-      "expectation_sha256": "1b288ed1494305d299f6c476754efcfb4a3516123d8bc88ab0b153f2aa5e5da6",
-      "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "known_declaration",
-              "index": 0,
-              "property": "width"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
-          },
-          "is_clean": true,
-          "diagnostics": []
-        }
-      }
-    },
-    {
-      "id": "value/function/var.json#/spaces and comments #4 (parseCustomProperty:true)",
-      "expectation_sha256": "1b288ed1494305d299f6c476754efcfb4a3516123d8bc88ab0b153f2aa5e5da6",
-      "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "known_declaration",
-              "index": 0,
-              "property": "width"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
-          },
-          "is_clean": true,
-          "diagnostics": []
-        }
-      }
-    },
-    {
-      "id": "value/function/var.json#/spaces and comments (parseCustomProperty:true)",
-      "expectation_sha256": "1b288ed1494305d299f6c476754efcfb4a3516123d8bc88ab0b153f2aa5e5da6",
-      "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "known_declaration",
-              "index": 0,
-              "property": "width"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
-          },
-          "is_clean": true,
-          "diagnostics": []
-        }
-      }
-    },
-    {
-      "id": "value/function/var.json#/unclosed var() is not an error",
       "expectation_sha256": "1b288ed1494305d299f6c476754efcfb4a3516123d8bc88ab0b153f2aa5e5da6",
       "class": {
         "kind": "clean",
@@ -17343,6 +17217,64 @@
             "relation": "nonempty"
           }
         }
+      }
+    },
+    {
+      "id": "value/function/var.json#/spaces and comments #4 (parseCustomProperty:true)",
+      "expectation_sha256": "1b288ed1494305d299f6c476754efcfb4a3516123d8bc88ab0b153f2aa5e5da6",
+      "class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "known_declaration",
+            "index": 0,
+            "property": "width"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      }
+    },
+    {
+      "id": "value/function/var.json#/spaces and comments (parseCustomProperty:true)",
+      "expectation_sha256": "1b288ed1494305d299f6c476754efcfb4a3516123d8bc88ab0b153f2aa5e5da6",
+      "class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "known_declaration",
+            "index": 0,
+            "property": "width"
+          },
+          "predicate": {
+            "relation": "nonempty"
+          }
+        }
+      }
+    },
+    {
+      "id": "value/function/var.json#/unclosed var() is not an error",
+      "expectation_sha256": "1b288ed1494305d299f6c476754efcfb4a3516123d8bc88ab0b153f2aa5e5da6",
+      "class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "known_declaration",
+            "index": 0,
+            "property": "width"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_property_value",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {

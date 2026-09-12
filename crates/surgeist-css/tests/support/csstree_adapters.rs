@@ -12,6 +12,7 @@ pub enum EntryPoint {
     Sheet,
     StyleAttribute,
     Declaration,
+    PropertyValueText,
     Selector,
     SelectorList,
     MediaQuery,
@@ -25,6 +26,7 @@ impl EntryPoint {
             Self::Sheet => "sheet",
             Self::StyleAttribute => "style_attribute",
             Self::Declaration => "declaration",
+            Self::PropertyValueText => "property_value_text",
             Self::Selector => "selector",
             Self::SelectorList => "selector_list",
             Self::MediaQuery => "media_query",
@@ -125,12 +127,8 @@ impl Adapter {
             Self::MediaQuery => ("", ""),
             Self::MediaAtRulePrelude => ("", ""),
             Self::PropertyValue => match property_or_descriptor {
-                Some(PropertyOrDescriptor::Property(property)) => {
-                    return CompleteInput::from_owned_parts(
-                        format!("{}:", property.canonical_name()),
-                        input,
-                        ";".to_owned(),
-                    );
+                Some(PropertyOrDescriptor::Property(_)) => {
+                    return CompleteInput::from_parts("", input, "");
                 }
                 _ => return Err(Mismatch::MissingPropertyOrDescriptor { adapter: self }),
             },
@@ -719,11 +717,12 @@ impl RegistryEntry {
                 (self.entry_point, self.adapter),
                 (
                     EntryPoint::StyleAttribute,
-                    Adapter::PropertyValue | Adapter::CustomPropertyContainment
-                ) | (
-                    EntryPoint::FontFaceDescriptorValue,
-                    Adapter::FontFaceDescriptorValue
-                )
+                    Adapter::CustomPropertyContainment
+                ) | (EntryPoint::PropertyValueText, Adapter::PropertyValue)
+                    | (
+                        EntryPoint::FontFaceDescriptorValue,
+                        Adapter::FontFaceDescriptorValue
+                    )
             ),
             _ => false,
         }
@@ -866,7 +865,7 @@ macro_rules! value_entry {
         RegistryEntry {
             fixture_path: $path,
             context: "value",
-            entry_point: EntryPoint::StyleAttribute,
+            entry_point: EntryPoint::PropertyValueText,
             adapter: Adapter::$adapter,
             extractor: $extractor,
             property_or_descriptor: $owner,

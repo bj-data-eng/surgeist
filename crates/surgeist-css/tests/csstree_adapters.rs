@@ -217,6 +217,46 @@ fn extractor_inventory_uses_only_public_accessors() {
 }
 
 #[test]
+fn property_value_adapters_keep_raw_source_and_typed_context() {
+    let entries: Vec<_> = adapters::REGISTRY
+        .iter()
+        .filter(|entry| entry.adapter() == adapters::Adapter::PropertyValue)
+        .collect();
+    assert_eq!(entries.len(), 6);
+    for entry in entries {
+        assert_eq!(entry.entry_point(), EntryPoint::PropertyValueText);
+        assert!(entry.has_legal_context_combination());
+        let Some(PropertyOrDescriptor::Property(property)) = entry.property_or_descriptor() else {
+            panic!("property context")
+        };
+        assert_eq!(
+            entry.extractor(),
+            Extractor::KnownDeclaration { index: 0, property }
+        );
+        for source in ["", "10px", "10px;", "var(--width", " /*é*/ var(--λ) "] {
+            let complete = entry
+                .adapter()
+                .wrap(source, entry.property_or_descriptor())
+                .unwrap();
+            assert_eq!(complete.source(), source);
+            assert_eq!(complete.payload_span(), 0..source.len());
+        }
+        assert!(entry.adapter().wrap("10px", None).is_err());
+        assert!(
+            entry
+                .adapter()
+                .wrap(
+                    "10px",
+                    Some(PropertyOrDescriptor::FontFaceDescriptor(
+                        FontFaceDescriptorKind::UnicodeRange
+                    ))
+                )
+                .is_err()
+        );
+    }
+}
+
+#[test]
 fn font_descriptor_adapter_keeps_raw_source_and_typed_context() {
     let entry = adapters::REGISTRY
         .iter()

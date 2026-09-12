@@ -22,6 +22,8 @@ subset; it does not establish complete support for all CSS syntax.
 | `validate_sheet(&str)` | Default features | `Result<CssSheet, CssValidationFailure>` |
 | `validate_style_attribute(&str)` | Default features | `Result<CssDeclarationList, CssValidationFailure>` |
 | `parse_component_values(&str)` | Default features | `Result<CssComponentValues, CssComponentValueError>` |
+| `parse_property_value_text(source, name, importance)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
+| `parse_property_value_text_for_grammar(source, grammar, importance)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
 | `parse_property_value(name, components, importance)` | Default features | `Result<CssDeclaration, CssPropertyValueParseError>` |
 | `expand_declaration(&declaration)` | Default features | `Result<CssExpansion, CssExpansionError>` |
 
@@ -156,6 +158,27 @@ UTF-8 byte offsets, zero-based lines, and UTF-16 columns. Value provenance exclu
 the annotation; `importance()` exposes its recognized meaning without a separate
 annotation span. Custom values and substitution-dependent known values remain
 symbolic. No selector, brace, property name, or value is synthesized.
+
+## Raw property values
+
+`parse_property_value_text(source, name, importance)` consumes the original value
+bytes with a supplied `CssPropertyNameRef` and `CssImportance`. The companion
+`parse_property_value_text_for_grammar` accepts `CssPropertyGrammar` to preserve
+canonical or legacy grammar selection. Both return
+`CssParseReport<Option<CssDeclaration>>` and share ordinary declaration grammar.
+Known global keywords and substitution-dependent values remain symbolic; custom
+values may be empty and contain nested curly punctuation.
+
+Importance comes only from the argument. Root `!` annotations, semicolons and
+stray closing delimiters reject the complete input even after `var()` or `env()`.
+Rejection reports `RejectInput`; resource limits retain `StopAtNestingLimit`.
+Implicit EOF closures are reported only when the value survives validation.
+
+The declaration's `position()` and `parsed_name()` are `None`, because the caller
+supplied the name. Its `parsed_value()` is present and shares the original source
+snapshot with its components, preserving whitespace, spelling, UTF-8 offsets,
+UTF-16 columns and actual EOF. Empty custom values retain a zero-width region.
+No property prefix, source wrapper or serialization is introduced.
 
 ## Checked declaration construction
 
