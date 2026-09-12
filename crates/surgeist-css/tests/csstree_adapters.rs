@@ -80,6 +80,16 @@ fn at_rule_extraction_reports_style_wrong_family_and_entry_point_misuse() {
 }
 
 #[test]
+fn at_rule_extraction_retains_authored_font_feature_values() {
+    let report = parse_rule(
+        "@font-feature-values Demo { @swash { Fancy: 2; } }",
+        &CssNamespaceContext::default(),
+    );
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    assert_eq!(Extractor::AtRule.extract_at_rule(report.syntax()), Ok(1));
+}
+
+#[test]
 fn style_block_adapter_preserves_raw_input_and_names_block_presence() {
     let entry = adapters::REGISTRY
         .iter()

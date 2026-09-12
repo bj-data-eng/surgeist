@@ -481,6 +481,7 @@ pub(super) struct StructuralPreflight {
     pub(super) unit_end: usize,
     pub(super) parents: Vec<StructuralParent>,
     pub(super) style_context_starts: Vec<usize>,
+    pub(super) style_ancestry_starts: Vec<usize>,
     pub(super) parent_depth: u32,
     pub(super) outcome: StructuralPreflightOutcome,
 }
@@ -540,12 +541,14 @@ struct StructuralGroup {
     start: usize,
     kind: GroupKind,
     style_context_starts: Vec<usize>,
+    style_ancestry_starts: Vec<usize>,
 }
 
 pub(super) fn preflight_structural_nesting(
     source: &str,
     base_depth: u32,
     root_style_context: bool,
+    root_style_ancestor: bool,
 ) -> Option<StructuralPreflight> {
     // Restarting cssparser at each verified token boundary exposes opening and
     // closing tokens without calling `parse_nested_block`; comments, strings,
@@ -627,6 +630,10 @@ pub(super) fn preflight_structural_nesting(
             .last()
             .map(|parent| parent.style_context_starts.clone())
             .unwrap_or_else(|| root_style_context.then_some(0).into_iter().collect());
+        let style_ancestry_starts = groups
+            .last()
+            .map(|parent| parent.style_ancestry_starts.clone())
+            .unwrap_or_else(|| root_style_ancestor.then_some(0).into_iter().collect());
         if target.is_none() && split_chain {
             let outcome = if global_depth > STRUCTURAL_NESTING_LIMIT {
                 Some(StructuralPreflightOutcome::NestingLimit {
@@ -650,6 +657,7 @@ pub(super) fn preflight_structural_nesting(
                         })
                         .collect(),
                     style_context_starts: style_context_starts.clone(),
+                    style_ancestry_starts: style_ancestry_starts.clone(),
                     parent_depth: global_depth.saturating_sub(1),
                     outcome,
                 });
@@ -678,10 +686,32 @@ pub(super) fn preflight_structural_nesting(
             | GroupKind::Component
             | GroupKind::Other => Vec::new(),
         };
+        // Scope changes the child grammar but does not erase style ancestry.
+        // Keep ancestry captures separate from the grammar-selection captures.
+        let child_style_ancestry_starts = match group {
+            GroupKind::Style => {
+                let mut starts = style_ancestry_starts;
+                starts.push(token_end);
+                starts
+            }
+            GroupKind::Layer
+            | GroupKind::Media
+            | GroupKind::Supports
+            | GroupKind::Container
+            | GroupKind::Scope
+                if !style_ancestry_starts.is_empty() =>
+            {
+                let mut starts = style_ancestry_starts;
+                starts.push(token_end);
+                starts
+            }
+            _ => Vec::new(),
+        };
         groups.push(StructuralGroup {
             start: unit_start,
             kind: group,
             style_context_starts: child_style_context_starts,
+            style_ancestry_starts: child_style_ancestry_starts,
         });
         unit_starts.push(None);
         frames.push(StructuralFrame {

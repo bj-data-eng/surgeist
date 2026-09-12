@@ -347,30 +347,20 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
     assert_eq!(display_metadata.unsupported_remainder(), None);
     assert_eq!(display_metadata.recognized_unsupported_code(), None);
 
-    let unsupported = parse_sheet("@font-feature-values Demo { @styleset { nice: 1; } }");
-    assert!(unsupported.syntax().rules().is_empty());
-    assert_eq!(unsupported.diagnostics().len(), 1);
-    assert_eq!(
-        unsupported.diagnostics()[0].error().code(),
-        CssErrorCode::UnsupportedAtRule
-    );
-    let unsupported_metadata =
+    let feature_values = parse_sheet("@font-feature-values Demo { @styleset { nice: 1; } }");
+    assert!(feature_values.is_clean());
+    assert!(matches!(
+        feature_values.syntax().rules(),
+        [CssRule::FontFeatureValues(_)]
+    ));
+    let metadata =
         feature_metadata("later.rule.font-feature-values").expect("font-feature-values metadata");
-    assert_eq!(unsupported_metadata.kind(), CssFeatureKind::Rule);
-    assert_eq!(unsupported_metadata.spelling(), "@font-feature-values");
-    assert_eq!(unsupported_metadata.source().id().as_str(), "I-FONTS4");
-    assert_eq!(
-        unsupported_metadata.production(),
-        "#font-feature-values-rule"
-    );
-    assert_eq!(
-        unsupported_metadata.status(),
-        CssSupportStatus::RecognizedUnsupported
-    );
-    assert_eq!(
-        unsupported_metadata.recognized_unsupported_code(),
-        Some(CssErrorCode::UnsupportedAtRule)
-    );
+    assert_eq!(metadata.kind(), CssFeatureKind::Rule);
+    assert_eq!(metadata.spelling(), "@font-feature-values");
+    assert_eq!(metadata.source().id().as_str(), "I-FONTS4-20260907");
+    assert_eq!(metadata.production(), "#font-feature-values-syntax");
+    assert_eq!(metadata.status(), CssSupportStatus::Partial);
+    assert_eq!(metadata.recognized_unsupported_code(), None);
 
     let numeric_weight = parse_style_attribute("font-weight: 725");
     assert!(
@@ -1262,16 +1252,23 @@ const EXPECTED: &[ExpectedFeature] = &[
         id: "later.rule.font-feature-values",
         kind: CssFeatureKind::Rule,
         spelling: "@font-feature-values",
-        source: ExpectedSource::Id("I-FONTS4"),
-        production: "#font-feature-values-rule",
-        status: CssSupportStatus::RecognizedUnsupported,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: Some(CssErrorCode::UnsupportedAtRule),
-        positive: None,
+        source: ExpectedSource::Id("I-FONTS4-20260907"),
+        production: "#font-feature-values-syntax",
+        status: CssSupportStatus::Partial,
+        supported_subset: Some(
+            "Ordered family lists, all seven subsidiary blocks, font-display, exact unbounded nonnegative integer tokens, checked construction, local recovery, ordinary group placement, and opaque normalization.",
+        ),
+        unsupported_remainder: Some(
+            "Provisional section 6.9.1 constraints conflict with section 6.9.2 on character-variant one-index cardinality, first indexes above 99, and styleset indexes above 20. These three requirements remain unresolved. General rule serialization is unfinished; no CSSOM mapping or cascade is provided.",
+        ),
+        recognized_code: None,
+        positive: Some(Input::Sheet(
+            "@font-feature-values Font One { @styleset { nice: 1; } }",
+        )),
+        // The disputed section 6.9.2 case follows the provisional 6.9.1 policy.
         negative: Some((
-            Input::Sheet("@font-feature-values Font One { @styleset { nice: 1; } }"),
-            CssErrorCode::UnsupportedAtRule,
+            Input::Sheet("@font-feature-values Font One { @styleset { nice: 21; } }"),
+            CssErrorCode::InvalidDescriptorValue,
         )),
     },
     ExpectedFeature {
@@ -1735,11 +1732,10 @@ fn c14_amended_ledger_public_metadata_is_reconciled() {
 
     let metadata =
         feature_metadata("later.rule.font-feature-values").expect("font-feature-values metadata");
-    assert_eq!(metadata.status(), CssSupportStatus::RecognizedUnsupported);
-    assert_eq!(
-        metadata.recognized_unsupported_code(),
-        Some(CssErrorCode::UnsupportedAtRule)
-    );
+    assert_eq!(metadata.status(), CssSupportStatus::Partial);
+    assert!(metadata.supported_subset().is_some());
+    assert!(metadata.unsupported_remainder().is_some());
+    assert_eq!(metadata.recognized_unsupported_code(), None);
 }
 
 #[test]
@@ -2206,35 +2202,23 @@ fn c14_retained_partial_extensions_have_direct_public_evidence() {
         assert!(diagnostics(input).is_empty(), "{id} public positive vector");
     }
 
-    let unsupported = parse_sheet(concat!(
+    let report = parse_sheet(concat!(
         "@font-feature-values Demo { @styleset { nice: 1; } } ",
         ".tail { color: red; }",
     ));
-    let [CssRule::Style(_)] = unsupported.syntax().rules() else {
-        panic!("later sibling must survive the unsupported at-rule");
-    };
-    let [diagnostic] = unsupported.diagnostics() else {
-        panic!("expected one unsupported-at-rule diagnostic");
-    };
-    assert_eq!(diagnostic.error().code(), CssErrorCode::UnsupportedAtRule);
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
-    let ErrorKind::UnsupportedAtRule(detail) = diagnostic.error().kind() else {
-        panic!("expected typed unsupported-at-rule detail");
-    };
-    assert_eq!(detail.name().as_str(), "font-feature-values");
-    assert_eq!(detail.feature().as_str(), "later.rule.font-feature-values");
-
+    assert!(report.is_clean());
+    assert!(matches!(
+        report.syntax().rules(),
+        [CssRule::FontFeatureValues(_), CssRule::Style(_)]
+    ));
     let metadata =
         feature_metadata("later.rule.font-feature-values").expect("font-feature-values metadata");
     assert_eq!(metadata.kind(), CssFeatureKind::Rule);
     assert_eq!(metadata.spelling(), "@font-feature-values");
-    assert_eq!(metadata.source().id().as_str(), "I-FONTS4");
-    assert_eq!(metadata.production(), "#font-feature-values-rule");
-    assert_eq!(metadata.status(), CssSupportStatus::RecognizedUnsupported);
-    assert_eq!(
-        metadata.recognized_unsupported_code(),
-        Some(CssErrorCode::UnsupportedAtRule),
-    );
+    assert_eq!(metadata.source().id().as_str(), "I-FONTS4-20260907");
+    assert_eq!(metadata.production(), "#font-feature-values-syntax");
+    assert_eq!(metadata.status(), CssSupportStatus::Partial);
+    assert_eq!(metadata.recognized_unsupported_code(), None);
 }
 
 fn assert_c03_timing_metadata(

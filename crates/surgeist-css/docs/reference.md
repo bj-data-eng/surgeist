@@ -884,6 +884,42 @@ loading. This raw-source parser is distinct from component-based
 `parse_property_value`, whose errors use component origins; descriptor values
 carry no parsed occurrence provenance.
 
+`@font-feature-values` retains a nonempty ordered family list and an ordered
+mixed body of `font-display` occurrences and all seven subsidiary block kinds:
+`stylistic`, `historical-forms`, `styleset`, `character-variant`, `swash`,
+`ornaments`, and `annotation`. Empty rules and blocks, repeated names, duplicate
+indexes, and interleaved descriptors remain intact. Friendly names are decoded,
+case-sensitive identifiers; reserved-looking names and escaped punctuation are
+valid. Invalid descriptors/definitions and unknown or malformed subsidiary
+blocks recover locally, while an invalid family prelude drops the outer rule.
+
+`CssFontFeatureValuesRule::try_new`, `CssFontFeatureValueBlock::try_new`, and
+`CssFontFeatureValueDefinition::try_new` enforce the same grammar as parsing.
+A standalone definition validates its nonempty list; the block constructor also
+validates kind-specific count/range constraints. `CssFontFeatureValueIndex`
+stores exact normalized decimal digits without a machine-integer maximum.
+`try_from_decimal` accepts only an optional ASCII sign and digits, rejects
+negative nonzero values, and normalizes leading zeros and negative zero.
+`to_u32` returns `None` on overflow. Parsed index origins identify the whole
+original token; constructors produce no source coordinates. This type is
+separate from the older `CssFontFeatureIndex` used by `font-feature-settings`.
+
+The [pinned Fonts 4 section 6.9.1](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-feature-values-syntax)
+conflicts with [section 6.9.2](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/).
+The provisional section 6.9.1 policy requires exactly two character-variant
+indexes, constrains its first index to 0–99, and constrains styleset indexes to
+0–20. These three cases remain unresolved. Historical-forms accepts a nonempty
+list with no upper bound; stylistic, swash, ornaments and annotation each require
+one unbounded index. The second character-variant index is also unbounded.
+
+Ordinary media/supports/container/layer/scope rule lists retain this global
+named rule; any style-rule ancestor forbids it, including through intervening
+groups. Normalization emits one opaque rule payload with its parent contexts;
+it preserves complete body order and emits no property contributions. Payload
+members do not individually consume normalization declaration/rule budgets, and
+those budgets do not cap allocation. Font matching, mapping winners and cascade
+remain downstream; the shared canonical rule writer is unfinished.
+
 `@font-face` retains every valid descriptor occurrence in authored order;
 effective typed accessors return the last valid occurrence. Source-list grammar
 follows the selected Fonts 4 edition. Other descriptor and property records
@@ -1342,12 +1378,11 @@ assert_eq!(extension.status(), CssSupportStatus::Partial);
 assert!(extension.supported_subset().is_some());
 assert!(extension.unsupported_remainder().is_some());
 
-let unsupported = feature_metadata("later.rule.font-feature-values")
-    .expect("recognized unsupported rule metadata");
-assert_eq!(
-    unsupported.status(),
-    CssSupportStatus::RecognizedUnsupported,
-);
+let feature_values = feature_metadata("later.rule.font-feature-values")
+    .expect("authored font-feature-values metadata");
+assert_eq!(feature_values.status(), CssSupportStatus::Partial);
+assert_eq!(feature_values.source().id().as_str(), "I-FONTS4-20260907");
+assert!(feature_values.unsupported_remainder().is_some());
 ```
 
 The generic Syntax 3 at-rule, qualified-rule, declaration, stylesheet,
@@ -1373,8 +1408,10 @@ The preserved extension records `ext.value.relative-color`,
 `ext.media.range.width`, `ext.media.range.height`,
 `ext.media.range.resolution`, `ext.media.range.color`, and
 `ext.media.range.monochrome` remain `Partial`, with both subset and remainder
-metadata. The `@font-feature-values` rule remains `RecognizedUnsupported` with
-its typed unsupported-at-rule diagnostic.
+metadata. The `@font-feature-values` record is `Partial`: its authored parser,
+checked model and normalization are implemented under the pinned Fonts 4 edition;
+three conflicting grammar requirements retain a documented provisional policy.
+General rule serialization remains unfinished.
 
 The preceding public support catalog contained 456 records. With the 31
 additions above, the current public support catalog contains 487 records, as

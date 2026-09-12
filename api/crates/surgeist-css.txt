@@ -868,6 +868,27 @@ pub surgeist_css::CssFontFeatureSettings::Normal
 pub surgeist_css::CssFontFeatureValue::Integer(i32)
 pub surgeist_css::CssFontFeatureValue::Off
 pub surgeist_css::CssFontFeatureValue::On
+#[non_exhaustive] pub enum surgeist_css::CssFontFeatureValueKind
+pub surgeist_css::CssFontFeatureValueKind::Annotation
+pub surgeist_css::CssFontFeatureValueKind::CharacterVariant
+pub surgeist_css::CssFontFeatureValueKind::HistoricalForms
+pub surgeist_css::CssFontFeatureValueKind::Ornaments
+pub surgeist_css::CssFontFeatureValueKind::Styleset
+pub surgeist_css::CssFontFeatureValueKind::Stylistic
+pub surgeist_css::CssFontFeatureValueKind::Swash
+impl surgeist_css::CssFontFeatureValueKind
+pub const fn surgeist_css::CssFontFeatureValueKind::css_name(self) -> &'static str
+#[non_exhaustive] pub enum surgeist_css::CssFontFeatureValuesErrorKind
+pub surgeist_css::CssFontFeatureValuesErrorKind::EmptyFamilies
+pub surgeist_css::CssFontFeatureValuesErrorKind::EmptyIndexes
+pub surgeist_css::CssFontFeatureValuesErrorKind::IndexOutOfRange
+pub surgeist_css::CssFontFeatureValuesErrorKind::InvalidIdentifier
+pub surgeist_css::CssFontFeatureValuesErrorKind::InvalidIndexCount
+pub surgeist_css::CssFontFeatureValuesErrorKind::InvalidIntegerSyntax
+pub surgeist_css::CssFontFeatureValuesErrorKind::NegativeIndex
+#[non_exhaustive] pub enum surgeist_css::CssFontFeatureValuesItem
+pub surgeist_css::CssFontFeatureValuesItem::Block(surgeist_css::CssFontFeatureValueBlock)
+pub surgeist_css::CssFontFeatureValuesItem::FontDisplay(surgeist_css::CssFontFeatureDisplayOccurrence)
 #[non_exhaustive] pub enum surgeist_css::CssFontFormatHint
 pub surgeist_css::CssFontFormatHint::Collection
 pub surgeist_css::CssFontFormatHint::EmbeddedOpenType
@@ -2127,6 +2148,7 @@ pub surgeist_css::CssRotate::Value(alloc::string::String)
 pub surgeist_css::CssRule::Container(surgeist_css::CssContainerRule)
 pub surgeist_css::CssRule::CounterStyle(surgeist_css::CssCounterStyleRule)
 pub surgeist_css::CssRule::FontFace(surgeist_css::CssFontFaceRule)
+pub surgeist_css::CssRule::FontFeatureValues(surgeist_css::CssFontFeatureValuesRule)
 pub surgeist_css::CssRule::Import(surgeist_css::CssImportRule)
 pub surgeist_css::CssRule::Keyframes(surgeist_css::CssKeyframesRule)
 pub surgeist_css::CssRule::LayerBlock(surgeist_css::CssLayerBlockRule)
@@ -2144,6 +2166,7 @@ pub surgeist_css::CssRuleContextKindRef::Container::condition: &'a surgeist_css:
 pub surgeist_css::CssRuleContextKindRef::Container::name: core::option::Option<&'a surgeist_css::CssContainerName>
 pub surgeist_css::CssRuleContextKindRef::CounterStyle(&'a surgeist_css::CssCounterStyleRule)
 pub surgeist_css::CssRuleContextKindRef::FontFace(&'a surgeist_css::CssFontFaceRule)
+pub surgeist_css::CssRuleContextKindRef::FontFeatureValues(&'a surgeist_css::CssFontFeatureValuesRule)
 pub surgeist_css::CssRuleContextKindRef::Import(&'a surgeist_css::CssImportRule)
 pub surgeist_css::CssRuleContextKindRef::Keyframes(&'a surgeist_css::CssKeyframesRule)
 pub surgeist_css::CssRuleContextKindRef::LayerBlock(core::option::Option<&'a surgeist_css::CssLayerName>)
@@ -2166,6 +2189,7 @@ pub surgeist_css::CssScanMode::Interlace
 pub surgeist_css::CssScanMode::Progressive
 #[non_exhaustive] pub enum surgeist_css::CssScopedRule
 pub surgeist_css::CssScopedRule::Container(surgeist_css::CssScopedContainerRule)
+pub surgeist_css::CssScopedRule::FontFeatureValues(surgeist_css::CssFontFeatureValuesRule)
 pub surgeist_css::CssScopedRule::LayerBlock(surgeist_css::CssScopedLayerBlockRule)
 pub surgeist_css::CssScopedRule::LayerStatement(surgeist_css::CssScopedLayerStatementRule)
 pub surgeist_css::CssScopedRule::Media(surgeist_css::CssScopedMediaRule)
@@ -3978,6 +4002,11 @@ impl surgeist_css::CssFontFeature
 pub fn surgeist_css::CssFontFeature::tag(&self) -> &str
 pub fn surgeist_css::CssFontFeature::try_new(tag: impl core::convert::Into<alloc::string::String>, value: core::option::Option<surgeist_css::CssFontFeatureValue>) -> core::option::Option<Self>
 pub const fn surgeist_css::CssFontFeature::value(&self) -> core::option::Option<surgeist_css::CssFontFeatureValue>
+pub struct surgeist_css::CssFontFeatureDisplayOccurrence
+impl surgeist_css::CssFontFeatureDisplayOccurrence
+pub const fn surgeist_css::CssFontFeatureDisplayOccurrence::new(value: surgeist_css::CssFontDisplay) -> Self
+pub const fn surgeist_css::CssFontFeatureDisplayOccurrence::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub const fn surgeist_css::CssFontFeatureDisplayOccurrence::value(&self) -> surgeist_css::CssFontDisplay
 pub struct surgeist_css::CssFontFeatureIndex
 impl surgeist_css::CssFontFeatureIndex
 pub const fn surgeist_css::CssFontFeatureIndex::try_new(value: i32) -> core::option::Option<Self>
@@ -3991,6 +4020,45 @@ impl surgeist_css::CssFontFeatureSettingsPropertyValue
 pub fn surgeist_css::CssFontFeatureSettingsPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssFontFeatureSettingsPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssFontFeatureSettings>
 pub const fn surgeist_css::CssFontFeatureSettingsPropertyValue::settings(&self) -> &surgeist_css::CssAuthoredFontFeatureSettings
+pub struct surgeist_css::CssFontFeatureValueBlock
+impl surgeist_css::CssFontFeatureValueBlock
+pub fn surgeist_css::CssFontFeatureValueBlock::definitions(&self) -> &[surgeist_css::CssFontFeatureValueDefinition]
+pub const fn surgeist_css::CssFontFeatureValueBlock::kind(&self) -> surgeist_css::CssFontFeatureValueKind
+pub const fn surgeist_css::CssFontFeatureValueBlock::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub fn surgeist_css::CssFontFeatureValueBlock::try_new(kind: surgeist_css::CssFontFeatureValueKind, definitions: alloc::vec::Vec<surgeist_css::CssFontFeatureValueDefinition>) -> core::result::Result<Self, surgeist_css::CssFontFeatureValuesError>
+pub struct surgeist_css::CssFontFeatureValueDefinition
+impl surgeist_css::CssFontFeatureValueDefinition
+pub fn surgeist_css::CssFontFeatureValueDefinition::indexes(&self) -> &[surgeist_css::CssFontFeatureValueIndex]
+pub const fn surgeist_css::CssFontFeatureValueDefinition::name(&self) -> &surgeist_css::CssFontFeatureValueName
+pub const fn surgeist_css::CssFontFeatureValueDefinition::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub fn surgeist_css::CssFontFeatureValueDefinition::try_new(name: surgeist_css::CssFontFeatureValueName, indexes: alloc::vec::Vec<surgeist_css::CssFontFeatureValueIndex>) -> core::result::Result<Self, surgeist_css::CssFontFeatureValuesError>
+pub struct surgeist_css::CssFontFeatureValueIndex
+impl surgeist_css::CssFontFeatureValueIndex
+pub fn surgeist_css::CssFontFeatureValueIndex::as_decimal_str(&self) -> &str
+pub const fn surgeist_css::CssFontFeatureValueIndex::origin(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
+pub fn surgeist_css::CssFontFeatureValueIndex::to_u32(&self) -> core::option::Option<u32>
+pub fn surgeist_css::CssFontFeatureValueIndex::try_from_decimal(value: &str) -> core::result::Result<Self, surgeist_css::CssFontFeatureValuesError>
+impl core::convert::From<u32> for surgeist_css::CssFontFeatureValueIndex
+pub fn surgeist_css::CssFontFeatureValueIndex::from(value: u32) -> Self
+pub struct surgeist_css::CssFontFeatureValueName(_)
+impl surgeist_css::CssFontFeatureValueName
+pub fn surgeist_css::CssFontFeatureValueName::as_str(&self) -> &str
+pub fn surgeist_css::CssFontFeatureValueName::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_css::CssFontFeatureValuesError>
+pub struct surgeist_css::CssFontFeatureValuesError
+impl surgeist_css::CssFontFeatureValuesError
+pub const fn surgeist_css::CssFontFeatureValuesError::block(&self) -> core::option::Option<surgeist_css::CssFontFeatureValueKind>
+pub const fn surgeist_css::CssFontFeatureValuesError::definition_index(&self) -> core::option::Option<usize>
+pub const fn surgeist_css::CssFontFeatureValuesError::index(&self) -> core::option::Option<usize>
+pub const fn surgeist_css::CssFontFeatureValuesError::kind(&self) -> surgeist_css::CssFontFeatureValuesErrorKind
+impl core::error::Error for surgeist_css::CssFontFeatureValuesError
+impl core::fmt::Display for surgeist_css::CssFontFeatureValuesError
+pub fn surgeist_css::CssFontFeatureValuesError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_css::CssFontFeatureValuesRule
+impl surgeist_css::CssFontFeatureValuesRule
+pub fn surgeist_css::CssFontFeatureValuesRule::families(&self) -> &[surgeist_css::CssFontFaceFamily]
+pub fn surgeist_css::CssFontFeatureValuesRule::items(&self) -> &[surgeist_css::CssFontFeatureValuesItem]
+pub const fn surgeist_css::CssFontFeatureValuesRule::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub fn surgeist_css::CssFontFeatureValuesRule::try_new(families: alloc::vec::Vec<surgeist_css::CssFontFaceFamily>, items: alloc::vec::Vec<surgeist_css::CssFontFeatureValuesItem>) -> core::result::Result<Self, surgeist_css::CssFontFeatureValuesError>
 pub struct surgeist_css::CssFontFormatList
 impl surgeist_css::CssFontFormatList
 pub fn surgeist_css::CssFontFormatList::formats(&self) -> &[surgeist_css::CssFontFormatString]

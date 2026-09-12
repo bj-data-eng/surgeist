@@ -448,30 +448,6 @@ impl CssFeatureMetadata {
         }
     }
 
-    const fn recognized_unsupported(
-        id: &'static str,
-        kind: CssFeatureKind,
-        spelling: &'static str,
-        source: CssSpecificationSource,
-        production: &'static str,
-        code: CssErrorCode,
-    ) -> Self {
-        Self {
-            id: CssFeatureId::new(id),
-            kind,
-            spelling,
-            source,
-            production,
-            status: CssSupportStatus::RecognizedUnsupported,
-            supported_subset: None,
-            unsupported_remainder: None,
-            recognized_unsupported_code: Some(code),
-            disposition: CssConformanceDisposition::Atomic,
-            property: None,
-            property_aliases: &[],
-        }
-    }
-
     const fn partial_property(
         id: &'static str,
         property: CssKnownProperty,
@@ -3824,13 +3800,14 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 487] = [
         O_CSS2,
         "page.html#page-selectors",
     ),
-    CssFeatureMetadata::recognized_unsupported(
+    CssFeatureMetadata::partial(
         "later.rule.font-feature-values",
         CssFeatureKind::Rule,
         "@font-feature-values",
-        I_FONTS4,
-        "#font-feature-values-rule",
-        CssErrorCode::UnsupportedAtRule,
+        I_FONTS4_20260907,
+        "#font-feature-values-syntax",
+        "Ordered family lists, all seven subsidiary blocks, font-display, exact unbounded nonnegative integer tokens, checked construction, local recovery, ordinary group placement, and opaque normalization.",
+        "Provisional section 6.9.1 constraints conflict with section 6.9.2 on character-variant one-index cardinality, first indexes above 99, and styleset indexes above 20. These three requirements remain unresolved. General rule serialization is unfinished; no CSSOM mapping or cascade is provided.",
     ),
     CssFeatureMetadata::complete(
         "baseline.descriptor.font-family",

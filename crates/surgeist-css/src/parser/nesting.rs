@@ -274,6 +274,11 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
                 "import",
                 "the stylesheet top level",
             )),
+            "font-feature-values" => Err(invalid_at_rule_placement(
+                input.current_source_location(),
+                "font-feature-values",
+                "a rule list without a style-rule ancestor",
+            )),
             "font-face" => Err(invalid_at_rule_placement(
                 input.current_source_location(),
                 "font-face",
@@ -365,7 +370,8 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
                 ))
             }
             NestedStyleAtRulePrelude::Scope(prelude) => {
-                let recovered = parse_scoped_rule_list(self.source, input, self.recovery.clone())?;
+                let recovered =
+                    parse_scoped_rule_list(self.source, input, self.recovery.clone(), true)?;
                 self.diagnostics.extend(recovered.diagnostics);
                 let rules = recovered.syntax;
                 CssRule::Scope(CssScopeRule::new(

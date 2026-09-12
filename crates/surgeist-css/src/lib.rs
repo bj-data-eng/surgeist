@@ -450,6 +450,25 @@
 //! assert_eq!(font.as_css(), "menu");
 //! ```
 //!
+//! `@font-feature-values` retains ordered families, all seven subsidiary blocks,
+//! repeated definitions, and interleaved `font-display` occurrences through
+//! [`CssFontFeatureValuesRule`]. Checked constructors share parser constraints;
+//! [`CssFontFeatureValueIndex`] preserves exact nonnegative decimal digits without a
+//! machine-integer limit. Parsed integer origins address their complete original
+//! token, while Rust construction has no invented source coordinates.
+//!
+//! The pinned Fonts 4 draft (7 September 2026) conflicts between sections 6.9.1
+//! and 6.9.2. The provisional section 6.9.1 policy requires two character-variant
+//! indexes, a first index at most 99, and styleset indexes at most 20. These three
+//! disputed requirements remain unresolved. Historical-forms and other unrestricted
+//! positions retain arbitrarily large authored integer tokens.
+//!
+//! Ordinary stylesheet/group/scope rule lists retain these global named rules;
+//! style-rule ancestry rejects them. Normalization retains one opaque payload and
+//! its parent contexts, without emitting property contributions or applying font
+//! mapping/cascade. Normalization limits do not count payload declarations or bound
+//! payload allocation. General rule serialization remains unfinished.
+//!
 //! [`CssFontFaceDescriptors::occurrences`] exposes valid descriptor occurrences
 //! in authored order, while typed effective accessors return the last valid
 //! occurrence. Invalid and unknown occurrences recover with
@@ -947,12 +966,11 @@
 //! assert!(extension.supported_subset().is_some());
 //! assert!(extension.unsupported_remainder().is_some());
 //!
-//! let unsupported = feature_metadata("later.rule.font-feature-values")
-//!     .expect("recognized unsupported rule metadata");
-//! assert_eq!(
-//!     unsupported.status(),
-//!     CssSupportStatus::RecognizedUnsupported,
-//! );
+//! let feature_values = feature_metadata("later.rule.font-feature-values")
+//!     .expect("authored font-feature-values metadata");
+//! assert_eq!(feature_values.status(), CssSupportStatus::Partial);
+//! assert_eq!(feature_values.source().id().as_str(), "I-FONTS4-20260907");
+//! assert!(feature_values.unsupported_remainder().is_some());
 //! ```
 //!
 //! C14 makes all 31 records that entered the cycle as Reserved public Complete
@@ -974,7 +992,8 @@
 //! `ext.media.range.width`, `ext.media.range.height`,
 //! `ext.media.range.resolution`, `ext.media.range.color`, and
 //! `ext.media.range.monochrome` records remain Partial with explicit subset and
-//! remainder metadata. `@font-feature-values` remains RecognizedUnsupported. C13's
+//! remainder metadata. `@font-feature-values` is Partial under its documented
+//! provisional Fonts 4 policy, with general rule serialization unfinished. C13's
 //! 456 public catalog records plus C14's 31 additions reconcile to exactly 487
 //! records. That catalog cardinality is distinct from the immutable official
 //! inventory of exactly 162 property units, one normative legacy shorthand, and
@@ -1082,6 +1101,7 @@ mod component_values;
 mod conformance;
 mod error;
 mod expansion;
+mod font_feature_values;
 mod normalization;
 mod parser;
 mod properties;
@@ -1111,6 +1131,7 @@ pub use expansion::{
     CssPropertyMetadata, CssPropertyMetadataError, CssShorthandMetadata, CssUniversalReset,
     CssUniversalResetMetadata, CssUserAgentInitial, expand_declaration,
 };
+pub use font_feature_values::*;
 pub use normalization::{
     CssNormalizationError, CssNormalizationErrorKind, CssNormalizationLimits,
     CssNormalizationResource, CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedReport,

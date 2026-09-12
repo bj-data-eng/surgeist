@@ -426,6 +426,7 @@ impl Extractor {
                 | CssRule::LayerStatement(_)
                 | CssRule::LayerBlock(_)
                 | CssRule::FontFace(_)
+                | CssRule::FontFeatureValues(_)
                 | CssRule::Keyframes(_)
                 | CssRule::Media(_)
                 | CssRule::Supports(_)

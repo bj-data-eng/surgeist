@@ -117,7 +117,7 @@ fn c14_generic_authored_shells_retain_structure() {
 }
 
 #[test]
-fn generic_consumers_keep_unknown_and_recognized_unsupported_at_rules_distinct() {
+fn generic_consumers_drop_unknown_rules_and_retain_supported_font_rules() {
     let source = concat!(
         ".before { color: red; } ",
         "@mystery fn({x; y}); ",
@@ -127,10 +127,14 @@ fn generic_consumers_keep_unknown_and_recognized_unsupported_at_rules_distinct()
     let report = parse_sheet(source);
     assert!(matches!(
         report.syntax().rules(),
-        [CssRule::Style(_), CssRule::Style(_)]
+        [
+            CssRule::Style(_),
+            CssRule::FontFeatureValues(_),
+            CssRule::Style(_)
+        ]
     ));
-    let [unknown, unsupported] = report.diagnostics() else {
-        panic!("expected unknown and recognized-unsupported diagnostics");
+    let [unknown] = report.diagnostics() else {
+        panic!("expected only the unknown rule diagnostic");
     };
 
     assert_eq!(unknown.error().code(), CssErrorCode::UnknownAtRule);
@@ -140,19 +144,6 @@ fn generic_consumers_keep_unknown_and_recognized_unsupported_at_rules_distinct()
         panic!("expected unknown at-rule detail");
     };
     assert_eq!(detail.name().as_str(), "mystery");
-
-    assert_eq!(unsupported.error().code(), CssErrorCode::UnsupportedAtRule);
-    assert_eq!(unsupported.action(), CssRecoveryAction::DropAtRule);
-    assert_span(
-        source,
-        unsupported,
-        "@font-feature-values Demo { @styleset { nice: 1; } }",
-    );
-    let ErrorKind::UnsupportedAtRule(detail) = unsupported.error().kind() else {
-        panic!("expected recognized-unsupported at-rule detail");
-    };
-    assert_eq!(detail.name().as_str(), "font-feature-values");
-    assert_eq!(detail.feature().as_str(), "later.rule.font-feature-values");
 }
 
 #[test]

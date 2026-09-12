@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use crate::syntax::*;
 use crate::{
-    CssExpansion, CssExpansionError, CssParseReport, CssRecoveryDiagnostic, CssSourcePosition,
-    expand_declaration,
+    CssExpansion, CssExpansionError, CssFontFeatureValuesRule, CssParseReport,
+    CssRecoveryDiagnostic, CssSourcePosition, expand_declaration,
 };
 
 /// Traversal and output budgets for one atomic stylesheet normalization.
@@ -383,6 +383,7 @@ pub enum CssRuleContextKindRef<'a> {
     Import(&'a CssImportRule),
     Namespace(&'a CssNamespaceRule),
     FontFace(&'a CssFontFaceRule),
+    FontFeatureValues(&'a CssFontFeatureValuesRule),
     Keyframes(&'a CssKeyframesRule),
     CounterStyle(&'a CssCounterStyleRule),
     Page(&'a CssPageRule),
@@ -408,6 +409,7 @@ enum RuleContextKind {
     Import(CssImportRule),
     Namespace(CssNamespaceRule),
     FontFace(CssFontFaceRule),
+    FontFeatureValues(CssFontFeatureValuesRule),
     Keyframes(CssKeyframesRule),
     CounterStyle(CssCounterStyleRule),
     Page(CssPageRule),
@@ -455,6 +457,9 @@ impl CssRuleContext {
             RuleContextKind::LayerStatement(value) => CssRuleContextKindRef::LayerStatement(value),
             RuleContextKind::Import(value) => CssRuleContextKindRef::Import(value),
             RuleContextKind::Namespace(value) => CssRuleContextKindRef::Namespace(value),
+            RuleContextKind::FontFeatureValues(value) => {
+                CssRuleContextKindRef::FontFeatureValues(value)
+            }
             RuleContextKind::FontFace(value) => CssRuleContextKindRef::FontFace(value),
             RuleContextKind::Keyframes(value) => CssRuleContextKindRef::Keyframes(value),
             RuleContextKind::CounterStyle(value) => CssRuleContextKindRef::CounterStyle(value),
@@ -882,6 +887,13 @@ impl Normalizer {
                         context.rule,
                     );
                 }
+                CssRule::FontFeatureValues(value) => {
+                    self.record_rule(
+                        RuleContextKind::FontFeatureValues(value.clone()),
+                        position,
+                        context.rule,
+                    );
+                }
                 CssRule::FontFace(value) => {
                     self.record_rule(
                         RuleContextKind::FontFace(value.clone()),
@@ -944,7 +956,7 @@ impl Normalizer {
         depth: u32,
     ) -> Result<(), CssNormalizationError> {
         for rule in rules {
-            let position = Some(scoped_position(rule));
+            let position = scoped_position(rule);
             self.admit_rule(position, context, depth)?;
             match rule {
                 CssScopedRule::Style(style) => {
@@ -1035,6 +1047,13 @@ impl Normalizer {
                         context.rule,
                     );
                 }
+                CssScopedRule::FontFeatureValues(value) => {
+                    self.record_rule(
+                        RuleContextKind::FontFeatureValues(value.clone()),
+                        position,
+                        context.rule,
+                    );
+                }
                 CssScopedRule::Scope(scope) => self.scope(scope, context, position, depth)?,
             }
         }
@@ -1057,6 +1076,7 @@ fn ordinary_position(rule: &CssRule) -> Option<CssSourcePosition> {
         CssRule::Page(value) => value.position(),
         CssRule::LayerStatement(value) => value.position(),
         CssRule::LayerBlock(value) => value.position(),
+        CssRule::FontFeatureValues(value) => return value.position(),
         CssRule::FontFace(value) => value.position(),
         CssRule::Keyframes(value) => value.position(),
         CssRule::Media(value) => value.position(),
@@ -1066,8 +1086,9 @@ fn ordinary_position(rule: &CssRule) -> Option<CssSourcePosition> {
     })
 }
 
-fn scoped_position(rule: &CssScopedRule) -> CssSourcePosition {
-    match rule {
+fn scoped_position(rule: &CssScopedRule) -> Option<CssSourcePosition> {
+    Some(match rule {
+        CssScopedRule::FontFeatureValues(value) => return value.position(),
         CssScopedRule::Style(value) => value.position(),
         CssScopedRule::Media(value) => value.position(),
         CssScopedRule::Supports(value) => value.position(),
@@ -1075,7 +1096,7 @@ fn scoped_position(rule: &CssScopedRule) -> CssSourcePosition {
         CssScopedRule::LayerStatement(value) => value.position(),
         CssScopedRule::LayerBlock(value) => value.position(),
         CssScopedRule::Scope(value) => value.position(),
-    }
+    })
 }
 
 #[derive(Clone, Copy)]

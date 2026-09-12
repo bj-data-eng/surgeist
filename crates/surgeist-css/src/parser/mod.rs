@@ -12,6 +12,7 @@ mod box_model;
 mod counter_style;
 mod effects;
 mod font_face;
+mod font_feature_values;
 mod fragments;
 pub use fragments::{
     parse_declaration, parse_font_face_descriptor_value, parse_media_query, parse_media_query_list,
@@ -196,6 +197,11 @@ static ATOMIC_IMPLEMENTATION_INVENTORIES: &[CssAtomicImplementationInventory] = 
         module: "crate::parser::font_face",
         kind: CssAtomicImplementationKind::Rule,
         stable_ids: font_face::IMPLEMENTED_RULES,
+    },
+    CssAtomicImplementationInventory {
+        module: "crate::parser::font_feature_values",
+        kind: CssAtomicImplementationKind::Rule,
+        stable_ids: font_feature_values::IMPLEMENTED_RULES,
     },
     CssAtomicImplementationInventory {
         module: "crate::parser::font_face",
@@ -488,12 +494,21 @@ fn parse_style_attribute_inner(source: &str) -> crate::CssParseReport<CssDeclara
 enum BoundedParseContext {
     Sheet,
     Style,
-    Scoped,
+    Scoped { has_style_ancestor: bool },
 }
 
 impl BoundedParseContext {
     fn is_style(&self) -> bool {
         matches!(self, Self::Style)
+    }
+    fn has_style_ancestor(&self) -> bool {
+        matches!(
+            self,
+            Self::Style
+                | Self::Scoped {
+                    has_style_ancestor: true
+                }
+        )
     }
 }
 
@@ -565,8 +580,12 @@ fn parse_sheet_bounded_with_captures(
         }
         return crate::CssParseReport::new(sheet, diagnostics);
     }
-    let Some(preflight) = preflight_structural_nesting(source, base_depth, context.is_style())
-    else {
+    let Some(preflight) = preflight_structural_nesting(
+        source,
+        base_depth,
+        context.is_style(),
+        context.has_style_ancestor(),
+    ) else {
         let recovery = RecoveryState::at_depth_with_snapshot(
             source,
             base_depth,
@@ -576,11 +595,17 @@ fn parse_sheet_bounded_with_captures(
         return match context {
             BoundedParseContext::Sheet => parse_sheet_inner(source, recovery),
             BoundedParseContext::Style => parse_style_context_inner(source, recovery),
-            BoundedParseContext::Scoped => parse_scoped_context_inner(source, recovery),
+            BoundedParseContext::Scoped { has_style_ancestor } => {
+                parse_scoped_context_inner(source, recovery, has_style_ancestor)
+            }
         };
     };
     if matches!(&preflight.outcome, StructuralPreflightOutcome::Split) {
-        for &content_start in &preflight.style_context_starts {
+        for &content_start in preflight
+            .style_context_starts
+            .iter()
+            .chain(&preflight.style_ancestry_starts)
+        {
             style_context_captures.register(content_start);
         }
     }
@@ -588,7 +613,7 @@ fn parse_sheet_bounded_with_captures(
     // Parse at most one bounded structural chunk at a time. Same-length masks
     // retain original byte/line coordinates, and the completed child syntax is
     // spliced back into its parser-produced enclosing groups.
-    let scoped_context = matches!(context, BoundedParseContext::Scoped);
+    let scoped_context = matches!(context, BoundedParseContext::Scoped { .. });
     let outer = parse_sheet_bounded_with_captures(
         &masked,
         source_snapshot,
@@ -601,6 +626,13 @@ fn parse_sheet_bounded_with_captures(
     match preflight.outcome {
         StructuralPreflightOutcome::Split => {
             let isolated = isolate_source_span(source, preflight.unit_start, preflight.unit_end);
+            let has_style_ancestor =
+                preflight
+                    .style_ancestry_starts
+                    .last()
+                    .is_some_and(|&content_start| {
+                        style_context_captures.contains_parsed(content_start)
+                    });
             let child_context = if preflight
                 .style_context_starts
                 .last()
@@ -613,7 +645,7 @@ fn parse_sheet_bounded_with_captures(
                     .iter()
                     .any(|parent| matches!(parent.kind, GroupKind::Scope))
             {
-                BoundedParseContext::Scoped
+                BoundedParseContext::Scoped { has_style_ancestor }
             } else {
                 BoundedParseContext::Sheet
             };
@@ -707,10 +739,11 @@ fn parse_style_context_inner(
 fn parse_scoped_context_inner(
     source: &str,
     recovery: RecoveryState,
+    has_style_ancestor: bool,
 ) -> crate::CssParseReport<CssSheet> {
     let mut input = ParserInput::new(source);
     let mut parser = Parser::new(&mut input);
-    match parse_scoped_rule_list(source, &mut parser, recovery.clone()) {
+    match parse_scoped_rule_list(source, &mut parser, recovery.clone(), has_style_ancestor) {
         Ok(recovered) => {
             let mut sheet = CssSheet::new();
             for rule in recovered.syntax.rules().iter().cloned() {
@@ -806,6 +839,7 @@ fn scoped_rule_into_chunk_rule(rule: CssScopedRule) -> CssRule {
             rule.position(),
         )),
         CssScopedRule::Scope(rule) => CssRule::Scope(rule),
+        CssScopedRule::FontFeatureValues(rule) => CssRule::FontFeatureValues(rule),
     }
 }
 
@@ -1140,6 +1174,7 @@ fn into_scoped_rule(rule: CssRule) -> Option<CssScopedRule> {
             rule.position(),
         ))),
         CssRule::Scope(rule) => Some(CssScopedRule::Scope(rule)),
+        CssRule::FontFeatureValues(rule) => Some(CssScopedRule::FontFeatureValues(rule)),
         CssRule::NestedDeclarations(_)
         | CssRule::Import(_)
         | CssRule::Namespace(_)
@@ -1152,6 +1187,13 @@ fn into_scoped_rule(rule: CssRule) -> Option<CssScopedRule> {
 
 fn scoped_rule_start(rule: &CssScopedRule) -> usize {
     match rule {
+        CssScopedRule::FontFeatureValues(rule) => {
+            return rule
+                .position()
+                .expect("parser-owned font rule has a source position")
+                .byte_offset()
+                .value();
+        }
         CssScopedRule::Style(rule) => rule.position(),
         CssScopedRule::Media(rule) => rule.position(),
         CssScopedRule::Supports(rule) => rule.position(),
@@ -1203,6 +1245,13 @@ fn rebuild_group_rule(rule: CssRule, rules: Vec<CssRule>) -> CssRule {
 
 fn rule_start(rule: &CssRule) -> usize {
     match rule {
+        CssRule::FontFeatureValues(rule) => {
+            return rule
+                .position()
+                .expect("parser-owned font rule has a source position")
+                .byte_offset()
+                .value();
+        }
         CssRule::Import(rule) => rule.position(),
         CssRule::Namespace(rule) => rule.position(),
         CssRule::CounterStyle(rule) => rule.position(),
@@ -1744,6 +1793,7 @@ impl<'s> StrictRuleParser<'s> {
 }
 
 enum StrictAtRulePrelude {
+    FontFeatureValues(Vec<CssFontFaceFamily>),
     Encoding(String),
     Import(CssImportPrelude),
     Namespace(CssNamespacePrelude),
@@ -1761,6 +1811,7 @@ enum StrictAtRulePrelude {
 impl StrictAtRulePrelude {
     fn production(&self) -> &'static str {
         match self {
+            Self::FontFeatureValues(_) => "later.rule.font-feature-values",
             Self::Encoding(_) => "css.encoding-declaration",
             Self::Import(_) => "baseline.rule.import",
             Self::Namespace(_) => "later.rule.namespace",
@@ -1961,6 +2012,7 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                 }
                 Ok(StrictAtRulePrelude::Page(selector))
             },
+            "font-feature-values" => Ok(StrictAtRulePrelude::FontFeatureValues(font_feature_values::parse_families(self.source, input, &self.recovery)?)),
             "font-face" => {
                 if !input.is_exhausted() {
                     return Err(with_at_rule_prelude_context(
@@ -2123,6 +2175,7 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                     ),
                 ))])
             }
+            StrictAtRulePrelude::FontFeatureValues(_) => Err(()),
             StrictAtRulePrelude::FontFace => Err(()),
             StrictAtRulePrelude::Keyframes(_) => Err(()),
             StrictAtRulePrelude::Media(_) => Err(()),
@@ -2205,6 +2258,18 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                     ),
                 ))])
             }
+            StrictAtRulePrelude::FontFeatureValues(families) => {
+                let rule = font_feature_values::parse_rule(
+                    self.source,
+                    families,
+                    input,
+                    start,
+                    &mut self.diagnostics,
+                    self.recovery.clone(),
+                )?;
+                self.mark_successful_body_rule();
+                Ok(vec![CssRule::FontFeatureValues(rule)])
+            }
             StrictAtRulePrelude::FontFace => {
                 let rule = parse_font_face_rule(
                     self.source,
@@ -2275,7 +2340,8 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                 ))])
             }
             StrictAtRulePrelude::Scope(prelude) => {
-                let recovered = parse_scoped_rule_list(self.source, input, self.recovery.clone())?;
+                let recovered =
+                    parse_scoped_rule_list(self.source, input, self.recovery.clone(), false)?;
                 self.diagnostics.extend(recovered.diagnostics);
                 let rules = recovered.syntax;
                 self.mark_successful_body_rule();
@@ -2583,11 +2649,16 @@ pub(super) fn parse_scoped_rule_list<'i, 't>(
     source: &'i str,
     input: &mut Parser<'i, 't>,
     recovery: RecoveryState,
+    has_style_ancestor: bool,
 ) -> std::result::Result<Recovered<CssScopedRuleList>, ParseError<'i, Error>> {
+    if has_style_ancestor {
+        recovery.record_style_context(input.position().byte_index());
+    }
     let mut rule_parser = ScopedRuleParser {
         source,
         diagnostics: Vec::new(),
         recovery,
+        has_style_ancestor,
     };
     let mut rules = Vec::new();
     let mut diagnostics = Vec::new();
@@ -2814,12 +2885,14 @@ fn parse_scope_prelude<'i, 't>(
 }
 
 struct ScopedRuleParser<'s> {
+    has_style_ancestor: bool,
     source: &'s str,
     diagnostics: Vec<crate::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 }
 
 enum ScopedAtRulePrelude {
+    FontFeatureValues(Vec<CssFontFaceFamily>),
     Media(CssMediaQueryList),
     Supports(CssSupportsCondition),
     Container(CssContainerPrelude),
@@ -2830,6 +2903,7 @@ enum ScopedAtRulePrelude {
 impl ScopedAtRulePrelude {
     fn production(&self) -> &'static str {
         match self {
+            Self::FontFeatureValues(_) => "later.rule.font-feature-values",
             Self::Media(_) => "baseline.rule.media",
             Self::Supports(_) => "baseline.rule.supports",
             Self::Container(_) => "baseline.rule.container",
@@ -2918,6 +2992,12 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                 "import",
                 "the stylesheet top level",
             )),
+            "font-feature-values" => {
+                if self.has_style_ancestor {
+                    return Err(invalid_at_rule_placement(input.current_source_location(), "font-feature-values", "a rule list without a style-rule ancestor"));
+                }
+                Ok(ScopedAtRulePrelude::FontFeatureValues(font_feature_values::parse_families(self.source, input, &self.recovery)?))
+            },
             "font-face" => Err(invalid_at_rule_placement(
                 input.current_source_location(),
                 "font-face",
@@ -2963,7 +3043,8 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                     ),
                 )])
             }
-            ScopedAtRulePrelude::Media(_)
+            ScopedAtRulePrelude::FontFeatureValues(_)
+            | ScopedAtRulePrelude::Media(_)
             | ScopedAtRulePrelude::Supports(_)
             | ScopedAtRulePrelude::Container(_)
             | ScopedAtRulePrelude::Scope(_) => Err(()),
@@ -2984,8 +3065,24 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
             start.source_location(),
         );
         let result = match prelude {
+            ScopedAtRulePrelude::FontFeatureValues(families) => {
+                let rule = font_feature_values::parse_rule(
+                    self.source,
+                    families,
+                    input,
+                    start,
+                    &mut self.diagnostics,
+                    self.recovery.clone(),
+                )?;
+                Ok(vec![CssScopedRule::FontFeatureValues(rule)])
+            }
             ScopedAtRulePrelude::Media(query) => {
-                let recovered = parse_scoped_rule_list(self.source, input, self.recovery.clone())?;
+                let recovered = parse_scoped_rule_list(
+                    self.source,
+                    input,
+                    self.recovery.clone(),
+                    self.has_style_ancestor,
+                )?;
                 self.diagnostics.extend(recovered.diagnostics);
                 let rules = recovered.syntax;
                 Ok(vec![CssScopedRule::Media(CssScopedMediaRule::new(
@@ -2993,7 +3090,12 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                 ))])
             }
             ScopedAtRulePrelude::Supports(condition) => {
-                let recovered = parse_scoped_rule_list(self.source, input, self.recovery.clone())?;
+                let recovered = parse_scoped_rule_list(
+                    self.source,
+                    input,
+                    self.recovery.clone(),
+                    self.has_style_ancestor,
+                )?;
                 self.diagnostics.extend(recovered.diagnostics);
                 let rules = recovered.syntax;
                 Ok(vec![CssScopedRule::Supports(CssScopedSupportsRule::new(
@@ -3001,7 +3103,12 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                 ))])
             }
             ScopedAtRulePrelude::Container(prelude) => {
-                let recovered = parse_scoped_rule_list(self.source, input, self.recovery.clone())?;
+                let recovered = parse_scoped_rule_list(
+                    self.source,
+                    input,
+                    self.recovery.clone(),
+                    self.has_style_ancestor,
+                )?;
                 self.diagnostics.extend(recovered.diagnostics);
                 let rules = recovered.syntax;
                 Ok(vec![CssScopedRule::Container(CssScopedContainerRule::new(
@@ -3021,7 +3128,12 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                     ));
                 }
                 let name = names.into_iter().next();
-                let recovered = parse_scoped_rule_list(self.source, input, self.recovery.clone())?;
+                let recovered = parse_scoped_rule_list(
+                    self.source,
+                    input,
+                    self.recovery.clone(),
+                    self.has_style_ancestor,
+                )?;
                 self.diagnostics.extend(recovered.diagnostics);
                 let rules = recovered.syntax;
                 Ok(vec![CssScopedRule::LayerBlock(
@@ -3029,7 +3141,12 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                 )])
             }
             ScopedAtRulePrelude::Scope(prelude) => {
-                let recovered = parse_scoped_rule_list(self.source, input, self.recovery.clone())?;
+                let recovered = parse_scoped_rule_list(
+                    self.source,
+                    input,
+                    self.recovery.clone(),
+                    self.has_style_ancestor,
+                )?;
                 self.diagnostics.extend(recovered.diagnostics);
                 let rules = recovered.syntax;
                 Ok(vec![CssScopedRule::Scope(CssScopeRule::new(
@@ -3267,14 +3384,14 @@ impl ParsedDeclaration {
     }
 }
 
-enum DeclarationBoundaryContext {
+enum DeclarationBoundaryContext<'a> {
     OrdinaryKnown(crate::CssKnownProperty),
     OrdinaryCustom(CssCustomPropertyName),
     KeyframeKnown(crate::CssKnownProperty),
     KeyframeCustom(CssCustomPropertyName),
     Descriptor {
-        at_rule: &'static str,
-        descriptor: &'static str,
+        at_rule: &'a str,
+        descriptor: &'a str,
     },
 }
 
@@ -3524,7 +3641,7 @@ fn parse_legacy_property_alias_value<'i, 't>(
 
 fn parse_declaration_boundary<'i, 't, T>(
     input: &mut Parser<'i, 't>,
-    context: &DeclarationBoundaryContext,
+    context: &DeclarationBoundaryContext<'_>,
     parse_value: impl for<'tt> FnOnce(
         &mut Parser<'i, 'tt>,
     ) -> std::result::Result<T, ParseError<'i, Error>>,
@@ -3552,7 +3669,7 @@ fn parse_declaration_boundary<'i, 't, T>(
 
 fn invalid_annotation_for_context<'i>(
     location: cssparser::SourceLocation,
-    context: &DeclarationBoundaryContext,
+    context: &DeclarationBoundaryContext<'_>,
 ) -> ParseError<'i, Error> {
     match context {
         DeclarationBoundaryContext::OrdinaryKnown(property) => {
@@ -3576,8 +3693,8 @@ fn invalid_annotation_for_context<'i>(
 
 pub(super) fn parse_descriptor_boundary<'i, 't, T>(
     input: &mut Parser<'i, 't>,
-    at_rule: &'static str,
-    descriptor: &'static str,
+    at_rule: &str,
+    descriptor: &str,
     parse_value: impl for<'tt> FnOnce(
         &mut Parser<'i, 'tt>,
     ) -> std::result::Result<T, ParseError<'i, Error>>,

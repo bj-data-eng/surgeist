@@ -569,7 +569,7 @@ fn parse_font_stretch_percent<'i, 't>(
     }
 }
 
-fn parse_font_display<'i, 't>(
+pub(super) fn parse_font_display<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontDisplay, ParseError<'i, Error>> {
     let location = input.current_source_location();

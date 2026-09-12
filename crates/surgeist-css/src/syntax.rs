@@ -9,6 +9,7 @@
 //! construction preserves supplied token origins without inventing coordinates.
 //! Downstream adapters can inspect either without depending on parser internals.
 
+use crate::CssFontFeatureValuesRule;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -121,6 +122,7 @@ pub enum CssRule {
     LayerStatement(CssLayerStatementRule),
     LayerBlock(CssLayerBlockRule),
     FontFace(CssFontFaceRule),
+    FontFeatureValues(CssFontFeatureValuesRule),
     Keyframes(CssKeyframesRule),
     Style(CssStyleRule),
     NestedDeclarations(CssNestedDeclarationsRule),
@@ -2827,6 +2829,7 @@ impl CssScopedRuleList {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssScopedRule {
+    FontFeatureValues(CssFontFeatureValuesRule),
     Style(CssScopedStyleRule),
     Media(CssScopedMediaRule),
     Supports(CssScopedSupportsRule),
