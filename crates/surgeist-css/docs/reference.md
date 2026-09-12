@@ -49,8 +49,13 @@ to synthesize a stylesheet rule around a selector or query. The single-item
 functions require exactly one complete grammar production; a root comma is an
 error even when a second item would be valid.
 
-`parse_selector` and `parse_selector_list` accept ordinary selectors. Relative
-selectors and nesting selectors require their owning stylesheet contexts.
+`parse_selector` and `parse_selector_list` accept ordinary selectors, including
+explicit `&` anchors. Anchors remain authored and symbolic: with a parent selector
+list they use that complete list and its maximum specificity; without one they
+match the context's scope elements and contribute zero specificity. They are not
+rewritten into `:scope`. Relative leading combinators still require their owning
+stylesheet contexts. Normalized `ExplicitAnchors` bindings retain an optional
+parent through `CssSelectorContext::parent()` rather than manufacturing one.
 An invalid outer selector or unforgiving root list produces `None` and a
 `RejectInput` diagnostic spanning the complete input. A valid `:is()` or
 `:where()` can retain its valid members while reporting discarded forgiving

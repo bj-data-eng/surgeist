@@ -17123,8 +17123,11 @@ impl CssCompoundSelector {
 
     /// Returns the number of symbolic nesting selectors in this compound.
     ///
-    /// Every anchor refers to the entire nearest parent selector list. Matching uses that
-    /// list's maximum specificity, rather than the specificity of one matching parent.
+    /// With an enclosing parent selector list, every anchor refers to that complete
+    /// list and uses its maximum specificity. Without a parent list, each anchor
+    /// matches the context's scope elements and contributes zero specificity.
+    /// This count preserves authored anchors; it does not resolve their context or
+    /// replace them with a `:scope` pseudo-class.
     #[must_use]
     pub const fn nesting_selectors(&self) -> usize {
         self.nesting_selectors

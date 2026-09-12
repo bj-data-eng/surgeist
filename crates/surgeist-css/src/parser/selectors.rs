@@ -260,7 +260,7 @@ impl SelectorParseOptions {
         Self {
             allow_has: true,
             allow_scope_anchor: false,
-            allow_nesting_selectors: false,
+            allow_nesting_selectors: true,
             allow_pseudo_elements: true,
         }
     }

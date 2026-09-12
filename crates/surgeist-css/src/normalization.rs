@@ -204,10 +204,12 @@ impl std::error::Error for CssNormalizationError {
 /// How an authored selector binds to its shared enclosing selector or scope context.
 ///
 /// A nested parent binding represents the complete parent list: each `&` uses
-/// that list's maximum specificity, including implied anchors. The enum does not
-/// calculate specificity or match anything. Scope anchors remain distinct from
-/// parent-list nesting anchors. Selector-function structure is retained, so
-/// downstream specificity rules such as `:where()` remain applicable.
+/// that list's maximum specificity, including implied anchors. Without a parent
+/// list, explicit `&` anchors match the context's scope elements and contribute
+/// zero specificity. The enum does not calculate specificity or match anything.
+/// Scope anchors remain distinct from authored nesting anchors. Selector-function
+/// structure is retained, so downstream specificity rules such as `:where()`
+/// remain applicable.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssSelectorBinding {
@@ -218,7 +220,11 @@ pub enum CssSelectorBinding {
     /// An authored leading combinator binds to the parent list, or nearest scope
     /// when the selector belongs directly to a scoped style rule.
     LeadingCombinator(CssSelectorCombinator),
-    /// One or more authored nesting anchors bind to the complete parent list.
+    /// One or more authored nesting anchors use the enclosing selector context.
+    /// With [`CssSelectorContext::parent`] present, they bind to that complete list
+    /// and use its maximum specificity. Without a parent, they match the context's
+    /// scope elements and contribute zero specificity. Containing selector functions
+    /// retain their own specificity rules.
     ExplicitAnchors,
     /// The scoped-selector grammar supplied an authored scope anchor.
     ScopeAnchors,

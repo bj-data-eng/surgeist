@@ -186,7 +186,9 @@ fn selector_fragment<'i, T>(
 /// Rejected outer syntax is `None` with diagnostics. Forgiving inner lists retain
 /// valid members and report discarded members. Positions refer directly to `source`;
 /// implicit EOF closures are reported only when the outer syntax is retained.
-/// Relative selectors and nesting selectors are not admitted by this front door.
+/// Explicit `&` anchors remain symbolic; without a parent selector list they match
+/// the context's scope elements and contribute zero specificity. Leading relative
+/// combinators are not admitted by this front door.
 pub fn parse_selector(
     source: &str,
     context: &CssNamespaceContext,

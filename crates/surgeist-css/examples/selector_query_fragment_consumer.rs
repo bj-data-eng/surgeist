@@ -236,12 +236,15 @@ fn selector_admission_and_semantics() {
     );
     assert_validation_parity(&report);
 
+    let anchor = clean_selector("&.a", &context);
+    assert_eq!(compound(&anchor).nesting_selectors(), 1);
+    assert!(!compound(&anchor).has_scope_anchor());
+
     // Each root must consume exactly its requested grammar, including EOF.
     for source in [
         "",
         " \r\n/**/",
         ">.a",
-        "&.a",
         ".a{}",
         ".a;",
         ".a,???,.b",
