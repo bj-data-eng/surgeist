@@ -51,6 +51,14 @@ Single-selector and single-query probes require complete singular input. The
 selector-list extractor counts retained members, and the query extractor counts
 one retained query, including malformed-query recovery syntax.
 
+The basic selector expectations use that same namespace context: `a` and `xlink`
+are undeclared, so their four attribute-selector cases are rejected. The presence
+selector `[b i]` is also rejected because a modifier requires a matcher and value
+([Selectors 4 grammar](https://www.w3.org/TR/2026/WD-selectors-4-20260122/#grammar),
+[attribute namespaces](https://www.w3.org/TR/2026/WD-selectors-4-20260122/#attrnmsp)).
+Rejected raw selectors carry `RejectInput` diagnostics; the basic-selector corpus
+checks separately preserve the 65 clean cases and the 22 rejected cases.
+
 The adapterless Combinator fixtures retain their explicit panic-freedom policy.
 The mixed `atrulePrelude` fixture resolves its adapter from validated options:
 `atrule: media` selects the raw media-query-list parser, while the unnamed generic

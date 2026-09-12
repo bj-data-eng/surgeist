@@ -7029,30 +7029,44 @@
       "id": "selector/AttributeSelector.json#/attrib with namespace and dashmatch",
       "expectation_sha256": "c5c964ef77cb661519db4e7b6b7ad305fa7a10de0c410adf89c2130bf05590d2",
       "class": {
-        "kind": "clean",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "selector/AttributeSelector.json#/attrib with namespace, dashmatch and spaces",
       "expectation_sha256": "c5c964ef77cb661519db4e7b6b7ad305fa7a10de0c410adf89c2130bf05590d2",
       "class": {
-        "kind": "clean",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -7134,15 +7148,22 @@
       "id": "selector/AttributeSelector.json#/attrib.2 with flags",
       "expectation_sha256": "c5c964ef77cb661519db4e7b6b7ad305fa7a10de0c410adf89c2130bf05590d2",
       "class": {
-        "kind": "clean",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -7326,7 +7347,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -7348,7 +7369,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -7370,7 +7391,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -7392,7 +7413,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -7414,7 +7435,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -7436,7 +7457,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -7458,7 +7479,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -7480,7 +7501,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -7502,7 +7523,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -7524,7 +7545,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -7546,7 +7567,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -7568,7 +7589,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -7590,7 +7611,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -7612,7 +7633,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -7634,7 +7655,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -7644,15 +7665,22 @@
       "id": "selector/AttributeSelector.json#/namespace",
       "expectation_sha256": "c5c964ef77cb661519db4e7b6b7ad305fa7a10de0c410adf89c2130bf05590d2",
       "class": {
-        "kind": "clean",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -7689,15 +7717,22 @@
       "id": "selector/AttributeSelector.json#/namespace w~1o attrselector",
       "expectation_sha256": "c5c964ef77cb661519db4e7b6b7ad305fa7a10de0c410adf89c2130bf05590d2",
       "class": {
-        "kind": "clean",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -9858,7 +9893,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -9880,7 +9915,7 @@
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
