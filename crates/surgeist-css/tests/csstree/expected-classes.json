@@ -3287,945 +3287,770 @@
       "id": "declaration/Declaration.json#/declaration property with # hack",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/declaration property with $ hack",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/declaration property with & hack",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/declaration property with * hack",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/declaration property with + hack",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/declaration property with _ hack",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/declaration property with ~1 hack",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/declaration property with ~1~1 hack",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/declaration.0",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/declaration.1",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/declaration.c.0",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/declaration.c.1",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/declaration.c.2",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/declaration.c.3",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/declaration.s.0",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/declaration.s.1",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/declaration.s.2",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/declaration.s.3",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/error/0",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/error/1",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/error/2",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "ast_construction_without_public_stylesheet_meaning",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/shouldn't include !important into a value when parseValue is false",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/shouldn't include !important into a value when parseValue is false (brackets)",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/shouldn't include !important into a value when parseValue is false (function)",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/shouldn't include !important into a value when parseValue is false (w~1o whitespaces)",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Declaration.json#/shouldn't parse a value when parseValue is false",
       "expectation_sha256": "7d9a971103e2df0bc53d4007b7af5e0e5bb73f39959ca87faa1013dcccc7309f",
       "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Important.json#/!ie hack/0",
       "expectation_sha256": "2fa0d42eb9017133359b04e98a8035b4a2095c27ef77f040e69a4f579d6e64cd",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Important.json#/!ie hack/1",
       "expectation_sha256": "2fa0d42eb9017133359b04e98a8035b4a2095c27ef77f040e69a4f579d6e64cd",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Important.json#/\\9 hack",
       "expectation_sha256": "2fa0d42eb9017133359b04e98a8035b4a2095c27ef77f040e69a4f579d6e64cd",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Important.json#/basic/0",
       "expectation_sha256": "2fa0d42eb9017133359b04e98a8035b4a2095c27ef77f040e69a4f579d6e64cd",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Important.json#/basic/1",
       "expectation_sha256": "2fa0d42eb9017133359b04e98a8035b4a2095c27ef77f040e69a4f579d6e64cd",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Important.json#/basic/2",
       "expectation_sha256": "2fa0d42eb9017133359b04e98a8035b4a2095c27ef77f040e69a4f579d6e64cd",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Important.json#/divided by comment",
       "expectation_sha256": "2fa0d42eb9017133359b04e98a8035b4a2095c27ef77f040e69a4f579d6e64cd",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Important.json#/divided by spaces",
       "expectation_sha256": "2fa0d42eb9017133359b04e98a8035b4a2095c27ef77f040e69a4f579d6e64cd",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/Important.json#/divided by spaces and comments",
       "expectation_sha256": "2fa0d42eb9017133359b04e98a8035b4a2095c27ef77f040e69a4f579d6e64cd",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unknown_property",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -4262,15 +4087,22 @@
       "id": "declaration/custom-property.json#/double dash is a valid property name",
       "expectation_sha256": "360bce09f22dc5e243e364c97938253d4220b098f4136adbf8dec7aacc1ac205",
       "class": {
-        "kind": "clean",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "style_declarations"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -4292,20 +4124,14 @@
       "id": "declaration/custom-property.json#/empty (parseCustomProperty:true)",
       "expectation_sha256": "360bce09f22dc5e243e364c97938253d4220b098f4136adbf8dec7aacc1ac205",
       "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": true,
-          "diagnostics": []
+          "predicate": {
+            "relation": "nonempty"
+          }
         }
       }
     },
@@ -4328,20 +4154,14 @@
       "id": "declaration/custom-property.json#/empty with important (parseCustomProperty:true)",
       "expectation_sha256": "360bce09f22dc5e243e364c97938253d4220b098f4136adbf8dec7aacc1ac205",
       "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": true,
-          "diagnostics": []
+          "predicate": {
+            "relation": "nonempty"
+          }
         }
       }
     },
@@ -4361,7 +4181,7 @@
         "diagnostics": [
           {
             "code": "invalid_declaration_annotation",
-            "action": "drop_declaration",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -4386,20 +4206,14 @@
       "id": "declaration/custom-property.json#/only a comment (parseCustomProperty:true)",
       "expectation_sha256": "360bce09f22dc5e243e364c97938253d4220b098f4136adbf8dec7aacc1ac205",
       "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": true,
-          "diagnostics": []
+          "predicate": {
+            "relation": "nonempty"
+          }
         }
       }
     },
@@ -4422,20 +4236,14 @@
       "id": "declaration/custom-property.json#/should parse a custom property value when parseCustomProperty is true",
       "expectation_sha256": "360bce09f22dc5e243e364c97938253d4220b098f4136adbf8dec7aacc1ac205",
       "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": true,
-          "diagnostics": []
+          "predicate": {
+            "relation": "nonempty"
+          }
         }
       }
     },
@@ -4458,20 +4266,14 @@
       "id": "declaration/custom-property.json#/should preserve single spaces (parseCustomProperty:true)",
       "expectation_sha256": "360bce09f22dc5e243e364c97938253d4220b098f4136adbf8dec7aacc1ac205",
       "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": true,
-          "diagnostics": []
+          "predicate": {
+            "relation": "nonempty"
+          }
         }
       }
     },
@@ -4494,20 +4296,14 @@
       "id": "declaration/custom-property.json#/should preserve single spaces with important (parseCustomProperty:true)",
       "expectation_sha256": "360bce09f22dc5e243e364c97938253d4220b098f4136adbf8dec7aacc1ac205",
       "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": true,
-          "diagnostics": []
+          "predicate": {
+            "relation": "nonempty"
+          }
         }
       }
     },
@@ -4530,20 +4326,14 @@
       "id": "declaration/custom-property.json#/spaces and comments #2 (parseCustomProperty:true)",
       "expectation_sha256": "360bce09f22dc5e243e364c97938253d4220b098f4136adbf8dec7aacc1ac205",
       "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": true,
-          "diagnostics": []
+          "predicate": {
+            "relation": "nonempty"
+          }
         }
       }
     },
@@ -4551,20 +4341,14 @@
       "id": "declaration/custom-property.json#/spaces and comments #3 (parseCustomProperty:true)",
       "expectation_sha256": "360bce09f22dc5e243e364c97938253d4220b098f4136adbf8dec7aacc1ac205",
       "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": true,
-          "diagnostics": []
+          "predicate": {
+            "relation": "nonempty"
+          }
         }
       }
     },
@@ -4572,20 +4356,14 @@
       "id": "declaration/custom-property.json#/spaces and comments (parseCustomProperty:true)",
       "expectation_sha256": "360bce09f22dc5e243e364c97938253d4220b098f4136adbf8dec7aacc1ac205",
       "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": true,
-          "diagnostics": []
+          "predicate": {
+            "relation": "nonempty"
+          }
         }
       }
     },
@@ -4608,21 +4386,50 @@
       "id": "declaration/custom-property.json#/value should be parsed as balanced Raw/0",
       "expectation_sha256": "360bce09f22dc5e243e364c97938253d4220b098f4136adbf8dec7aacc1ac205",
       "class": {
-        "kind": "clean",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
             "kind": "style_declarations"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "empty"
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/custom-property.json#/value should be parsed as balanced Raw/1",
       "expectation_sha256": "360bce09f22dc5e243e364c97938253d4220b098f4136adbf8dec7aacc1ac205",
       "class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
+          },
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      }
+    },
+    {
+      "id": "declaration/custom-property.json#/whitespace beetween comments (parseCustomProperty:true)",
+      "expectation_sha256": "360bce09f22dc5e243e364c97938253d4220b098f4136adbf8dec7aacc1ac205",
+      "class": {
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
@@ -4631,27 +4438,6 @@
           "predicate": {
             "relation": "nonempty"
           }
-        }
-      }
-    },
-    {
-      "id": "declaration/custom-property.json#/whitespace beetween comments (parseCustomProperty:true)",
-      "expectation_sha256": "360bce09f22dc5e243e364c97938253d4220b098f4136adbf8dec7aacc1ac205",
-      "class": {
-        "kind": "unsupported",
-        "reason": "upstream_parser_option_without_public_css_equivalent",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "nonempty"
-            }
-          },
-          "is_clean": true,
-          "diagnostics": []
         }
       }
     },
@@ -4689,432 +4475,352 @@
       "id": "declaration/filter.json#/alpha()",
       "expectation_sha256": "2baf759629af8b0690fd053b808b556ce341cbc3ddd1a9d7dca563916e7229b6",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "invalid_property_value",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_property_value",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/filter.json#/alpha() case insensetive",
       "expectation_sha256": "2baf759629af8b0690fd053b808b556ce341cbc3ddd1a9d7dca563916e7229b6",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "invalid_property_value",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_property_value",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/filter.json#/chroma()",
       "expectation_sha256": "2baf759629af8b0690fd053b808b556ce341cbc3ddd1a9d7dca563916e7229b6",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "invalid_property_value",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_property_value",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/filter.json#/dropshadow()",
       "expectation_sha256": "2baf759629af8b0690fd053b808b556ce341cbc3ddd1a9d7dca563916e7229b6",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "invalid_property_value",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_property_value",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/filter.json#/filter.0",
       "expectation_sha256": "2baf759629af8b0690fd053b808b556ce341cbc3ddd1a9d7dca563916e7229b6",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "invalid_property_value",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_property_value",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/filter.json#/filter.1",
       "expectation_sha256": "2baf759629af8b0690fd053b808b556ce341cbc3ddd1a9d7dca563916e7229b6",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "invalid_property_value",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_property_value",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/filter.json#/filter.2",
       "expectation_sha256": "2baf759629af8b0690fd053b808b556ce341cbc3ddd1a9d7dca563916e7229b6",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "invalid_property_value",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/filter.json#/filter.3",
       "expectation_sha256": "2baf759629af8b0690fd053b808b556ce341cbc3ddd1a9d7dca563916e7229b6",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "invalid_property_value",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/filter.json#/filter.4",
       "expectation_sha256": "2baf759629af8b0690fd053b808b556ce341cbc3ddd1a9d7dca563916e7229b6",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "invalid_property_value",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/filter.json#/filter.5",
       "expectation_sha256": "2baf759629af8b0690fd053b808b556ce341cbc3ddd1a9d7dca563916e7229b6",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "invalid_property_value",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/filter.json#/filter.c.0",
       "expectation_sha256": "2baf759629af8b0690fd053b808b556ce341cbc3ddd1a9d7dca563916e7229b6",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "invalid_property_value",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_property_value",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/filter.json#/filter.c.1",
       "expectation_sha256": "2baf759629af8b0690fd053b808b556ce341cbc3ddd1a9d7dca563916e7229b6",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "invalid_property_value",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_property_value",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/filter.json#/filter.s.0",
       "expectation_sha256": "2baf759629af8b0690fd053b808b556ce341cbc3ddd1a9d7dca563916e7229b6",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "invalid_property_value",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_property_value",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/filter.json#/filter.s.1",
       "expectation_sha256": "2baf759629af8b0690fd053b808b556ce341cbc3ddd1a9d7dca563916e7229b6",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "invalid_property_value",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_property_value",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/filter.json#/filter.s.2",
       "expectation_sha256": "2baf759629af8b0690fd053b808b556ce341cbc3ddd1a9d7dca563916e7229b6",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "invalid_property_value",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_property_value",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declaration/filter.json#/unclosed functions should not be invalid per spec, not sure it's true for IE (need to be check and fail may be)",
       "expectation_sha256": "2baf759629af8b0690fd053b808b556ce341cbc3ddd1a9d7dca563916e7229b6",
       "class": {
-        "kind": "unsupported",
-        "reason": "vendor_or_host_specific_syntax",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "style_declarations"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "style_declarations"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "invalid_property_value",
-              "action": "drop_declaration",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "empty"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_property_value",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {

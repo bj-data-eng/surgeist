@@ -11,6 +11,7 @@ use surgeist_css::{
 pub enum EntryPoint {
     Sheet,
     StyleAttribute,
+    Declaration,
     Selector,
     SelectorList,
     MediaQuery,
@@ -23,6 +24,7 @@ impl EntryPoint {
         match self {
             Self::Sheet => "sheet",
             Self::StyleAttribute => "style_attribute",
+            Self::Declaration => "declaration",
             Self::Selector => "selector",
             Self::SelectorList => "selector_list",
             Self::MediaQuery => "media_query",
@@ -102,7 +104,8 @@ impl Adapter {
     ) -> Result<CompleteInput, Mismatch> {
         let (prefix, suffix) = match self {
             Self::Stylesheet | Self::TopLevelRule | Self::TopLevelAtRule => ("", ""),
-            Self::StyleDeclarationList | Self::StyleDeclaration => (".surgeist-corpus-probe{", "}"),
+            Self::StyleDeclarationList => (".surgeist-corpus-probe{", "}"),
+            Self::StyleDeclaration => ("", ""),
             Self::StyleBlock => (".surgeist-corpus-probe", ""),
             Self::SelectorList
             | Self::Selector
@@ -667,7 +670,7 @@ impl RegistryEntry {
             ),
             "declaration" => matches!(
                 (self.entry_point, self.adapter),
-                (EntryPoint::Sheet, Adapter::StyleDeclaration)
+                (EntryPoint::Declaration, Adapter::StyleDeclaration)
             ),
             "block" => matches!(
                 (self.entry_point, self.adapter),
@@ -1019,7 +1022,7 @@ pub const REGISTRY: &[RegistryEntry] = &[
     entry!(
         "expectations/declaration/Declaration.json",
         "declaration",
-        Sheet,
+        Declaration,
         StyleDeclaration,
         Extractor::StyleDeclarations,
         EMPTY_OR_NO_VALUE
@@ -1027,7 +1030,7 @@ pub const REGISTRY: &[RegistryEntry] = &[
     entry!(
         "expectations/declaration/Important.json",
         "declaration",
-        Sheet,
+        Declaration,
         StyleDeclaration,
         Extractor::StyleDeclarations,
         EMPTY
@@ -1035,7 +1038,7 @@ pub const REGISTRY: &[RegistryEntry] = &[
     entry!(
         "expectations/declaration/custom-property.json",
         "declaration",
-        Sheet,
+        Declaration,
         StyleDeclaration,
         Extractor::StyleDeclarations,
         EMPTY_OR_CUSTOM
@@ -1043,7 +1046,7 @@ pub const REGISTRY: &[RegistryEntry] = &[
     entry!(
         "expectations/declaration/filter.json",
         "declaration",
-        Sheet,
+        Declaration,
         StyleDeclaration,
         Extractor::StyleDeclarations,
         EMPTY

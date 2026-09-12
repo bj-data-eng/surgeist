@@ -436,6 +436,30 @@ fn csstree_group_expected_classes_bind_retained_outer_rules() {
 // CompleteInput and registry profiles are declared corpus artifacts consumed
 // by the parser/oracle pipeline.
 #[test]
+fn raw_declaration_adapters_preserve_the_complete_authored_input() {
+    let entries: Vec<_> = adapters::REGISTRY
+        .iter()
+        .filter(|entry| entry.context() == "declaration")
+        .collect();
+    assert_eq!(entries.len(), 4);
+    for entry in entries {
+        assert_eq!(entry.entry_point(), EntryPoint::Declaration);
+        assert_eq!(entry.extractor(), Extractor::StyleDeclarations);
+        for input in [
+            "",
+            "--λ:λ",
+            "--x:a;--y:b",
+            "--var: ([)]",
+            "filter:alpha(opacity",
+        ] {
+            let complete = entry.adapter().wrap(input, None).unwrap();
+            assert_eq!(complete.source(), input);
+            assert_eq!(complete.payload_span(), 0..input.len());
+        }
+    }
+}
+
+#[test]
 fn raw_selector_and_media_adapters_preserve_the_complete_authored_input() {
     let mut visited = 0;
     for entry in adapters::REGISTRY.iter().filter(|entry| {

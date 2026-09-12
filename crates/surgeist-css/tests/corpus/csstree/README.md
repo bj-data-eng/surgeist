@@ -83,6 +83,19 @@ twenty are rejected. The incomplete values `U+` and `u` report original EOF with
 `u+?` is the valid range 0–15 and the original representation `u+12e-130` denotes
 302–304 ([Syntax 3](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#urange)).
 
+Declaration fixtures use the singular raw declaration parser, retaining at most
+one declaration and preserving the original source. Their upstream AST options
+remain recorded as provenance; they do not bypass property grammar. The four
+files contain 22 clean custom declarations and 55 rejected inputs. Unknown names,
+punctuation hacks, and proprietary IE filter functions are rejected under the
+selected grammar. Bare `--` is not a custom property name, and unmatched nested
+closers remain invalid even when an enclosing block reaches EOF
+([Variables 1](https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#defining-variables),
+[Syntax 3](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value),
+[Filter Effects 1](https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#FilterFunctions)).
+Raw rejections use `RejectInput`; declaration-list fixtures retain their separate
+list parser and recovery contract.
+
 The adapterless Combinator fixtures retain their explicit panic-freedom policy.
 The mixed `atrulePrelude` fixture resolves its adapter from validated options:
 `atrule: media` selects the raw media-query-list parser, while the unnamed generic

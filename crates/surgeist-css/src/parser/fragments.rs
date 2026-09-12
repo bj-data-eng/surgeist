@@ -35,6 +35,87 @@ fn reject(
         .expect("fragment errors originate within the complete source")
 }
 
+/// Parses exactly one complete, grammar-valid ordinary declaration from raw source.
+///
+/// Surrounding whitespace and comments are accepted. The source must contain a
+/// recognized property or a valid custom property, its colon, and its value;
+/// top-level semicolons and stray closing delimiters reject the entire input.
+/// Use [`super::parse_style_attribute`] for a declaration list with separators.
+/// Name and value origins share the original source snapshot, and importance is
+/// recognized by the ordinary declaration grammar. No annotation span is added.
+/// Rejection returns `None` with `RejectInput`, except resource exhaustion retains
+/// `StopAtNestingLimit`. Implicit EOF closures are reported only after the complete
+/// declaration survives. This validates property grammar beyond CSS Syntax's
+/// generic consume-declaration algorithm and performs no contextual resolution.
+pub fn parse_declaration(source: &str) -> crate::CssParseReport<Option<CssDeclaration>> {
+    bounded(source, || {
+        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+        let mut parser_input = ParserInput::new(source);
+        let mut input = Parser::new(&mut parser_input);
+        let result = (|| {
+            input.skip_whitespace();
+            let declaration_start = input.state();
+            let name = input.expect_ident_cloned()?;
+            input.expect_colon()?;
+            let openings = state.check_component_values(source, &input, "css.declaration")?;
+            // RuleBodyParser normally supplies list boundaries. This singular
+            // entry instead rejects all root delimiters, while letting the
+            // tokenizer skip nested blocks (including custom-property braces).
+            let value_start = input.state();
+            loop {
+                let location = input.current_source_location();
+                let Ok(token) = input.next_including_whitespace_and_comments().cloned() else {
+                    break;
+                };
+                if matches!(
+                    token,
+                    Token::Semicolon
+                        | Token::CloseCurlyBracket
+                        | Token::CloseParenthesis
+                        | Token::CloseSquareBracket
+                ) {
+                    return Err(location.new_unexpected_token_error::<Error>(token));
+                }
+                if matches!(
+                    token,
+                    Token::Function(_)
+                        | Token::ParenthesisBlock
+                        | Token::SquareBracketBlock
+                        | Token::CurlyBracketBlock
+                ) {
+                    // Finish this block now so the next root token's location
+                    // is measured after it, rather than before tokenizer skipping.
+                    input.parse_nested_block(|nested| {
+                        while nested.next_including_whitespace_and_comments().is_ok() {}
+                        Ok::<_, ParseError<'_, Error>>(())
+                    })?;
+                }
+            }
+            input.reset(&value_start);
+            let declaration = parse_declaration_core(
+                DeclarationMode::Ordinary,
+                name,
+                &mut input,
+                &declaration_start,
+                state.source_snapshot(),
+            )?;
+            input.expect_exhausted()?;
+            state.retain_component_closures(openings);
+            Ok(declaration.into_declaration())
+        })();
+        match result {
+            Ok(declaration) => crate::CssParseReport::new(
+                Some(declaration),
+                state.take_implicit_closure_diagnostics(source),
+            ),
+            Err(error) => crate::CssParseReport::new(
+                None,
+                vec![reject(source, error, crate::CssRecoveryAction::RejectInput)],
+            ),
+        }
+    })
+}
+
 fn selector_fragment<'i, T>(
     source: &'i str,
     context: &CssNamespaceContext,

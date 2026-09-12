@@ -18,7 +18,7 @@ use adapters::{
 };
 use surgeist_css::{
     CssErrorCode, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssRecoveryAction,
-    CssRecoveryDiagnostic, parse_font_face_descriptor_value, parse_media_query,
+    CssRecoveryDiagnostic, parse_declaration, parse_font_face_descriptor_value, parse_media_query,
     parse_media_query_list, parse_selector, parse_selector_list, parse_sheet,
     parse_style_attribute,
 };
@@ -1966,6 +1966,16 @@ fn observe_public_parser(
                 validate_sheet(complete.source()),
             )?;
             Ok::<Observation, String>(observation)
+        }
+        EntryPoint::Declaration => {
+            let report = parse_declaration(complete.source());
+            fragment_observation(
+                report,
+                registry,
+                RegistryExtractor::StyleDeclarations,
+                complete,
+                |syntax| usize::from(syntax.is_some()),
+            )
         }
         EntryPoint::Selector => {
             let report = parse_selector(complete.source(), &corpus_namespace_context());

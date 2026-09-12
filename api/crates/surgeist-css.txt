@@ -5769,6 +5769,7 @@ pub fn surgeist_css::normalize_sheet(sheet: &surgeist_css::CssSheet) -> core::re
 pub fn surgeist_css::normalize_sheet_with_limits(sheet: &surgeist_css::CssSheet, limits: surgeist_css::CssNormalizationLimits) -> core::result::Result<surgeist_css::CssNormalizedSheet, surgeist_css::CssNormalizationError>
 pub fn surgeist_css::parse_component_values(source: &str) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::parse_component_values_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::parse_declaration(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssDeclaration>>
 pub fn surgeist_css::parse_font_face_descriptor_value(source: &str, descriptor: surgeist_css::CssFontFaceDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontFaceDescriptorValue>>
 pub fn surgeist_css::parse_media_query(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssMediaQuery>
 pub fn surgeist_css::parse_media_query_list(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssMediaQueryList>

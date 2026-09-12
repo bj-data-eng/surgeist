@@ -13,6 +13,7 @@ subset; it does not establish complete support for all CSS syntax.
 | --- | --- | --- |
 | `parse_sheet(&str)` | Default features | `CssParseReport<CssSheet>` |
 | `parse_style_attribute(&str)` | Default features | `CssParseReport<CssDeclarationList>` |
+| `parse_declaration(&str)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
 | `parse_selector(&str, &CssNamespaceContext)` | Default features | `CssParseReport<Option<CssSelector>>` |
 | `parse_selector_list(&str, &CssNamespaceContext)` | Default features | `CssParseReport<Option<CssStyleSelectorList>>` |
 | `parse_media_query(&str)` | Default features | `CssParseReport<CssMediaQuery>` |
@@ -133,6 +134,28 @@ delimiters, and unrepresentable token boundaries return typed errors. Explicit
 the shared structural ceiling is 256. Input exceeding the byte limit is rejected
 before copying or tokenizing it, with `UnretainedInput` provenance and its UTF-8
 length. These syntax limits do not promise a global memory budget.
+
+## Raw declaration fragments
+
+`parse_declaration` consumes exactly one ordinary declaration from the unmodified
+source, including its property name, colon, value, and optional terminal
+`!important` annotation. It validates recognized property grammar or custom-property
+grammar beyond CSS Syntax's generic consume-declaration algorithm. Surrounding CSS
+whitespace and comments are accepted. Empty custom values are valid.
+
+Top-level semicolons, stray closing delimiters, multiple declarations, unknown
+properties, and invalid values reject the entire input. Thus `color:red;` belongs
+to `parse_style_attribute`, while `--x:{a:b;c:d}` is a valid singular declaration.
+Rejection returns `None` and `RejectInput` over the original full input; resource
+exhaustion retains `StopAtNestingLimit`. Implicit EOF closure diagnostics appear
+only when the whole declaration survives grammar and full-consumption checks.
+
+The returned `CssDeclaration` owns the real source snapshot. `parsed_name()` and
+`parsed_value()` preserve original source regions, including escaped names and
+UTF-8 byte offsets, zero-based lines, and UTF-16 columns. Value provenance excludes
+the annotation; `importance()` exposes its recognized meaning without a separate
+annotation span. Custom values and substitution-dependent known values remain
+symbolic. No selector, brace, property name, or value is synthesized.
 
 ## Checked declaration construction
 
