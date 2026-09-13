@@ -4790,7 +4790,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "declaration_list"
           },
           "predicate": {
             "relation": "exact",
@@ -4806,7 +4806,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "declaration_list"
           },
           "predicate": {
             "relation": "exact",
@@ -4822,10 +4822,11 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "declaration_list"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "exact",
+            "value": 0
           }
         },
         "diagnostics": [
@@ -4844,10 +4845,11 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "declaration_list"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "exact",
+            "value": 0
           }
         },
         "diagnostics": [
@@ -4866,10 +4868,11 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "declaration_list"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "exact",
+            "value": 0
           }
         },
         "diagnostics": [
@@ -4893,7 +4896,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "declaration_list"
           },
           "predicate": {
             "relation": "exact",
@@ -4909,7 +4912,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "declaration_list"
           },
           "predicate": {
             "relation": "exact",
@@ -4922,48 +4925,74 @@
       "id": "declarationList/DeclarationList.json#/block.c.2",
       "expectation_sha256": "88f0c3ed29bc4e2918d59313fe7aa7622658d42432564badd48877966a8ec6a8",
       "class": {
-        "kind": "clean",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "declaration_list"
           },
           "predicate": {
             "relation": "exact",
             "value": 0
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declarationList/DeclarationList.json#/block.c.3",
       "expectation_sha256": "88f0c3ed29bc4e2918d59313fe7aa7622658d42432564badd48877966a8ec6a8",
       "class": {
-        "kind": "clean",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "declaration_list"
           },
           "predicate": {
             "relation": "exact",
             "value": 0
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declarationList/DeclarationList.json#/block.c.4",
       "expectation_sha256": "88f0c3ed29bc4e2918d59313fe7aa7622658d42432564badd48877966a8ec6a8",
       "class": {
-        "kind": "clean",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "declaration_list"
           },
           "predicate": {
             "relation": "exact",
             "value": 0
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -4973,7 +5002,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "declaration_list"
           },
           "predicate": {
             "relation": "exact",
@@ -4989,7 +5018,7 @@
         "kind": "clean",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "declaration_list"
           },
           "predicate": {
             "relation": "exact",
@@ -5005,10 +5034,11 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "declaration_list"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "exact",
+            "value": 0
           }
         },
         "diagnostics": [
@@ -5027,10 +5057,11 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "declaration_list"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "exact",
+            "value": 0
           }
         },
         "diagnostics": [
@@ -5049,10 +5080,11 @@
         "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "declaration_list"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "exact",
+            "value": 0
           }
         },
         "diagnostics": [
@@ -5073,31 +5105,50 @@
       "id": "declarationList/nesting.json#/basic",
       "expectation_sha256": "5381dbc70bde7797db1c14cc517801ed31b787a20878499afe2bd0630f593bbf",
       "class": {
-        "kind": "clean",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "declaration_list"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "exact",
+            "value": 1
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unknown_at_rule",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declarationList/nesting.json#/don't parse nested rule when it not started with &",
       "expectation_sha256": "5381dbc70bde7797db1c14cc517801ed31b787a20878499afe2bd0630f593bbf",
       "class": {
-        "kind": "recovered",
+        "kind": "strict_rejected",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "declaration_list"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "exact",
+            "value": 0
           }
         },
         "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          },
           {
             "code": "unknown_property",
             "action": "drop_declaration",
@@ -5110,30 +5161,46 @@
       "id": "declarationList/nesting.json#/nested @media",
       "expectation_sha256": "5381dbc70bde7797db1c14cc517801ed31b787a20878499afe2bd0630f593bbf",
       "class": {
-        "kind": "clean",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "declaration_list"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "exact",
+            "value": 1
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
       "id": "declarationList/tolerant.json#/no colon after a property name",
       "expectation_sha256": "b7edb7d44fb38f0317a1814766af31ca0e9a2763d225c45bd6b6c3ccd2232856",
       "class": {
-        "kind": "clean",
+        "kind": "recovered",
         "retained_syntax": {
           "extractor": {
-            "kind": "style_declarations"
+            "kind": "declaration_list"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "exact",
+            "value": 1
           }
-        }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_end",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {

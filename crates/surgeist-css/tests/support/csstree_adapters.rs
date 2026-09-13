@@ -110,7 +110,7 @@ impl Adapter {
     ) -> Result<CompleteInput, Mismatch> {
         let (prefix, suffix) = match self {
             Self::Stylesheet | Self::TopLevelRule | Self::TopLevelAtRule => ("", ""),
-            Self::StyleDeclarationList => (".surgeist-corpus-probe{", "}"),
+            Self::StyleDeclarationList => ("", ""),
             Self::StyleDeclaration => ("", ""),
             Self::StyleBlock => ("", ""),
             Self::SelectorList
@@ -723,7 +723,7 @@ impl RegistryEntry {
             ),
             "declarationList" => matches!(
                 (self.entry_point, self.adapter),
-                (EntryPoint::Sheet, Adapter::StyleDeclarationList)
+                (EntryPoint::StyleAttribute, Adapter::StyleDeclarationList)
             ),
             "declaration" => matches!(
                 (self.entry_point, self.adapter),
@@ -1115,25 +1115,25 @@ pub const REGISTRY: &[RegistryEntry] = &[
     entry!(
         "expectations/declarationList/DeclarationList.json",
         "declarationList",
-        Sheet,
+        StyleAttribute,
         StyleDeclarationList,
-        Extractor::StyleDeclarations,
+        Extractor::DeclarationList,
         EMPTY
     ),
     entry!(
         "expectations/declarationList/nesting.json",
         "declarationList",
-        Sheet,
+        StyleAttribute,
         StyleDeclarationList,
-        Extractor::StyleDeclarations,
+        Extractor::DeclarationList,
         EMPTY
     ),
     entry!(
         "expectations/declarationList/tolerant.json",
         "declarationList",
-        Sheet,
+        StyleAttribute,
         StyleDeclarationList,
-        Extractor::StyleDeclarations,
+        Extractor::DeclarationList,
         EMPTY
     ),
     entry!(
