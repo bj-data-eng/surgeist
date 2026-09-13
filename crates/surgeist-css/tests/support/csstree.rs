@@ -5111,3 +5111,108 @@ fn remaining_pseudo_original_adapters_admit_independent_classes_and_diagnostics(
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+#[cfg(test)]
+#[test]
+fn declaration_list_original_adapters_admit_independent_raw_classes_and_diagnostics() {
+    // Independent pinned grammar/diagnostic audit, not the committed class registry
+    // or captured oracle. Exercise the real adapter -> observer -> class gate.
+    let data: serde_json::Value = serde_json::from_str(include_str!(
+        "../csstree/declaration-list-reconciliation.json"
+    ))
+    .unwrap();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(CORPUS_ROOT);
+    let mut inventory = read_neutral_artifact_set(&root)
+        .and_then(validate_neutral_artifact_set)
+        .unwrap();
+    let rows = data["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 19);
+    let mut failures = Vec::new();
+    for row in rows {
+        let id = row["id"].as_str().unwrap();
+        let case = inventory
+            .cases
+            .iter_mut()
+            .find(|case| case.id == id)
+            .unwrap();
+        assert_eq!(case.input, row["input"].as_str().unwrap(), "{id}");
+        assert_eq!(
+            case.expectation_sha256,
+            row["expectation_sha256"].as_str().unwrap(),
+            "{id}"
+        );
+        assert_eq!(
+            serde_json::to_value(&case.options).unwrap(),
+            row["effective_options"],
+            "{id}"
+        );
+        case.expected_class = Some(serde_json::from_value(row["expected_class"].clone()).unwrap());
+        let binding = REGISTRY
+            .iter()
+            .find(|entry| entry.fixture_path() == case.expectation_path)
+            .copied()
+            .unwrap();
+        let binding = resolve_case_registry(case, binding).unwrap();
+        let complete = binding
+            .adapter()
+            .wrap(&case.input, binding.property_or_descriptor())
+            .unwrap();
+        let span = complete.payload_span();
+        let actual_adapter = serde_json::json!({"entry_point": binding.entry_point_name(),
+            "prefix": &complete.source()[..span.start], "suffix": &complete.source()[span.end..],
+            "extractor": raw_extractor(binding.extractor())});
+        let expected_adapter = serde_json::json!({"entry_point": "style_attribute", "prefix": "", "suffix": "",
+            "extractor": {"kind": "declaration_list"}});
+        if actual_adapter != expected_adapter {
+            failures.push(format!("{id}: original declaration-list grammar requires raw adapter\nexpected: {expected_adapter}\nactual: {actual_adapter}"));
+        }
+        if let Err(error) = validate_expected_class(case, case.expected_class.as_ref().unwrap()) {
+            failures.push(format!(
+                "{id}: independent raw class admission failed: {error}"
+            ));
+            continue;
+        }
+        let record = match observe_csstree_record(case) {
+            Ok(record) => record,
+            Err(error) => {
+                failures.push(format!(
+                    "{id}: real adapter/class admission failed: {error:?}"
+                ));
+                continue;
+            }
+        };
+        let observed = serde_json::to_value(record).unwrap();
+        assert_eq!(observed["probe"]["entry_point"], "style_attribute", "{id}");
+        assert_eq!(observed["probe"]["payload"]["prefix"], "", "{id}");
+        assert_eq!(observed["probe"]["payload"]["suffix"], "", "{id}");
+        assert_eq!(
+            observed["probe"]["payload"]["input_byte_length"],
+            case.input.len(),
+            "{id}"
+        );
+        assert_eq!(
+            observed["outcome"]["kind"], row["expected_class"]["kind"],
+            "{id}"
+        );
+        assert_eq!(
+            observed["observation"]["extractor"],
+            serde_json::json!({"kind":"declaration_list"}),
+            "{id}"
+        );
+        assert_eq!(
+            observed["observation"]["syntax_count"], row["expected"]["declaration_count"],
+            "{id}"
+        );
+        assert_eq!(
+            observed["observation"]["is_clean"], row["expected"]["is_clean"],
+            "{id}"
+        );
+        if observed["observation"]["diagnostics"] != row["expected_raw_diagnostics"] {
+            failures.push(format!(
+                "{id}: ordered, multiplicity-one diagnostics\nexpected: {}\nactual: {}",
+                row["expected_raw_diagnostics"], observed["observation"]["diagnostics"]
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
