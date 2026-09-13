@@ -44,7 +44,7 @@ const BASELINE_RULE_REMAINDER: &str =
     "Other valid forms of the cited rule production are outside the I01 subset.";
 const SELECTOR_REMAINDER: &str =
     "Other valid forms of the cited Selectors production are outside the I01 subset.";
-const SUPPORTS_SELECTOR_SUBSET: &str = "selector() accepts complete Selectors 3 plus the selected I01 extensions: i and s attribute modifiers; :scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :modal, :fullscreen, :popover-open, :default, :indeterminate, :read-only, :read-write, :in-range, and :out-of-range; :is(), :where(), :has(), selector-list :not(), and nth-child of lists; and ::marker, ::selection, ::backdrop, and generated-marker sequences. Directionality accepts one identifier and language accepts nonempty comma-separated identifier or string ranges.";
+const SUPPORTS_SELECTOR_SUBSET: &str = "selector() accepts complete Selectors 3 plus the selected I01 extensions: i and s attribute modifiers; :scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :modal, :fullscreen, :popover-open, :default, :indeterminate, :read-only, :read-write, :in-range, and :out-of-range; :is(), :where(), :has(), selector-list :not(), and nth-child of lists; and ::marker, ::selection, ::backdrop, and generated-marker sequences. Directionality accepts one identifier and language accepts nonempty comma-separated identifier or string ranges. Required shadow definitions add :host, compound-argument :host() and :host-context(), ::slotted(), and identifier-list ::part(). Ordered pseudo-element suffixes retain contextual pseudo-classes and applicable tree-abiding transitions.";
 const SUPPORTS_SELECTOR_REMAINDER: &str = "The || combinator, unselected Selectors 4 pseudo-classes and pseudo-elements, and syntax outside those atomic extension rows remain outside the typed subset; balanced content is preserved as general-enclosed authored syntax.";
 const QUERY_REMAINDER: &str =
     "Other valid forms of the cited query production are outside the I01 subset.";
@@ -1413,7 +1413,7 @@ const EXPECTED: &[ExpectedFeature] = &[
         recognized_code: None,
         positive: Some(Input::Sheet(".button:hover { color: red; }")),
         negative: Some((
-            Input::Sheet(".host:host { color: red; }"),
+            Input::Sheet(".host:host() { color: red; }"),
             CssErrorCode::InvalidSelector,
         )),
     },
@@ -1503,7 +1503,7 @@ const EXPECTED: &[ExpectedFeature] = &[
         recognized_code: None,
         positive: Some(Input::Sheet(".item::before { content: \"x\"; }")),
         negative: Some((
-            Input::Sheet(".item::part(label) { color: red; }"),
+            Input::Sheet(".item::part() { color: red; }"),
             CssErrorCode::InvalidSelector,
         )),
     },
@@ -5520,5 +5520,17 @@ fn linguistic_selector_metadata_matches_effective_authored_grammar() {
             report.diagnostics()[0].error().code(),
             CssErrorCode::InvalidSelector
         );
+    }
+}
+
+#[test]
+fn required_shadow_definitions_supersede_prior_negative_catalog_examples() {
+    for source in [
+        ".host:host { color: red; }",
+        ".item::part(label) { color: red; }",
+    ] {
+        let report = surgeist_css::parse_sheet(source);
+        assert!(report.is_clean(), "{source}: {report:?}");
+        assert_eq!(report.syntax().rules().len(), 1);
     }
 }

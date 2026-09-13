@@ -16930,6 +16930,12 @@ impl CssRelativeSelectorList {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssPseudoClass {
+    /// The shadow host, without an argument.
+    Host,
+    /// The shadow host constrained by one compound selector.
+    HostFunction(CssCompoundSelectorArgument),
+    /// A host whose context satisfies one compound selector.
+    HostContext(CssCompoundSelectorArgument),
     Root,
     Scope,
     Link,
@@ -16985,7 +16991,10 @@ impl CssPseudoClass {
                 selectors.has_pseudo_elements()
             }
             Self::Has(selectors) => selectors.has_pseudo_elements(),
-            Self::Root
+            Self::Host
+            | Self::HostFunction(_)
+            | Self::HostContext(_)
+            | Self::Root
             | Self::Scope
             | Self::Link
             | Self::Visited
@@ -17217,7 +17226,106 @@ impl CssLanguageRangeList {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// One checked compound argument for `:host()`, `:host-context()` or `::slotted()`.
+/// Logical functions inherit the compound-only restriction; `:has()` retains its
+/// relative-selector grammar. Pseudo-elements and recursively nested `:has()` fail.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssCompoundSelectorArgument {
+    compound: Box<CssCompoundSelector>,
+}
+
+impl CssCompoundSelectorArgument {
+    #[must_use]
+    pub fn try_new(selector: CssSelector) -> Option<Self> {
+        if !selector_is_valid_argument(&selector, true, true) {
+            return None;
+        }
+        Some(Self {
+            compound: Box::new(selector.into_compound_selector()),
+        })
+    }
+
+    /// Borrows the complete argument, retaining namespaces and symbolic anchors.
+    #[must_use]
+    pub fn compound(&self) -> &CssCompoundSelector {
+        &self.compound
+    }
+}
+
+/// A case-preserving decoded `::part()` identifier with token provenance.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssPartName {
+    component: crate::CssComponentValue,
+}
+
+impl CssPartName {
+    /// Constructs a decoded identifier. CSS-wide words and duplicates are allowed.
+    pub fn try_new(value: impl Into<String>) -> Result<Self, crate::CssComponentValueError> {
+        Self::from_component(crate::CssComponentValue::try_ident(value)?)
+    }
+
+    pub(crate) fn from_component(
+        component: crate::CssComponentValue,
+    ) -> Result<Self, crate::CssComponentValueError> {
+        if matches!(
+            component.view(),
+            crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Ident(_))
+        ) {
+            Ok(Self { component })
+        } else {
+            Err(crate::CssComponentValueError::new(
+                crate::CssComponentValueErrorKind::InvalidIdentifier,
+                component.origin().clone(),
+            ))
+        }
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self.component.view() {
+            crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Ident(value)) => value,
+            _ => unreachable!("checked part identifier"),
+        }
+    }
+
+    #[must_use]
+    pub fn origin(&self) -> &CssValueOrigin {
+        self.component.origin()
+    }
+
+    #[must_use]
+    pub fn to_css_string(&self) -> String {
+        cssparser::ToCss::to_css_string(&cssparser::Token::Ident(self.as_str().into()))
+    }
+}
+
+/// A nonempty ordered list of `::part()` identifiers, without name resolution.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssPartNameList {
+    names: Vec<CssPartName>,
+}
+
+impl CssPartNameList {
+    #[must_use]
+    pub fn try_new(names: Vec<CssPartName>) -> Option<Self> {
+        (!names.is_empty()).then_some(Self { names })
+    }
+    #[must_use]
+    pub fn names(&self) -> &[CssPartName] {
+        &self.names
+    }
+    /// Serializes canonical identifiers separated by spaces, without `::part()`.
+    #[must_use]
+    pub fn to_css_string(&self) -> String {
+        self.names
+            .iter()
+            .map(CssPartName::to_css_string)
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssPseudoElement {
     Before,
@@ -17227,47 +17335,201 @@ pub enum CssPseudoElement {
     Marker,
     Selection,
     Backdrop,
+    Slotted(CssCompoundSelectorArgument),
+    Part(CssPartNameList),
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl CssPseudoElement {
+    pub(crate) fn is_element_backed(&self) -> bool {
+        matches!(self, Self::Part(_))
+    }
+
+    fn permits_child(&self, child: &Self) -> bool {
+        match self {
+            Self::Part(_) => true,
+            Self::Slotted(_) => matches!(
+                child,
+                Self::Before | Self::After | Self::Marker | Self::Part(_) | Self::Backdrop
+            ),
+            Self::Before | Self::After => matches!(child, Self::Marker),
+            _ => false,
+        }
+    }
+}
+
+/// One ordered segment following the originating element's compound selector.
+/// Each pseudo-class applies to the most recent pseudo-element segment.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum CssPseudoElementSegment {
+    PseudoElement(CssPseudoElement),
+    PseudoClass(CssPseudoClass),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssPseudoElementSequence {
-    pseudo_elements: Vec<CssPseudoElement>,
+    segments: Vec<CssPseudoElementSegment>,
 }
 
 impl CssPseudoElementSequence {
+    /// Constructs an element-only sequence, subject to the same transition rules.
     #[must_use]
     pub fn try_new(pseudo_elements: Vec<CssPseudoElement>) -> Option<Self> {
-        if Self::is_supported_sequence(&pseudo_elements) {
-            Some(Self::new(pseudo_elements))
-        } else {
-            None
+        Self::try_from_segments(
+            pseudo_elements
+                .into_iter()
+                .map(CssPseudoElementSegment::PseudoElement)
+                .collect(),
+        )
+    }
+
+    /// Checks a nonempty sequence beginning with a pseudo-element. Logical suffix
+    /// arguments inherit the restrictions of the pseudo-element they qualify.
+    #[must_use]
+    pub fn try_from_segments(segments: Vec<CssPseudoElementSegment>) -> Option<Self> {
+        let mut current: Option<&CssPseudoElement> = None;
+        for segment in &segments {
+            match segment {
+                CssPseudoElementSegment::PseudoElement(element) => {
+                    if current.is_some_and(|previous| !previous.permits_child(element)) {
+                        return None;
+                    }
+                    current = Some(element);
+                }
+                CssPseudoElementSegment::PseudoClass(pseudo) => {
+                    let element = current?;
+                    if !pseudo_is_valid_suffix(pseudo, element.is_element_backed(), true) {
+                        return None;
+                    }
+                }
+            }
+        }
+        current?;
+        Some(Self { segments })
+    }
+
+    /// Returns every segment in authored attachment order, without projections.
+    #[must_use]
+    pub fn segments(&self) -> &[CssPseudoElementSegment] {
+        &self.segments
+    }
+}
+
+pub(crate) fn selector_is_valid_pseudo_suffix(
+    selector: &CssSelector,
+    element_backed: bool,
+    allow_has: bool,
+) -> bool {
+    match selector {
+        CssSelector::PseudoClass(pseudo) => {
+            pseudo_is_valid_suffix(pseudo, element_backed, allow_has)
+        }
+        CssSelector::Compound(compound) => {
+            compound.type_selector().is_none()
+                && compound.ids().is_empty()
+                && compound.classes().is_empty()
+                && compound.attributes().is_empty()
+                && !compound.has_scope_anchor()
+                && compound.nesting_selectors() == 0
+                && !compound.has_pseudo_elements()
+                && !compound.pseudo_classes().is_empty()
+                && compound
+                    .pseudo_classes()
+                    .iter()
+                    .all(|pseudo| pseudo_is_valid_suffix(pseudo, element_backed, allow_has))
+        }
+        _ => false,
+    }
+}
+
+fn pseudo_is_valid_suffix(pseudo: &CssPseudoClass, element_backed: bool, allow_has: bool) -> bool {
+    match pseudo {
+        CssPseudoClass::Not(list) | CssPseudoClass::Is(list) | CssPseudoClass::Where(list) => {
+            list.selectors().iter().all(|selector| {
+                selector_is_valid_pseudo_suffix(selector, element_backed, allow_has)
+            }) && (!matches!(pseudo, CssPseudoClass::Not(_)) || !list.selectors().is_empty())
+        }
+        _ => {
+            (element_backed
+                || matches!(
+                    pseudo,
+                    CssPseudoClass::Hover
+                        | CssPseudoClass::Active
+                        | CssPseudoClass::Focus
+                        | CssPseudoClass::FocusVisible
+                        | CssPseudoClass::FocusWithin
+                ))
+                && pseudo_is_valid_argument(pseudo, allow_has, false)
         }
     }
+}
 
-    #[must_use]
-    pub(crate) fn new(pseudo_elements: Vec<CssPseudoElement>) -> Self {
-        debug_assert!(Self::is_supported_sequence(&pseudo_elements));
-        Self { pseudo_elements }
+fn selector_is_valid_argument(
+    selector: &CssSelector,
+    allow_has: bool,
+    compound_only: bool,
+) -> bool {
+    match selector {
+        CssSelector::Tag(value) | CssSelector::Key(value) | CssSelector::Class(value) => {
+            !value.is_empty() && !value.contains('\0')
+        }
+        CssSelector::PseudoClass(pseudo) => {
+            pseudo_is_valid_argument(pseudo, allow_has, compound_only)
+        }
+        CssSelector::Compound(compound) => {
+            compound_is_valid_argument(compound, allow_has, compound_only)
+        }
+        CssSelector::Complex(complex) => {
+            !compound_only
+                && compound_is_valid_argument(complex.first(), allow_has, false)
+                && complex
+                    .rest()
+                    .iter()
+                    .all(|part| compound_is_valid_argument(part.selector(), allow_has, false))
+        }
     }
+}
 
-    #[must_use]
-    pub fn pseudo_elements(&self) -> &[CssPseudoElement] {
-        &self.pseudo_elements
-    }
+fn compound_is_valid_argument(
+    compound: &CssCompoundSelector,
+    allow_has: bool,
+    compound_only: bool,
+) -> bool {
+    !compound.has_pseudo_elements()
+        && compound
+            .pseudo_classes()
+            .iter()
+            .all(|pseudo| pseudo_is_valid_argument(pseudo, allow_has, compound_only))
+}
 
-    fn is_supported_sequence(pseudo_elements: &[CssPseudoElement]) -> bool {
-        matches!(
-            pseudo_elements,
-            [CssPseudoElement::Before]
-                | [CssPseudoElement::After]
-                | [CssPseudoElement::FirstLine]
-                | [CssPseudoElement::FirstLetter]
-                | [CssPseudoElement::Marker]
-                | [CssPseudoElement::Selection]
-                | [CssPseudoElement::Backdrop]
-                | [CssPseudoElement::Before, CssPseudoElement::Marker]
-                | [CssPseudoElement::After, CssPseudoElement::Marker]
-        )
+fn pseudo_is_valid_argument(pseudo: &CssPseudoClass, allow_has: bool, compound_only: bool) -> bool {
+    match pseudo {
+        CssPseudoClass::HostFunction(argument) | CssPseudoClass::HostContext(argument) => {
+            compound_is_valid_argument(argument.compound(), allow_has, true)
+        }
+        CssPseudoClass::Not(list) | CssPseudoClass::Is(list) | CssPseudoClass::Where(list) => {
+            list.selectors()
+                .iter()
+                .all(|selector| selector_is_valid_argument(selector, allow_has, compound_only))
+                && (!matches!(pseudo, CssPseudoClass::Not(_)) || !list.selectors().is_empty())
+        }
+        CssPseudoClass::Has(list) => {
+            allow_has
+                && list
+                    .selectors()
+                    .iter()
+                    .all(|relative| selector_is_valid_argument(relative.selector(), false, false))
+        }
+        CssPseudoClass::NthChild(pattern) | CssPseudoClass::NthLastChild(pattern) => {
+            pattern.selector_list().is_none_or(|list| {
+                !list.selectors().is_empty()
+                    && list
+                        .selectors()
+                        .iter()
+                        .all(|selector| selector_is_valid_argument(selector, allow_has, false))
+            })
+        }
+        _ => true,
     }
 }
 

@@ -1,8 +1,8 @@
 use surgeist_css::{
     CssCompoundSelector, CssErrorCode, CssLanguageRange, CssNamespaceConstraint, CssNamespaceName,
-    CssNamespacePrefix, CssPseudoClass, CssPseudoElement, CssRecoveryAction, CssRule,
-    CssScopedRule, CssSelector, CssSelectorCombinator, CssSupportsConditionKind, ErrorKind,
-    parse_sheet,
+    CssNamespacePrefix, CssPseudoClass, CssPseudoElement, CssPseudoElementSegment,
+    CssRecoveryAction, CssRule, CssScopedRule, CssSelector, CssSelectorCombinator,
+    CssSupportsConditionKind, ErrorKind, parse_sheet,
 };
 
 fn compound_selector(rule: &CssRule) -> &CssCompoundSelector {
@@ -111,8 +111,8 @@ fn selectors3_pseudos_legacy_forms_and_repeated_ids_are_typed() {
             selector
                 .pseudo_elements()
                 .expect("typed pseudo-element")
-                .pseudo_elements(),
-            [expected]
+                .segments(),
+            [CssPseudoElementSegment::PseudoElement(expected)]
         );
     }
 

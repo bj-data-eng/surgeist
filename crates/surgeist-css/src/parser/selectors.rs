@@ -271,6 +271,8 @@ struct SelectorParseOptions {
     allow_scope_anchor: bool,
     allow_nesting_selectors: bool,
     allow_pseudo_elements: bool,
+    compound_only: bool,
+    pseudo_suffix: Option<bool>,
 }
 
 impl SelectorParseOptions {
@@ -280,6 +282,8 @@ impl SelectorParseOptions {
             allow_scope_anchor: false,
             allow_nesting_selectors: true,
             allow_pseudo_elements: true,
+            compound_only: false,
+            pseudo_suffix: None,
         }
     }
 
@@ -303,6 +307,8 @@ impl SelectorParseOptions {
             allow_scope_anchor: true,
             allow_nesting_selectors: false,
             allow_pseudo_elements: true,
+            compound_only: false,
+            pseudo_suffix: None,
         }
     }
 
@@ -312,15 +318,23 @@ impl SelectorParseOptions {
             allow_scope_anchor: false,
             allow_nesting_selectors: false,
             allow_pseudo_elements: false,
+            compound_only: false,
+            pseudo_suffix: None,
         }
     }
 
     const fn without_pseudo_elements(self) -> Self {
         Self {
-            allow_has: self.allow_has,
-            allow_scope_anchor: self.allow_scope_anchor,
-            allow_nesting_selectors: self.allow_nesting_selectors,
             allow_pseudo_elements: false,
+            ..self
+        }
+    }
+
+    const fn independent_arguments(self) -> Self {
+        Self {
+            compound_only: false,
+            pseudo_suffix: None,
+            ..self
         }
     }
 }
@@ -347,7 +361,22 @@ fn parse_rule_selector_with_options<'i, 't>(
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssSelector, ParseError<'i, Error>> {
     let first = parse_compound_selector_model_with_options(input, options, recovery)?;
-    parse_selector_after_first_compound(input, first, options, recovery)
+    let selector = parse_selector_after_first_compound(input, first, options, recovery)?;
+    if options.compound_only && matches!(selector, CssSelector::Complex(_)) {
+        return Err(invalid_selector(
+            input,
+            "this argument requires a compound selector",
+        ));
+    }
+    if options.pseudo_suffix.is_some_and(|element_backed| {
+        !selector_is_valid_pseudo_suffix(&selector, element_backed, options.allow_has)
+    }) {
+        return Err(invalid_selector(
+            input,
+            "invalid pseudo-element suffix argument",
+        ));
+    }
+    Ok(selector)
 }
 
 fn parse_selector_after_first_compound<'i, 't>(
@@ -625,7 +654,7 @@ fn parse_compound_selector_model_with_options<'i, 't>(
     loop {
         let state = input.state();
         match input.next_including_whitespace() {
-            Ok(Token::WhiteSpace(_)) => {
+            Ok(Token::WhiteSpace(_) | Token::Comma) => {
                 input.reset(&state);
                 break;
             }
@@ -677,14 +706,14 @@ fn parse_compound_selector_model_with_options<'i, 't>(
         }
 
         if input.try_parse(Parser::expect_colon).is_ok() {
-            if input.try_parse(Parser::expect_colon).is_ok() {
+            if input.try_parse(expect_adjacent_colon).is_ok() {
                 if !options.allow_pseudo_elements {
                     return Err(invalid_selector(
                         input,
                         "pseudo-elements are not supported in this selector context",
                     ));
                 }
-                let sequence = parse_pseudo_element_sequence(input)?;
+                let sequence = parse_pseudo_element_sequence(input, options, recovery)?;
                 pseudo_elements = Some(sequence);
             } else if let Ok(first) = input.try_parse(parse_legacy_pseudo_element) {
                 if !options.allow_pseudo_elements {
@@ -693,7 +722,9 @@ fn parse_compound_selector_model_with_options<'i, 't>(
                         "pseudo-elements are not supported in this selector context",
                     ));
                 }
-                pseudo_elements = Some(parse_pseudo_element_sequence_from_first(input, first)?);
+                pseudo_elements = Some(parse_pseudo_element_sequence_from_first(
+                    input, first, options, recovery,
+                )?);
             } else {
                 let pseudo_class = parse_pseudo_class_with_options(input, options, recovery)?;
                 pseudo_classes.push(pseudo_class);
@@ -808,39 +839,64 @@ fn compound_selector_to_selector(selector: CssCompoundSelector) -> CssSelector {
     CssSelector::Compound(selector)
 }
 
+fn expect_adjacent_colon<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<(), cssparser::BasicParseError<'i>> {
+    match input.next_including_whitespace()?.clone() {
+        Token::Colon => Ok(()),
+        token => Err(input.new_basic_unexpected_token_error(token)),
+    }
+}
+
 fn parse_pseudo_element_sequence<'i, 't>(
     input: &mut Parser<'i, 't>,
+    options: SelectorParseOptions,
+    recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssPseudoElementSequence, ParseError<'i, Error>> {
-    let first = parse_pseudo_element(input)?;
-    parse_pseudo_element_sequence_from_first(input, first)
+    let first = parse_pseudo_element(input, options, recovery)?;
+    parse_pseudo_element_sequence_from_first(input, first, options, recovery)
 }
 
 fn parse_pseudo_element_sequence_from_first<'i, 't>(
     input: &mut Parser<'i, 't>,
     first: CssPseudoElement,
+    options: SelectorParseOptions,
+    recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssPseudoElementSequence, ParseError<'i, Error>> {
-    let mut pseudo_elements = vec![first];
-    loop {
-        if input
-            .try_parse(|input| {
-                input.expect_colon()?;
-                input.expect_colon()
-            })
-            .is_err()
-        {
-            break;
+    let mut element_backed = first.is_element_backed();
+    let mut segments = vec![CssPseudoElementSegment::PseudoElement(first)];
+    while input.try_parse(expect_adjacent_colon).is_ok() {
+        let element = if input.try_parse(expect_adjacent_colon).is_ok() {
+            Some(parse_pseudo_element(input, options, recovery)?)
+        } else {
+            input.try_parse(parse_legacy_pseudo_element).ok()
+        };
+        if let Some(element) = element {
+            element_backed = element.is_element_backed();
+            segments.push(CssPseudoElementSegment::PseudoElement(element));
+        } else {
+            let pseudo = parse_pseudo_class_with_options(
+                input,
+                SelectorParseOptions {
+                    pseudo_suffix: Some(element_backed),
+                    ..options
+                },
+                recovery,
+            )?;
+            segments.push(CssPseudoElementSegment::PseudoClass(pseudo));
         }
-        pseudo_elements.push(parse_pseudo_element(input)?);
     }
-
-    CssPseudoElementSequence::try_new(pseudo_elements)
+    CssPseudoElementSequence::try_from_segments(segments)
         .ok_or_else(|| invalid_selector(input, "unsupported pseudo-element sequence"))
 }
 
 fn parse_legacy_pseudo_element<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssPseudoElement, ParseError<'i, Error>> {
-    let name = input.expect_ident_cloned()?;
+    let name = match input.next_including_whitespace()?.clone() {
+        Token::Ident(name) => name,
+        token => return Err(input.new_basic_unexpected_token_error(token).into()),
+    };
     match_ignore_ascii_case! { &name,
         "before" => Ok(CssPseudoElement::Before),
         "after" => Ok(CssPseudoElement::After),
@@ -856,9 +912,11 @@ fn parse_legacy_pseudo_element<'i, 't>(
 
 fn parse_pseudo_element<'i, 't>(
     input: &mut Parser<'i, 't>,
+    options: SelectorParseOptions,
+    recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssPseudoElement, ParseError<'i, Error>> {
     let state = input.state();
-    match input.next() {
+    match input.next_including_whitespace() {
         Ok(Token::Ident(name)) => match_ignore_ascii_case! { &name,
             "before" => Ok(CssPseudoElement::Before),
             "after" => Ok(CssPseudoElement::After),
@@ -873,6 +931,27 @@ fn parse_pseudo_element<'i, 't>(
                 Err(invalid_selector(input, message))
             }
         },
+        Ok(Token::Function(name))
+            if name.eq_ignore_ascii_case("slotted") || name.eq_ignore_ascii_case("part") =>
+        {
+            let slotted = name.eq_ignore_ascii_case("slotted");
+            let mut depth = recovery.state.enter_component_block(
+                recovery.source,
+                input,
+                "baseline.selector.complex",
+            )?;
+            let result = input.parse_nested_block(|input| {
+                if slotted {
+                    parse_compound_argument(input, options, recovery).map(CssPseudoElement::Slotted)
+                } else {
+                    parse_part_names(input, recovery).map(CssPseudoElement::Part)
+                }
+            });
+            if result.is_ok() {
+                depth.retain();
+            }
+            result
+        }
         Ok(token) => {
             let message = format!("unsupported pseudo-element `::{}`", token.to_css_string());
             input.reset(&state);
@@ -1115,7 +1194,7 @@ fn parse_pseudo_class_with_options<'i, 't>(
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssPseudoClass, ParseError<'i, Error>> {
     let state = input.state();
-    match input.next() {
+    match input.next_including_whitespace() {
         Ok(Token::Ident(name)) => {
             let name = name.clone();
             parse_named_pseudo_class(name.as_ref(), input, &state)
@@ -1160,6 +1239,7 @@ fn parse_named_pseudo_class<'i>(
     name_start: &ParserState,
 ) -> std::result::Result<CssPseudoClass, ParseError<'i, Error>> {
     match_ignore_ascii_case! { name,
+        "host" => Ok(CssPseudoClass::Host),
         "root" => Ok(CssPseudoClass::Root),
         "scope" => Ok(CssPseudoClass::Scope),
         "link" => Ok(CssPseudoClass::Link),
@@ -1209,9 +1289,12 @@ fn parse_function_pseudo_class<'i, 't>(
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssPseudoClass, ParseError<'i, Error>> {
+    let arguments = options.independent_arguments();
     let pseudo_class = match_ignore_ascii_case! { name,
-        "nth-child" => CssPseudoClass::NthChild(parse_nth_child_pattern(input, options, recovery)?),
-        "nth-last-child" => CssPseudoClass::NthLastChild(parse_nth_child_pattern(input, options, recovery)?),
+        "host" => CssPseudoClass::HostFunction(parse_compound_argument(input, arguments, recovery)?),
+        "host-context" => CssPseudoClass::HostContext(parse_compound_argument(input, arguments, recovery)?),
+        "nth-child" => CssPseudoClass::NthChild(parse_nth_child_pattern(input, arguments, recovery)?),
+        "nth-last-child" => CssPseudoClass::NthLastChild(parse_nth_child_pattern(input, arguments, recovery)?),
         "nth-of-type" => CssPseudoClass::NthOfType(parse_nth_pattern(input)?),
         "nth-last-of-type" => CssPseudoClass::NthLastOfType(parse_nth_pattern(input)?),
         "dir" => CssPseudoClass::Dir(parse_directionality(input, recovery)?),
@@ -1219,12 +1302,51 @@ fn parse_function_pseudo_class<'i, 't>(
         "not" => CssPseudoClass::Not(parse_pseudo_selector_list_with_options(input, options.without_pseudo_elements(), recovery)?),
         "is" => CssPseudoClass::Is(parse_forgiving_pseudo_selector_list(input, options.without_pseudo_elements(), recovery)?),
         "where" => CssPseudoClass::Where(parse_forgiving_pseudo_selector_list(input, options.without_pseudo_elements(), recovery)?),
-        "has" if options.allow_has => CssPseudoClass::Has(parse_has_relative_selector_list(input, options, recovery)?),
+        "has" if options.allow_has => CssPseudoClass::Has(parse_has_relative_selector_list(input, arguments, recovery)?),
         "has" => return Err(invalid_selector(input, "nested `:has()` is unsupported")),
         _ => return Err(invalid_selector_at(name_start, format!("unsupported pseudo-class `:{name}(`"))),
     };
     input.expect_exhausted().map_err(selector_basic)?;
     Ok(pseudo_class)
+}
+
+fn parse_compound_argument<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    options: SelectorParseOptions,
+    recovery: &mut SelectorRecovery<'_>,
+) -> Result<CssCompoundSelectorArgument, ParseError<'i, Error>> {
+    let options = SelectorParseOptions {
+        compound_only: true,
+        pseudo_suffix: None,
+        ..options.without_pseudo_elements()
+    };
+    let selector = parse_rule_selector_with_options(input, options, recovery)?;
+    input.expect_exhausted().map_err(selector_basic)?;
+    CssCompoundSelectorArgument::try_new(selector)
+        .ok_or_else(|| invalid_selector(input, "invalid compound selector argument"))
+}
+
+fn parse_part_names<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    recovery: &SelectorRecovery<'_>,
+) -> Result<CssPartNameList, ParseError<'i, Error>> {
+    let mut names = Vec::new();
+    loop {
+        input.skip_whitespace();
+        if input.is_exhausted() {
+            break;
+        }
+        let start = input.state();
+        input.expect_ident().map_err(selector_basic)?;
+        input.reset(&start);
+        let name =
+            crate::CssComponentValue::collect_from_parser(input, recovery.state.source_snapshot())
+                .and_then(CssPartName::from_component)
+                .map_err(|error| selector_component_error(start.source_location(), error))?;
+        names.push(name);
+    }
+    CssPartNameList::try_new(names)
+        .ok_or_else(|| invalid_selector(input, "part requires at least one identifier"))
 }
 
 fn parse_directionality<'i, 't>(

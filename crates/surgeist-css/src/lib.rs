@@ -563,7 +563,7 @@
 //!
 //! ```
 //! use surgeist_css::{
-//!     CssNamespaceConstraint, CssPseudoElement, CssRule, CssSelector, parse_sheet,
+//!     CssNamespaceConstraint, CssPseudoElement, CssPseudoElementSegment, CssRule, CssSelector, parse_sheet,
 //! };
 //!
 //! let report = parse_sheet(concat!(
@@ -596,8 +596,8 @@
 //!     selector
 //!         .pseudo_elements()
 //!         .expect("pseudo-element sequence")
-//!         .pseudo_elements(),
-//!     [CssPseudoElement::FirstLine]
+//!         .segments(),
+//!     [CssPseudoElementSegment::PseudoElement(CssPseudoElement::FirstLine)]
 //! ));
 //! ```
 //!

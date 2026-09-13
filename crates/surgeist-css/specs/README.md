@@ -82,6 +82,13 @@ APIs remain with style and root integration. Other features in those documents,
 including obsolete shadow selectors and `:has-slotted`, are not imported by
 these records.
 
+Fullscreen's selected snapshot moves the `::backdrop` definition to Position 4.
+The catalog imports the published 7 October 2025 definition and its fully-styleable
+classification. Pseudo-Elements 4 makes fully styleable pseudo-elements tree-abiding,
+which determines their admissibility after `::slotted()`. Top-layer membership,
+box generation and painting remain downstream; this does not select Position 4
+or its `overlay` property in full.
+
 Values 4 mathematical grammar also requires the numeric-type definitions from
 Typed OM. The catalog pins the published 21 March 2024 edition for dimension
 exponents, percent hints, type matching, addition, multiplication and inversion.

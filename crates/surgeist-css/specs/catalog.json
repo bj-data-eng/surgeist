@@ -151,6 +151,17 @@
         "source_resolution": "The selected MQ5 custom-media grammar imports extension-name from CSS Extensions 1. No published edition was found in the W3C publication inventory or the linked editor document metadata inspected on 2026-09-12. The source identifies itself as an Exploring editor draft and has no TR publication metadata. Pin the latest source-file commit before the cutoff, using its committer timestamp, only for the required extension-name production. This does not select the module or its other extension APIs.",
         "publication_discovery_url": "https://www.w3.org/Style/CSS/current-work",
         "revision_discovery_url": "https://api.github.com/repos/w3c/csswg-drafts/commits?path=css-extensions-1%2FOverview.bs&until=2026-09-10T02%3A16%3A24Z&per_page=1"
+      },
+      {
+        "id": "css-position-4-backdrop-definition",
+        "kind": "w3c-dated-publication",
+        "date": "2025-10-07",
+        "url": "https://www.w3.org/TR/2025/WD-css-position-4-20251007/",
+        "sha256": "7ac90cc3d25e38d054d28f5899774eb3eb7ce50b8a930fee6530681cab043412",
+        "bytes": 203147,
+        "latest_published_url": "https://www.w3.org/TR/css-position-4/",
+        "publication_history_url": "https://www.w3.org/standards/history/css-position-4/",
+        "source_resolution": "Latest published edition before the cutoff, confirmed from the latest-publication metadata and history on 2026-09-13. The selected immutable Fullscreen snapshot explicitly moves its backdrop definition to Position 4. Import only the backdrop identity and fully-styleable classification required to compose selected pseudo-element grammar; Position 4 is not selected in full."
       }
     ],
     "definitions": [
@@ -371,6 +382,43 @@
           "root"
         ],
         "downstream_requirements": "Definition environments, last-definition selection, cycle handling, logical query evaluation, script-defined extensions and live CSSOM behavior remain downstream. Custom selectors, custom properties and functions from CSS Extensions 1 are not imported."
+      },
+      {
+        "id": "backdrop-pseudo-element",
+        "source_id": "css-position-4-backdrop-definition",
+        "signatures": [
+          "::backdrop"
+        ],
+        "sections": [
+          {
+            "anchor": "backdrop",
+            "url": "https://www.w3.org/TR/2025/WD-css-position-4-20251007/#backdrop"
+          }
+        ],
+        "required_by": [
+          {
+            "module_id": "fullscreen",
+            "section_url": "https://fullscreen.spec.whatwg.org/commit-snapshots/7c38d773117aa1e6bfa13754afe77483f40c908f/#rendering",
+            "requirement": "The selected Fullscreen publication moves the backdrop pseudo-element definition to CSS Position 4 and supplies fullscreen backdrop styling."
+          },
+          {
+            "module_id": "css-pseudo-4",
+            "section_url": "https://www.w3.org/TR/2025/WD-css-pseudo-4-20250627/#treelike",
+            "requirement": "The fully-styleable classification determines membership in the tree-abiding pseudo-element family, including composition with the imported slotted suffix grammar."
+          }
+        ],
+        "authored_owner": "css",
+        "authored_requirements": [
+          "Retain the backdrop pseudo-element identity and classify it as fully styleable, hence tree-abiding, for contextual pseudo-element syntax."
+        ],
+        "downstream_owners": [
+          "style",
+          "layout",
+          "render",
+          "runtime",
+          "root"
+        ],
+        "downstream_requirements": "Top-layer membership, generated boxes, originating elements, user-agent styles, stacking and painting remain downstream. This import does not select overlay or the rest of Position 4."
       }
     ]
   },

@@ -2323,6 +2323,9 @@ pub surgeist_css::CssPseudoClass::FocusVisible
 pub surgeist_css::CssPseudoClass::FocusWithin
 pub surgeist_css::CssPseudoClass::Fullscreen
 pub surgeist_css::CssPseudoClass::Has(surgeist_css::CssRelativeSelectorList)
+pub surgeist_css::CssPseudoClass::Host
+pub surgeist_css::CssPseudoClass::HostContext(surgeist_css::CssCompoundSelectorArgument)
+pub surgeist_css::CssPseudoClass::HostFunction(surgeist_css::CssCompoundSelectorArgument)
 pub surgeist_css::CssPseudoClass::Hover
 pub surgeist_css::CssPseudoClass::InRange
 pub surgeist_css::CssPseudoClass::Indeterminate
@@ -2362,7 +2365,12 @@ pub surgeist_css::CssPseudoElement::Before
 pub surgeist_css::CssPseudoElement::FirstLetter
 pub surgeist_css::CssPseudoElement::FirstLine
 pub surgeist_css::CssPseudoElement::Marker
+pub surgeist_css::CssPseudoElement::Part(surgeist_css::CssPartNameList)
 pub surgeist_css::CssPseudoElement::Selection
+pub surgeist_css::CssPseudoElement::Slotted(surgeist_css::CssCompoundSelectorArgument)
+#[non_exhaustive] pub enum surgeist_css::CssPseudoElementSegment
+pub surgeist_css::CssPseudoElementSegment::PseudoClass(surgeist_css::CssPseudoClass)
+pub surgeist_css::CssPseudoElementSegment::PseudoElement(surgeist_css::CssPseudoElement)
 #[non_exhaustive] pub enum surgeist_css::CssQueryComparison
 pub surgeist_css::CssQueryComparison::Equal
 pub surgeist_css::CssQueryComparison::GreaterThan
@@ -3870,6 +3878,10 @@ pub fn surgeist_css::CssCompoundSelector::pseudo_classes(&self) -> &[surgeist_cs
 pub const fn surgeist_css::CssCompoundSelector::pseudo_elements(&self) -> core::option::Option<&surgeist_css::CssPseudoElementSequence>
 pub const fn surgeist_css::CssCompoundSelector::tag(&self) -> core::option::Option<&alloc::string::String>
 pub fn surgeist_css::CssCompoundSelector::type_selector(&self) -> core::option::Option<&surgeist_css::CssQualifiedSelectorName>
+pub struct surgeist_css::CssCompoundSelectorArgument
+impl surgeist_css::CssCompoundSelectorArgument
+pub fn surgeist_css::CssCompoundSelectorArgument::compound(&self) -> &surgeist_css::CssCompoundSelector
+pub fn surgeist_css::CssCompoundSelectorArgument::try_new(selector: surgeist_css::CssSelector) -> core::option::Option<Self>
 pub struct surgeist_css::CssConformanceExclusionId(_)
 impl surgeist_css::CssConformanceExclusionId
 pub const fn surgeist_css::CssConformanceExclusionId::as_str(self) -> &'static str
@@ -5519,6 +5531,17 @@ pub struct surgeist_css::CssParsedOrigin
 impl surgeist_css::CssParsedOrigin
 pub const fn surgeist_css::CssParsedOrigin::source(&self) -> &surgeist_css::CssSourceSnapshot
 pub const fn surgeist_css::CssParsedOrigin::span(&self) -> surgeist_css::CssSourceSpan
+pub struct surgeist_css::CssPartName
+impl surgeist_css::CssPartName
+pub fn surgeist_css::CssPartName::as_str(&self) -> &str
+pub fn surgeist_css::CssPartName::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssPartName::to_css_string(&self) -> alloc::string::String
+pub fn surgeist_css::CssPartName::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub struct surgeist_css::CssPartNameList
+impl surgeist_css::CssPartNameList
+pub fn surgeist_css::CssPartNameList::names(&self) -> &[surgeist_css::CssPartName]
+pub fn surgeist_css::CssPartNameList::to_css_string(&self) -> alloc::string::String
+pub fn surgeist_css::CssPartNameList::try_new(names: alloc::vec::Vec<surgeist_css::CssPartName>) -> core::option::Option<Self>
 pub struct surgeist_css::CssPendingSubstitution
 impl surgeist_css::CssPendingSubstitution
 pub fn surgeist_css::CssPendingSubstitution::reenter(&self, replacement: surgeist_css::CssComponentValues) -> core::result::Result<surgeist_css::CssContributions, surgeist_css::CssExpansionError>
@@ -5644,7 +5667,8 @@ impl core::fmt::Display for surgeist_css::CssPropertyValueParseError
 pub fn surgeist_css::CssPropertyValueParseError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssPseudoElementSequence
 impl surgeist_css::CssPseudoElementSequence
-pub fn surgeist_css::CssPseudoElementSequence::pseudo_elements(&self) -> &[surgeist_css::CssPseudoElement]
+pub fn surgeist_css::CssPseudoElementSequence::segments(&self) -> &[surgeist_css::CssPseudoElementSegment]
+pub fn surgeist_css::CssPseudoElementSequence::try_from_segments(segments: alloc::vec::Vec<surgeist_css::CssPseudoElementSegment>) -> core::option::Option<Self>
 pub fn surgeist_css::CssPseudoElementSequence::try_new(pseudo_elements: alloc::vec::Vec<surgeist_css::CssPseudoElement>) -> core::option::Option<Self>
 pub struct surgeist_css::CssPseudoSelectorList
 impl surgeist_css::CssPseudoSelectorList

@@ -1208,7 +1208,7 @@ active. Without an active default, an unqualified type or universal selector is
 
 ```rust
 use surgeist_css::{
-    CssNamespaceConstraint, CssPseudoElement, CssRule, CssSelector, parse_sheet,
+    CssNamespaceConstraint, CssPseudoElement, CssPseudoElementSegment, CssRule, CssSelector, parse_sheet,
 };
 
 let report = parse_sheet(concat!(
@@ -1243,10 +1243,27 @@ assert!(matches!(
     selector
         .pseudo_elements()
         .expect("pseudo-element sequence")
-        .pseudo_elements(),
-    [CssPseudoElement::FirstLine]
+        .segments(),
+    [CssPseudoElementSegment::PseudoElement(CssPseudoElement::FirstLine)]
 ));
 ```
+
+`CssPseudoElementSequence::segments()` returns the complete ordered sequence of
+`CssPseudoElementSegment::PseudoElement` and `PseudoClass` entries. A pseudo-class
+entry applies to the most recent pseudo-element. This replaces the old
+`pseudo_elements()` slice accessor; migrate consumers by matching both segment
+variants. `CssPseudoElement` now owns functional arguments, so it implements
+`Clone` and `PartialEq` instead of `Copy` and `Eq`. The checked plain-element
+`try_new` constructor remains available; `try_from_segments` checks complete
+sequences.
+
+`CssCompoundSelectorArgument` preserves one checked compound for `:host()`,
+`:host-context()` and `::slotted()`. Compound restrictions propagate through
+`:is()`, `:where()` and `:not()`; relative `:has()` arguments use their own grammar.
+`CssPartNameList` retains ordered, case-sensitive identifier components and
+provides canonical argument serialization. Parsed names expose source origins;
+constructed names expose programmatic origins. General selector serialization
+is a separate foundation requirement.
 
 Initial layer statements may precede both imports and namespaces, after any
 encoding declaration. Imports must precede namespaces. A layer statement after

@@ -70,7 +70,19 @@ the containing scoped style rule as their parent selector context. Relative scop
 remain structurally distinct from ordinary selectors. `surgeist-css` does not perform scope
 matching, selector matching, or scoping proximity calculations.
 
-Pseudo-elements are parsed as terminal authored selector syntax for the supported `::before`, `::after`, `::first-line`, `::first-letter`, `::marker`, `::selection`, and `::backdrop` forms. The Selectors 3 legacy single-colon spellings map to the same typed before, after, first-line, and first-letter values. The parser records pseudo-elements on selector compounds, but does not filter declarations by pseudo-element or perform generated box/layout behavior.
+Pseudo-elements retain an ordered sequence of element and pseudo-class segments.
+This preserves the different attachments in `:hover::part(label)` and
+`::part(label):hover::before`. Checked construction and parsing enforce the
+same contextual suffix grammar. The Selectors 3 legacy single-colon spellings
+map to the same typed before, after, first-line and first-letter values.
+
+The imported `:host()` and `:host-context()` arguments and `::slotted()` argument
+retain one checked compound selector. Logical functions inherit that compound
+restriction; `:has()` retains its separate relative-selector grammar. `::part()`
+retains a nonempty identifier list, including duplicates, case and token origins.
+CSS preserves symbolic anchors inside these arguments and suffix conditions.
+Shadow-tree matching, slot assignment, generated boxes and layout remain with
+the owning downstream crates.
 
 Generated content, list markers, and counters are parsed as typed authored property values for `content`, list-style longhands and shorthand, and counter change properties. Strings, URLs, attribute references, quote keywords, counter functions, list-style slots, and counter change lists remain symbolic. `surgeist-css` does not lay out generated content or list markers, resolve marker images, or evaluate/reset/increment counters.
 

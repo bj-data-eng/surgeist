@@ -6126,5 +6126,48 @@
     "policy_separation": "W3C governs retention/discard and tokenization, not these Rust error codes, byte spans, cleanliness, or diagnostic multiplicities. Those are project public recovery policy and independently source-characterized implementation expectations.",
     "coordinate_contract": "No adapter prefix or suffix. UTF-8 original bytes. intersects requires responsible offset strictly before payload end; recovery_ends_at uses EOF responsible offset with nonempty unit ending EOF; ends_at uses zero-width EOF span. Every vector entry multiplicity1; repeated entries represent separate diagnostics.",
     "sha256": "a8efe58360c366c01f0c228a1432d7e594469d5f7aebb8f7222d1e49e89ecd53"
-  }
+  },
+  "audited_publications": [
+    {
+      "module_id": "css-syntax-3",
+      "publication": {
+        "url": "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "sha256": "413b27acb4e16721d28b487456359ecbcecba472c4310bd2f6a4939ad393738b",
+        "bytes": 511620,
+        "date": "2021-12-24",
+        "kind": "w3c-dated-publication"
+      }
+    },
+    {
+      "module_id": "css-conditional-3",
+      "publication": {
+        "url": "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/",
+        "sha256": "672eb79c78c53b9c92a460ffcfd8718af3c1e38ecf317566d955ffa1df470b35",
+        "bytes": 260197,
+        "date": "2024-08-15",
+        "kind": "w3c-dated-publication"
+      }
+    },
+    {
+      "module_id": "selectors-4",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/WD-selectors-4-20260122/",
+        "sha256": "5d3b3f7e1fcc562dcec1a01ad2c5651e9f0bac294b255a75352e9df202604e6d",
+        "bytes": 978757,
+        "date": "2026-01-22",
+        "kind": "w3c-dated-publication"
+      }
+    },
+    {
+      "module_id": "css-nesting-1",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/",
+        "sha256": "b29b0db74b96af295efcd7cd94f34366dd099ebb905dc5529c61409184f6fa9c",
+        "bytes": 213027,
+        "date": "2026-01-22",
+        "kind": "w3c-dated-publication"
+      }
+    }
+  ],
+  "catalog_binding": "catalog_sha256 records the immutable audit basis. audited_publications pins the referenced publications against the current catalog while allowing unrelated required-definition additions."
 }

@@ -1155,9 +1155,9 @@ fn scope_rule_parser_accepts_pseudo_elements_in_scoped_style_rules() {
     };
 
     assert_eq!(selector.classes(), &["label".to_owned()]);
-    assert_eq!(
-        selector.pseudo_elements().unwrap().pseudo_elements(),
-        &[CssPseudoElement::Before]
+    assert_pseudo_elements(
+        selector.pseudo_elements().unwrap(),
+        &[CssPseudoElement::Before],
     );
 }
 
@@ -1281,9 +1281,9 @@ fn public_api_exposes_layer_scope_and_scoped_rule_structure() {
         panic!("expected compound pseudo-element selector");
     };
     assert_eq!(before_selector.pseudo_classes(), &[CssPseudoClass::Hover]);
-    assert_eq!(
-        before_selector.pseudo_elements().unwrap().pseudo_elements(),
-        &[CssPseudoElement::Before]
+    assert_pseudo_elements(
+        before_selector.pseudo_elements().unwrap(),
+        &[CssPseudoElement::Before],
     );
 
     let CssSelector::Complex(backdrop_selector) =
@@ -1295,13 +1295,9 @@ fn public_api_exposes_layer_scope_and_scoped_rule_structure() {
         panic!("expected one complex selector part");
     };
     assert_eq!(backdrop_part.combinator(), CssSelectorCombinator::Child);
-    assert_eq!(
-        backdrop_part
-            .selector()
-            .pseudo_elements()
-            .unwrap()
-            .pseudo_elements(),
-        &[CssPseudoElement::Backdrop]
+    assert_pseudo_elements(
+        backdrop_part.selector().pseudo_elements().unwrap(),
+        &[CssPseudoElement::Backdrop],
     );
 
     assert_eq!(scope.root().unwrap().selectors().len(), 2);
@@ -1345,9 +1341,9 @@ fn public_api_exposes_layer_scope_and_scoped_rule_structure() {
         panic!("expected compound selector after relative combinator");
     };
     assert_eq!(icon_selector.classes(), &["icon".to_owned()]);
-    assert_eq!(
-        icon_selector.pseudo_elements().unwrap().pseudo_elements(),
-        &[CssPseudoElement::After]
+    assert_pseudo_elements(
+        icon_selector.pseudo_elements().unwrap(),
+        &[CssPseudoElement::After],
     );
 }
 
@@ -1870,9 +1866,9 @@ fn public_api_exposes_generated_content_list_style_and_counter_values() {
     let CssSelector::Compound(selector) = style.selectors().selectors()[0].selector() else {
         panic!("expected compound pseudo-element selector");
     };
-    assert_eq!(
-        selector.pseudo_elements().unwrap().pseudo_elements(),
-        &[CssPseudoElement::Before]
+    assert_pseudo_elements(
+        selector.pseudo_elements().unwrap(),
+        &[CssPseudoElement::Before],
     );
 
     let list_style = style
@@ -2230,10 +2226,7 @@ fn parses_requested_double_colon_pseudo_elements() {
         else {
             panic!("expected compound selector for {css}");
         };
-        assert_eq!(
-            selector.pseudo_elements().unwrap().pseudo_elements(),
-            &[expected]
-        );
+        assert_pseudo_elements(selector.pseudo_elements().unwrap(), &[expected]);
     }
 }
 
@@ -2258,9 +2251,9 @@ fn parses_compound_and_complex_terminal_pseudo_element_selectors() {
         &["button".to_owned(), "primary".to_owned()]
     );
     assert_eq!(button.pseudo_classes(), &[CssPseudoClass::Hover]);
-    assert_eq!(
-        button.pseudo_elements().unwrap().pseudo_elements(),
-        &[CssPseudoElement::Before]
+    assert_pseudo_elements(
+        button.pseudo_elements().unwrap(),
+        &[CssPseudoElement::Before],
     );
 
     let CssSelector::Compound(marker) =
@@ -2269,9 +2262,9 @@ fn parses_compound_and_complex_terminal_pseudo_element_selectors() {
         panic!("expected compound marker selector");
     };
     assert_eq!(marker.tag().map(String::as_str), Some("li"));
-    assert_eq!(
-        marker.pseudo_elements().unwrap().pseudo_elements(),
-        &[CssPseudoElement::Marker]
+    assert_pseudo_elements(
+        marker.pseudo_elements().unwrap(),
+        &[CssPseudoElement::Marker],
     );
 
     let CssSelector::Complex(backdrop) =
@@ -2284,9 +2277,9 @@ fn parses_compound_and_complex_terminal_pseudo_element_selectors() {
         panic!("expected one complex selector part");
     };
     assert_eq!(part.combinator(), CssSelectorCombinator::Child);
-    assert_eq!(
-        part.selector().pseudo_elements().unwrap().pseudo_elements(),
-        &[CssPseudoElement::Backdrop]
+    assert_pseudo_elements(
+        part.selector().pseudo_elements().unwrap(),
+        &[CssPseudoElement::Backdrop],
     );
 }
 
@@ -2302,13 +2295,13 @@ fn parses_supported_generated_marker_pseudo_element_chains() {
         else {
             panic!("expected compound selector for {css}");
         };
-        assert_eq!(
-            selector.pseudo_elements().unwrap().pseudo_elements(),
+        assert_pseudo_elements(
+            selector.pseudo_elements().unwrap(),
             if css.contains("before") {
                 &[CssPseudoElement::Before, CssPseudoElement::Marker][..]
             } else {
                 &[CssPseudoElement::After, CssPseudoElement::Marker][..]
-            }
+            },
         );
     }
 }
@@ -2317,9 +2310,7 @@ fn parses_supported_generated_marker_pseudo_element_chains() {
 fn rejects_invalid_pseudo_element_forms_and_non_terminal_positions() {
     for css in [
         ":marker { color: black; }",
-        "::part(foo) { color: black; }",
         "::unknown { color: black; }",
-        ".button::before:hover { color: black; }",
         ".button::before.primary { color: black; }",
         ".button::before[data-x] { color: black; }",
         ".button::before#icon { color: black; }",
@@ -2330,6 +2321,18 @@ fn rejects_invalid_pseudo_element_forms_and_non_terminal_positions() {
         ".button::selection::marker { color: black; }",
     ] {
         assert!(parse_sheet(css).is_err(), "{css} should reject");
+    }
+}
+
+#[test]
+fn part_and_user_action_pseudo_element_suffixes_are_retained() {
+    for css in [
+        "::part(foo) { color: black; }",
+        ".button::before:hover { color: black; }",
+    ] {
+        let report = parse_sheet(css);
+        assert!(report.is_clean(), "{css}: {report:?}");
+        assert_eq!(report.syntax().rules().len(), 1);
     }
 }
 
@@ -2359,14 +2362,14 @@ fn pseudo_selector_list_constructor_accepts_complex_selectors() {
 #[test]
 fn pseudo_element_sequence_constructor_guards_supported_terminal_shapes() {
     let before = CssPseudoElementSequence::try_new(vec![CssPseudoElement::Before]).unwrap();
-    assert_eq!(before.pseudo_elements(), &[CssPseudoElement::Before]);
+    assert_pseudo_elements(&before, &[CssPseudoElement::Before]);
 
     let before_marker =
         CssPseudoElementSequence::try_new(vec![CssPseudoElement::Before, CssPseudoElement::Marker])
             .unwrap();
-    assert_eq!(
-        before_marker.pseudo_elements(),
-        &[CssPseudoElement::Before, CssPseudoElement::Marker]
+    assert_pseudo_elements(
+        &before_marker,
+        &[CssPseudoElement::Before, CssPseudoElement::Marker],
     );
 
     assert_eq!(CssPseudoElementSequence::try_new(Vec::new()), None);
@@ -3334,9 +3337,9 @@ fn nesting_preserves_terminal_pseudo_elements_on_anchored_selectors() {
     };
     assert_eq!(before.nesting_selectors(), 1);
     assert!(before.classes().is_empty());
-    assert_eq!(
-        before.pseudo_elements().unwrap().pseudo_elements(),
-        &[CssPseudoElement::Before]
+    assert_pseudo_elements(
+        before.pseudo_elements().unwrap(),
+        &[CssPseudoElement::Before],
     );
 }
 
@@ -3616,6 +3619,7 @@ fn attribute_name_constructor_matches_parser_identifier_invariants() {
 #[test]
 fn practical_pseudo_class_matrix_accepts_supported_and_rejects_unsupported_forms() {
     let accepted = [
+        ":host { color: black; }",
         ":hover { color: black; }",
         ":focus-visible { color: black; }",
         ":disabled { color: black; }",
@@ -3641,7 +3645,6 @@ fn practical_pseudo_class_matrix_accepts_supported_and_rejects_unsupported_forms
     }
 
     let rejected = [
-        ":host { color: black; }",
         ":state(open) { color: black; }",
         ":hover() { color: black; }",
         ":not() { color: black; }",
@@ -9731,4 +9734,13 @@ fn rejects_inconsistent_grid_template_area_row_widths() {
     let error = parse_sheet(".panel { grid-template-areas: \"a a\" \"b\"; }").unwrap_err();
 
     assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+}
+
+fn assert_pseudo_elements(sequence: &CssPseudoElementSequence, expected: &[CssPseudoElement]) {
+    let expected: Vec<_> = expected
+        .iter()
+        .cloned()
+        .map(CssPseudoElementSegment::PseudoElement)
+        .collect();
+    assert_eq!(sequence.segments(), expected);
 }

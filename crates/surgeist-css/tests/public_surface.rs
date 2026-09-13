@@ -15,12 +15,12 @@ use surgeist_css::{
     CssMediaConditionKind, CssMediaQuery, CssMediaQueryModifier, CssMediaType,
     CssNamespaceConstraint, CssNamespaceName, CssNamespacePrefix, CssOpenTypeTag,
     CssPredefinedColorSpace, CssPropertyNameRef, CssPseudoClass, CssPseudoElement,
-    CssRecoveryAction, CssRelativeColorChannel, CssRelativeColorEnvironment,
-    CssRelativeColorExpressionValue, CssRelativeColorFunction, CssRelativeColorResultDomain,
-    CssRule, CssSelector, CssSelectorCombinator, CssSpecificationTier, CssSupportStatus,
-    CssSupportsConditionKind, CssSupportsConditionList, ErrorKind, conformance_exclusion,
-    feature_metadata, parse_sheet, parse_style_attribute, property_support_metadata,
-    specification_source,
+    CssPseudoElementSegment, CssRecoveryAction, CssRelativeColorChannel,
+    CssRelativeColorEnvironment, CssRelativeColorExpressionValue, CssRelativeColorFunction,
+    CssRelativeColorResultDomain, CssRule, CssSelector, CssSelectorCombinator,
+    CssSpecificationTier, CssSupportStatus, CssSupportsConditionKind, CssSupportsConditionList,
+    ErrorKind, conformance_exclusion, feature_metadata, parse_sheet, parse_style_attribute,
+    property_support_metadata, specification_source,
 };
 
 #[test]
@@ -132,8 +132,10 @@ fn public_surface_exposes_checked_selectors3_language_pseudos_and_ordered_ids() 
         selector
             .pseudo_elements()
             .expect("first-line pseudo-element")
-            .pseudo_elements(),
-        [CssPseudoElement::FirstLine]
+            .segments(),
+        [CssPseudoElementSegment::PseudoElement(
+            CssPseudoElement::FirstLine
+        )]
     );
 
     assert_eq!(

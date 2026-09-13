@@ -1149,10 +1149,22 @@ fn compound_has_anchor(compound: &CssCompoundSelector, kind: AnchorKind) -> bool
             .pseudo_classes()
             .iter()
             .any(|pseudo| pseudo_has_anchor(pseudo, kind))
+        || compound.pseudo_elements().is_some_and(|sequence| {
+            sequence.segments().iter().any(|segment| match segment {
+                CssPseudoElementSegment::PseudoClass(pseudo) => pseudo_has_anchor(pseudo, kind),
+                CssPseudoElementSegment::PseudoElement(CssPseudoElement::Slotted(argument)) => {
+                    compound_has_anchor(argument.compound(), kind)
+                }
+                CssPseudoElementSegment::PseudoElement(_) => false,
+            })
+        })
 }
 
 fn pseudo_has_anchor(pseudo: &CssPseudoClass, kind: AnchorKind) -> bool {
     match pseudo {
+        CssPseudoClass::HostFunction(argument) | CssPseudoClass::HostContext(argument) => {
+            compound_has_anchor(argument.compound(), kind)
+        }
         CssPseudoClass::Not(list) | CssPseudoClass::Is(list) | CssPseudoClass::Where(list) => list
             .selectors()
             .iter()
@@ -1168,7 +1180,8 @@ fn pseudo_has_anchor(pseudo: &CssPseudoClass, kind: AnchorKind) -> bool {
                     .any(|selector| selector_has_anchor(selector, kind))
             })
         }
-        CssPseudoClass::Root
+        CssPseudoClass::Host
+        | CssPseudoClass::Root
         | CssPseudoClass::Scope
         | CssPseudoClass::Link
         | CssPseudoClass::Visited

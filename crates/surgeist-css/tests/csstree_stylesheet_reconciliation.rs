@@ -192,10 +192,32 @@ fn original_stylesheet_identity_input_options_and_source_hashes_are_preserved() 
     let rows = data["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 76);
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    assert_eq!(
-        digest::sha256_hex(&fs::read(root.join("specs/catalog.json")).unwrap()),
-        text(&data, "catalog_sha256")
-    );
+    // Preserve the audit's historical whole-catalog hash as provenance, while
+    // checking its actual publication dependencies against the current catalog.
+    // An unrelated required-definition import does not change these sources.
+    let catalog: Value =
+        serde_json::from_slice(&fs::read(root.join("specs/catalog.json")).unwrap()).unwrap();
+    let audited_publications = data["audited_publications"].as_array().unwrap();
+    let referenced_urls: BTreeSet<_> = rows
+        .iter()
+        .flat_map(|row| row["normative_sources"].as_array().unwrap())
+        .map(|url| url.as_str().unwrap().split('#').next().unwrap())
+        .collect();
+    let audited_urls: BTreeSet<_> = audited_publications
+        .iter()
+        .map(|audited| text(&audited["publication"], "url"))
+        .collect();
+    assert_eq!(audited_urls, referenced_urls);
+    assert_eq!(audited_publications.len(), referenced_urls.len());
+    for audited in audited_publications {
+        let current = catalog["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|module| module["id"] == audited["module_id"])
+            .unwrap();
+        assert_eq!(current["publication"], audited["publication"]);
+    }
     let mut ids = BTreeSet::new();
     for row in rows {
         let id = text(row, "id");

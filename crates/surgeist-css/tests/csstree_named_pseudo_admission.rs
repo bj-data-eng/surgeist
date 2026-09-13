@@ -3,8 +3,8 @@
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid
 //! https://www.w3.org/TR/2025/WD-css-pseudo-4-20250627/
 use surgeist_css::{
-    CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssPseudoElement, CssRecoveryAction,
-    CssSelector, parse_selector,
+    CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssPseudoElement,
+    CssPseudoElementSegment, CssRecoveryAction, CssSelector, parse_selector,
 };
 
 #[test]
@@ -29,8 +29,8 @@ fn named_pseudos_retain_defined_elements_and_reject_unknown_names() {
         assert_eq!(
             compound
                 .pseudo_elements()
-                .map(|sequence| sequence.pseudo_elements()),
-            Some([expected].as_slice()),
+                .map(|sequence| sequence.segments()),
+            Some([CssPseudoElementSegment::PseudoElement(expected)].as_slice()),
             "{input}",
         );
         assert!(compound.pseudo_classes().is_empty(), "{input}");
