@@ -6,7 +6,7 @@
   "diagnostic_separation": "Recovery actions and cleanliness follow public report contract, not a claim W3C mandates a diagnostic format. Position null means not settled; do not fabricate from current output.",
   "independent_audit_sha256": "d51bf0fbad12d7a57e5380a14368888149d8f37c6c61e3e8719f43b255c798a9",
   "entry_contract": "parse_sheet and validate_sheet receive the complete original decoded string. Upstream parser options are preserved as provenance; they do not select a different Surgeist grammar. Stylesheet adapter prefix and suffix are empty.",
-  "limits": "Expected rule trees and recovery requirements come from the independent pinned-publication audit. Null positions are not asserted. The first bracket-balance original asserts the listed recovery actions as an ordered subsequence; its exact diagnostic multiplicity, codes, and spans remain unsettled. Registry assertions compare only these independently settled constraints and do not substitute captured parser output.",
+  "limits": "Grammar retention remains the independent original audit requirement. Complete diagnostic tuples are independently source-traced predictions from diagnostic_audit, not W3C-prescribed diagnostics or runtime captures. Every original has a full proposed class and raw diagnostic vector; failures must reopen the source-contract audit rather than copy observed parser output. Earlier coarse fields preserve the original audit and do not limit the new exact checks.",
   "rows": [
     {
       "id": "stylesheet/StyleSheet.json#/BOM UTF-16BE",
@@ -51,7 +51,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "exact public-contract inference",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 3,
+          "span_start": 0,
+          "span_end": 3,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/BOM UTF-16BE #2",
@@ -96,7 +132,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "exact public-contract inference",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 6,
+          "span_start": 0,
+          "span_end": 6,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/BOM UTF-16LE",
@@ -141,7 +213,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "exact public-contract inference",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 3,
+          "span_start": 0,
+          "span_end": 3,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/BOM UTF-16LE #2",
@@ -186,7 +294,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "exact public-contract inference",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 6,
+          "span_start": 0,
+          "span_end": 6,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/CDC",
@@ -227,7 +371,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "exact public-contract inference",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "ignore_legacy_token",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unexpected_token",
+          "action": "ignore_legacy_token",
+          "payload_relation": "intersects",
+          "byte_offset": 0,
+          "span_start": 0,
+          "span_end": 3,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "One diagnostic per authored legacy token; CSS grammar ignores token, project public policy records it."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/CDO",
@@ -268,7 +448,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "exact public-contract inference",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "ignore_legacy_token",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unexpected_token",
+          "action": "ignore_legacy_token",
+          "payload_relation": "intersects",
+          "byte_offset": 0,
+          "span_start": 0,
+          "span_end": 4,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "One diagnostic per authored legacy token; CSS grammar ignores token, project public policy records it."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/CDO~1CDC",
@@ -318,7 +534,58 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "exact public-contract inference",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "ignore_legacy_token",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unexpected_token",
+            "action": "ignore_legacy_token",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unexpected_token",
+          "action": "ignore_legacy_token",
+          "payload_relation": "intersects",
+          "byte_offset": 0,
+          "span_start": 0,
+          "span_end": 4,
+          "multiplicity": 1
+        },
+        {
+          "code": "unexpected_token",
+          "action": "ignore_legacy_token",
+          "payload_relation": "intersects",
+          "byte_offset": 7,
+          "span_start": 7,
+          "span_end": 10,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 2,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "One diagnostic per authored legacy token; CSS grammar ignores token, project public policy records it.",
+        "One diagnostic per authored legacy token; CSS grammar ignores token, project public policy records it."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/comment and whitespaces only",
@@ -356,7 +623,26 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "clean"
+      "registry_kind": "clean",
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Whitespace and terminated comments yield no authored rule or recovery. Empty source is clean."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/comment only",
@@ -394,7 +680,26 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "clean"
+      "registry_kind": "clean",
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Whitespace and terminated comments yield no authored rule or recovery. Empty source is clean."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/empty",
@@ -431,7 +736,26 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "clean"
+      "registry_kind": "clean",
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Whitespace and terminated comments yield no authored rule or recovery. Empty source is clean."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/error/0",
@@ -470,7 +794,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 0,
+          "span_start": 0,
+          "span_end": 2,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/issue #250",
@@ -511,7 +871,58 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "drop_at_rule",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unknown_at_rule",
+            "action": "drop_at_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unknown_at_rule",
+          "action": "drop_at_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 0,
+          "span_start": 0,
+          "span_end": 63,
+          "multiplicity": 1
+        },
+        {
+          "code": "unknown_at_rule",
+          "action": "drop_at_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 64,
+          "span_start": 64,
+          "span_end": 80,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 2,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Unknown at-keyword rejected by StrictRuleParser default; source normalization rewinds position to authored @. Entire block/semicolon unit discarded; contents do not emit declaration diagnostics.",
+        "Unknown at-keyword rejected by StrictRuleParser default; source normalization rewinds position to authored @. Entire block/semicolon unit discarded; contents do not emit declaration diagnostics."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/issue111.test1",
@@ -553,7 +964,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 12,
+          "span_start": 0,
+          "span_end": 18,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/issue90.test1",
@@ -606,7 +1053,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unknown_property",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 34,
+          "span_start": 34,
+          "span_end": 39,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Unknown property is rejected at declaration_start before value semantics. Failed identifier-led fallback retains original declaration error. Span includes semicolon when present, excludes containing close curly, includes trailing whitespace. One diagnostic per p/p0/p1 declaration, including @page."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/issue90.test2",
@@ -687,7 +1170,103 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 3
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unknown_property",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 8,
+          "span_start": 8,
+          "span_end": 12,
+          "multiplicity": 1
+        },
+        {
+          "code": "unknown_property",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 46,
+          "span_start": 46,
+          "span_end": 50,
+          "multiplicity": 1
+        },
+        {
+          "code": "unknown_property",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 97,
+          "span_start": 97,
+          "span_end": 102,
+          "multiplicity": 1
+        },
+        {
+          "code": "unknown_property",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 126,
+          "span_start": 126,
+          "span_end": 130,
+          "multiplicity": 1
+        },
+        {
+          "code": "unknown_property",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 148,
+          "span_start": 148,
+          "span_end": 152,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 5,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Unknown property is rejected at declaration_start before value semantics. Failed identifier-led fallback retains original declaration error. Span includes semicolon when present, excludes containing close curly, includes trailing whitespace. One diagnostic per p/p0/p1 declaration, including @page.",
+        "Unknown property is rejected at declaration_start before value semantics. Failed identifier-led fallback retains original declaration error. Span includes semicolon when present, excludes containing close curly, includes trailing whitespace. One diagnostic per p/p0/p1 declaration, including @page.",
+        "Unknown property is rejected at declaration_start before value semantics. Failed identifier-led fallback retains original declaration error. Span includes semicolon when present, excludes containing close curly, includes trailing whitespace. One diagnostic per p/p0/p1 declaration, including @page.",
+        "Unknown property is rejected at declaration_start before value semantics. Failed identifier-led fallback retains original declaration error. Span includes semicolon when present, excludes containing close curly, includes trailing whitespace. One diagnostic per p/p0/p1 declaration, including @page.",
+        "Unknown property is rejected at declaration_start before value semantics. Failed identifier-led fallback retains original declaration error. Span includes semicolon when present, excludes containing close curly, includes trailing whitespace. One diagnostic per p/p0/p1 declaration, including @page."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/rule with a bad-string token (issue #93)",
@@ -745,7 +1324,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 2
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_property_value",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_property_value",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 16,
+          "span_start": 7,
+          "span_end": 18,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "collect_authored_declaration_value detects BadString at opening quote before color parser. with_property_context maps token error to invalid_property_value; first block declaration discarded and second rule survives."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/stylesheet.0",
@@ -791,7 +1406,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unknown_property",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 2,
+          "span_start": 2,
+          "span_end": 5,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Unknown property is rejected at declaration_start before value semantics. Failed identifier-led fallback retains original declaration error. Span includes semicolon when present, excludes containing close curly, includes trailing whitespace. One diagnostic per p/p0/p1 declaration, including @page."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/stylesheet.1",
@@ -844,7 +1495,58 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 2
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unknown_property",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 3,
+          "span_start": 3,
+          "span_end": 8,
+          "multiplicity": 1
+        },
+        {
+          "code": "unknown_property",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 12,
+          "span_start": 12,
+          "span_end": 17,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 2,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Unknown property is rejected at declaration_start before value semantics. Failed identifier-led fallback retains original declaration error. Span includes semicolon when present, excludes containing close curly, includes trailing whitespace. One diagnostic per p/p0/p1 declaration, including @page.",
+        "Unknown property is rejected at declaration_start before value semantics. Failed identifier-led fallback retains original declaration error. Span includes semicolon when present, excludes containing close curly, includes trailing whitespace. One diagnostic per p/p0/p1 declaration, including @page."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/stylesheet.2",
@@ -883,7 +1585,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "drop_at_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unknown_at_rule",
+          "action": "drop_at_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 0,
+          "span_start": 0,
+          "span_end": 6,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Unknown at-keyword rejected by StrictRuleParser default; source normalization rewinds position to authored @. Entire block/semicolon unit discarded; contents do not emit declaration diagnostics."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/stylesheet.3",
@@ -923,7 +1661,58 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "drop_at_rule",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unknown_at_rule",
+            "action": "drop_at_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unknown_at_rule",
+          "action": "drop_at_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 0,
+          "span_start": 0,
+          "span_end": 7,
+          "multiplicity": 1
+        },
+        {
+          "code": "unknown_at_rule",
+          "action": "drop_at_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 7,
+          "span_start": 7,
+          "span_end": 14,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 2,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Unknown at-keyword rejected by StrictRuleParser default; source normalization rewinds position to authored @. Entire block/semicolon unit discarded; contents do not emit declaration diagnostics.",
+        "Unknown at-keyword rejected by StrictRuleParser default; source normalization rewinds position to authored @. Entire block/semicolon unit discarded; contents do not emit declaration diagnostics."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/stylesheet.4",
@@ -970,7 +1759,58 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unknown_at_rule",
+            "action": "drop_at_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unknown_property",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 2,
+          "span_start": 2,
+          "span_end": 5,
+          "multiplicity": 1
+        },
+        {
+          "code": "unknown_at_rule",
+          "action": "drop_at_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 6,
+          "span_start": 6,
+          "span_end": 12,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 2,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Unknown property is rejected at declaration_start before value semantics. Failed identifier-led fallback retains original declaration error. Span includes semicolon when present, excludes containing close curly, includes trailing whitespace. One diagnostic per p/p0/p1 declaration, including @page.",
+        "Separate unknown at-rule follows style rule."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/stylesheet.c.0",
@@ -1017,7 +1857,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unknown_property",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 19,
+          "span_start": 19,
+          "span_end": 24,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Unknown property is rejected at declaration_start before value semantics. Failed identifier-led fallback retains original declaration error. Span includes semicolon when present, excludes containing close curly, includes trailing whitespace. One diagnostic per p/p0/p1 declaration, including @page."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/stylesheet.s.0",
@@ -1064,7 +1940,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unknown_property",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 8,
+          "span_start": 8,
+          "span_end": 13,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Unknown property is rejected at declaration_start before value semantics. Failed identifier-led fallback retains original declaration error. Span includes semicolon when present, excludes containing close curly, includes trailing whitespace. One diagnostic per p/p0/p1 declaration, including @page."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/stylesheet.s.1",
@@ -1118,7 +2030,58 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 2
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unknown_property",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 9,
+          "span_start": 9,
+          "span_end": 16,
+          "multiplicity": 1
+        },
+        {
+          "code": "unknown_property",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 28,
+          "span_start": 28,
+          "span_end": 35,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 2,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Unknown property is rejected at declaration_start before value semantics. Failed identifier-led fallback retains original declaration error. Span includes semicolon when present, excludes containing close curly, includes trailing whitespace. One diagnostic per p/p0/p1 declaration, including @page.",
+        "Unknown property is rejected at declaration_start before value semantics. Failed identifier-led fallback retains original declaration error. Span includes semicolon when present, excludes containing close curly, includes trailing whitespace. One diagnostic per p/p0/p1 declaration, including @page."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/stylesheet.s.2",
@@ -1159,7 +2122,58 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_at_rule",
+            "action": "drop_at_rule",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unknown_at_rule",
+            "action": "drop_at_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unknown_at_rule",
+          "action": "drop_at_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 0,
+          "span_start": 0,
+          "span_end": 7,
+          "multiplicity": 1
+        },
+        {
+          "code": "unknown_at_rule",
+          "action": "drop_at_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 8,
+          "span_start": 8,
+          "span_end": 15,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 2,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Unknown at-keyword rejected by StrictRuleParser default; source normalization rewinds position to authored @. Entire block/semicolon unit discarded; contents do not emit declaration diagnostics.",
+        "Unknown at-keyword rejected by StrictRuleParser default; source normalization rewinds position to authored @. Entire block/semicolon unit discarded; contents do not emit declaration diagnostics."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/stylesheet.s.3",
@@ -1207,7 +2221,58 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unknown_property",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unknown_at_rule",
+            "action": "drop_at_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unknown_property",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 8,
+          "span_start": 8,
+          "span_end": 12,
+          "multiplicity": 1
+        },
+        {
+          "code": "unknown_at_rule",
+          "action": "drop_at_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 15,
+          "span_start": 15,
+          "span_end": 21,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 2,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Unknown property is rejected at declaration_start before value semantics. Failed identifier-led fallback retains original declaration error. Span includes semicolon when present, excludes containing close curly, includes trailing whitespace. One diagnostic per p/p0/p1 declaration, including @page.",
+        "Separate unknown at-rule follows style rule."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/StyleSheet.json#/whitespace only",
@@ -1245,7 +2310,26 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "clean"
+      "registry_kind": "clean",
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Whitespace and terminated comments yield no authored rule or recovery. Empty source is clean."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/comment.json#/bad comment #1",
@@ -1287,7 +2371,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "exact public-contract inference",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_end",
+            "action": "ignore_unterminated_comment",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unexpected_end",
+          "action": "ignore_unterminated_comment",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 17,
+          "span_start": 0,
+          "span_end": 17,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "finish_report tokenizes original source and reports exactly one EOF comment independently of syntax retention."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/comment.json#/bad comment #2",
@@ -1329,7 +2449,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "exact public-contract inference",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_end",
+            "action": "ignore_unterminated_comment",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unexpected_end",
+          "action": "ignore_unterminated_comment",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 16,
+          "span_start": 0,
+          "span_end": 16,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "finish_report tokenizes original source and reports exactly one EOF comment independently of syntax retention."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/comment.json#/comment.0",
@@ -1366,7 +2522,26 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "clean"
+      "registry_kind": "clean",
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Whitespace and terminated comments yield no authored rule or recovery. Empty source is clean."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/comment.json#/comment.1",
@@ -1403,7 +2578,26 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "clean"
+      "registry_kind": "clean",
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Whitespace and terminated comments yield no authored rule or recovery. Empty source is clean."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/comment.json#/comment.2",
@@ -1440,7 +2634,26 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "clean"
+      "registry_kind": "clean",
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Whitespace and terminated comments yield no authored rule or recovery. Empty source is clean."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/comment.json#/comment.3",
@@ -1477,7 +2690,26 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "clean"
+      "registry_kind": "clean",
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Whitespace and terminated comments yield no authored rule or recovery. Empty source is clean."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/comment.json#/comment.4",
@@ -1514,7 +2746,26 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "clean"
+      "registry_kind": "clean",
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Whitespace and terminated comments yield no authored rule or recovery. Empty source is clean."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/0",
@@ -1554,7 +2805,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 0,
+          "span_start": 0,
+          "span_end": 6,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/1",
@@ -1594,7 +2881,44 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 2,
+          "span_start": 0,
+          "span_end": 4,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor.",
+        "Missing selector name error at bounded prelude end resolves through next_authored_token_at to opening curly in original source. is_bounded_end_token excludes opening curly, so responsible offset is authored opening curly, not whole-source EOF."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/10",
@@ -1639,7 +2963,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_color_syntax",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_color_syntax",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 11,
+          "span_start": 4,
+          "span_end": 13,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Bare # is valid token but not a color. parse_color wraps failure in invalid_color_syntax; with_property_context preserves that semantic root. Recovery consumes through bounded declaration end."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/11",
@@ -1679,7 +3039,44 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 2,
+          "span_start": 0,
+          "span_end": 4,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor.",
+        "Missing selector name error at bounded prelude end resolves through next_authored_token_at to opening curly in original source. is_bounded_end_token excludes opening curly, so responsible offset is authored opening curly, not whole-source EOF."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/12",
@@ -1719,7 +3116,44 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 1,
+          "span_start": 0,
+          "span_end": 3,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor.",
+        "Missing selector name error at bounded prelude end resolves through next_authored_token_at to opening curly in original source. is_bounded_end_token excludes opening curly, so responsible offset is authored opening curly, not whole-source EOF."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/13",
@@ -1759,7 +3193,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 1,
+          "span_start": 0,
+          "span_end": 1,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/14",
@@ -1799,7 +3269,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 2,
+          "span_start": 0,
+          "span_end": 2,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/15",
@@ -1839,7 +3345,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 2,
+          "span_start": 0,
+          "span_end": 2,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/16",
@@ -1879,7 +3421,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_end",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unexpected_end",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 10,
+          "span_start": 0,
+          "span_end": 10,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Nested function contains curly text but no top-level rule block; basic EOF is not rewritten because failed unit contains opening curly."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/17",
@@ -1919,7 +3497,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 1,
+          "span_start": 0,
+          "span_end": 1,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/18",
@@ -1959,7 +3573,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 1,
+          "span_start": 0,
+          "span_end": 1,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/19",
@@ -1999,7 +3649,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 1,
+          "span_start": 0,
+          "span_end": 1,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/2",
@@ -2039,7 +3725,44 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 1,
+          "span_start": 0,
+          "span_end": 3,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor.",
+        "Missing selector name error at bounded prelude end resolves through next_authored_token_at to opening curly in original source. is_bounded_end_token excludes opening curly, so responsible offset is authored opening curly, not whole-source EOF."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/20",
@@ -2079,7 +3802,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 0,
+          "span_start": 0,
+          "span_end": 1,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "discard_malformed_top_level_token directly diagnoses unmatched closing curly at byte 0."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/21",
@@ -2119,7 +3878,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 9,
+          "span_start": 0,
+          "span_end": 9,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/22",
@@ -2159,7 +3954,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 2,
+          "span_start": 0,
+          "span_end": 2,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/23",
@@ -2199,7 +4030,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 8,
+          "span_start": 0,
+          "span_end": 8,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/24",
@@ -2239,7 +4106,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 15,
+          "span_start": 7,
+          "span_end": 15,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/25",
@@ -2285,7 +4188,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 25,
+          "span_start": 7,
+          "span_end": 25,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Function-led var(--side) is not identifier-led declaration. Nested qualified-rule attempt lacks block and ends at enclosing block boundary; normalization yields invalid_qualified_rule. Offset precedes complete payload EOF."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/3",
@@ -2325,7 +4264,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 1,
+          "span_start": 0,
+          "span_end": 1,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/4",
@@ -2365,7 +4340,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 0,
+          "span_start": 0,
+          "span_end": 7,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/5",
@@ -2405,7 +4416,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 0,
+          "span_start": 0,
+          "span_end": 4,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/6",
@@ -2445,7 +4492,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 0,
+          "span_start": 0,
+          "span_end": 3,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/7",
@@ -2485,7 +4568,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 1,
+          "span_start": 0,
+          "span_end": 1,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/8",
@@ -2530,7 +4649,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_end",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unexpected_end",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 10,
+          "span_start": 4,
+          "span_end": 10,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Identifier color has no colon. Declaration attempt yields bounded EOF; fallback qualified-rule error is discarded and original basic EOF retained. Position is before containing } and thus intersects, not ends_at."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/errors.json#/error/9",
@@ -2575,7 +4730,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_color_syntax",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_color_syntax",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 11,
+          "span_start": 4,
+          "span_end": 12,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Bare # is valid token but not a color. parse_color wraps failure in invalid_color_syntax; with_property_context preserves that semantic root. Recovery consumes through bounded declaration end."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/tolerant.json#/bad selector/0",
@@ -2615,7 +4806,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 1,
+          "span_start": 1,
+          "span_end": 5,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/tolerant.json#/bad selector/1",
@@ -2662,7 +4889,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 2,
+          "span_start": 0,
+          "span_end": 7,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/tolerant.json#/bad selector/2",
@@ -2708,7 +4971,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 2,
+          "span_start": 0,
+          "span_end": 7,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/tolerant.json#/correct fallback on error in at-rule block/0",
@@ -2769,7 +5068,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 2
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 50,
+          "span_start": 26,
+          "span_end": 50,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Group rule-list consumes one incomplete qualified prelude top:0;left:0;width:100%; through bounded EOF, not three declarations. No curly in failed unit converts EOF to invalid_qualified_rule."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/tolerant.json#/correct fallback on error in at-rule block/1",
@@ -2829,7 +5164,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 29,
+          "span_start": 29,
+          "span_end": 33,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/tolerant.json#/correct fallback on error in at-rule block/2",
@@ -2889,7 +5260,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 29,
+          "span_start": 29,
+          "span_end": 34,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/tolerant.json#/no block",
@@ -2929,7 +5336,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 3,
+          "span_start": 1,
+          "span_end": 3,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/tolerant.json#/parser should respect bracket balance over stop token",
@@ -2979,7 +5422,58 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "ordered_subsequence",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unexpected_end",
+            "action": "retain_with_implicit_closure",
+            "payload_relation": "ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unexpected_token",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 21,
+          "span_start": 3,
+          "span_end": 52,
+          "multiplicity": 1
+        },
+        {
+          "code": "unexpected_end",
+          "action": "retain_with_implicit_closure",
+          "payload_relation": "ends_at",
+          "byte_offset": 52,
+          "span_start": 52,
+          "span_end": 52,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 2,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Unmatched } at byte21 is a parse-error token inside parenthesis. Custom-property authored-value collector emits unexpected_token without known-property contextual rewrite. Identifier-led fallback consumes same declaration as balanced component unit; one declaration diagnostic only.",
+        "Only retained .a style block registers implicit closure. Parenthesis and .b curly components belonged to rejected custom declaration and do not register retained component closures. Exactly one closure diagnostic follows token diagnostic; no extra diagnostic for unretained components."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/tolerant.json#/parser should respect bracket balance over stop token #2",
@@ -3032,7 +5526,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_token",
+            "action": "drop_declaration",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unexpected_token",
+          "action": "drop_declaration",
+          "payload_relation": "intersects",
+          "byte_offset": 21,
+          "span_start": 3,
+          "span_end": 42,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Unmatched } at byte21 is a parse-error token inside parenthesis. Custom-property authored-value collector emits unexpected_token without known-property contextual rewrite. Identifier-led fallback consumes same declaration as balanced component unit; one declaration diagnostic only."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/tolerant.json#/rule with unclosed attribute selector/0",
@@ -3071,7 +5601,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 8,
+          "span_start": 0,
+          "span_end": 8,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/tolerant.json#/rule with unclosed attribute selector/1",
@@ -3110,7 +5676,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 9,
+          "span_start": 0,
+          "span_end": 9,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/tolerant.json#/rule with unclosed attribute selector/2",
@@ -3149,7 +5751,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 12,
+          "span_start": 0,
+          "span_end": 12,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/tolerant.json#/rule with unclosed pseudo selector",
@@ -3188,7 +5826,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 10,
+          "span_start": 0,
+          "span_end": 10,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/tolerant.json#/unclosed block",
@@ -3237,7 +5911,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "exact public-contract inference",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered"
+      "registry_kind": "recovered",
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_end",
+            "action": "retain_with_implicit_closure",
+            "payload_relation": "ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unexpected_end",
+          "action": "retain_with_implicit_closure",
+          "payload_relation": "ends_at",
+          "byte_offset": 5,
+          "span_start": 5,
+          "span_end": 5,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Retained empty foo block depth guard registers its one unclosed opening. Zero-width EOF recovery span."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/tolerant.json#/unclosed unknown functional-pseudo in selector",
@@ -3277,7 +5987,43 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "unexpected_end",
+            "action": "drop_qualified_rule",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "unexpected_end",
+          "action": "drop_qualified_rule",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 13,
+          "span_start": 1,
+          "span_end": 13,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Function prelude consumes curly component but never top-level block; raw failed unit includes opening curly so basic EOF remains unexpected_end."
+      ],
+      "uncertainties": []
     },
     {
       "id": "stylesheet/tolerant.json#/uncomplete pseudo in selector",
@@ -3317,7 +6063,68 @@
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected"
+      "registry_kind": "strict_rejected",
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "sheet_rules"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 6,
+          "span_start": 1,
+          "span_end": 8,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "class_status": "independent static source-contract prediction; requires real adapter verification",
+      "explanations": [
+        "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor.",
+        "Missing selector name error at bounded prelude end resolves through next_authored_token_at to opening curly in original source. is_bounded_end_token excludes opening curly, so responsible offset is authored opening curly, not whole-source EOF."
+      ],
+      "uncertainties": []
     }
-  ]
+  ],
+  "diagnostic_audit": {
+    "schema_version": 1,
+    "basis": "583e7b600225a43764c3bce3541ebe7bf927b69a",
+    "scope": "76 original stylesheet inputs; independent diagnostic source-contract audit, no parser execution, no captured oracle/registry used as truth",
+    "method": "Original inputs and coarse syntax expectations from reconciliation fixture; all diagnostic predictions derived from source owners and pinned grammar, not prior measured census. Full classes are proposed for all76, raw coordinates are static source-trace predictions for all diagnostics. Semantics remain independent earlier-audit requirement, not claimed freshly exhaustive standards review.",
+    "source_contracts": [
+      "src/report.rs CssParseReport::new, CssRecoveryDiagnostic invariant and actions",
+      "src/error.rs from_parse_error, from_rule_parse_error, resolve_source, with_property_context",
+      "src/parser/mod.rs parse_sheet_inner, block_item_diagnostic, structural_rule_diagnostic, parse_semicolon_qualified_rule, parse_declaration_core",
+      "src/parser/nesting.rs parse_style_contents",
+      "src/parser/recovery.rs finish_report, take_implicit_closure_diagnostics, DepthGuard",
+      "src/parser/variables.rs consume_authored_value_tokens_with_restrictions",
+      "src/parser/selectors.rs malformed selector and namespace paths",
+      "tests/support/csstree.rs ExpectedClass, observation_from_report, payload_relation_holds",
+      "locked cssparser rules_and_declarations.rs RuleBodyParser::next and parse_qualified_rule"
+    ],
+    "normative_basis": [
+      "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule",
+      "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-declaration"
+    ],
+    "policy_separation": "W3C governs retention/discard and tokenization, not these Rust error codes, byte spans, cleanliness, or diagnostic multiplicities. Those are project public recovery policy and independently source-characterized implementation expectations.",
+    "coordinate_contract": "No adapter prefix or suffix. UTF-8 original bytes. intersects requires responsible offset strictly before payload end; recovery_ends_at uses EOF responsible offset with nonempty unit ending EOF; ends_at uses zero-width EOF span. Every vector entry multiplicity1; repeated entries represent separate diagnostics.",
+    "sha256": "a8efe58360c366c01f0c228a1432d7e594469d5f7aebb8f7222d1e49e89ecd53"
+  }
 }

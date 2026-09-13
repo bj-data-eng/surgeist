@@ -1,7 +1,7 @@
 //! Original stylesheet expectations from an independent pinned-publication audit.
 //! Grammar retention, public recovery policy, and registry classification are
-//! separate assertions. Unsettled diagnostic details are deliberately not inferred
-//! from parser output or the captured corpus oracle.
+//! separate assertions. Exact diagnostic predictions come from a second static
+//! source-contract audit, never parser output or the captured corpus oracle.
 #![forbid(unsafe_code)]
 
 use std::{collections::BTreeSet, fs, path::Path};
@@ -86,18 +86,15 @@ fn rules(actual: &[CssRule]) -> Value {
     }).collect())
 }
 
-fn actions_match(actual: &[Value], row: &Value) -> bool {
-    let expected = row["expected"]["ordered_recovery_actions"]
-        .as_array()
-        .unwrap();
-    if row["diagnostic_action_relation"] == "exact" {
-        actual == expected
-    } else {
-        let mut remaining = actual.iter();
-        expected
-            .iter()
-            .all(|action| remaining.any(|candidate| candidate == action))
+fn snake_name(value: impl std::fmt::Debug) -> String {
+    let mut result = String::new();
+    for character in format!("{value:?}").chars() {
+        if character.is_ascii_uppercase() && !result.is_empty() {
+            result.push('_');
+        }
+        result.push(character.to_ascii_lowercase());
     }
+    result
 }
 
 #[test]
@@ -126,38 +123,43 @@ fn original_stylesheet_recovery_and_validation_follow_independent_requirements()
     for row in expectations()["rows"].as_array().unwrap() {
         let input = text(row, "input");
         let report = parse_sheet(input);
-        let actions: Vec<_> = report
+        let diagnostics: Vec<_> = report
             .diagnostics()
             .iter()
-            .map(|diagnostic| json!(format!("{:?}", diagnostic.action())))
+            .map(|diagnostic| {
+                let byte_offset = diagnostic.error().position().byte_offset().value();
+                let span_start = diagnostic.span().start().byte_offset().value();
+                let span_end = diagnostic.span().end().byte_offset().value();
+                let payload_relation = if byte_offset < input.len() {
+                    "intersects"
+                } else if span_start == input.len() && span_end == input.len() {
+                    "ends_at"
+                } else {
+                    "recovery_ends_at"
+                };
+                json!({"code": snake_name(diagnostic.error().code()),
+                "action": snake_name(diagnostic.action()), "byte_offset": byte_offset,
+                "span_start": span_start, "span_end": span_end, "multiplicity": 1,
+                "payload_relation": payload_relation})
+            })
             .collect();
-        let expected = &row["expected"];
-        if json!(report.is_clean()) != expected["is_clean"]
-            || json!(validate_sheet(input).is_ok()) != expected["validation_accepts"]
-            || !actions_match(&actions, row)
-        {
+        let actual = json!({"clean": report.is_clean(),
+            "validation_accepts": validate_sheet(input).is_ok(), "diagnostics": diagnostics});
+        let expected = json!({"clean": row["expected"]["is_clean"],
+            "validation_accepts": row["expected"]["validation_accepts"],
+            "diagnostics": row["expected_raw_diagnostics"]});
+        if actual != expected {
             failures.push(format!(
-                "{}: clean={}, actions={actions:?}",
-                row["id"],
-                report.is_clean()
+                "{}\nexpected: {expected}\nactual: {actual}",
+                row["id"]
             ));
-        }
-        if !expected["diagnostic_positions"].is_null() {
-            let positions: Vec<_> = report
-                .diagnostics()
-                .iter()
-                .map(|diagnostic| diagnostic.error().position().byte_offset().value())
-                .collect();
-            if json!(positions) != expected["diagnostic_positions"] {
-                failures.push(format!("{}: positions={positions:?}", row["id"]));
-            }
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 #[test]
-fn stylesheet_registry_satisfies_independently_settled_class_and_recovery_constraints() {
+fn stylesheet_registry_matches_independent_complete_original_classes() {
     let registry: Value =
         serde_json::from_str(include_str!("csstree/expected-classes.json")).unwrap();
     let mut failures = Vec::new();
@@ -169,44 +171,10 @@ fn stylesheet_registry_satisfies_independently_settled_class_and_recovery_constr
             .find(|record| record["id"] == row["id"])
             .unwrap();
         assert_eq!(record["expectation_sha256"], row["expectation_sha256"]);
-        let class = &record["class"];
-        let count = row["expected"]["top_level_rule_count"].as_u64().unwrap();
-        let predicate = &class["retained_syntax"]["predicate"];
-        let count_matches = match predicate["relation"].as_str() {
-            Some("exact") => predicate["value"] == count,
-            Some("empty") => count == 0,
-            Some("nonempty") => count > 0,
-            _ => false,
-        };
-        let actions: Vec<_> = class["diagnostics"]
-            .as_array()
-            .map(|diagnostics| {
-                diagnostics
-                    .iter()
-                    .map(|diagnostic| {
-                        // Registry serde names are snake_case; public action names in the
-                        // independent audit follow the Rust variants.
-                        let action: String = text(diagnostic, "action")
-                            .split('_')
-                            .map(|word| {
-                                let mut chars = word.chars();
-                                let first = chars.next().unwrap().to_ascii_uppercase();
-                                format!("{first}{}", chars.as_str())
-                            })
-                            .collect();
-                        json!(action)
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        if class["kind"] != row["registry_kind"]
-            || !count_matches
-            || class["retained_syntax"]["extractor"] != json!({"kind": "sheet_rules"})
-            || !actions_match(&actions, row)
-        {
+        if record["class"] != row["expected_class"] {
             failures.push(format!(
-                "{}: expected kind={}, count={count}, actions={}; actual={class}",
-                row["id"], row["registry_kind"], row["expected"]["ordered_recovery_actions"]
+                "{}\nexpected: {}\nactual: {}",
+                row["id"], row["expected_class"], record["class"]
             ));
         }
     }
