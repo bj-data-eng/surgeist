@@ -2013,12 +2013,6 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                 Ok(StrictAtRulePrelude::CounterStyle(name))
             },
             "page" => {
-                if self.top_level_phase.is_none() {
-                    return Err(top_level_only_at_rule_placement(
-                        input.current_source_location(),
-                        "page",
-                    ));
-                }
                 let selector = parse_page_selector(input).map_err(|error| {
                     with_at_rule_prelude_context(
                         error,
@@ -3030,7 +3024,9 @@ fn parse_nested_group_rules<'i, 't>(
         let mut items = RuleBodyParser::new(input, &mut rule_parser);
         loop {
             let progress = RecoveryProgress::record(items.input);
-            let Some(item) = items.next() else {
+            let Some(item) =
+                parse_semicolon_qualified_rule(items.input, items.parser).or_else(|| items.next())
+            else {
                 break;
             };
             let failed_block_error = item.as_ref().err().and_then(|(_, failed_unit)| {
@@ -3074,6 +3070,37 @@ fn parse_nested_group_rules<'i, 't>(
         syntax: rules,
         diagnostics,
     })
+}
+
+type GroupRuleItem<'i> = std::result::Result<Vec<CssRule>, (ParseError<'i, Error>, &'i str)>;
+
+// RuleBodyParser discards semicolons as block-content separators. In a group
+// rule list they instead begin a qualified-rule prelude, which consumes through
+// its block even when the selector is invalid. Keep the original parser so the
+// ordinary failed-block recovery owns nesting limits and source provenance.
+fn parse_semicolon_qualified_rule<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    rule_parser: &mut StrictRuleParser<'i>,
+) -> Option<GroupRuleItem<'i>> {
+    input.skip_whitespace();
+    let start = input.state();
+    if input.try_parse(Parser::expect_semicolon).is_err() {
+        return None;
+    }
+    input.reset(&start);
+    let prelude = input.parse_until_before(Delimiter::CurlyBracketBlock, |input| {
+        QualifiedRuleParser::parse_prelude(rule_parser, input)
+    });
+    let result = input
+        .expect_curly_bracket_block()
+        .map_err(ParseError::from)
+        .and(prelude)
+        .and_then(|prelude| {
+            input.parse_nested_block(|input| {
+                QualifiedRuleParser::parse_block(rule_parser, prelude, &start, input)
+            })
+        });
+    Some(result.map_err(|error| (error, input.slice_from(start.position()))))
 }
 
 pub(super) fn parse_scoped_rule_list<'i, 't>(

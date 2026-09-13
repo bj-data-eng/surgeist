@@ -161,7 +161,7 @@ fn page_context_distinguishes_known_non_margin_unknown_and_invalid_margin_declar
 }
 
 #[test]
-fn page_rules_enforce_top_level_body_phase_and_nested_placement() {
+fn page_rules_preserve_import_phase_and_distinguish_group_from_style_context() {
     let invalid_then_import = parse_sheet(
         "@page :unknown { margin: 1cm; } @import \"still-early.css\"; @page { margin: 2cm; }",
     );
@@ -200,9 +200,16 @@ fn page_rules_enforce_top_level_body_phase_and_nested_placement() {
         vec![
             CssErrorCode::InvalidAtRulePlacement,
             CssErrorCode::InvalidAtRulePlacement,
-            CssErrorCode::InvalidAtRulePlacement,
         ]
     );
+    let CssRule::Media(media) = &report.syntax().rules()[2] else {
+        panic!("expected media group")
+    };
+    let [CssRule::Page(page), CssRule::Style(_)] = media.rules() else {
+        panic!("expected retained page and following style child")
+    };
+    assert_eq!(page.selector(), Some(CssPageSelector::Left));
+    assert_eq!(page.declarations().len(), 1);
 }
 
 #[test]

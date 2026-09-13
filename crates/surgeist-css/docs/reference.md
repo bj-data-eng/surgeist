@@ -1310,8 +1310,15 @@ order, and the parser-produced position. Page bodies accept only `margin` and
 the four margin longhands with CSS2 lengths other than `em` and `ex`,
 percentages, `auto`, zero, and negative values. Known non-margin, unknown, and
 invalid margin declarations receive their existing typed declaration
-diagnostics and are dropped individually. Page rules are likewise top-level and
-block-form only; margin-box nested at-rules remain unsupported.
+diagnostics and are dropped individually. Block-form page rules are accepted at
+the stylesheet top level and inside ordinary conditional and layer rule lists.
+They remain invalid in style-rule bodies, including conditional groups with a
+style ancestor. Margin-box nested at-rules remain unsupported.
+
+Ordinary conditional and layer rule lists consume semicolon-prefixed input as
+a qualified rule. For example, `@media all { a {} ;b {} c {} }` retains `a` and
+`c`, with a `DropQualifiedRule` diagnostic for `;b {}`. Style bodies retain their
+declaration grammar, where extra semicolons are valid separators.
 
 ```rust
 use surgeist_css::{CssCounterStyleSystem, CssPageSelector, CssRule, parse_sheet};
