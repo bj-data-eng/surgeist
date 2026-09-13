@@ -1,0 +1,1076 @@
+{
+  "schema_version": 1,
+  "basis": "12235439030ac508b84eb20020b82abd4b12b1fe",
+  "scope": "All14 original selector/Selector.json cases, not just historical6 census IDs",
+  "method": "Independent grammar and static source-contract audit. No runtime/parser/Cargo/current expected-class registry/captured oracle used as truth. Corpus upstream outcomes preserve provenance only. Source inspected immutably with git show.",
+  "catalog_path": "crates/surgeist-css/specs/catalog.json",
+  "catalog_sha256": "8600b4355cdd9da2b3e8e602c8b782f1e8e0b10884e574d6284bbf60b9d99d4e",
+  "normative_sources": [
+    {
+      "id": "css-syntax-3",
+      "title": "CSS Syntax Module Level 3",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-syntax-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "sha256": "413b27acb4e16721d28b487456359ecbcecba472c4310bd2f6a4939ad393738b",
+        "bytes": 511620,
+        "date": "2021-12-24",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": []
+    },
+    {
+      "id": "css-namespaces-3",
+      "title": "CSS Namespaces Module Level 3",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-namespaces/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2014/REC-css-namespaces-3-20140320/",
+        "sha256": "a23b00b30e8e3c550f35f85291cd514e0907c00899e12802569b7f977207daa8",
+        "bytes": 27439,
+        "date": "2014-03-20",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style"
+      ]
+    },
+    {
+      "id": "selectors-4",
+      "title": "Selectors Level 4",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/selectors-4/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/WD-selectors-4-20260122/",
+        "sha256": "5d3b3f7e1fcc562dcec1a01ad2c5651e9f0bac294b255a75352e9df202604e6d",
+        "bytes": 978757,
+        "date": "2026-01-22",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style"
+      ]
+    }
+  ],
+  "source_refs": [
+    "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#grammar",
+    "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#negation",
+    "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#the-lang-pseudo",
+    "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#attribute-selectors",
+    "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-escaped-code-point"
+  ],
+  "adapter_contract": {
+    "entry_point": "selector",
+    "adapter": "selector",
+    "public_entry": "parse_selector",
+    "namespace": {
+      "ns": "surgeist-corpus-probe"
+    },
+    "default_namespace": null,
+    "prefix": "",
+    "suffix": "",
+    "extractor": "selector",
+    "coordinates": "raw original UTF-8 bytes"
+  },
+  "source_contracts": [
+    "tests/support/csstree_adapters.rs:1261 selector/Selector.json entry; Adapter::wrap",
+    "tests/support/csstree.rs:2145 corpus_namespace_context; observation_from_report; payload_relation_holds",
+    "src/parser/fragments.rs selector_fragment, parse_selector, reject",
+    "src/parser/selectors.rs parse_rule_selector_with_options, parse_selector_after_first_compound, parse_compound_selector_model_with_options, parse_type_selector, parse_attribute_selector_name, parse_function_pseudo_class",
+    "src/parser/selectors.rs parse_language_ranges, parse_pseudo_selector_list_with_options",
+    "src/error.rs resolve_source, invalid_selector, selector_basic, previous_authored_token_before",
+    "src/syntax.rs CssAttributeName and typed selector constructors",
+    "locked cssparser0.37.0 tokenizer escaped-code-point handling; parser expect_exhausted"
+  ],
+  "policy_separation": "No unsupported/vendor/downstream exclusion applies to any of these14 inputs. Grammar validity is independent of whether a selector has possible matches. Exact diagnostic vocabulary/coordinates are project policy predictions.",
+  "summary": {
+    "records": 14,
+    "clean": 11,
+    "strict_rejected": 3,
+    "raw_diagnostics": 3,
+    "source_contradictions": 0,
+    "unsettled": 0
+  },
+  "rows": [
+    {
+      "id": "selector/Selector.json#/error/0",
+      "input": "foo,",
+      "input_sha256": "ef45c31d76452cc1a9406deade8d1f21e2d36ca3117dce8a8c5f41b1a6a4f22f",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selector",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selector/Selector.json",
+      "source_sha256": "e95c2225e357915bb2676b837d030a29bf84828936ac00d74faeafacf1650be3",
+      "expectation_path": "tests/corpus/csstree/expectations/selector/Selector.json",
+      "expectation_sha256": "98e4d2e36738a38efc5db7a2a72b2f454643755825dbbf38621b430d0cab450f",
+      "original_expectation": {
+        "id": "selector/Selector.json#/error/0",
+        "context": "selector",
+        "input": "foo,",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": false,
+        "outer_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "typed_expectation": null,
+        "rationale": [
+          "Raw single-selector front door cannot accept a list delimiter. Selector parser stops at comma and selector_fragment::expect_exhausted maps it to InvalidSelector at byte3. No outer syntax retained."
+        ]
+      },
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "payload_relation": "intersects",
+          "byte_offset": 3,
+          "span_start": 0,
+          "span_end": 4,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selector/Selector.json#/error/1",
+      "input": "foo)",
+      "input_sha256": "e4080f5e1b169dae80f3e855da8823ac396208524719d902e9a1a19ff9b8cd2d",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selector",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selector/Selector.json",
+      "source_sha256": "e95c2225e357915bb2676b837d030a29bf84828936ac00d74faeafacf1650be3",
+      "expectation_path": "tests/corpus/csstree/expectations/selector/Selector.json",
+      "expectation_sha256": "98e4d2e36738a38efc5db7a2a72b2f454643755825dbbf38621b430d0cab450f",
+      "original_expectation": {
+        "id": "selector/Selector.json#/error/1",
+        "context": "selector",
+        "input": "foo)",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": false,
+        "outer_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "typed_expectation": null,
+        "rationale": [
+          "Unmatched close parenthesis is invalid selector syntax. parse_selector_after_first_compound resets at byte3 and raises invalid_selector with no encountered token. Error::resolve_source refuses closing-delimiter inference, then previous_authored_token_before identifies foo and rewinds responsible offset to0. This is a static diagnostic policy prediction, not a grammar location requirement."
+        ]
+      },
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "payload_relation": "intersects",
+          "byte_offset": 0,
+          "span_start": 0,
+          "span_end": 4,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selector/Selector.json#/error/2",
+      "input": "foo{",
+      "input_sha256": "c89cebc7b198010ce68d611d2803d01a691d5b0a759831ed1a4f483daee2bd94",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selector",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selector/Selector.json",
+      "source_sha256": "e95c2225e357915bb2676b837d030a29bf84828936ac00d74faeafacf1650be3",
+      "expectation_path": "tests/corpus/csstree/expectations/selector/Selector.json",
+      "expectation_sha256": "98e4d2e36738a38efc5db7a2a72b2f454643755825dbbf38621b430d0cab450f",
+      "original_expectation": {
+        "id": "selector/Selector.json#/error/2",
+        "context": "selector",
+        "input": "foo{",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": false,
+        "outer_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "typed_expectation": null,
+        "rationale": [
+          "An opening rule block is not part of a complete raw selector. parse_selector_after_first_compound rejects CurlyBracketBlock at byte3. Outer rejection retains no implicit EOF closure diagnostics; preflight checks resource depth without admitting rule grammar."
+        ]
+      },
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "payload_relation": "intersects",
+          "byte_offset": 3,
+          "span_start": 0,
+          "span_end": 4,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selector/Selector.json#/negation with identifier and attribute selector",
+      "input": "x:not([ABC])",
+      "input_sha256": "0dedbc2539773faec8a3d238e8b73336eb15185ed8b4fca5a198716cb3673ad6",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selector",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selector/Selector.json",
+      "source_sha256": "e95c2225e357915bb2676b837d030a29bf84828936ac00d74faeafacf1650be3",
+      "expectation_path": "tests/corpus/csstree/expectations/selector/Selector.json",
+      "expectation_sha256": "98e4d2e36738a38efc5db7a2a72b2f454643755825dbbf38621b430d0cab450f",
+      "original_expectation": {
+        "id": "selector/Selector.json#/negation with identifier and attribute selector",
+        "context": "selector",
+        "label": "negation with identifier and attribute selector",
+        "input": "x:not([ABC])",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": true,
+        "outer_count": 1,
+        "is_clean": true,
+        "validation_accepts": true,
+        "typed_expectation": {
+          "kind": "compound",
+          "items": [
+            {
+              "type_selector": {
+                "local_name": "x",
+                "namespace": "Any"
+              }
+            },
+            {
+              "pseudo_class": "Not",
+              "selectors": [
+                {
+                  "kind": "compound",
+                  "items": [
+                    {
+                      "attribute": {
+                        "local_name": "ABC",
+                        "namespace": "ExplicitNone",
+                        "matcher": "Exists",
+                        "value": null,
+                        "case_sensitivity": "DocumentDefault"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "rationale": [
+          "x is an unqualified type in Any namespace; :not receives one valid attribute-existence selector. Unprefixed attribute namespace is ExplicitNone. Preserve authored attribute-name ABC case; case matching is downstream."
+        ]
+      },
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selector/Selector.json#/negation with namespaced identifier",
+      "input": "*|*:not(*)",
+      "input_sha256": "bf96250d2d524c301cfb5855f38d9bf665e7bd1b2be9caee6f820bf52ca9aff9",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selector",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selector/Selector.json",
+      "source_sha256": "e95c2225e357915bb2676b837d030a29bf84828936ac00d74faeafacf1650be3",
+      "expectation_path": "tests/corpus/csstree/expectations/selector/Selector.json",
+      "expectation_sha256": "98e4d2e36738a38efc5db7a2a72b2f454643755825dbbf38621b430d0cab450f",
+      "original_expectation": {
+        "id": "selector/Selector.json#/negation with namespaced identifier",
+        "context": "selector",
+        "label": "negation with namespaced identifier",
+        "input": "*|*:not(*)",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": true,
+        "outer_count": 1,
+        "is_clean": true,
+        "validation_accepts": true,
+        "typed_expectation": {
+          "kind": "compound",
+          "items": [
+            {
+              "type_selector": {
+                "local_name": "*",
+                "namespace": "Any"
+              }
+            },
+            {
+              "pseudo_class": "Not",
+              "selectors": [
+                {
+                  "kind": "compound",
+                  "items": [
+                    {
+                      "type_selector": {
+                        "local_name": "*",
+                        "namespace": "Any"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "rationale": [
+          "Explicit universal namespace *|* is Any; :not(*) is valid and receives universal type in Any namespace because no default namespace is bound. This selector may match no element, but is syntactically valid and must remain clean."
+        ]
+      },
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selector/Selector.json#/simpleselector.0",
+      "input": "test",
+      "input_sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selector",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selector/Selector.json",
+      "source_sha256": "e95c2225e357915bb2676b837d030a29bf84828936ac00d74faeafacf1650be3",
+      "expectation_path": "tests/corpus/csstree/expectations/selector/Selector.json",
+      "expectation_sha256": "98e4d2e36738a38efc5db7a2a72b2f454643755825dbbf38621b430d0cab450f",
+      "original_expectation": {
+        "id": "selector/Selector.json#/simpleselector.0",
+        "context": "selector",
+        "label": "simpleselector.0",
+        "input": "test",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": true,
+        "outer_count": 1,
+        "is_clean": true,
+        "validation_accepts": true,
+        "typed_expectation": {
+          "kind": "compound",
+          "items": [
+            {
+              "type_selector": {
+                "local_name": "test",
+                "namespace": "Any"
+              }
+            }
+          ]
+        },
+        "rationale": [
+          "Ordinary type/class/id/compound/complex selector grammar admits the complete input. Preserve ordered combinators and compound components; Any type namespace follows the absence of a default namespace."
+        ]
+      },
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selector/Selector.json#/simpleselector.1",
+      "input": ".test",
+      "input_sha256": "5559ec61ae317cdf207a17666b01777b00ddf4ab1044be5cc213dd3618e5f98c",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selector",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selector/Selector.json",
+      "source_sha256": "e95c2225e357915bb2676b837d030a29bf84828936ac00d74faeafacf1650be3",
+      "expectation_path": "tests/corpus/csstree/expectations/selector/Selector.json",
+      "expectation_sha256": "98e4d2e36738a38efc5db7a2a72b2f454643755825dbbf38621b430d0cab450f",
+      "original_expectation": {
+        "id": "selector/Selector.json#/simpleselector.1",
+        "context": "selector",
+        "label": "simpleselector.1",
+        "input": ".test",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": true,
+        "outer_count": 1,
+        "is_clean": true,
+        "validation_accepts": true,
+        "typed_expectation": {
+          "kind": "compound",
+          "items": [
+            {
+              "class": "test"
+            }
+          ]
+        },
+        "rationale": [
+          "Ordinary type/class/id/compound/complex selector grammar admits the complete input. Preserve ordered combinators and compound components; Any type namespace follows the absence of a default namespace."
+        ]
+      },
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selector/Selector.json#/simpleselector.16",
+      "input": ".\\31  b",
+      "input_sha256": "75f2c7e1a8912a2669e6c3b05b239688a26015a49552e99139667790c6698d86",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selector",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selector/Selector.json",
+      "source_sha256": "e95c2225e357915bb2676b837d030a29bf84828936ac00d74faeafacf1650be3",
+      "expectation_path": "tests/corpus/csstree/expectations/selector/Selector.json",
+      "expectation_sha256": "98e4d2e36738a38efc5db7a2a72b2f454643755825dbbf38621b430d0cab450f",
+      "original_expectation": {
+        "id": "selector/Selector.json#/simpleselector.16",
+        "context": "selector",
+        "label": "simpleselector.16",
+        "input": ".\\31  b",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": true,
+        "outer_count": 1,
+        "is_clean": true,
+        "validation_accepts": true,
+        "typed_expectation": {
+          "kind": "complex",
+          "first": {
+            "kind": "compound",
+            "items": [
+              {
+                "class": "1"
+              }
+            ]
+          },
+          "rest": [
+            {
+              "combinator": "Descendant",
+              "selector": {
+                "kind": "compound",
+                "items": [
+                  {
+                    "type_selector": {
+                      "local_name": "b",
+                      "namespace": "Any"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "rationale": [
+          "CSS hex escape \\31 consumes the first following space as its optional terminator; the remaining space is the descendant combinator. The decoded class is 1, then descendant type b. Do not collapse both spaces into one escaped identifier."
+        ]
+      },
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selector/Selector.json#/simpleselector.18",
+      "input": ":lang(nl-be)",
+      "input_sha256": "e92d42e0d3b0a8251bd03bad7f28a5f707d37bee294f68f4944cf6c9cf0f07de",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selector",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selector/Selector.json",
+      "source_sha256": "e95c2225e357915bb2676b837d030a29bf84828936ac00d74faeafacf1650be3",
+      "expectation_path": "tests/corpus/csstree/expectations/selector/Selector.json",
+      "expectation_sha256": "98e4d2e36738a38efc5db7a2a72b2f454643755825dbbf38621b430d0cab450f",
+      "original_expectation": {
+        "id": "selector/Selector.json#/simpleselector.18",
+        "context": "selector",
+        "label": "simpleselector.18",
+        "input": ":lang(nl-be)",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": true,
+        "outer_count": 1,
+        "is_clean": true,
+        "validation_accepts": true,
+        "typed_expectation": {
+          "kind": "compound",
+          "items": [
+            {
+              "pseudo_class": "Lang",
+              "ranges": [
+                {
+                  "token_kind": "identifier",
+                  "value": "nl-be"
+                }
+              ]
+            }
+          ]
+        },
+        "rationale": [
+          "Selected Lang grammar is a nonempty identifier-or-string list; nl-be is one valid identifier language range retained as typed data. Evaluation is downstream."
+        ]
+      },
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selector/Selector.json#/simpleselector.2",
+      "input": "#test",
+      "input_sha256": "9cd8fcf22a47333b591d96a2b848b73f457b1bb1a3ea2453a885f9e5787765b1",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selector",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selector/Selector.json",
+      "source_sha256": "e95c2225e357915bb2676b837d030a29bf84828936ac00d74faeafacf1650be3",
+      "expectation_path": "tests/corpus/csstree/expectations/selector/Selector.json",
+      "expectation_sha256": "98e4d2e36738a38efc5db7a2a72b2f454643755825dbbf38621b430d0cab450f",
+      "original_expectation": {
+        "id": "selector/Selector.json#/simpleselector.2",
+        "context": "selector",
+        "label": "simpleselector.2",
+        "input": "#test",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": true,
+        "outer_count": 1,
+        "is_clean": true,
+        "validation_accepts": true,
+        "typed_expectation": {
+          "kind": "compound",
+          "items": [
+            {
+              "id": "test"
+            }
+          ]
+        },
+        "rationale": [
+          "Ordinary type/class/id/compound/complex selector grammar admits the complete input. Preserve ordered combinators and compound components; Any type namespace follows the absence of a default namespace."
+        ]
+      },
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selector/Selector.json#/simpleselector.3",
+      "input": "[a=b]",
+      "input_sha256": "1ae5031331b0382fb3ce609ee913b307aa973fc70c9ea8e99700eef836cd991f",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selector",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selector/Selector.json",
+      "source_sha256": "e95c2225e357915bb2676b837d030a29bf84828936ac00d74faeafacf1650be3",
+      "expectation_path": "tests/corpus/csstree/expectations/selector/Selector.json",
+      "expectation_sha256": "98e4d2e36738a38efc5db7a2a72b2f454643755825dbbf38621b430d0cab450f",
+      "original_expectation": {
+        "id": "selector/Selector.json#/simpleselector.3",
+        "context": "selector",
+        "label": "simpleselector.3",
+        "input": "[a=b]",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": true,
+        "outer_count": 1,
+        "is_clean": true,
+        "validation_accepts": true,
+        "typed_expectation": {
+          "kind": "compound",
+          "items": [
+            {
+              "attribute": {
+                "local_name": "a",
+                "namespace": "ExplicitNone",
+                "matcher": "Equals",
+                "value": "b",
+                "case_sensitivity": "DocumentDefault"
+              }
+            }
+          ]
+        },
+        "rationale": [
+          "Unprefixed attribute names are ExplicitNone namespace. Equality takes identifier or string with the same decoded semantic value; ordered attribute constraints and DocumentDefault case mode are retained."
+        ]
+      },
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selector/Selector.json#/simpleselector.4",
+      "input": "[a=b][c=\"d\"]",
+      "input_sha256": "a8751c46de2987ff2f3ecadfe2266bc5c1d6a816bc562eb8bf34df33b1e8542d",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selector",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selector/Selector.json",
+      "source_sha256": "e95c2225e357915bb2676b837d030a29bf84828936ac00d74faeafacf1650be3",
+      "expectation_path": "tests/corpus/csstree/expectations/selector/Selector.json",
+      "expectation_sha256": "98e4d2e36738a38efc5db7a2a72b2f454643755825dbbf38621b430d0cab450f",
+      "original_expectation": {
+        "id": "selector/Selector.json#/simpleselector.4",
+        "context": "selector",
+        "label": "simpleselector.4",
+        "input": "[a=b][c=\"d\"]",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": true,
+        "outer_count": 1,
+        "is_clean": true,
+        "validation_accepts": true,
+        "typed_expectation": {
+          "kind": "compound",
+          "items": [
+            {
+              "attribute": {
+                "local_name": "a",
+                "namespace": "ExplicitNone",
+                "matcher": "Equals",
+                "value": "b",
+                "case_sensitivity": "DocumentDefault"
+              }
+            },
+            {
+              "attribute": {
+                "local_name": "c",
+                "namespace": "ExplicitNone",
+                "matcher": "Equals",
+                "value": "d",
+                "case_sensitivity": "DocumentDefault"
+              }
+            }
+          ]
+        },
+        "rationale": [
+          "Unprefixed attribute names are ExplicitNone namespace. Equality takes identifier or string with the same decoded semantic value; ordered attribute constraints and DocumentDefault case mode are retained."
+        ]
+      },
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selector/Selector.json#/spaces",
+      "input": "a  +  b  c  ~  d  e",
+      "input_sha256": "ec7bba634fe139913723029ac58f1321055d13c036b9a14be667caf34eeb267a",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selector",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selector/Selector.json",
+      "source_sha256": "e95c2225e357915bb2676b837d030a29bf84828936ac00d74faeafacf1650be3",
+      "expectation_path": "tests/corpus/csstree/expectations/selector/Selector.json",
+      "expectation_sha256": "98e4d2e36738a38efc5db7a2a72b2f454643755825dbbf38621b430d0cab450f",
+      "original_expectation": {
+        "id": "selector/Selector.json#/spaces",
+        "context": "selector",
+        "label": "spaces",
+        "input": "a  +  b  c  ~  d  e",
+        "upstream_outcome": "parsed",
+        "canonical_css": "a+b c~d e",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": true,
+        "outer_count": 1,
+        "is_clean": true,
+        "validation_accepts": true,
+        "typed_expectation": {
+          "kind": "complex",
+          "first": {
+            "kind": "compound",
+            "items": [
+              {
+                "type_selector": {
+                  "local_name": "a",
+                  "namespace": "Any"
+                }
+              }
+            ]
+          },
+          "rest": [
+            {
+              "combinator": "NextSibling",
+              "selector": {
+                "kind": "compound",
+                "items": [
+                  {
+                    "type_selector": {
+                      "local_name": "b",
+                      "namespace": "Any"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "combinator": "Descendant",
+              "selector": {
+                "kind": "compound",
+                "items": [
+                  {
+                    "type_selector": {
+                      "local_name": "c",
+                      "namespace": "Any"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "combinator": "SubsequentSibling",
+              "selector": {
+                "kind": "compound",
+                "items": [
+                  {
+                    "type_selector": {
+                      "local_name": "d",
+                      "namespace": "Any"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "combinator": "Descendant",
+              "selector": {
+                "kind": "compound",
+                "items": [
+                  {
+                    "type_selector": {
+                      "local_name": "e",
+                      "namespace": "Any"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "rationale": [
+          "Ordinary type/class/id/compound/complex selector grammar admits the complete input. Preserve ordered combinators and compound components; Any type namespace follows the absence of a default namespace."
+        ]
+      },
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selector/Selector.json#/type & id",
+      "input": "a#test",
+      "input_sha256": "efb5cb8f5ee088948fdf90f8f0b2f778f2e6aac1d229b2ee16ba292d68b7efa2",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selector",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selector/Selector.json",
+      "source_sha256": "e95c2225e357915bb2676b837d030a29bf84828936ac00d74faeafacf1650be3",
+      "expectation_path": "tests/corpus/csstree/expectations/selector/Selector.json",
+      "expectation_sha256": "98e4d2e36738a38efc5db7a2a72b2f454643755825dbbf38621b430d0cab450f",
+      "original_expectation": {
+        "id": "selector/Selector.json#/type & id",
+        "context": "selector",
+        "label": "type & id",
+        "input": "a#test",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": true,
+        "outer_count": 1,
+        "is_clean": true,
+        "validation_accepts": true,
+        "typed_expectation": {
+          "kind": "compound",
+          "items": [
+            {
+              "type_selector": {
+                "local_name": "a",
+                "namespace": "Any"
+              }
+            },
+            {
+              "id": "test"
+            }
+          ]
+        },
+        "rationale": [
+          "Ordinary type/class/id/compound/complex selector grammar admits the complete input. Preserve ordered combinators and compound components; Any type namespace follows the absence of a default namespace."
+        ]
+      },
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "source_contradictions": [],
+      "uncertainties": []
+    }
+  ],
+  "independent_audit_sha256": "2f488bd073ddeb9c85ff068de453eb5d1c3e15f37b90ebbd4752e09e46ada3e7"
+}
