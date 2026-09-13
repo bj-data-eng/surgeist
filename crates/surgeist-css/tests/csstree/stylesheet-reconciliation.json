@@ -1,0 +1,3323 @@
+{
+  "schema_version": 1,
+  "basis": "696e3c09ee723dbaed9ea451029074eb0b669ffb",
+  "catalog_sha256": "607e533df4d206b893497414cf4852cf707f484492a3053b1c56155f83e6f523",
+  "unicode_contract": "parse_sheet(&str) receives decoded Unicode code points; byte decoding and BOM sniffing do not apply to these fixture strings.",
+  "diagnostic_separation": "Recovery actions and cleanliness follow public report contract, not a claim W3C mandates a diagnostic format. Position null means not settled; do not fabricate from current output.",
+  "independent_audit_sha256": "d51bf0fbad12d7a57e5380a14368888149d8f37c6c61e3e8719f43b255c798a9",
+  "entry_contract": "parse_sheet and validate_sheet receive the complete original decoded string. Upstream parser options are preserved as provenance; they do not select a different Surgeist grammar. Stylesheet adapter prefix and suffix are empty.",
+  "limits": "Expected rule trees and recovery requirements come from the independent pinned-publication audit. Null positions are not asserted. The first bracket-balance original asserts the listed recovery actions as an ordered subsequence; its exact diagnostic multiplicity, codes, and spans remain unsettled. Registry assertions compare only these independently settled constraints and do not substitute captured parser output.",
+  "rows": [
+    {
+      "id": "stylesheet/StyleSheet.json#/BOM UTF-16BE",
+      "input": "﻿",
+      "input_sha256": "f1945cd6c19e56b3c1c78943ef5ec18116907a4ca1efc40a57d48ab1db7adfc5",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/BOM UTF-16BE",
+        "context": "stylesheet",
+        "label": "BOM UTF-16BE",
+        "input": "﻿",
+        "upstream_outcome": "parsed",
+        "canonical_css": "",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": [
+          3
+        ],
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Already-decoded Unicode string input: U+FEFF and U+FFFE are non-ASCII name code points, not byte-order detection. No block follows the prelude; EOF discards the qualified rule.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#input-byte-stream",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#input-preprocessing",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "exact public-contract inference",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/BOM UTF-16BE #2",
+      "input": "﻿@a;",
+      "input_sha256": "82105357f70012bb3b627a802009e94db51b210dc0bdd0b5c1dc44a5c487d5c5",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/BOM UTF-16BE #2",
+        "context": "stylesheet",
+        "label": "BOM UTF-16BE #2",
+        "input": "﻿@a;",
+        "upstream_outcome": "parsed",
+        "canonical_css": "@a;",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": [
+          6
+        ],
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Already-decoded Unicode string input: U+FEFF and U+FFFE are non-ASCII name code points, not byte-order detection. No block follows the prelude; EOF discards the qualified rule.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#input-byte-stream",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#input-preprocessing",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "exact public-contract inference",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/BOM UTF-16LE",
+      "input": "￾",
+      "input_sha256": "4cfe925ffc429b7d7626a25a3d60a26592f6c7c352d4068311080abc58502d76",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/BOM UTF-16LE",
+        "context": "stylesheet",
+        "label": "BOM UTF-16LE",
+        "input": "￾",
+        "upstream_outcome": "parsed",
+        "canonical_css": "",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": [
+          3
+        ],
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Already-decoded Unicode string input: U+FEFF and U+FFFE are non-ASCII name code points, not byte-order detection. No block follows the prelude; EOF discards the qualified rule.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#input-byte-stream",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#input-preprocessing",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "exact public-contract inference",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/BOM UTF-16LE #2",
+      "input": "￾@a;",
+      "input_sha256": "65834cb13763b990ed9fc61d22399229401e13c4f71de2cd0f2c329b7f696010",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/BOM UTF-16LE #2",
+        "context": "stylesheet",
+        "label": "BOM UTF-16LE #2",
+        "input": "￾@a;",
+        "upstream_outcome": "parsed",
+        "canonical_css": "@a;",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": [
+          6
+        ],
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Already-decoded Unicode string input: U+FEFF and U+FFFE are non-ASCII name code points, not byte-order detection. No block follows the prelude; EOF discards the qualified rule.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#input-byte-stream",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#input-preprocessing",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "exact public-contract inference",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/CDC",
+      "input": "-->",
+      "input_sha256": "5d5b9de6d9b95f3e0c950afe742a5bb39cb25f6e6e886c10603310b7bf3cba35",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/CDC",
+        "context": "stylesheet",
+        "label": "CDC",
+        "input": "-->",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "IgnoreLegacyToken"
+        ],
+        "diagnostic_positions": [
+          0
+        ],
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Top-level legacy tokens are ignored normatively; the public source contract separately diagnoses each ignored token.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "exact public-contract inference",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/CDO",
+      "input": "<!--",
+      "input_sha256": "d3ac25ddc7ba9779c0556d543e4994d158e16a5a359347a1321dd236f1af0b67",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/CDO",
+        "context": "stylesheet",
+        "label": "CDO",
+        "input": "<!--",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "IgnoreLegacyToken"
+        ],
+        "diagnostic_positions": [
+          0
+        ],
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Top-level legacy tokens are ignored normatively; the public source contract separately diagnoses each ignored token.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "exact public-contract inference",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/CDO~1CDC",
+      "input": "<!--a{}-->",
+      "input_sha256": "b25becd5b83d37890648483acacd77673506f594798f231921d05c3477c900f8",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/CDO~1CDC",
+        "context": "stylesheet",
+        "label": "CDO/CDC",
+        "input": "<!--a{}-->",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "style",
+            "selector": "a",
+            "declarations": [],
+            "nested_rules": []
+          }
+        ],
+        "top_level_rule_count": 1,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "IgnoreLegacyToken",
+          "IgnoreLegacyToken"
+        ],
+        "diagnostic_positions": [
+          0,
+          7
+        ],
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Top-level legacy tokens are ignored normatively; the public source contract separately diagnoses each ignored token.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "exact public-contract inference",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/comment and whitespaces only",
+      "input": "  /* no css */  ",
+      "input_sha256": "fbb753ddecadba652d111e3f65b4a9e9c9a99b00b4d7d87f28ce4e6c18f8b8c7",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/comment and whitespaces only",
+        "context": "stylesheet",
+        "label": "comment and whitespaces only",
+        "input": "  /* no css */  ",
+        "upstream_outcome": "parsed",
+        "canonical_css": "",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": true,
+        "validation_accepts": true,
+        "ordered_recovery_actions": [],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Empty input, whitespace, and terminated comments yield no rules or recovery.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "clean"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/comment only",
+      "input": "/* no css */",
+      "input_sha256": "3cf0109316c2a108301c51a178e42901146fb4ff8c8e7a8610dff357e0b0e0e8",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/comment only",
+        "context": "stylesheet",
+        "label": "comment only",
+        "input": "/* no css */",
+        "upstream_outcome": "parsed",
+        "canonical_css": "",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": true,
+        "validation_accepts": true,
+        "ordered_recovery_actions": [],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Empty input, whitespace, and terminated comments yield no rules or recovery.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "clean"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/empty",
+      "input": "",
+      "input_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/empty",
+        "context": "stylesheet",
+        "label": "empty",
+        "input": "",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": true,
+        "validation_accepts": true,
+        "ordered_recovery_actions": [],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Empty input, whitespace, and terminated comments yield no rules or recovery.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "clean"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/error/0",
+      "input": "{}",
+      "input_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/error/0",
+        "context": "stylesheet",
+        "input": "{}",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Empty selector invalidates its entire style rule.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/issue #250",
+      "input": "@x {\n  unicode-range: U+2074, U+20AC, U+2212, U+2215, U+E0FF;\n}\n@x {\n  a: a();\n}",
+      "input_sha256": "f36a13ab31908940a48c07c18bae1e220f8410b8357dd0bbc5b3b828af84419a",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/issue #250",
+        "context": "stylesheet",
+        "label": "issue #250",
+        "input": "@x {\n  unicode-range: U+2074, U+20AC, U+2212, U+2215, U+E0FF;\n}\n@x {\n  a: a();\n}",
+        "upstream_outcome": "parsed",
+        "canonical_css": "@x{unicode-range:U+2074,U+20AC,U+2212,U+2215,U+E0FF}@x{a:a()}",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropAtRule",
+          "DropAtRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Unknown @x rules are discarded as units; their internal declarations are not independently parsed.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/issue111.test1",
+      "input": "body:not([x|x]) {}",
+      "input_sha256": "0d53ad49993f7df68363b591d62bde93c5d883911bf311a4750c80c018050ad0",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/issue111.test1",
+        "context": "stylesheet",
+        "label": "issue111.test1",
+        "input": "body:not([x|x]) {}",
+        "upstream_outcome": "parsed",
+        "canonical_css": "body:not([x|x]){}",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "The x namespace prefix has no sheet declaration; :not uses an unforgiving selector list. This is stylesheet grammar-context validity, not downstream matching.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#negation"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/issue90.test1",
+      "input": "@media test {\n    @page {\n        p: v;\n    }\n}",
+      "input_sha256": "cad4923b9f2b06d7410ef070684caf65e7dcd9828e7d23f218aec2ec9f02c30c",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/issue90.test1",
+        "context": "stylesheet",
+        "label": "issue90.test1",
+        "input": "@media test {\n    @page {\n        p: v;\n    }\n}",
+        "upstream_outcome": "parsed",
+        "canonical_css": "@media test{@page{p:v}}",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "media",
+            "condition": "test",
+            "rules": [
+              {
+                "kind": "page",
+                "selector": null,
+                "declarations": []
+              }
+            ]
+          }
+        ],
+        "top_level_rule_count": 1,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropDeclaration"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Unknown media type is syntactically valid. @page is allowed within conditional group; unknown p is discarded inside retained page rule.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#contents-of"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/issue90.test2",
+      "input": "x {\n    p:v;\n}\n\n@media test {\n    a {\n        p:v;\n    }\n\n    /* comment */\n\n    @page {\n        p: v;\n    }\n\n    b {\n        p:v;\n    }\n}\n\ny {\n    p:v;\n}",
+      "input_sha256": "29590f78955b08a1f6c4e4d96a7073deacb2f032a7241c617ae6d7903847faff",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/issue90.test2",
+        "context": "stylesheet",
+        "label": "issue90.test2",
+        "input": "x {\n    p:v;\n}\n\n@media test {\n    a {\n        p:v;\n    }\n\n    /* comment */\n\n    @page {\n        p: v;\n    }\n\n    b {\n        p:v;\n    }\n}\n\ny {\n    p:v;\n}",
+        "upstream_outcome": "parsed",
+        "canonical_css": "x{p:v}@media test{a{p:v}@page{p:v}b{p:v}}y{p:v}",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "style",
+            "selector": "x",
+            "declarations": [],
+            "nested_rules": []
+          },
+          {
+            "kind": "media",
+            "condition": "test",
+            "rules": [
+              {
+                "kind": "style",
+                "selector": "a",
+                "declarations": [],
+                "nested_rules": []
+              },
+              {
+                "kind": "page",
+                "selector": null,
+                "declarations": []
+              },
+              {
+                "kind": "style",
+                "selector": "b",
+                "declarations": [],
+                "nested_rules": []
+              }
+            ]
+          },
+          {
+            "kind": "style",
+            "selector": "y",
+            "declarations": [],
+            "nested_rules": []
+          }
+        ],
+        "top_level_rule_count": 3,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropDeclaration",
+          "DropDeclaration",
+          "DropDeclaration",
+          "DropDeclaration",
+          "DropDeclaration"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Retain ordered x/media/y and nested a/page/b; discard five unknown p declarations.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#contents-of"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/rule with a bad-string token (issue #93)",
+      "input": ".first{color:red\"\n}.thisAndAllFollowingRulesGetSwallowed {\n  color: red\n}",
+      "input_sha256": "bef5532618538e1992509437f2f165e24a7d967bc92b747eb89b81f5ce2807db",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/rule with a bad-string token (issue #93)",
+        "context": "stylesheet",
+        "label": "rule with a bad-string token (issue #93)",
+        "input": ".first{color:red\"\n}.thisAndAllFollowingRulesGetSwallowed {\n  color: red\n}",
+        "upstream_outcome": "parsed",
+        "canonical_css": ".first{color:red\"\n}.thisAndAllFollowingRulesGetSwallowed{color:red}",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "style",
+            "selector": ".first",
+            "declarations": [],
+            "nested_rules": []
+          },
+          {
+            "kind": "style",
+            "selector": ".thisAndAllFollowingRulesGetSwallowed",
+            "declarations": [
+              [
+                "color",
+                "red"
+              ]
+            ],
+            "nested_rules": []
+          }
+        ],
+        "top_level_rule_count": 2,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropDeclaration"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Bad-string invalidates first color declaration; newline ends bad string so subsequent block and rule remain independent.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/stylesheet.0",
+      "input": "s{p:v}",
+      "input_sha256": "49d963ee4cacfb1e2a1b53cf97100f64ed36a3908a4fead8256733d0d4a00406",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/stylesheet.0",
+        "context": "stylesheet",
+        "label": "stylesheet.0",
+        "input": "s{p:v}",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "style",
+            "selector": "s",
+            "declarations": [],
+            "nested_rules": []
+          }
+        ],
+        "top_level_rule_count": 1,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropDeclaration"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Unknown p is discarded without discarding valid empty s rule.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/stylesheet.1",
+      "input": "s0{p0:v0}s1{p1:v1}",
+      "input_sha256": "926f9aa4a73bb22f052411d0b10aa951e7eaea9a7e1006490d37f05dc067da20",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/stylesheet.1",
+        "context": "stylesheet",
+        "label": "stylesheet.1",
+        "input": "s0{p0:v0}s1{p1:v1}",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "style",
+            "selector": "s0",
+            "declarations": [],
+            "nested_rules": []
+          },
+          {
+            "kind": "style",
+            "selector": "s1",
+            "declarations": [],
+            "nested_rules": []
+          }
+        ],
+        "top_level_rule_count": 2,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropDeclaration",
+          "DropDeclaration"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Discard unknown p0 and p1 while retaining both ordered style rules.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/stylesheet.2",
+      "input": "@test;",
+      "input_sha256": "d2ba027ebef1346c8bf39ad8c2a57553de2cb8651f61c9a3f28a97dc80e6fb3a",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/stylesheet.2",
+        "context": "stylesheet",
+        "label": "stylesheet.2",
+        "input": "@test;",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropAtRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Unknown @test family rules are discarded.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/stylesheet.3",
+      "input": "@test0;@test1;",
+      "input_sha256": "8d82d5298db330d20b4418ea618b1201eef88b9a2e93046be339c987c6511afa",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/stylesheet.3",
+        "context": "stylesheet",
+        "label": "stylesheet.3",
+        "input": "@test0;@test1;",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropAtRule",
+          "DropAtRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Unknown @test family rules are discarded.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/stylesheet.4",
+      "input": "s{p:v}@test;",
+      "input_sha256": "3ab0b41ae8794d0b449a5bd38d69f28be2305cae8adb2cd35a0c9d3ad51dfcb1",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/stylesheet.4",
+        "context": "stylesheet",
+        "label": "stylesheet.4",
+        "input": "s{p:v}@test;",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "style",
+            "selector": "s",
+            "declarations": [],
+            "nested_rules": []
+          }
+        ],
+        "top_level_rule_count": 1,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropDeclaration",
+          "DropAtRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Unknown p is discarded without discarding valid empty s rule. Unknown following @test is discarded.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/stylesheet.c.0",
+      "input": "/* test */\ns {\n    p: v\n}\n/* test */",
+      "input_sha256": "68d9c0e14375899dbebbbc046772aed20972c0fc17b64b6427df05f17d237da3",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/stylesheet.c.0",
+        "context": "stylesheet",
+        "label": "stylesheet.c.0",
+        "input": "/* test */\ns {\n    p: v\n}\n/* test */",
+        "upstream_outcome": "parsed",
+        "canonical_css": "s{p:v}",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "style",
+            "selector": "s",
+            "declarations": [],
+            "nested_rules": []
+          }
+        ],
+        "top_level_rule_count": 1,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropDeclaration"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Unknown p is discarded without discarding valid empty s rule.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/stylesheet.s.0",
+      "input": "s {\n    p: v\n}",
+      "input_sha256": "b226e5d8e12bd1de49ec60dc8889a34bd8e849921072af8170ce1c11568c8edc",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/stylesheet.s.0",
+        "context": "stylesheet",
+        "label": "stylesheet.s.0",
+        "input": "s {\n    p: v\n}",
+        "upstream_outcome": "parsed",
+        "canonical_css": "s{p:v}",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "style",
+            "selector": "s",
+            "declarations": [],
+            "nested_rules": []
+          }
+        ],
+        "top_level_rule_count": 1,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropDeclaration"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Unknown p is discarded without discarding valid empty s rule.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/stylesheet.s.1",
+      "input": "s0 {\n    p0: v0\n}\n\ns1 {\n    p1: v1\n}",
+      "input_sha256": "d7aaee679b09d20ea67feaad1f512ebd1da5ffdaa7f779fd1a3badaeb13368fe",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/stylesheet.s.1",
+        "context": "stylesheet",
+        "label": "stylesheet.s.1",
+        "input": "s0 {\n    p0: v0\n}\n\ns1 {\n    p1: v1\n}",
+        "upstream_outcome": "parsed",
+        "canonical_css": "s0{p0:v0}s1{p1:v1}",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "style",
+            "selector": "s0",
+            "declarations": [],
+            "nested_rules": []
+          },
+          {
+            "kind": "style",
+            "selector": "s1",
+            "declarations": [],
+            "nested_rules": []
+          }
+        ],
+        "top_level_rule_count": 2,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropDeclaration",
+          "DropDeclaration"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Discard unknown p0 and p1 while retaining both ordered style rules.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/stylesheet.s.2",
+      "input": "@test0;\n@test1;",
+      "input_sha256": "ef1341ed7726e084c0c1db1ba2cb9d85bd7bd60754e49224935e3c0499caa6de",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/stylesheet.s.2",
+        "context": "stylesheet",
+        "label": "stylesheet.s.2",
+        "input": "@test0;\n@test1;",
+        "upstream_outcome": "parsed",
+        "canonical_css": "@test0;@test1;",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropAtRule",
+          "DropAtRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Unknown @test family rules are discarded.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/stylesheet.s.3",
+      "input": "s {\n    p:v\n}\n\n@test;",
+      "input_sha256": "c982d5708df2ade83c9a77eab9682879f13d719aa7591c26f5f7fa0eedff432c",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/stylesheet.s.3",
+        "context": "stylesheet",
+        "label": "stylesheet.s.3",
+        "input": "s {\n    p:v\n}\n\n@test;",
+        "upstream_outcome": "parsed",
+        "canonical_css": "s{p:v}@test;",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "style",
+            "selector": "s",
+            "declarations": [],
+            "nested_rules": []
+          }
+        ],
+        "top_level_rule_count": 1,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropDeclaration",
+          "DropAtRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Unknown p is discarded without discarding valid empty s rule. Unknown following @test is discarded.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/StyleSheet.json#/whitespace only",
+      "input": "  ",
+      "input_sha256": "6c179f21e6f62b629055d8ab40f454ed02e48b68563913473b857d3638e23b28",
+      "source_path": "tests/corpus/csstree/source/stylesheet/StyleSheet.json",
+      "source_sha256": "91acc0bc19a327a0699fa8ca4eb57135e3c65d3c650c860640a3134133e052f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/StyleSheet.json",
+      "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/StyleSheet.json#/whitespace only",
+        "context": "stylesheet",
+        "label": "whitespace only",
+        "input": "  ",
+        "upstream_outcome": "parsed",
+        "canonical_css": "",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": true,
+        "validation_accepts": true,
+        "ordered_recovery_actions": [],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Empty input, whitespace, and terminated comments yield no rules or recovery.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "clean"
+    },
+    {
+      "id": "stylesheet/comment.json#/bad comment #1",
+      "input": "/*! bad comment *",
+      "input_sha256": "66b5af857e9644a38c9400058a079e54f25b98fc8542fba7eb49cc57fcfc08e0",
+      "source_path": "tests/corpus/csstree/source/stylesheet/comment.json",
+      "source_sha256": "5288f6d90b9e06843588707838945e314cd6fe848264dcaff3902adcfbc6684c",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/comment.json",
+      "expectation_sha256": "912d63de4186d82914c81986721ccf7be62c589047c416c4836fc4471da97575",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/comment.json#/bad comment #1",
+        "context": "stylesheet",
+        "label": "bad comment #1",
+        "input": "/*! bad comment *",
+        "upstream_outcome": "parsed",
+        "canonical_css": "/*! bad comment **/",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "IgnoreUnterminatedComment"
+        ],
+        "diagnostic_positions": [
+          17
+        ],
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Comment consumes through EOF; no syntax retained. Tokenizer recovery is independently diagnosed.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "exact public-contract inference",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/comment.json#/bad comment #2",
+      "input": "/*! bad comment ",
+      "input_sha256": "074cd3470ceb479eb0d40ebe97ffa2988b1658297d9f5fdf0aff2ba8aa1ecd50",
+      "source_path": "tests/corpus/csstree/source/stylesheet/comment.json",
+      "source_sha256": "5288f6d90b9e06843588707838945e314cd6fe848264dcaff3902adcfbc6684c",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/comment.json",
+      "expectation_sha256": "912d63de4186d82914c81986721ccf7be62c589047c416c4836fc4471da97575",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/comment.json#/bad comment #2",
+        "context": "stylesheet",
+        "label": "bad comment #2",
+        "input": "/*! bad comment ",
+        "upstream_outcome": "parsed",
+        "canonical_css": "/*! bad comment */",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "IgnoreUnterminatedComment"
+        ],
+        "diagnostic_positions": [
+          16
+        ],
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Comment consumes through EOF; no syntax retained. Tokenizer recovery is independently diagnosed.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "exact public-contract inference",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/comment.json#/comment.0",
+      "input": "/*!test*/",
+      "input_sha256": "1eab46511c3f364cb5de53199dcd3fac60c7734842844f335770edb48430fadf",
+      "source_path": "tests/corpus/csstree/source/stylesheet/comment.json",
+      "source_sha256": "5288f6d90b9e06843588707838945e314cd6fe848264dcaff3902adcfbc6684c",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/comment.json",
+      "expectation_sha256": "912d63de4186d82914c81986721ccf7be62c589047c416c4836fc4471da97575",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/comment.json#/comment.0",
+        "context": "stylesheet",
+        "label": "comment.0",
+        "input": "/*!test*/",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": true,
+        "validation_accepts": true,
+        "ordered_recovery_actions": [],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Terminated comment yields empty clean stylesheet.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "clean"
+    },
+    {
+      "id": "stylesheet/comment.json#/comment.1",
+      "input": "/*!te\nst*/",
+      "input_sha256": "06a0e55ccb10b036524e0f56218e210ac9b03090067ef0a798c873210733ae85",
+      "source_path": "tests/corpus/csstree/source/stylesheet/comment.json",
+      "source_sha256": "5288f6d90b9e06843588707838945e314cd6fe848264dcaff3902adcfbc6684c",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/comment.json",
+      "expectation_sha256": "912d63de4186d82914c81986721ccf7be62c589047c416c4836fc4471da97575",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/comment.json#/comment.1",
+        "context": "stylesheet",
+        "label": "comment.1",
+        "input": "/*!te\nst*/",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": true,
+        "validation_accepts": true,
+        "ordered_recovery_actions": [],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Terminated comment yields empty clean stylesheet.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "clean"
+    },
+    {
+      "id": "stylesheet/comment.json#/comment.2",
+      "input": "/*!te\rst*/",
+      "input_sha256": "13b7b35099dc13b0d42a9d831dac0d810a49351df6ade838323ca21b77ecbf79",
+      "source_path": "tests/corpus/csstree/source/stylesheet/comment.json",
+      "source_sha256": "5288f6d90b9e06843588707838945e314cd6fe848264dcaff3902adcfbc6684c",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/comment.json",
+      "expectation_sha256": "912d63de4186d82914c81986721ccf7be62c589047c416c4836fc4471da97575",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/comment.json#/comment.2",
+        "context": "stylesheet",
+        "label": "comment.2",
+        "input": "/*!te\rst*/",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": true,
+        "validation_accepts": true,
+        "ordered_recovery_actions": [],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Terminated comment yields empty clean stylesheet.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "clean"
+    },
+    {
+      "id": "stylesheet/comment.json#/comment.3",
+      "input": "/*!te\r\nst*/",
+      "input_sha256": "ad68663fa68f869b8a5ee876b876b81ef9c27a725b7cd5ecb8aee93faeabf3b4",
+      "source_path": "tests/corpus/csstree/source/stylesheet/comment.json",
+      "source_sha256": "5288f6d90b9e06843588707838945e314cd6fe848264dcaff3902adcfbc6684c",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/comment.json",
+      "expectation_sha256": "912d63de4186d82914c81986721ccf7be62c589047c416c4836fc4471da97575",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/comment.json#/comment.3",
+        "context": "stylesheet",
+        "label": "comment.3",
+        "input": "/*!te\r\nst*/",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": true,
+        "validation_accepts": true,
+        "ordered_recovery_actions": [],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Terminated comment yields empty clean stylesheet.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "clean"
+    },
+    {
+      "id": "stylesheet/comment.json#/comment.4",
+      "input": "/*!te**st*/",
+      "input_sha256": "c8dd9a1c83d0baf057a7917e6e60eace5d7ca414eba4a09372e10ebefabbec8f",
+      "source_path": "tests/corpus/csstree/source/stylesheet/comment.json",
+      "source_sha256": "5288f6d90b9e06843588707838945e314cd6fe848264dcaff3902adcfbc6684c",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/comment.json",
+      "expectation_sha256": "912d63de4186d82914c81986721ccf7be62c589047c416c4836fc4471da97575",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/comment.json#/comment.4",
+        "context": "stylesheet",
+        "label": "comment.4",
+        "input": "/*!te**st*/",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": true,
+        "validation_accepts": true,
+        "ordered_recovery_actions": [],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Terminated comment yields empty clean stylesheet.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "clean"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/0",
+      "input": "100 {}",
+      "input_sha256": "989a9edf40bb5c3a344c35900ed4b006ba4768f37588e8d5eaf0dfd8ceffde85",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/0",
+        "context": "stylesheet",
+        "input": "100 {}",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/1",
+      "input": ". {}",
+      "input_sha256": "83a64a3433b3fb3ef3fba4783a4393de415b319ab36b928601bf46fc71a06486",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/1",
+        "context": "stylesheet",
+        "input": ". {}",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/10",
+      "input": "a { color: # }",
+      "input_sha256": "fceec5e3146eaf1274c10ccce9ae7eef588ad07a9fe1f86cbb44d05698b673cc",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/10",
+        "context": "stylesheet",
+        "input": "a { color: # }",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "style",
+            "selector": "a",
+            "declarations": [],
+            "nested_rules": []
+          }
+        ],
+        "top_level_rule_count": 1,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropDeclaration"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Invalid or missing declaration value/colon is discarded; valid enclosing rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/11",
+      "input": ": {}",
+      "input_sha256": "d893fcf92aa10f2bc47353e182a23e48707f35735c929e8defe1cbe93100eb57",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/11",
+        "context": "stylesheet",
+        "input": ": {}",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/12",
+      "input": ":{}",
+      "input_sha256": "3114790f30df7a375b77913c215ac4dd5b75526d952de6942d649e7f4f7ea6c4",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/12",
+        "context": "stylesheet",
+        "input": ":{}",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/13",
+      "input": ":",
+      "input_sha256": "e7ac0786668e0ff0f02b62bd04f45ff636fd82db63b1104601c975dc005f3a67",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/13",
+        "context": "stylesheet",
+        "input": ":",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/14",
+      "input": "::",
+      "input_sha256": "71546855d6279ef70d20909b292c42c2dcb02cd06bde01485da52d13e304ebf4",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/14",
+        "context": "stylesheet",
+        "input": "::",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/15",
+      "input": ": ",
+      "input_sha256": "45822f54a0d0e030f75698c9252f1345982e743c9466806048f542467b3ca4f9",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/15",
+        "context": "stylesheet",
+        "input": ": ",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/16",
+      "input": ":pseudo({}",
+      "input_sha256": "586085d5f7558a372ec841aaec12f444d3e3376a6c8ca581b9b9dee944b62126",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/16",
+        "context": "stylesheet",
+        "input": ":pseudo({}",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/17",
+      "input": "[",
+      "input_sha256": "245843abef9e72e7efac30138a994bf6301e7e1d7d7042a33d42e863d2638811",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/17",
+        "context": "stylesheet",
+        "input": "[",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/18",
+      "input": "]",
+      "input_sha256": "cfae0d4248f7142f7b17f826cd7a519280e312577690e957830d23dcf35a3fff",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/18",
+        "context": "stylesheet",
+        "input": "]",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/19",
+      "input": ")",
+      "input_sha256": "ba5ec51d07a4ac0e951608704431d59a02b21a4e951acc10505a8dc407c501ee",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/19",
+        "context": "stylesheet",
+        "input": ")",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/2",
+      "input": ".{}",
+      "input_sha256": "c2db690b8cf6a25d19508bd2aede93bf6fa4dcac11e216faad6290c4d2692abb",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/2",
+        "context": "stylesheet",
+        "input": ".{}",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/20",
+      "input": "}",
+      "input_sha256": "d10b36aa74a59bcf4a88185837f658afaf3646eff2bb16c3928d0e9335e945d2",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/20",
+        "context": "stylesheet",
+        "input": "}",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/21",
+      "input": "a /foo/ b",
+      "input_sha256": "af785d6c9365c1ad31a51235f678df621bf601e79e72ca7cfc950efaf5692ee0",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/21",
+        "context": "stylesheet",
+        "input": "a /foo/ b",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/22",
+      "input": ".a",
+      "input_sha256": "36797c3aba1ef6ae33ece2e5a184ba8061d29c4fb479a4ef2ddedad1b4ca1200",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/22",
+        "context": "stylesheet",
+        "input": ".a",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/23",
+      "input": ".a \n    ",
+      "input_sha256": "453a61cc1ae5e027e634e32c0b710e709dc85dff159a9bb077dac3b7271429f8",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/23",
+        "context": "stylesheet",
+        "input": ".a \n    ",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/24",
+      "input": "  \n   \n.a \n    ",
+      "input_sha256": "ea0ed7c33145ab766daece2dbdbd74e89753315f5df699d0b948a098b77badef",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/24",
+        "context": "stylesheet",
+        "input": "  \n   \n.a \n    ",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/25",
+      "input": ".foo { var(--side): 20px }",
+      "input_sha256": "4e200174b66b50be5bf3608f091036369a8c579a3514687cf1cae4ddce4176ce",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/25",
+        "context": "stylesheet",
+        "input": ".foo { var(--side): 20px }",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "style",
+            "selector": ".foo",
+            "declarations": [],
+            "nested_rules": []
+          }
+        ],
+        "top_level_rule_count": 1,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one source-characterized recovery; normative requirement is discard malformed body unit and retain parent"
+      },
+      "rationale": "var(--side):20px is neither declaration (name is function token) nor valid nested relative selector rule (no rule block). Retain .foo with no declarations or children; reject clean validation. Normative retention is settled independently of which diagnostic action names this malformed style-body unit.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nesting"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/3",
+      "input": ".",
+      "input_sha256": "cdb4ee2aea69cc6a83331bbe96dc2caa9a299d21329efb0336fc02a82e1839a8",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/3",
+        "context": "stylesheet",
+        "input": ".",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/4",
+      "input": ".1px {}",
+      "input_sha256": "cdfb739a557583d76bef8d70e4ebb2aac99f0eb0aef97ad2c84494c08fa61d4f",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/4",
+        "context": "stylesheet",
+        "input": ".1px {}",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/5",
+      "input": "# {}",
+      "input_sha256": "499e599fb159065f36ab328f140c9f87bba3f783bc1bb4d13045ff86cc411a7e",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/5",
+        "context": "stylesheet",
+        "input": "# {}",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/6",
+      "input": "#{}",
+      "input_sha256": "7f1e4d16ce7218d011cd131b16d69c40c452f522cd09df6d581d5bb562213d45",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/6",
+        "context": "stylesheet",
+        "input": "#{}",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/7",
+      "input": "#",
+      "input_sha256": "334359b90efed75da5f0ada1d5e6b256f4a6bd0aee7eb39c0f90182a021ffc8b",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/7",
+        "context": "stylesheet",
+        "input": "#",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/8",
+      "input": "a { color }",
+      "input_sha256": "81659a6796c09df8827d12d0c220c0ac216c3c5fd044415698d1cf36e5d67264",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/8",
+        "context": "stylesheet",
+        "input": "a { color }",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "style",
+            "selector": "a",
+            "declarations": [],
+            "nested_rules": []
+          }
+        ],
+        "top_level_rule_count": 1,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropDeclaration"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Invalid or missing declaration value/colon is discarded; valid enclosing rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/errors.json#/error/9",
+      "input": "a { color: #}",
+      "input_sha256": "73cfdeba8e380256fe5b9692e3aaaf8253c8cdffcb95a5df65520ec674aa5d5e",
+      "source_path": "tests/corpus/csstree/source/stylesheet/errors.json",
+      "source_sha256": "85f63864c1d8d8d9756b14472f2e89e0667035741a4c3d3306e1cf6b2769ea93",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/errors.json",
+      "expectation_sha256": "f9f2a3c0a7704ed5aa94db02477d2b6d33da7f0637951bb323a579995041c6c6",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/errors.json#/error/9",
+        "context": "stylesheet",
+        "input": "a { color: #}",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "style",
+            "selector": "a",
+            "declarations": [],
+            "nested_rules": []
+          }
+        ],
+        "top_level_rule_count": 1,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropDeclaration"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Invalid or missing declaration value/colon is discarded; valid enclosing rule remains.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/bad selector/0",
+      "input": " ? {}",
+      "input_sha256": "f0667d4fc29c6e4c05d7796aecd7bfba56d594ad21c4f55c348bdefaaa050025",
+      "source_path": "tests/corpus/csstree/source/stylesheet/tolerant.json",
+      "source_sha256": "d4bf0daef501880d31c04ec525812fb20f446cd74d8147ed85fe2cda5306c8f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/tolerant.json",
+      "expectation_sha256": "77ddb5a1dcdbea63fc142a402337780535907699619fe3c9407ff7e7fba208fc",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/tolerant.json#/bad selector/0",
+        "context": "stylesheet",
+        "label": "bad selector",
+        "input": " ? {}",
+        "upstream_outcome": "parsed",
+        "canonical_css": "?{}",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Invalid selector or no top-level block; nested bracket/function block is not the qualified rule block. Discard incomplete/invalid rule.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/bad selector/1",
+      "input": ".a! { } .a {}",
+      "input_sha256": "2194ba1eedd30144c61877af238d27c5744e5274500e01f4ab914c77db55868e",
+      "source_path": "tests/corpus/csstree/source/stylesheet/tolerant.json",
+      "source_sha256": "d4bf0daef501880d31c04ec525812fb20f446cd74d8147ed85fe2cda5306c8f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/tolerant.json",
+      "expectation_sha256": "77ddb5a1dcdbea63fc142a402337780535907699619fe3c9407ff7e7fba208fc",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/tolerant.json#/bad selector/1",
+        "context": "stylesheet",
+        "label": "bad selector",
+        "input": ".a! { } .a {}",
+        "upstream_outcome": "parsed",
+        "canonical_css": ".a!{}.a{}",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "style",
+            "selector": ".a",
+            "declarations": [],
+            "nested_rules": []
+          }
+        ],
+        "top_level_rule_count": 1,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Discard invalid .a! rule and retain later .a empty rule. Upstream tolerant option does not select a different Surgeist grammar.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/bad selector/2",
+      "input": ".a! { } .a {}",
+      "input_sha256": "2194ba1eedd30144c61877af238d27c5744e5274500e01f4ab914c77db55868e",
+      "source_path": "tests/corpus/csstree/source/stylesheet/tolerant.json",
+      "source_sha256": "d4bf0daef501880d31c04ec525812fb20f446cd74d8147ed85fe2cda5306c8f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/tolerant.json",
+      "expectation_sha256": "77ddb5a1dcdbea63fc142a402337780535907699619fe3c9407ff7e7fba208fc",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/tolerant.json#/bad selector/2",
+        "context": "stylesheet",
+        "label": "bad selector",
+        "input": ".a! { } .a {}",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "style",
+            "selector": ".a",
+            "declarations": [],
+            "nested_rules": []
+          }
+        ],
+        "top_level_rule_count": 1,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Discard invalid .a! rule and retain later .a empty rule. Upstream tolerant option does not select a different Surgeist grammar.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/correct fallback on error in at-rule block/0",
+      "input": "@media (max-width:1000px){top:0;left:0;width:100%;}*{color:red}",
+      "input_sha256": "dfde0fa1daaf47375a68e75ae5eefbd6895e4097b4a7079724e3e2c4352ad138",
+      "source_path": "tests/corpus/csstree/source/stylesheet/tolerant.json",
+      "source_sha256": "d4bf0daef501880d31c04ec525812fb20f446cd74d8147ed85fe2cda5306c8f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/tolerant.json",
+      "expectation_sha256": "77ddb5a1dcdbea63fc142a402337780535907699619fe3c9407ff7e7fba208fc",
+      "options": {
+        "parseAtrulePrelude": false
+      },
+      "options_sha256": "5afd565e00ec052c754b4cfe81fb8e42ab9215e475d1e6146286f47613152428",
+      "original_expectation": {
+        "id": "stylesheet/tolerant.json#/correct fallback on error in at-rule block/0",
+        "context": "stylesheet",
+        "label": "correct fallback on error in at-rule block",
+        "input": "@media (max-width:1000px){top:0;left:0;width:100%;}*{color:red}",
+        "options": {
+          "parseAtrulePrelude": false
+        },
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "media",
+            "condition": "(max-width:1000px)",
+            "rules": []
+          },
+          {
+            "kind": "style",
+            "selector": "*",
+            "declarations": [
+              [
+                "color",
+                "red"
+              ]
+            ],
+            "nested_rules": []
+          }
+        ],
+        "top_level_rule_count": 2,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Top-level media body is a rule list: declaration-looking text without a block becomes one discarded incomplete qualified rule; retain empty media and subsequent universal rule.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/correct fallback on error in at-rule block/1",
+      "input": "@media (max-width:1000px){a{};b{}}",
+      "input_sha256": "716281e0cf939459d83f6259ff8b1c1695d3c25d157feaeaa2809c223480afc7",
+      "source_path": "tests/corpus/csstree/source/stylesheet/tolerant.json",
+      "source_sha256": "d4bf0daef501880d31c04ec525812fb20f446cd74d8147ed85fe2cda5306c8f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/tolerant.json",
+      "expectation_sha256": "77ddb5a1dcdbea63fc142a402337780535907699619fe3c9407ff7e7fba208fc",
+      "options": {
+        "parseAtrulePrelude": false
+      },
+      "options_sha256": "5afd565e00ec052c754b4cfe81fb8e42ab9215e475d1e6146286f47613152428",
+      "original_expectation": {
+        "id": "stylesheet/tolerant.json#/correct fallback on error in at-rule block/1",
+        "context": "stylesheet",
+        "label": "correct fallback on error in at-rule block",
+        "input": "@media (max-width:1000px){a{};b{}}",
+        "options": {
+          "parseAtrulePrelude": false
+        },
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "media",
+            "condition": "(max-width:1000px)",
+            "rules": [
+              {
+                "kind": "style",
+                "selector": "a",
+                "declarations": [],
+                "nested_rules": []
+              }
+            ]
+          }
+        ],
+        "top_level_rule_count": 1,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Syntax 3 rule-list consumption includes semicolon in next prelude; ;b or ;@b invalidates that entire qualified rule. Retain media and its first a rule.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-list-of-rules",
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#contents-of",
+        "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#syntax"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/correct fallback on error in at-rule block/2",
+      "input": "@media (max-width:1000px){a{};@b{}}",
+      "input_sha256": "6ddf766c816a8c8eade2e468242c1f9ef3b45251491dbc5e68f68961bff357ef",
+      "source_path": "tests/corpus/csstree/source/stylesheet/tolerant.json",
+      "source_sha256": "d4bf0daef501880d31c04ec525812fb20f446cd74d8147ed85fe2cda5306c8f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/tolerant.json",
+      "expectation_sha256": "77ddb5a1dcdbea63fc142a402337780535907699619fe3c9407ff7e7fba208fc",
+      "options": {
+        "parseAtrulePrelude": false
+      },
+      "options_sha256": "5afd565e00ec052c754b4cfe81fb8e42ab9215e475d1e6146286f47613152428",
+      "original_expectation": {
+        "id": "stylesheet/tolerant.json#/correct fallback on error in at-rule block/2",
+        "context": "stylesheet",
+        "label": "correct fallback on error in at-rule block",
+        "input": "@media (max-width:1000px){a{};@b{}}",
+        "options": {
+          "parseAtrulePrelude": false
+        },
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "media",
+            "condition": "(max-width:1000px)",
+            "rules": [
+              {
+                "kind": "style",
+                "selector": "a",
+                "declarations": [],
+                "nested_rules": []
+              }
+            ]
+          }
+        ],
+        "top_level_rule_count": 1,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Syntax 3 rule-list consumption includes semicolon in next prelude; ;b or ;@b invalidates that entire qualified rule. Retain media and its first a rule.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-list-of-rules",
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#contents-of",
+        "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#syntax"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/no block",
+      "input": " ? ",
+      "input_sha256": "8712b15630fdaf14b0cf0e835b6710f5ba541b766e926bc1de54ab29deb6d0e8",
+      "source_path": "tests/corpus/csstree/source/stylesheet/tolerant.json",
+      "source_sha256": "d4bf0daef501880d31c04ec525812fb20f446cd74d8147ed85fe2cda5306c8f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/tolerant.json",
+      "expectation_sha256": "77ddb5a1dcdbea63fc142a402337780535907699619fe3c9407ff7e7fba208fc",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/tolerant.json#/no block",
+        "context": "stylesheet",
+        "label": "no block",
+        "input": " ? ",
+        "upstream_outcome": "parsed",
+        "canonical_css": "? ",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Invalid selector or no top-level block; nested bracket/function block is not the qualified rule block. Discard incomplete/invalid rule.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/parser should respect bracket balance over stop token",
+      "input": ".a{--x:(;color:green;}.b{color:red;--y:);width:10px}",
+      "input_sha256": "7654a4d459b45193b8964ed2f399c8c818d6557b5e9f71c4ad3a4dcf0ffb7b62",
+      "source_path": "tests/corpus/csstree/source/stylesheet/tolerant.json",
+      "source_sha256": "d4bf0daef501880d31c04ec525812fb20f446cd74d8147ed85fe2cda5306c8f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/tolerant.json",
+      "expectation_sha256": "77ddb5a1dcdbea63fc142a402337780535907699619fe3c9407ff7e7fba208fc",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/tolerant.json#/parser should respect bracket balance over stop token",
+        "context": "stylesheet",
+        "label": "parser should respect bracket balance over stop token",
+        "input": ".a{--x:(;color:green;}.b{color:red;--y:);width:10px}",
+        "upstream_outcome": "parsed",
+        "canonical_css": ".a{--x:(;color:green;}.b{color:red;--y:);width:10px}}",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "style",
+            "selector": ".a",
+            "declarations": [],
+            "nested_rules": []
+          }
+        ],
+        "top_level_rule_count": 1,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropDeclaration",
+          "RetainWithImplicitClosure"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "minimum actions; nested EOF/tokenization recovery multiplicity requires source characterization"
+      },
+      "rationale": "Balanced component consumption prevents .b becoming sibling. --x contains unmatched closing } inside parentheses and is invalid under declaration-value grammar. Second case recovers width after closed parentheses; first consumes width within nested block and closes outer units at EOF.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-simple-block"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "ordered_subsequence",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/parser should respect bracket balance over stop token #2",
+      "input": ".a{--x:(;color:green;}.b{color:red;--y:});width:10px}",
+      "input_sha256": "64112088f92204c4439392df5e7ac24ffaf0482757d9fe1bc7d6acefe0fe5e0f",
+      "source_path": "tests/corpus/csstree/source/stylesheet/tolerant.json",
+      "source_sha256": "d4bf0daef501880d31c04ec525812fb20f446cd74d8147ed85fe2cda5306c8f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/tolerant.json",
+      "expectation_sha256": "77ddb5a1dcdbea63fc142a402337780535907699619fe3c9407ff7e7fba208fc",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/tolerant.json#/parser should respect bracket balance over stop token #2",
+        "context": "stylesheet",
+        "label": "parser should respect bracket balance over stop token #2",
+        "input": ".a{--x:(;color:green;}.b{color:red;--y:});width:10px}",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "style",
+            "selector": ".a",
+            "declarations": [
+              [
+                "width",
+                "10px"
+              ]
+            ],
+            "nested_rules": []
+          }
+        ],
+        "top_level_rule_count": 1,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropDeclaration"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Balanced component consumption prevents .b becoming sibling. --x contains unmatched closing } inside parentheses and is invalid under declaration-value grammar. Second case recovers width after closed parentheses; first consumes width within nested block and closes outer units at EOF.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-simple-block"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/rule with unclosed attribute selector/0",
+      "input": "div[attr",
+      "input_sha256": "a1380fc1c54cbf4c1ef60beb3b4ca7679a3da2d8698afff49db14edb5d989f92",
+      "source_path": "tests/corpus/csstree/source/stylesheet/tolerant.json",
+      "source_sha256": "d4bf0daef501880d31c04ec525812fb20f446cd74d8147ed85fe2cda5306c8f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/tolerant.json",
+      "expectation_sha256": "77ddb5a1dcdbea63fc142a402337780535907699619fe3c9407ff7e7fba208fc",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/tolerant.json#/rule with unclosed attribute selector/0",
+        "context": "stylesheet",
+        "label": "rule with unclosed attribute selector",
+        "input": "div[attr",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Invalid selector or no top-level block; nested bracket/function block is not the qualified rule block. Discard incomplete/invalid rule.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/rule with unclosed attribute selector/1",
+      "input": "div[attr=",
+      "input_sha256": "6714fcf76bee33f2089f5d1785c6ce07f3fb0c104c001c48bb4cdc8797ada014",
+      "source_path": "tests/corpus/csstree/source/stylesheet/tolerant.json",
+      "source_sha256": "d4bf0daef501880d31c04ec525812fb20f446cd74d8147ed85fe2cda5306c8f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/tolerant.json",
+      "expectation_sha256": "77ddb5a1dcdbea63fc142a402337780535907699619fe3c9407ff7e7fba208fc",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/tolerant.json#/rule with unclosed attribute selector/1",
+        "context": "stylesheet",
+        "label": "rule with unclosed attribute selector",
+        "input": "div[attr=",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Invalid selector or no top-level block; nested bracket/function block is not the qualified rule block. Discard incomplete/invalid rule.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/rule with unclosed attribute selector/2",
+      "input": "div[attr=123",
+      "input_sha256": "d6ff9d2763b486ba81b33af0c96f1391cacefcbd13ee6845f8a83af20734d017",
+      "source_path": "tests/corpus/csstree/source/stylesheet/tolerant.json",
+      "source_sha256": "d4bf0daef501880d31c04ec525812fb20f446cd74d8147ed85fe2cda5306c8f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/tolerant.json",
+      "expectation_sha256": "77ddb5a1dcdbea63fc142a402337780535907699619fe3c9407ff7e7fba208fc",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/tolerant.json#/rule with unclosed attribute selector/2",
+        "context": "stylesheet",
+        "label": "rule with unclosed attribute selector",
+        "input": "div[attr=123",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Invalid selector or no top-level block; nested bracket/function block is not the qualified rule block. Discard incomplete/invalid rule.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/rule with unclosed pseudo selector",
+      "input": "div:not(a,",
+      "input_sha256": "2b405728d7aa65bde1cd3f88aeb3d3023520a663b9d2f0b3f45ae89461b59c70",
+      "source_path": "tests/corpus/csstree/source/stylesheet/tolerant.json",
+      "source_sha256": "d4bf0daef501880d31c04ec525812fb20f446cd74d8147ed85fe2cda5306c8f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/tolerant.json",
+      "expectation_sha256": "77ddb5a1dcdbea63fc142a402337780535907699619fe3c9407ff7e7fba208fc",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/tolerant.json#/rule with unclosed pseudo selector",
+        "context": "stylesheet",
+        "label": "rule with unclosed pseudo selector",
+        "input": "div:not(a,",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Invalid selector or no top-level block; nested bracket/function block is not the qualified rule block. Discard incomplete/invalid rule.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/unclosed block",
+      "input": "foo {",
+      "input_sha256": "b388b2fdc71e0c7f6a0168de9d545f2c9e045610534a86163c1bf206cb428575",
+      "source_path": "tests/corpus/csstree/source/stylesheet/tolerant.json",
+      "source_sha256": "d4bf0daef501880d31c04ec525812fb20f446cd74d8147ed85fe2cda5306c8f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/tolerant.json",
+      "expectation_sha256": "77ddb5a1dcdbea63fc142a402337780535907699619fe3c9407ff7e7fba208fc",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/tolerant.json#/unclosed block",
+        "context": "stylesheet",
+        "label": "unclosed block",
+        "input": "foo {",
+        "upstream_outcome": "parsed",
+        "canonical_css": "foo{}",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [
+          {
+            "kind": "style",
+            "selector": "foo",
+            "declarations": [],
+            "nested_rules": []
+          }
+        ],
+        "top_level_rule_count": 1,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "RetainWithImplicitClosure"
+        ],
+        "diagnostic_positions": [
+          5
+        ],
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "EOF implicitly closes empty style block; retained rule is valid but report diagnoses closure.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "exact public-contract inference",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "recovered"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/unclosed unknown functional-pseudo in selector",
+      "input": " foo:bar(x {}",
+      "input_sha256": "7d0fe601d957bb4c67c2cbec2d0e84fad5c9b3f86969ceda82883d1967754c00",
+      "source_path": "tests/corpus/csstree/source/stylesheet/tolerant.json",
+      "source_sha256": "d4bf0daef501880d31c04ec525812fb20f446cd74d8147ed85fe2cda5306c8f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/tolerant.json",
+      "expectation_sha256": "77ddb5a1dcdbea63fc142a402337780535907699619fe3c9407ff7e7fba208fc",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/tolerant.json#/unclosed unknown functional-pseudo in selector",
+        "context": "stylesheet",
+        "label": "unclosed unknown functional-pseudo in selector",
+        "input": " foo:bar(x {}",
+        "upstream_outcome": "parsed",
+        "canonical_css": "foo:bar(x {}",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Invalid selector or no top-level block; nested bracket/function block is not the qualified rule block. Discard incomplete/invalid rule.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    },
+    {
+      "id": "stylesheet/tolerant.json#/uncomplete pseudo in selector",
+      "input": " foo: {}",
+      "input_sha256": "527d19afd96c5bf75a6612d400fc58d34a891cb0c43971ae93e3bdcee7936642",
+      "source_path": "tests/corpus/csstree/source/stylesheet/tolerant.json",
+      "source_sha256": "d4bf0daef501880d31c04ec525812fb20f446cd74d8147ed85fe2cda5306c8f6",
+      "expectation_path": "tests/corpus/csstree/expectations/stylesheet/tolerant.json",
+      "expectation_sha256": "77ddb5a1dcdbea63fc142a402337780535907699619fe3c9407ff7e7fba208fc",
+      "options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "original_expectation": {
+        "id": "stylesheet/tolerant.json#/uncomplete pseudo in selector",
+        "context": "stylesheet",
+        "label": "uncomplete pseudo in selector",
+        "input": " foo: {}",
+        "upstream_outcome": "parsed",
+        "canonical_css": "foo:{}",
+        "status": "active"
+      },
+      "expected": {
+        "ordered_rules": [],
+        "top_level_rule_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "ordered_recovery_actions": [
+          "DropQualifiedRule"
+        ],
+        "diagnostic_positions": null,
+        "diagnostic_count_status": "one per listed recovery unit"
+      },
+      "rationale": "Invalid selector or no top-level block; nested bracket/function block is not the qualified rule block. Discard incomplete/invalid rule.",
+      "normative_sources": [
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+      ],
+      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
+      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "diagnostic_action_relation": "exact",
+      "registry_kind": "strict_rejected"
+    }
+  ]
+}
