@@ -1199,8 +1199,16 @@ fn undeclared_namespace_prefix_at_eof_preserves_non_bmp_coordinates() {
 }
 
 #[test]
-fn selectors3_language_errors_preserve_non_bmp_and_eof_coordinates() {
-    let source = "/*😀*/.before {} .bad:lang(\"en\") {} .after {}";
+fn language_errors_preserve_non_bmp_and_eof_coordinates() {
+    // Selectors 4 §7.2 accepts string ranges; numbers remain invalid operands.
+    let quoted = parse_sheet("/*😀*/.before {} .valid:lang(\"en\") {} .after {}");
+    assert!(quoted.diagnostics().is_empty());
+    assert!(matches!(
+        quoted.syntax().rules(),
+        [CssRule::Style(_), CssRule::Style(_), CssRule::Style(_)]
+    ));
+
+    let source = "/*😀*/.before {} .bad:lang(1234) {} .after {}";
     let report = parse_sheet(source);
     assert!(matches!(
         report.syntax().rules(),
@@ -1212,8 +1220,8 @@ fn selectors3_language_errors_preserve_non_bmp_and_eof_coordinates() {
     assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
     let start = source.find(".bad").unwrap();
-    let end = start + ".bad:lang(\"en\") {}".len();
-    let responsible = source.find("\"en\"").unwrap();
+    let end = start + ".bad:lang(1234) {}".len();
+    let responsible = source.find("1234").unwrap();
     assert_position(
         diagnostic.error().position(),
         responsible,

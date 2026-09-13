@@ -105,10 +105,10 @@ fn counter_style_descriptor_value_and_combination_errors_preserve_typed_context(
 }
 
 #[test]
-fn selectors3_invalid_language_and_pseudo_element_sequences_drop_exact_rules() {
+fn invalid_language_and_pseudo_element_sequences_drop_exact_rules() {
     let failures = [
         ".empty:lang() { color: black; }",
-        ".string:lang(\"en\") { color: black; }",
+        ".number:lang(1234) { color: black; }",
         ".many:lang(en fr) { color: black; }",
         ".later:marker { color: black; }",
         ".terminal::first-line:hover { color: black; }",
