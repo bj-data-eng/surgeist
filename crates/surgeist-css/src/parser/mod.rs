@@ -1299,9 +1299,6 @@ fn rule_start(rule: &CssRule) -> usize {
 fn parse_sheet_inner(source: &str, recovery: RecoveryState) -> crate::CssParseReport<CssSheet> {
     let mut input = ParserInput::new(source);
     let mut parser = Parser::new(&mut input);
-    if source.starts_with('\u{feff}') {
-        let _ = parser.next_including_whitespace_and_comments();
-    }
     let mut rule_parser = StrictRuleParser::top_level(source, recovery.clone());
     let mut sheet = CssSheet::new();
     let mut diagnostics = Vec::new();

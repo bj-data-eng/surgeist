@@ -339,7 +339,7 @@ fn stylesheet_recovery_malformed_qualified_rule_keeps_surrounding_rules() {
 
 #[test]
 fn stylesheet_recovery_valid_leading_encoding_is_metadata_not_a_rule() {
-    let source = "\u{feff} /* leading */ @charset \"UTF-8\"; .after { color: blue; }";
+    let source = " /* leading */ @charset \"UTF-8\"; .after { color: blue; }";
 
     let report = parse_sheet(source);
 
@@ -523,13 +523,25 @@ fn stylesheet_recovery_repeated_drops_remain_in_source_order() {
 
 #[test]
 fn stylesheet_recovery_encoding_leading_trivia_is_not_a_recovery_unit() {
-    for leading in ["", " \n\t", "/**/", "\u{feff}", "\u{feff} /* comment */ "] {
+    for leading in ["", " \n\t", "/**/", " /* comment */ "] {
         let source = format!("{leading}@charset \"Shift_JIS\"; .after {{ color: blue; }}");
         let report = parse_sheet(&source);
 
         assert!(report.is_clean(), "{leading:?}");
         assert_eq!(report.syntax().encoding().unwrap().label(), "Shift_JIS");
         assert_eq!(style_rule_names(&report), ["after"]);
+    }
+    // U+FEFF in decoded text starts a qualified rule; it is not leading trivia.
+    for leading in ["\u{feff}", "\u{feff} /* comment */ "] {
+        let source = format!("{leading}@charset \"Shift_JIS\"; .after {{ color: blue; }}");
+        let report = parse_sheet(&source);
+        assert!(!report.is_clean(), "{leading:?}");
+        assert!(report.syntax().encoding().is_none());
+        assert!(report.syntax().rules().is_empty());
+        let [diagnostic] = report.diagnostics() else {
+            panic!("expected one invalid qualified rule")
+        };
+        assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
     }
 }
 

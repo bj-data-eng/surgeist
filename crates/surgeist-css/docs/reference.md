@@ -35,6 +35,11 @@ Clean-report validation is always available. Production dependencies are pinned 
 `cssparser = 0.37.0` and `cssparser-color = 0.5.0`; test-only JSON support uses
 `serde = 1.0.228` and `serde_json = 1.0.145`.
 
+`parse_sheet` receives decoded Unicode text. A leading U+FEFF is preserved as
+identifier content, just like an interior U+FEFF; byte-stream BOM decoding belongs
+to the caller. For example, `\u{feff}a {}` retains the complete type-selector name,
+while a lone U+FEFF is an incomplete qualified rule and produces a diagnostic.
+
 `CssParseReport` exposes `syntax()`, `diagnostics()`, `is_clean()`,
 `into_parts()`, and `into_validation_result()`. The consuming validation conversion
 returns the syntax exactly when the report is clean; otherwise it returns every
