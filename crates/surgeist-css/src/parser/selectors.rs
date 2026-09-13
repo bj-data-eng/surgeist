@@ -799,7 +799,7 @@ fn compound_selector_to_selector(selector: CssCompoundSelector) -> CssSelector {
     }
 
     if let (None, [], [class], [], []) = (
-        selector.tag(),
+        selector.type_selector(),
         selector.ids(),
         selector.classes(),
         selector.attributes(),
@@ -819,7 +819,7 @@ fn compound_selector_to_selector(selector: CssCompoundSelector) -> CssSelector {
         return CssSelector::Tag(tag.clone());
     }
     if let (None, [key], [], [], []) = (
-        selector.tag(),
+        selector.type_selector(),
         selector.ids(),
         selector.classes(),
         selector.attributes(),
@@ -828,7 +828,7 @@ fn compound_selector_to_selector(selector: CssCompoundSelector) -> CssSelector {
         return CssSelector::Key(key.clone());
     }
     if let (None, [], [], [], [pseudo_class]) = (
-        selector.tag(),
+        selector.type_selector(),
         selector.ids(),
         selector.classes(),
         selector.attributes(),
