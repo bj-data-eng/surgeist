@@ -1120,7 +1120,12 @@ mod normalization;
 pub use media_features::*;
 mod numeric;
 mod opacity_scalar;
+mod specified_serialization;
 pub use opacity_scalar::{CssOpacityScalar, CssOpacityScalarKind};
+pub use specified_serialization::{
+    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
+    CssSpecifiedValueSerializationLimits,
+};
 mod parser;
 mod properties;
 mod property_value;

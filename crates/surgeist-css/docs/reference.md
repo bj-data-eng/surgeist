@@ -831,8 +831,40 @@ Exactly representable binary32 values keep the existing `Literal`, `Number`,
 and `Percentage` branches. For example, `.5` remains `Literal`, while `.1`,
 `1e-47`, and `1e100%` use `ExactScalar`. Percentage classification uses the
 authored coefficient rather than multiplying a rounded fractional cache.
-Legacy Rust constructors retain their finite binary32 contracts. This transport
-does not clamp opacity or provide canonical specified serialization.
+Legacy Rust constructors retain their finite binary32 contracts. Authored
+transport does not clamp opacity.
+
+`CssOpacityValue::serialize_specified()` produces canonical specified text;
+`serialize_specified_with_limits()` supplies independent input-node,
+cumulative projection-node, and output-byte limits. Defaults are 65,536,
+262,144, and 1,048,576 respectively; zero limits are valid. Failures return a
+typed `CssSpecifiedValueSerializationError` without partial text or input
+mutation. These logical bounds do not guarantee allocator availability.
+
+Ordinary scalars use their exact retained magnitude. Percentages divide by 100
+symbolically and serialize as numbers: `.1` becomes `0.1`, `25%` becomes `0.25`,
+and `150%` becomes `1.5`. Direct binary32 constructors serialize the exact
+binary value, so constructed `1.0 / 3.0` differs from parsed `0.33333334`.
+Subnormal percentages keep their nonzero magnitude. Exponents that would
+exceed the output cap return a byte-limit error before expanding zeros.
+
+Math projection uses binary64 arithmetic for context-independent operations,
+including CSS exceptional-value and signed-zero rules. Absolute compatible
+units normalize; font, viewport, container, and other contextual units remain
+symbolic. `calc(1 / 2)` becomes `calc(0.5)`, while `sign(1em - 1px)` retains its
+contextual expression. This specified stage does not clamp to the opacity
+range. Canonical finite math text uses shortest round-trip decimal digits,
+fixed notation, and decimal ties toward the greater number. Transcendental
+last bits may differ across platforms; bit-identical transcendental output is
+not promised. Authored component accessors and structural serialization remain
+separate and preserve their existing contracts.
+
+The selected Values 4 section 10.13 has two localized serialization defects:
+an unclosed nonfinite result and a child loop that misserializes scalar/operator
+roots. The standards catalog records the repairs: close the nonfinite `calc`,
+and serialize scalar/operator roots as one calculation argument. These are
+explicit reconciliations with the same edition's grammar, not claims that the
+unmodified algorithm emits those outputs.
 
 Color-bearing property wrappers expose the current value through `current()`,
 and the opacity wrapper exposes its current `CssOpacityValue` through `value()`.

@@ -219,6 +219,21 @@ impl Decimal {
     }
 }
 
+pub(crate) fn serialize_binary32(
+    value: f32,
+    percentage: bool,
+    limit: usize,
+) -> Result<String, crate::CssSpecifiedValueSerializationError> {
+    let value = Decimal::binary32(value);
+    crate::specified_serialization::format_digits(
+        value.digits[..value.len].iter().copied(),
+        value.len,
+        value.exponent - if percentage { 2 } else { 0 },
+        value.negative,
+        limit,
+    )
+}
+
 fn exact_legacy_value(text: &str) -> Option<f32> {
     let decimal = Decimal::lexical(text)?;
     if decimal.len == 0 {

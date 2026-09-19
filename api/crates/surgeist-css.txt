@@ -2382,6 +2382,9 @@ pub surgeist_css::CssOpacityValue::Literal(surgeist_css::CssOpacity)
 pub surgeist_css::CssOpacityValue::Number(surgeist_css::CssFiniteNumber)
 pub surgeist_css::CssOpacityValue::Percentage(surgeist_css::CssFiniteNumber)
 pub surgeist_css::CssOpacityValue::PercentageCalculation(surgeist_css::CssPercentageCalculation)
+impl surgeist_css::CssOpacityValue
+pub fn surgeist_css::CssOpacityValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssOpacityValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssOrder
 pub surgeist_css::CssOrder::Integer(i32)
 #[non_exhaustive] pub enum surgeist_css::CssOrientation
@@ -2739,6 +2742,11 @@ pub surgeist_css::CssSpecificationTier::Snapshot2026Official
 pub surgeist_css::CssSpecificationTier::Snapshot2026Reliable
 pub surgeist_css::CssSpecificationTier::Snapshot2026Stable
 pub surgeist_css::CssSpecificationTier::SurgeistExtension
+#[non_exhaustive] pub enum surgeist_css::CssSpecifiedValueSerializationErrorKind
+pub surgeist_css::CssSpecifiedValueSerializationErrorKind::ByteLimit
+pub surgeist_css::CssSpecifiedValueSerializationErrorKind::CapacityOverflow
+pub surgeist_css::CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+pub surgeist_css::CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
 #[non_exhaustive] pub enum surgeist_css::CssStepPosition
 pub surgeist_css::CssStepPosition::End
 pub surgeist_css::CssStepPosition::JumpBoth
@@ -6285,6 +6293,20 @@ pub const fn surgeist_css::CssSpecificationSource::url(self) -> core::option::Op
 pub struct surgeist_css::CssSpecificationSourceId(_)
 impl surgeist_css::CssSpecificationSourceId
 pub const fn surgeist_css::CssSpecificationSourceId::as_str(self) -> &'static str
+pub struct surgeist_css::CssSpecifiedValueSerializationError
+impl surgeist_css::CssSpecifiedValueSerializationError
+pub const fn surgeist_css::CssSpecifiedValueSerializationError::kind(&self) -> surgeist_css::CssSpecifiedValueSerializationErrorKind
+impl core::error::Error for surgeist_css::CssSpecifiedValueSerializationError
+impl core::fmt::Display for surgeist_css::CssSpecifiedValueSerializationError
+pub fn surgeist_css::CssSpecifiedValueSerializationError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_css::CssSpecifiedValueSerializationLimits
+impl surgeist_css::CssSpecifiedValueSerializationLimits
+pub const fn surgeist_css::CssSpecifiedValueSerializationLimits::max_css_bytes(self) -> usize
+pub const fn surgeist_css::CssSpecifiedValueSerializationLimits::max_input_nodes(self) -> usize
+pub const fn surgeist_css::CssSpecifiedValueSerializationLimits::max_projection_nodes(self) -> usize
+pub const fn surgeist_css::CssSpecifiedValueSerializationLimits::new(max_input_nodes: usize, max_projection_nodes: usize, max_css_bytes: usize) -> Self
+impl core::default::Default for surgeist_css::CssSpecifiedValueSerializationLimits
+pub fn surgeist_css::CssSpecifiedValueSerializationLimits::default() -> Self
 pub struct surgeist_css::CssStepCount
 impl surgeist_css::CssStepCount
 pub const fn surgeist_css::CssStepCount::calculation(&self) -> core::option::Option<&surgeist_css::CssIntegerCalculation>

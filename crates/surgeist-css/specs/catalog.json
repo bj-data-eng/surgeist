@@ -2314,5 +2314,21 @@
       ],
       "scope_note": "The former X-FILTER2-BASE identifier referred to an abbreviated historical repository revision. This catalog pins its imported grammar to a full root-repository commit and exact file content. No dated Filter Effects 2 publication is claimed."
     }
+  ],
+  "source_reconciliations": [
+    {
+      "id": "css-values-4-serialize-nonfinite-closure",
+      "source": "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#serialize-a-math-function",
+      "source_sha256": "7b6b68c34d00d7f6945e66e4e2efa913266299f597d5825393cae85dac1cc78c",
+      "decision": "Append the closing parenthesis before returning the nonfinite math-function branch. The selected algorithm otherwise returns an unclosed calc function.",
+      "justification": "The same section requires a serialized math function; section 10.1 calc grammar requires a closed function."
+    },
+    {
+      "id": "css-values-4-serialize-scalar-operator-root",
+      "source": "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#serialize-a-math-function",
+      "source_sha256": "7b6b68c34d00d7f6945e66e4e2efa913266299f597d5825393cae85dac1cc78c",
+      "decision": "Serialize a finite numeric or calc-operator root as one calc argument, removing exactly its outer pair of parentheses when present. Retain the comma-separated children algorithm for named function roots.",
+      "justification": "Section 10.1 requires one calculation argument for calc. The selected child loop would emit calc() for a leaf or comma-separated arguments for an operator. Section 10.13 calculation-tree serialization supplies the valid operator representation."
+    }
   ]
 }

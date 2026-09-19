@@ -7,6 +7,9 @@ use crate::{
 };
 use std::fmt;
 
+mod projection;
+pub(crate) use projection::project_specified;
+
 /// Explicit provenance for an existing parser cursor; never ambient parser state.
 pub(crate) enum NumericInputContext<'a> {
     Parsed(&'a crate::CssSourceSnapshot),
