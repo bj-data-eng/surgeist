@@ -5482,7 +5482,7 @@ fn container_condition_parser_retains_unrecognized_enclosures() {
         "(width: auto)",
         "(width: min-content)",
         "(aspect-ratio: -1 / 1)",
-        "style(color: red)",
+        "style(future-property: red)",
         "scroll-state(stuck: top)",
         "(width > )",
     ] {
@@ -5571,24 +5571,33 @@ fn container_condition_parser_preserves_ratio_and_logic_structure() {
 #[test]
 fn container_style_query_preserves_custom_property_presence() {
     let condition = parse_container_condition_for_test("style(--theme)").unwrap();
-    assert_eq!(
-        condition.kind(),
-        &CssContainerConditionKind::Style(CssContainerStyleQuery::CustomPropertyPresence(
-            CssCustomPropertyName::try_new("--theme").unwrap()
-        ))
+    let CssContainerConditionKind::Style(query) = condition.kind() else {
+        panic!("style")
+    };
+    assert!(
+        matches!(query.kind(), CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Boolean(CssContainerStyleFeatureName::Custom(name))) if name.as_str() == "--theme")
     );
 }
 
 #[test]
 fn container_style_query_preserves_custom_property_authored_value() {
     let condition = parse_container_condition_for_test("style(--theme: dark)").unwrap();
-    assert_eq!(
-        condition.kind(),
-        &CssContainerConditionKind::Style(CssContainerStyleQuery::CustomPropertyValue {
-            name: CssCustomPropertyName::try_new("--theme").unwrap(),
-            value: CssAuthoredDeclarationValue::try_new("dark").unwrap(),
-        })
-    );
+    assert_container_theme_value(&condition);
+}
+
+fn assert_container_theme_value(condition: &CssContainerCondition) {
+    let CssContainerConditionKind::Style(query) = condition.kind() else {
+        panic!("style")
+    };
+    let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Plain {
+        name: CssContainerStyleFeatureName::Custom(name),
+        value,
+    }) = query.kind()
+    else {
+        panic!("plain custom feature")
+    };
+    assert_eq!(name.as_str(), "--theme");
+    assert_eq!(value.serialize().unwrap().as_css(), " dark");
 }
 
 #[test]
@@ -5662,13 +5671,7 @@ fn container_rule_parser_accepts_unnamed_named_and_style_conditions() {
     };
     let rule = container_rule(rule);
     assert_eq!(rule.prelude().entries()[0].name(), None);
-    assert_eq!(
-        rule.prelude().entries()[0].query().unwrap().kind(),
-        &CssContainerConditionKind::Style(CssContainerStyleQuery::CustomPropertyValue {
-            name: CssCustomPropertyName::try_new("--theme").unwrap(),
-            value: CssAuthoredDeclarationValue::try_new("dark").unwrap(),
-        })
-    );
+    assert_container_theme_value(rule.prelude().entries()[0].query().unwrap());
 }
 
 #[test]

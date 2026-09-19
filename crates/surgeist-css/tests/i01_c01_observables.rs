@@ -859,7 +859,8 @@ fn assert_archived_unicode_feff_rejection(row: &Row) -> bool {
 
 // Conditional 5 query-in-parens admits general-enclosed syntax. These three
 // historical rejections remain unchanged in the archive, while current syntax
-// retains the opaque condition and the independently expected nested style.
+// retains the condition and independently expected nested style. The ordinary
+// property style query now has recognized authored structure.
 fn assert_archived_container_opaque_acceptance(row: &Row) -> bool {
     let (input, query) = match row.case_id.as_str() {
         "catalog.non-property.baseline.rule.container.boundary" => (
@@ -888,13 +889,19 @@ fn assert_archived_container_opaque_acceptance(row: &Row) -> bool {
     let [CssRule::Container(container)] = report.syntax().rules() else {
         panic!("retained container")
     };
-    let surgeist_css::CssContainerConditionKind::GeneralEnclosed(value) =
-        container.prelude().entries()[0].query().unwrap().kind()
-    else {
-        panic!("opaque query")
-    };
-    assert_eq!(value.authored(), Some(query));
-    assert_eq!(value.serialize().unwrap().as_css(), query);
+    let value = container.prelude().entries()[0].query().unwrap();
+    if query == "style(color: red)" {
+        assert!(matches!(
+            value.kind(),
+            surgeist_css::CssContainerConditionKind::Style(_)
+        ));
+    } else {
+        assert!(matches!(
+            value.kind(),
+            surgeist_css::CssContainerConditionKind::GeneralEnclosed(_)
+        ));
+    }
+    assert_eq!(value.serialize().unwrap().as_css(), format!("{query} "));
     let surgeist_css::CssValueOrigin::Parsed(query_origin) = value.origin() else {
         panic!("original query source")
     };

@@ -268,7 +268,7 @@ struct ContainerNode {
 enum ContainerNodeKind {
     Opaque,
     Feature(CssContainerFeatureQuery),
-    Style(CssContainerStyleQuery),
+    Style(super::container_style::StyleNode),
     Parenthesized(Box<ContainerNode>),
     Not(Box<ContainerNode>),
     And(Vec<ContainerNode>),
@@ -282,7 +282,14 @@ impl ContainerNode {
                 CssContainerGeneralEnclosed::new(lexical.clone()),
             ),
             ContainerNodeKind::Feature(feature) => CssContainerConditionKind::Feature(feature),
-            ContainerNodeKind::Style(style) => CssContainerConditionKind::Style(style),
+            ContainerNodeKind::Style(style) => {
+                let opener = lexical
+                    .items()
+                    .iter()
+                    .position(|value| !container_trivia(value))
+                    .expect("style function");
+                CssContainerConditionKind::Style(style.into_query(lexical.children(opener)))
+            }
             ContainerNodeKind::Parenthesized(child) => {
                 let opener = lexical
                     .items()
@@ -446,7 +453,7 @@ fn container_atom(
         CssComponentValueRef::Function(function)
             if function.name().eq_ignore_ascii_case("style") =>
         {
-            if let Some(style) = container_style(function.values().items())? {
+            if let Some(style) = super::container_style::parse(function.values().items()) {
                 return Ok(ContainerNodeKind::Style(style));
             }
         }
@@ -503,18 +510,12 @@ fn container_name(items: &[CssComponentValue]) -> Option<ContainerFeatureName> {
     };
     ContainerFeatureName::parse(name)
 }
-fn parse_container_size(
+// Neutral sibling token scanning shared by size and style ranges. Nested
+// operators remain inside their operands; only adjacent '=' (comments allowed)
+// forms an inclusive comparator. A range has at most two comparisons.
+pub(super) fn component_query_comparisons(
     items: &[CssComponentValue],
-) -> ContainerFeatureResult<CssContainerFeatureQuery> {
-    let items = significant(items);
-    if let Some(name) = container_name(items) {
-        if name.prefix().is_some() {
-            return Err(ContainerFeatureError::Grammar);
-        }
-        return Ok(CssContainerFeatureQuery::Boolean(name.kind()));
-    }
-    // Component indexes preserve every value's supplied origin. Nested operators
-    // belong to their function/block and are not range separators.
+) -> Option<Vec<(Range<usize>, CssQueryComparison)>> {
     let mut comparisons = Vec::new();
     let mut index = 0;
     while index < items.len() {
@@ -542,10 +543,27 @@ fn parse_container_size(
                 index = end + 1;
             }
             comparisons.push((start..index, query_comparison(symbol, inclusive)));
+            if comparisons.len() > 2 {
+                return None;
+            }
         } else {
             index += 1;
         }
     }
+    Some(comparisons)
+}
+
+fn parse_container_size(
+    items: &[CssComponentValue],
+) -> ContainerFeatureResult<CssContainerFeatureQuery> {
+    let items = significant(items);
+    if let Some(name) = container_name(items) {
+        if name.prefix().is_some() {
+            return Err(ContainerFeatureError::Grammar);
+        }
+        return Ok(CssContainerFeatureQuery::Boolean(name.kind()));
+    }
+    let comparisons = component_query_comparisons(items).ok_or(ContainerFeatureError::Grammar)?;
     if comparisons.is_empty() {
         let mut cursor = ContainerCursor::new(items);
         let CssValueTokenRef::Ident(ident) =
@@ -790,32 +808,6 @@ fn container_orientation(
         return Err(ContainerFeatureError::Grammar);
     };
     Ok(CssContainerOrientation::typed(value, values))
-}
-
-fn container_style(
-    items: &[CssComponentValue],
-) -> Result<Option<CssContainerStyleQuery>, crate::CssComponentValueError> {
-    let mut cursor = ContainerCursor::new(items);
-    let Some(CssValueTokenRef::Ident(name)) = cursor.token() else {
-        return Ok(None);
-    };
-    let Some(name) = super::variables::parse_custom_property_name(name) else {
-        return Ok(None);
-    };
-    if cursor.peek().is_none() {
-        return Ok(Some(CssContainerStyleQuery::CustomPropertyPresence(name)));
-    }
-    if !matches!(cursor.token(), Some(CssValueTokenRef::Colon)) {
-        return Ok(None);
-    }
-    let Some(value) = super::variables::authored_value_from_components(&items[cursor.index..])?
-    else {
-        return Ok(None);
-    };
-    Ok(Some(CssContainerStyleQuery::CustomPropertyValue {
-        name,
-        value,
-    }))
 }
 
 /// Collect and validate the complete original prelude once, after the enclosing

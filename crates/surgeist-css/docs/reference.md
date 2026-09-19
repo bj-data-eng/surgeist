@@ -1609,7 +1609,7 @@ use `CssComponentValue::try_ident` and checked prelude construction for decoded
 names requiring escapes, such as names containing spaces or leading digits.
 
 Container conditions retain explicit parentheses, homogeneous `and` or `or`
-lists, `not`, recognized size and custom-property style features, and opaque
+lists, `not`, recognized size and authored style features, and opaque
 operands. `CssContainerCondition` has private fields; inspect its
 `CssContainerConditionKind` through `kind()`. A `Parenthesized` node retains each
 explicit group around a recognized condition, including redundant groups.
@@ -1623,9 +1623,8 @@ condition through the same immutable component grammar as parsing.
 component values with the checked component builders; constructing an inspectable
 kind alone cannot manufacture a condition or bypass operand restrictions.
 Trusted EOF recovery remains usable. Classification never serializes and
-reparses input. The existing style-value string preserves contiguous original
-slices; mixed or programmatic value components are serialized only after
-admission to populate that string field. Custom-property names come from decoded
+reparses input. Style values retain selected original components, including
+programmatic token boundaries. Custom-property names come from decoded
 identifier tokens, preserving escaped spaces, punctuation and case.
 
 `components()`, `origin()` and `position()` expose the selected authored region.
@@ -1635,6 +1634,37 @@ existing deterministic component serialization, preserving grouping, operator
 order, numeric spelling, symbolic operands and meaningful token boundaries.
 They return the serialized origin map and typed resource errors. They do not
 promise lossless formatting or CSSOM whitespace normalization.
+
+`CssContainerStyleQuery` is a checked wrapper with `kind()` exposing
+`CssContainerStyleQueryKind`. Its feature, explicit group, `not`, homogeneous
+`and`/`or`, and general-enclosed nodes each retain their own component region.
+Boolean and plain features carry `CssContainerStyleFeatureName`: ordinary
+`CssPropertyGrammar` identity (including aliases) or a custom-property name.
+Plain `CssContainerStyleValue` admits declaration-value syntax, without parsing
+against the property's value grammar. CSS-wide keywords remain authored;
+cascade-dependent keywords can therefore be retained while evaluation is false.
+
+`CssContainerStyleRange::view()` exposes binary, ascending and descending forms,
+with all two or three operands and exact comparison directions. Each range
+operand's `view()` distinguishes a whole bare custom-property reference from
+an authored value; `value()` exposes original components in either case. A bare
+custom name in a plain feature value is literal syntax, not an implicit
+reference. Values are not converted to numeric types: substitution, comparison,
+computed-value matching, shorthand evaluation and query truth belong downstream.
+
+The pinned explicit style-value production counts whitespace tokens and excludes
+comment-only or empty values. Thus `style(--x: )` is plain while `style(--x:)`
+remains general-enclosed; whitespace-only range operands are also retained.
+Declaration-value admission excludes top-level semicolon/`!`, and comparison
+delimiters are excluded recursively from operands, including variable fallbacks.
+Strings containing those characters remain strings. The Variables1 optional
+empty fallback in `var(--x,)` remains valid. This follows the edition's explicit
+style-feature production rather than applying declaration parsing and its
+whitespace trimming to the function contents. Query/value serialization preserves
+lexical spelling and origins, including whitespace-only parsed operands.
+See `examples/container_style_semantic_consumer.rs` for inspection without
+reparsing serialized text. The former `CssContainerStyleQuery` enum's presence
+and value variants migrate to `query.kind()` and `CssContainerStyleFeature`.
 
 The six size features are typed: `CssContainerFeatureQuery::Boolean` carries
 `CssContainerSizeFeatureKind`; width, height, inline-size, block-size and
@@ -1699,7 +1729,9 @@ Size operands additionally use the selected
 [MQ5 range grammar](https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax),
 [Values4 numeric grammar](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking)
 and narrowly imported [Values5 §9](https://www.w3.org/TR/2024/WD-css-values-5-20241111/#tree-counting).
-Style and scroll-state feature coverage remains partial; opaque retention does
+Style-query authored support is bounded by the implemented property grammar
+registry. Remaining property inventory gaps and unimplemented scroll-state
+authored features keep container coverage partial; opaque retention does
 not implement those features.
 Whole-rule serialization still needs CSS support.
 Container selection, condition evaluation and mutable CSSOM objects belong

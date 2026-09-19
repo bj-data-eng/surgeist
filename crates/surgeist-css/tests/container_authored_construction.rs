@@ -65,15 +65,18 @@ fn every_authored_group_operator_and_leaf_has_an_inspectable_region() {
         style.serialize().unwrap().as_css(),
         "style(--Theme: r\\65 d)"
     );
-    let CssContainerConditionKind::Style(CssContainerStyleQuery::CustomPropertyValue {
-        name,
-        value,
-    }) = style.kind()
-    else {
+    let CssContainerConditionKind::Style(query) = style.kind() else {
         panic!("style")
     };
+    let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Plain {
+        name: CssContainerStyleFeatureName::Custom(name),
+        value,
+    }) = query.kind()
+    else {
+        panic!("plain custom feature")
+    };
     assert_eq!(name.as_str(), "--Theme");
-    assert_eq!(value.as_css(), "r\\65 d");
+    assert_eq!(value.serialize().unwrap().as_css(), " r\\65 d");
     for child in [
         outer.as_ref(),
         and.as_ref(),

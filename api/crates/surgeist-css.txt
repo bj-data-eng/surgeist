@@ -530,11 +530,42 @@ pub surgeist_css::CssContainerSizeFeatureKind::Orientation
 pub surgeist_css::CssContainerSizeFeatureKind::Width
 impl surgeist_css::CssContainerSizeFeatureKind
 pub const fn surgeist_css::CssContainerSizeFeatureKind::name(self) -> &'static str
-#[non_exhaustive] pub enum surgeist_css::CssContainerStyleQuery
-pub surgeist_css::CssContainerStyleQuery::CustomPropertyPresence(surgeist_css::CssCustomPropertyName)
-pub surgeist_css::CssContainerStyleQuery::CustomPropertyValue
-pub surgeist_css::CssContainerStyleQuery::CustomPropertyValue::name: surgeist_css::CssCustomPropertyName
-pub surgeist_css::CssContainerStyleQuery::CustomPropertyValue::value: surgeist_css::CssAuthoredDeclarationValue
+#[non_exhaustive] pub enum surgeist_css::CssContainerStyleFeature
+pub surgeist_css::CssContainerStyleFeature::Boolean(surgeist_css::CssContainerStyleFeatureName)
+pub surgeist_css::CssContainerStyleFeature::Plain
+pub surgeist_css::CssContainerStyleFeature::Plain::name: surgeist_css::CssContainerStyleFeatureName
+pub surgeist_css::CssContainerStyleFeature::Plain::value: surgeist_css::CssContainerStyleValue
+pub surgeist_css::CssContainerStyleFeature::Range(surgeist_css::CssContainerStyleRange)
+#[non_exhaustive] pub enum surgeist_css::CssContainerStyleFeatureName
+pub surgeist_css::CssContainerStyleFeatureName::Custom(surgeist_css::CssCustomPropertyName)
+pub surgeist_css::CssContainerStyleFeatureName::Property(surgeist_css::CssPropertyGrammar)
+#[non_exhaustive] pub enum surgeist_css::CssContainerStyleQueryKind
+pub surgeist_css::CssContainerStyleQueryKind::And(surgeist_css::CssContainerStyleQueryList)
+pub surgeist_css::CssContainerStyleQueryKind::Feature(surgeist_css::CssContainerStyleFeature)
+pub surgeist_css::CssContainerStyleQueryKind::GeneralEnclosed(surgeist_css::CssContainerGeneralEnclosed)
+pub surgeist_css::CssContainerStyleQueryKind::Not(alloc::boxed::Box<surgeist_css::CssContainerStyleQuery>)
+pub surgeist_css::CssContainerStyleQueryKind::Or(surgeist_css::CssContainerStyleQueryList)
+pub surgeist_css::CssContainerStyleQueryKind::Parenthesized(alloc::boxed::Box<surgeist_css::CssContainerStyleQuery>)
+#[non_exhaustive] pub enum surgeist_css::CssContainerStyleRangeOperandRef<'a>
+pub surgeist_css::CssContainerStyleRangeOperandRef::CustomProperty(&'a surgeist_css::CssCustomPropertyName)
+pub surgeist_css::CssContainerStyleRangeOperandRef::Value(&'a surgeist_css::CssContainerStyleValue)
+#[non_exhaustive] pub enum surgeist_css::CssContainerStyleRangeRef<'a>
+pub surgeist_css::CssContainerStyleRangeRef::Ascending
+pub surgeist_css::CssContainerStyleRangeRef::Ascending::left: &'a surgeist_css::CssContainerStyleRangeOperand
+pub surgeist_css::CssContainerStyleRangeRef::Ascending::left_inclusive: bool
+pub surgeist_css::CssContainerStyleRangeRef::Ascending::middle: &'a surgeist_css::CssContainerStyleRangeOperand
+pub surgeist_css::CssContainerStyleRangeRef::Ascending::right: &'a surgeist_css::CssContainerStyleRangeOperand
+pub surgeist_css::CssContainerStyleRangeRef::Ascending::right_inclusive: bool
+pub surgeist_css::CssContainerStyleRangeRef::Binary
+pub surgeist_css::CssContainerStyleRangeRef::Binary::comparison: surgeist_css::CssQueryComparison
+pub surgeist_css::CssContainerStyleRangeRef::Binary::left: &'a surgeist_css::CssContainerStyleRangeOperand
+pub surgeist_css::CssContainerStyleRangeRef::Binary::right: &'a surgeist_css::CssContainerStyleRangeOperand
+pub surgeist_css::CssContainerStyleRangeRef::Descending
+pub surgeist_css::CssContainerStyleRangeRef::Descending::left: &'a surgeist_css::CssContainerStyleRangeOperand
+pub surgeist_css::CssContainerStyleRangeRef::Descending::left_inclusive: bool
+pub surgeist_css::CssContainerStyleRangeRef::Descending::middle: &'a surgeist_css::CssContainerStyleRangeOperand
+pub surgeist_css::CssContainerStyleRangeRef::Descending::right: &'a surgeist_css::CssContainerStyleRangeOperand
+pub surgeist_css::CssContainerStyleRangeRef::Descending::right_inclusive: bool
 #[non_exhaustive] pub enum surgeist_css::CssContainerValueDomain
 pub surgeist_css::CssContainerValueDomain::Length
 pub surgeist_css::CssContainerValueDomain::Orientation
@@ -4008,6 +4039,32 @@ impl surgeist_css::CssContainerRule
 pub const fn surgeist_css::CssContainerRule::position(&self) -> surgeist_css::CssSourcePosition
 pub const fn surgeist_css::CssContainerRule::prelude(&self) -> &surgeist_css::CssContainerPrelude
 pub fn surgeist_css::CssContainerRule::rules(&self) -> &[surgeist_css::CssRule]
+pub struct surgeist_css::CssContainerStyleQuery
+impl surgeist_css::CssContainerStyleQuery
+pub fn surgeist_css::CssContainerStyleQuery::components(&self) -> &[surgeist_css::CssComponentValue]
+pub fn surgeist_css::CssContainerStyleQuery::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssContainerStyleQuery::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub fn surgeist_css::CssContainerStyleQuery::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssContainerStyleQuery::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+impl surgeist_css::CssContainerStyleQuery
+pub fn surgeist_css::CssContainerStyleQuery::kind(&self) -> &surgeist_css::CssContainerStyleQueryKind
+pub struct surgeist_css::CssContainerStyleQueryList
+impl surgeist_css::CssContainerStyleQueryList
+pub fn surgeist_css::CssContainerStyleQueryList::queries(&self) -> &[surgeist_css::CssContainerStyleQuery]
+pub struct surgeist_css::CssContainerStyleRange
+impl surgeist_css::CssContainerStyleRange
+pub fn surgeist_css::CssContainerStyleRange::view(&self) -> surgeist_css::CssContainerStyleRangeRef<'_>
+pub struct surgeist_css::CssContainerStyleRangeOperand
+impl surgeist_css::CssContainerStyleRangeOperand
+pub fn surgeist_css::CssContainerStyleRangeOperand::value(&self) -> &surgeist_css::CssContainerStyleValue
+pub fn surgeist_css::CssContainerStyleRangeOperand::view(&self) -> surgeist_css::CssContainerStyleRangeOperandRef<'_>
+pub struct surgeist_css::CssContainerStyleValue
+impl surgeist_css::CssContainerStyleValue
+pub fn surgeist_css::CssContainerStyleValue::components(&self) -> &[surgeist_css::CssComponentValue]
+pub fn surgeist_css::CssContainerStyleValue::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssContainerStyleValue::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub fn surgeist_css::CssContainerStyleValue::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssContainerStyleValue::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
 pub struct surgeist_css::CssContentList
 impl surgeist_css::CssContentList
 pub fn surgeist_css::CssContentList::items(&self) -> &[surgeist_css::CssContentItem]

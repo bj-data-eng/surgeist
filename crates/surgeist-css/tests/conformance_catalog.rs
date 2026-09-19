@@ -1603,12 +1603,12 @@ const EXPECTED: &[ExpectedFeature] = &[
     ExpectedFeature {
         id: "baseline.container.condition",
         kind: CssFeatureKind::ContainerQuery,
-        spelling: "and/or/not, size features, custom-property style existence/equality, and general-enclosed",
+        spelling: "and/or/not, size features, authored style queries, and general-enclosed",
         source: ExpectedSource::Id("X-CONDITIONAL5"),
         production: "#container-rule",
         status: CssSupportStatus::Partial,
         supported_subset: Some(
-            "Recursive and/or/not conditions over supported size and custom-property style features, plus original-component general-enclosed operands, are retained; ungrouped negation is limited to a complete query.",
+            "Recursive container and style logic, supported-property and custom-property boolean/plain style features, broad authored style ranges and original-component general-enclosed operands are retained; style evaluation belongs downstream, and scroll-state authored features remain unimplemented.",
         ),
         unsupported_remainder: Some(QUERY_REMAINDER),
         recognized_code: None,

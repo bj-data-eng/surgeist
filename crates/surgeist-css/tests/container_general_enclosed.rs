@@ -25,6 +25,34 @@ fn opaque(value: &Condition) -> &CssContainerGeneralEnclosed {
     value
 }
 
+fn assert_color_style(condition: &Condition) {
+    use surgeist_css::{
+        CssContainerStyleFeature, CssContainerStyleFeatureName, CssContainerStyleQueryKind,
+        CssPropertyGrammar,
+    };
+    let Kind::Style(query) = condition.kind() else {
+        panic!("recognized ordinary-property style query")
+    };
+    let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Plain {
+        name: CssContainerStyleFeatureName::Property(grammar),
+        value,
+    }) = query.kind()
+    else {
+        panic!("plain property feature")
+    };
+    assert_eq!(*grammar, CssPropertyGrammar::from_name("color").unwrap());
+    assert_eq!(query.serialize().unwrap().as_css(), "color:red");
+    assert_eq!(value.serialize().unwrap().as_css(), "red");
+    let CssValueOrigin::Parsed(origin) = value.origin() else {
+        panic!("original value token")
+    };
+    assert_eq!(
+        value.position().unwrap().byte_offset().value(),
+        origin.source().as_str().find("red").unwrap()
+    );
+    assert!(matches!(query.origin(), CssValueOrigin::Parsed(_)));
+}
+
 #[test]
 fn nested_negated_unknown_operands_keep_boolean_structure_and_the_original_snapshot() {
     let source = "/*😀*/ @container not ((a) and (not (b))) { .x { color:red } }";
@@ -90,6 +118,7 @@ fn recognized_size_and_style_branches_take_precedence_over_opaque_fallback() {
         Kind::Feature(_)
     ));
     assert!(matches!(condition("style(--theme)").kind(), Kind::Style(_)));
+    assert_color_style(&condition("style(color:red)"));
     let mixed = condition("(width > 1px) and Future() and style(--theme)");
     let Kind::And(list) = mixed.kind() else {
         panic!("conjunction")
@@ -101,7 +130,7 @@ fn recognized_size_and_style_branches_take_precedence_over_opaque_fallback() {
     assert!(matches!(opaque_condition.kind(), Kind::GeneralEnclosed(_)));
     assert!(matches!(style.kind(), Kind::Style(_)));
     for query in [
-        "style(color:red)",
+        "style(future-property:red)",
         "(unknown-size > 1px)",
         "(width: nonsense)",
     ] {
@@ -307,7 +336,7 @@ fn checked_enclosure_classification_prefers_the_same_recognized_branches_as_pars
 fn checked_unknown_and_failed_recognized_enclosures_retain_the_supplied_lexical_value() {
     for (name, contents) in [
         ("Future", ""),
-        ("style", "color:red"),
+        ("style", "future-property:red"),
         ("Future", "1/**/e2"),
     ] {
         let enclosure =
@@ -323,6 +352,15 @@ fn checked_unknown_and_failed_recognized_enclosures_retain_the_supplied_lexical_
             format!("{name}({contents})")
         );
     }
+    let enclosure =
+        CssGeneralEnclosed::try_function("style", parse_component_values("color:red").unwrap())
+            .unwrap();
+    let original = enclosure.component().clone();
+    let checked = Condition::try_from_enclosed(enclosure).unwrap();
+    assert_eq!(checked.components(), std::slice::from_ref(&original));
+    assert_eq!(checked.origin(), &CssValueOrigin::Programmatic);
+    assert_color_style(&checked);
+    assert_color_style(&condition("style(color:red)"));
     // Invalid recognized grammar still has a complete general-enclosed branch.
     let enclosure =
         CssGeneralEnclosed::try_parenthesized(parse_component_values("width: nonsense").unwrap())
@@ -358,8 +396,7 @@ fn wrong_outer_syntax_is_rejected_by_the_enclosure_owner_with_its_original_origi
 #[test]
 fn fully_programmatic_known_enclosures_expose_expected_feature_and_custom_property_payloads() {
     use surgeist_css::{
-        CssContainerFeatureQuery, CssContainerLengthRef, CssContainerStyleQuery, CssMediaRangeRef,
-        CssQueryComparison,
+        CssContainerFeatureQuery, CssContainerLengthRef, CssMediaRangeRef, CssQueryComparison,
     };
     let values = CssComponentValues::try_new(vec![
         CssComponentValue::try_ident("width").unwrap(),
@@ -387,7 +424,15 @@ fn fully_programmatic_known_enclosures_expose_expected_feature_and_custom_proper
     let style =
         Condition::try_from_enclosed(CssGeneralEnclosed::try_function("style", values).unwrap())
             .unwrap();
-    let Kind::Style(CssContainerStyleQuery::CustomPropertyPresence(name)) = style.kind() else {
+    let Kind::Style(query) = style.kind() else {
+        panic!("style")
+    };
+    let surgeist_css::CssContainerStyleQueryKind::Feature(
+        surgeist_css::CssContainerStyleFeature::Boolean(
+            surgeist_css::CssContainerStyleFeatureName::Custom(name),
+        ),
+    ) = query.kind()
+    else {
         panic!("known custom property presence")
     };
     assert_eq!(name.as_str(), "--Theme");
@@ -395,7 +440,9 @@ fn fully_programmatic_known_enclosures_expose_expected_feature_and_custom_proper
 
 #[test]
 fn style_variable_grammar_preserves_valid_references_and_falls_back_for_invalid_references() {
-    use surgeist_css::CssContainerStyleQuery;
+    use surgeist_css::{
+        CssContainerStyleFeature, CssContainerStyleFeatureName, CssContainerStyleQueryKind,
+    };
     // Existing authored declaration grammar requires var's first argument to be
     // one custom-property name, with an optional comma and fallback value.
     for source in ["var(--tone)", "var(--tone, red)", "var(--tone,)"] {
@@ -408,13 +455,18 @@ fn style_variable_grammar_preserves_valid_references_and_falls_back_for_invalid_
         .unwrap();
         let checked = Condition::try_from_enclosed(enclosure).unwrap();
         for condition in [parsed, checked] {
-            let Kind::Style(CssContainerStyleQuery::CustomPropertyValue { name, value }) =
-                condition.kind()
+            let Kind::Style(query) = condition.kind() else {
+                panic!("style")
+            };
+            let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Plain {
+                name: CssContainerStyleFeatureName::Custom(name),
+                value,
+            }) = query.kind()
             else {
                 panic!("valid variable remains a style value: {source}")
             };
             assert_eq!(name.as_str(), "--theme");
-            assert_eq!(value.as_css(), source);
+            assert_eq!(value.serialize().unwrap().as_css(), source);
         }
     }
     for source in ["var()", "var(tone)", "var(--a --b)"] {
@@ -433,7 +485,9 @@ fn style_variable_grammar_preserves_valid_references_and_falls_back_for_invalid_
 
 #[test]
 fn constructed_style_value_serialization_keeps_adjacent_number_and_identifier_separate() {
-    use surgeist_css::CssContainerStyleQuery;
+    use surgeist_css::{
+        CssContainerStyleFeature, CssContainerStyleFeatureName, CssContainerStyleQueryKind,
+    };
     for first in [
         CssComponentValue::try_number("1").unwrap(),
         parse_component_values("/*😀*/1")
@@ -454,13 +508,18 @@ fn constructed_style_value_serialization_keeps_adjacent_number_and_identifier_se
             CssGeneralEnclosed::try_function("style", values).unwrap(),
         )
         .unwrap();
-        let Kind::Style(CssContainerStyleQuery::CustomPropertyValue { name, value }) =
-            condition.kind()
+        let Kind::Style(query) = condition.kind() else {
+            panic!("style")
+        };
+        let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Plain {
+            name: CssContainerStyleFeatureName::Custom(name),
+            value,
+        }) = query.kind()
         else {
             panic!("authored custom property value")
         };
         assert_eq!(name.as_str(), "--theme");
-        assert_eq!(value.as_css(), "1/**/e2");
+        assert_eq!(value.serialize().unwrap().as_css(), "1/**/e2");
     }
 }
 

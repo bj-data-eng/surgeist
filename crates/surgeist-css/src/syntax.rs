@@ -9,12 +9,12 @@
 //! construction preserves supplied token origins without inventing coordinates.
 //! Downstream adapters can inspect either without depending on parser internals.
 
-use crate::CssFontFeatureValuesRule;
 use crate::CssValueOrigin;
 pub(crate) use crate::container_features::*;
 pub(crate) use crate::media::*;
 pub(crate) use crate::media_features::*;
 pub(crate) use crate::numeric::*;
+use crate::{CssContainerStyleQuery, CssFontFeatureValuesRule};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -3965,16 +3965,6 @@ pub enum CssContainerFeatureQuery {
     BlockSize(CssMediaRange<CssContainerLength>),
     AspectRatio(CssMediaRange<CssContainerRatio>),
     Orientation(CssContainerOrientation),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssContainerStyleQuery {
-    CustomPropertyPresence(CssCustomPropertyName),
-    CustomPropertyValue {
-        name: CssCustomPropertyName,
-        value: CssAuthoredDeclarationValue,
-    },
 }
 
 #[derive(Clone, Debug, PartialEq)]

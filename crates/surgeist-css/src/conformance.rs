@@ -4039,10 +4039,10 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 504] = [
     CssFeatureMetadata::partial(
         "baseline.container.condition",
         CssFeatureKind::ContainerQuery,
-        "and/or/not, size features, custom-property style existence/equality, and general-enclosed",
+        "and/or/not, size features, authored style queries, and general-enclosed",
         X_CONDITIONAL5,
         "#container-rule",
-        "Recursive and/or/not conditions over supported size and custom-property style features, plus original-component general-enclosed operands, are retained; ungrouped negation is limited to a complete query.",
+        "Recursive container and style logic, supported-property and custom-property boolean/plain style features, broad authored style ranges and original-component general-enclosed operands are retained; style evaluation belongs downstream, and scroll-state authored features remain unimplemented.",
         QUERY_REMAINDER,
     ),
     CssFeatureMetadata::partial(

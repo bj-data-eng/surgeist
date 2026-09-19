@@ -3,7 +3,7 @@
 //! section 2.1 decodes escapes into the identifier token's value exactly once.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#style-container
 //! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#escaping
-use surgeist_css::{CssContainerConditionKind, CssContainerStyleQuery, CssRule, parse_sheet};
+use surgeist_css::*;
 
 fn style_query(authored: &str) -> CssContainerStyleQuery {
     let source = format!("@container style({authored}) {{ .x {{ color:red }} }}");
@@ -30,7 +30,11 @@ fn escaped_style_presence_names_retain_the_decoded_identifier() {
         (r"--a\20 b", "--a b"),
         (r"--a\5c b", r"--a\b"),
     ] {
-        let CssContainerStyleQuery::CustomPropertyPresence(name) = style_query(authored) else {
+        let query = style_query(authored);
+        let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Boolean(
+            CssContainerStyleFeatureName::Custom(name),
+        )) = query.kind()
+        else {
             panic!("presence query")
         };
         assert_eq!(name.as_str(), expected);
@@ -44,22 +48,29 @@ fn escaped_style_value_names_are_not_tokenized_twice() {
         (r"--a\20 b", "--a b"),
         (r"--a\5c b", r"--a\b"),
     ] {
-        let CssContainerStyleQuery::CustomPropertyValue { name, value } =
-            style_query(&format!("{authored}: red"))
+        let query = style_query(&format!("{authored}: red"));
+        let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Plain {
+            name: CssContainerStyleFeatureName::Custom(name),
+            value,
+        }) = query.kind()
         else {
             panic!("value query")
         };
         assert_eq!(name.as_str(), expected);
-        assert_eq!(value.as_css(), "red");
+        assert_eq!(value.serialize().unwrap().as_css(), " red");
     }
 }
 
 #[test]
 fn plain_style_names_preserve_case_and_value() {
-    let CssContainerStyleQuery::CustomPropertyValue { name, value } = style_query("--Theme: red")
+    let query = style_query("--Theme: red");
+    let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Plain {
+        name: CssContainerStyleFeatureName::Custom(name),
+        value,
+    }) = query.kind()
     else {
         panic!("value query")
     };
     assert_eq!(name.as_str(), "--Theme");
-    assert_eq!(value.as_css(), "red");
+    assert_eq!(value.serialize().unwrap().as_css(), " red");
 }
