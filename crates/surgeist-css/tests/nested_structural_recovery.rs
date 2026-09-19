@@ -1,6 +1,7 @@
 use surgeist_css::{
-    CssErrorCode, CssKeyframeSelector, CssPropertyNameRef, CssRecoveryAction, CssRule,
-    CssScopedRule, CssSelector, ErrorKind, parse_sheet,
+    CssErrorCode, CssKeyframeSelector, CssPropertyNameRef, CssPseudoClass, CssPseudoElement,
+    CssPseudoElementSegment, CssRecoveryAction, CssRule, CssScopedRule, CssSelector, ErrorKind,
+    parse_sheet,
 };
 
 fn style_name(rule: &CssRule) -> &str {
@@ -207,7 +208,7 @@ fn nested_structural_repeated_failures_retain_empty_permitted_group_and_later_si
 }
 
 #[test]
-fn nested_selectors3_failures_retain_valid_pseudo_siblings_in_authored_order() {
+fn nested_invalid_language_retains_valid_pseudo_siblings_in_authored_order() {
     let first = ".bad:lang() { color: black; }";
     let second = ".bad::first-line:hover { color: black; }";
     let source = format!(
@@ -218,25 +219,58 @@ fn nested_selectors3_failures_retain_valid_pseudo_siblings_in_authored_order() {
     let [CssRule::Media(media)] = report.syntax().rules() else {
         panic!("expected retained media group")
     };
-    assert_eq!(media.rules().len(), 2);
-    assert_eq!(report.diagnostics().len(), 2);
+    let [
+        CssRule::Style(before),
+        CssRule::Style(middle),
+        CssRule::Style(after),
+    ] = media.rules()
+    else {
+        panic!("expected three retained style siblings");
+    };
+    for (rule, class, pseudo) in [
+        (before, "before", CssPseudoClass::Target),
+        (after, "after", CssPseudoClass::Visited),
+    ] {
+        let [selector] = rule.selectors().selectors() else {
+            panic!("expected one authored selector");
+        };
+        let CssSelector::Compound(compound) = selector.selector() else {
+            panic!("expected compound selector");
+        };
+        assert_eq!(compound.classes(), &[class]);
+        assert_eq!(compound.pseudo_classes(), &[pseudo]);
+        assert!(compound.pseudo_elements().is_none());
+    }
+    let [selector] = middle.selectors().selectors() else {
+        panic!("expected one authored selector");
+    };
+    let CssSelector::Compound(compound) = selector.selector() else {
+        panic!("expected compound selector");
+    };
+    assert_eq!(compound.classes(), &["bad"]);
+    assert!(compound.pseudo_classes().is_empty());
+    // Selectors 4 §3.6.3 explicitly permits ::first-line:hover.
+    assert_eq!(
+        compound
+            .pseudo_elements()
+            .expect("pseudo-element sequence")
+            .segments(),
+        &[
+            CssPseudoElementSegment::PseudoElement(CssPseudoElement::FirstLine),
+            CssPseudoElementSegment::PseudoClass(CssPseudoClass::Hover),
+        ]
+    );
+    let [diagnostic] = report.diagnostics() else {
+        panic!("only the empty language argument is invalid");
+    };
     assert_drop(
         &source,
-        &report.diagnostics()[0],
+        diagnostic,
         first,
         0,
         CssErrorCode::InvalidSelector,
         CssRecoveryAction::DropQualifiedRule,
         source.find(first).unwrap() + first.find(')').unwrap(),
-    );
-    assert_drop(
-        &source,
-        &report.diagnostics()[1],
-        second,
-        0,
-        CssErrorCode::InvalidSelector,
-        CssRecoveryAction::DropQualifiedRule,
-        source.find(second).unwrap() + second.find(":hover").unwrap(),
     );
 }
 

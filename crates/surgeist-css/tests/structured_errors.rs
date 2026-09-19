@@ -2,8 +2,9 @@ mod common;
 
 use common::CssParseReportTestExt;
 use surgeist_css::{
-    CssDeclarationContextRef, CssErrorCode, CssKnownProperty, CssRecoveryAction, CssRule,
-    CssTokenKind, ErrorKind, parse_sheet, parse_style_attribute,
+    CssDeclarationContextRef, CssErrorCode, CssKnownProperty, CssPseudoClass, CssPseudoElement,
+    CssPseudoElementSegment, CssRecoveryAction, CssRule, CssSelector, CssTokenKind, ErrorKind,
+    parse_sheet, parse_style_attribute,
 };
 
 #[test]
@@ -105,8 +106,8 @@ fn counter_style_descriptor_value_and_combination_errors_preserve_typed_context(
 }
 
 #[test]
-fn invalid_language_and_pseudo_element_sequences_drop_exact_rules() {
-    let failures = [
+fn invalid_selector_rules_preserve_valid_pseudo_element_suffixes_and_exact_diagnostics() {
+    let rules = [
         ".empty:lang() { color: black; }",
         ".number:lang(1234) { color: black; }",
         ".many:lang(en fr) { color: black; }",
@@ -116,14 +117,44 @@ fn invalid_language_and_pseudo_element_sequences_drop_exact_rules() {
     ];
     let source = format!(
         ".before {{ color: red; }} {} .after {{ color: blue; }}",
-        failures.join(" ")
+        rules.join(" ")
     );
     let report = parse_sheet(&source);
 
-    assert!(matches!(
-        report.syntax().rules(),
-        [CssRule::Style(_), CssRule::Style(_)]
-    ));
+    let [
+        CssRule::Style(before),
+        CssRule::Style(middle),
+        CssRule::Style(after),
+    ] = report.syntax().rules()
+    else {
+        panic!("expected three retained style siblings");
+    };
+    for (rule, class) in [(before, "before"), (after, "after")] {
+        let [selector] = rule.selectors().selectors() else {
+            panic!("expected one authored selector");
+        };
+        assert_eq!(selector.selector(), &CssSelector::Class(class.to_owned()));
+    }
+    let [selector] = middle.selectors().selectors() else {
+        panic!("expected one authored selector");
+    };
+    let CssSelector::Compound(compound) = selector.selector() else {
+        panic!("expected compound selector");
+    };
+    assert_eq!(compound.classes(), &["terminal"]);
+    assert!(compound.pseudo_classes().is_empty());
+    // Selectors 4 §3.6.3 explicitly permits ::first-line:hover.
+    assert_eq!(
+        compound
+            .pseudo_elements()
+            .expect("pseudo-element sequence")
+            .segments(),
+        &[
+            CssPseudoElementSegment::PseudoElement(CssPseudoElement::FirstLine),
+            CssPseudoElementSegment::PseudoClass(CssPseudoClass::Hover),
+        ]
+    );
+    let failures = [rules[0], rules[1], rules[2], rules[3], rules[5]];
     assert_eq!(report.diagnostics().len(), failures.len());
     for (diagnostic, failure) in report.diagnostics().iter().zip(failures) {
         assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);

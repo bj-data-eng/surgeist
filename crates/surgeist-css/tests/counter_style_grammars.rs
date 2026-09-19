@@ -509,7 +509,24 @@ fn c11_rule_recovery_preserves_siblings_and_boundaries() {
     let CssRule::Media(media) = &report.syntax().rules()[2] else {
         panic!("expected recovered media parent")
     };
-    assert!(matches!(media.rules(), [CssRule::Style(_)]));
+    // Conditional Rules 3 §3 permits @page in an ordinary conditional rule list.
+    // https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#contents-of
+    let [CssRule::Page(nested_page), CssRule::Style(sibling)] = media.rules() else {
+        panic!("expected the page followed by its retained style sibling")
+    };
+    assert_eq!(
+        nested_page.selector(),
+        Some(surgeist_css::CssPageSelector::Right)
+    );
+    assert_eq!(nested_page.declarations().len(), 1);
+    assert_eq!(
+        nested_page.position().byte_offset().value(),
+        source.find("@page :right").unwrap()
+    );
+    assert!(matches!(
+        sibling.selectors().selectors()[0].selector(),
+        surgeist_css::CssSelector::Class(name) if name == "media-kept"
+    ));
     // Fonts 4 §6.9.1 accepts a named family with an empty body at sheet level.
     let CssRule::FontFeatureValues(tail) = &report.syntax().rules()[5] else {
         panic!("expected retained font feature values")
@@ -538,10 +555,6 @@ fn c11_rule_recovery_preserves_siblings_and_boundaries() {
         ),
         (
             "@counter-style media-child { symbols: m; }",
-            CssErrorCode::InvalidAtRulePlacement,
-        ),
-        (
-            "@page :right { margin: 2cm; }",
             CssErrorCode::InvalidAtRulePlacement,
         ),
         (
