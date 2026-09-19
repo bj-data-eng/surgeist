@@ -1306,8 +1306,15 @@ custom-property-looking fallback, leaves the current declaration run intact.
 `CssCompoundSelector::nesting_selectors()` records symbolic parent anchors independently of
 `has_scope_anchor()`. No parent selector list is expanded during parsing. `CssScopedStyleRule` follows the same
 leading-declarations and ordered-child contract: its `rules()` returns ordinary `CssRule`
-nesting children relative to the scoped style parent, while the enclosing `@scope` keeps its
-scoped rule-list grammar.
+nesting children relative to the scoped style parent. A scope with a style ancestor retains
+its direct declaration runs as `CssScopedRule::NestedDeclarations`, including runs inside
+its conditional and layer groups. Ordinary scope/group bodies without style ancestry
+continue to use their rule-list grammar. Scoped runs reuse the exact ancestor style
+selector handle, including pseudo-elements, while their independent rule-parent chain
+retains all active scope/group occurrences. The selector handle's `scope_context()` is
+its original binding scope, not a replacement for that complete rule ancestry. A scoped
+child style establishes its own selector handle; later sibling runs retain the enclosing
+style's handle.
 
 The authored selector model covers complete Selectors 3, including universal
 and type selectors, all attribute matchers, repeated IDs and classes in order,

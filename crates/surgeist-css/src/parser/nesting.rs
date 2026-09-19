@@ -184,7 +184,7 @@ fn flush_declarations(
 // A semicolon/EOF failure can enter the prelude callback but never reaches a
 // block. Only actual block consumption completes that qualified-rule boundary.
 #[derive(Clone, Copy)]
-enum StyleRuleBoundary {
+pub(super) enum StyleRuleBoundary {
     None,
     AtRule,
     QualifiedPrelude,
@@ -192,7 +192,7 @@ enum StyleRuleBoundary {
 }
 
 impl StyleRuleBoundary {
-    fn partitions(self, failed_at_block: bool) -> bool {
+    pub(super) fn partitions(self, failed_at_block: bool) -> bool {
         matches!(self, Self::AtRule | Self::QualifiedBlock)
             || (matches!(self, Self::QualifiedPrelude) && failed_at_block)
     }

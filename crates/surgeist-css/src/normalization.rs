@@ -283,7 +283,8 @@ impl CssSelectorContext {
         self.context.parent.as_ref()
     }
 
-    /// Returns the nearest enclosing authored scope rule, when present.
+    /// Returns the binding scope of this selector-bearing style occurrence.
+    /// Additional scopes around an inherited declaration run remain in its rule ancestry.
     #[must_use]
     pub fn scope_context(&self) -> Option<&CssRuleContext> {
         self.context.scope.as_ref()
@@ -508,6 +509,8 @@ impl CssNormalizedDeclaration {
     }
 
     /// Returns the complete shared selector context, without applying matching.
+    /// Scopes introduced around a declaration run are retained separately in
+    /// `rule_context()` ancestry; they do not rebind this inherited selector handle.
     #[must_use]
     pub const fn selector_context(&self) -> &CssSelectorContext {
         &self.selectors
@@ -946,7 +949,7 @@ impl Normalizer {
             scope.rules().rules(),
             TraversalContext {
                 rule: Some(&rule),
-                selectors: None,
+                selectors: context.selectors,
                 scope: Some(&rule),
             },
             depth + 1,
@@ -963,6 +966,17 @@ impl Normalizer {
             let position = scoped_position(rule);
             self.admit_rule(position, context, depth)?;
             match rule {
+                CssScopedRule::NestedDeclarations(run) => {
+                    let selectors = context.selectors.expect(
+                        "the parser only admits scoped declaration runs with style ancestry",
+                    );
+                    let rule = self.record_rule(
+                        RuleContextKind::NestedDeclarations(selectors.clone()),
+                        position,
+                        context.rule,
+                    );
+                    self.declarations(run.declarations(), &rule, selectors)?;
+                }
                 CssScopedRule::Style(style) => {
                     let selectors = CssSelectorContext::scoped(style.selectors(), context);
                     let rule = self.record_rule(
@@ -1125,6 +1139,7 @@ fn scoped_position(rule: &CssScopedRule) -> Option<CssSourcePosition> {
     Some(match rule {
         CssScopedRule::CustomMedia(value) => return value.position(),
         CssScopedRule::FontFeatureValues(value) => return value.position(),
+        CssScopedRule::NestedDeclarations(value) => value.position(),
         CssScopedRule::CounterStyle(value) => value.position(),
         CssScopedRule::FontFace(value) => value.position(),
         CssScopedRule::Keyframes(value) => value.position(),

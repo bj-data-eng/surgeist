@@ -2977,6 +2977,8 @@ impl CssScopedRuleList {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssScopedRule {
+    /// A nonempty declaration run inheriting the nearest ancestor style selector list.
+    NestedDeclarations(CssNestedDeclarationsRule),
     /// A page definition retained in an ordinary group within a scope.
     Page(CssPageRule),
     /// A global counter definition retained in its authored scope context.

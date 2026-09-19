@@ -539,8 +539,9 @@ fn inherited_scope_keeps_scoped_declaration_and_selector_semantics_across_chunks
         );
         let report = parse_sheet(&source);
         assert!(
-            !report.is_clean(),
-            "scope rule lists reject bare declarations, depth={depth}"
+            report.is_clean(),
+            "style-nested scopes admit declarations, depth={depth}: {:?}",
+            report.diagnostics()
         );
         let normalized = normalize_sheet(report.syntax()).unwrap();
         let scoped_styles = normalized.items().iter().filter(|item| matches!(item, CssNormalizedItem::Rule(context) if matches!(context.kind(), CssRuleContextKindRef::ScopedStyle(_)))).count();
@@ -570,8 +571,111 @@ fn inherited_scope_keeps_scoped_declaration_and_selector_semantics_across_chunks
         let declarations = normalized
             .items()
             .iter()
-            .filter(|item| matches!(item, CssNormalizedItem::Declaration(_)))
-            .count();
-        assert_eq!(declarations, 1, "depth={depth}");
+            .filter_map(|item| match item {
+                CssNormalizedItem::Declaration(value) => Some(value),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(declarations.len(), 2, "depth={depth}");
+        for (order, name) in ["red", "blue"].into_iter().enumerate() {
+            let declaration = declarations[order];
+            assert_eq!(declaration.order(), order);
+            let surgeist_css::CssKnownPropertyValueRef::Color(value) = declaration
+                .source()
+                .known()
+                .unwrap()
+                .property_value()
+                .unwrap()
+            else {
+                panic!("ordinary color")
+            };
+            assert_eq!(value.current().named().unwrap().name(), name);
+            assert_eq!(
+                declaration
+                    .source()
+                    .value_components()
+                    .serialize()
+                    .unwrap()
+                    .as_css(),
+                format!(" {name}")
+            );
+            let start = source.find(&format!("color: {name}")).unwrap();
+            assert_eq!(
+                declaration
+                    .source()
+                    .position()
+                    .unwrap()
+                    .byte_offset()
+                    .value(),
+                start
+            );
+            let origin = declaration.source().parsed_value().unwrap();
+            assert_eq!(origin.source().as_str(), source);
+            assert_eq!(origin.span().start().byte_offset().value(), start + 6);
+            assert_eq!(
+                origin.span().end().byte_offset().value(),
+                start + 7 + name.len()
+            );
+        }
+        let CssNormalizedItem::Rule(outer) = &normalized.items()[0] else {
+            panic!("outer style")
+        };
+        let CssRuleContextKindRef::Style(outer_selectors) = outer.kind() else {
+            panic!("outer selector context")
+        };
+        assert_eq!(
+            outer_selectors.selectors()[0].selector(),
+            &surgeist_css::CssSelector::Class("root".into())
+        );
+        assert_eq!(
+            outer_selectors.selectors()[0].binding(),
+            surgeist_css::CssSelectorBinding::Absolute
+        );
+        assert!(outer_selectors.parent().is_none());
+        assert!(outer_selectors.scope_context().is_none());
+        assert!(declarations[0].selector_context().same_context(selectors));
+        assert!(
+            declarations[1]
+                .selector_context()
+                .same_context(outer_selectors)
+        );
+        assert!(!declarations[1].selector_context().same_context(selectors));
+        assert!(matches!(
+            declarations[0].rule_context().kind(),
+            CssRuleContextKindRef::ScopedStyle(_)
+        ));
+        assert!(matches!(
+            declarations[1].rule_context().kind(),
+            CssRuleContextKindRef::NestedDeclarations(_)
+        ));
+        assert!(
+            declarations[0]
+                .rule_context()
+                .parent()
+                .unwrap()
+                .same_context(declarations[1].rule_context().parent().unwrap())
+        );
+        let mut ancestor = declarations[1].rule_context().parent().unwrap();
+        for index in (0..depth).rev() {
+            assert!(matches!(ancestor.kind(), CssRuleContextKindRef::Media(_)));
+            assert_eq!(
+                ancestor.position().unwrap().byte_offset().value(),
+                26 + 12 * index
+            );
+            ancestor = ancestor.parent().unwrap();
+        }
+        let CssRuleContextKindRef::Scope { root, limit } = ancestor.kind() else {
+            panic!("scope ancestor")
+        };
+        assert_eq!(
+            root.unwrap().selectors(),
+            &[surgeist_css::CssSelector::Class("inner".into())]
+        );
+        assert!(limit.is_none());
+        assert_eq!(ancestor.position().unwrap().byte_offset().value(), 8);
+        assert!(selectors.scope_context().unwrap().same_context(ancestor));
+        assert!(ancestor.parent().unwrap().same_context(outer));
+        assert!(outer.parent().is_none());
+        assert_eq!(normalized.items().len(), depth + 6);
     }
 }

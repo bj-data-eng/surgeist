@@ -38,6 +38,12 @@
   },
   "supersession_records": [
     {
+      "older": "css-cascade-6 scope-body nesting-selector semantics",
+      "effective": "css-nesting-1",
+      "scope": "For a scope nested within a style rule, the selected Nesting section 3.3.1 specializes the older Cascade 6 section 2.5.3 body semantics: a scope-start nesting selector refers to the nearest ancestor style rule, while nesting selectors in the scope body and scope-end refer to :where(:scope). Retain Cascade 6 boundary grammar and scope ancestry. This overlap does not replace the whole Cascade module or make an unstyled scope admit declarations; matching and specificity execution remain downstream.",
+      "evidence": "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nested-scope-rules"
+    },
+    {
       "older": "mediaqueries-4",
       "effective": "mediaqueries-5",
       "scope": "The selected MQ5 edition explicitly extends and supersedes MQ4 features. Use its effective query and feature definitions once while retaining MQ4 module membership and historical feature/source identities. Custom media and execution requirements remain separately owned and must not be inferred complete from implemented feature rows.",

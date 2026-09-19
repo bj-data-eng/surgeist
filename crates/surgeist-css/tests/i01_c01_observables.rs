@@ -1734,6 +1734,9 @@ fn scoped_rule_observables(
     frozen: &mut FrozenDeclarationCursor<'_>,
 ) {
     match rule {
+        CssScopedRule::NestedDeclarations(rule) => {
+            rule_observables(&CssRule::NestedDeclarations(rule.clone()), retained, frozen)
+        }
         CssScopedRule::CounterStyle(rule) => {
             rule_observables(&CssRule::CounterStyle(rule.clone()), retained, frozen)
         }

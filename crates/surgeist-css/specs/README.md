@@ -147,6 +147,13 @@ Containment 3; published Grid 3 supplies `flow-tolerance`; and Media Queries 5
 supplies `display-mode`. Preserve source membership without duplicating effective
 requirements or retaining superseded authored spellings.
 
+The scoped-nesting record identifies the selected Nesting definition that
+specializes Cascade 6's older scope-body nesting-selector semantics. Preserve
+the distinction between an ancestor style selector and the active scope chain.
+Ordinary unstyled scopes retain their rule-list grammar; style-nested scopes
+admit declaration runs under Nesting's group-rule definition. Matching and
+specificity execution remain downstream.
+
 For a required definition from another specification, follow
 `selection_policy.normative_dependencies` and record its exact source and section
 with the requirement evidence before implementation relies on it. Referencing a
