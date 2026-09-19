@@ -85,6 +85,7 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
 
     let exact_source_cases = [
         ("display", "S-DISPLAY3"),
+        ("visibility", "S-DISPLAY3"),
         ("all", "O-CASCADE4"),
         ("margin", "O-BOX3"),
         ("color", "O-COLOR4"),

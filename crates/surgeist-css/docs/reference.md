@@ -447,6 +447,7 @@ unfinished. This property migration does not complete the other Grid3 families.
 padding, border width, style and color, the four side-border shorthands, `border`,
 the five border-image longhands, `flow-tolerance`, `color`, `font-family`,
 `text-orientation`, its legacy `glyph-orientation-vertical` grammar, `opacity`, `display`,
+`order`, `visibility`,
 the `container` shorthand and its two longhands, and `all`.
 The shared property schema owns their
 member lists, initial values and reset-only components. Other known properties
@@ -459,6 +460,21 @@ contribution retains the exact `CssOpacityValue`, including percentages,
 calculations and out-of-range specified values. Computed clamping belongs to
 style. Raw authored value text remains separate from canonical specified-value
 serialization, which is not established by expansion.
+
+Visibility uses the existing `CssVisibility::{Visible, Hidden, Collapse}` values.
+It is inherited by default and its ordinary initial value is `Visible`.
+`CssVisibilityPropertyValue::current()` exposes that typed value while `as_css()`
+retains authored spelling and `i01_subset()` remains exact. Its intrinsic
+expansion emits one longhand contribution; globals and unresolved substitutions
+keep their separate states. Expansion does not resolve inheritance or apply
+hidden/collapse rendering effects.
+
+`CssVisibility::serialize_specified()` emits `visible`, `hidden`, or `collapse`.
+The bounded variant charges one input node, one projection node and the exact
+canonical byte count before allocating output. The selected definition is
+[Display3 §4](https://www.w3.org/TR/2026/CRD-css-display-3-20260605/#visibility),
+which supersedes CSS2 for this property. Layout, painting and interaction effects
+remain downstream.
 
 Order is a non-inherited longhand with ordinary initial `CssIntegerValue::Literal(0)`.
 Its specified integer value expands to one contribution; normalization retains

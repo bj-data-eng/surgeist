@@ -2,7 +2,7 @@
 
 use crate::{
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits,
+    CssSpecifiedValueSerializationLimits, CssVisibility,
 };
 
 /// The outer display type of an ordinary display value.
@@ -105,22 +105,7 @@ impl CssDisplayValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
-        use CssSpecifiedValueSerializationErrorKind as Kind;
-        if limits.max_input_nodes() == 0 {
-            return Err(CssSpecifiedValueSerializationError::new(
-                Kind::InputNodeLimit,
-            ));
-        }
-        if limits.max_projection_nodes() == 0 {
-            return Err(CssSpecifiedValueSerializationError::new(
-                Kind::ProjectionNodeLimit,
-            ));
-        }
-        let text = self.specified_keyword_sequence();
-        if text.len() > limits.max_css_bytes() {
-            return Err(CssSpecifiedValueSerializationError::new(Kind::ByteLimit));
-        }
-        Ok(text.to_owned())
+        serialize_keyword_sequence(self.specified_keyword_sequence(), limits)
     }
 
     fn specified_keyword_sequence(self) -> &'static str {
@@ -244,4 +229,47 @@ impl CssDisplayValue {
             Self::InlineGridLanes => "inline-grid-lanes",
         }
     }
+}
+
+impl CssVisibility {
+    /// Serializes the specified visibility keyword without applying inheritance
+    /// or changing box rendering and layout.
+    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Serializes atomically, charging one input node, one projection node,
+    /// and the exact output byte count. Authored input is never modified.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String, CssSpecifiedValueSerializationError> {
+        let text = match self {
+            Self::Visible => "visible",
+            Self::Hidden => "hidden",
+            Self::Collapse => "collapse",
+        };
+        serialize_keyword_sequence(text, limits)
+    }
+}
+
+fn serialize_keyword_sequence(
+    text: &str,
+    limits: CssSpecifiedValueSerializationLimits,
+) -> Result<String, CssSpecifiedValueSerializationError> {
+    use CssSpecifiedValueSerializationErrorKind as Kind;
+    if limits.max_input_nodes() == 0 {
+        return Err(CssSpecifiedValueSerializationError::new(
+            Kind::InputNodeLimit,
+        ));
+    }
+    if limits.max_projection_nodes() == 0 {
+        return Err(CssSpecifiedValueSerializationError::new(
+            Kind::ProjectionNodeLimit,
+        ));
+    }
+    if text.len() > limits.max_css_bytes() {
+        return Err(CssSpecifiedValueSerializationError::new(Kind::ByteLimit));
+    }
+    Ok(text.to_owned())
 }

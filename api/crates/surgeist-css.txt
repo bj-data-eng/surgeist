@@ -2115,6 +2115,7 @@ pub surgeist_css::CssLonghandValueRef::PaddingLeft(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::PaddingRight(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::PaddingTop(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::TextOrientation(&'a surgeist_css::CssTextOrientation)
+pub surgeist_css::CssLonghandValueRef::Visibility(&'a surgeist_css::CssVisibility)
 pub enum surgeist_css::CssMathFunction
 pub surgeist_css::CssMathFunction::Abs
 pub surgeist_css::CssMathFunction::Acos
@@ -3129,6 +3130,9 @@ pub surgeist_css::CssVerticalPositionKeyword::Top
 pub surgeist_css::CssVisibility::Collapse
 pub surgeist_css::CssVisibility::Hidden
 pub surgeist_css::CssVisibility::Visible
+impl surgeist_css::CssVisibility
+pub fn surgeist_css::CssVisibility::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssVisibility::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssWhiteSpace
 pub surgeist_css::CssWhiteSpace::BreakSpaces
 pub surgeist_css::CssWhiteSpace::NoWrap
@@ -6823,6 +6827,8 @@ pub struct surgeist_css::CssVisibilityPropertyValue
 impl surgeist_css::CssVisibilityPropertyValue
 pub fn surgeist_css::CssVisibilityPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssVisibilityPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssVisibility>
+impl surgeist_css::CssVisibilityPropertyValue
+pub const fn surgeist_css::CssVisibilityPropertyValue::current(&self) -> &surgeist_css::CssVisibility
 pub struct surgeist_css::CssWhiteSpacePropertyValue
 impl surgeist_css::CssWhiteSpacePropertyValue
 pub fn surgeist_css::CssWhiteSpacePropertyValue::as_css(&self) -> &str

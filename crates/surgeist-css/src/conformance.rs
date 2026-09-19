@@ -2217,7 +2217,7 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::ContainerName
         | CssKnownProperty::ContainerType => X_CONDITIONAL5,
         CssKnownProperty::All => O_CASCADE4,
-        CssKnownProperty::Display => S_DISPLAY3,
+        CssKnownProperty::Display | CssKnownProperty::Visibility => S_DISPLAY3,
         CssKnownProperty::BorderCollapse
         | CssKnownProperty::BorderSpacing
         | CssKnownProperty::CaptionSide
@@ -2235,7 +2235,6 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::Overflow
         | CssKnownProperty::Float
         | CssKnownProperty::Clear
-        | CssKnownProperty::Visibility
         | CssKnownProperty::Content
         | CssKnownProperty::ListStyleType
         | CssKnownProperty::ListStylePosition
@@ -2493,11 +2492,7 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
             CssKnownProperty::ZIndex => "visuren.html#propdef-z-index",
             _ => default,
         },
-        CssKnownProperty::Overflow | CssKnownProperty::Visibility => match property {
-            CssKnownProperty::Overflow => "visufx.html#propdef-overflow",
-            CssKnownProperty::Visibility => "visufx.html#propdef-visibility",
-            _ => default,
-        },
+        CssKnownProperty::Overflow => "visufx.html#propdef-overflow",
         CssKnownProperty::Content
         | CssKnownProperty::CounterIncrement
         | CssKnownProperty::CounterReset
@@ -4180,7 +4175,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 508] = [
         "place-self",
         "baseline.property.place-self"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::Visibility,
         "visibility",
         "baseline.property.visibility"
