@@ -258,7 +258,8 @@ fn opacity_i01_projection(value: &CssOpacityValue) -> Option<CssOpacity> {
         CssOpacityValue::Calculation(_)
         | CssOpacityValue::Number(_)
         | CssOpacityValue::Percentage(_)
-        | CssOpacityValue::PercentageCalculation(_) => None,
+        | CssOpacityValue::PercentageCalculation(_)
+        | CssOpacityValue::ExactScalar(_) => None,
     }
 }
 

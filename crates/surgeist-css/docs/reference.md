@@ -821,15 +821,27 @@ Oklab/Oklch, and predefined `color()` branches. Finite specified components
 remain authored even when they are outside a computed range, and typed
 calculations remain symbolic. The current opacity model likewise preserves a
 finite number or percentage, including signed and out-of-range specified
-values.
+values. Ordinary opacity scalars retain the exact authored decimal even when
+the tokenizer's binary32 cache underflows or overflows. `CssOpacityValue::ExactScalar`
+owns a checked `CssOpacityScalar` with numeric spelling, number/percentage kind,
+and original component provenance. Its constructor accepts only number and
+percentage components; it does not admit dimensions or calculations.
+
+Exactly representable binary32 values keep the existing `Literal`, `Number`,
+and `Percentage` branches. For example, `.5` remains `Literal`, while `.1`,
+`1e-47`, and `1e100%` use `ExactScalar`. Percentage classification uses the
+authored coefficient rather than multiplying a rounded fractional cache.
+Legacy Rust constructors retain their finite binary32 contracts. This transport
+does not clamp opacity or provide canonical specified serialization.
 
 Color-bearing property wrappers expose the current value through `current()`,
 and the opacity wrapper exposes its current `CssOpacityValue` through `value()`.
-Their `i01_subset()` remains a separate frozen compatibility projection: every
-frozen I01 input keeps its exact projection, while a newly accepted current
-value returns `None` when the old `CssColor` or `CssOpacity` model cannot
-represent it without loss. A missing I01 projection does not make the current
-value invalid.
+Their `i01_subset()` remains a separate compatibility projection. A value
+returns `None` when the old `CssColor` or `CssOpacity` model cannot represent it
+without loss. In particular, decimal opacity such as `.1` no longer exposes a
+silently rounded I01 value. Consumers must handle the current `value()` enum;
+downstream numeric lowering must explicitly select its precision policy. A
+missing I01 projection does not make the current value invalid.
 
 `border-color` accepts one through four colors and exposes the expanded sides
 through `CssBorderColors`. Its wrapper's `current()` now returns this aggregate;

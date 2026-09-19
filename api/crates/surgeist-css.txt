@@ -2372,8 +2372,12 @@ pub surgeist_css::CssObjectFit::Cover
 pub surgeist_css::CssObjectFit::Fill
 pub surgeist_css::CssObjectFit::None
 pub surgeist_css::CssObjectFit::ScaleDown
+#[non_exhaustive] pub enum surgeist_css::CssOpacityScalarKind
+pub surgeist_css::CssOpacityScalarKind::Number
+pub surgeist_css::CssOpacityScalarKind::Percentage
 #[non_exhaustive] pub enum surgeist_css::CssOpacityValue
 pub surgeist_css::CssOpacityValue::Calculation(surgeist_css::CssNumberCalculation)
+pub surgeist_css::CssOpacityValue::ExactScalar(surgeist_css::CssOpacityScalar)
 pub surgeist_css::CssOpacityValue::Literal(surgeist_css::CssOpacity)
 pub surgeist_css::CssOpacityValue::Number(surgeist_css::CssFiniteNumber)
 pub surgeist_css::CssOpacityValue::Percentage(surgeist_css::CssFiniteNumber)
@@ -5710,6 +5714,13 @@ impl surgeist_css::CssOpacityPropertyValue
 pub fn surgeist_css::CssOpacityPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssOpacityPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssOpacity>
 pub const fn surgeist_css::CssOpacityPropertyValue::value(&self) -> &surgeist_css::CssOpacityValue
+pub struct surgeist_css::CssOpacityScalar
+impl surgeist_css::CssOpacityScalar
+pub const fn surgeist_css::CssOpacityScalar::component(&self) -> &surgeist_css::CssComponentValue
+pub fn surgeist_css::CssOpacityScalar::kind(&self) -> surgeist_css::CssOpacityScalarKind
+pub fn surgeist_css::CssOpacityScalar::numeric(&self) -> surgeist_css::CssNumericTokenRef<'_>
+pub const fn surgeist_css::CssOpacityScalar::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssOpacityScalar::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
 pub struct surgeist_css::CssOpenTypeTag
 impl surgeist_css::CssOpenTypeTag
 pub fn surgeist_css::CssOpenTypeTag::as_str(&self) -> &str

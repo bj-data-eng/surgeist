@@ -1,8 +1,7 @@
 use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
 
 use super::values::{
-    CalculationRoot, LengthGrammar, checked_percentage_value, parse_box_size_value,
-    parse_length_with, parse_numeric_function,
+    CalculationRoot, LengthGrammar, parse_box_size_value, parse_length_with, parse_numeric_function,
 };
 use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
@@ -693,25 +692,19 @@ pub(super) fn parse_opacity<'i, 't>(
     let numeric_start = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
-        Token::Number { value, .. } => {
-            let value = CssFiniteNumber::try_new(*value).ok_or_else(|| {
-                unsupported_value_at(location, None, "opacity number must be finite")
+        Token::Number { .. } | Token::Percentage { .. } => {
+            input.reset(&numeric_start);
+            input.skip_whitespace();
+            let offset = input.position().byte_index();
+            let component = numeric.collect(input).map_err(|error| {
+                unsupported_value_at(
+                    numeric.error_location(&error, location, offset),
+                    None,
+                    "invalid opacity scalar component",
+                )
             })?;
-            Ok(CssOpacity::try_new(value.value())
-                .map(CssOpacityValue::Literal)
-                .unwrap_or(CssOpacityValue::Number(value)))
-        }
-        Token::Percentage { unit_value, .. } => {
-            let value = checked_percentage_value(
-                location,
-                *unit_value,
-                "opacity percentage must be finite",
-            )?;
-            CssFiniteNumber::try_new(value)
-                .map(CssOpacityValue::Percentage)
-                .ok_or_else(|| {
-                    unsupported_value_at(location, None, "opacity percentage must be finite")
-                })
+            crate::opacity_scalar::admit_opacity_scalar(component)
+                .map_err(|_| unsupported_value_at(location, None, "invalid opacity scalar token"))
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             if let Ok(calculation) = input.try_parse(|input| {

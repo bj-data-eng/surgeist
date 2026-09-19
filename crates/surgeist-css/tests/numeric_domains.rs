@@ -4,9 +4,9 @@ use surgeist_css::{
     CssFontFaceStretchValue, CssFontFaceWeightValue, CssFontSizeAdjust, CssFontWeightNumber,
     CssGridRepeatInteger, CssGridTrackBreadth, CssKeyframePercent, CssKnownProperty,
     CssKnownPropertyValueRef, CssLength, CssLengthDimension, CssLengthUnit, CssNonNegativeNumber,
-    CssOpacity, CssRatio, CssRecoveryAction, CssResolution, CssResolutionUnit, CssRule,
-    CssScaleValues, CssTime, CssTimeUnit, CssTokenKind, ErrorKind, parse_sheet,
-    parse_style_attribute,
+    CssOpacity, CssOpacityScalarKind, CssOpacityValue, CssRatio, CssRecoveryAction, CssResolution,
+    CssResolutionUnit, CssRule, CssScaleValues, CssTime, CssTimeUnit, CssTokenKind, ErrorKind,
+    parse_sheet, parse_style_attribute,
 };
 
 #[test]
@@ -96,10 +96,10 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
 }
 
 #[test]
-fn opacity_rejects_non_finite_and_unrelated_numeric_domains() {
+fn opacity_rejects_bare_non_finite_keywords_and_unrelated_numeric_domains() {
     for (value, responsible, token_kind) in [
-        ("1e999", "1e999", CssTokenKind::Number),
-        ("1e999%", "1e999%", CssTokenKind::Percentage),
+        ("infinity", "infinity", CssTokenKind::Ident),
+        ("NaN", "NaN", CssTokenKind::Ident),
         ("1px", "1px", CssTokenKind::Dimension),
     ] {
         let source = format!("opacity: {value}; color: red");
@@ -129,6 +129,41 @@ fn opacity_rejects_non_finite_and_unrelated_numeric_domains() {
         let encountered = detail.encountered().expect("responsible numeric token");
         assert_eq!(encountered.kind(), token_kind, "{source}");
         assert_eq!(encountered.authored(), responsible, "{source}");
+    }
+}
+
+#[test]
+fn opacity_preserves_finite_decimal_exponents_beyond_float_storage() {
+    // A decimal exponent is mathematically finite. The tokenizer's infinity
+    // cache does not change its authored numeric domain.
+    for value in ["1e999", "1e999%"] {
+        let report = parse_style_attribute(&format!("opacity: {value}; color: red"));
+        assert!(report.is_clean());
+        assert_eq!(report.syntax().len(), 2);
+        let CssKnownPropertyValueRef::Opacity(opacity) = report.syntax()[0]
+            .known()
+            .unwrap()
+            .property_value()
+            .unwrap()
+        else {
+            panic!("ordinary opacity")
+        };
+        let CssOpacityValue::ExactScalar(scalar) = opacity.value() else {
+            panic!("exact finite decimal")
+        };
+        assert_eq!(scalar.numeric().representation(), "1e999");
+        assert_eq!(
+            scalar.kind(),
+            if value.ends_with('%') {
+                CssOpacityScalarKind::Percentage
+            } else {
+                CssOpacityScalarKind::Number
+            }
+        );
+        assert_eq!(
+            report.syntax()[1].known().unwrap().property(),
+            CssKnownProperty::Color
+        );
     }
 }
 

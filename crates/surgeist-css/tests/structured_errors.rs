@@ -620,15 +620,22 @@ fn repeated_filter_failures_make_progress_to_valid_filter_and_color_siblings() {
 fn repeated_opacity_domain_failures_make_progress_to_a_valid_sibling() {
     let source = concat!(
         "opacity: 1e999; ",
+        "opacity: infinity; ",
         "opacity: 1px; ",
         "opacity: calc(1% + 2); ",
         "color: red",
     );
     let report = parse_style_attribute(source);
     assert_eq!(report.diagnostics().len(), 3);
-    assert_eq!(report.syntax().len(), 1);
+    assert_eq!(report.syntax().len(), 2);
+    // The original large decimal is finite; only the following bare math
+    // keyword, dimension, and mixed-domain calculation are invalid.
     assert_eq!(
-        report.syntax()[0]
+        report.syntax()[0].known().unwrap().property(),
+        CssKnownProperty::Opacity,
+    );
+    assert_eq!(
+        report.syntax()[1]
             .known()
             .expect("retained color declaration")
             .property(),

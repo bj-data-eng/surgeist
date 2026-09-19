@@ -341,11 +341,14 @@
 //!
 //! Color-bearing property wrappers expose their current value through
 //! `current()`, and the opacity wrapper exposes its current [`CssOpacityValue`]
-//! through `value()`. Their `i01_subset()` is a separate frozen compatibility
-//! view: every frozen I01 input keeps its exact projection, while a newly
-//! accepted current value returns `None` when [`CssColor`] or [`CssOpacity`]
-//! cannot represent it without loss. A missing compatibility projection does
-//! not make the current value invalid.
+//! through `value()`. Their `i01_subset()` is a separate compatibility view:
+//! a current value returns `None` when [`CssColor`] or [`CssOpacity`] cannot
+//! represent it without loss. Ordinary opacity decimals such as `.1` retain
+//! their exact spelling in [`CssOpacityValue::ExactScalar`] rather than exposing
+//! a rounded I01 payload; exactly representable values such as `.5` retain their
+//! legacy variant. Consumers use the current enum and select a precision policy
+//! explicitly when lowering. A missing compatibility projection does not make
+//! the current value invalid.
 //!
 //! ```
 //! use surgeist_css::{
@@ -1116,6 +1119,8 @@ mod media_features;
 mod normalization;
 pub use media_features::*;
 mod numeric;
+mod opacity_scalar;
+pub use opacity_scalar::{CssOpacityScalar, CssOpacityScalarKind};
 mod parser;
 mod properties;
 mod property_value;

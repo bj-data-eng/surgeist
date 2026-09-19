@@ -5349,6 +5349,8 @@ pub enum CssOpacityValue {
     Number(CssFiniteNumber),
     Percentage(CssFiniteNumber),
     PercentageCalculation(CssPercentageCalculation),
+    /// A finite decimal scalar that retains its exact authored numeric token.
+    ExactScalar(crate::CssOpacityScalar),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
