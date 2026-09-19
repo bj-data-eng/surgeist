@@ -326,27 +326,48 @@
       "id": "atrule/atrule/font-feature-values.json#/with character-variant and styleset",
       "expectation_sha256": "639da2bcdef001fa01667a49344bb0e0bdd19a46416380d5c0ee43602c3e6489",
       "class": {
-        "kind": "unsupported",
-        "reason": "outside_selected_profile",
-        "policy": {
-          "kind": "full_observation",
-          "retained_syntax": {
-            "extractor": {
-              "kind": "at_rule"
-            },
-            "predicate": {
-              "relation": "empty"
-            }
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
           },
-          "is_clean": false,
-          "diagnostics": [
-            {
-              "code": "unsupported_at_rule",
-              "action": "drop_at_rule",
-              "payload_relation": "intersects"
-            }
-          ]
-        }
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_descriptor_value",
+            "action": "drop_descriptor",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_descriptor_value",
+            "action": "drop_descriptor",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_descriptor_value",
+            "action": "drop_descriptor",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_descriptor_value",
+            "action": "drop_descriptor",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_descriptor_value",
+            "action": "drop_descriptor",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_descriptor_value",
+            "action": "drop_descriptor",
+            "payload_relation": "intersects"
+          }
+        ]
       }
     },
     {
@@ -12728,14 +12749,15 @@
             "kind": "selector_list"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "exact",
+            "value": 0
           }
         },
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
-            "payload_relation": "intersects"
+            "action": "reject_input",
+            "payload_relation": "recovery_ends_at"
           }
         ]
       }
@@ -12750,13 +12772,14 @@
             "kind": "selector_list"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "exact",
+            "value": 0
           }
         },
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -12772,13 +12795,14 @@
             "kind": "selector_list"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "exact",
+            "value": 0
           }
         },
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -12794,13 +12818,14 @@
             "kind": "selector_list"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "exact",
+            "value": 0
           }
         },
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -12816,13 +12841,14 @@
             "kind": "selector_list"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "exact",
+            "value": 0
           }
         },
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -12838,13 +12864,14 @@
             "kind": "selector_list"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "exact",
+            "value": 0
           }
         },
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -12860,13 +12887,14 @@
             "kind": "selector_list"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "exact",
+            "value": 0
           }
         },
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -12882,13 +12910,14 @@
             "kind": "selector_list"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "exact",
+            "value": 0
           }
         },
         "diagnostics": [
           {
             "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "action": "reject_input",
             "payload_relation": "intersects"
           }
         ]
@@ -12904,7 +12933,8 @@
             "kind": "selector_list"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "exact",
+            "value": 2
           }
         }
       }
@@ -12919,7 +12949,8 @@
             "kind": "selector_list"
           },
           "predicate": {
-            "relation": "nonempty"
+            "relation": "exact",
+            "value": 1
           }
         }
       }

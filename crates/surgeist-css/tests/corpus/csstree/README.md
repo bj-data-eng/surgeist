@@ -115,11 +115,22 @@ checks this relation together with expected-class admission.
 
 The complex container-query original retains its unknown enclosed operands
 within the authored Boolean structure. The Fonts4 character-variant singleton
-original independently requires a retained `@font-feature-values` outer rule,
-while conflicting pinned descriptor prose leaves its cleanliness and diagnostics
-unresolved. Its existing class is therefore left pending, not endorsed as an
-outside-profile exclusion. These class corrections do not establish a complete
-130-case baseline or refresh the separately persisted oracle.
+original uses the documented provisional section 6.9.1 policy: retain the outer
+rule, its empty character-variant block and all six styleset definitions, with
+six ordered descriptor diagnostics. Its
+[`policy expectations`](../../csstree/font-singleton-policy-reconciliation.json)
+describe implementation behavior. The conflicting section 6.9.2 prose remains
+unresolved; the historical uncertainty in `at-rule-reconciliation.json` is
+preserved. This selected grammar is not an outside-profile exclusion. Class
+reconciliation does not itself refresh the separately persisted oracle.
+
+The ten original strict selector-list inputs use independently specified
+[`selector-list expectations`](../../csstree/selector-list-original-reconciliation.json).
+Two clean inputs retain exactly one and two members; eight malformed lists are
+rejected atomically with `RejectInput`. The incomplete combinator at original
+EOF uses `recovery_ends_at`; the other seven diagnostics intersect the input.
+These assertions cover original typed selectors and exact diagnostic coordinates
+through the public parser and the real corpus adapter.
 
 The 45 original `:is`, `:where`, `:not`, and `:has` records use the raw
 single-selector adapter. Their independently derived
