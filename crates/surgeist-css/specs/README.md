@@ -97,6 +97,14 @@ cutoff, despite its older bibliography date. CSS owns intrinsic type admission;
 arithmetic execution, unit resolution, rounding and contextual clamping remain
 downstream. Typed OM objects, DOM maps and JavaScript APIs are not imported.
 
+Conditional Rules 5 size queries explicitly reference Values 5 tree-counting
+functions. The catalog pins the published 11 November 2024 edition for only
+`sibling-count()` and `sibling-index()`, their argument-free signatures and
+integer numeric integration in container size queries. CSS retains symbolic
+nodes and checks the enclosing numeric domain; style and root supply the query
+container, tree context, evaluation and invalidation. This import neither
+selects Values 5 in full nor replaces the selected Values 4 edition.
+
 Media Queries 5 custom-media names require the extension-name production from
 CSS Extensions 1. The catalog pins an immutable pre-cutoff source revision for
 that definition because no published edition was found. It accepts identifiers

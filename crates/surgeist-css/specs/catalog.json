@@ -162,6 +162,17 @@
         "latest_published_url": "https://www.w3.org/TR/css-position-4/",
         "publication_history_url": "https://www.w3.org/standards/history/css-position-4/",
         "source_resolution": "Latest published edition before the cutoff, confirmed from the latest-publication metadata and history on 2026-09-13. The selected immutable Fullscreen snapshot explicitly moves its backdrop definition to Position 4. Import only the backdrop identity and fully-styleable classification required to compose selected pseudo-element grammar; Position 4 is not selected in full."
+      },
+      {
+        "id": "css-values-5-tree-counting-definitions",
+        "kind": "w3c-dated-publication",
+        "date": "2024-11-11",
+        "url": "https://www.w3.org/TR/2024/WD-css-values-5-20241111/",
+        "sha256": "af984ef26b3954143b0f270253e3373f06b5255a5ac00aad919a4cb1b334a8ad",
+        "bytes": 661889,
+        "latest_published_url": "https://www.w3.org/TR/css-values-5/",
+        "publication_history_url": "https://www.w3.org/standards/history/css-values-5/",
+        "source_resolution": "Latest published Values 5 edition before the cutoff, confirmed from W3C publication history on 2026-09-19. Conditional Rules 5 section 6.1 explicitly refers to tree-counting functions. Import only section 9 authored signatures and numeric integration for container size queries; Values 5 is not selected in full."
       }
     ],
     "definitions": [
@@ -419,6 +430,38 @@
           "root"
         ],
         "downstream_requirements": "Top-layer membership, generated boxes, originating elements, user-agent styles, stacking and painting remain downstream. This import does not select overlay or the rest of Position 4."
+      },
+      {
+        "id": "container-size-tree-counting",
+        "source_id": "css-values-5-tree-counting-definitions",
+        "signatures": [
+          "sibling-count()",
+          "sibling-index()"
+        ],
+        "sections": [
+          {
+            "anchor": "tree-counting",
+            "url": "https://www.w3.org/TR/2024/WD-css-values-5-20241111/#tree-counting"
+          }
+        ],
+        "required_by": [
+          {
+            "module_id": "css-conditional-5",
+            "section_url": "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#size-container",
+            "requirement": "Size queries explicitly use tree-counting functions relative to the query container; authored numeric syntax must retain these functions without evaluating their tree context."
+          }
+        ],
+        "authored_owner": "css",
+        "authored_requirements": [
+          "Admit the two argument-free tree-counting function signatures in container size numeric contexts and retain their function identity and original token origins.",
+          "Treat their symbolic integer results as dimensionless numbers in the existing numeric type algebra; validate the enclosing length or ratio domain without tree evaluation.",
+          "Preserve these contextual functions through checked container construction and canonical serialization without enabling unrelated Values 5 functions or replacing the selected Values 4 module."
+        ],
+        "downstream_owners": [
+          "style",
+          "root"
+        ],
+        "downstream_requirements": "Query-container selection, flat-tree and originating-element context, integer evaluation, dependency tracking and invalidation remain downstream. Other Values 5 definitions are not imported by this record."
       }
     ]
   },
