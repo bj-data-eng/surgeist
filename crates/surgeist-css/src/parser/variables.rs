@@ -158,41 +158,8 @@ pub(super) fn authored_value_from_components(
         .expect("nonempty value")
         + 1;
     let items = &items[start..end];
-    let mut pending = vec![(items, false)];
-    while let Some((values, restricted)) = pending.pop() {
-        for component in values {
-            match component.view() {
-                Component::Token(Token::Semicolon | Token::Delim('!')) if restricted => {
-                    return Ok(None);
-                }
-                Component::Function(function) if function.name().eq_ignore_ascii_case("var") => {
-                    let mut arguments = function
-                        .values()
-                        .items()
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, item)| !trivia(item));
-                    let Some((_, name)) = arguments.next() else {
-                        return Ok(None);
-                    };
-                    let Component::Token(Token::Ident(name)) = name.view() else {
-                        return Ok(None);
-                    };
-                    if parse_custom_property_name(name).is_none() {
-                        return Ok(None);
-                    }
-                    if let Some((index, separator)) = arguments.next() {
-                        if !matches!(separator.view(), Component::Token(Token::Comma)) {
-                            return Ok(None);
-                        }
-                        pending.push((&function.values().items()[index + 1..], true));
-                    }
-                }
-                Component::Function(function) => pending.push((function.values().items(), false)),
-                Component::Block(block) => pending.push((block.values().items(), false)),
-                _ => {}
-            }
-        }
+    if checked_variable_components(items).is_none() {
+        return Ok(None);
     }
     // Every selected sibling must belong to one contiguous original snapshot.
     // Mixed or programmatic components use canonical text only as the existing
@@ -222,4 +189,51 @@ pub(super) fn authored_value_from_components(
     Ok(Some(CssAuthoredDeclarationValue::new(
         builder.finish()?.as_css(),
     )))
+}
+
+/// Shared component-native var grammar. `Some(true)` means at least one valid
+/// reference was found; `None` is a grammar mismatch, not a resource failure.
+pub(super) fn checked_variable_components(items: &[crate::CssComponentValue]) -> Option<bool> {
+    use crate::{CssComponentValueRef as Component, CssValueTokenRef as Token};
+    let trivia = |item: &crate::CssComponentValue| {
+        matches!(
+            item.view(),
+            Component::Comment(_) | Component::Token(Token::Whitespace(_))
+        )
+    };
+    let mut contains_var = false;
+    let mut pending = vec![(items, false)];
+    while let Some((values, restricted)) = pending.pop() {
+        for component in values {
+            match component.view() {
+                Component::Token(Token::Semicolon | Token::Delim('!')) if restricted => {
+                    return None;
+                }
+                Component::Function(function) if function.name().eq_ignore_ascii_case("var") => {
+                    contains_var = true;
+                    let mut arguments = function
+                        .values()
+                        .items()
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, item)| !trivia(item));
+                    let (_, name) = arguments.next()?;
+                    let Component::Token(Token::Ident(name)) = name.view() else {
+                        return None;
+                    };
+                    parse_custom_property_name(name)?;
+                    if let Some((index, separator)) = arguments.next() {
+                        if !matches!(separator.view(), Component::Token(Token::Comma)) {
+                            return None;
+                        }
+                        pending.push((&function.values().items()[index + 1..], true));
+                    }
+                }
+                Component::Function(function) => pending.push((function.values().items(), false)),
+                Component::Block(block) => pending.push((block.values().items(), false)),
+                _ => {}
+            }
+        }
+    }
+    Some(contains_var)
 }

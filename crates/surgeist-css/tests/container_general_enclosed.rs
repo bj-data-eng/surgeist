@@ -358,7 +358,8 @@ fn wrong_outer_syntax_is_rejected_by_the_enclosure_owner_with_its_original_origi
 #[test]
 fn fully_programmatic_known_enclosures_expose_expected_feature_and_custom_property_payloads() {
     use surgeist_css::{
-        CssContainerFeatureQuery, CssContainerStyleQuery, CssLengthUnit, CssQueryComparison,
+        CssContainerFeatureQuery, CssContainerLengthRef, CssContainerStyleQuery, CssMediaRangeRef,
+        CssQueryComparison,
     };
     let values = CssComponentValues::try_new(vec![
         CssComponentValue::try_ident("width").unwrap(),
@@ -372,9 +373,14 @@ fn fully_programmatic_known_enclosures_expose_expected_feature_and_custom_proper
     let Kind::Feature(CssContainerFeatureQuery::Width(range)) = feature.kind() else {
         panic!("known width")
     };
-    assert_eq!(range.comparison(), Some(CssQueryComparison::GreaterThan));
-    assert_eq!(range.value().value().value(), 1.0);
-    assert_eq!(range.value().authored_unit(), Some(CssLengthUnit::Px));
+    let CssMediaRangeRef::FeatureFirst { comparison, value } = range.view() else {
+        panic!("range")
+    };
+    assert_eq!(comparison, CssQueryComparison::GreaterThan);
+    let CssContainerLengthRef::Numeric(value) = value.view() else {
+        panic!("length")
+    };
+    assert_eq!(value.components().serialize().unwrap().as_css(), "1px");
     let values =
         CssComponentValues::try_new(vec![CssComponentValue::try_ident("--Theme").unwrap()])
             .unwrap();
@@ -466,20 +472,9 @@ fn parsed_and_checked_feature(body: &str) -> [Condition; 2] {
 }
 
 #[test]
-fn legacy_query_float_underflow_and_signed_zero_preserve_their_existing_domain_contract() {
-    use surgeist_css::{CssContainerFeatureQuery, CssLengthUnit};
-    // cssparser computes the signed decimal in f64, then casts to f32.
-    // A dimensional negative zero remains signed; unitless zero uses the
-    // query-length owner's positive-zero constructor and has no authored unit.
-    for (literal, negative, unit) in [
-        ("-1e-999px", true, Some(CssLengthUnit::Px)),
-        ("1e-999px", false, Some(CssLengthUnit::Px)),
-        ("-0px", true, Some(CssLengthUnit::Px)),
-        ("+0px", false, Some(CssLengthUnit::Px)),
-        ("-1e-999", false, None),
-        ("1e-999", false, None),
-        ("-0", false, None),
-    ] {
+fn exact_query_lengths_preserve_underflow_spelling_and_signed_zero() {
+    use surgeist_css::{CssContainerFeatureQuery, CssContainerLengthRef, CssMediaRangeRef};
+    for literal in ["-1e-999px", "1e-999px", "-0px", "+0px", "-0"] {
         let programmatic = CssGeneralEnclosed::try_parenthesized(
             CssComponentValues::try_new(vec![
                 CssComponentValue::try_ident("width").unwrap(),
@@ -496,31 +491,19 @@ fn legacy_query_float_underflow_and_signed_zero_preserve_their_existing_domain_c
             Condition::try_from_enclosed(programmatic).unwrap(),
         ] {
             let Kind::Feature(CssContainerFeatureQuery::Width(range)) = condition.kind() else {
-                panic!("finite zero width for {literal}")
+                panic!("exact length {literal}")
             };
-            let expected = if negative { -0.0_f32 } else { 0.0_f32 };
-            assert_eq!(
-                range.value().value().value().to_bits(),
-                expected.to_bits(),
-                "{literal}"
-            );
-            assert_eq!(range.value().authored_unit(), unit);
+            let CssMediaRangeRef::Plain { value } = range.view() else {
+                panic!("plain")
+            };
+            let CssContainerLengthRef::Numeric(value) = value.view() else {
+                panic!("numeric")
+            };
+            assert_eq!(value.components().serialize().unwrap().as_css(), literal);
         }
     }
-}
-
-#[test]
-fn overflowing_and_indeterminate_legacy_query_numbers_remain_opaque() {
-    // Finite query payloads reject infinity. Tokenizer arithmetic also produces
-    // NaN for zero times an overflowing exponent, so 0e999 is not unitless zero.
-    for body in [
-        "width:1e999px",
-        "width:-1e999px",
-        "width:0e999px",
-        "width:0e999",
-        "aspect-ratio:1e999 / 1",
-        "aspect-ratio:1 / 1e999",
-    ] {
+    // Neither tiny nonzero unitless number becomes zero through f32 underflow.
+    for body in ["width:-1e-999", "width:1e-999"] {
         for condition in parsed_and_checked_feature(body) {
             assert_eq!(
                 opaque(&condition).serialize().unwrap().as_css(),
@@ -531,32 +514,74 @@ fn overflowing_and_indeterminate_legacy_query_numbers_remain_opaque() {
 }
 
 #[test]
-fn ratio_legacy_payloads_require_finite_values_and_a_strictly_positive_denominator() {
-    use surgeist_css::CssContainerFeatureQuery;
+fn exact_query_numbers_do_not_overflow_through_tokenizer_floats() {
+    for body in [
+        "width:1e999px",
+        "width:-1e999px",
+        "width:0e999px",
+        "width:0e999",
+        "aspect-ratio:1e999 / 1",
+        "aspect-ratio:1 / 1e999",
+    ] {
+        for (route, condition) in parsed_and_checked_feature(body).into_iter().enumerate() {
+            assert!(matches!(condition.kind(), Kind::Feature(_)), "{body}");
+            // The stylesheet helper contributes one trailing prelude space;
+            // direct enclosure construction has no surrounding trivia.
+            let trailing = if route == 0 { " " } else { "" };
+            assert_eq!(
+                condition.serialize().unwrap().as_css(),
+                format!("({body}){trailing}")
+            );
+        }
+    }
+}
+
+#[test]
+fn exact_ratios_admit_degenerate_zero_and_reject_negative_nonzero_literals() {
+    use surgeist_css::{CssContainerFeatureQuery, CssContainerRatioRef, CssMediaRangeRef};
     for (body, numerator, denominator) in [
-        ("aspect-ratio:2 / 3", 2.0_f32, 3.0_f32),
-        ("aspect-ratio:-0 / 1", -0.0_f32, 1.0_f32),
-        ("aspect-ratio:-1e-999 / 1", -0.0_f32, 1.0_f32),
+        ("aspect-ratio:2 / 3", "2", "3"),
+        ("aspect-ratio:-0 / 1", "-0", "1"),
+        ("aspect-ratio:1 / 0", "1", "0"),
+        ("aspect-ratio:1 / -0", "1", "-0"),
+        ("aspect-ratio:1 / 1e-999", "1", "1e-999"),
     ] {
         for condition in parsed_and_checked_feature(body) {
             let Kind::Feature(CssContainerFeatureQuery::AspectRatio(range)) = condition.kind()
             else {
-                panic!("valid legacy ratio {body}")
+                panic!("exact ratio {body}")
+            };
+            let CssMediaRangeRef::Plain { value } = range.view() else {
+                panic!("plain")
+            };
+            let CssContainerRatioRef::Numeric(value) = value.view() else {
+                panic!("numeric")
             };
             assert_eq!(
-                range.value().numerator().value().to_bits(),
-                numerator.to_bits()
+                value
+                    .numerator()
+                    .components()
+                    .serialize()
+                    .unwrap()
+                    .as_css()
+                    .trim(),
+                numerator
             );
             assert_eq!(
-                range.value().denominator().value().to_bits(),
-                denominator.to_bits()
+                value
+                    .denominator()
+                    .components()
+                    .serialize()
+                    .unwrap()
+                    .as_css()
+                    .trim(),
+                denominator
             );
         }
     }
     for body in [
-        "aspect-ratio:1 / 0",
-        "aspect-ratio:1 / -0",
-        "aspect-ratio:1 / 1e-999",
+        "aspect-ratio:-1e-999 / 1",
+        "aspect-ratio:1 / -1e-999",
         "aspect-ratio:-1 / 2",
     ] {
         for condition in parsed_and_checked_feature(body) {

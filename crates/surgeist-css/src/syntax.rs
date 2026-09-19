@@ -11,6 +11,7 @@
 
 use crate::CssFontFeatureValuesRule;
 use crate::CssValueOrigin;
+pub(crate) use crate::container_features::*;
 pub(crate) use crate::media::*;
 pub(crate) use crate::media_features::*;
 pub(crate) use crate::numeric::*;
@@ -3957,12 +3958,13 @@ impl CssContainerConditionList {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssContainerFeatureQuery {
-    Width(CssRangeFeature<CssQueryLength>),
-    Height(CssRangeFeature<CssQueryLength>),
-    InlineSize(CssRangeFeature<CssQueryLength>),
-    BlockSize(CssRangeFeature<CssQueryLength>),
-    AspectRatio(CssRangeFeature<CssRatio>),
-    Orientation(CssOrientation),
+    Boolean(CssContainerSizeFeatureKind),
+    Width(CssMediaRange<CssContainerLength>),
+    Height(CssMediaRange<CssContainerLength>),
+    InlineSize(CssMediaRange<CssContainerLength>),
+    BlockSize(CssMediaRange<CssContainerLength>),
+    AspectRatio(CssMediaRange<CssContainerRatio>),
+    Orientation(CssContainerOrientation),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -4019,11 +4021,6 @@ pub struct CssRangeFeature<T> {
 }
 
 impl<T> CssRangeFeature<T> {
-    #[must_use]
-    pub(crate) fn new(comparison: Option<CssQueryComparison>, value: T) -> Self {
-        Self { comparison, value }
-    }
-
     #[must_use]
     pub const fn comparison(&self) -> Option<CssQueryComparison> {
         self.comparison

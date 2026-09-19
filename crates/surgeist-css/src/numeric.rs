@@ -636,11 +636,38 @@ pub enum CssCalculationProductOperator {
     Divide,
 }
 
+/// Contextual integer-valued functions evaluated against a container element.
+/// These remain symbolic and are admitted only by container size construction,
+/// not by the context-free numeric constructors.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssTreeCountingFunction {
+    SiblingCount,
+    SiblingIndex,
+}
+impl CssTreeCountingFunction {
+    fn parse(name: &str) -> Option<Self> {
+        if name.eq_ignore_ascii_case("sibling-count") {
+            Some(Self::SiblingCount)
+        } else if name.eq_ignore_ascii_case("sibling-index") {
+            Some(Self::SiblingIndex)
+        } else {
+            None
+        }
+    }
+    fn name(self) -> &'static str {
+        match self {
+            Self::SiblingCount => "sibling-count",
+            Self::SiblingIndex => "sibling-index",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum NodeKind {
     Value(Box<CssComponentValue>),
     Constant(CssNumericConstant),
     Variable(CssRelativeColorChannel),
+    TreeCounting(CssTreeCountingFunction),
     Sum(Vec<(Option<CssCalculationSumOperator>, CssCalculationExpression)>),
     Product(
         Vec<(
@@ -684,6 +711,7 @@ impl CssCalculationExpression {
                     })?
                 }
                 NodeKind::Constant(c) => c.name().len(),
+                NodeKind::TreeCounting(function) => function.name().len().checked_add(2)?,
                 NodeKind::Variable(c) => {
                     if *c == CssRelativeColorChannel::Alpha {
                         5
@@ -766,6 +794,10 @@ impl CssCalculationExpression {
                     emit(text, &node.origin);
                 }
                 NodeKind::Constant(constant) => emit(constant.name().to_owned(), &node.origin),
+                NodeKind::TreeCounting(function) => {
+                    emit(format!("{}(", function.name()), &node.origin);
+                    emit(")".into(), node.closing_origin());
+                }
                 NodeKind::Variable(channel) => {
                     emit(format!("{channel:?}").to_ascii_lowercase(), &node.origin)
                 }
@@ -927,6 +959,11 @@ impl CssCalculationExpression {
             NodeKind::Constant(_) => {
                 CssCalculationExpressionRef::Constant(CssCalculationConstantRef { node: self })
             }
+            NodeKind::TreeCounting(_) => {
+                CssCalculationExpressionRef::TreeCounting(CssCalculationTreeCountingRef {
+                    node: self,
+                })
+            }
             NodeKind::Variable(_) => {
                 CssCalculationExpressionRef::Variable(CssCalculationVariableRef { node: self })
             }
@@ -961,6 +998,7 @@ pub enum CssCalculationExpressionRef<'a> {
     Value(CssCalculationValueRef<'a>),
     Constant(CssCalculationConstantRef<'a>),
     Variable(CssCalculationVariableRef<'a>),
+    TreeCounting(CssCalculationTreeCountingRef<'a>),
     Sum(CssCalculationSumRef<'a>),
     Product(CssCalculationProductRef<'a>),
     Group(CssCalculationUnaryRef<'a>),
@@ -973,6 +1011,7 @@ impl<'a> CssCalculationExpressionRef<'a> {
             Self::Value(v) => v.literal().origin(),
             Self::Constant(v) => v.origin(),
             Self::Variable(v) => v.origin(),
+            Self::TreeCounting(v) => v.origin(),
             Self::Sum(v) => v.origin(),
             Self::Product(v) => v.origin(),
             Self::Group(v) | Self::NestedCalc(v) => v.origin(),
@@ -984,6 +1023,7 @@ impl<'a> CssCalculationExpressionRef<'a> {
             Self::Value(v) => v.literal().numeric_type(),
             Self::Constant(v) => v.node.ty,
             Self::Variable(v) => v.node.ty,
+            Self::TreeCounting(v) => v.node.ty,
             Self::Sum(v) => v.node.ty,
             Self::Product(v) => v.node.ty,
             Self::Group(v) | Self::NestedCalc(v) => v.node.ty,
@@ -1016,6 +1056,25 @@ impl<'a> CssCalculationConstantRef<'a> {
             unreachable!()
         };
         v
+    }
+    pub fn origin(self) -> &'a CssValueOrigin {
+        &self.node.origin
+    }
+    pub fn numeric_type(self) -> CssNumericType {
+        self.node.ty
+    }
+}
+/// Borrowed symbolic tree-counting node; its integer result has number type.
+#[derive(Clone, Copy, Debug)]
+pub struct CssCalculationTreeCountingRef<'a> {
+    node: &'a CssCalculationExpression,
+}
+impl<'a> CssCalculationTreeCountingRef<'a> {
+    pub fn function(self) -> CssTreeCountingFunction {
+        let NodeKind::TreeCounting(function) = self.node.kind else {
+            unreachable!()
+        };
+        function
     }
     pub fn origin(self) -> &'a CssValueOrigin {
         &self.node.origin
@@ -1332,8 +1391,15 @@ impl std::hash::Hash for ComponentKey<'_> {
     }
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum NumericAdmissionContext {
+    Pure,
+    ContainerSize,
+}
+
 struct NumericParser<'a> {
     root: CalculationRoot,
+    context: NumericAdmissionContext,
     ready: std::collections::HashMap<ComponentKey<'a>, CssCalculationExpression>,
     paths: std::collections::HashMap<ComponentKey<'a>, Box<[usize]>>,
 }
@@ -1367,10 +1433,12 @@ impl<'a> NumericParser<'a> {
 fn parse_tree(
     component: &CssComponentValue,
     root: CalculationRoot,
+    context: NumericAdmissionContext,
     root_index: usize,
 ) -> Result<CssCalculationExpression> {
     let mut parser = NumericParser {
         root,
+        context,
         ready: std::collections::HashMap::new(),
         paths: std::collections::HashMap::new(),
     };
@@ -1620,9 +1688,18 @@ fn parse_node<'a>(
             if f.name().eq_ignore_ascii_case("var") {
                 return Err(error(CssNumericConstructionErrorKind::SubstitutionRequired));
             }
-            let function = CssMathFunction::parse(f.name())
-                .ok_or_else(|| error(CssNumericConstructionErrorKind::UnknownFunction))?;
-            parse_function(function, f.values(), parser, c)?
+            if parser.context == NumericAdmissionContext::ContainerSize
+                && let Some(function) = CssTreeCountingFunction::parse(f.name())
+            {
+                if !f.values().items().iter().all(trivia) {
+                    return Err(error(CssNumericConstructionErrorKind::Arity));
+                }
+                (NodeKind::TreeCounting(function), CssNumericType::NUMBER)
+            } else {
+                let function = CssMathFunction::parse(f.name())
+                    .ok_or_else(|| error(CssNumericConstructionErrorKind::UnknownFunction))?;
+                parse_function(function, f.values(), parser, c)?
+            }
         }
         _ => return Err(error(CssNumericConstructionErrorKind::MalformedExpression)),
     };
@@ -1831,6 +1908,32 @@ fn construct_with_policy(
     limits: CssComponentValueLimits,
     policy: AdmissionPolicy,
 ) -> Result<CssCalculationExpression> {
+    construct_with_context(values, root, limits, policy, NumericAdmissionContext::Pure)
+}
+
+/// Admits container-size numeric syntax after the owning query boundary has
+/// checked the component graph, including trusted parsed EOF closures.
+pub(crate) fn construct_container(
+    values: CssComponentValues,
+    root: CalculationRoot,
+    limits: CssComponentValueLimits,
+) -> Result<CssCalculationExpression> {
+    construct_with_context(
+        values,
+        root,
+        limits,
+        AdmissionPolicy::RecoveredSyntax,
+        NumericAdmissionContext::ContainerSize,
+    )
+}
+
+fn construct_with_context(
+    values: CssComponentValues,
+    root: CalculationRoot,
+    limits: CssComponentValueLimits,
+    policy: AdmissionPolicy,
+    context: NumericAdmissionContext,
+) -> Result<CssCalculationExpression> {
     validate_components(&values, limits, policy)?;
     let mut significant = values.items().iter().filter(|c| !trivia(c));
     let c = significant.next().ok_or_else(|| {
@@ -1861,7 +1964,7 @@ fn construct_with_policy(
         .iter()
         .position(|value| std::ptr::eq(value, c))
         .expect("root component belongs to input");
-    let mut result = parse_tree(c, root, root_index)?;
+    let mut result = parse_tree(c, root, context, root_index)?;
     if root == CalculationRoot::Integer
         && literal
         && !matches!(c.view(),CssComponentValueRef::Token(CssValueTokenRef::Number(n))if n.kind()==CssNumericTokenKind::Integer)
@@ -2403,5 +2506,178 @@ mod media_helpers_tests {
             error.component_error().unwrap().kind(),
             CssComponentValueErrorKind::ByteLimit
         );
+    }
+}
+
+#[cfg(test)]
+mod container_context_tests {
+    use super::*;
+
+    #[test]
+    fn container_tree_functions_are_symbolic_numbers_with_distinct_views() {
+        for (source, function, canonical) in [
+            (
+                "sibling-count()",
+                CssTreeCountingFunction::SiblingCount,
+                "sibling-count()",
+            ),
+            (
+                "SIBLING-INDEX( /**/ )",
+                CssTreeCountingFunction::SiblingIndex,
+                "sibling-index()",
+            ),
+            (
+                r"sibling-\69 ndex()",
+                CssTreeCountingFunction::SiblingIndex,
+                "sibling-index()",
+            ),
+        ] {
+            let components = crate::parse_component_values(source).unwrap();
+            let expression = construct_container(
+                components.clone(),
+                CalculationRoot::Number,
+                CssComponentValueLimits::default(),
+            )
+            .unwrap();
+            assert_eq!(expression.result_type(), CssCalculationType::Number);
+            let CssCalculationExpressionRef::TreeCounting(view) = expression.as_ref() else {
+                panic!("distinct contextual tree function view");
+            };
+            assert_eq!(view.function(), function);
+            assert_eq!(view.numeric_type(), CssNumericType::NUMBER);
+            assert_eq!(view.origin(), components.items()[0].origin());
+            let cloned = expression.clone();
+            assert_eq!(expression, cloned);
+            let number = CssNumberCalculation::from_expression(cloned);
+            let serialized = number.serialize().unwrap();
+            assert_eq!(serialized.as_css(), canonical);
+            assert_eq!(
+                serialized.value_origin_at(0),
+                Some(components.items()[0].origin())
+            );
+            let CssComponentValueRef::Function(original) = components.items()[0].view() else {
+                panic!("function component");
+            };
+            assert_eq!(
+                serialized.value_origin_at(canonical.len() - 1),
+                Some(original.closing_origin())
+            );
+            // The owning container context is required again when round-tripping.
+            let roundtrip = construct_container(
+                crate::parse_component_values(canonical).unwrap(),
+                CalculationRoot::Number,
+                CssComponentValueLimits::default(),
+            )
+            .unwrap();
+            assert_eq!(roundtrip.to_css_fragment(), canonical);
+            assert_eq!(
+                CssNumberCalculation::try_from_components(components)
+                    .unwrap_err()
+                    .kind(),
+                &CssNumericConstructionErrorKind::UnknownFunction
+            );
+        }
+    }
+
+    #[test]
+    fn container_tree_functions_obey_length_algebra_and_pure_context_isolation() {
+        for source in [
+            "calc(sibling-count() * 1px)",
+            "max(1px, calc(2em / sibling-index()))",
+        ] {
+            let components = crate::parse_component_values(source).unwrap();
+            let expression = construct_container(
+                components.clone(),
+                CalculationRoot::Length,
+                CssComponentValueLimits::default(),
+            )
+            .unwrap();
+            assert_eq!(expression.result_type(), CssCalculationType::Length);
+            assert_eq!(expression.to_css_fragment(), source);
+            assert_eq!(
+                CssLengthCalculation::try_from_components(components)
+                    .unwrap_err()
+                    .kind(),
+                &CssNumericConstructionErrorKind::UnknownFunction
+            );
+        }
+        for (source, expected) in [
+            (
+                "sibling-index()",
+                CssNumericConstructionErrorKind::RootDomainMismatch,
+            ),
+            (
+                "calc(sibling-count() + 1px)",
+                CssNumericConstructionErrorKind::IncompatibleTypes,
+            ),
+            ("sibling-count(1)", CssNumericConstructionErrorKind::Arity),
+            ("sibling-index(,)", CssNumericConstructionErrorKind::Arity),
+            (
+                "future-count()",
+                CssNumericConstructionErrorKind::UnknownFunction,
+            ),
+        ] {
+            let result = construct_container(
+                crate::parse_component_values(source).unwrap(),
+                CalculationRoot::Length,
+                CssComponentValueLimits::default(),
+            );
+            assert_eq!(result.unwrap_err().kind(), &expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn contextual_numeric_construction_preserves_closure_policy_and_limits() {
+        let values = crate::parse_component_values("sibling-count(").unwrap();
+        assert_eq!(
+            construct_with_context(
+                values.clone(),
+                CalculationRoot::Number,
+                CssComponentValueLimits::default(),
+                AdmissionPolicy::Strict,
+                NumericAdmissionContext::ContainerSize,
+            )
+            .unwrap_err()
+            .kind(),
+            &CssNumericConstructionErrorKind::RecoveredComponent
+        );
+        let expression = construct_container(
+            values.clone(),
+            CalculationRoot::Number,
+            CssComponentValueLimits::default(),
+        )
+        .unwrap();
+        let CssComponentValueRef::Function(original) = values.items()[0].view() else {
+            panic!("function")
+        };
+        let serialized = CssNumberCalculation::from_expression(expression)
+            .serialize()
+            .unwrap();
+        assert_eq!(
+            serialized.value_origin_at(14),
+            Some(original.closing_origin())
+        );
+        for (limits, expected) in [
+            (
+                CssComponentValueLimits::try_new(0, 100, 100).unwrap(),
+                CssComponentValueErrorKind::NestingLimit,
+            ),
+            (
+                CssComponentValueLimits::try_new(10, 0, 100).unwrap(),
+                CssComponentValueErrorKind::ComponentLimit,
+            ),
+            (
+                CssComponentValueLimits::try_new(10, 100, 1).unwrap(),
+                CssComponentValueErrorKind::ByteLimit,
+            ),
+        ] {
+            let error = construct_container(
+                crate::parse_component_values("sibling-count()").unwrap(),
+                CalculationRoot::Number,
+                limits,
+            )
+            .unwrap_err();
+            assert_eq!(error.component_error().unwrap().kind(), expected);
+        }
     }
 }

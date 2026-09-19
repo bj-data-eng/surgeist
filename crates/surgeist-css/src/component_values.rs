@@ -323,13 +323,6 @@ impl fmt::Debug for NumericToken {
 pub struct CssNumericTokenRef<'a>(&'a NumericToken);
 
 impl<'a> CssNumericTokenRef<'a> {
-    /// Original tokenizer conversion for legacy consumers only. Number and
-    /// Dimension store their magnitude; Percentage stores its divided-by-100
-    /// unit value. Typed numeric interpretation continues to use exact spelling.
-    pub(crate) fn tokenizer_value(self) -> f32 {
-        f32::from_bits(self.0.tokenizer_value_bits)
-    }
-
     /// Returns the exact numeric representation, without any dimension unit or `%`.
     #[must_use]
     pub fn representation(self) -> &'a str {

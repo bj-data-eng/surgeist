@@ -1628,7 +1628,7 @@ const EXPECTED: &[ExpectedFeature] = &[
         production: "#size-container",
         status: CssSupportStatus::Partial,
         supported_subset: Some(
-            "The exact baseline-recognized container size-feature spelling group is supported.",
+            "The six authored size features retain boolean, plain, prefixed and directional range forms, exact symbolic numeric values, checked var() operands and the scoped tree-counting functions; orientation remains discrete.",
         ),
         unsupported_remainder: Some(QUERY_REMAINDER),
         recognized_code: None,

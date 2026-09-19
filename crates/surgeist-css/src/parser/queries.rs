@@ -345,15 +345,6 @@ impl<'a> ContainerCursor<'a> {
             false
         }
     }
-    fn delim(&mut self, expected: char) -> bool {
-        if matches!(self.peek().map(CssComponentValue::view), Some(CssComponentValueRef::Token(CssValueTokenRef::Delim(value))) if value == expected)
-        {
-            self.index += 1;
-            true
-        } else {
-            false
-        }
-    }
     fn token(&mut self) -> Option<CssValueTokenRef<'a>> {
         match self.next()?.view() {
             CssComponentValueRef::Token(token) => Some(token),
@@ -463,7 +454,7 @@ fn container_atom(
             if let Ok(condition) = container_condition(block.values().items())? {
                 return Ok(ContainerNodeKind::Parenthesized(Box::new(condition)));
             }
-            if let Some(feature) = container_feature(block.values().items()) {
+            if let Some(feature) = container_feature(block.values().items())? {
                 return Ok(ContainerNodeKind::Feature(feature));
             }
         }
@@ -471,102 +462,336 @@ fn container_atom(
     }
     Ok(ContainerNodeKind::Opaque)
 }
-fn container_feature(items: &[CssComponentValue]) -> Option<CssContainerFeatureQuery> {
-    let mut cursor = ContainerCursor::new(items);
-    let CssValueTokenRef::Ident(name) = cursor.token()? else {
+// Intrinsic grammar failure tries general-enclosed; resource failures do not.
+enum ContainerFeatureError {
+    Grammar,
+    Component(crate::CssComponentValueError),
+}
+impl From<crate::CssComponentValueError> for ContainerFeatureError {
+    fn from(value: crate::CssComponentValueError) -> Self {
+        Self::Component(value)
+    }
+}
+type ContainerFeatureResult<T> = Result<T, ContainerFeatureError>;
+
+fn container_feature(
+    items: &[CssComponentValue],
+) -> Result<Option<CssContainerFeatureQuery>, crate::CssComponentValueError> {
+    match parse_container_size(items) {
+        Ok(feature) => Ok(Some(feature)),
+        Err(ContainerFeatureError::Grammar) => Ok(None),
+        Err(ContainerFeatureError::Component(error)) => Err(error),
+    }
+}
+fn significant(items: &[CssComponentValue]) -> &[CssComponentValue] {
+    let start = items
+        .iter()
+        .position(|item| !container_trivia(item))
+        .unwrap_or(items.len());
+    let end = items
+        .iter()
+        .rposition(|item| !container_trivia(item))
+        .map_or(start, |i| i + 1);
+    &items[start..end]
+}
+fn container_name(items: &[CssComponentValue]) -> Option<ContainerFeatureName> {
+    let [item] = significant(items) else {
         return None;
     };
-    let feature = ContainerFeatureName::parse(name)?;
-    let result = match feature {
-        ContainerFeatureName::Width(prefix)
-        | ContainerFeatureName::Height(prefix)
-        | ContainerFeatureName::InlineSize(prefix)
-        | ContainerFeatureName::BlockSize(prefix) => {
-            let comparison = container_comparison(&mut cursor, prefix)?;
-            let value = match cursor.token()? {
-                CssValueTokenRef::Dimension { number, unit } => CssQueryLength::try_new(
-                    number.tokenizer_value(),
-                    CssLengthUnit::from_css_unit(unit)?,
-                )?,
-                CssValueTokenRef::Number(number) if number.tokenizer_value() == 0.0 => {
-                    CssQueryLength::unitless_zero()
+    let CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) = item.view() else {
+        return None;
+    };
+    ContainerFeatureName::parse(name)
+}
+fn parse_container_size(
+    items: &[CssComponentValue],
+) -> ContainerFeatureResult<CssContainerFeatureQuery> {
+    let items = significant(items);
+    if let Some(name) = container_name(items) {
+        if name.prefix().is_some() {
+            return Err(ContainerFeatureError::Grammar);
+        }
+        return Ok(CssContainerFeatureQuery::Boolean(name.kind()));
+    }
+    // Component indexes preserve every value's supplied origin. Nested operators
+    // belong to their function/block and are not range separators.
+    let mut comparisons = Vec::new();
+    let mut index = 0;
+    while index < items.len() {
+        if let CssComponentValueRef::Token(CssValueTokenRef::Delim(symbol @ ('<' | '>' | '='))) =
+            items[index].view()
+        {
+            let start = index;
+            index += 1;
+            let mut end = index;
+            let inclusive = if symbol != '=' {
+                while matches!(
+                    items.get(end).map(CssComponentValue::view),
+                    Some(CssComponentValueRef::Comment(_))
+                ) {
+                    end += 1;
                 }
-                _ => return None,
-            };
-            let range = CssRangeFeature::new(Some(comparison), value);
-            match feature {
-                ContainerFeatureName::Width(_) => CssContainerFeatureQuery::Width(range),
-                ContainerFeatureName::Height(_) => CssContainerFeatureQuery::Height(range),
-                ContainerFeatureName::InlineSize(_) => CssContainerFeatureQuery::InlineSize(range),
-                _ => CssContainerFeatureQuery::BlockSize(range),
-            }
-        }
-        ContainerFeatureName::AspectRatio(prefix) => {
-            let comparison = container_comparison(&mut cursor, prefix)?;
-            let CssValueTokenRef::Number(numerator) = cursor.token()? else {
-                return None;
-            };
-            if !cursor.delim('/') {
-                return None;
-            }
-            let CssValueTokenRef::Number(denominator) = cursor.token()? else {
-                return None;
-            };
-            let value =
-                CssRatio::try_new(numerator.tokenizer_value(), denominator.tokenizer_value())?;
-            CssContainerFeatureQuery::AspectRatio(CssRangeFeature::new(Some(comparison), value))
-        }
-        ContainerFeatureName::Orientation => {
-            if !matches!(cursor.token()?, CssValueTokenRef::Colon) {
-                return None;
-            }
-            let CssValueTokenRef::Ident(value) = cursor.token()? else {
-                return None;
-            };
-            CssContainerFeatureQuery::Orientation(if value.eq_ignore_ascii_case("portrait") {
-                CssOrientation::Portrait
-            } else if value.eq_ignore_ascii_case("landscape") {
-                CssOrientation::Landscape
+                matches!(
+                    items.get(end).map(CssComponentValue::view),
+                    Some(CssComponentValueRef::Token(CssValueTokenRef::Delim('=')))
+                )
             } else {
-                return None;
-            })
+                false
+            };
+            if inclusive {
+                index = end + 1;
+            }
+            comparisons.push((start..index, query_comparison(symbol, inclusive)));
+        } else {
+            index += 1;
         }
+    }
+    if comparisons.is_empty() {
+        let mut cursor = ContainerCursor::new(items);
+        let CssValueTokenRef::Ident(ident) =
+            cursor.token().ok_or(ContainerFeatureError::Grammar)?
+        else {
+            return Err(ContainerFeatureError::Grammar);
+        };
+        let name = ContainerFeatureName::parse(ident).ok_or(ContainerFeatureError::Grammar)?;
+        if !matches!(cursor.token(), Some(CssValueTokenRef::Colon)) {
+            return Err(ContainerFeatureError::Grammar);
+        }
+        let operand = &items[cursor.index..];
+        if name.kind() == CssContainerSizeFeatureKind::Orientation {
+            return container_orientation(operand).map(CssContainerFeatureQuery::Orientation);
+        }
+        return container_range(name, MediaRangeState::Plain { value: operand });
+    }
+    let (name, shape) = match comparisons.as_slice() {
+        [(operator, comparison)] => {
+            let left = &items[..operator.start];
+            let right = &items[operator.end..];
+            if let Some(name) = container_name(left) {
+                (
+                    name,
+                    MediaRangeState::FeatureFirst {
+                        comparison: *comparison,
+                        value: right,
+                    },
+                )
+            } else {
+                let name = container_name(right).ok_or(ContainerFeatureError::Grammar)?;
+                (
+                    name,
+                    MediaRangeState::ValueFirst {
+                        comparison: *comparison,
+                        value: left,
+                    },
+                )
+            }
+        }
+        [(first, first_comparison), (second, second_comparison)] => {
+            let name = container_name(&items[first.end..second.start])
+                .ok_or(ContainerFeatureError::Grammar)?;
+            let shape = query_range_chain(
+                &items[..first.start],
+                *first_comparison,
+                &items[second.end..],
+                *second_comparison,
+            )
+            .ok_or(ContainerFeatureError::Grammar)?;
+            (name, shape)
+        }
+        _ => return Err(ContainerFeatureError::Grammar),
     };
-    cursor.peek().is_none().then_some(result)
+    if name.prefix().is_some() || name.kind() == CssContainerSizeFeatureKind::Orientation {
+        return Err(ContainerFeatureError::Grammar);
+    }
+    container_range(name, shape)
 }
-fn container_comparison(
-    cursor: &mut ContainerCursor<'_>,
-    prefix: Option<RangePrefix>,
-) -> Option<CssQueryComparison> {
-    if matches!(
-        cursor.peek()?.view(),
-        CssComponentValueRef::Token(CssValueTokenRef::Colon)
-    ) {
-        cursor.next();
-        return Some(match prefix {
-            Some(RangePrefix::Min) => CssQueryComparison::GreaterThanOrEqual,
-            Some(RangePrefix::Max) => CssQueryComparison::LessThanOrEqual,
-            None => CssQueryComparison::Equal,
-        });
+fn container_range(
+    name: ContainerFeatureName,
+    shape: MediaRangeState<&[CssComponentValue]>,
+) -> ContainerFeatureResult<CssContainerFeatureQuery> {
+    fn map<T>(
+        shape: MediaRangeState<&[CssComponentValue]>,
+        prefix: Option<RangePrefix>,
+        value: impl Fn(&[CssComponentValue]) -> ContainerFeatureResult<T>,
+    ) -> ContainerFeatureResult<CssMediaRange<T>> {
+        Ok(CssMediaRange::new(match shape {
+            MediaRangeState::Plain { value: input } => query_plain_range(value(input)?, prefix),
+            MediaRangeState::FeatureFirst {
+                comparison,
+                value: input,
+            } => MediaRangeState::FeatureFirst {
+                comparison,
+                value: value(input)?,
+            },
+            MediaRangeState::ValueFirst {
+                comparison,
+                value: input,
+            } => MediaRangeState::ValueFirst {
+                comparison,
+                value: value(input)?,
+            },
+            MediaRangeState::Ascending {
+                left,
+                left_inclusive,
+                right,
+                right_inclusive,
+            } => MediaRangeState::Ascending {
+                left: value(left)?,
+                left_inclusive,
+                right: value(right)?,
+                right_inclusive,
+            },
+            MediaRangeState::Descending {
+                left,
+                left_inclusive,
+                right,
+                right_inclusive,
+            } => MediaRangeState::Descending {
+                left: value(left)?,
+                left_inclusive,
+                right: value(right)?,
+                right_inclusive,
+            },
+            MediaRangeState::Min { .. } | MediaRangeState::Max { .. } => {
+                unreachable!("prefix applied only after operand admission")
+            }
+        }))
     }
-    if prefix.is_some() {
-        return None;
-    }
-    match cursor.token()? {
-        CssValueTokenRef::Delim('<') => Some(if cursor.delim('=') {
-            CssQueryComparison::LessThanOrEqual
-        } else {
-            CssQueryComparison::LessThan
-        }),
-        CssValueTokenRef::Delim('>') => Some(if cursor.delim('=') {
-            CssQueryComparison::GreaterThanOrEqual
-        } else {
-            CssQueryComparison::GreaterThan
-        }),
-        CssValueTokenRef::Delim('=') => Some(CssQueryComparison::Equal),
-        _ => None,
-    }
+    Ok(match name.kind() {
+        CssContainerSizeFeatureKind::Width => {
+            CssContainerFeatureQuery::Width(map(shape, name.prefix(), container_length)?)
+        }
+        CssContainerSizeFeatureKind::Height => {
+            CssContainerFeatureQuery::Height(map(shape, name.prefix(), container_length)?)
+        }
+        CssContainerSizeFeatureKind::InlineSize => {
+            CssContainerFeatureQuery::InlineSize(map(shape, name.prefix(), container_length)?)
+        }
+        CssContainerSizeFeatureKind::BlockSize => {
+            CssContainerFeatureQuery::BlockSize(map(shape, name.prefix(), container_length)?)
+        }
+        CssContainerSizeFeatureKind::AspectRatio => {
+            CssContainerFeatureQuery::AspectRatio(map(shape, name.prefix(), container_ratio)?)
+        }
+        CssContainerSizeFeatureKind::Orientation => return Err(ContainerFeatureError::Grammar),
+    })
 }
+fn container_operand(
+    items: &[CssComponentValue],
+) -> ContainerFeatureResult<(CssComponentValues, bool)> {
+    let items = significant(items);
+    if items.is_empty()
+        || items.iter().any(|item| {
+            matches!(
+                item.view(),
+                CssComponentValueRef::Token(
+                    CssValueTokenRef::Semicolon | CssValueTokenRef::Delim('!')
+                )
+            )
+        })
+    {
+        return Err(ContainerFeatureError::Grammar);
+    }
+    let pending = super::variables::checked_variable_components(items)
+        .ok_or(ContainerFeatureError::Grammar)?;
+    Ok((CssComponentValues::try_new(items.to_vec())?, pending))
+}
+fn container_numeric(
+    values: CssComponentValues,
+    root: CalculationRoot,
+) -> ContainerFeatureResult<CssCalculationExpression> {
+    // The component boundary already checked construction. Only parser-owned
+    // recovered closures can reach this helper, so preserve their provenance.
+    crate::numeric::construct_container(values, root, CssComponentValueLimits::default()).map_err(
+        |error| {
+            error.component_error().cloned().map_or(
+                ContainerFeatureError::Grammar,
+                ContainerFeatureError::Component,
+            )
+        },
+    )
+}
+fn container_length(items: &[CssComponentValue]) -> ContainerFeatureResult<CssContainerLength> {
+    let (values, pending) = container_operand(items)?;
+    if pending {
+        return Ok(CssContainerLength::pending(CssContainerPendingValue::new(
+            CssContainerValueDomain::Length,
+            values,
+        )));
+    }
+    let value = CssLengthCalculation::from_expression(container_numeric(
+        values.clone(),
+        CalculationRoot::Length,
+    )?);
+    Ok(CssContainerLength::typed(value, values))
+}
+fn container_ratio(items: &[CssComponentValue]) -> ContainerFeatureResult<CssContainerRatio> {
+    let (values, pending) = container_operand(items)?;
+    if pending {
+        return Ok(CssContainerRatio::pending(CssContainerPendingValue::new(
+            CssContainerValueDomain::Ratio,
+            values,
+        )));
+    }
+    let operand = |items: &[CssComponentValue]| -> ContainerFeatureResult<CssNumberCalculation> {
+        let values = CssComponentValues::try_new(items.to_vec())?;
+        if media_literal_number(&values).is_some_and(negative_literal) {
+            return Err(ContainerFeatureError::Grammar);
+        }
+        Ok(CssNumberCalculation::from_expression(container_numeric(
+            values,
+            CalculationRoot::Number,
+        )?))
+    };
+    let mut split = values.items().split(|item| {
+        matches!(
+            item.view(),
+            CssComponentValueRef::Token(CssValueTokenRef::Delim('/'))
+        )
+    });
+    let numerator = operand(split.next().expect("one ratio region"))?;
+    let denominator_items = split.next();
+    if split.next().is_some() {
+        return Err(ContainerFeatureError::Grammar);
+    }
+    let denominator = if let Some(items) = denominator_items {
+        operand(items)?
+    } else {
+        CssNumberCalculation::try_from_components(CssComponentValues::try_new(vec![
+            CssComponentValue::try_number("1")?,
+        ])?)
+        .expect("implicit ratio denominator is one")
+    };
+    Ok(CssContainerRatio::typed(
+        CssMediaRatio::new(numerator, denominator, denominator_items.is_none()),
+        values,
+    ))
+}
+fn container_orientation(
+    items: &[CssComponentValue],
+) -> ContainerFeatureResult<CssContainerOrientation> {
+    let (values, pending) = container_operand(items)?;
+    if pending {
+        return Ok(CssContainerOrientation::pending(
+            CssContainerPendingValue::new(CssContainerValueDomain::Orientation, values),
+        ));
+    }
+    let [value] = values.items() else {
+        return Err(ContainerFeatureError::Grammar);
+    };
+    let CssComponentValueRef::Token(CssValueTokenRef::Ident(value)) = value.view() else {
+        return Err(ContainerFeatureError::Grammar);
+    };
+    let value = if value.eq_ignore_ascii_case("portrait") {
+        CssOrientation::Portrait
+    } else if value.eq_ignore_ascii_case("landscape") {
+        CssOrientation::Landscape
+    } else {
+        return Err(ContainerFeatureError::Grammar);
+    };
+    Ok(CssContainerOrientation::typed(value, values))
+}
+
 fn container_style(
     items: &[CssComponentValue],
 ) -> Result<Option<CssContainerStyleQuery>, crate::CssComponentValueError> {
@@ -1431,6 +1656,49 @@ fn parse_media_feature_query<'i, 't>(
     }
 }
 
+fn query_comparison(symbol: char, inclusive: bool) -> CssQueryComparison {
+    match (symbol, inclusive) {
+        ('<', false) => CssQueryComparison::LessThan,
+        ('<', true) => CssQueryComparison::LessThanOrEqual,
+        ('>', false) => CssQueryComparison::GreaterThan,
+        ('>', true) => CssQueryComparison::GreaterThanOrEqual,
+        ('=', false) => CssQueryComparison::Equal,
+        _ => unreachable!("checked query comparison"),
+    }
+}
+fn query_plain_range<T>(value: T, prefix: Option<RangePrefix>) -> MediaRangeState<T> {
+    match prefix {
+        None => MediaRangeState::Plain { value },
+        Some(RangePrefix::Min) => MediaRangeState::Min { value },
+        Some(RangePrefix::Max) => MediaRangeState::Max { value },
+    }
+}
+fn query_range_chain<T>(
+    left: T,
+    first: CssQueryComparison,
+    right: T,
+    second: CssQueryComparison,
+) -> Option<MediaRangeState<T>> {
+    use CssQueryComparison::{GreaterThan, GreaterThanOrEqual, LessThan, LessThanOrEqual};
+    Some(match (first, second) {
+        (LessThan | LessThanOrEqual, LessThan | LessThanOrEqual) => MediaRangeState::Ascending {
+            left,
+            left_inclusive: first == LessThanOrEqual,
+            right,
+            right_inclusive: second == LessThanOrEqual,
+        },
+        (GreaterThan | GreaterThanOrEqual, GreaterThan | GreaterThanOrEqual) => {
+            MediaRangeState::Descending {
+                left,
+                left_inclusive: first == GreaterThanOrEqual,
+                right,
+                right_inclusive: second == GreaterThanOrEqual,
+            }
+        }
+        _ => return None,
+    })
+}
+
 fn parse_media_comparison<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssQueryComparison, ParseError<'i, Error>> {
@@ -1454,13 +1722,7 @@ fn parse_media_comparison<'i, 't>(
             }
         }
     };
-    Ok(match (symbol, inclusive) {
-        ('<', false) => CssQueryComparison::LessThan,
-        ('<', true) => CssQueryComparison::LessThanOrEqual,
-        ('>', false) => CssQueryComparison::GreaterThan,
-        ('>', true) => CssQueryComparison::GreaterThanOrEqual,
-        _ => unreachable!(),
-    })
+    Ok(query_comparison(symbol, inclusive))
 }
 
 fn parse_media_range<'i, 't, T>(
@@ -1474,11 +1736,7 @@ fn parse_media_range<'i, 't, T>(
     {
         if input.try_parse(Parser::expect_colon).is_ok() {
             let value = value(input)?;
-            return Ok(CssMediaRange::new(match name.prefix {
-                None => MediaRangeState::Plain { value },
-                Some(RangePrefix::Min) => MediaRangeState::Min { value },
-                Some(RangePrefix::Max) => MediaRangeState::Max { value },
-            }));
+            return Ok(CssMediaRange::new(query_plain_range(value, name.prefix)));
         }
         if name.prefix.is_some() {
             return Err(invalid_syntax(
@@ -1508,29 +1766,12 @@ fn parse_media_range<'i, 't, T>(
     }
     let second = parse_media_comparison(input)?;
     let right = value(input)?;
-    use CssQueryComparison::{GreaterThan, GreaterThanOrEqual, LessThan, LessThanOrEqual};
-    let state = match (first, second) {
-        (LessThan | LessThanOrEqual, LessThan | LessThanOrEqual) => MediaRangeState::Ascending {
-            left,
-            left_inclusive: first == LessThanOrEqual,
-            right,
-            right_inclusive: second == LessThanOrEqual,
-        },
-        (GreaterThan | GreaterThanOrEqual, GreaterThan | GreaterThanOrEqual) => {
-            MediaRangeState::Descending {
-                left,
-                left_inclusive: first == GreaterThanOrEqual,
-                right,
-                right_inclusive: second == GreaterThanOrEqual,
-            }
-        }
-        _ => {
-            return Err(invalid_syntax(
-                input.current_source_location(),
-                "media range chain requires matching inequality directions",
-            ));
-        }
-    };
+    let state = query_range_chain(left, first, right, second).ok_or_else(|| {
+        invalid_syntax(
+            input.current_source_location(),
+            "media range chain requires matching inequality directions",
+        )
+    })?;
     Ok(CssMediaRange::new(state))
 }
 
@@ -1851,6 +2092,26 @@ enum ContainerFeatureName {
 }
 
 impl ContainerFeatureName {
+    fn kind(self) -> CssContainerSizeFeatureKind {
+        match self {
+            Self::Width(_) => CssContainerSizeFeatureKind::Width,
+            Self::Height(_) => CssContainerSizeFeatureKind::Height,
+            Self::InlineSize(_) => CssContainerSizeFeatureKind::InlineSize,
+            Self::BlockSize(_) => CssContainerSizeFeatureKind::BlockSize,
+            Self::AspectRatio(_) => CssContainerSizeFeatureKind::AspectRatio,
+            Self::Orientation => CssContainerSizeFeatureKind::Orientation,
+        }
+    }
+    fn prefix(self) -> Option<RangePrefix> {
+        match self {
+            Self::Width(prefix)
+            | Self::Height(prefix)
+            | Self::InlineSize(prefix)
+            | Self::BlockSize(prefix)
+            | Self::AspectRatio(prefix) => prefix,
+            Self::Orientation => None,
+        }
+    }
     fn parse(name: &str) -> Option<Self> {
         Some(match name.to_ascii_lowercase().as_str() {
             "width" => Self::Width(None),

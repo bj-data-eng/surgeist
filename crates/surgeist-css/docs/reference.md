@@ -1634,9 +1634,36 @@ its parent is dropped. `serialize()` and `serialize_with_limit()` produce the
 existing deterministic component serialization, preserving grouping, operator
 order, numeric spelling, symbolic operands and meaningful token boundaries.
 They return the serialized origin map and typed resource errors. They do not
-promise lossless formatting or CSSOM whitespace normalization. Legacy numeric
-feature projections still use the tokenizer's float conversion; serialization
-uses the retained components instead of reconstructing values from those fields.
+promise lossless formatting or CSSOM whitespace normalization.
+
+The six size features are typed: `CssContainerFeatureQuery::Boolean` carries
+`CssContainerSizeFeatureKind`; width, height, inline-size, block-size and
+aspect-ratio carry `CssMediaRange` views preserving plain/min/max, feature-first,
+value-first and ascending/descending forms. The shared range shape contains no
+media feature identity. Signed exact lengths and ratios use numeric calculations,
+not tokenizer float projections. Ratios retain omitted denominators and admit
+zero components without resolving whether a degenerate ratio is useful.
+Orientation admits a keyword or a substitution-dependent operand, not a range.
+
+`CssContainerLengthRef`, `CssContainerRatioRef` and `CssContainerOrientationRef`
+distinguish typed values from `Pending(CssContainerPendingValue)`. Pending values
+retain a complete component operand, its origins and required Length, Ratio or
+Orientation domain. Checked `var()` syntax can have an empty or currently
+wrong-domain fallback: final grammar is deferred until external substitution.
+CSS does not choose a fallback, evaluate custom properties or substitute feature
+names/operators. A function that remains opaque does not become implemented
+merely because it is retained.
+
+The narrow Values5 tree-counting import admits `sibling-count()` and
+`sibling-index()` in the container's numeric context. Their explicit
+`CssCalculationExpressionRef::TreeCounting` view retains function identity and
+origin; they remain symbolic. Container length/number calculations may therefore
+have context-dependent leaves that pure `CssLengthCalculation` or
+`CssNumberCalculation` constructors and media queries do not admit. Reconstruct
+such values through checked container construction. Relative units, query
+container selection, substitution and tree-function evaluation belong to the
+contextual owner. See `examples/container_size_semantic_consumer.rs` for typed
+inspection without reparsing strings.
 
 `not` prefixes one complete query operand. `not not (width > 1px)` and
 `(width > 1px) and not (height > 2px)` are invalid; group a negated operand to
@@ -1651,6 +1678,12 @@ component admission, and match `condition.kind()` against
 `CssContainerConditionKind`. Replace `CssContainerGeneralEnclosed::enclosed()`
 with `component()` when inspecting its original lexical operand. Use the
 condition serializer for the complete query, including recognized groups.
+Size-feature payloads now use `CssMediaRange<CssContainerLength>` and
+`CssMediaRange<CssContainerRatio>` views, including typed pending values;
+orientation uses `CssContainerOrientation`. `CssRangeFeature`, `CssQueryLength`
+and `CssRatio` no longer describe parsed container features. Their older scalar
+contracts are not relaxed as part of this migration. Inspect exact numeric
+expressions and retain their context instead of projecting into legacy floats.
 The singular rule `name()` and `condition()` accessors have been replaced by
 `prelude()`: iterate its entries and explicitly handle `entry.query() == None`.
 Consumers that know they expect one entry should verify that cardinality before
@@ -1662,8 +1695,12 @@ These contracts use the selected
 [Conditional Rules 5 edition](https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule),
 including its general-enclosed production and the optional any-value grammar in
 [Media Queries 4](https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/#mq-syntax).
-Coverage remains partial: complete size/style/scroll-state features still need
-authored support. Opaque retention does not implement those features.
+Size operands additionally use the selected
+[MQ5 range grammar](https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax),
+[Values4 numeric grammar](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking)
+and narrowly imported [Values5 §9](https://www.w3.org/TR/2024/WD-css-values-5-20241111/#tree-counting).
+Style and scroll-state feature coverage remains partial; opaque retention does
+not implement those features.
 Whole-rule serialization still needs CSS support.
 Container selection, condition evaluation and mutable CSSOM objects belong
 to downstream owners.

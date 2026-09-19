@@ -5482,7 +5482,6 @@ fn container_condition_parser_retains_unrecognized_enclosures() {
         "(width: auto)",
         "(width: min-content)",
         "(aspect-ratio: -1 / 1)",
-        "(aspect-ratio: 1 / 0)",
         "style(color: red)",
         "scroll-state(stuck: top)",
         "(width > )",
@@ -5504,12 +5503,14 @@ fn container_condition_parser_preserves_size_feature_structure() {
         panic!("expected inline-size feature");
     };
 
-    assert_eq!(
-        inline_size.comparison(),
-        Some(CssQueryComparison::GreaterThanOrEqual)
-    );
-    assert_eq!(inline_size.value().value().value(), 30.0);
-    assert_eq!(inline_size.value().unit(), CssLengthUnit::Rem);
+    let CssMediaRangeRef::FeatureFirst { comparison, value } = inline_size.view() else {
+        panic!("feature-first size range")
+    };
+    assert_eq!(comparison, CssQueryComparison::GreaterThanOrEqual);
+    let CssContainerLengthRef::Numeric(value) = value.view() else {
+        panic!("typed length")
+    };
+    assert_eq!(value.components().serialize().unwrap().as_css(), "30rem");
 }
 
 #[test]
@@ -5529,16 +5530,42 @@ fn container_condition_parser_preserves_ratio_and_logic_structure() {
     else {
         panic!("expected aspect-ratio feature");
     };
-    assert_eq!(ratio.comparison(), Some(CssQueryComparison::GreaterThan));
-    assert_eq!(ratio.value().numerator().value(), 1.0);
-    assert_eq!(ratio.value().denominator().value(), 1.0);
-
+    let CssMediaRangeRef::FeatureFirst { comparison, value } = ratio.view() else {
+        panic!("ratio range")
+    };
+    assert_eq!(comparison, CssQueryComparison::GreaterThan);
+    let CssContainerRatioRef::Numeric(value) = value.view() else {
+        panic!("typed ratio")
+    };
     assert_eq!(
-        orientation.kind(),
-        &CssContainerConditionKind::Feature(CssContainerFeatureQuery::Orientation(
-            CssOrientation::Landscape
-        ))
+        value
+            .numerator()
+            .components()
+            .serialize()
+            .unwrap()
+            .as_css()
+            .trim(),
+        "1"
     );
+    assert_eq!(
+        value
+            .denominator()
+            .components()
+            .serialize()
+            .unwrap()
+            .as_css()
+            .trim(),
+        "1"
+    );
+    let CssContainerConditionKind::Feature(CssContainerFeatureQuery::Orientation(value)) =
+        orientation.kind()
+    else {
+        panic!("orientation")
+    };
+    assert!(matches!(
+        value.view(),
+        CssContainerOrientationRef::Keyword(CssOrientation::Landscape)
+    ));
 }
 
 #[test]
@@ -5901,12 +5928,14 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
     else {
         panic!("expected inline-size container condition");
     };
-    assert_eq!(
-        inline_size.comparison(),
-        Some(CssQueryComparison::GreaterThan)
-    );
-    assert_eq!(inline_size.value().value().value(), 30.0);
-    assert_eq!(inline_size.value().unit(), CssLengthUnit::Rem);
+    let CssMediaRangeRef::FeatureFirst { comparison, value } = inline_size.view() else {
+        panic!("inline-size range")
+    };
+    assert_eq!(comparison, CssQueryComparison::GreaterThan);
+    let CssContainerLengthRef::Numeric(value) = value.view() else {
+        panic!("typed length")
+    };
+    assert_eq!(value.components().serialize().unwrap().as_css(), "30rem");
     let [container_nested] = container.rules() else {
         panic!("expected one nested container rule");
     };

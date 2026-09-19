@@ -332,6 +332,7 @@ pub surgeist_css::CssCalculationExpressionRef::Group(surgeist_css::CssCalculatio
 pub surgeist_css::CssCalculationExpressionRef::NestedCalc(surgeist_css::CssCalculationUnaryRef<'a>)
 pub surgeist_css::CssCalculationExpressionRef::Product(surgeist_css::CssCalculationProductRef<'a>)
 pub surgeist_css::CssCalculationExpressionRef::Sum(surgeist_css::CssCalculationSumRef<'a>)
+pub surgeist_css::CssCalculationExpressionRef::TreeCounting(surgeist_css::CssCalculationTreeCountingRef<'a>)
 pub surgeist_css::CssCalculationExpressionRef::Value(surgeist_css::CssCalculationValueRef<'a>)
 pub surgeist_css::CssCalculationExpressionRef::Variable(surgeist_css::CssCalculationVariableRef<'a>)
 impl<'a> surgeist_css::CssCalculationExpressionRef<'a>
@@ -504,17 +505,40 @@ pub fn surgeist_css::CssContainerConstructionError::source(&self) -> core::optio
 impl core::fmt::Display for surgeist_css::CssContainerConstructionError
 pub fn surgeist_css::CssContainerConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssContainerFeatureQuery
-pub surgeist_css::CssContainerFeatureQuery::AspectRatio(surgeist_css::CssRangeFeature<surgeist_css::CssRatio>)
-pub surgeist_css::CssContainerFeatureQuery::BlockSize(surgeist_css::CssRangeFeature<surgeist_css::CssQueryLength>)
-pub surgeist_css::CssContainerFeatureQuery::Height(surgeist_css::CssRangeFeature<surgeist_css::CssQueryLength>)
-pub surgeist_css::CssContainerFeatureQuery::InlineSize(surgeist_css::CssRangeFeature<surgeist_css::CssQueryLength>)
-pub surgeist_css::CssContainerFeatureQuery::Orientation(surgeist_css::CssOrientation)
-pub surgeist_css::CssContainerFeatureQuery::Width(surgeist_css::CssRangeFeature<surgeist_css::CssQueryLength>)
+pub surgeist_css::CssContainerFeatureQuery::AspectRatio(surgeist_css::CssMediaRange<surgeist_css::CssContainerRatio>)
+pub surgeist_css::CssContainerFeatureQuery::BlockSize(surgeist_css::CssMediaRange<surgeist_css::CssContainerLength>)
+pub surgeist_css::CssContainerFeatureQuery::Boolean(surgeist_css::CssContainerSizeFeatureKind)
+pub surgeist_css::CssContainerFeatureQuery::Height(surgeist_css::CssMediaRange<surgeist_css::CssContainerLength>)
+pub surgeist_css::CssContainerFeatureQuery::InlineSize(surgeist_css::CssMediaRange<surgeist_css::CssContainerLength>)
+pub surgeist_css::CssContainerFeatureQuery::Orientation(surgeist_css::CssContainerOrientation)
+pub surgeist_css::CssContainerFeatureQuery::Width(surgeist_css::CssMediaRange<surgeist_css::CssContainerLength>)
+#[non_exhaustive] pub enum surgeist_css::CssContainerLengthRef<'a>
+pub surgeist_css::CssContainerLengthRef::Numeric(&'a surgeist_css::CssLengthCalculation)
+pub surgeist_css::CssContainerLengthRef::Pending(&'a surgeist_css::CssContainerPendingValue)
+#[non_exhaustive] pub enum surgeist_css::CssContainerOrientationRef<'a>
+pub surgeist_css::CssContainerOrientationRef::Keyword(&'a surgeist_css::CssOrientation)
+pub surgeist_css::CssContainerOrientationRef::Pending(&'a surgeist_css::CssContainerPendingValue)
+#[non_exhaustive] pub enum surgeist_css::CssContainerRatioRef<'a>
+pub surgeist_css::CssContainerRatioRef::Numeric(&'a surgeist_css::CssMediaRatio)
+pub surgeist_css::CssContainerRatioRef::Pending(&'a surgeist_css::CssContainerPendingValue)
+#[non_exhaustive] pub enum surgeist_css::CssContainerSizeFeatureKind
+pub surgeist_css::CssContainerSizeFeatureKind::AspectRatio
+pub surgeist_css::CssContainerSizeFeatureKind::BlockSize
+pub surgeist_css::CssContainerSizeFeatureKind::Height
+pub surgeist_css::CssContainerSizeFeatureKind::InlineSize
+pub surgeist_css::CssContainerSizeFeatureKind::Orientation
+pub surgeist_css::CssContainerSizeFeatureKind::Width
+impl surgeist_css::CssContainerSizeFeatureKind
+pub const fn surgeist_css::CssContainerSizeFeatureKind::name(self) -> &'static str
 #[non_exhaustive] pub enum surgeist_css::CssContainerStyleQuery
 pub surgeist_css::CssContainerStyleQuery::CustomPropertyPresence(surgeist_css::CssCustomPropertyName)
 pub surgeist_css::CssContainerStyleQuery::CustomPropertyValue
 pub surgeist_css::CssContainerStyleQuery::CustomPropertyValue::name: surgeist_css::CssCustomPropertyName
 pub surgeist_css::CssContainerStyleQuery::CustomPropertyValue::value: surgeist_css::CssAuthoredDeclarationValue
+#[non_exhaustive] pub enum surgeist_css::CssContainerValueDomain
+pub surgeist_css::CssContainerValueDomain::Length
+pub surgeist_css::CssContainerValueDomain::Orientation
+pub surgeist_css::CssContainerValueDomain::Ratio
 #[non_exhaustive] pub enum surgeist_css::CssContent
 pub surgeist_css::CssContent::Items(surgeist_css::CssContentList)
 pub surgeist_css::CssContent::None
@@ -2811,6 +2835,9 @@ pub surgeist_css::CssTransitionProperty::None
 #[non_exhaustive] pub enum surgeist_css::CssTranslate
 pub surgeist_css::CssTranslate::None
 pub surgeist_css::CssTranslate::Values(surgeist_css::CssTranslateValues)
+pub enum surgeist_css::CssTreeCountingFunction
+pub surgeist_css::CssTreeCountingFunction::SiblingCount
+pub surgeist_css::CssTreeCountingFunction::SiblingIndex
 #[non_exhaustive] pub enum surgeist_css::CssUnicodeBidi
 pub surgeist_css::CssUnicodeBidi::BidiOverride
 pub surgeist_css::CssUnicodeBidi::Embed
@@ -3666,6 +3693,11 @@ impl<'a> surgeist_css::CssCalculationSumTermRef<'a>
 pub fn surgeist_css::CssCalculationSumTermRef<'a>::expression(self) -> surgeist_css::CssCalculationExpressionRef<'a>
 pub fn surgeist_css::CssCalculationSumTermRef<'a>::operator(self) -> core::option::Option<surgeist_css::CssCalculationSumOperator>
 pub fn surgeist_css::CssCalculationSumTermRef<'a>::operator_origin(self) -> core::option::Option<&'a surgeist_css::CssValueOrigin>
+pub struct surgeist_css::CssCalculationTreeCountingRef<'a>
+impl<'a> surgeist_css::CssCalculationTreeCountingRef<'a>
+pub fn surgeist_css::CssCalculationTreeCountingRef<'a>::function(self) -> surgeist_css::CssTreeCountingFunction
+pub fn surgeist_css::CssCalculationTreeCountingRef<'a>::numeric_type(self) -> surgeist_css::CssNumericType
+pub fn surgeist_css::CssCalculationTreeCountingRef<'a>::origin(self) -> &'a surgeist_css::CssValueOrigin
 pub struct surgeist_css::CssCalculationUnaryRef<'a>
 impl<'a> surgeist_css::CssCalculationUnaryRef<'a>
 pub fn surgeist_css::CssCalculationUnaryRef<'a>::operand(self) -> surgeist_css::CssCalculationExpressionRef<'a>
@@ -3928,10 +3960,24 @@ pub fn surgeist_css::CssContainerGeneralEnclosed::origin(&self) -> &surgeist_css
 pub fn surgeist_css::CssContainerGeneralEnclosed::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
 pub fn surgeist_css::CssContainerGeneralEnclosed::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
 impl core::cmp::Eq for surgeist_css::CssContainerGeneralEnclosed
+pub struct surgeist_css::CssContainerLength
+impl surgeist_css::CssContainerLength
+pub fn surgeist_css::CssContainerLength::components(&self) -> &surgeist_css::CssComponentValues
+pub fn surgeist_css::CssContainerLength::view(&self) -> surgeist_css::CssContainerLengthRef<'_>
 pub struct surgeist_css::CssContainerName
 impl surgeist_css::CssContainerName
 pub fn surgeist_css::CssContainerName::as_str(&self) -> &str
 pub fn surgeist_css::CssContainerName::try_new(name: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssContainerOrientation
+impl surgeist_css::CssContainerOrientation
+pub fn surgeist_css::CssContainerOrientation::components(&self) -> &surgeist_css::CssComponentValues
+pub fn surgeist_css::CssContainerOrientation::view(&self) -> surgeist_css::CssContainerOrientationRef<'_>
+pub struct surgeist_css::CssContainerPendingValue
+impl surgeist_css::CssContainerPendingValue
+pub fn surgeist_css::CssContainerPendingValue::components(&self) -> &surgeist_css::CssComponentValues
+pub const fn surgeist_css::CssContainerPendingValue::domain(&self) -> surgeist_css::CssContainerValueDomain
+pub fn surgeist_css::CssContainerPendingValue::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssContainerPendingValue::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
 pub struct surgeist_css::CssContainerPrelude
 impl surgeist_css::CssContainerPrelude
 pub fn surgeist_css::CssContainerPrelude::components(&self) -> &[surgeist_css::CssComponentValue]
@@ -3953,6 +3999,10 @@ pub const fn surgeist_css::CssContainerQueryEntry::query(&self) -> core::option:
 impl surgeist_css::CssContainerQueryEntry
 pub fn surgeist_css::CssContainerQueryEntry::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::CssContainerQueryEntry::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub struct surgeist_css::CssContainerRatio
+impl surgeist_css::CssContainerRatio
+pub fn surgeist_css::CssContainerRatio::components(&self) -> &surgeist_css::CssComponentValues
+pub fn surgeist_css::CssContainerRatio::view(&self) -> surgeist_css::CssContainerRatioRef<'_>
 pub struct surgeist_css::CssContainerRule
 impl surgeist_css::CssContainerRule
 pub const fn surgeist_css::CssContainerRule::position(&self) -> surgeist_css::CssSourcePosition

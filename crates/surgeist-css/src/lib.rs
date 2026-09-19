@@ -1100,6 +1100,8 @@ pub use imports::*;
 mod custom_media;
 pub use custom_media::*;
 mod container;
+mod container_features;
+pub use container_features::*;
 mod supports;
 pub use supports::CssSupportsConstructionError;
 mod media;
@@ -1118,12 +1120,13 @@ pub use numeric::{
     CssAngleCalculation, CssCalculationConstantRef, CssCalculationExpressionRef,
     CssCalculationFunctionRef, CssCalculationProductFactorRef, CssCalculationProductOperator,
     CssCalculationProductRef, CssCalculationSumOperator, CssCalculationSumRef,
-    CssCalculationSumTermRef, CssCalculationType, CssCalculationUnaryRef, CssCalculationValueRef,
-    CssCalculationVariableRef, CssFrequencyCalculation, CssIntegerCalculation,
-    CssLengthCalculation, CssLengthPercentageCalculation, CssMathFunction, CssNumberCalculation,
-    CssNumericConstant, CssNumericConstructionError, CssNumericConstructionErrorKind,
-    CssNumericDimension, CssNumericLiteralRef, CssNumericType, CssNumericUnit,
-    CssPercentageCalculation, CssResolutionCalculation, CssRoundingStrategy, CssTimeCalculation,
+    CssCalculationSumTermRef, CssCalculationTreeCountingRef, CssCalculationType,
+    CssCalculationUnaryRef, CssCalculationValueRef, CssCalculationVariableRef,
+    CssFrequencyCalculation, CssIntegerCalculation, CssLengthCalculation,
+    CssLengthPercentageCalculation, CssMathFunction, CssNumberCalculation, CssNumericConstant,
+    CssNumericConstructionError, CssNumericConstructionErrorKind, CssNumericDimension,
+    CssNumericLiteralRef, CssNumericType, CssNumericUnit, CssPercentageCalculation,
+    CssResolutionCalculation, CssRoundingStrategy, CssTimeCalculation, CssTreeCountingFunction,
 };
 #[cfg(test)]
 mod test_support;

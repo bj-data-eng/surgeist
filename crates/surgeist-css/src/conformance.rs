@@ -4051,7 +4051,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 504] = [
         "width, height, inline-size, block-size, aspect-ratio, orientation and applicable min-/max- names",
         X_CONDITIONAL5,
         "#size-container",
-        "The exact baseline-recognized container size-feature spelling group is supported.",
+        "The six authored size features retain boolean, plain, prefixed and directional range forms, exact symbolic numeric values, checked var() operands and the scoped tree-counting functions; orientation remains discrete.",
         QUERY_REMAINDER,
     ),
     property_feature!(CssKnownProperty::All, "all", "baseline.property.all"),

@@ -52,7 +52,14 @@ fn every_authored_group_operator_and_leaf_has_an_inspectable_region() {
     else {
         panic!("width")
     };
-    assert_eq!(range.value().value().value(), 1.0);
+    let CssMediaRangeRef::FeatureFirst { value, comparison } = range.view() else {
+        panic!("range")
+    };
+    assert_eq!(comparison, CssQueryComparison::GreaterThan);
+    let CssContainerLengthRef::Numeric(value) = value.view() else {
+        panic!("length")
+    };
+    assert_eq!(value.components().serialize().unwrap().as_css(), "01.00px");
     assert_eq!(width.serialize().unwrap().as_css(), "(WIDTH > 01.00px)");
     assert_eq!(
         style.serialize().unwrap().as_css(),
