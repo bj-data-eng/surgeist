@@ -69,6 +69,7 @@ fn ordinary_forms() -> BTreeSet<String> {
 fn complete_selected_display_grammar_is_retained() {
     let forms = ordinary_forms();
     assert_eq!(forms.len(), 112);
+    assert_eq!(forms.iter().filter(|form| !form.contains(' ')).count(), 30);
     for value in forms {
         let source = format!("display:{value}!important");
         let report = parse_style_attribute(&source);

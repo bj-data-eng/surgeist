@@ -13,6 +13,34 @@ use surgeist_css::{
     property_support_metadata, specification_source, specification_sources,
 };
 
+#[test]
+fn display_sources_separate_base_grammar_from_grid_lanes_additions() {
+    let base = feature_metadata("baseline.property.display").unwrap();
+    assert_eq!(base.source().id().as_str(), "S-DISPLAY3");
+    assert_eq!(base.production(), "#propdef-display");
+    assert_eq!(base.status(), CssSupportStatus::Complete);
+    let extension = feature_metadata("ext.value.grid-lanes-display").unwrap();
+    assert_eq!(extension.source().id().as_str(), "X-GRID3-20260121");
+    assert_eq!(extension.production(), "#grid-lanes-containers");
+    assert_eq!(extension.kind(), CssFeatureKind::Value);
+    assert_eq!(extension.status(), CssSupportStatus::Complete);
+    for text in [
+        "inline",
+        "ruby block",
+        "list-item flow-root inline",
+        "grid-lanes",
+        "inline-grid-lanes",
+    ] {
+        let report = parse_style_attribute(&format!("display:{text}"));
+        assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
+    }
+    for text in ["inline grid-lanes", "grid-lanes block", "list-item flex"] {
+        let report = parse_style_attribute(&format!("display:{text}"));
+        assert_eq!(report.diagnostics().len(), 1);
+        assert!(report.syntax().is_empty());
+    }
+}
+
 #[derive(Clone, Copy)]
 enum ExpectedSource {
     Id(&'static str),

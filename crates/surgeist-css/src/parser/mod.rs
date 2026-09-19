@@ -292,6 +292,11 @@ static ATOMIC_IMPLEMENTATION_INVENTORIES: &[CssAtomicImplementationInventory] = 
         stable_ids: background::IMPLEMENTED_SHARED_VALUES,
     },
     CssAtomicImplementationInventory {
+        module: "crate::parser::layout",
+        kind: CssAtomicImplementationKind::SharedValue,
+        stable_ids: layout::IMPLEMENTED_SHARED_VALUES,
+    },
+    CssAtomicImplementationInventory {
         module: "crate::parser::grid",
         kind: CssAtomicImplementationKind::SharedValue,
         stable_ids: grid::IMPLEMENTED_SHARED_VALUES,

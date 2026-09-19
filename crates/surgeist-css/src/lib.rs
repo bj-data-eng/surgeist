@@ -1118,8 +1118,13 @@ pub use media::*;
 mod media_features;
 mod normalization;
 pub use media_features::*;
+mod display;
 mod numeric;
 mod opacity_scalar;
+pub use display::{
+    CssDisplayBox, CssDisplayInside, CssDisplayInternal, CssDisplayLegacy,
+    CssDisplayListItemInside, CssDisplayOutside, CssDisplayValue,
+};
 mod specified_serialization;
 pub use opacity_scalar::{CssOpacityScalar, CssOpacityScalarKind};
 pub use specified_serialization::{

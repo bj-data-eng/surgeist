@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 //! Independent contract cases for the selected public metadata and grammar slice.
 //! CSS Box 3, Backgrounds 3, Cascade 5, Color 4, Fonts 4, Writing Modes 4,
-//! Variables 1, Conditional Rules 5, and the pinned Grid 3 define values and shorthand semantics.
+//! Variables 1, Conditional Rules 5, Display 3, and the pinned Grid 3 define values and shorthand semantics.
 //! Grammar-handle identity, explicit unavailable metadata, and source occurrence
 //! retention are Surgeist public contracts. No contextual style is resolved.
 use surgeist_css::CssKnownProperty as P;
@@ -40,6 +40,7 @@ const LONGHANDS: &[P] = &[
     P::FontFamily,
     P::TextOrientation,
     P::Opacity,
+    P::Display,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
     (P::Container, &[P::ContainerName, P::ContainerType], &[]),
@@ -233,6 +234,13 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         }
         CssLonghandValueRef::TextOrientation(v) => assert_eq!(*v, CssTextOrientation::Mixed),
         CssLonghandValueRef::FlowTolerance(v) => assert_eq!(v, &CssFlowTolerance::normal()),
+        CssLonghandValueRef::Display(v) => assert_eq!(
+            *v,
+            CssDisplayValue::OutsideInside {
+                outside: CssDisplayOutside::Inline,
+                inside: CssDisplayInside::Flow,
+            },
+        ),
         CssLonghandValueRef::Opacity(v) => {
             assert!(matches!(v, CssOpacityValue::Literal(value) if value.value() == 1.0));
         }
@@ -246,7 +254,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 44);
+    assert_eq!(expected.len(), 45);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();

@@ -446,7 +446,7 @@ unfinished. This property migration does not complete the other Grid3 families.
 `expand_declaration` currently covers custom declarations, physical margin and
 padding, border width, style and color, the four side-border shorthands, `border`,
 the five border-image longhands, `flow-tolerance`, `color`, `font-family`,
-`text-orientation`, its legacy `glyph-orientation-vertical` grammar, `opacity`,
+`text-orientation`, its legacy `glyph-orientation-vertical` grammar, `opacity`, `display`,
 the `container` shorthand and its two longhands, and `all`.
 The shared property schema owns their
 member lists, initial values and reset-only components. Other known properties
@@ -459,6 +459,43 @@ contribution retains the exact `CssOpacityValue`, including percentages,
 calculations and out-of-range specified values. Computed clamping belongs to
 style. Raw authored value text remains separate from canonical specified-value
 serialization, which is not established by expansion.
+
+Display is a non-inherited longhand with initial `inline`. Its current
+`CssDisplayValue` represents outside/inside pairs, flow-only list items,
+internal table/ruby values, box values, legacy inline values, and the selected
+Grid3 `grid-lanes` and `inline-grid-lanes` alternatives. The selected Display3
+and Grid3 productions admit 112 keyword sequences mapping to 44 specified
+values. Duplicate categories and combinations such as `list-item flex` or
+`inline grid-lanes` are rejected. Multi-keyword display is still one longhand
+and produces one contribution. Generic CSS-wide and pending `var()` values use
+the same expansion and strict grammar-reentry boundary.
+
+`CssDisplayPropertyValue::value()` exposes the complete specified model;
+`as_css()` retains the authored spelling. The frozen `CssDisplay` view returned
+by `i01_subset()` remains available only for exactly representable values.
+For example, `block flex` has the same specified value as `flex`, while
+`inline flex` stays distinct from legacy `inline-flex`. CSS Display3 §2.6
+requires that distinction at the specified stage even though computed values
+can agree.
+
+`CssDisplayValue::serialize_specified()` produces canonical specified text;
+`serialize_specified_with_limits()` uses the shared serialization limits and
+error types. It lowercases keywords, orders components, and omits equivalent
+defaults: `flow block` becomes `block`, `flex inline` becomes `inline flex`, and
+`list-item flow-root inline` becomes `inline flow-root list-item`. Legacy
+spellings remain legacy. One value consumes one input node and one projection
+node; output is at most 26 ASCII bytes. Limits are checked before output
+allocation, and failure leaves the original value and authored text unchanged.
+Direct enum construction admits only valid category combinations, so typed
+construction does not require a second text parser or unchecked flags.
+
+The primary authored definition is [Display3 §2](https://www.w3.org/TR/2026/CRD-css-display-3-20260605/#the-display-properties),
+with the two standalone additions from [Grid3 §2.2](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#grid-lanes-containers).
+Canonical ordering and shortening follow the selected
+[CSSOM value serialization rules](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serializing-css-values).
+This support does not execute box generation, blockification, inlinification,
+cascade, or layout, and does not complete the other Display3/Grid3 properties.
+Shared `env()` admission is not established by this property implementation.
 
 Custom declarations produce `CssContributions::Custom`. Its `declaration()` view
 retains the case-sensitive name and either authored token text or a whole-value

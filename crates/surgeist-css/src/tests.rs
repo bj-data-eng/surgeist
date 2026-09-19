@@ -4358,7 +4358,7 @@ macro_rules! value_case {
 #[test]
 fn invalid_mixed_declarations_emit_expected_typed_diagnostics() {
     assert_sheet_rejected(
-        ".panel { width: 10px; display: inline; }",
+        ".panel { width: 10px; display: block inline; }",
         &ExpectedErrorKind::UnsupportedValue {
             property: Some("display"),
         },
@@ -4374,14 +4374,14 @@ fn malformed_sheet_surfaces_emit_expected_typed_diagnostics() {
     assert_rejects_sheets(&[
         RejectedSheetCase {
             label: "valid declaration before invalid declaration fails the whole sheet",
-            input: ".panel { width: 10px; display: inline; height: 20px; }",
+            input: ".panel { width: 10px; display: block inline; height: 20px; }",
             expected_error: ExpectedErrorKind::UnsupportedValue {
                 property: Some("display"),
             },
         },
         RejectedSheetCase {
             label: "invalid declaration before valid declaration fails the whole sheet",
-            input: ".panel { display: inline; width: 10px; }",
+            input: ".panel { display: block inline; width: 10px; }",
             expected_error: ExpectedErrorKind::UnsupportedValue {
                 property: Some("display"),
             },
@@ -4445,9 +4445,9 @@ fn malformed_authored_surfaces_emit_recovery_diagnostics() {
 fn leakage_wrong_keyword_and_unit_matrix_rejects_property_family_crossovers() {
     assert_rejects_declarations(&[
         RejectedDeclarationCase {
-            label: "display rejects unsupported inline keyword",
+            label: "display rejects border style keyword",
             property_name: "display",
-            authored_value: "inline",
+            authored_value: "solid",
             expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
                 property: "display",
             },
@@ -6178,15 +6178,6 @@ fn symbolic_color_model_rejects_invalid_percentages_and_component_counts() {
 #[test]
 fn rejection_unsupported_but_syntactically_valid_css_keywords_stay_rejected() {
     assert_rejects_declarations(&[
-        RejectedDeclarationCase {
-            label: "display inline remains unsupported",
-            property_name: "display",
-            authored_value: "inline",
-            expected_error: ExpectedErrorKind::UnsupportedValue {
-                property: Some("display"),
-            },
-            property_name_should_be_recognized: true,
-        },
         RejectedDeclarationCase {
             label: "overflow auto remains unsupported",
             property_name: "overflow",
@@ -7922,8 +7913,8 @@ fn global_keyword_must_be_the_whole_value() {
 }
 
 #[test]
-fn unsupported_display_keyword_is_typed_with_property_context() {
-    let error = parse_sheet(".panel { display: inline; }").unwrap_err();
+fn invalid_display_keyword_is_typed_with_property_context() {
+    let error = parse_sheet(".panel { display: solid; }").unwrap_err();
 
     let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
         panic!("unexpected error kind: {:?}", error.kind());

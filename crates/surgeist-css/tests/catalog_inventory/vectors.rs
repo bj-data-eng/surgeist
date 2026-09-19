@@ -721,7 +721,7 @@ pub const PROPERTY_POSITIVE_VECTORS: &[PropertyVector] = &[
 // ordinary typed syntax so its generated dispatch arm rejects it.
 pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
     vector!("baseline.property.all", "all", "block"),
-    vector!("baseline.property.display", "display", "inline"),
+    vector!("baseline.property.display", "display", "block inline"),
     vector!(
         "official.property.border-collapse",
         "border-collapse",

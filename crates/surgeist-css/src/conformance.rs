@@ -2217,8 +2217,8 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::ContainerName
         | CssKnownProperty::ContainerType => X_CONDITIONAL5,
         CssKnownProperty::All => O_CASCADE4,
-        CssKnownProperty::Display
-        | CssKnownProperty::BorderCollapse
+        CssKnownProperty::Display => S_DISPLAY3,
+        CssKnownProperty::BorderCollapse
         | CssKnownProperty::BorderSpacing
         | CssKnownProperty::CaptionSide
         | CssKnownProperty::Clip
@@ -2475,8 +2475,7 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
         },
         CssKnownProperty::Quotes => "generate.html#propdef-quotes",
         CssKnownProperty::WordSpacing => "text.html#propdef-word-spacing",
-        CssKnownProperty::Display
-        | CssKnownProperty::Position
+        CssKnownProperty::Position
         | CssKnownProperty::Float
         | CssKnownProperty::Clear
         | CssKnownProperty::Top
@@ -2484,7 +2483,6 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
         | CssKnownProperty::Bottom
         | CssKnownProperty::Left
         | CssKnownProperty::ZIndex => match property {
-            CssKnownProperty::Display => "visuren.html#propdef-display",
             CssKnownProperty::Position => "visuren.html#propdef-position",
             CssKnownProperty::Float => "visuren.html#propdef-float",
             CssKnownProperty::Clear => "visuren.html#propdef-clear",
@@ -2618,7 +2616,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 507] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 508] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -3186,6 +3184,15 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 507] = [
         "#funcdef-color-mix",
         COLOR5_MIX_SUBSET,
         COLOR5_MIX_REMAINDER,
+    ),
+    // The selected Grid3 production adds two standalone display alternatives;
+    // it does not extend Display3's syntactic <display-inside> production.
+    CssFeatureMetadata::complete(
+        "ext.value.grid-lanes-display",
+        CssFeatureKind::Value,
+        "grid-lanes | inline-grid-lanes",
+        X_GRID3_20260121,
+        "#grid-lanes-containers",
     ),
     CssFeatureMetadata::partial(
         "ext.value.grid-repeat",
@@ -4061,7 +4068,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 507] = [
         QUERY_REMAINDER,
     ),
     property_feature!(CssKnownProperty::All, "all", "baseline.property.all"),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::Display,
         "display",
         "baseline.property.display"

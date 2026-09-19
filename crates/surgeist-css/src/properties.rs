@@ -5,6 +5,7 @@
 //! they do not apply cascade, substitute variables, or resolve authored values.
 
 use crate::box_values::{CssBorderColors, CssParsedBorderColors};
+use crate::display::*;
 use crate::syntax::*;
 use crate::{CssContainer, CssContainerNames, CssContainerType};
 
@@ -16,7 +17,7 @@ macro_rules! property_schema {
             ContainerName, "container-name", [], "official.property.container-name", CssContainerNames, CssContainerNamePropertyValue, CssContainerNamePropertyValueRepresentation, parse_container_names, { parse_container_names($input)? }, expansion = longhand { wrapper: existing, value: CssContainerNames, accessor: names, inherited: false, initial_kind: value, initial: CssContainerNames::None };
             ContainerType, "container-type", [], "official.property.container-type", CssContainerType, CssContainerTypePropertyValue, CssContainerTypePropertyValueRepresentation, parse_container_type, { parse_container_type($input)? }, expansion = longhand { wrapper: existing, value: CssContainerType, accessor: container_type, inherited: false, initial_kind: value, initial: CssContainerType::Normal };
             Container, "container", [], "official.property.container", CssContainer, CssContainerPropertyValue, CssContainerPropertyValueRepresentation, parse_container, { parse_container($input)? }, expansion = shorthand { wrapper: existing, accessor: container, members: [ ContainerName => |value: &CssContainer| Some(value.names().clone()), ContainerType => |value: &CssContainer| Some(value.container_type()) ], reset_only: [] };
-            Display, "display", [], "baseline.property.display", CssDisplay, CssDisplayPropertyValue, CssDisplayPropertyValueRepresentation, parse_display, { parse_display($input)? };
+            Display, "display", [], "baseline.property.display", CssDisplay, CssDisplayPropertyValue, CssDisplayPropertyValueRepresentation, parse_display, { parse_display($input)? }, expansion = longhand { wrapper: existing, value: crate::CssDisplayValue, accessor: value, inherited: false, initial_kind: value, initial: crate::CssDisplayValue::OutsideInside { outside: crate::CssDisplayOutside::Inline, inside: crate::CssDisplayInside::Flow } };
             BoxSizing, "box-sizing", [], "baseline.property.box-sizing", CssBoxSizing, CssBoxSizingPropertyValue, CssBoxSizingPropertyValueRepresentation, parse_box_sizing, { parse_box_sizing($input)? };
             BorderCollapse, "border-collapse", [], "official.property.border-collapse", CssBorderCollapse, CssBorderCollapsePropertyValue, CssBorderCollapsePropertyValueRepresentation, parse_border_collapse, { parse_border_collapse($input)? };
             BorderSpacing, "border-spacing", [], "official.property.border-spacing", CssBorderSpacing, CssBorderSpacingPropertyValue, CssBorderSpacingPropertyValueRepresentation, parse_border_spacing, { parse_border_spacing($input, $numeric)? };
@@ -251,6 +252,29 @@ macro_rules! property_schema {
 }
 
 pub(crate) use property_schema;
+
+fn display_i01_projection(value: &CssDisplayValue) -> Option<CssDisplay> {
+    match value {
+        CssDisplayValue::OutsideInside {
+            outside: CssDisplayOutside::Block,
+            inside: CssDisplayInside::Flow,
+        } => Some(CssDisplay::Block),
+        CssDisplayValue::OutsideInside {
+            outside: CssDisplayOutside::Block,
+            inside: CssDisplayInside::Flex,
+        } => Some(CssDisplay::Flex),
+        CssDisplayValue::OutsideInside {
+            outside: CssDisplayOutside::Block,
+            inside: CssDisplayInside::Grid,
+        } => Some(CssDisplay::Grid),
+        CssDisplayValue::Legacy(CssDisplayLegacy::InlineBlock) => Some(CssDisplay::InlineBlock),
+        CssDisplayValue::Legacy(CssDisplayLegacy::InlineGrid) => Some(CssDisplay::InlineGrid),
+        CssDisplayValue::GridLanes => Some(CssDisplay::GridLanes),
+        CssDisplayValue::InlineGridLanes => Some(CssDisplay::InlineGridLanes),
+        CssDisplayValue::Box(CssDisplayBox::None) => Some(CssDisplay::None),
+        _ => None,
+    }
+}
 
 fn opacity_i01_projection(value: &CssOpacityValue) -> Option<CssOpacity> {
     match value {
@@ -2325,6 +2349,20 @@ macro_rules! define_property_value {
             CssAnimationList,
             animations,
             animation_list_i01_projection
+        );
+    };
+    (
+        Display, $canonical:literal, $value:ty, $wrapper:ident,
+        $representation:ident
+    ) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssDisplayValue,
+            CssDisplay,
+            value,
+            display_i01_projection
         );
     };
     (

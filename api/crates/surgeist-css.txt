@@ -849,12 +849,62 @@ pub surgeist_css::CssDisplay::InlineBlock
 pub surgeist_css::CssDisplay::InlineGrid
 pub surgeist_css::CssDisplay::InlineGridLanes
 pub surgeist_css::CssDisplay::None
+#[non_exhaustive] pub enum surgeist_css::CssDisplayBox
+pub surgeist_css::CssDisplayBox::Contents
+pub surgeist_css::CssDisplayBox::None
+#[non_exhaustive] pub enum surgeist_css::CssDisplayInside
+pub surgeist_css::CssDisplayInside::Flex
+pub surgeist_css::CssDisplayInside::Flow
+pub surgeist_css::CssDisplayInside::FlowRoot
+pub surgeist_css::CssDisplayInside::Grid
+pub surgeist_css::CssDisplayInside::Ruby
+pub surgeist_css::CssDisplayInside::Table
+#[non_exhaustive] pub enum surgeist_css::CssDisplayInternal
+pub surgeist_css::CssDisplayInternal::RubyBase
+pub surgeist_css::CssDisplayInternal::RubyBaseContainer
+pub surgeist_css::CssDisplayInternal::RubyText
+pub surgeist_css::CssDisplayInternal::RubyTextContainer
+pub surgeist_css::CssDisplayInternal::TableCaption
+pub surgeist_css::CssDisplayInternal::TableCell
+pub surgeist_css::CssDisplayInternal::TableColumn
+pub surgeist_css::CssDisplayInternal::TableColumnGroup
+pub surgeist_css::CssDisplayInternal::TableFooterGroup
+pub surgeist_css::CssDisplayInternal::TableHeaderGroup
+pub surgeist_css::CssDisplayInternal::TableRow
+pub surgeist_css::CssDisplayInternal::TableRowGroup
+#[non_exhaustive] pub enum surgeist_css::CssDisplayLegacy
+pub surgeist_css::CssDisplayLegacy::InlineBlock
+pub surgeist_css::CssDisplayLegacy::InlineFlex
+pub surgeist_css::CssDisplayLegacy::InlineGrid
+pub surgeist_css::CssDisplayLegacy::InlineTable
+#[non_exhaustive] pub enum surgeist_css::CssDisplayListItemInside
+pub surgeist_css::CssDisplayListItemInside::Flow
+pub surgeist_css::CssDisplayListItemInside::FlowRoot
 #[non_exhaustive] pub enum surgeist_css::CssDisplayMode
 pub surgeist_css::CssDisplayMode::Browser
 pub surgeist_css::CssDisplayMode::Fullscreen
 pub surgeist_css::CssDisplayMode::MinimalUi
 pub surgeist_css::CssDisplayMode::PictureInPicture
 pub surgeist_css::CssDisplayMode::Standalone
+#[non_exhaustive] pub enum surgeist_css::CssDisplayOutside
+pub surgeist_css::CssDisplayOutside::Block
+pub surgeist_css::CssDisplayOutside::Inline
+pub surgeist_css::CssDisplayOutside::RunIn
+#[non_exhaustive] pub enum surgeist_css::CssDisplayValue
+pub surgeist_css::CssDisplayValue::Box(surgeist_css::CssDisplayBox)
+pub surgeist_css::CssDisplayValue::GridLanes
+pub surgeist_css::CssDisplayValue::InlineGridLanes
+pub surgeist_css::CssDisplayValue::Internal(surgeist_css::CssDisplayInternal)
+pub surgeist_css::CssDisplayValue::Legacy(surgeist_css::CssDisplayLegacy)
+pub surgeist_css::CssDisplayValue::ListItem
+pub surgeist_css::CssDisplayValue::ListItem::inside: surgeist_css::CssDisplayListItemInside
+pub surgeist_css::CssDisplayValue::ListItem::outside: surgeist_css::CssDisplayOutside
+pub surgeist_css::CssDisplayValue::OutsideInside
+pub surgeist_css::CssDisplayValue::OutsideInside::inside: surgeist_css::CssDisplayInside
+pub surgeist_css::CssDisplayValue::OutsideInside::outside: surgeist_css::CssDisplayOutside
+impl surgeist_css::CssDisplayValue
+pub fn surgeist_css::CssDisplayValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssDisplayValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssDuration
 pub surgeist_css::CssDuration::Calculation(surgeist_css::CssTimeCalculation)
 pub surgeist_css::CssDuration::Literal(surgeist_css::CssDurationLiteral)
@@ -2047,6 +2097,7 @@ pub surgeist_css::CssLonghandValueRef::BorderTopWidth(&'a surgeist_css::CssLengt
 pub surgeist_css::CssLonghandValueRef::Color(&'a surgeist_css::CssAuthoredColor)
 pub surgeist_css::CssLonghandValueRef::ContainerName(&'a surgeist_css::CssContainerNames)
 pub surgeist_css::CssLonghandValueRef::ContainerType(&'a surgeist_css::CssContainerType)
+pub surgeist_css::CssLonghandValueRef::Display(&'a surgeist_css::CssDisplayValue)
 pub surgeist_css::CssLonghandValueRef::FlowTolerance(&'a surgeist_css::CssFlowTolerance)
 pub surgeist_css::CssLonghandValueRef::FontFamily(&'a surgeist_css::CssFontFamilyList)
 pub surgeist_css::CssLonghandValueRef::MarginBottom(&'a surgeist_css::CssLength)
@@ -4495,6 +4546,7 @@ pub struct surgeist_css::CssDisplayPropertyValue
 impl surgeist_css::CssDisplayPropertyValue
 pub fn surgeist_css::CssDisplayPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssDisplayPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssDisplay>
+pub const fn surgeist_css::CssDisplayPropertyValue::value(&self) -> &surgeist_css::CssDisplayValue
 pub struct surgeist_css::CssDropShadow
 impl surgeist_css::CssDropShadow
 pub const fn surgeist_css::CssDropShadow::blur_radius(&self) -> core::option::Option<&surgeist_css::CssLength>

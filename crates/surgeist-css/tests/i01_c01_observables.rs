@@ -765,9 +765,15 @@ fn authored_css_cases_match_selected_public_report_observables() {
     let mut migrated_tolerance_cases = 0;
     let mut migrated_auto_repeat_cases = 0;
     let mut migrated_unicode_cases = 0;
+    let mut migrated_display_cases = 0;
     for row in rows {
         // Fixture feature labels record the original capture profile. Validation is
         // now unconditional, so every historical profile runs through the same API.
+        if assert_archived_inline_display_rejection(&row) {
+            migrated_display_cases += 1;
+            assert_strict_parity(&row);
+            continue;
+        }
         if assert_archived_unicode_feff_rejection(&row) {
             migrated_unicode_cases += 1;
             assert_strict_parity(&row);
@@ -815,6 +821,53 @@ fn authored_css_cases_match_selected_public_report_observables() {
         "all three archived intrinsic auto-repeat cases require current acceptance witnesses"
     );
     assert_eq!(migrated_unicode_cases, 1);
+    assert_eq!(migrated_display_cases, 1);
+}
+
+// Display3 §2 admits inline with flow inside. Keep the archived I01 rejection
+// verbatim, and independently assert the selected current grammar and payload.
+// https://www.w3.org/TR/2026/CRD-css-display-3-20260605/#the-display-properties
+fn assert_archived_inline_display_rejection(row: &Row) -> bool {
+    if row.case_id != "catalog.property.baseline.property.display.boundary" {
+        return false;
+    }
+    assert_eq!(row.entry, "style");
+    assert_eq!(row.feature, "both");
+    assert_eq!(row.input, "display: inline");
+    assert_eq!(row.clean, "false");
+    assert_eq!(row.retained, "-");
+    assert_eq!(row.values, "-");
+    assert_eq!(row.authored_declarations, "-");
+    assert_eq!(
+        row.diagnostics,
+        "InvalidPropertyValue/InvalidPropertyValue:baseline.property.display:a value accepted by the property's grammar:Ident:inline/DropDeclaration@9:0:9>0:0:0-15:0:15:15"
+    );
+    let report = parse_style_attribute(&row.input);
+    assert!(report.is_clean());
+    let [declaration] = report.syntax().as_slice() else {
+        panic!("one retained display")
+    };
+    assert_eq!(declaration.importance(), CssImportance::Normal);
+    let surgeist_css::CssKnownPropertyValueRef::Display(value) =
+        declaration.known().unwrap().property_value().unwrap()
+    else {
+        panic!("typed display")
+    };
+    assert_eq!(
+        *value.value(),
+        surgeist_css::CssDisplayValue::OutsideInside {
+            outside: surgeist_css::CssDisplayOutside::Inline,
+            inside: surgeist_css::CssDisplayInside::Flow,
+        }
+    );
+    assert_eq!(value.as_css(), "inline");
+    assert_eq!(value.i01_subset(), None);
+    let parsed = declaration.parsed_value().unwrap();
+    // The retained value range includes the space immediately after the colon;
+    // the property wrapper's ordinary as_css() excludes that boundary trivia.
+    assert_eq!(parsed.span().start().byte_offset().value(), 8);
+    assert_eq!(parsed.span().end().byte_offset().value(), 15);
+    true
 }
 
 // Syntax 3 string input preserves U+FEFF as an identifier code point. The

@@ -84,7 +84,7 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
     assert!(feature_metadata("BASELINE.PROPERTY.DISPLAY").is_none());
 
     let exact_source_cases = [
-        ("display", "O-CSS2"),
+        ("display", "S-DISPLAY3"),
         ("all", "O-CASCADE4"),
         ("margin", "O-BOX3"),
         ("color", "O-COLOR4"),

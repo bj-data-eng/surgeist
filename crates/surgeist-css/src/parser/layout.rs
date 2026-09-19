@@ -3,9 +3,13 @@ use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
 use super::values::{
     CalculationRoot, LengthGrammar, parse_box_size_value, parse_length_with, parse_numeric_function,
 };
+use crate::display::*;
 use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
+
+pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::CssFeatureId] =
+    &[crate::CssFeatureId::new("ext.value.grid-lanes-display")];
 
 pub(super) fn parse_resize<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -215,23 +219,113 @@ pub(super) fn parse_table_layout<'i, 't>(
 
 pub(super) fn parse_display<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssDisplay, ParseError<'i, Error>> {
-    let ident = input.expect_ident_cloned().map_err(basic)?;
-    match_ignore_ascii_case! { &ident,
-        "block" => Ok(CssDisplay::Block),
-        "flex" => Ok(CssDisplay::Flex),
-        "grid" => Ok(CssDisplay::Grid),
-        "inline-block" => Ok(CssDisplay::InlineBlock),
-        "inline-grid" => Ok(CssDisplay::InlineGrid),
-        "grid-lanes" => Ok(CssDisplay::GridLanes),
-        "inline-grid-lanes" => Ok(CssDisplay::InlineGridLanes),
-        "none" => Ok(CssDisplay::None),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("display", ident.as_ref()),
-        )),
+) -> std::result::Result<CssDisplayValue, ParseError<'i, Error>> {
+    enum Component {
+        Outside(CssDisplayOutside),
+        Inside(CssDisplayInside),
+        ListItem,
+        Exclusive(CssDisplayValue),
     }
+    let mut outside = None;
+    let mut inside = None;
+    let mut list_item = false;
+    let mut count = 0;
+    while !input.is_exhausted() {
+        if count == 3 {
+            return Err(unsupported_value(
+                input,
+                None,
+                "display has too many components",
+            ));
+        }
+        count += 1;
+        let location = input.current_source_location();
+        let ident = input.expect_ident_cloned().map_err(basic)?;
+        let component = match_ignore_ascii_case! { &ident,
+            "block" => Component::Outside(CssDisplayOutside::Block),
+            "inline" => Component::Outside(CssDisplayOutside::Inline),
+            "run-in" => Component::Outside(CssDisplayOutside::RunIn),
+            "flow" => Component::Inside(CssDisplayInside::Flow),
+            "flow-root" => Component::Inside(CssDisplayInside::FlowRoot),
+            "table" => Component::Inside(CssDisplayInside::Table),
+            "flex" => Component::Inside(CssDisplayInside::Flex),
+            "grid" => Component::Inside(CssDisplayInside::Grid),
+            "ruby" => Component::Inside(CssDisplayInside::Ruby),
+            "list-item" => Component::ListItem,
+            "table-row-group" => Component::Exclusive(CssDisplayValue::Internal(CssDisplayInternal::TableRowGroup)),
+            "table-header-group" => Component::Exclusive(CssDisplayValue::Internal(CssDisplayInternal::TableHeaderGroup)),
+            "table-footer-group" => Component::Exclusive(CssDisplayValue::Internal(CssDisplayInternal::TableFooterGroup)),
+            "table-row" => Component::Exclusive(CssDisplayValue::Internal(CssDisplayInternal::TableRow)),
+            "table-cell" => Component::Exclusive(CssDisplayValue::Internal(CssDisplayInternal::TableCell)),
+            "table-column-group" => Component::Exclusive(CssDisplayValue::Internal(CssDisplayInternal::TableColumnGroup)),
+            "table-column" => Component::Exclusive(CssDisplayValue::Internal(CssDisplayInternal::TableColumn)),
+            "table-caption" => Component::Exclusive(CssDisplayValue::Internal(CssDisplayInternal::TableCaption)),
+            "ruby-base" => Component::Exclusive(CssDisplayValue::Internal(CssDisplayInternal::RubyBase)),
+            "ruby-text" => Component::Exclusive(CssDisplayValue::Internal(CssDisplayInternal::RubyText)),
+            "ruby-base-container" => Component::Exclusive(CssDisplayValue::Internal(CssDisplayInternal::RubyBaseContainer)),
+            "ruby-text-container" => Component::Exclusive(CssDisplayValue::Internal(CssDisplayInternal::RubyTextContainer)),
+            "contents" => Component::Exclusive(CssDisplayValue::Box(CssDisplayBox::Contents)),
+            "none" => Component::Exclusive(CssDisplayValue::Box(CssDisplayBox::None)),
+            "inline-block" => Component::Exclusive(CssDisplayValue::Legacy(CssDisplayLegacy::InlineBlock)),
+            "inline-table" => Component::Exclusive(CssDisplayValue::Legacy(CssDisplayLegacy::InlineTable)),
+            "inline-flex" => Component::Exclusive(CssDisplayValue::Legacy(CssDisplayLegacy::InlineFlex)),
+            "inline-grid" => Component::Exclusive(CssDisplayValue::Legacy(CssDisplayLegacy::InlineGrid)),
+            "grid-lanes" => Component::Exclusive(CssDisplayValue::GridLanes),
+            "inline-grid-lanes" => Component::Exclusive(CssDisplayValue::InlineGridLanes),
+            _ => return Err(unsupported_value_at(location, None, unsupported_keyword_reason("display", ident.as_ref()))),
+        };
+        let duplicate = match component {
+            Component::Outside(value) => outside.replace(value).is_some(),
+            Component::Inside(value) => inside.replace(value).is_some(),
+            Component::ListItem => std::mem::replace(&mut list_item, true),
+            Component::Exclusive(value) => {
+                if count == 1 && input.is_exhausted() {
+                    return Ok(value);
+                }
+                return Err(unsupported_value_at(
+                    location,
+                    None,
+                    "exclusive display keyword cannot be combined",
+                ));
+            }
+        };
+        if duplicate {
+            return Err(unsupported_value_at(
+                location,
+                None,
+                "duplicate display component category",
+            ));
+        }
+    }
+    if count == 0 {
+        return Err(unsupported_value(input, None, "display value is empty"));
+    }
+    if list_item {
+        let inside = match inside {
+            None | Some(CssDisplayInside::Flow) => CssDisplayListItemInside::Flow,
+            Some(CssDisplayInside::FlowRoot) => CssDisplayListItemInside::FlowRoot,
+            Some(_) => {
+                return Err(unsupported_value(
+                    input,
+                    None,
+                    "list-item permits only flow or flow-root",
+                ));
+            }
+        };
+        return Ok(CssDisplayValue::ListItem {
+            outside: outside.unwrap_or(CssDisplayOutside::Block),
+            inside,
+        });
+    }
+    let inside = inside.unwrap_or(CssDisplayInside::Flow);
+    Ok(CssDisplayValue::OutsideInside {
+        outside: outside.unwrap_or(if inside == CssDisplayInside::Ruby {
+            CssDisplayOutside::Inline
+        } else {
+            CssDisplayOutside::Block
+        }),
+        inside,
+    })
 }
 
 pub(super) fn parse_box_sizing<'i, 't>(
