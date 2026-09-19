@@ -38,13 +38,15 @@ fn committed_csstree_oracle_has_validated_metadata_and_outcome_partition() {
         "ed8c70539c10effc254a8c2c4faa750396c7f3647996f5120e9e311bbe96d366"
     );
     assert_eq!(oracle.id_count(), 935);
+    // Independently counted from the CSS-owned expected-classes registry,
+    // whose expectations precede parser observation and oracle capture.
     assert_eq!(
         oracle.outcome_counts(),
         [
-            ("clean", 0),
-            ("recovered", 0),
-            ("strict_rejected", 0),
-            ("unsupported", 935),
+            ("clean", 347),
+            ("recovered", 96),
+            ("strict_rejected", 339),
+            ("unsupported", 153),
         ]
     );
 }
@@ -82,8 +84,21 @@ fn csstree_oracle_contract_rejects_illegal_records() {
     records.swap(0, 1);
     records[0]["expectation_sha256"] = serde_json::Value::from("0".repeat(64));
     records[10]["path"] = records[0]["path"].clone();
-    records[2]["outcome"] = serde_json::json!({ "kind": "clean" });
-    records[3]["outcome"]["policy"] = serde_json::Value::from("full_observation");
+    let mut panic_freedom_records = records.iter_mut().filter(|record| {
+        record["probe"]["kind"] == "panic_freedom"
+            && record["outcome"]["kind"] == "unsupported"
+            && record["outcome"]["policy"] == "panic_freedom_only"
+    });
+    let clean = panic_freedom_records
+        .next()
+        .expect("a panic-freedom record for the incompatible clean outcome");
+    assert!(clean["observation"].is_null());
+    clean["outcome"] = serde_json::json!({ "kind": "clean" });
+    let full_observation = panic_freedom_records
+        .next()
+        .expect("a separate panic-freedom record for the missing observation");
+    assert!(full_observation["observation"].is_null());
+    full_observation["outcome"]["policy"] = serde_json::Value::from("full_observation");
 
     let bytes = serde_json::to_vec(&oracle).expect("serialize malformed oracle");
     let bytes = canonicalize_csstree_oracle_schema(&bytes)
@@ -156,14 +171,20 @@ fn csstree_oracle_contract_rejects_every_malformed_schema_class() {
         |oracle| oracle["records"][0]["outcome"]["kind"] = serde_json::Value::from("expected_fail"),
         |oracle| oracle["records"][0]["outcome"]["kind"] = serde_json::Value::from("quarantined"),
         |oracle| {
-            oracle["records"][0]["outcome"]["reason"] = serde_json::Value::from("not_implemented")
+            unsupported_outcome_mut(oracle)["reason"] = serde_json::Value::from("not_implemented")
         },
-        |oracle| oracle["records"][0]["outcome"]["policy"] = serde_json::Value::from("skip"),
+        |oracle| unsupported_outcome_mut(oracle)["policy"] = serde_json::Value::from("skip"),
     ];
     for edit in schema_escapes {
         let mut oracle = committed_oracle_value();
         edit(&mut oracle);
         let bytes = serde_json::to_vec(&oracle).expect("serialize schema escape");
+        let error = load_csstree_oracle_schema(&bytes)
+            .expect_err("schema escapes must fail deserialization, not just canonicality");
+        assert!(
+            error.contains("failed to deserialize CSS oracle"),
+            "{error}"
+        );
         assert_typed_contract_rejection(&bytes);
     }
 
@@ -200,6 +221,18 @@ fn csstree_oracle_contract_rejects_every_malformed_schema_class() {
 
 fn committed_oracle_value() -> serde_json::Value {
     serde_json::from_str(include_str!("csstree/oracle.json")).expect("committed oracle JSON")
+}
+
+fn unsupported_outcome_mut(oracle: &mut serde_json::Value) -> &mut serde_json::Value {
+    let record = oracle["records"]
+        .as_array_mut()
+        .expect("oracle records")
+        .iter_mut()
+        .find(|record| record["outcome"]["kind"] == "unsupported")
+        .expect("an unsupported outcome for closed reason and policy enum tests");
+    assert!(record["outcome"]["reason"].is_string());
+    assert!(record["outcome"]["policy"].is_string());
+    &mut record["outcome"]
 }
 
 fn mutate_canonical_oracle(edit: impl FnOnce(&mut serde_json::Value)) -> Vec<u8> {

@@ -4531,7 +4531,7 @@ mod tests {
     fn oracle_loader_rejects_unknown_unsupported_reason() {
         let mut artifacts = committed_artifacts();
         mutate_oracle(&mut artifacts, |oracle| {
-            oracle["records"][0]["outcome"]["reason"] = Value::from("not_implemented");
+            unsupported_outcome_mut(oracle)["reason"] = Value::from("not_implemented");
         });
         assert_rejected(artifacts, "failed to deserialize CSS oracle");
     }
@@ -4540,9 +4540,21 @@ mod tests {
     fn oracle_loader_rejects_unknown_unsupported_policy() {
         let mut artifacts = committed_artifacts();
         mutate_oracle(&mut artifacts, |oracle| {
-            oracle["records"][0]["outcome"]["policy"] = Value::from("skip");
+            unsupported_outcome_mut(oracle)["policy"] = Value::from("skip");
         });
         assert_rejected(artifacts, "failed to deserialize CSS oracle");
+    }
+
+    fn unsupported_outcome_mut(oracle: &mut Value) -> &mut Value {
+        let record = oracle["records"]
+            .as_array_mut()
+            .expect("oracle records")
+            .iter_mut()
+            .find(|record| record["outcome"]["kind"] == "unsupported")
+            .expect("an unsupported outcome for closed reason and policy enum tests");
+        assert!(record["outcome"]["reason"].is_string());
+        assert!(record["outcome"]["policy"].is_string());
+        &mut record["outcome"]
     }
 
     #[test]
