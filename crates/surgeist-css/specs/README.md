@@ -82,6 +82,15 @@ APIs remain with style and root integration. Other features in those documents,
 including obsolete shadow selectors and `:has-slotted`, are not imported by
 these records.
 
+Fonts 4 permits `env()` in font-palette descriptor values. The catalog pins the
+published 23 September 2025 Env 1 definition for the function grammar,
+environment-reference identity, property/descriptor grammar deferral and
+shorthand pending semantics. This imports required definitions without selecting
+Env 1 in full. Environment lookup, substitution execution and invalidation belong
+downstream. The source's individually identified open questions about broader
+insertion locations and substitution timing do not waive its explicit authored
+property and descriptor requirements.
+
 Fullscreen's selected snapshot moves the `::backdrop` definition to Position 4.
 The catalog imports the published 7 October 2025 definition and its fully-styleable
 classification. Pseudo-Elements 4 makes fully styleable pseudo-elements tree-abiding,

@@ -194,6 +194,16 @@
         "publication_history_url": "https://www.w3.org/standards/history/css-syntax-3/",
         "revision_discovery_url": "https://api.github.com/repos/w3c/csswg-drafts/commits?path=css-syntax-3%2FOverview.bs&until=2026-09-10T02%3A16%3A24Z&per_page=1",
         "source_resolution": "The selected 2021-12-24 Syntax 3 publication lacks block-contents, which selected Conditional Rules 5 and Nesting 1 reference. Pin the latest source-file revision before the cutoff for only that production and its scoped block-parsing dependencies. Preserve the selected published Syntax 3 edition, tokenizer and other entry points. The definition record explicitly reconciles a missing terminal declaration transfer; this source is not adopted unqualified or selected in full."
+      },
+      {
+        "id": "css-env-1-authored-substitution-definitions",
+        "kind": "w3c-dated-publication",
+        "date": "2025-09-23",
+        "url": "https://www.w3.org/TR/2025/WD-css-env-1-20250923/",
+        "sha256": "38edef44e4f698039cebdfca3614dd3aec0ed15e1d61ded3383b88796d4c10ba",
+        "bytes": 113268,
+        "latest_published_url": "https://www.w3.org/TR/css-env-1/",
+        "source_resolution": "Latest published Env 1 edition before the cutoff, identified by the latest-publication metadata inspected on 2026-09-19. Selected Fonts 4 section 9.2 expressly permits env() in descriptor values. Import only the required authored function grammar, property/descriptor pending semantics, shorthand behavior and environment-reference identity; this does not select the module, device-variable inventory or environment APIs in full."
       }
     ],
     "definitions": [
@@ -613,6 +623,51 @@
           "root"
         ],
         "downstream_requirements": "Mutable CSSOM objects and identity, matching, cascade execution, invalidation and application of conditional rules remain downstream. Authored ordering and intrinsic recovery remain CSS responsibilities."
+      },
+      {
+        "id": "environment-variable-authored-substitution",
+        "source_id": "css-env-1-authored-substitution-definitions",
+        "signatures": [
+          "env( <custom-ident> <integer [0,∞]>* , <declaration-value>? )"
+        ],
+        "sections": [
+          {
+            "anchor": "environment",
+            "url": "https://www.w3.org/TR/2025/WD-css-env-1-20250923/#environment"
+          },
+          {
+            "anchor": "env-function",
+            "url": "https://www.w3.org/TR/2025/WD-css-env-1-20250923/#env-function"
+          },
+          {
+            "anchor": "funcdef-env",
+            "url": "https://www.w3.org/TR/2025/WD-css-env-1-20250923/#funcdef-env"
+          },
+          {
+            "anchor": "env-in-shorthands",
+            "url": "https://www.w3.org/TR/2025/WD-css-env-1-20250923/#env-in-shorthands"
+          }
+        ],
+        "required_by": [
+          {
+            "module_id": "css-fonts-4",
+            "section_url": "https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-palette-values",
+            "requirement": "User-defined font palette descriptor values expressly admit env() and evaluate in the root element context; the referenced function definition supplies shared property and descriptor substitution syntax."
+          }
+        ],
+        "authored_owner": "css",
+        "authored_requirements": [
+          "Interpret environment names, optional integer indices and fallback token streams using the imported function grammar and the selected Values and Syntax definitions. Preserve original components and provenance without environment lookup.",
+          "Retain substitution-dependent property and descriptor values wherever the function definition requires parse-time grammar deferral; preserve shorthand pending semantics until complete replacement values are available.",
+          "Keep intrinsic substitution-function validity, permissive declaration-value contexts and cross-function composition distinct when applying the selected normative definitions."
+        ],
+        "downstream_owners": [
+          "style",
+          "runtime",
+          "window",
+          "root"
+        ],
+        "downstream_requirements": "Environment values, index lookup, fallback selection, computed substitution, dependency tracking and invalidation require downstream context. Fonts 4 defines root-element context for its descriptors. Env 1 issue-9ee89738 leaves broader insertion locations unspecified; issue-42f9a2dd and issue-9806265e leave aspects of substitution timing unspecified. These individual omissions do not remove the explicit authored property/descriptor requirements. Device-variable inventories, author-definition APIs and the rest of Env 1 are not imported."
       }
     ]
   },
