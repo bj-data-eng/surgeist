@@ -7708,6 +7708,8 @@ pub enum CssFlexValue {
 pub enum CssIntegerValue {
     Literal(i32),
     Calculation(CssIntegerCalculation),
+    /// An exact ordinary integer token, including values beyond i32 magnitude.
+    ExactLiteral(crate::CssIntegerLiteral),
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -890,6 +890,24 @@ pub(super) fn parse_scrollbar_width<'i, 't>(
     }
 }
 
+fn parse_current_integer_literal<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<CssIntegerValue, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let location = input.current_source_location();
+    let offset = input.position().byte_index();
+    let component = numeric.collect(input).map_err(|error| {
+        unsupported_value_at(
+            numeric.error_location(&error, location, offset),
+            None,
+            "invalid integer component",
+        )
+    })?;
+    crate::integer_value::admit_integer_literal(component)
+        .map_err(|_| unsupported_value_at(location, None, "value must have integer token syntax"))
+}
+
 pub(super) fn parse_order<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
@@ -897,15 +915,10 @@ pub(super) fn parse_order<'i, 't>(
     let numeric_start = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
-        Token::Number {
-            int_value: Some(value),
-            ..
-        } => Ok(CssIntegerValue::Literal(*value)),
-        Token::Number { .. } => Err(unsupported_value_at(
-            location,
-            None,
-            "order must be an integer",
-        )),
+        Token::Number { .. } => {
+            input.reset(&numeric_start);
+            parse_current_integer_literal(input, numeric)
+        }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Integer)
                 .map(CssIntegerCalculation::from_expression)
@@ -964,15 +977,10 @@ pub(super) fn parse_z_index<'i, 't>(
             None,
             format!("unsupported z-index `{ident}`"),
         )),
-        Token::Number {
-            int_value: Some(value),
-            ..
-        } => Ok(CssZIndexValue::Integer(CssIntegerValue::Literal(*value))),
-        Token::Number { .. } => Err(unsupported_value_at(
-            location,
-            None,
-            "unsupported z-index non-integer number",
-        )),
+        Token::Number { .. } => {
+            input.reset(&numeric_start);
+            parse_current_integer_literal(input, numeric).map(CssZIndexValue::Integer)
+        }
         Token::Dimension { unit, .. } => Err(unsupported_value_at(
             location,
             None,

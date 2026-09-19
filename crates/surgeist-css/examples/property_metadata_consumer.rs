@@ -41,6 +41,7 @@ const LONGHANDS: &[P] = &[
     P::TextOrientation,
     P::Opacity,
     P::Display,
+    P::Order,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
     (P::Container, &[P::ContainerName, P::ContainerType], &[]),
@@ -234,6 +235,7 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         }
         CssLonghandValueRef::TextOrientation(v) => assert_eq!(*v, CssTextOrientation::Mixed),
         CssLonghandValueRef::FlowTolerance(v) => assert_eq!(v, &CssFlowTolerance::normal()),
+        CssLonghandValueRef::Order(v) => assert_eq!(v, &CssIntegerValue::Literal(0)),
         CssLonghandValueRef::Display(v) => assert_eq!(
             *v,
             CssDisplayValue::OutsideInside {
@@ -254,7 +256,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 45);
+    assert_eq!(expected.len(), 46);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();

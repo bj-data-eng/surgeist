@@ -460,6 +460,37 @@ calculations and out-of-range specified values. Computed clamping belongs to
 style. Raw authored value text remains separate from canonical specified-value
 serialization, which is not established by expansion.
 
+Order is a non-inherited longhand with ordinary initial `CssIntegerValue::Literal(0)`.
+Its specified integer value expands to one contribution; normalization retains
+source order and does not sort declarations by their numeric values. Layout
+item ordering and computed integer rounding belong to downstream consumers.
+
+`CssIntegerValue` is shared by Order and the integer branch of ZIndex.
+`Literal(i32)` holds an exactly representable ordinary integer. Parsed values
+outside i32 use `ExactLiteral(CssIntegerLiteral)`, retaining the complete numeric
+token and its parsed or programmatic origin. Checked construction accepts an
+integer Number token; decimal points, exponent notation, dimensions and other
+token kinds are rejected. Direct construction of a small `ExactLiteral` remains
+valid. `serialize_specified()` removes redundant signs and leading zeros without
+rounding the magnitude. Its bounded variant charges one input and projection
+node for an ordinary value, then checks canonical output bytes before allocation.
+
+The frozen Order/ZIndex `i01_subset()` now returns `None` for ordinary integers
+outside i32, instead of a saturated boundary. Consumers that need those values
+must read `value()` and handle `ExactLiteral`; existing `Literal(i32)` and ZIndex
+`Auto` remain available. This shared transport change does not complete ZIndex
+metadata or stacking semantics.
+
+`Calculation` retains the authored numeric expression and uses the shared
+binary64 specified math projection. Fractional results retain a math wrapper:
+`calc(1.5)` remains `calc(1.5)` without integer rounding. An explicitly constructed
+Calculation leaf `9007199254740993` retains those original digits but serializes
+as `calc(9007199254740992)` under that precision policy; an ordinary ExactLiteral
+serializes exactly as `9007199254740993`. Serialization never mutates either
+representation. The output remains stable when reparsed and serialized again.
+Exact ordinary integer fidelity is a Surgeist contract; the selected Values4
+standard permits implementation-defined numeric ranges.
+
 Display is a non-inherited longhand with initial `inline`. Its current
 `CssDisplayValue` represents outside/inside pairs, flow-only list items,
 internal table/ruby values, box values, legacy inline values, and the selected

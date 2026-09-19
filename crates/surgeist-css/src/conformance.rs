@@ -4962,7 +4962,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 508] = [
         "flex-shrink",
         "baseline.property.flex-shrink"
     ),
-    property_feature!(CssKnownProperty::Order, "order", "baseline.property.order"),
+    complete_property_feature!(CssKnownProperty::Order, "order", "baseline.property.order"),
     property_feature!(CssKnownProperty::Flex, "flex", "baseline.property.flex"),
     property_feature!(
         CssKnownProperty::JustifyTracks,

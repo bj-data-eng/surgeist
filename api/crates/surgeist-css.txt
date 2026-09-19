@@ -1475,7 +1475,11 @@ pub surgeist_css::CssInitialValueRef::UserAgent(surgeist_css::CssUserAgentInitia
 pub surgeist_css::CssInitialValueRef::Value(&'a surgeist_css::CssLonghandValue)
 #[non_exhaustive] pub enum surgeist_css::CssIntegerValue
 pub surgeist_css::CssIntegerValue::Calculation(surgeist_css::CssIntegerCalculation)
+pub surgeist_css::CssIntegerValue::ExactLiteral(surgeist_css::CssIntegerLiteral)
 pub surgeist_css::CssIntegerValue::Literal(i32)
+impl surgeist_css::CssIntegerValue
+pub fn surgeist_css::CssIntegerValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssIntegerValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssIsolation
 pub surgeist_css::CssIsolation::Auto
 pub surgeist_css::CssIsolation::Isolate
@@ -2105,6 +2109,7 @@ pub surgeist_css::CssLonghandValueRef::MarginLeft(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::MarginRight(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::MarginTop(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::Opacity(&'a surgeist_css::CssOpacityValue)
+pub surgeist_css::CssLonghandValueRef::Order(&'a surgeist_css::CssIntegerValue)
 pub surgeist_css::CssLonghandValueRef::PaddingBottom(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::PaddingLeft(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::PaddingRight(&'a surgeist_css::CssLength)
@@ -5252,6 +5257,12 @@ pub fn surgeist_css::CssIntegerCalculation::try_from_components_with_limits(valu
 impl surgeist_css::CssIntegerCalculation
 pub fn surgeist_css::CssIntegerCalculation::literal(value: i32) -> Self
 pub fn surgeist_css::CssIntegerCalculation::requires_rounding(&self) -> bool
+pub struct surgeist_css::CssIntegerLiteral
+impl surgeist_css::CssIntegerLiteral
+pub const fn surgeist_css::CssIntegerLiteral::component(&self) -> &surgeist_css::CssComponentValue
+pub fn surgeist_css::CssIntegerLiteral::numeric(&self) -> surgeist_css::CssNumericTokenRef<'_>
+pub const fn surgeist_css::CssIntegerLiteral::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssIntegerLiteral::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
 pub struct surgeist_css::CssIsolationPropertyValue
 impl surgeist_css::CssIsolationPropertyValue
 pub fn surgeist_css::CssIsolationPropertyValue::as_css(&self) -> &str
