@@ -1,0 +1,766 @@
+{
+  "schema_version": 1,
+  "basis": "27cc2212db7b0afc049ac9c1bc6a46c7298b6ff4",
+  "scope": "All 10 original selectorList/Selector.json cases",
+  "method": "Independent pinned grammar and immutable source-contract audit. No parser, Cargo, current expected-class registry, or captured oracle used as expectation truth. Upstream AST/outcome retained only as provenance. selector-original-audit.json used only for artifact structure.",
+  "catalog_path": "crates/surgeist-css/specs/catalog.json",
+  "catalog_sha256": "8600b4355cdd9da2b3e8e602c8b782f1e8e0b10884e574d6284bbf60b9d99d4e",
+  "normative_sources": [
+    {
+      "id": "css-syntax-3",
+      "title": "CSS Syntax Module Level 3",
+      "selection": "snapshot",
+      "tier": "official",
+      "latest_published_url": "https://www.w3.org/TR/css-syntax-3/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "sha256": "413b27acb4e16721d28b487456359ecbcecba472c4310bd2f6a4939ad393738b",
+        "bytes": 511620,
+        "date": "2021-12-24",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": []
+    },
+    {
+      "id": "selectors-4",
+      "title": "Selectors Level 4",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/selectors-4/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/WD-selectors-4-20260122/",
+        "sha256": "5d3b3f7e1fcc562dcec1a01ad2c5651e9f0bac294b255a75352e9df202604e6d",
+        "bytes": 978757,
+        "date": "2026-01-22",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style"
+      ]
+    }
+  ],
+  "source_refs": [
+    "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#grouping",
+    "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#grammar",
+    "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector",
+    "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-simple-block"
+  ],
+  "adapter_contract": {
+    "entry_point": "selector_list",
+    "adapter": "selector_list",
+    "public_entry": "parse_selector_list",
+    "namespace": {
+      "ns": "surgeist-corpus-probe"
+    },
+    "default_namespace": null,
+    "prefix": "",
+    "suffix": "",
+    "extractor": "selector_list",
+    "coordinates": "raw original UTF-8 bytes"
+  },
+  "source_contracts": [
+    "src/parser/fragments.rs:27-39 reject complete input span; 131-185 selector_fragment rejection versus retained closure diagnostics; 205-221 atomic parse_selector_list",
+    "src/parser/selectors.rs:130-144 strict list; 358-466 complex selector; 493-600 type selector; 622-795 nonempty compound; 798-841 Tag projection",
+    "src/parser/recovery.rs:359-374 specialized component preflight; 879-887 curly prelude boundary",
+    "src/error.rs:1019-1068 source position resolution; 1510-1529 invalid_selector; 2037-2071 previous-token comma boundary",
+    "tests/support/csstree_adapters.rs:1372-1379 original registry entry; Adapter::wrap identity",
+    "tests/support/csstree.rs:2050-2058 member count; 2202-2240 raw observation; 2707-2735 payload relation"
+  ],
+  "policy_separation": "Selectors Level 4 outer list grammar rejects any malformed member atomically. Forgiving selector lists within is/where discard invalid inner members; no original here invokes a forgiving pseudo. Generic Syntax block EOF closure cannot make curly syntax a valid selector. Exact diagnostic code, ordering, position and span are project source-contract predictions, not W3C mandated diagnostics.",
+  "summary": {
+    "records": 10,
+    "clean": 2,
+    "strict_rejected": 8,
+    "recovered": 0,
+    "raw_diagnostics": 8,
+    "source_contradictions": 0,
+    "unsettled": 0
+  },
+  "next_changes": [
+    "Use fixed expectations for public original-input typed and raw-report regressions and complete class reconciliation. Runtime validation remains for caller; this static audit does not claim executable verification."
+  ],
+  "rows": [
+    {
+      "id": "selectorList/Selector.json#/error/0",
+      "input": "a, ",
+      "input_sha256": "80da64c2c60bcb8a435de2efa55d74ddf06b0fb39427726b1f861bd188f8b70b",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selectorList",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selectorList/Selector.json",
+      "source_sha256": "71efd2e77f84f9de3b95f3c76a4427b1b123e10d4e1e4029a5c408f56886de29",
+      "expectation_path": "tests/corpus/csstree/expectations/selectorList/Selector.json",
+      "expectation_sha256": "661e992bf12948c4ec5ad5138609d07660e07e7d493490ac01fabb2778b66eb7",
+      "original_expectation": {
+        "id": "selectorList/Selector.json#/error/0",
+        "context": "selectorList",
+        "input": "a, ",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": false,
+        "outer_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "typed_expectation": null,
+        "rationale": [
+          "The comma requires another complex selector. Leading trivia in that member is consumed to EOF byte 3. The empty compound fails; source-token inference cannot cross the previous comma and cannot find an authored token in the trailing whitespace. The entire list is rejected."
+        ]
+      },
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector_list"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "recovery_ends_at"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 3,
+          "span_start": 0,
+          "span_end": 3,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selectorList/Selector.json#/error/1",
+      "input": "a,, ",
+      "input_sha256": "08dad39dfcde67e8a8a28219b82c6121ad15021cee1d37000a90ca04244c5a11",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selectorList",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selectorList/Selector.json",
+      "source_sha256": "71efd2e77f84f9de3b95f3c76a4427b1b123e10d4e1e4029a5c408f56886de29",
+      "expectation_path": "tests/corpus/csstree/expectations/selectorList/Selector.json",
+      "expectation_sha256": "661e992bf12948c4ec5ad5138609d07660e07e7d493490ac01fabb2778b66eb7",
+      "original_expectation": {
+        "id": "selectorList/Selector.json#/error/1",
+        "context": "selectorList",
+        "input": "a,, ",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": false,
+        "outer_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "typed_expectation": null,
+        "rationale": [
+          "The second comma at byte 2 begins an empty second member. Compound parsing resets before that comma and fails its nonempty constraint. Error source inference identifies that comma; failure propagates out of the strict outer list without retaining a or later members."
+        ]
+      },
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector_list"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "payload_relation": "intersects",
+          "byte_offset": 2,
+          "span_start": 0,
+          "span_end": 4,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selectorList/Selector.json#/error/2",
+      "input": "a,,b",
+      "input_sha256": "a6bcd59d66d3e712252c39569e106c9e011a57e100a54faa5dbd363e75503881",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selectorList",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selectorList/Selector.json",
+      "source_sha256": "71efd2e77f84f9de3b95f3c76a4427b1b123e10d4e1e4029a5c408f56886de29",
+      "expectation_path": "tests/corpus/csstree/expectations/selectorList/Selector.json",
+      "expectation_sha256": "661e992bf12948c4ec5ad5138609d07660e07e7d493490ac01fabb2778b66eb7",
+      "original_expectation": {
+        "id": "selectorList/Selector.json#/error/2",
+        "context": "selectorList",
+        "input": "a,,b",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": false,
+        "outer_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "typed_expectation": null,
+        "rationale": [
+          "The second comma at byte 2 begins an empty second member. Compound parsing resets before that comma and fails its nonempty constraint. Error source inference identifies that comma; failure propagates out of the strict outer list without retaining a or later members."
+        ]
+      },
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector_list"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "payload_relation": "intersects",
+          "byte_offset": 2,
+          "span_start": 0,
+          "span_end": 4,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selectorList/Selector.json#/error/3",
+      "input": ",b",
+      "input_sha256": "9019dc6e33b1575523470be2d38ac90594439ba705352b50ac02abbc0b4bfbab",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selectorList",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selectorList/Selector.json",
+      "source_sha256": "71efd2e77f84f9de3b95f3c76a4427b1b123e10d4e1e4029a5c408f56886de29",
+      "expectation_path": "tests/corpus/csstree/expectations/selectorList/Selector.json",
+      "expectation_sha256": "661e992bf12948c4ec5ad5138609d07660e07e7d493490ac01fabb2778b66eb7",
+      "original_expectation": {
+        "id": "selectorList/Selector.json#/error/3",
+        "context": "selectorList",
+        "input": ",b",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": false,
+        "outer_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "typed_expectation": null,
+        "rationale": [
+          "The initial comma at byte 0 leaves the first member empty. Compound parsing fails before accepting any member; the strict outer list rejects atomically and reports only its first error."
+        ]
+      },
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector_list"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "payload_relation": "intersects",
+          "byte_offset": 0,
+          "span_start": 0,
+          "span_end": 2,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selectorList/Selector.json#/error/4",
+      "input": ",,b",
+      "input_sha256": "011dced92ca394f364d699c8bae7b4d342b2405f7800eef2a888e678bc65c16c",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selectorList",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selectorList/Selector.json",
+      "source_sha256": "71efd2e77f84f9de3b95f3c76a4427b1b123e10d4e1e4029a5c408f56886de29",
+      "expectation_path": "tests/corpus/csstree/expectations/selectorList/Selector.json",
+      "expectation_sha256": "661e992bf12948c4ec5ad5138609d07660e07e7d493490ac01fabb2778b66eb7",
+      "original_expectation": {
+        "id": "selectorList/Selector.json#/error/4",
+        "context": "selectorList",
+        "input": ",,b",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": false,
+        "outer_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "typed_expectation": null,
+        "rationale": [
+          "The initial comma at byte 0 leaves the first member empty. Compound parsing fails before accepting any member; the strict outer list rejects atomically and reports only its first error."
+        ]
+      },
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector_list"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "payload_relation": "intersects",
+          "byte_offset": 0,
+          "span_start": 0,
+          "span_end": 3,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selectorList/Selector.json#/error/5",
+      "input": ",",
+      "input_sha256": "d03502c43d74a30b936740a9517dc4ea2b2ad7168caa0a774cefe793ce0b33e7",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selectorList",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selectorList/Selector.json",
+      "source_sha256": "71efd2e77f84f9de3b95f3c76a4427b1b123e10d4e1e4029a5c408f56886de29",
+      "expectation_path": "tests/corpus/csstree/expectations/selectorList/Selector.json",
+      "expectation_sha256": "661e992bf12948c4ec5ad5138609d07660e07e7d493490ac01fabb2778b66eb7",
+      "original_expectation": {
+        "id": "selectorList/Selector.json#/error/5",
+        "context": "selectorList",
+        "input": ",",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": false,
+        "outer_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "typed_expectation": null,
+        "rationale": [
+          "The initial comma at byte 0 leaves the first member empty. Compound parsing fails before accepting any member; the strict outer list rejects atomically and reports only its first error."
+        ]
+      },
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector_list"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "payload_relation": "intersects",
+          "byte_offset": 0,
+          "span_start": 0,
+          "span_end": 1,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selectorList/Selector.json#/error/6",
+      "input": ",,",
+      "input_sha256": "228c1257793ee003323c488b2ef5196b888b4b950f72fdddbda43201c9fdd4b3",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selectorList",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selectorList/Selector.json",
+      "source_sha256": "71efd2e77f84f9de3b95f3c76a4427b1b123e10d4e1e4029a5c408f56886de29",
+      "expectation_path": "tests/corpus/csstree/expectations/selectorList/Selector.json",
+      "expectation_sha256": "661e992bf12948c4ec5ad5138609d07660e07e7d493490ac01fabb2778b66eb7",
+      "original_expectation": {
+        "id": "selectorList/Selector.json#/error/6",
+        "context": "selectorList",
+        "input": ",,",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": false,
+        "outer_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "typed_expectation": null,
+        "rationale": [
+          "The initial comma at byte 0 leaves the first member empty. Compound parsing fails before accepting any member; the strict outer list rejects atomically and reports only its first error."
+        ]
+      },
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector_list"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "payload_relation": "intersects",
+          "byte_offset": 0,
+          "span_start": 0,
+          "span_end": 2,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selectorList/Selector.json#/error/7",
+      "input": "a,{",
+      "input_sha256": "3ca60b793cd7de3c9ca3de713dc40df1e2415680d99bc89344e59912b0d17af2",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selectorList",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selectorList/Selector.json",
+      "source_sha256": "71efd2e77f84f9de3b95f3c76a4427b1b123e10d4e1e4029a5c408f56886de29",
+      "expectation_path": "tests/corpus/csstree/expectations/selectorList/Selector.json",
+      "expectation_sha256": "661e992bf12948c4ec5ad5138609d07660e07e7d493490ac01fabb2778b66eb7",
+      "original_expectation": {
+        "id": "selectorList/Selector.json#/error/7",
+        "context": "selectorList",
+        "input": "a,{",
+        "upstream_outcome": "rejected",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": false,
+        "outer_count": 0,
+        "is_clean": false,
+        "validation_accepts": false,
+        "typed_expectation": null,
+        "rationale": [
+          "A curly block cannot begin a selector. Specialized preflight stops before the top-level curly opening at byte 2. Compound parsing resets before that token and rejects it. The outer list is absent, so the unmatched opening does not produce an implicit EOF-closure diagnostic."
+        ]
+      },
+      "expected_class": {
+        "kind": "strict_rejected",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector_list"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 0
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_selector",
+            "action": "reject_input",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_selector",
+          "action": "reject_input",
+          "payload_relation": "intersects",
+          "byte_offset": 2,
+          "span_start": 0,
+          "span_end": 3,
+          "multiplicity": 1
+        }
+      ],
+      "diagnostic_count": 1,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selectorList/Selector.json#/several selectors",
+      "input": "a+b,c",
+      "input_sha256": "830da164c9b0cdba7535040fdc3711aa33e097075973f6e4870782ac007413cd",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selectorList",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selectorList/Selector.json",
+      "source_sha256": "71efd2e77f84f9de3b95f3c76a4427b1b123e10d4e1e4029a5c408f56886de29",
+      "expectation_path": "tests/corpus/csstree/expectations/selectorList/Selector.json",
+      "expectation_sha256": "661e992bf12948c4ec5ad5138609d07660e07e7d493490ac01fabb2778b66eb7",
+      "original_expectation": {
+        "id": "selectorList/Selector.json#/several selectors",
+        "context": "selectorList",
+        "label": "several selectors",
+        "input": "a+b,c",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": true,
+        "outer_count": 2,
+        "is_clean": true,
+        "validation_accepts": true,
+        "typed_expectation": {
+          "kind": "CssStyleSelectorList",
+          "selectors": [
+            {
+              "kind": "Selector",
+              "selector": {
+                "kind": "Complex",
+                "first": {
+                  "type": {
+                    "local_name": "a",
+                    "namespace": "Any"
+                  },
+                  "ids": [],
+                  "classes": [],
+                  "attributes": [],
+                  "pseudo_classes": [],
+                  "pseudo_elements": null,
+                  "nesting_selectors": 0,
+                  "scope_anchor": false
+                },
+                "rest": [
+                  {
+                    "combinator": "NextSibling",
+                    "selector": {
+                      "type": {
+                        "local_name": "b",
+                        "namespace": "Any"
+                      },
+                      "ids": [],
+                      "classes": [],
+                      "attributes": [],
+                      "pseudo_classes": [],
+                      "pseudo_elements": null,
+                      "nesting_selectors": 0,
+                      "scope_anchor": false
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "kind": "Selector",
+              "selector": {
+                "kind": "Tag",
+                "name": "c",
+                "namespace": "Any"
+              }
+            }
+          ]
+        },
+        "rationale": [
+          "Two ordered list members: the first is a complex selector with type a followed by NextSibling type b; the second is type c. No default namespace means Any for every type. List meaning is disjunction of its members."
+        ]
+      },
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector_list"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 2
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "source_contradictions": [],
+      "uncertainties": []
+    },
+    {
+      "id": "selectorList/Selector.json#/single selector",
+      "input": "test",
+      "input_sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "context": "selectorList",
+      "status": "active",
+      "source_path": "tests/corpus/csstree/source/selectorList/Selector.json",
+      "source_sha256": "71efd2e77f84f9de3b95f3c76a4427b1b123e10d4e1e4029a5c408f56886de29",
+      "expectation_path": "tests/corpus/csstree/expectations/selectorList/Selector.json",
+      "expectation_sha256": "661e992bf12948c4ec5ad5138609d07660e07e7d493490ac01fabb2778b66eb7",
+      "original_expectation": {
+        "id": "selectorList/Selector.json#/single selector",
+        "context": "selectorList",
+        "label": "single selector",
+        "input": "test",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "expected": {
+        "semantic_acceptance": true,
+        "outer_count": 1,
+        "is_clean": true,
+        "validation_accepts": true,
+        "typed_expectation": {
+          "kind": "CssStyleSelectorList",
+          "selectors": [
+            {
+              "kind": "Selector",
+              "selector": {
+                "kind": "Tag",
+                "name": "test",
+                "namespace": "Any"
+              }
+            }
+          ]
+        },
+        "rationale": [
+          "One type selector with local name test; no default namespace makes its namespace constraint Any and permits the Tag projection."
+        ]
+      },
+      "expected_class": {
+        "kind": "clean",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "selector_list"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        }
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
+      "source_contradictions": [],
+      "uncertainties": []
+    }
+  ],
+  "independent_audit_sha256": "d7d747431742280ecd9b91ea27b742aca32fcd0161af645074ed8b6680ce9f9a"
+}

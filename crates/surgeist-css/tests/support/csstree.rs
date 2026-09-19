@@ -5297,3 +5297,138 @@ fn selector_original_adapters_admit_independent_classes_and_diagnostics() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+#[cfg(test)]
+#[test]
+fn selector_list_original_adapters_admit_independent_classes_and_diagnostics() {
+    // Independent pinned grammar/diagnostic audit, not the committed class registry
+    // or captured oracle. Exercise the real adapter -> observer -> class gate.
+    let data: serde_json::Value = serde_json::from_str(include_str!(
+        "../csstree/selector-list-original-reconciliation.json"
+    ))
+    .unwrap();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(CORPUS_ROOT);
+    let mut inventory = read_neutral_artifact_set(&root)
+        .and_then(validate_neutral_artifact_set)
+        .unwrap();
+    let rows = data["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 10);
+    let mut failures = Vec::new();
+    for row in rows {
+        let id = row["id"].as_str().unwrap();
+        let case = inventory
+            .cases
+            .iter_mut()
+            .find(|case| case.id == id)
+            .unwrap();
+        assert_eq!(case.input, row["input"].as_str().unwrap(), "{id}");
+        assert_eq!(
+            case.expectation_sha256,
+            row["expectation_sha256"].as_str().unwrap(),
+            "{id}"
+        );
+        assert_eq!(
+            serde_json::to_value(&case.options).unwrap(),
+            row["effective_options"],
+            "{id}"
+        );
+        case.expected_class = Some(serde_json::from_value(row["expected_class"].clone()).unwrap());
+        validate_expected_class(case, case.expected_class.as_ref().unwrap()).unwrap();
+        let record = match observe_csstree_record(case) {
+            Ok(record) => record,
+            Err(error) => {
+                failures.push(format!(
+                    "{id}: real adapter/class admission failed: {error:?}"
+                ));
+                continue;
+            }
+        };
+        let observed = serde_json::to_value(record).unwrap();
+        assert_eq!(observed["probe"]["entry_point"], "selector_list", "{id}");
+        assert_eq!(observed["probe"]["payload"]["prefix"], "", "{id}");
+        assert_eq!(observed["probe"]["payload"]["suffix"], "", "{id}");
+        assert_eq!(
+            observed["probe"]["payload"]["input_byte_length"],
+            case.input.len(),
+            "{id}"
+        );
+        assert_eq!(
+            observed["outcome"]["kind"], row["expected_class"]["kind"],
+            "{id}"
+        );
+        assert_eq!(
+            observed["observation"]["extractor"],
+            serde_json::json!({"kind":"selector_list"}),
+            "{id}"
+        );
+        assert_eq!(
+            observed["observation"]["syntax_count"], row["expected"]["outer_count"],
+            "{id}"
+        );
+        assert_eq!(
+            observed["observation"]["is_clean"], row["expected"]["is_clean"],
+            "{id}"
+        );
+        if observed["observation"]["diagnostics"] != row["expected_raw_diagnostics"] {
+            failures.push(format!(
+                "{id}: ordered, multiplicity-one diagnostics\nexpected: {}\nactual: {}",
+                row["expected_raw_diagnostics"], observed["observation"]["diagnostics"]
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[cfg(test)]
+#[test]
+fn font_singleton_policy_adapter_admits_independent_class_and_diagnostics() {
+    // This owner expectation follows the documented provisional implementation
+    // policy. It does not settle the pinned Fonts4 normative conflict.
+    let data: serde_json::Value = serde_json::from_str(include_str!(
+        "../csstree/font-singleton-policy-reconciliation.json"
+    ))
+    .unwrap();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(CORPUS_ROOT);
+    let mut inventory = read_neutral_artifact_set(&root)
+        .and_then(validate_neutral_artifact_set)
+        .unwrap();
+    let rows = data["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    let row = &rows[0];
+    let id = row["id"].as_str().unwrap();
+    let case = inventory
+        .cases
+        .iter_mut()
+        .find(|case| case.id == id)
+        .unwrap();
+    assert_eq!(case.input, row["input"].as_str().unwrap());
+    assert_eq!(
+        case.expectation_sha256,
+        row["expectation_sha256"].as_str().unwrap()
+    );
+    assert_eq!(
+        serde_json::to_value(&case.options).unwrap(),
+        row["effective_options"]
+    );
+    case.expected_class = Some(serde_json::from_value(row["expected_class"].clone()).unwrap());
+    validate_expected_class(case, case.expected_class.as_ref().unwrap()).unwrap();
+    let observed = serde_json::to_value(observe_csstree_record(case).unwrap()).unwrap();
+    assert_eq!(observed["probe"]["entry_point"], "rule");
+    assert_eq!(observed["probe"]["payload"]["prefix"], "");
+    assert_eq!(observed["probe"]["payload"]["suffix"], "");
+    assert_eq!(
+        observed["probe"]["payload"]["input_byte_length"],
+        case.input.len()
+    );
+    assert_eq!(observed["outcome"]["kind"], row["expected_class"]["kind"]);
+    assert_eq!(
+        observed["observation"]["extractor"],
+        serde_json::json!({"kind": "at_rule"})
+    );
+    assert_eq!(observed["observation"]["syntax_count"], 1);
+    assert_eq!(observed["observation"]["is_clean"], row["clean"]);
+    assert_eq!(
+        observed["observation"]["diagnostics"],
+        row["expected_raw_diagnostics"]
+    );
+}

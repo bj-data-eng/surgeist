@@ -1,0 +1,672 @@
+{
+  "schema_version": 1,
+  "basis": "27cc2212db7b0afc049ac9c1bc6a46c7298b6ff4",
+  "policy_green_revision": "214a0281ee5dd4b5ac8f5040bad88a990ea81236",
+  "method": "Original source and neutral fixture, pinned normative text, documented adopted policy, and immutable descriptor/recovery/source contracts inspected. No Cargo, parser execution, runtime observation, oracle capture, or expected-class registry used to derive expectations. Source-index arithmetic is from original ASCII input. This is a conditional implementation-policy expectation, not a resolution of the normative conflict.",
+  "source_policy": {
+    "catalog_path": "crates/surgeist-css/specs/catalog.json",
+    "publication_url": "https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/",
+    "catalog_publication_sha256": "03626a0c85658aaa94191f1b8c64dd5491b723acff08cc33ddd0331a80b920f5",
+    "publication_hash_status": "Identity from pinned catalog; online dated publication inspected through web tool, raw response bytes not independently rehashed.",
+    "adopted_section": "6.9.1",
+    "conflicting_section": "6.9.2",
+    "normative_conflict_status": "unresolved",
+    "policy_authority": "crates/surgeist-css/src/lib.rs:460-464 at 27cc2212db7b0afc049ac9c1bc6a46c7298b6ff4",
+    "policy_test_authority": "crates/surgeist-css/tests/font_feature_values.rs:244-278 at 27cc2212db7b0afc049ac9c1bc6a46c7298b6ff4",
+    "rationale": "Adopted policy requires exactly two character-variant indexes; singleton definitions are individually invalid. Styleset values 1, 2, 3 satisfy both sections. Section 6.9.1 preserves the containing block when a definition fails. Section 6.9.2 permits singleton character-variant values, so a uniquely settled standards verdict remains unavailable."
+  },
+  "evidence": [
+    {
+      "path": "crates/surgeist-css/src/lib.rs",
+      "revision": "27cc2212db7b0afc049ac9c1bc6a46c7298b6ff4",
+      "sha256": "c20beb52198d2687309e77dfb33d963e9b39886fa46de2fbece0b4b9824b40cb"
+    },
+    {
+      "path": "crates/surgeist-css/src/font_feature_values.rs",
+      "revision": "27cc2212db7b0afc049ac9c1bc6a46c7298b6ff4",
+      "sha256": "7361e5dd597bcdc3e971b12c1f1a9686f555ea7d762e7a1d948d70154896a407"
+    },
+    {
+      "path": "crates/surgeist-css/src/parser/font_feature_values.rs",
+      "revision": "27cc2212db7b0afc049ac9c1bc6a46c7298b6ff4",
+      "sha256": "6c2dae32c554370da760175c9b9ceff8213137aa6de0ecda2bd585a49e85fbf6"
+    },
+    {
+      "path": "crates/surgeist-css/src/parser/mod.rs",
+      "revision": "27cc2212db7b0afc049ac9c1bc6a46c7298b6ff4",
+      "sha256": "ee559a03bc2c87bab5623a1e3418efa9f24f6f2283024c2b41993f33f2ab05cc"
+    },
+    {
+      "path": "crates/surgeist-css/src/parser/fragments.rs",
+      "revision": "27cc2212db7b0afc049ac9c1bc6a46c7298b6ff4",
+      "sha256": "465a9e456f6d9692db296f1fc070d3bd80afad4eb200197c61bccdcac9c45478"
+    },
+    {
+      "path": "crates/surgeist-css/src/error.rs",
+      "revision": "27cc2212db7b0afc049ac9c1bc6a46c7298b6ff4",
+      "sha256": "74da2eb50030c04077da00cb01785a65bf2f687df571b057058a5621c58cc72a"
+    },
+    {
+      "path": "crates/surgeist-css/src/source.rs",
+      "revision": "27cc2212db7b0afc049ac9c1bc6a46c7298b6ff4",
+      "sha256": "12c9a2a485c34b8fa06705900ebe05cdbf839be36360990c9ba40956cc44ef81"
+    },
+    {
+      "path": "crates/surgeist-css/src/report.rs",
+      "revision": "27cc2212db7b0afc049ac9c1bc6a46c7298b6ff4",
+      "sha256": "a11a1cc200500e37e4b17a9c80157ebd9359fe97fb364765f3893b2ddf7332a2"
+    },
+    {
+      "path": "crates/surgeist-css/tests/font_feature_values.rs",
+      "revision": "27cc2212db7b0afc049ac9c1bc6a46c7298b6ff4",
+      "sha256": "1bb1739029f9347dede6825fe7ae4c528cf7ffb3d5ea48378c772d73a015d0bc"
+    },
+    {
+      "path": "crates/surgeist-css/tests/support/csstree.rs",
+      "revision": "27cc2212db7b0afc049ac9c1bc6a46c7298b6ff4",
+      "sha256": "7b3d6f0a4e6b9b8c6d7595ec7f3bbebd694ba427fa50212fb4a0f1f44f85e70b"
+    },
+    {
+      "path": "crates/surgeist-css/specs/catalog.json",
+      "revision": "27cc2212db7b0afc049ac9c1bc6a46c7298b6ff4",
+      "sha256": "8600b4355cdd9da2b3e8e602c8b782f1e8e0b10884e574d6284bbf60b9d99d4e"
+    }
+  ],
+  "derivation": [
+    "parse_rule preserves a valid outer rule and inner diagnostics; no wrapper bytes in atrule input.",
+    "The adopted policy rejects all six singleton character-variant definitions, preserving their empty subsidiary block and the outer rule. All six styleset definitions survive in source order.",
+    "Descriptor validation emits at declaration start; with_descriptor_context maps to InvalidDescriptorValue; inferred encountered token is the original identifier at that position.",
+    "RuleBodyParser consumes through semicolon for the first five failures. Final open-6 has no semicolon, so its recovery span ends immediately before the block closing brace at byte 100.",
+    "Structural recovery uses DropDescriptor; report ordering sorts by responsible source byte. Input is ASCII on one line, so UTF-8 byte offsets equal UTF-16 columns.",
+    "No outer rejection, implicit closure, resource-limit, or additional diagnostic is warranted by this complete bounded input."
+  ],
+  "uncertainties": [
+    "Fonts4 6.9.1 versus 6.9.2 remains normatively unresolved for character-variant cardinality, character-variant first range, and styleset range.",
+    "Only cardinality conflict affects this original input; its positive small styleset values satisfy both sections.",
+    "Expectations were independently predicted under documented policy; runtime equality has intentionally not been evaluated."
+  ],
+  "scope": "Original singleton character-variant corpus input under the adopted provisional implementation policy. Normative conflicts remain unresolved.",
+  "policy_provenance": "Recovered describes the CSS-owned expected implementation behavior under documented Fonts4 section 6.9.1 policy, not a standards-conflict resolution. L02-R104 through L02-R106 remain unresolved-standard. The earlier at-rule-reconciliation.json unresolved singleton is retained as historical uncertainty.",
+  "normative_sources": [
+    {
+      "id": "css-fonts-4",
+      "title": "CSS Fonts Module Level 4",
+      "selection": "snapshot",
+      "tier": "interop",
+      "latest_published_url": "https://www.w3.org/TR/css-fonts-4/",
+      "publication": {
+        "url": "https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/",
+        "sha256": "03626a0c85658aaa94191f1b8c64dd5491b723acff08cc33ddd0331a80b920f5",
+        "bytes": 1384321,
+        "date": "2026-09-07",
+        "kind": "w3c-dated-publication"
+      },
+      "authored_scope": "complete-applicable-grammar",
+      "downstream_owners": [
+        "style",
+        "text",
+        "root"
+      ]
+    }
+  ],
+  "rows": [
+    {
+      "id": "atrule/atrule/font-feature-values.json#/with character-variant and styleset",
+      "context": "atrule",
+      "status": "active",
+      "input": "@font-feature-values InterVariable{@character-variant{cv01:1;cv02:2;cv03:3;alt-1:1;open-4:2;open-6:3}@styleset{ss01:1;ss02:2;ss03:3;open-digits:1;disambiguation:2;round-quotes-and-commas:3}}",
+      "input_sha256": "dcad3e3139a9e37cdab92fb4a0e4872c3155c46a93ff2991a1fc28b7bceccff2",
+      "source_path": "tests/corpus/csstree/source/atrule/atrule/font-feature-values.json",
+      "source_sha256": "0be7ff601176527199c4d880f7b6f3a157d121b235f34c4fc5d3bf47b72b6a40",
+      "expectation_path": "tests/corpus/csstree/expectations/atrule/atrule/font-feature-values.json",
+      "expectation_sha256": "639da2bcdef001fa01667a49344bb0e0bdd19a46416380d5c0ee43602c3e6489",
+      "present": true,
+      "clean": false,
+      "validator_accepts": false,
+      "diagnostics": [
+        {
+          "error_code": "InvalidDescriptorValue",
+          "error_byte_offset": 54,
+          "error_position": {
+            "byte_offset": 54,
+            "line": 0,
+            "column": 54
+          },
+          "recovery_byte_span": [
+            54,
+            61
+          ],
+          "recovery_span": {
+            "start": {
+              "byte_offset": 54,
+              "line": 0,
+              "column": 54
+            },
+            "end": {
+              "byte_offset": 61,
+              "line": 0,
+              "column": 61
+            }
+          },
+          "action": "DropDescriptor",
+          "payload_relation": "intersects",
+          "detail": {
+            "at_rule": "character-variant",
+            "descriptor": "cv01",
+            "expectation": "a value accepted by the descriptor grammar",
+            "encountered": {
+              "kind": "Ident",
+              "authored": "cv01"
+            }
+          },
+          "recovered_source": "cv01:1;"
+        },
+        {
+          "error_code": "InvalidDescriptorValue",
+          "error_byte_offset": 61,
+          "error_position": {
+            "byte_offset": 61,
+            "line": 0,
+            "column": 61
+          },
+          "recovery_byte_span": [
+            61,
+            68
+          ],
+          "recovery_span": {
+            "start": {
+              "byte_offset": 61,
+              "line": 0,
+              "column": 61
+            },
+            "end": {
+              "byte_offset": 68,
+              "line": 0,
+              "column": 68
+            }
+          },
+          "action": "DropDescriptor",
+          "payload_relation": "intersects",
+          "detail": {
+            "at_rule": "character-variant",
+            "descriptor": "cv02",
+            "expectation": "a value accepted by the descriptor grammar",
+            "encountered": {
+              "kind": "Ident",
+              "authored": "cv02"
+            }
+          },
+          "recovered_source": "cv02:2;"
+        },
+        {
+          "error_code": "InvalidDescriptorValue",
+          "error_byte_offset": 68,
+          "error_position": {
+            "byte_offset": 68,
+            "line": 0,
+            "column": 68
+          },
+          "recovery_byte_span": [
+            68,
+            75
+          ],
+          "recovery_span": {
+            "start": {
+              "byte_offset": 68,
+              "line": 0,
+              "column": 68
+            },
+            "end": {
+              "byte_offset": 75,
+              "line": 0,
+              "column": 75
+            }
+          },
+          "action": "DropDescriptor",
+          "payload_relation": "intersects",
+          "detail": {
+            "at_rule": "character-variant",
+            "descriptor": "cv03",
+            "expectation": "a value accepted by the descriptor grammar",
+            "encountered": {
+              "kind": "Ident",
+              "authored": "cv03"
+            }
+          },
+          "recovered_source": "cv03:3;"
+        },
+        {
+          "error_code": "InvalidDescriptorValue",
+          "error_byte_offset": 75,
+          "error_position": {
+            "byte_offset": 75,
+            "line": 0,
+            "column": 75
+          },
+          "recovery_byte_span": [
+            75,
+            83
+          ],
+          "recovery_span": {
+            "start": {
+              "byte_offset": 75,
+              "line": 0,
+              "column": 75
+            },
+            "end": {
+              "byte_offset": 83,
+              "line": 0,
+              "column": 83
+            }
+          },
+          "action": "DropDescriptor",
+          "payload_relation": "intersects",
+          "detail": {
+            "at_rule": "character-variant",
+            "descriptor": "alt-1",
+            "expectation": "a value accepted by the descriptor grammar",
+            "encountered": {
+              "kind": "Ident",
+              "authored": "alt-1"
+            }
+          },
+          "recovered_source": "alt-1:1;"
+        },
+        {
+          "error_code": "InvalidDescriptorValue",
+          "error_byte_offset": 83,
+          "error_position": {
+            "byte_offset": 83,
+            "line": 0,
+            "column": 83
+          },
+          "recovery_byte_span": [
+            83,
+            92
+          ],
+          "recovery_span": {
+            "start": {
+              "byte_offset": 83,
+              "line": 0,
+              "column": 83
+            },
+            "end": {
+              "byte_offset": 92,
+              "line": 0,
+              "column": 92
+            }
+          },
+          "action": "DropDescriptor",
+          "payload_relation": "intersects",
+          "detail": {
+            "at_rule": "character-variant",
+            "descriptor": "open-4",
+            "expectation": "a value accepted by the descriptor grammar",
+            "encountered": {
+              "kind": "Ident",
+              "authored": "open-4"
+            }
+          },
+          "recovered_source": "open-4:2;"
+        },
+        {
+          "error_code": "InvalidDescriptorValue",
+          "error_byte_offset": 92,
+          "error_position": {
+            "byte_offset": 92,
+            "line": 0,
+            "column": 92
+          },
+          "recovery_byte_span": [
+            92,
+            100
+          ],
+          "recovery_span": {
+            "start": {
+              "byte_offset": 92,
+              "line": 0,
+              "column": 92
+            },
+            "end": {
+              "byte_offset": 100,
+              "line": 0,
+              "column": 100
+            }
+          },
+          "action": "DropDescriptor",
+          "payload_relation": "intersects",
+          "detail": {
+            "at_rule": "character-variant",
+            "descriptor": "open-6",
+            "expectation": "a value accepted by the descriptor grammar",
+            "encountered": {
+              "kind": "Ident",
+              "authored": "open-6"
+            }
+          },
+          "recovered_source": "open-6:3"
+        }
+      ],
+      "typed_retention": {
+        "variant": "CssRule::FontFeatureValues",
+        "position": {
+          "byte_offset": 0,
+          "line": 0,
+          "column": 0
+        },
+        "families": [
+          "InterVariable"
+        ],
+        "items": [
+          {
+            "variant": "Block",
+            "kind": "CharacterVariant",
+            "position": {
+              "byte_offset": 35,
+              "line": 0,
+              "column": 35
+            },
+            "definitions": []
+          },
+          {
+            "variant": "Block",
+            "kind": "Styleset",
+            "position": {
+              "byte_offset": 101,
+              "line": 0,
+              "column": 101
+            },
+            "definitions": [
+              {
+                "name": "ss01",
+                "position": {
+                  "byte_offset": 111,
+                  "line": 0,
+                  "column": 111
+                },
+                "indexes": [
+                  {
+                    "decimal": "1",
+                    "origin": {
+                      "original_source": "@font-feature-values InterVariable{@character-variant{cv01:1;cv02:2;cv03:3;alt-1:1;open-4:2;open-6:3}@styleset{ss01:1;ss02:2;ss03:3;open-digits:1;disambiguation:2;round-quotes-and-commas:3}}",
+                      "span": {
+                        "start": {
+                          "byte_offset": 116,
+                          "line": 0,
+                          "column": 116
+                        },
+                        "end": {
+                          "byte_offset": 117,
+                          "line": 0,
+                          "column": 117
+                        }
+                      },
+                      "authored": "1"
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "ss02",
+                "position": {
+                  "byte_offset": 118,
+                  "line": 0,
+                  "column": 118
+                },
+                "indexes": [
+                  {
+                    "decimal": "2",
+                    "origin": {
+                      "original_source": "@font-feature-values InterVariable{@character-variant{cv01:1;cv02:2;cv03:3;alt-1:1;open-4:2;open-6:3}@styleset{ss01:1;ss02:2;ss03:3;open-digits:1;disambiguation:2;round-quotes-and-commas:3}}",
+                      "span": {
+                        "start": {
+                          "byte_offset": 123,
+                          "line": 0,
+                          "column": 123
+                        },
+                        "end": {
+                          "byte_offset": 124,
+                          "line": 0,
+                          "column": 124
+                        }
+                      },
+                      "authored": "2"
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "ss03",
+                "position": {
+                  "byte_offset": 125,
+                  "line": 0,
+                  "column": 125
+                },
+                "indexes": [
+                  {
+                    "decimal": "3",
+                    "origin": {
+                      "original_source": "@font-feature-values InterVariable{@character-variant{cv01:1;cv02:2;cv03:3;alt-1:1;open-4:2;open-6:3}@styleset{ss01:1;ss02:2;ss03:3;open-digits:1;disambiguation:2;round-quotes-and-commas:3}}",
+                      "span": {
+                        "start": {
+                          "byte_offset": 130,
+                          "line": 0,
+                          "column": 130
+                        },
+                        "end": {
+                          "byte_offset": 131,
+                          "line": 0,
+                          "column": 131
+                        }
+                      },
+                      "authored": "3"
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "open-digits",
+                "position": {
+                  "byte_offset": 132,
+                  "line": 0,
+                  "column": 132
+                },
+                "indexes": [
+                  {
+                    "decimal": "1",
+                    "origin": {
+                      "original_source": "@font-feature-values InterVariable{@character-variant{cv01:1;cv02:2;cv03:3;alt-1:1;open-4:2;open-6:3}@styleset{ss01:1;ss02:2;ss03:3;open-digits:1;disambiguation:2;round-quotes-and-commas:3}}",
+                      "span": {
+                        "start": {
+                          "byte_offset": 144,
+                          "line": 0,
+                          "column": 144
+                        },
+                        "end": {
+                          "byte_offset": 145,
+                          "line": 0,
+                          "column": 145
+                        }
+                      },
+                      "authored": "1"
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "disambiguation",
+                "position": {
+                  "byte_offset": 146,
+                  "line": 0,
+                  "column": 146
+                },
+                "indexes": [
+                  {
+                    "decimal": "2",
+                    "origin": {
+                      "original_source": "@font-feature-values InterVariable{@character-variant{cv01:1;cv02:2;cv03:3;alt-1:1;open-4:2;open-6:3}@styleset{ss01:1;ss02:2;ss03:3;open-digits:1;disambiguation:2;round-quotes-and-commas:3}}",
+                      "span": {
+                        "start": {
+                          "byte_offset": 161,
+                          "line": 0,
+                          "column": 161
+                        },
+                        "end": {
+                          "byte_offset": 162,
+                          "line": 0,
+                          "column": 162
+                        }
+                      },
+                      "authored": "2"
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "round-quotes-and-commas",
+                "position": {
+                  "byte_offset": 163,
+                  "line": 0,
+                  "column": 163
+                },
+                "indexes": [
+                  {
+                    "decimal": "3",
+                    "origin": {
+                      "original_source": "@font-feature-values InterVariable{@character-variant{cv01:1;cv02:2;cv03:3;alt-1:1;open-4:2;open-6:3}@styleset{ss01:1;ss02:2;ss03:3;open-digits:1;disambiguation:2;round-quotes-and-commas:3}}",
+                      "span": {
+                        "start": {
+                          "byte_offset": 187,
+                          "line": 0,
+                          "column": 187
+                        },
+                        "end": {
+                          "byte_offset": 188,
+                          "line": 0,
+                          "column": 188
+                        }
+                      },
+                      "authored": "3"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_class": {
+        "kind": "recovered",
+        "retained_syntax": {
+          "extractor": {
+            "kind": "at_rule"
+          },
+          "predicate": {
+            "relation": "exact",
+            "value": 1
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "invalid_descriptor_value",
+            "action": "drop_descriptor",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_descriptor_value",
+            "action": "drop_descriptor",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_descriptor_value",
+            "action": "drop_descriptor",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_descriptor_value",
+            "action": "drop_descriptor",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_descriptor_value",
+            "action": "drop_descriptor",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_descriptor_value",
+            "action": "drop_descriptor",
+            "payload_relation": "intersects"
+          }
+        ]
+      },
+      "original_expectation": {
+        "id": "atrule/atrule/font-feature-values.json#/with character-variant and styleset",
+        "context": "atrule",
+        "label": "with character-variant and styleset",
+        "input": "@font-feature-values InterVariable{@character-variant{cv01:1;cv02:2;cv03:3;alt-1:1;open-4:2;open-6:3}@styleset{ss01:1;ss02:2;ss03:3;open-digits:1;disambiguation:2;round-quotes-and-commas:3}}",
+        "upstream_outcome": "parsed",
+        "status": "active"
+      },
+      "options_present": false,
+      "options": null,
+      "effective_options": {},
+      "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "expected_raw_diagnostics": [
+        {
+          "code": "invalid_descriptor_value",
+          "action": "drop_descriptor",
+          "byte_offset": 54,
+          "span_start": 54,
+          "span_end": 61,
+          "multiplicity": 1,
+          "payload_relation": "intersects"
+        },
+        {
+          "code": "invalid_descriptor_value",
+          "action": "drop_descriptor",
+          "byte_offset": 61,
+          "span_start": 61,
+          "span_end": 68,
+          "multiplicity": 1,
+          "payload_relation": "intersects"
+        },
+        {
+          "code": "invalid_descriptor_value",
+          "action": "drop_descriptor",
+          "byte_offset": 68,
+          "span_start": 68,
+          "span_end": 75,
+          "multiplicity": 1,
+          "payload_relation": "intersects"
+        },
+        {
+          "code": "invalid_descriptor_value",
+          "action": "drop_descriptor",
+          "byte_offset": 75,
+          "span_start": 75,
+          "span_end": 83,
+          "multiplicity": 1,
+          "payload_relation": "intersects"
+        },
+        {
+          "code": "invalid_descriptor_value",
+          "action": "drop_descriptor",
+          "byte_offset": 83,
+          "span_start": 83,
+          "span_end": 92,
+          "multiplicity": 1,
+          "payload_relation": "intersects"
+        },
+        {
+          "code": "invalid_descriptor_value",
+          "action": "drop_descriptor",
+          "byte_offset": 92,
+          "span_start": 92,
+          "span_end": 100,
+          "multiplicity": 1,
+          "payload_relation": "intersects"
+        }
+      ]
+    }
+  ]
+}
