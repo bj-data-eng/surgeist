@@ -764,9 +764,15 @@ fn authored_css_cases_match_selected_public_report_observables() {
     let mut migrated_container_cases = 0;
     let mut migrated_tolerance_cases = 0;
     let mut migrated_auto_repeat_cases = 0;
+    let mut migrated_unicode_cases = 0;
     for row in rows {
         // Fixture feature labels record the original capture profile. Validation is
         // now unconditional, so every historical profile runs through the same API.
+        if assert_archived_unicode_feff_rejection(&row) {
+            migrated_unicode_cases += 1;
+            assert_strict_parity(&row);
+            continue;
+        }
         if assert_archived_flow_tolerance_rejection(&row) {
             migrated_tolerance_cases += 1;
             assert_strict_parity(&row);
@@ -808,6 +814,47 @@ fn authored_css_cases_match_selected_public_report_observables() {
         migrated_auto_repeat_cases, 3,
         "all three archived intrinsic auto-repeat cases require current acceptance witnesses"
     );
+    assert_eq!(migrated_unicode_cases, 1);
+}
+
+// Syntax 3 string input preserves U+FEFF as an identifier code point. The
+// following at-keyword remains in that qualified rule's prelude, invalidating
+// the complete rule through its block. Preserve the historical capture verbatim.
+fn assert_archived_unicode_feff_rejection(row: &Row) -> bool {
+    if row.case_id != "focused.stylesheet-recovery.13" {
+        return false;
+    }
+    assert_eq!(row.entry, "sheet");
+    assert_eq!(row.feature, "both");
+    assert_eq!(
+        row.input,
+        "\u{feff} /* leading */ @charset \"UTF-8\"; .after { color: blue; }"
+    );
+    assert_eq!(row.clean, "true");
+    assert_eq!(
+        row.retained,
+        "rule:baseline.rule.style~property:baseline.property.color"
+    );
+    assert_eq!(
+        row.values,
+        "baseline.property.color=typed:Rgba(CssRgbaColor { red: 0, green: 0, blue: 255, alpha: 1.0 })@normal"
+    );
+    assert_eq!(
+        row.authored_declarations,
+        "baseline.property.color=deferred-i01:blue@public:normal"
+    );
+    assert_eq!(row.diagnostics, "-");
+    let report = parse_sheet(&row.input);
+    assert!(!report.is_clean());
+    assert!(report.syntax().encoding().is_none());
+    assert!(report.syntax().rules().is_empty());
+    assert_eq!(
+        diagnostics_observable(report.diagnostics()),
+        [
+            "InvalidSelector/InvalidSelector:baseline.selector.complex:a supported selector:AtKeyword:@charset/DropQualifiedRule@18:0:16>0:0:0-59:0:57:59"
+        ]
+    );
+    true
 }
 
 // Conditional 5 query-in-parens admits general-enclosed syntax. These three
