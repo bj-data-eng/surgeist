@@ -61,7 +61,9 @@ pub(crate) use queries::parse_container_condition_for_test;
 use queries::parse_media_query_list as parse_media_query_list_inner;
 #[cfg(test)]
 pub(crate) use queries::parse_media_query_list_for_test;
-pub(crate) use queries::{construct_container_condition, container_condition_from_enclosed};
+pub(crate) use queries::{
+    construct_container_condition, construct_container_prelude, container_condition_from_enclosed,
+};
 use recovery::{
     GroupKind, RecoveryLoopOutcome, RecoveryProgress, RecoveryState, StructuralParent,
     StructuralPreflightOutcome, StyleContextCaptures, preflight_specialized_eof_limit,
@@ -823,8 +825,7 @@ fn scoped_rule_into_chunk_rule(rule: CssScopedRule) -> CssRule {
             rule.position(),
         )),
         CssScopedRule::Container(rule) => CssRule::Container(CssContainerRule::new(
-            rule.name().cloned(),
-            rule.condition().clone(),
+            rule.prelude().clone(),
             rule.rules()
                 .rules()
                 .iter()
@@ -1091,8 +1092,7 @@ fn rebuild_scoped_group_rule(rule: CssScopedRule, rules: Vec<CssScopedRule>) -> 
             rule.position(),
         )),
         CssScopedRule::Container(rule) => CssScopedRule::Container(CssScopedContainerRule::new(
-            rule.name().cloned(),
-            rule.condition().clone(),
+            rule.prelude().clone(),
             rules,
             rule.position(),
         )),
@@ -1172,8 +1172,7 @@ fn into_scoped_rule(rule: CssRule) -> Option<CssScopedRule> {
             rule.position(),
         ))),
         CssRule::Container(rule) => Some(CssScopedRule::Container(CssScopedContainerRule::new(
-            rule.name().cloned(),
-            rule.condition().clone(),
+            rule.prelude().clone(),
             CssScopedRuleList::from_rules(
                 rule.rules()
                     .iter()
@@ -1252,8 +1251,7 @@ fn rebuild_group_rule(rule: CssRule, rules: Vec<CssRule>) -> CssRule {
             rule.position(),
         )),
         CssRule::Container(rule) => CssRule::Container(CssContainerRule::new(
-            rule.name().cloned(),
-            rule.condition().clone(),
+            rule.prelude().clone(),
             rules,
             rule.position(),
         )),
@@ -1867,11 +1865,6 @@ struct CssNamespacePrelude {
     name: CssNamespaceName,
 }
 
-struct CssContainerPrelude {
-    name: Option<CssContainerName>,
-    condition: CssContainerCondition,
-}
-
 struct CssScopePrelude {
     root: Option<CssScopeSelectorList>,
     limit: Option<CssScopeSelectorList>,
@@ -2378,8 +2371,7 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                 let rules = recovered.syntax;
                 self.mark_successful_body_rule();
                 Ok(vec![CssRule::Container(CssContainerRule::new(
-                    prelude.name,
-                    prelude.condition,
+                    prelude,
                     rules,
                     crate::source::CssSourcePosition::from_cssparser(
                         start.position(),
@@ -3587,10 +3579,7 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                 self.diagnostics.extend(recovered.diagnostics);
                 let rules = recovered.syntax;
                 Ok(vec![CssScopedRule::Container(CssScopedContainerRule::new(
-                    prelude.name,
-                    prelude.condition,
-                    rules,
-                    position,
+                    prelude, rules, position,
                 ))])
             }
             ScopedAtRulePrelude::Layer(names) => {

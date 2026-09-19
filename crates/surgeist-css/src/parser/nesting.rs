@@ -345,12 +345,7 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
                 let recovered = parse_style_contents(self.source, input, self.recovery.clone())?;
                 self.diagnostics.extend(recovered.diagnostics);
                 let rules = recovered.syntax.into_nested_rules();
-                CssRule::Container(CssContainerRule::new(
-                    prelude.name,
-                    prelude.condition,
-                    rules,
-                    position,
-                ))
+                CssRule::Container(CssContainerRule::new(prelude, rules, position))
             }
             NestedStyleAtRulePrelude::Layer(names) => {
                 if names.len() > 1 {

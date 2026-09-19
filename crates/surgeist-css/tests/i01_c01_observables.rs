@@ -889,7 +889,7 @@ fn assert_archived_container_opaque_acceptance(row: &Row) -> bool {
         panic!("retained container")
     };
     let surgeist_css::CssContainerConditionKind::GeneralEnclosed(value) =
-        container.condition().kind()
+        container.prelude().entries()[0].query().unwrap().kind()
     else {
         panic!("opaque query")
     };

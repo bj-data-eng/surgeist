@@ -2840,8 +2840,7 @@ impl CssGeneralEnclosed {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssContainerRule {
-    name: Option<CssContainerName>,
-    condition: CssContainerCondition,
+    prelude: CssContainerPrelude,
     rules: Vec<CssRule>,
     position: CssSourcePosition,
 }
@@ -2849,27 +2848,21 @@ pub struct CssContainerRule {
 impl CssContainerRule {
     #[must_use]
     pub(crate) const fn new(
-        name: Option<CssContainerName>,
-        condition: CssContainerCondition,
+        prelude: CssContainerPrelude,
         rules: Vec<CssRule>,
         position: CssSourcePosition,
     ) -> Self {
         Self {
-            name,
-            condition,
+            prelude,
             rules,
             position,
         }
     }
 
+    /// Returns every authored entry and its shared lexical prelude.
     #[must_use]
-    pub const fn name(&self) -> Option<&CssContainerName> {
-        self.name.as_ref()
-    }
-
-    #[must_use]
-    pub const fn condition(&self) -> &CssContainerCondition {
-        &self.condition
+    pub const fn prelude(&self) -> &CssContainerPrelude {
+        &self.prelude
     }
 
     #[must_use]
@@ -3166,8 +3159,7 @@ impl CssScopedSupportsRule {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssScopedContainerRule {
-    name: Option<CssContainerName>,
-    condition: CssContainerCondition,
+    prelude: CssContainerPrelude,
     rules: CssScopedRuleList,
     position: CssSourcePosition,
 }
@@ -3176,27 +3168,21 @@ impl CssScopedContainerRule {
     #[must_use]
     #[allow(dead_code)] // Staged for @scope parser construction.
     pub(crate) const fn new(
-        name: Option<CssContainerName>,
-        condition: CssContainerCondition,
+        prelude: CssContainerPrelude,
         rules: CssScopedRuleList,
         position: CssSourcePosition,
     ) -> Self {
         Self {
-            name,
-            condition,
+            prelude,
             rules,
             position,
         }
     }
 
+    /// Returns every authored entry and its shared lexical prelude.
     #[must_use]
-    pub const fn name(&self) -> Option<&CssContainerName> {
-        self.name.as_ref()
-    }
-
-    #[must_use]
-    pub const fn condition(&self) -> &CssContainerCondition {
-        &self.condition
+    pub const fn prelude(&self) -> &CssContainerPrelude {
+        &self.prelude
     }
 
     #[must_use]
@@ -3653,6 +3639,12 @@ impl CssContainerName {
         Self { name }
     }
 
+    /// Admits the decoded value of one identifier token without tokenizing again.
+    pub(crate) fn from_decoded(name: String) -> Option<Self> {
+        (!name.is_empty() && !name.contains('\0') && !is_parser_reserved_container_name(&name))
+            .then_some(Self { name })
+    }
+
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.name
@@ -3675,8 +3667,117 @@ fn is_parser_reserved_container_name(name: &str) -> bool {
             | "and"
             | "or"
             | "not"
-            | "style"
+            | "default"
     )
+}
+
+/// A nonempty ordered list of independent authored container-query entries.
+/// Commas select alternative containers; they are not Boolean query operators.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssContainerPrelude {
+    entries: Vec<CssContainerQueryEntry>,
+    lexical: crate::supports::SupportsLexical,
+    origin: CssValueOrigin,
+}
+
+impl CssContainerPrelude {
+    pub(crate) fn new(
+        entries: Vec<CssContainerQueryEntry>,
+        lexical: crate::supports::SupportsLexical,
+    ) -> Self {
+        debug_assert!(!entries.is_empty());
+        let origin = lexical.first_origin().clone();
+        Self {
+            entries,
+            lexical,
+            origin,
+        }
+    }
+    #[must_use]
+    pub fn entries(&self) -> &[CssContainerQueryEntry] {
+        &self.entries
+    }
+    /// Includes names, commas, comments and whitespace in their authored order.
+    #[must_use]
+    pub fn components(&self) -> &[crate::CssComponentValue] {
+        self.lexical.items()
+    }
+    #[must_use]
+    pub const fn origin(&self) -> &CssValueOrigin {
+        &self.origin
+    }
+    #[must_use]
+    pub const fn position(&self) -> Option<CssSourcePosition> {
+        crate::media::parsed_position(&self.origin)
+    }
+}
+
+/// One checked entry, with a name, a query, or both, retaining its lexical region.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssContainerQueryEntry {
+    kind: CssContainerQueryEntryKind,
+    lexical: crate::supports::SupportsLexical,
+    origin: CssValueOrigin,
+}
+#[derive(Clone, Debug, PartialEq)]
+enum CssContainerQueryEntryKind {
+    NameOnly(CssContainerName),
+    Query {
+        name: Option<CssContainerName>,
+        query: CssContainerCondition,
+    },
+}
+impl CssContainerQueryEntry {
+    pub(crate) fn name_only(
+        name: CssContainerName,
+        lexical: crate::supports::SupportsLexical,
+    ) -> Self {
+        let origin = lexical.first_origin().clone();
+        Self {
+            kind: CssContainerQueryEntryKind::NameOnly(name),
+            lexical,
+            origin,
+        }
+    }
+    pub(crate) fn with_query(
+        name: Option<CssContainerName>,
+        query: CssContainerCondition,
+        lexical: crate::supports::SupportsLexical,
+    ) -> Self {
+        let origin = lexical.first_origin().clone();
+        Self {
+            kind: CssContainerQueryEntryKind::Query { name, query },
+            lexical,
+            origin,
+        }
+    }
+    #[must_use]
+    pub const fn name(&self) -> Option<&CssContainerName> {
+        match &self.kind {
+            CssContainerQueryEntryKind::NameOnly(name) => Some(name),
+            CssContainerQueryEntryKind::Query { name, .. } => name.as_ref(),
+        }
+    }
+    #[must_use]
+    pub const fn query(&self) -> Option<&CssContainerCondition> {
+        match &self.kind {
+            CssContainerQueryEntryKind::NameOnly(_) => None,
+            CssContainerQueryEntryKind::Query { query, .. } => Some(query),
+        }
+    }
+    /// Excludes the separating comma and other entries; includes entry trivia.
+    #[must_use]
+    pub fn components(&self) -> &[crate::CssComponentValue] {
+        self.lexical.items()
+    }
+    #[must_use]
+    pub const fn origin(&self) -> &CssValueOrigin {
+        &self.origin
+    }
+    #[must_use]
+    pub const fn position(&self) -> Option<CssSourcePosition> {
+        crate::media::parsed_position(&self.origin)
+    }
 }
 
 /// One checked authored container condition, preserving grouping and lexical origins.
@@ -3792,6 +3893,7 @@ impl CssContainerGeneralEnclosed {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CssContainerConstructionError {
     InvalidConditionGrammar { origin: CssValueOrigin },
+    InvalidPreludeGrammar { origin: CssValueOrigin },
     Component(crate::CssComponentValueError),
     WorkerUnavailable { origin: CssValueOrigin },
 }
@@ -3799,7 +3901,9 @@ impl CssContainerConstructionError {
     #[must_use]
     pub const fn origin(&self) -> &CssValueOrigin {
         match self {
-            Self::InvalidConditionGrammar { origin } | Self::WorkerUnavailable { origin } => origin,
+            Self::InvalidConditionGrammar { origin }
+            | Self::InvalidPreludeGrammar { origin }
+            | Self::WorkerUnavailable { origin } => origin,
             Self::Component(error) => error.origin(),
         }
     }

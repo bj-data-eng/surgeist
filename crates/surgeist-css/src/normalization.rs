@@ -371,8 +371,7 @@ pub enum CssRuleContextKindRef<'a> {
     Media(&'a CssMediaQueryList),
     Supports(&'a CssSupportsCondition),
     Container {
-        name: Option<&'a CssContainerName>,
-        condition: &'a CssContainerCondition,
+        prelude: &'a CssContainerPrelude,
     },
     LayerBlock(Option<&'a CssLayerName>),
     Scope {
@@ -398,8 +397,7 @@ enum RuleContextKind {
     Media(CssMediaQueryList),
     Supports(CssSupportsCondition),
     Container {
-        name: Option<CssContainerName>,
-        condition: CssContainerCondition,
+        prelude: CssContainerPrelude,
     },
     LayerBlock(Option<CssLayerName>),
     Scope {
@@ -447,10 +445,7 @@ impl CssRuleContext {
             }
             RuleContextKind::Media(value) => CssRuleContextKindRef::Media(value),
             RuleContextKind::Supports(value) => CssRuleContextKindRef::Supports(value),
-            RuleContextKind::Container { name, condition } => CssRuleContextKindRef::Container {
-                name: name.as_ref(),
-                condition,
-            },
+            RuleContextKind::Container { prelude } => CssRuleContextKindRef::Container { prelude },
             RuleContextKind::LayerBlock(value) => CssRuleContextKindRef::LayerBlock(value.as_ref()),
             RuleContextKind::Scope { root, limit } => CssRuleContextKindRef::Scope {
                 root: root.as_ref(),
@@ -838,8 +833,7 @@ impl Normalizer {
                 CssRule::Container(container) => {
                     let rule = self.record_rule(
                         RuleContextKind::Container {
-                            name: container.name().cloned(),
-                            condition: container.condition().clone(),
+                            prelude: container.prelude().clone(),
                         },
                         position,
                         context.rule,
@@ -1020,8 +1014,7 @@ impl Normalizer {
                 CssScopedRule::Container(container) => {
                     let rule = self.record_rule(
                         RuleContextKind::Container {
-                            name: container.name().cloned(),
-                            condition: container.condition().clone(),
+                            prelude: container.prelude().clone(),
                         },
                         position,
                         context.rule,

@@ -98,7 +98,12 @@ fn function_spellings_are_valid_literal_container_names() {
         let [CssRule::Container(rule)] = report.syntax().rules() else {
             panic!("one named container: {source}: {report:?}");
         };
-        assert_eq!(rule.name().map(CssContainerName::as_str), Some(name));
+        assert_eq!(
+            rule.prelude().entries()[0]
+                .name()
+                .map(CssContainerName::as_str),
+            Some(name)
+        );
     }
 }
 
@@ -115,7 +120,10 @@ fn function_tokens_remain_unnamed_queries() {
         let [CssRule::Container(rule)] = report.syntax().rules() else {
             panic!("one unnamed query: {source}: {report:?}");
         };
-        assert!(rule.name().is_none(), "a Function token is not a name");
+        assert!(
+            rule.prelude().entries()[0].name().is_none(),
+            "a Function token is not a name"
+        );
     }
 }
 
@@ -134,7 +142,12 @@ fn escaped_names_keep_the_decoded_identifier_without_retokenizing() {
         let [CssRule::Container(rule)] = report.syntax().rules() else {
             panic!("one named query: {source}: {report:?}");
         };
-        assert_eq!(rule.name().map(CssContainerName::as_str), Some(decoded));
+        assert_eq!(
+            rule.prelude().entries()[0]
+                .name()
+                .map(CssContainerName::as_str),
+            Some(decoded)
+        );
     }
 }
 
@@ -147,7 +160,12 @@ fn container_names_retain_case_sensitive_identity() {
         let [CssRule::Container(rule)] = report.syntax().rules() else {
             panic!("one named query: {source}: {report:?}");
         };
-        assert_eq!(rule.name().map(CssContainerName::as_str), Some(name));
+        assert_eq!(
+            rule.prelude().entries()[0]
+                .name()
+                .map(CssContainerName::as_str),
+            Some(name)
+        );
     }
     assert_ne!(
         CssContainerName::try_new("Card"),

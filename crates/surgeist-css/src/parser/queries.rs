@@ -4,7 +4,6 @@ use cssparser::{
     BasicParseErrorKind, Delimiter, ParseError, Parser, Token, match_ignore_ascii_case,
 };
 
-use super::CssContainerPrelude;
 #[cfg(test)]
 use super::recovery::StyleContextCaptures;
 use super::recovery::{
@@ -609,35 +608,107 @@ pub(super) fn collect_container_components<'i>(
         })?;
     Ok((values, implicit))
 }
+// Parser collection already enforces the stylesheet's complete component limits.
+// Checked construction performs its selected limits before entering this same grammar.
+pub(crate) fn construct_container_prelude(
+    values: CssComponentValues,
+    limits: CssComponentValueLimits,
+) -> Result<CssContainerPrelude, CssContainerConstructionError> {
+    values.validate_with_limits(limits)?;
+    admit_container_prelude(values).map_err(|error| match error {
+        ContainerPreludeAdmissionError::Component(error) => error.into(),
+        ContainerPreludeAdmissionError::Grammar { origin, .. } => {
+            CssContainerConstructionError::InvalidPreludeGrammar { origin }
+        }
+    })
+}
+
+enum ContainerPreludeAdmissionError {
+    Component(crate::CssComponentValueError),
+    Grammar {
+        index: usize,
+        origin: CssValueOrigin,
+    },
+}
+
+fn admit_container_prelude(
+    values: CssComponentValues,
+) -> Result<CssContainerPrelude, ContainerPreludeAdmissionError> {
+    let lexical = SupportsLexical::root(values);
+    let items = lexical.items();
+    let mut entries = Vec::new();
+    let mut start = 0;
+    // Only sibling comma tokens delimit entries. Function/block contents and
+    // escaped commas in decoded identifier tokens remain inside their component.
+    for end in (0..items.len())
+        .filter(|&index| {
+            matches!(
+                items[index].view(),
+                CssComponentValueRef::Token(CssValueTokenRef::Comma)
+            )
+        })
+        .chain(std::iter::once(items.len()))
+    {
+        let region = lexical.select(start..end);
+        let mut cursor = ContainerCursor::new(region.items());
+        let name = match cursor.peek().map(CssComponentValue::view) {
+            Some(CssComponentValueRef::Token(CssValueTokenRef::Ident(name))) => {
+                CssContainerName::from_decoded(name.to_owned())
+            }
+            _ => None,
+        };
+        if name.is_some() {
+            cursor.next();
+        }
+        let has_query = cursor.peek().is_some();
+        let invalid = |index: usize| ContainerPreludeAdmissionError::Grammar {
+            index,
+            origin: items
+                .get(index)
+                .or_else(|| items.last())
+                .map_or(CssValueOrigin::Programmatic, |value| value.origin().clone()),
+        };
+        if !has_query {
+            let name = name.ok_or_else(|| invalid(start + cursor.index))?;
+            entries.push(CssContainerQueryEntry::name_only(name, region));
+        } else {
+            let query_start = cursor.index;
+            let node = container_condition(&region.items()[query_start..])
+                .map_err(ContainerPreludeAdmissionError::Component)?
+                .map_err(|index| invalid(start + query_start + index))?;
+            let query = node.into_condition(region.select(query_start..region.items().len()));
+            entries.push(CssContainerQueryEntry::with_query(name, query, region));
+        }
+        start = end + 1;
+    }
+    Ok(CssContainerPrelude::new(entries, lexical))
+}
+
 pub(super) fn container_prelude_from_components<'i>(
     values: CssComponentValues,
     location: cssparser::SourceLocation,
 ) -> Result<CssContainerPrelude, ParseError<'i, Error>> {
-    let mut cursor = ContainerCursor::new(values.items());
-    let name = match cursor.peek().map(CssComponentValue::view) {
-        Some(CssComponentValueRef::Token(CssValueTokenRef::Ident(name))) => {
-            CssContainerName::try_new(name.to_owned())
-        }
-        _ => None,
-    };
-    if name.is_some() {
-        cursor.next();
-    }
-    let condition = container_condition(&values.items()[cursor.index..])
-        .map_err(|error| container_component_error(location, error))?
-        .map_err(|index| {
-            invalid_syntax(
-                container_failure_location(&values.items()[cursor.index..], index, location),
-                "invalid container condition",
-            )
-        })?;
-    let start = cursor.index;
     let end = values.items().len();
-    Ok(CssContainerPrelude {
-        name,
-        condition: condition.into_condition(SupportsLexical::root(values).select(start..end)),
+    admit_container_prelude(values).map_err(|error| match error {
+        ContainerPreludeAdmissionError::Component(error) => {
+            container_component_error(location, error)
+        }
+        ContainerPreludeAdmissionError::Grammar { index, origin } => {
+            let failure = if index >= end {
+                None
+            } else {
+                crate::media::parsed_position(&origin)
+            };
+            let location = failure.map_or(location, |position| cssparser::SourceLocation {
+                line: position.line().value(),
+                column: position.column().value() + 1,
+            });
+            invalid_syntax(location, "invalid container prelude")
+        }
     })
 }
+
+#[cfg(test)]
 fn container_failure_location(
     items: &[CssComponentValue],
     index: usize,

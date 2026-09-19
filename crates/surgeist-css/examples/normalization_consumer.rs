@@ -635,11 +635,10 @@ fn symbolic_conditional_and_layer_contexts() {
         unreachable!()
     };
     assert_eq!(condition, supports.condition());
-    let CssRuleContextKindRef::Container { name, condition } = contexts[3].kind() else {
+    let CssRuleContextKindRef::Container { prelude } = contexts[3].kind() else {
         unreachable!()
     };
-    assert_eq!(name, container.name());
-    assert_eq!(condition, container.condition());
+    assert_eq!(prelude, container.prelude());
     println!("symbolic conditional and layer contexts: ok");
 }
 

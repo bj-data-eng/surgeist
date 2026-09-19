@@ -491,6 +491,8 @@ pub surgeist_css::CssContainerConditionKind::Style(surgeist_css::CssContainerSty
 pub surgeist_css::CssContainerConstructionError::Component(surgeist_css::CssComponentValueError)
 pub surgeist_css::CssContainerConstructionError::InvalidConditionGrammar
 pub surgeist_css::CssContainerConstructionError::InvalidConditionGrammar::origin: surgeist_css::CssValueOrigin
+pub surgeist_css::CssContainerConstructionError::InvalidPreludeGrammar
+pub surgeist_css::CssContainerConstructionError::InvalidPreludeGrammar::origin: surgeist_css::CssValueOrigin
 pub surgeist_css::CssContainerConstructionError::WorkerUnavailable
 pub surgeist_css::CssContainerConstructionError::WorkerUnavailable::origin: surgeist_css::CssValueOrigin
 impl surgeist_css::CssContainerConstructionError
@@ -2499,8 +2501,7 @@ pub surgeist_css::CssRule::Style(surgeist_css::CssStyleRule)
 pub surgeist_css::CssRule::Supports(surgeist_css::CssSupportsRule)
 #[non_exhaustive] pub enum surgeist_css::CssRuleContextKindRef<'a>
 pub surgeist_css::CssRuleContextKindRef::Container
-pub surgeist_css::CssRuleContextKindRef::Container::condition: &'a surgeist_css::CssContainerCondition
-pub surgeist_css::CssRuleContextKindRef::Container::name: core::option::Option<&'a surgeist_css::CssContainerName>
+pub surgeist_css::CssRuleContextKindRef::Container::prelude: &'a surgeist_css::CssContainerPrelude
 pub surgeist_css::CssRuleContextKindRef::CounterStyle(&'a surgeist_css::CssCounterStyleRule)
 pub surgeist_css::CssRuleContextKindRef::CustomMedia(&'a surgeist_css::CssCustomMediaRule)
 pub surgeist_css::CssRuleContextKindRef::FontFace(&'a surgeist_css::CssFontFaceRule)
@@ -3931,11 +3932,31 @@ pub struct surgeist_css::CssContainerName
 impl surgeist_css::CssContainerName
 pub fn surgeist_css::CssContainerName::as_str(&self) -> &str
 pub fn surgeist_css::CssContainerName::try_new(name: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssContainerPrelude
+impl surgeist_css::CssContainerPrelude
+pub fn surgeist_css::CssContainerPrelude::components(&self) -> &[surgeist_css::CssComponentValue]
+pub fn surgeist_css::CssContainerPrelude::entries(&self) -> &[surgeist_css::CssContainerQueryEntry]
+pub const fn surgeist_css::CssContainerPrelude::origin(&self) -> &surgeist_css::CssValueOrigin
+pub const fn surgeist_css::CssContainerPrelude::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+impl surgeist_css::CssContainerPrelude
+pub fn surgeist_css::CssContainerPrelude::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssContainerPrelude::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssContainerPrelude::try_from_components(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssContainerConstructionError>
+pub fn surgeist_css::CssContainerPrelude::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssContainerConstructionError>
+pub struct surgeist_css::CssContainerQueryEntry
+impl surgeist_css::CssContainerQueryEntry
+pub fn surgeist_css::CssContainerQueryEntry::components(&self) -> &[surgeist_css::CssComponentValue]
+pub const fn surgeist_css::CssContainerQueryEntry::name(&self) -> core::option::Option<&surgeist_css::CssContainerName>
+pub const fn surgeist_css::CssContainerQueryEntry::origin(&self) -> &surgeist_css::CssValueOrigin
+pub const fn surgeist_css::CssContainerQueryEntry::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub const fn surgeist_css::CssContainerQueryEntry::query(&self) -> core::option::Option<&surgeist_css::CssContainerCondition>
+impl surgeist_css::CssContainerQueryEntry
+pub fn surgeist_css::CssContainerQueryEntry::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssContainerQueryEntry::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
 pub struct surgeist_css::CssContainerRule
 impl surgeist_css::CssContainerRule
-pub const fn surgeist_css::CssContainerRule::condition(&self) -> &surgeist_css::CssContainerCondition
-pub const fn surgeist_css::CssContainerRule::name(&self) -> core::option::Option<&surgeist_css::CssContainerName>
 pub const fn surgeist_css::CssContainerRule::position(&self) -> surgeist_css::CssSourcePosition
+pub const fn surgeist_css::CssContainerRule::prelude(&self) -> &surgeist_css::CssContainerPrelude
 pub fn surgeist_css::CssContainerRule::rules(&self) -> &[surgeist_css::CssRule]
 pub struct surgeist_css::CssContentList
 impl surgeist_css::CssContentList
@@ -5841,9 +5862,8 @@ pub fn surgeist_css::CssScopeSelectorList::selectors(&self) -> &[surgeist_css::C
 pub fn surgeist_css::CssScopeSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssSelector>) -> core::option::Option<Self>
 pub struct surgeist_css::CssScopedContainerRule
 impl surgeist_css::CssScopedContainerRule
-pub const fn surgeist_css::CssScopedContainerRule::condition(&self) -> &surgeist_css::CssContainerCondition
-pub const fn surgeist_css::CssScopedContainerRule::name(&self) -> core::option::Option<&surgeist_css::CssContainerName>
 pub const fn surgeist_css::CssScopedContainerRule::position(&self) -> surgeist_css::CssSourcePosition
+pub const fn surgeist_css::CssScopedContainerRule::prelude(&self) -> &surgeist_css::CssContainerPrelude
 pub const fn surgeist_css::CssScopedContainerRule::rules(&self) -> &surgeist_css::CssScopedRuleList
 pub struct surgeist_css::CssScopedLayerBlockRule
 impl surgeist_css::CssScopedLayerBlockRule

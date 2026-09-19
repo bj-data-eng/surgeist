@@ -15,7 +15,7 @@ fn condition(query: &str) -> Condition {
         panic!("container")
     };
     assert!(matches!(rule.rules(), [CssRule::Style(_)]));
-    rule.condition().clone()
+    rule.prelude().entries()[0].query().unwrap().clone()
 }
 
 fn opaque(value: &Condition) -> &CssContainerGeneralEnclosed {
@@ -34,7 +34,7 @@ fn nested_negated_unknown_operands_keep_boolean_structure_and_the_original_snaps
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("container")
     };
-    let Kind::Not(outer) = rule.condition().kind() else {
+    let Kind::Not(outer) = rule.prelude().entries()[0].query().unwrap().kind() else {
         panic!("outer not")
     };
     let Kind::Parenthesized(outer) = outer.kind() else {

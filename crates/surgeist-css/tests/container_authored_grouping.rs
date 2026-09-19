@@ -17,7 +17,7 @@ fn parsed_condition(query: &str) -> CssContainerCondition {
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("one retained container rule: {source}: {report:?}");
     };
-    rule.condition().clone()
+    rule.prelude().entries()[0].query().unwrap().clone()
 }
 
 fn token(spelling: &str) -> CssComponentValue {

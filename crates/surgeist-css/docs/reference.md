@@ -1584,6 +1584,30 @@ rule has a canonical writer.
 
 ## Conditional rules and import preludes
 
+`CssContainerRule::prelude()` and `CssScopedContainerRule::prelude()` expose a
+checked `CssContainerPrelude`. Its nonempty `entries()` retain each comma-separated
+alternative in authored order, including duplicates. Each `CssContainerQueryEntry`
+has a name, a query, or both; `name()` and `query()` expose those optional parts.
+Name-only entries remain distinct from an unnamed query. Comma alternatives are
+never lowered to Boolean `or`, since each entry selects its own container.
+
+`CssContainerPrelude::try_from_components[_with_limits]` uses the same complete
+prelude grammar as parsing. Invalid or empty entries reject the whole prelude.
+Limits cover all entries, separators and nested components together. Prelude and
+entry `components()`, `origin()`, `position()` and serializers retain the selected
+lexical regions and their origins; the prelude includes commas and surrounding
+trivia. Detached entry/query clones remain usable after their parent is dropped.
+Normalized `CssRuleContextKindRef::Container { prelude }` retains the entire
+prelude once, without duplicating the rule body for each alternative.
+
+Container names preserve case-sensitive decoded identity and authored token
+origins. `style` and `scroll-state` identifiers are valid names, while their
+function tokens are query operands. CSS-wide keywords, `default`, `none`, `and`,
+`or` and `not` are excluded as names in every ASCII case, including escaped
+spellings. `CssContainerName::try_new` continues to accept one literal identifier;
+use `CssComponentValue::try_ident` and checked prelude construction for decoded
+names requiring escapes, such as names containing spaces or leading digits.
+
 Container conditions retain explicit parentheses, homogeneous `and` or `or`
 lists, `not`, recognized size and custom-property style features, and opaque
 operands. `CssContainerCondition` has private fields; inspect its
@@ -1627,14 +1651,20 @@ component admission, and match `condition.kind()` against
 `CssContainerConditionKind`. Replace `CssContainerGeneralEnclosed::enclosed()`
 with `component()` when inspecting its original lexical operand. Use the
 condition serializer for the complete query, including recognized groups.
+The singular rule `name()` and `condition()` accessors have been replaced by
+`prelude()`: iterate its entries and explicitly handle `entry.query() == None`.
+Consumers that know they expect one entry should verify that cardinality before
+projecting its name or query. Normalized Container matches now borrow `prelude`
+instead of a singular name/condition pair. `InvalidPreludeGrammar` reports checked
+prelude rejection separately from a checked Boolean condition failure.
 
 These contracts use the selected
 [Conditional Rules 5 edition](https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule),
 including its general-enclosed production and the optional any-value grammar in
 [Media Queries 4](https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/#mq-syntax).
-Coverage remains partial: complete size/style/scroll-state features, name-only
-queries and query lists still need authored support. Opaque retention does not
-implement those features. Whole-rule serialization still needs CSS support.
+Coverage remains partial: complete size/style/scroll-state features still need
+authored support. Opaque retention does not implement those features.
+Whole-rule serialization still needs CSS support.
 Container selection, condition evaluation and mutable CSSOM objects belong
 to downstream owners.
 

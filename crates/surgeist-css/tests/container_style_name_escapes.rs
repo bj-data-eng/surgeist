@@ -12,10 +12,12 @@ fn style_query(authored: &str) -> CssContainerStyleQuery {
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("one retained container rule")
     };
-    let CssContainerConditionKind::Style(query) = rule.condition().kind() else {
+    let CssContainerConditionKind::Style(query) =
+        rule.prelude().entries()[0].query().unwrap().kind()
+    else {
         panic!(
             "a recognized custom-property style query: {:?}",
-            rule.condition()
+            rule.prelude().entries()[0].query().unwrap()
         )
     };
     query.clone()

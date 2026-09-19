@@ -17,7 +17,8 @@ fn grouped_size_queries_retain_their_boolean_structure() {
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("one accepted container rule must survive its empty body");
     };
-    let CssContainerConditionKind::And(and) = rule.condition().kind() else {
+    let CssContainerConditionKind::And(and) = rule.prelude().entries()[0].query().unwrap().kind()
+    else {
         panic!("the outer condition must retain conjunction");
     };
     let [group, inline] = and.conditions() else {
@@ -54,7 +55,9 @@ fn negation_can_target_a_grouped_query() {
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("one container rule expected");
     };
-    let CssContainerConditionKind::Not(operand) = rule.condition().kind() else {
+    let CssContainerConditionKind::Not(operand) =
+        rule.prelude().entries()[0].query().unwrap().kind()
+    else {
         panic!("expected negation");
     };
     let CssContainerConditionKind::Parenthesized(grouped) = operand.kind() else {

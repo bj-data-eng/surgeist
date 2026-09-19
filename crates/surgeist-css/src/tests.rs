@@ -763,17 +763,15 @@ fn scoped_group_rule_models_keep_scoped_children() {
     assert_eq!(media.rules(), &scoped_children);
     assert_eq!(media.position(), location);
 
-    let condition =
-        parse_container_condition_for_test("(inline-size > 30rem)").expect("condition parses");
+    let prelude = CssContainerPrelude::try_from_components(
+        crate::parse_component_values("sidebar (inline-size > 30rem)").unwrap(),
+    )
+    .unwrap();
+    let condition = prelude.entries()[0].query().unwrap().clone();
     let name = CssContainerName::try_new("sidebar").unwrap();
-    let container = CssScopedContainerRule::new(
-        Some(name.clone()),
-        condition.clone(),
-        scoped_children.clone(),
-        location,
-    );
-    assert_eq!(container.name(), Some(&name));
-    assert_eq!(container.condition(), &condition);
+    let container = CssScopedContainerRule::new(prelude.clone(), scoped_children.clone(), location);
+    assert_eq!(container.prelude().entries()[0].name(), Some(&name));
+    assert_eq!(container.prelude().entries()[0].query(), Some(&condition));
     assert_eq!(container.rules(), &scoped_children);
     assert_eq!(container.position(), location);
 
@@ -5023,7 +5021,7 @@ fn container_name_constructor_rejects_invalid_and_reserved_names() {
         "and",
         "or",
         "not",
-        "style",
+        "default",
         "NoNe",
         "inherit",
         "initial",
@@ -5569,8 +5567,11 @@ fn container_style_query_preserves_custom_property_authored_value() {
 #[test]
 fn container_rule_accessors_expose_authored_structure() {
     let name = CssContainerName::try_new("sidebar").unwrap();
-    let condition =
-        parse_container_condition_for_test("(inline-size > 30rem)").expect("condition parses");
+    let prelude = CssContainerPrelude::try_from_components(
+        crate::parse_component_values("sidebar (inline-size > 30rem)").unwrap(),
+    )
+    .unwrap();
+    let condition = prelude.entries()[0].query().unwrap().clone();
     let location = source_position(4, 9);
     let nested = CssRule::Style(CssStyleRule::new(
         CssStyleSelectorList::absolute(vec![CssSelector::Class("card".to_owned())]),
@@ -5578,16 +5579,11 @@ fn container_rule_accessors_expose_authored_structure() {
         Vec::new(),
         location,
     ));
-    let rule = CssContainerRule::new(
-        Some(name.clone()),
-        condition.clone(),
-        vec![nested.clone()],
-        location,
-    );
+    let rule = CssContainerRule::new(prelude.clone(), vec![nested.clone()], location);
 
     assert_eq!(style_rule(&nested).position(), location);
-    assert_eq!(rule.name(), Some(&name));
-    assert_eq!(rule.condition(), &condition);
+    assert_eq!(rule.prelude().entries()[0].name(), Some(&name));
+    assert_eq!(rule.prelude().entries()[0].query().unwrap(), &condition);
     assert_eq!(rule.rules(), &[nested]);
     assert_eq!(rule.position(), location);
     assert_eq!(CssRule::Container(rule.clone()), CssRule::Container(rule));
@@ -5601,12 +5597,12 @@ fn container_rule_parser_accepts_unnamed_named_and_style_conditions() {
         panic!("expected one container rule");
     };
     let rule = container_rule(rule);
-    assert_eq!(rule.name(), None);
+    assert_eq!(rule.prelude().entries()[0].name(), None);
     assert_eq!(rule.position().byte_offset().value(), 0);
     assert_eq!(rule.position().line().value(), 0);
     assert_eq!(rule.position().column().value(), 0);
     assert!(matches!(
-        rule.condition().kind(),
+        rule.prelude().entries()[0].query().unwrap().kind(),
         CssContainerConditionKind::Feature(CssContainerFeatureQuery::InlineSize(_))
     ));
     let [nested] = rule.rules() else {
@@ -5624,11 +5620,11 @@ fn container_rule_parser_accepts_unnamed_named_and_style_conditions() {
     };
     let rule = container_rule(rule);
     assert_eq!(
-        rule.name(),
+        rule.prelude().entries()[0].name(),
         Some(&CssContainerName::try_new("sidebar").unwrap())
     );
     assert!(matches!(
-        rule.condition().kind(),
+        rule.prelude().entries()[0].query().unwrap().kind(),
         CssContainerConditionKind::Feature(CssContainerFeatureQuery::Width(_))
     ));
 
@@ -5638,9 +5634,9 @@ fn container_rule_parser_accepts_unnamed_named_and_style_conditions() {
         panic!("expected one container rule");
     };
     let rule = container_rule(rule);
-    assert_eq!(rule.name(), None);
+    assert_eq!(rule.prelude().entries()[0].name(), None);
     assert_eq!(
-        rule.condition().kind(),
+        rule.prelude().entries()[0].query().unwrap().kind(),
         &CssContainerConditionKind::Style(CssContainerStyleQuery::CustomPropertyValue {
             name: CssCustomPropertyName::try_new("--theme").unwrap(),
             value: CssAuthoredDeclarationValue::try_new("dark").unwrap(),
@@ -5693,7 +5689,10 @@ fn nested_conditional_rules_allow_media_and_container_in_either_direction() {
 fn container_rule_parser_retains_unknown_features_and_rejects_invalid_bodies() {
     let sheet = parse_sheet("@container (unknown > 1px) { .card { color: black; } }").unwrap();
     assert!(matches!(
-        container_rule(&sheet.rules()[0]).condition().kind(),
+        container_rule(&sheet.rules()[0]).prelude().entries()[0]
+            .query()
+            .unwrap()
+            .kind(),
         CssContainerConditionKind::GeneralEnclosed(_)
     ));
     assert!(parse_sheet("@container (width > 300px) { @import \"x.css\"; }").is_err());
@@ -5894,11 +5893,11 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
     );
 
     assert_eq!(
-        container.name(),
+        container.prelude().entries()[0].name(),
         Some(&CssContainerName::try_new("sidebar").unwrap())
     );
     let CssContainerConditionKind::Feature(CssContainerFeatureQuery::InlineSize(inline_size)) =
-        container.condition().kind()
+        container.prelude().entries()[0].query().unwrap().kind()
     else {
         panic!("expected inline-size container condition");
     };
