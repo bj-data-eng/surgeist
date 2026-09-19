@@ -2353,13 +2353,16 @@ fn validate_replacement_bindings(
     existing: &RawOracle,
     replacement: &RawOracle,
 ) -> Result<(), String> {
+    // Neutral source identity is immutable during owner-oracle maintenance.
+    // The owner expectation registry may advance: capture has already checked
+    // the replacement against that registry and separately checks that its
+    // digest stays unchanged throughout the operation.
     if existing.schema_version != replacement.schema_version
         || existing.provider_repository != replacement.provider_repository
         || existing.source_revision != replacement.source_revision
         || existing.source_tree != replacement.source_tree
         || existing.expectation_schema_version != replacement.expectation_schema_version
         || existing.generation_report_sha256 != replacement.generation_report_sha256
-        || existing.expected_class_registry_sha256 != replacement.expected_class_registry_sha256
     {
         return Err("refusing to replace CSS oracle with drifted metadata bindings".into());
     }

@@ -127,7 +127,7 @@ reconciliation does not itself refresh the separately persisted oracle.
 The ten original strict selector-list inputs use independently specified
 [`selector-list expectations`](../../csstree/selector-list-original-reconciliation.json).
 Two clean inputs retain exactly one and two members; eight malformed lists are
-rejected atomically with `RejectInput`. The incomplete combinator at original
+rejected atomically with `RejectInput`. The missing selector after a comma at original
 EOF uses `recovery_ends_at`; the other seven diagnostics intersect the input.
 These assertions cover original typed selectors and exact diagnostic coordinates
 through the public parser and the real corpus adapter.
@@ -160,3 +160,9 @@ Changes to entry points, extractors, or recovery actions require corresponding
 review of CSS-owned expected classes and oracle records. Expectations must be
 established independently of parser observations; an old oracle is not evidence
 that a synthetic wrapper preserved the original fragment grammar.
+
+The gated capture validates every observation against the current owner registry
+before replacing the oracle. A reviewed registry update may therefore change the
+oracle's registry digest. Capture still requires unchanged neutral source,
+generation-report and per-record bindings, and rejects registry changes made
+during the capture itself. It never repairs a mismatch by editing expectations.
