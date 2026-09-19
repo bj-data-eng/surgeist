@@ -888,7 +888,9 @@ fn assert_archived_container_opaque_acceptance(row: &Row) -> bool {
     let [CssRule::Container(container)] = report.syntax().rules() else {
         panic!("retained container")
     };
-    let surgeist_css::CssContainerCondition::GeneralEnclosed(value) = container.condition() else {
+    let surgeist_css::CssContainerConditionKind::GeneralEnclosed(value) =
+        container.condition().kind()
+    else {
         panic!("opaque query")
     };
     assert_eq!(value.authored(), Some(query));

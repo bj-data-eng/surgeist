@@ -1584,48 +1584,59 @@ rule has a canonical writer.
 
 ## Conditional rules and import preludes
 
-Container conditions retain homogeneous `and` or `or` lists over recognized
-size and custom-property style features. `GeneralEnclosed(CssContainerGeneralEnclosed)`
-retains complete unrecognized function or parenthesized operands, including
-empty enclosures and unknown feature/value syntax. Recognized features and style
-queries take precedence over this fallback. Opaque operands preserve original
-components, lexical spelling, source snapshots and recovered closing origins;
-their component serializer applies the existing token-boundary rules.
+Container conditions retain explicit parentheses, homogeneous `and` or `or`
+lists, `not`, recognized size and custom-property style features, and opaque
+operands. `CssContainerCondition` has private fields; inspect its
+`CssContainerConditionKind` through `kind()`. A `Parenthesized` node retains each
+explicit group around a recognized condition, including redundant groups.
+`GeneralEnclosed(CssContainerGeneralEnclosed)` retains complete unrecognized
+functions and parenthesized operands. Recognized grammar takes precedence over
+this fallback.
 
-`CssContainerCondition::try_from_enclosed` classifies a checked lexical
-`CssGeneralEnclosed` using the same immutable component grammar as parsing.
-Programmatic known features, style queries and grouped conditions select their
-recognized branches. The opaque payload has private fields and exposes its
-lexical wrapper through `enclosed()`; callers cannot force recognized syntax
-into that branch. Component/resource errors retain supplied origins. Trusted
-EOF recovery remains usable. Classification never serializes or reparses input.
-The existing style-value string preserves contiguous original slices; mixed or
-programmatic value components are serialized only after admission to populate
-that string field. Style custom-property names are admitted from their decoded
-identifier tokens, retaining escaped spaces, punctuation and case without
-retokenizing the decoded name. Legacy container numeric fields retain the tokenizer's
-original float conversion, while typed numeric values remain spelling-based.
+`try_from_components` and `try_from_components_with_limits` admit a complete
+condition through the same immutable component grammar as parsing.
+`try_from_enclosed` retains its checked single-enclosure entry point. Construct
+component values with the checked component builders; constructing an inspectable
+kind alone cannot manufacture a condition or bypass operand restrictions.
+Trusted EOF recovery remains usable. Classification never serializes and
+reparses input. The existing style-value string preserves contiguous original
+slices; mixed or programmatic value components are serialized only after
+admission to populate that string field. Custom-property names come from decoded
+identifier tokens, preserving escaped spaces, punctuation and case.
+
+`components()`, `origin()` and `position()` expose the selected authored region.
+Nodes share immutable lexical ownership, so a retained child remains valid after
+its parent is dropped. `serialize()` and `serialize_with_limit()` produce the
+existing deterministic component serialization, preserving grouping, operator
+order, numeric spelling, symbolic operands and meaningful token boundaries.
+They return the serialized origin map and typed resource errors. They do not
+promise lossless formatting or CSSOM whitespace normalization. Legacy numeric
+feature projections still use the tokenizer's float conversion; serialization
+uses the retained components instead of reconstructing values from those fields.
 
 `not` prefixes one complete query operand. `not not (width > 1px)` and
 `(width > 1px) and not (height > 2px)` are invalid; group a negated operand to
 include it in a list. Trailing tokens and mixed outer boolean operators remain
 invalid. Lexical bad tokens and component/depth failures survive grammar probes.
 Invalid outer conditions drop their container rule while later siblings remain
-eligible. The enclosing-production preflight enforces the shared nesting ceiling,
-and the complete prelude receives original-component validation before probes.
-Default component-count and byte limits remain unbounded; individual operand
-limits do not establish an additional whole-condition budget.
+eligible. Explicit construction limits apply to the complete condition;
+serialization separately bounds its output bytes.
 
-The container records use the selected
+Migration: replace direct `CssContainerCondition` enum construction with checked
+component admission, and match `condition.kind()` against
+`CssContainerConditionKind`. Replace `CssContainerGeneralEnclosed::enclosed()`
+with `component()` when inspecting its original lexical operand. Use the
+condition serializer for the complete query, including recognized groups.
+
+These contracts use the selected
 [Conditional Rules 5 edition](https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule),
 including its general-enclosed production and the optional any-value grammar in
 [Media Queries 4](https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/#mq-syntax).
 Coverage remains partial: complete size/style/scroll-state features, name-only
 queries and query lists still need authored support. Opaque retention does not
-implement those features or evaluate a condition. Recognized conditions still
-lack complete grouping and operator provenance; a canonical serializer for the
-whole condition remains separate work. Container selection and evaluation belong
-to style.
+implement those features. Whole-rule serialization still needs CSS support.
+Container selection, condition evaluation and mutable CSSOM objects belong
+to downstream owners.
 
 Media support metadata cites the selected published MQ5 edition as the effective
 source for query grammar and all 37 feature definitions. Historical feature IDs

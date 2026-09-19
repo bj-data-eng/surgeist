@@ -3,7 +3,7 @@
 //! section 2.1 decodes escapes into the identifier token's value exactly once.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#style-container
 //! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#escaping
-use surgeist_css::{CssContainerCondition, CssContainerStyleQuery, CssRule, parse_sheet};
+use surgeist_css::{CssContainerConditionKind, CssContainerStyleQuery, CssRule, parse_sheet};
 
 fn style_query(authored: &str) -> CssContainerStyleQuery {
     let source = format!("@container style({authored}) {{ .x {{ color:red }} }}");
@@ -12,7 +12,7 @@ fn style_query(authored: &str) -> CssContainerStyleQuery {
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("one retained container rule")
     };
-    let CssContainerCondition::Style(query) = rule.condition() else {
+    let CssContainerConditionKind::Style(query) = rule.condition().kind() else {
         panic!(
             "a recognized custom-property style query: {:?}",
             rule.condition()

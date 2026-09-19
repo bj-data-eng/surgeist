@@ -479,19 +479,24 @@ pub surgeist_css::CssContain::Strict
 pub surgeist_css::CssContainComponent::Layout
 pub surgeist_css::CssContainComponent::Paint
 pub surgeist_css::CssContainComponent::Size
-#[non_exhaustive] pub enum surgeist_css::CssContainerCondition
-pub surgeist_css::CssContainerCondition::And(surgeist_css::CssContainerConditionList)
-pub surgeist_css::CssContainerCondition::Feature(surgeist_css::CssContainerFeatureQuery)
-pub surgeist_css::CssContainerCondition::GeneralEnclosed(surgeist_css::CssContainerGeneralEnclosed)
-pub surgeist_css::CssContainerCondition::Not(alloc::boxed::Box<surgeist_css::CssContainerCondition>)
-pub surgeist_css::CssContainerCondition::Or(surgeist_css::CssContainerConditionList)
-pub surgeist_css::CssContainerCondition::Style(surgeist_css::CssContainerStyleQuery)
-impl surgeist_css::CssContainerCondition
-pub fn surgeist_css::CssContainerCondition::try_from_enclosed(enclosed: surgeist_css::CssGeneralEnclosed) -> core::result::Result<Self, surgeist_css::CssContainerConstructionError>
+#[non_exhaustive] pub enum surgeist_css::CssContainerConditionKind
+pub surgeist_css::CssContainerConditionKind::And(surgeist_css::CssContainerConditionList)
+pub surgeist_css::CssContainerConditionKind::Feature(surgeist_css::CssContainerFeatureQuery)
+pub surgeist_css::CssContainerConditionKind::GeneralEnclosed(surgeist_css::CssContainerGeneralEnclosed)
+pub surgeist_css::CssContainerConditionKind::Not(alloc::boxed::Box<surgeist_css::CssContainerCondition>)
+pub surgeist_css::CssContainerConditionKind::Or(surgeist_css::CssContainerConditionList)
+pub surgeist_css::CssContainerConditionKind::Parenthesized(alloc::boxed::Box<surgeist_css::CssContainerCondition>)
+pub surgeist_css::CssContainerConditionKind::Style(surgeist_css::CssContainerStyleQuery)
 #[non_exhaustive] pub enum surgeist_css::CssContainerConstructionError
 pub surgeist_css::CssContainerConstructionError::Component(surgeist_css::CssComponentValueError)
+pub surgeist_css::CssContainerConstructionError::InvalidConditionGrammar
+pub surgeist_css::CssContainerConstructionError::InvalidConditionGrammar::origin: surgeist_css::CssValueOrigin
+pub surgeist_css::CssContainerConstructionError::WorkerUnavailable
+pub surgeist_css::CssContainerConstructionError::WorkerUnavailable::origin: surgeist_css::CssValueOrigin
 impl surgeist_css::CssContainerConstructionError
 pub const fn surgeist_css::CssContainerConstructionError::origin(&self) -> &surgeist_css::CssValueOrigin
+impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssContainerConstructionError
+pub fn surgeist_css::CssContainerConstructionError::from(error: surgeist_css::CssComponentValueError) -> Self
 impl core::error::Error for surgeist_css::CssContainerConstructionError
 pub fn surgeist_css::CssContainerConstructionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_css::CssContainerConstructionError
@@ -3831,6 +3836,8 @@ pub struct surgeist_css::CssComponentValueError
 impl surgeist_css::CssComponentValueError
 pub const fn surgeist_css::CssComponentValueError::kind(&self) -> surgeist_css::CssComponentValueErrorKind
 pub const fn surgeist_css::CssComponentValueError::origin(&self) -> &surgeist_css::CssValueOrigin
+impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssContainerConstructionError
+pub fn surgeist_css::CssContainerConstructionError::from(error: surgeist_css::CssComponentValueError) -> Self
 impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssCustomMediaConstructionError
 pub fn surgeist_css::CssCustomMediaConstructionError::from(e: surgeist_css::CssComponentValueError) -> Self
 impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssCustomMediaSerializationError
@@ -3896,6 +3903,18 @@ pub struct surgeist_css::CssContainPropertyValue
 impl surgeist_css::CssContainPropertyValue
 pub fn surgeist_css::CssContainPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssContainPropertyValue::containment(&self) -> &surgeist_css::CssContain
+pub struct surgeist_css::CssContainerCondition
+impl surgeist_css::CssContainerCondition
+pub fn surgeist_css::CssContainerCondition::components(&self) -> &[surgeist_css::CssComponentValue]
+pub const fn surgeist_css::CssContainerCondition::kind(&self) -> &surgeist_css::CssContainerConditionKind
+pub const fn surgeist_css::CssContainerCondition::origin(&self) -> &surgeist_css::CssValueOrigin
+pub const fn surgeist_css::CssContainerCondition::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+impl surgeist_css::CssContainerCondition
+pub fn surgeist_css::CssContainerCondition::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssContainerCondition::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssContainerCondition::try_from_components(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssContainerConstructionError>
+pub fn surgeist_css::CssContainerCondition::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssContainerConstructionError>
+pub fn surgeist_css::CssContainerCondition::try_from_enclosed(enclosed: surgeist_css::CssGeneralEnclosed) -> core::result::Result<Self, surgeist_css::CssContainerConstructionError>
 pub struct surgeist_css::CssContainerConditionList
 impl surgeist_css::CssContainerConditionList
 pub fn surgeist_css::CssContainerConditionList::conditions(&self) -> &[surgeist_css::CssContainerCondition]
@@ -3903,11 +3922,11 @@ pub fn surgeist_css::CssContainerConditionList::try_new(conditions: alloc::vec::
 pub struct surgeist_css::CssContainerGeneralEnclosed
 impl surgeist_css::CssContainerGeneralEnclosed
 pub fn surgeist_css::CssContainerGeneralEnclosed::authored(&self) -> core::option::Option<&str>
-pub const fn surgeist_css::CssContainerGeneralEnclosed::component(&self) -> &surgeist_css::CssComponentValue
-pub const fn surgeist_css::CssContainerGeneralEnclosed::enclosed(&self) -> &surgeist_css::CssGeneralEnclosed
-pub const fn surgeist_css::CssContainerGeneralEnclosed::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssContainerGeneralEnclosed::component(&self) -> &surgeist_css::CssComponentValue
+pub fn surgeist_css::CssContainerGeneralEnclosed::origin(&self) -> &surgeist_css::CssValueOrigin
 pub fn surgeist_css::CssContainerGeneralEnclosed::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
 pub fn surgeist_css::CssContainerGeneralEnclosed::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+impl core::cmp::Eq for surgeist_css::CssContainerGeneralEnclosed
 pub struct surgeist_css::CssContainerName
 impl surgeist_css::CssContainerName
 pub fn surgeist_css::CssContainerName::as_str(&self) -> &str

@@ -5042,11 +5042,7 @@ fn container_name_constructor_rejects_invalid_and_reserved_names() {
 
 #[test]
 fn container_condition_list_constructor_requires_at_least_two_conditions() {
-    let width =
-        CssContainerCondition::Feature(CssContainerFeatureQuery::Width(CssRangeFeature::new(
-            Some(CssQueryComparison::GreaterThan),
-            CssQueryLength::try_new(600.0, CssLengthUnit::Px).unwrap(),
-        )));
+    let width = parse_container_condition_for_test("(width > 600px)").unwrap();
     assert_eq!(CssContainerConditionList::try_new(Vec::new()), None);
     assert_eq!(
         CssContainerConditionList::try_new(vec![width.clone()]),
@@ -5494,7 +5490,7 @@ fn container_condition_parser_retains_unrecognized_enclosures() {
         "(width > )",
     ] {
         let condition = parse_container_condition_for_test(css).expect("valid opaque enclosure");
-        let CssContainerCondition::GeneralEnclosed(value) = condition else {
+        let CssContainerConditionKind::GeneralEnclosed(value) = condition.kind() else {
             panic!("{css} should retain an opaque enclosure");
         };
         assert_eq!(value.serialize().unwrap().as_css(), css);
@@ -5504,8 +5500,8 @@ fn container_condition_parser_retains_unrecognized_enclosures() {
 #[test]
 fn container_condition_parser_preserves_size_feature_structure() {
     let condition = parse_container_condition_for_test("(inline-size >= 30rem)").unwrap();
-    let CssContainerCondition::Feature(CssContainerFeatureQuery::InlineSize(inline_size)) =
-        condition
+    let CssContainerConditionKind::Feature(CssContainerFeatureQuery::InlineSize(inline_size)) =
+        condition.kind()
     else {
         panic!("expected inline-size feature");
     };
@@ -5523,14 +5519,16 @@ fn container_condition_parser_preserves_ratio_and_logic_structure() {
     let condition =
         parse_container_condition_for_test("(aspect-ratio > 1 / 1) and (orientation: landscape)")
             .unwrap();
-    let CssContainerCondition::And(list) = condition else {
+    let CssContainerConditionKind::And(list) = condition.kind() else {
         panic!("expected and condition list");
     };
     let [ratio, orientation] = list.conditions() else {
         panic!("expected two conditions");
     };
 
-    let CssContainerCondition::Feature(CssContainerFeatureQuery::AspectRatio(ratio)) = ratio else {
+    let CssContainerConditionKind::Feature(CssContainerFeatureQuery::AspectRatio(ratio)) =
+        ratio.kind()
+    else {
         panic!("expected aspect-ratio feature");
     };
     assert_eq!(ratio.comparison(), Some(CssQueryComparison::GreaterThan));
@@ -5538,8 +5536,8 @@ fn container_condition_parser_preserves_ratio_and_logic_structure() {
     assert_eq!(ratio.value().denominator().value(), 1.0);
 
     assert_eq!(
-        orientation,
-        &CssContainerCondition::Feature(CssContainerFeatureQuery::Orientation(
+        orientation.kind(),
+        &CssContainerConditionKind::Feature(CssContainerFeatureQuery::Orientation(
             CssOrientation::Landscape
         ))
     );
@@ -5549,8 +5547,8 @@ fn container_condition_parser_preserves_ratio_and_logic_structure() {
 fn container_style_query_preserves_custom_property_presence() {
     let condition = parse_container_condition_for_test("style(--theme)").unwrap();
     assert_eq!(
-        condition,
-        CssContainerCondition::Style(CssContainerStyleQuery::CustomPropertyPresence(
+        condition.kind(),
+        &CssContainerConditionKind::Style(CssContainerStyleQuery::CustomPropertyPresence(
             CssCustomPropertyName::try_new("--theme").unwrap()
         ))
     );
@@ -5560,8 +5558,8 @@ fn container_style_query_preserves_custom_property_presence() {
 fn container_style_query_preserves_custom_property_authored_value() {
     let condition = parse_container_condition_for_test("style(--theme: dark)").unwrap();
     assert_eq!(
-        condition,
-        CssContainerCondition::Style(CssContainerStyleQuery::CustomPropertyValue {
+        condition.kind(),
+        &CssContainerConditionKind::Style(CssContainerStyleQuery::CustomPropertyValue {
             name: CssCustomPropertyName::try_new("--theme").unwrap(),
             value: CssAuthoredDeclarationValue::try_new("dark").unwrap(),
         })
@@ -5608,8 +5606,8 @@ fn container_rule_parser_accepts_unnamed_named_and_style_conditions() {
     assert_eq!(rule.position().line().value(), 0);
     assert_eq!(rule.position().column().value(), 0);
     assert!(matches!(
-        rule.condition(),
-        CssContainerCondition::Feature(CssContainerFeatureQuery::InlineSize(_))
+        rule.condition().kind(),
+        CssContainerConditionKind::Feature(CssContainerFeatureQuery::InlineSize(_))
     ));
     let [nested] = rule.rules() else {
         panic!("expected one nested style rule");
@@ -5630,8 +5628,8 @@ fn container_rule_parser_accepts_unnamed_named_and_style_conditions() {
         Some(&CssContainerName::try_new("sidebar").unwrap())
     );
     assert!(matches!(
-        rule.condition(),
-        CssContainerCondition::Feature(CssContainerFeatureQuery::Width(_))
+        rule.condition().kind(),
+        CssContainerConditionKind::Feature(CssContainerFeatureQuery::Width(_))
     ));
 
     let sheet = parse_sheet("@container style(--theme: dark) { .title { color: black; } }")
@@ -5642,8 +5640,8 @@ fn container_rule_parser_accepts_unnamed_named_and_style_conditions() {
     let rule = container_rule(rule);
     assert_eq!(rule.name(), None);
     assert_eq!(
-        rule.condition(),
-        &CssContainerCondition::Style(CssContainerStyleQuery::CustomPropertyValue {
+        rule.condition().kind(),
+        &CssContainerConditionKind::Style(CssContainerStyleQuery::CustomPropertyValue {
             name: CssCustomPropertyName::try_new("--theme").unwrap(),
             value: CssAuthoredDeclarationValue::try_new("dark").unwrap(),
         })
@@ -5695,8 +5693,8 @@ fn nested_conditional_rules_allow_media_and_container_in_either_direction() {
 fn container_rule_parser_retains_unknown_features_and_rejects_invalid_bodies() {
     let sheet = parse_sheet("@container (unknown > 1px) { .card { color: black; } }").unwrap();
     assert!(matches!(
-        container_rule(&sheet.rules()[0]).condition(),
-        CssContainerCondition::GeneralEnclosed(_)
+        container_rule(&sheet.rules()[0]).condition().kind(),
+        CssContainerConditionKind::GeneralEnclosed(_)
     ));
     assert!(parse_sheet("@container (width > 300px) { @import \"x.css\"; }").is_err());
     assert!(parse_sheet("@container (width > 300px) { .card { made-up: 1; } }").is_err());
@@ -5899,8 +5897,8 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
         container.name(),
         Some(&CssContainerName::try_new("sidebar").unwrap())
     );
-    let CssContainerCondition::Feature(CssContainerFeatureQuery::InlineSize(inline_size)) =
-        container.condition()
+    let CssContainerConditionKind::Feature(CssContainerFeatureQuery::InlineSize(inline_size)) =
+        container.condition().kind()
     else {
         panic!("expected inline-size container condition");
     };

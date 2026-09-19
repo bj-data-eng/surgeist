@@ -17,11 +17,13 @@ use crate::error::{
 use crate::media::{MediaConditionSyntax, MediaFeatureShape, MediaFeatureSyntax, MediaTypedSyntax};
 use crate::media_features::{MediaRangeState, MediaValueFamily};
 use crate::numeric::{CalculationRoot, NumericInputContext};
+use crate::supports::SupportsLexical;
 use crate::syntax::*;
 use crate::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
     CssValueOrigin, CssValueTokenRef,
 };
+use std::ops::Range;
 
 pub(super) static IMPLEMENTED_MEDIA: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.custom-media"),
@@ -237,46 +239,82 @@ pub(crate) fn parse_media_query_list_for_test(
 pub(crate) fn container_condition_from_enclosed(
     enclosed: CssGeneralEnclosed,
 ) -> Result<CssContainerCondition, CssContainerConstructionError> {
-    // The lexical owner already enforces the shared structural ceiling. Validate
-    // its complete output before classification; no text is fed back to a parser.
-    let mut budget = crate::component_values::CssCanonicalBuilder::counting(usize::MAX);
-    budget
-        .push_components(std::slice::from_ref(enclosed.component()))
-        .map_err(CssContainerConstructionError::Component)?;
-    container_atom(enclosed.component())
-        .map(ContainerNode::into_condition)
-        .map_err(CssContainerConstructionError::Component)
+    let values = CssComponentValues::try_new(vec![enclosed.component().clone()])?;
+    construct_container_condition(values, CssComponentValueLimits::default())
 }
 
-// Grammar probes borrow opaque leaves. Only the selected final tree copies its
-// retained leaves, so failed enclosing probes cannot repeatedly clone subtrees.
-enum ContainerNode<'a> {
-    Opaque(&'a CssComponentValue),
+pub(crate) fn construct_container_condition(
+    values: CssComponentValues,
+    limits: CssComponentValueLimits,
+) -> Result<CssContainerCondition, CssContainerConstructionError> {
+    values.validate_with_limits(limits)?;
+    let node = container_condition(values.items())?.map_err(|index| {
+        CssContainerConstructionError::InvalidConditionGrammar {
+            origin: values
+                .items()
+                .get(index)
+                .or_else(|| values.items().last())
+                .map_or(CssValueOrigin::Programmatic, |value| value.origin().clone()),
+        }
+    })?;
+    Ok(node.into_condition(SupportsLexical::root(values)))
+}
+
+// Probes own only semantic leaves and relative sibling regions. The selected
+// tree shares one lexical root, including opaque leaves and redundant groups.
+struct ContainerNode {
+    kind: ContainerNodeKind,
+    range: Range<usize>,
+}
+enum ContainerNodeKind {
+    Opaque,
     Feature(CssContainerFeatureQuery),
     Style(CssContainerStyleQuery),
-    Not(Box<Self>),
-    And(Vec<Self>),
-    Or(Vec<Self>),
+    Parenthesized(Box<ContainerNode>),
+    Not(Box<ContainerNode>),
+    And(Vec<ContainerNode>),
+    Or(Vec<ContainerNode>),
 }
-impl ContainerNode<'_> {
-    fn into_condition(self) -> CssContainerCondition {
-        match self {
-            Self::Opaque(component) => {
-                CssContainerCondition::GeneralEnclosed(CssContainerGeneralEnclosed::new(
-                    CssGeneralEnclosed::try_from_component(component.clone())
-                        .expect("container atom is an enclosure"),
+impl ContainerNode {
+    fn into_condition(self, parent: SupportsLexical) -> CssContainerCondition {
+        let lexical = parent.select(self.range);
+        let kind = match self.kind {
+            ContainerNodeKind::Opaque => CssContainerConditionKind::GeneralEnclosed(
+                CssContainerGeneralEnclosed::new(lexical.clone()),
+            ),
+            ContainerNodeKind::Feature(feature) => CssContainerConditionKind::Feature(feature),
+            ContainerNodeKind::Style(style) => CssContainerConditionKind::Style(style),
+            ContainerNodeKind::Parenthesized(child) => {
+                let opener = lexical
+                    .items()
+                    .iter()
+                    .position(|value| !container_trivia(value))
+                    .expect("one grouped operand");
+                CssContainerConditionKind::Parenthesized(Box::new(
+                    child.into_condition(lexical.children(opener)),
                 ))
             }
-            Self::Feature(feature) => CssContainerCondition::Feature(feature),
-            Self::Style(style) => CssContainerCondition::Style(style),
-            Self::Not(child) => CssContainerCondition::Not(Box::new(child.into_condition())),
-            Self::And(children) => CssContainerCondition::And(CssContainerConditionList::new(
-                children.into_iter().map(Self::into_condition).collect(),
-            )),
-            Self::Or(children) => CssContainerCondition::Or(CssContainerConditionList::new(
-                children.into_iter().map(Self::into_condition).collect(),
-            )),
-        }
+            ContainerNodeKind::Not(child) => {
+                CssContainerConditionKind::Not(Box::new(child.into_condition(lexical.clone())))
+            }
+            ContainerNodeKind::And(children) => {
+                CssContainerConditionKind::And(CssContainerConditionList::new(
+                    children
+                        .into_iter()
+                        .map(|child| child.into_condition(lexical.clone()))
+                        .collect(),
+                ))
+            }
+            ContainerNodeKind::Or(children) => {
+                CssContainerConditionKind::Or(CssContainerConditionList::new(
+                    children
+                        .into_iter()
+                        .map(|child| child.into_condition(lexical.clone()))
+                        .collect(),
+                ))
+            }
+        };
+        CssContainerCondition::new(kind, lexical)
     }
 }
 
@@ -333,7 +371,7 @@ fn container_trivia(value: &CssComponentValue) -> bool {
 }
 fn container_condition(
     items: &[CssComponentValue],
-) -> Result<Result<ContainerNode<'_>, usize>, crate::CssComponentValueError> {
+) -> Result<Result<ContainerNode, usize>, crate::CssComponentValueError> {
     let mut cursor = ContainerCursor::new(items);
     if cursor.ident("not") {
         let atom = match container_cursor_atom(&mut cursor)? {
@@ -341,12 +379,15 @@ fn container_condition(
             Err(index) => return Ok(Err(index)),
         };
         return Ok(if cursor.peek().is_none() {
-            Ok(ContainerNode::Not(Box::new(atom)))
+            Ok(ContainerNode {
+                kind: ContainerNodeKind::Not(Box::new(atom)),
+                range: 0..items.len(),
+            })
         } else {
             Err(cursor.index)
         });
     }
-    let first = match container_cursor_atom(&mut cursor)? {
+    let mut first = match container_cursor_atom(&mut cursor)? {
         Ok(atom) => atom,
         Err(index) => return Ok(Err(index)),
     };
@@ -356,6 +397,7 @@ fn container_condition(
         false
     } else {
         return Ok(if cursor.peek().is_none() {
+            first.range = 0..items.len();
             Ok(first)
         } else {
             Err(cursor.index)
@@ -375,50 +417,60 @@ fn container_condition(
     if cursor.peek().is_some() {
         return Ok(Err(cursor.index));
     }
-    Ok(Ok(if is_and {
-        ContainerNode::And(conditions)
-    } else {
-        ContainerNode::Or(conditions)
+    Ok(Ok(ContainerNode {
+        kind: if is_and {
+            ContainerNodeKind::And(conditions)
+        } else {
+            ContainerNodeKind::Or(conditions)
+        },
+        range: 0..items.len(),
     }))
 }
-fn container_cursor_atom<'a>(
-    cursor: &mut ContainerCursor<'a>,
-) -> Result<Result<ContainerNode<'a>, usize>, crate::CssComponentValueError> {
+fn container_cursor_atom(
+    cursor: &mut ContainerCursor<'_>,
+) -> Result<Result<ContainerNode, usize>, crate::CssComponentValueError> {
     cursor.peek();
     let index = cursor.index;
     let Some(component) = cursor.next() else {
         return Ok(Err(index));
     };
-    match component.view() {
-        CssComponentValueRef::Function(_) => container_atom(component).map(Ok),
-        CssComponentValueRef::Block(block) if block.kind() == crate::CssBlockKind::Parenthesis => {
-            container_atom(component).map(Ok)
-        }
-        _ => Ok(Err(index)),
+    let enclosed = match component.view() {
+        CssComponentValueRef::Function(_) => true,
+        CssComponentValueRef::Block(block) => block.kind() == crate::CssBlockKind::Parenthesis,
+        _ => false,
+    };
+    if !enclosed {
+        return Ok(Err(index));
     }
+    container_atom(component).map(|kind| {
+        Ok(ContainerNode {
+            kind,
+            range: index..index + 1,
+        })
+    })
 }
 fn container_atom(
     component: &CssComponentValue,
-) -> Result<ContainerNode<'_>, crate::CssComponentValueError> {
+) -> Result<ContainerNodeKind, crate::CssComponentValueError> {
     match component.view() {
         CssComponentValueRef::Function(function)
             if function.name().eq_ignore_ascii_case("style") =>
         {
             if let Some(style) = container_style(function.values().items())? {
-                return Ok(ContainerNode::Style(style));
+                return Ok(ContainerNodeKind::Style(style));
             }
         }
         CssComponentValueRef::Block(block) if block.kind() == crate::CssBlockKind::Parenthesis => {
             if let Ok(condition) = container_condition(block.values().items())? {
-                return Ok(condition);
+                return Ok(ContainerNodeKind::Parenthesized(Box::new(condition)));
             }
             if let Some(feature) = container_feature(block.values().items()) {
-                return Ok(ContainerNode::Feature(feature));
+                return Ok(ContainerNodeKind::Feature(feature));
             }
         }
         _ => {}
     }
-    Ok(ContainerNode::Opaque(component))
+    Ok(ContainerNodeKind::Opaque)
 }
 fn container_feature(items: &[CssComponentValue]) -> Option<CssContainerFeatureQuery> {
     let mut cursor = ContainerCursor::new(items);
@@ -558,7 +610,7 @@ pub(super) fn collect_container_components<'i>(
     Ok((values, implicit))
 }
 pub(super) fn container_prelude_from_components<'i>(
-    values: &CssComponentValues,
+    values: CssComponentValues,
     location: cssparser::SourceLocation,
 ) -> Result<CssContainerPrelude, ParseError<'i, Error>> {
     let mut cursor = ContainerCursor::new(values.items());
@@ -579,9 +631,11 @@ pub(super) fn container_prelude_from_components<'i>(
                 "invalid container condition",
             )
         })?;
+    let start = cursor.index;
+    let end = values.items().len();
     Ok(CssContainerPrelude {
         name,
-        condition: condition.into_condition(),
+        condition: condition.into_condition(SupportsLexical::root(values).select(start..end)),
     })
 }
 fn container_failure_location(
@@ -621,7 +675,7 @@ pub(crate) fn parse_container_condition_for_test(
         .map_err(|error| from_parse_error(source, error))?;
     container_condition(values.items())
         .map_err(|error| from_parse_error(source, container_component_error(location, error)))?
-        .map(ContainerNode::into_condition)
+        .map(|node| node.into_condition(SupportsLexical::root(values.clone())))
         .map_err(|index| {
             from_parse_error(
                 source,

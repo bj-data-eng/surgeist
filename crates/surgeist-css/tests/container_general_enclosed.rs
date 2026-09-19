@@ -3,7 +3,8 @@
 //! section 3 permits empty any-value contents; unknown syntax stays symbolic.
 use surgeist_css::{
     CssComponentValue, CssComponentValueRef, CssComponentValues,
-    CssContainerCondition as Condition, CssGeneralEnclosed, CssRecoveryAction, CssRule,
+    CssContainerCondition as Condition, CssContainerConditionKind as Kind,
+    CssContainerGeneralEnclosed, CssGeneralEnclosed, CssRecoveryAction, CssRule,
     CssSerializedOrigin, CssValueOrigin, parse_component_values, parse_sheet, validate_sheet,
 };
 
@@ -17,11 +18,11 @@ fn condition(query: &str) -> Condition {
     rule.condition().clone()
 }
 
-fn opaque(value: &Condition) -> &CssGeneralEnclosed {
-    let Condition::GeneralEnclosed(value) = value else {
+fn opaque(value: &Condition) -> &CssContainerGeneralEnclosed {
+    let Kind::GeneralEnclosed(value) = value.kind() else {
         panic!("opaque query operand: {value:?}")
     };
-    value.enclosed()
+    value
 }
 
 #[test]
@@ -33,14 +34,23 @@ fn nested_negated_unknown_operands_keep_boolean_structure_and_the_original_snaps
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("container")
     };
-    let Condition::Not(outer) = rule.condition() else {
+    let Kind::Not(outer) = rule.condition().kind() else {
         panic!("outer not")
     };
-    let Condition::And(list) = outer.as_ref() else {
+    let Kind::Parenthesized(outer) = outer.kind() else {
+        panic!("grouped outer condition")
+    };
+    let Kind::And(list) = outer.kind() else {
         panic!("and")
     };
-    let [a, Condition::Not(b)] = list.conditions() else {
+    let [a, grouped_b] = list.conditions() else {
         panic!("two operands")
+    };
+    let Kind::Parenthesized(grouped_b) = grouped_b.kind() else {
+        panic!("grouped negation")
+    };
+    let Kind::Not(b) = grouped_b.kind() else {
+        panic!("negation")
     };
     let a = opaque(a);
     let b = opaque(b);
@@ -75,20 +85,21 @@ fn nested_negated_unknown_operands_keep_boolean_structure_and_the_original_snaps
 
 #[test]
 fn recognized_size_and_style_branches_take_precedence_over_opaque_fallback() {
-    assert!(matches!(condition("(width > 1px)"), Condition::Feature(_)));
-    assert!(matches!(condition("style(--theme)"), Condition::Style(_)));
+    assert!(matches!(
+        condition("(width > 1px)").kind(),
+        Kind::Feature(_)
+    ));
+    assert!(matches!(condition("style(--theme)").kind(), Kind::Style(_)));
     let mixed = condition("(width > 1px) and Future() and style(--theme)");
-    let Condition::And(list) = mixed else {
+    let Kind::And(list) = mixed.kind() else {
         panic!("conjunction")
     };
-    assert!(matches!(
-        list.conditions(),
-        [
-            Condition::Feature(_),
-            Condition::GeneralEnclosed(_),
-            Condition::Style(_)
-        ]
-    ));
+    let [feature, opaque_condition, style] = list.conditions() else {
+        panic!("three operands")
+    };
+    assert!(matches!(feature.kind(), Kind::Feature(_)));
+    assert!(matches!(opaque_condition.kind(), Kind::GeneralEnclosed(_)));
+    assert!(matches!(style.kind(), Kind::Style(_)));
     for query in [
         "style(color:red)",
         "(unknown-size > 1px)",
@@ -256,18 +267,21 @@ fn checked_enclosure_classification_prefers_the_same_recognized_branches_as_pars
         CssGeneralEnclosed::try_parenthesized(parse_component_values("width > 1px").unwrap())
             .unwrap();
     assert!(matches!(
-        Condition::try_from_enclosed(feature).unwrap(),
-        Condition::Feature(_)
+        Condition::try_from_enclosed(feature).unwrap().kind(),
+        Kind::Feature(_)
     ));
-    assert!(matches!(condition("(width > 1px)"), Condition::Feature(_)));
+    assert!(matches!(
+        condition("(width > 1px)").kind(),
+        Kind::Feature(_)
+    ));
     let style =
         CssGeneralEnclosed::try_function("style", parse_component_values("--theme").unwrap())
             .unwrap();
     assert!(matches!(
-        Condition::try_from_enclosed(style).unwrap(),
-        Condition::Style(_)
+        Condition::try_from_enclosed(style).unwrap().kind(),
+        Kind::Style(_)
     ));
-    assert!(matches!(condition("style(--theme)"), Condition::Style(_)));
+    assert!(matches!(condition("style(--theme)").kind(), Kind::Style(_)));
     let grouped = CssGeneralEnclosed::try_parenthesized(
         parse_component_values("(width > 1px) and style(--theme)").unwrap(),
     )
@@ -275,13 +289,17 @@ fn checked_enclosure_classification_prefers_the_same_recognized_branches_as_pars
     let checked = Condition::try_from_enclosed(grouped).unwrap();
     let parsed = condition("((width > 1px) and style(--theme))");
     for condition in [&checked, &parsed] {
-        let Condition::And(children) = condition else {
+        let Kind::Parenthesized(grouped) = condition.kind() else {
+            panic!("explicit grouping")
+        };
+        let Kind::And(children) = grouped.kind() else {
             panic!("grouped conjunction")
         };
-        assert!(matches!(
-            children.conditions(),
-            [Condition::Feature(_), Condition::Style(_)]
-        ));
+        let [feature, style] = children.conditions() else {
+            panic!("two operands")
+        };
+        assert!(matches!(feature.kind(), Kind::Feature(_)));
+        assert!(matches!(style.kind(), Kind::Style(_)));
     }
 }
 
@@ -297,7 +315,7 @@ fn checked_unknown_and_failed_recognized_enclosures_retain_the_supplied_lexical_
                 .unwrap();
         let original = enclosure.clone();
         let checked = Condition::try_from_enclosed(enclosure).unwrap();
-        assert_eq!(opaque(&checked), &original);
+        assert_eq!(opaque(&checked).component(), original.component());
         assert_eq!(opaque(&checked).origin(), &CssValueOrigin::Programmatic);
         let parsed = condition(&format!("{name}({contents})"));
         assert_eq!(
@@ -310,8 +328,8 @@ fn checked_unknown_and_failed_recognized_enclosures_retain_the_supplied_lexical_
         CssGeneralEnclosed::try_parenthesized(parse_component_values("width: nonsense").unwrap())
             .unwrap();
     assert!(matches!(
-        Condition::try_from_enclosed(enclosure).unwrap(),
-        Condition::GeneralEnclosed(_)
+        Condition::try_from_enclosed(enclosure).unwrap().kind(),
+        Kind::GeneralEnclosed(_)
     ));
 }
 
@@ -351,7 +369,7 @@ fn fully_programmatic_known_enclosures_expose_expected_feature_and_custom_proper
     let feature =
         Condition::try_from_enclosed(CssGeneralEnclosed::try_parenthesized(values).unwrap())
             .unwrap();
-    let Condition::Feature(CssContainerFeatureQuery::Width(range)) = feature else {
+    let Kind::Feature(CssContainerFeatureQuery::Width(range)) = feature.kind() else {
         panic!("known width")
     };
     assert_eq!(range.comparison(), Some(CssQueryComparison::GreaterThan));
@@ -363,7 +381,7 @@ fn fully_programmatic_known_enclosures_expose_expected_feature_and_custom_proper
     let style =
         Condition::try_from_enclosed(CssGeneralEnclosed::try_function("style", values).unwrap())
             .unwrap();
-    let Condition::Style(CssContainerStyleQuery::CustomPropertyPresence(name)) = style else {
+    let Kind::Style(CssContainerStyleQuery::CustomPropertyPresence(name)) = style.kind() else {
         panic!("known custom property presence")
     };
     assert_eq!(name.as_str(), "--Theme");
@@ -384,8 +402,8 @@ fn style_variable_grammar_preserves_valid_references_and_falls_back_for_invalid_
         .unwrap();
         let checked = Condition::try_from_enclosed(enclosure).unwrap();
         for condition in [parsed, checked] {
-            let Condition::Style(CssContainerStyleQuery::CustomPropertyValue { name, value }) =
-                condition
+            let Kind::Style(CssContainerStyleQuery::CustomPropertyValue { name, value }) =
+                condition.kind()
             else {
                 panic!("valid variable remains a style value: {source}")
             };
@@ -430,8 +448,8 @@ fn constructed_style_value_serialization_keeps_adjacent_number_and_identifier_se
             CssGeneralEnclosed::try_function("style", values).unwrap(),
         )
         .unwrap();
-        let Condition::Style(CssContainerStyleQuery::CustomPropertyValue { name, value }) =
-            condition
+        let Kind::Style(CssContainerStyleQuery::CustomPropertyValue { name, value }) =
+            condition.kind()
         else {
             panic!("authored custom property value")
         };
@@ -477,7 +495,7 @@ fn legacy_query_float_underflow_and_signed_zero_preserve_their_existing_domain_c
             checked,
             Condition::try_from_enclosed(programmatic).unwrap(),
         ] {
-            let Condition::Feature(CssContainerFeatureQuery::Width(range)) = condition else {
+            let Kind::Feature(CssContainerFeatureQuery::Width(range)) = condition.kind() else {
                 panic!("finite zero width for {literal}")
             };
             let expected = if negative { -0.0_f32 } else { 0.0_f32 };
@@ -521,7 +539,8 @@ fn ratio_legacy_payloads_require_finite_values_and_a_strictly_positive_denominat
         ("aspect-ratio:-1e-999 / 1", -0.0_f32, 1.0_f32),
     ] {
         for condition in parsed_and_checked_feature(body) {
-            let Condition::Feature(CssContainerFeatureQuery::AspectRatio(range)) = condition else {
+            let Kind::Feature(CssContainerFeatureQuery::AspectRatio(range)) = condition.kind()
+            else {
                 panic!("valid legacy ratio {body}")
             };
             assert_eq!(

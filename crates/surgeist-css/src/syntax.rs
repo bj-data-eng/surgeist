@@ -3679,107 +3679,147 @@ fn is_parser_reserved_container_name(name: &str) -> bool {
     )
 }
 
+/// One checked authored container condition, preserving grouping and lexical origins.
+/// Private fields prevent constructing ungrouped mixtures of boolean operators.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssContainerCondition {
+    kind: Box<CssContainerConditionKind>,
+    lexical: crate::supports::SupportsLexical,
+    origin: CssValueOrigin,
+}
+
+impl CssContainerCondition {
+    pub(crate) fn new(
+        kind: CssContainerConditionKind,
+        lexical: crate::supports::SupportsLexical,
+    ) -> Self {
+        let origin = lexical.first_origin().clone();
+        Self {
+            kind: Box::new(kind),
+            lexical,
+            origin,
+        }
+    }
+    #[must_use]
+    pub const fn kind(&self) -> &CssContainerConditionKind {
+        &self.kind
+    }
+    #[must_use]
+    pub const fn origin(&self) -> &CssValueOrigin {
+        &self.origin
+    }
+    #[must_use]
+    pub const fn position(&self) -> Option<CssSourcePosition> {
+        crate::media::parsed_position(&self.origin)
+    }
+    /// Returns the complete selected lexical region, including authored operators
+    /// and grouping, without copying enclosing or sibling subtrees.
+    #[must_use]
+    pub fn components(&self) -> &[crate::CssComponentValue] {
+        self.lexical.items()
+    }
+}
+
+/// The inspectable shape of a condition admitted by the container grammar.
+/// Constructing a kind does not bypass checked condition construction.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub enum CssContainerCondition {
-    /// A complete unrecognized function or parenthesized operand, with original syntax.
+pub enum CssContainerConditionKind {
     GeneralEnclosed(CssContainerGeneralEnclosed),
     Feature(CssContainerFeatureQuery),
     Style(CssContainerStyleQuery),
+    /// An explicit grouping pair around a condition, including redundant pairs.
+    Parenthesized(Box<CssContainerCondition>),
     Not(Box<CssContainerCondition>),
     And(CssContainerConditionList),
     Or(CssContainerConditionList),
 }
 
 /// A container operand classified as general-enclosed by the container grammar.
-/// Its private payload prevents bypassing recognized feature and style admission.
+/// Its private lexical region prevents bypassing recognized feature/style admission.
 ///
 /// ```compile_fail
-/// use surgeist_css::{CssContainerGeneralEnclosed, CssGeneralEnclosed};
-/// fn forge(enclosed: CssGeneralEnclosed) -> CssContainerGeneralEnclosed {
-///     CssContainerGeneralEnclosed { enclosed }
+/// use surgeist_css::{CssContainerCondition, CssContainerConditionKind};
+/// fn replace_kind(mut condition: CssContainerCondition, kind: CssContainerConditionKind) {
+///     condition.kind = Box::new(kind);
 /// }
 /// ```
-/// ```compile_fail
-/// use surgeist_css::{CssContainerCondition, CssGeneralEnclosed};
-/// fn forge(enclosed: CssGeneralEnclosed) -> CssContainerCondition {
-///     CssContainerCondition::GeneralEnclosed(enclosed)
-/// }
-/// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssContainerGeneralEnclosed {
-    enclosed: CssGeneralEnclosed,
+    lexical: crate::supports::SupportsLexical,
 }
+impl Eq for CssContainerGeneralEnclosed {}
 
 impl CssContainerGeneralEnclosed {
-    pub(crate) fn new(enclosed: CssGeneralEnclosed) -> Self {
-        Self { enclosed }
+    pub(crate) fn new(lexical: crate::supports::SupportsLexical) -> Self {
+        Self { lexical }
     }
-    /// Returns the immutable lexical enclosure admitted by the container grammar.
+    /// Borrows the single admitted enclosure from the shared lexical root.
     #[must_use]
-    pub const fn enclosed(&self) -> &CssGeneralEnclosed {
-        &self.enclosed
+    pub fn component(&self) -> &crate::CssComponentValue {
+        self.lexical
+            .items()
+            .iter()
+            .find(|value| !crate::supports::trivia(value))
+            .expect("one admitted enclosure")
     }
     #[must_use]
-    pub const fn component(&self) -> &crate::CssComponentValue {
-        self.enclosed.component()
-    }
-    #[must_use]
-    pub const fn origin(&self) -> &CssValueOrigin {
-        self.enclosed.origin()
+    pub fn origin(&self) -> &CssValueOrigin {
+        self.component().origin()
     }
     #[must_use]
     pub fn position(&self) -> Option<CssSourcePosition> {
-        self.enclosed.position()
+        crate::media::parsed_position(self.origin())
     }
     #[must_use]
     pub fn authored(&self) -> Option<&str> {
-        self.enclosed.authored()
+        let origin = self.component().parsed_origin()?;
+        Some(
+            &origin.source().as_str()[origin.span().start().byte_offset().value()
+                ..origin.span().end().byte_offset().value()],
+        )
     }
-    /// Serializes the original lexical operand, including EOF-implied delimiters.
+    /// Serializes the original enclosure, including EOF-implied delimiters.
     pub fn serialize(&self) -> Result<crate::CssSerializedValue, crate::CssComponentValueError> {
-        self.enclosed.serialize()
+        let mut out = crate::component_values::CssCanonicalBuilder::new(usize::MAX);
+        out.push_components(std::slice::from_ref(self.component()))?;
+        out.finish()
     }
 }
 
-/// Failure to admit immutable component syntax as a container condition.
+/// A grammar or resource failure during checked construction.
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CssContainerConstructionError {
+    InvalidConditionGrammar { origin: CssValueOrigin },
     Component(crate::CssComponentValueError),
+    WorkerUnavailable { origin: CssValueOrigin },
 }
 impl CssContainerConstructionError {
     #[must_use]
     pub const fn origin(&self) -> &CssValueOrigin {
         match self {
+            Self::InvalidConditionGrammar { origin } | Self::WorkerUnavailable { origin } => origin,
             Self::Component(error) => error.origin(),
         }
     }
 }
 impl std::fmt::Display for CssContainerConstructionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Component(error) => error.fmt(f),
-        }
+        write!(f, "invalid authored container construction: {self:?}")
     }
 }
 impl std::error::Error for CssContainerConstructionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Component(error) => Some(error),
+            _ => None,
         }
     }
 }
-impl CssContainerCondition {
-    /// Classifies an immutable enclosure with the same grammar used by parsing.
-    /// Recognized size, style, and grouped conditions take precedence over opaque syntax.
-    /// Opaque payloads retain supplied origins and trusted EOF recovery without
-    /// reparsing. Recognized variants retain their existing semantic fields;
-    /// they do not yet preserve complete grouping or operator provenance.
-    pub fn try_from_enclosed(
-        enclosed: CssGeneralEnclosed,
-    ) -> Result<Self, CssContainerConstructionError> {
-        crate::parser::container_condition_from_enclosed(enclosed)
+impl From<crate::CssComponentValueError> for CssContainerConstructionError {
+    fn from(error: crate::CssComponentValueError) -> Self {
+        Self::Component(error)
     }
 }
 

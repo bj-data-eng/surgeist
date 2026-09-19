@@ -56,12 +56,12 @@ use layout::*;
 use multicolumn::*;
 use nesting::{parse_style_contents, parse_style_rule_block};
 use page::{parse_page_rule, parse_page_selector};
-pub(crate) use queries::container_condition_from_enclosed;
 #[cfg(test)]
 pub(crate) use queries::parse_container_condition_for_test;
 use queries::parse_media_query_list as parse_media_query_list_inner;
 #[cfg(test)]
 pub(crate) use queries::parse_media_query_list_for_test;
+pub(crate) use queries::{construct_container_condition, container_condition_from_enclosed};
 use recovery::{
     GroupKind, RecoveryLoopOutcome, RecoveryProgress, RecoveryState, StructuralParent,
     StructuralPreflightOutcome, StyleContextCaptures, preflight_specialized_eof_limit,
@@ -2990,7 +2990,7 @@ fn parse_container_prelude<'i, 't>(
 ) -> std::result::Result<CssContainerPrelude, ParseError<'i, Error>> {
     let (values, implicit) = queries::collect_container_components(source, input, recovery)?;
     let prelude =
-        queries::container_prelude_from_components(&values, input.current_source_location())?;
+        queries::container_prelude_from_components(values, input.current_source_location())?;
     recovery.retain_component_closures(implicit);
     Ok(prelude)
 }
