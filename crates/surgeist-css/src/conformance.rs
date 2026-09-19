@@ -2273,10 +2273,9 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::OutlineWidth => O_UI3,
         CssKnownProperty::Contain => O_CONTAIN1,
         CssKnownProperty::Direction
-        | CssKnownProperty::TextCombineUpright
         | CssKnownProperty::TextOrientation
         | CssKnownProperty::UnicodeBidi => O_WRITING3,
-        CssKnownProperty::WritingMode => S_WRITING4,
+        CssKnownProperty::WritingMode | CssKnownProperty::TextCombineUpright => S_WRITING4,
         CssKnownProperty::ColumnCount
         | CssKnownProperty::ColumnFill
         | CssKnownProperty::ColumnRule

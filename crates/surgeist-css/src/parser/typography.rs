@@ -119,11 +119,37 @@ pub(super) fn parse_writing_mode<'i, 't>(
 
 pub(super) fn parse_text_combine_upright<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextCombineUpright, ParseError<'i, Error>> {
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "none" => Ok(CssTextCombineUpright::None),
         "all" => Ok(CssTextCombineUpright::All),
+        "digits" => {
+            if input.is_exhausted() {
+                return Ok(CssTextCombineUpright::Digits(None));
+            }
+            let start = input.state();
+            let location = input.current_source_location();
+            let count = match input.next().map_err(basic)? {
+                Token::Number { .. } => {
+                    input.reset(&start);
+                    let value = super::layout::parse_current_integer_literal(input, numeric)?;
+                    let count = match value {
+                        CssIntegerValue::Literal(value) => CssTextCombineDigitCount::try_literal(value),
+                        CssIntegerValue::ExactLiteral(_) | CssIntegerValue::Calculation(_) => None,
+                    };
+                    count.ok_or_else(|| unsupported_value_at(location, None,
+                        "text-combine-upright literal count must be between two and four"))?
+                }
+                Token::Function(name) if crate::numeric::is_math_function(name) => {
+                    let expression = parse_numeric_function(input, &start, numeric, CalculationRoot::Integer)?;
+                    CssTextCombineDigitCount::from_calculation(CssIntegerCalculation::from_expression(expression))
+                }
+                token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
+            };
+            Ok(CssTextCombineUpright::Digits(Some(count)))
+        },
         _ => Err(unsupported_value(
             input,
             None,

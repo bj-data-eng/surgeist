@@ -890,7 +890,7 @@ pub(super) fn parse_scrollbar_width<'i, 't>(
     }
 }
 
-fn parse_current_integer_literal<'i, 't>(
+pub(super) fn parse_current_integer_literal<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssIntegerValue, ParseError<'i, Error>> {

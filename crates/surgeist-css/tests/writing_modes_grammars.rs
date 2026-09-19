@@ -194,7 +194,7 @@ fn writing_modes_invalid_values_drop_exact_declaration_and_keep_sibling() {
     for (property, value, expected_property) in [
         (
             "text-combine-upright",
-            "digits 2",
+            "digits 1",
             CssKnownProperty::TextCombineUpright,
         ),
         (

@@ -93,6 +93,7 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
         ("font", "I-FONTS4-20260907"),
         ("direction", "O-WRITING3"),
         ("writing-mode", "S-WRITING4"),
+        ("text-combine-upright", "S-WRITING4"),
         ("flex", "O-FLEXBOX1"),
         ("cursor", "O-UI3"),
         ("transform", "O-TRANSFORMS1"),

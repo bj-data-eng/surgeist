@@ -2118,6 +2118,7 @@ pub surgeist_css::CssLonghandValueRef::PaddingBottom(&'a surgeist_css::CssLength
 pub surgeist_css::CssLonghandValueRef::PaddingLeft(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::PaddingRight(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::PaddingTop(&'a surgeist_css::CssLength)
+pub surgeist_css::CssLonghandValueRef::TextCombineUpright(&'a surgeist_css::CssTextCombineUpright)
 pub surgeist_css::CssLonghandValueRef::TextOrientation(&'a surgeist_css::CssTextOrientation)
 pub surgeist_css::CssLonghandValueRef::UnicodeBidi(&'a surgeist_css::CssUnicodeBidi)
 pub surgeist_css::CssLonghandValueRef::Visibility(&'a surgeist_css::CssVisibility)
@@ -2901,7 +2902,11 @@ pub surgeist_css::CssTextAlignLast::Right
 pub surgeist_css::CssTextAlignLast::Start
 #[non_exhaustive] pub enum surgeist_css::CssTextCombineUpright
 pub surgeist_css::CssTextCombineUpright::All
+pub surgeist_css::CssTextCombineUpright::Digits(core::option::Option<surgeist_css::CssTextCombineDigitCount>)
 pub surgeist_css::CssTextCombineUpright::None
+impl surgeist_css::CssTextCombineUpright
+pub fn surgeist_css::CssTextCombineUpright::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextCombineUpright::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTextDecorationLineComponent
 pub surgeist_css::CssTextDecorationLineComponent::Blink
 pub surgeist_css::CssTextDecorationLineComponent::LineThrough
@@ -6467,6 +6472,12 @@ pub struct surgeist_css::CssTextAlignPropertyValue
 impl surgeist_css::CssTextAlignPropertyValue
 pub fn surgeist_css::CssTextAlignPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTextAlignPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTextAlign>
+pub struct surgeist_css::CssTextCombineDigitCount
+impl surgeist_css::CssTextCombineDigitCount
+pub const fn surgeist_css::CssTextCombineDigitCount::calculation(&self) -> core::option::Option<&surgeist_css::CssIntegerCalculation>
+pub const fn surgeist_css::CssTextCombineDigitCount::from_calculation(value: surgeist_css::CssIntegerCalculation) -> Self
+pub const fn surgeist_css::CssTextCombineDigitCount::literal(&self) -> core::option::Option<i32>
+pub const fn surgeist_css::CssTextCombineDigitCount::try_literal(value: i32) -> core::option::Option<Self>
 pub struct surgeist_css::CssTextCombineUprightPropertyValue
 impl surgeist_css::CssTextCombineUprightPropertyValue
 pub fn surgeist_css::CssTextCombineUprightPropertyValue::as_css(&self) -> &str

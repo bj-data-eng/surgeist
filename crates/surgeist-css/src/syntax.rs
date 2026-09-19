@@ -8321,12 +8321,63 @@ pub enum CssWritingMode {
     SidewaysLr,
 }
 
-/// The authored `text-combine-upright` keyword.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// The authored `text-combine-upright` value, preserving an omitted digit count.
+#[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextCombineUpright {
     None,
     All,
+    /// An omitted count computes to two later; specified values retain omission.
+    Digits(Option<CssTextCombineDigitCount>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum CssTextCombineDigitCountValue {
+    Literal(i32),
+    Calculation(CssIntegerCalculation),
+}
+
+/// A literal digit count from two through four, or an authored integer calculation.
+/// Calculations retain their specified value without computed rounding or clamping.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssTextCombineDigitCount {
+    value: CssTextCombineDigitCountValue,
+}
+
+impl CssTextCombineDigitCount {
+    #[must_use]
+    pub const fn try_literal(value: i32) -> Option<Self> {
+        if value >= 2 && value <= 4 {
+            Some(Self {
+                value: CssTextCombineDigitCountValue::Literal(value),
+            })
+        } else {
+            None
+        }
+    }
+
+    #[must_use]
+    pub const fn from_calculation(value: CssIntegerCalculation) -> Self {
+        Self {
+            value: CssTextCombineDigitCountValue::Calculation(value),
+        }
+    }
+
+    #[must_use]
+    pub const fn literal(&self) -> Option<i32> {
+        match self.value {
+            CssTextCombineDigitCountValue::Literal(value) => Some(value),
+            CssTextCombineDigitCountValue::Calculation(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn calculation(&self) -> Option<&CssIntegerCalculation> {
+        match &self.value {
+            CssTextCombineDigitCountValue::Literal(_) => None,
+            CssTextCombineDigitCountValue::Calculation(value) => Some(value),
+        }
+    }
 }
 
 /// The authored `text-orientation` keyword.

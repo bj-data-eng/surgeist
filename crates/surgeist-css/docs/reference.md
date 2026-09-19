@@ -447,7 +447,7 @@ unfinished. This property migration does not complete the other Grid3 families.
 padding, border width, style and color, the four side-border shorthands, `border`,
 the five border-image longhands, `flow-tolerance`, `color`, `font-family`,
 `text-orientation`, its legacy `glyph-orientation-vertical` grammar, `opacity`, `display`,
-`order`, `visibility`, `direction`, `unicode-bidi`, `writing-mode`,
+`order`, `visibility`, `direction`, `unicode-bidi`, `writing-mode`, `text-combine-upright`,
 the `container` shorthand and its two longhands, and `all`.
 The shared property schema owns their
 member lists, initial values and reset-only components. Other known properties
@@ -480,8 +480,36 @@ also occur in the selected Writing Modes3 publication.
 Normalization preserves authored order and conditions. It does not execute bidi
 isolation, direction propagation, glyph rotation, or layout. Optional old SVG
 writing-mode spellings and `sideways-right` are not selected. This canonical
-keyword boundary does not complete `text-combine-upright` or settle numeric/math
-admission for the legacy glyph-orientation alias.
+keyword boundary does not settle numeric/math admission for the legacy
+glyph-orientation alias.
+
+`CssTextCombineUpright` includes the selected Level 4 `digits <integer>?`
+grammar alongside `None` and `All`. `Digits(None)` preserves an omitted count;
+`Digits(Some(count))` preserves an explicit count. The checked
+`CssTextCombineDigitCount` admits literal integers from 2 through 4 through
+`try_literal`, or a checked `CssIntegerCalculation` through `from_calculation`.
+Its `literal()` and `calculation()` accessors distinguish these cases. Parsed
+and checked declarations share this grammar and preserve component origins.
+The property inherits by default, has initial `None`, expands to one longhand,
+and participates in `all`.
+
+Specified serialization preserves `digits` versus `digits 2`. Number-valued
+calculations retain their math form and shared bounded projection: for example,
+`digits calc(1 + 2)` becomes `digits calc(3)`, while `digits calc(2.5)` remains
+fractional. Literal counts outside 2–4 are invalid; calculations are admitted
+without computed rounding or clamping. Style owns those later operations and
+the omitted count's computed default of 2.
+
+The serializer charges one outer input/projection node; an explicit count adds
+its own scalar or calculation costs. After reserving outer nodes, it reserves
+the seven-byte `digits ` prefix before checking the child's residual limits.
+Keyword-only forms cost one node at each stage, and explicit literals cost two.
+Output is atomic and bounded by the shared serialization limits.
+
+Migration: `CssTextCombineUpright` now owns calculation data and no longer
+implements `Copy` or `Eq`. Borrow it through the unchanged `combine()` accessor,
+or call `clone()` when ownership is needed; use `PartialEq` for comparisons.
+The existing `None` and `All` variants retain their meaning.
 
 Visibility uses the existing `CssVisibility::{Visible, Hidden, Collapse}` values.
 It is inherited by default and its ordinary initial value is `Visible`.

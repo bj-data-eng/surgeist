@@ -3500,7 +3500,7 @@ fn c12_property_metadata_is_truthful() {
         (
             "official.property.text-combine-upright",
             "text-combine-upright",
-            "O-WRITING3",
+            "S-WRITING4",
             "#propdef-text-combine-upright",
             "all",
         ),
@@ -5641,5 +5641,16 @@ fn canonical_writing_modes_sources_include_selected_level_four_sideways_values()
     }
     for text in ["sideways-rl", "sideways-lr"] {
         assert!(parse_style_attribute(&format!("writing-mode:{text}")).is_clean());
+    }
+}
+
+#[test]
+fn text_combine_upright_uses_selected_level_four_digits_grammar() {
+    let metadata = feature_metadata("official.property.text-combine-upright").unwrap();
+    assert_eq!(metadata.source().id().as_str(), "S-WRITING4");
+    assert_eq!(metadata.production(), "#propdef-text-combine-upright");
+    assert_eq!(metadata.status(), CssSupportStatus::Complete);
+    for text in ["digits", "digits 2", "digits 4", "digits calc(2.5)"] {
+        assert!(parse_style_attribute(&format!("text-combine-upright:{text}")).is_clean());
     }
 }
