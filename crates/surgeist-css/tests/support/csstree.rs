@@ -5432,3 +5432,82 @@ fn font_singleton_policy_adapter_admits_independent_class_and_diagnostics() {
         row["expected_raw_diagnostics"]
     );
 }
+
+#[cfg(test)]
+#[test]
+fn oracle_replacement_accepts_a_validated_owner_registry_refresh() {
+    // Owner expectations are maintained independently of immutable neutral input.
+    // Exercise the actual observer and replacement validator before the binding
+    // gate, exactly as capture does; no filesystem oracle is changed by this test.
+    let inventory = load_neutral_csstree_inventory().unwrap();
+    let bytes = observe_csstree_oracle(inventory).unwrap();
+    validate_oracle(
+        &bytes,
+        &inventory.report_digest,
+        &inventory.expected_classes_digest,
+        &inventory.cases,
+    )
+    .unwrap();
+    let replacement = load_csstree_oracle_schema(&bytes).unwrap();
+    let mut previous = load_csstree_oracle_schema(&bytes).unwrap();
+    previous.expected_class_registry_sha256 = "0".repeat(64);
+    assert_ne!(
+        previous.expected_class_registry_sha256,
+        replacement.expected_class_registry_sha256
+    );
+    validate_replacement_bindings(&previous, &replacement)
+        .expect("validated owner expectations may advance without changing neutral identity");
+}
+
+#[cfg(test)]
+#[test]
+fn oracle_replacement_rejects_each_neutral_binding_change() {
+    let bytes = include_bytes!("../csstree/oracle.json");
+    let existing = load_csstree_oracle_schema(bytes).unwrap();
+    let original: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+    for field in [
+        "schema_version",
+        "provider_repository",
+        "source_revision",
+        "source_tree",
+        "expectation_schema_version",
+        "generation_report_sha256",
+    ] {
+        let mut value = original.clone();
+        value[field] = if value[field].is_number() {
+            serde_json::json!(99)
+        } else {
+            serde_json::json!("changed-neutral-binding")
+        };
+        let replacement: RawOracle = serde_json::from_value(value).unwrap();
+        assert!(
+            validate_replacement_bindings(&existing, &replacement).is_err(),
+            "neutral header {field}"
+        );
+    }
+    for field in [
+        "id",
+        "path",
+        "expectation_sha256",
+        "source",
+        "context",
+        "options",
+        "input",
+    ] {
+        let mut value = original.clone();
+        value["records"][0][field] = match field {
+            "context" => serde_json::json!("selector"),
+            "options" => serde_json::json!({"parseValue": true}),
+            _ => serde_json::json!("changed-neutral-binding"),
+        };
+        assert_ne!(value["records"][0][field], original["records"][0][field]);
+        let replacement: RawOracle = serde_json::from_value(value).unwrap();
+        assert!(
+            validate_replacement_bindings(&existing, &replacement).is_err(),
+            "neutral record {field}"
+        );
+    }
+    let mut replacement = load_csstree_oracle_schema(bytes).unwrap();
+    replacement.records.pop();
+    assert!(validate_replacement_bindings(&existing, &replacement).is_err());
+}
