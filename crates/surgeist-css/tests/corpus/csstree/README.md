@@ -41,6 +41,12 @@ maintenance change that alters any of those bindings must update the oracle in
 the same reviewed change; the ordinary offline tests validate the complete
 935-record contract without running the parser or generator.
 
+The current captured oracle binds the reconciled CSS-owned registry: 820 cases
+have full public-parser observations and 115 retain explicit panic-freedom-only
+policies. Outcomes are 347 clean, 339 strict rejections, 96 recoveries, and 153
+explicit unsupported dispositions. These corpus results do not establish complete
+grammar coverage of the selected standards profile.
+
 The CSS-owned adapter registry sends ordinary `selector`, `selectorList`, and
 `mediaQuery` fixtures directly to their matching raw fragment parsers. Inputs
 and diagnostic coordinates remain unchanged. Selector probes provide only the
