@@ -6,12 +6,16 @@
 
 use crate::box_values::{CssBorderColors, CssParsedBorderColors};
 use crate::syntax::*;
+use crate::{CssContainer, CssContainerNames, CssContainerType};
 
 macro_rules! property_schema {
     ($callback:ident, $input:ident, $numeric:ident) => {
         $callback! {
             $input, $numeric;
             All, "all", [], "baseline.property.all", CssAllDeclaredValue, CssAllPropertyValue, CssAllPropertyValueRepresentation, parse_all_property, { parse_all_property($input)? }, expansion = universal { exclude_custom: true, excluded: [Direction, UnicodeBidi] };
+            ContainerName, "container-name", [], "official.property.container-name", CssContainerNames, CssContainerNamePropertyValue, CssContainerNamePropertyValueRepresentation, parse_container_names, { parse_container_names($input)? }, expansion = longhand { wrapper: existing, value: CssContainerNames, accessor: names, inherited: false, initial_kind: value, initial: CssContainerNames::None };
+            ContainerType, "container-type", [], "official.property.container-type", CssContainerType, CssContainerTypePropertyValue, CssContainerTypePropertyValueRepresentation, parse_container_type, { parse_container_type($input)? }, expansion = longhand { wrapper: existing, value: CssContainerType, accessor: container_type, inherited: false, initial_kind: value, initial: CssContainerType::Normal };
+            Container, "container", [], "official.property.container", CssContainer, CssContainerPropertyValue, CssContainerPropertyValueRepresentation, parse_container, { parse_container($input)? }, expansion = shorthand { wrapper: existing, accessor: container, members: [ ContainerName => |value: &CssContainer| Some(value.names().clone()), ContainerType => |value: &CssContainer| Some(value.container_type()) ], reset_only: [] };
             Display, "display", [], "baseline.property.display", CssDisplay, CssDisplayPropertyValue, CssDisplayPropertyValueRepresentation, parse_display, { parse_display($input)? };
             BoxSizing, "box-sizing", [], "baseline.property.box-sizing", CssBoxSizing, CssBoxSizingPropertyValue, CssBoxSizingPropertyValueRepresentation, parse_box_sizing, { parse_box_sizing($input)? };
             BorderCollapse, "border-collapse", [], "official.property.border-collapse", CssBorderCollapse, CssBorderCollapsePropertyValue, CssBorderCollapsePropertyValueRepresentation, parse_border_collapse, { parse_border_collapse($input)? };
@@ -815,6 +819,34 @@ macro_rules! define_grid_property_value {
 }
 
 macro_rules! define_property_value {
+    (ContainerName, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_additive_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            $value,
+            names
+        );
+    };
+    (ContainerType, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_additive_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            $value,
+            container_type
+        );
+    };
+    (Container, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_additive_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            $value,
+            container
+        );
+    };
+
     (
         FlexFlow, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident

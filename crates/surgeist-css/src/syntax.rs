@@ -3646,6 +3646,14 @@ impl CssContainerName {
         Self { name }
     }
 
+    /// Constructs a decoded container name, including names requiring CSS escapes.
+    /// Empty, NUL-containing and reserved names are rejected; spelling is not reparsed.
+    #[must_use]
+    pub fn try_from_decoded(name: impl Into<String>) -> Option<Self> {
+        let name = name.into();
+        Self::from_decoded(name)
+    }
+
     /// Admits the decoded value of one identifier token without tokenizing again.
     pub(crate) fn from_decoded(name: String) -> Option<Self> {
         (!name.is_empty() && !name.contains('\0') && !is_parser_reserved_container_name(&name))

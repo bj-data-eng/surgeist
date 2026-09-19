@@ -1598,6 +1598,34 @@ painting, and cross-crate lowering remain downstream concerns. Serialization
 coverage is still incomplete; this ownership statement does not imply that every
 rule has a canonical writer.
 
+## Container properties
+
+`container-type`, `container-name` and `container` use the selected
+[Conditional Rules 5 property definitions](https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-type).
+`CssContainerType` represents the six ordinary states, including either size axis
+combined with scroll-state. `CssContainerNames` is `None` or a checked nonempty
+`CssContainerNameList`; names preserve order, duplicates and case. `CssContainer`
+pairs those names with a type. An omitted shorthand type means `Normal`.
+
+The two longhands are non-inherited with intrinsic initials `none` and `normal`.
+Shorthand expansion contributes container-name followed by container-type, with
+no reset-only members. Generic declaration wrappers retain CSS-wide keywords and
+pending substitution. Atomic pending reentry validates both shorthand members
+without resolving variables. The same property identities are recognized in
+plain style-query features, whose values keep their broader declaration-value
+grammar.
+
+`CssContainerName::try_from_decoded` accepts decoded names that need escapes;
+`try_new` retains its existing exact unescaped identifier contract. Semantic
+values expose `to_components_with_limits` and `serialize_with_limit`.
+Canonical output escapes names, emits size-axis before scroll-state, and omits
+`/ normal`. Limits include escapes and separators. Canonical components have
+programmatic origins and can enter the existing `parse_property_value` checked
+declaration boundary. Parsed wrapper `as_css()` and occurrence components retain
+the original spelling, comments, order and source origins independently of this
+semantic canonical output. See `examples/container_property_semantic_consumer.rs`.
+Container selection, containment effects and style evaluation remain downstream.
+
 ## Conditional rules and import preludes
 
 `CssContainerRule::prelude()` and `CssScopedContainerRule::prelude()` expose a

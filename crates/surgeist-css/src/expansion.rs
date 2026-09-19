@@ -12,8 +12,8 @@ use std::sync::Arc;
 use crate::properties::{CssKnownDeclaration, CssKnownDeclaredValueRef, CssKnownPropertyValueRef};
 use crate::syntax::*;
 use crate::{
-    CssBorderColors, CssComponentValueRef, CssComponentValues, CssKnownProperty,
-    CssPropertyValueParseError,
+    CssBorderColors, CssComponentValueRef, CssComponentValues, CssContainer, CssContainerNames,
+    CssContainerType, CssKnownProperty, CssPropertyValueParseError,
 };
 
 /// Why intrinsic expansion could not produce completed contributions.

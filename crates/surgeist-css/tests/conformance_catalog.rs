@@ -5534,3 +5534,39 @@ fn required_shadow_definitions_supersede_prior_negative_catalog_examples() {
         assert_eq!(report.syntax().rules().len(), 1);
     }
 }
+
+#[test]
+fn container_property_metadata_cites_each_selected_conditional_definition() {
+    for (name, id, production, value) in [
+        (
+            "container-type",
+            "official.property.container-type",
+            "#propdef-container-type",
+            "size scroll-state",
+        ),
+        (
+            "container-name",
+            "official.property.container-name",
+            "#propdef-container-name",
+            "Pane Pane",
+        ),
+        (
+            "container",
+            "official.property.container",
+            "#propdef-container",
+            "Pane / inline-size",
+        ),
+    ] {
+        let metadata = feature_metadata(id).expect("container property metadata");
+        assert_eq!(metadata.kind(), CssFeatureKind::Property);
+        assert_eq!(metadata.spelling(), name);
+        assert_eq!(metadata.status(), CssSupportStatus::Complete);
+        assert_eq!(metadata.source().id().as_str(), "X-CONDITIONAL5");
+        assert_eq!(
+            metadata.source().url(),
+            Some("https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/")
+        );
+        assert_eq!(metadata.production(), production);
+        assert!(parse_style_attribute(&format!("{name}:{value}")).is_clean());
+    }
+}

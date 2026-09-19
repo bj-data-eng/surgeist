@@ -1900,6 +1900,9 @@ static OFFICIAL_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
     active_coverage!("baseline.property.flex"),
     active_coverage!("baseline.property.flex-basis"),
     active_coverage!("baseline.property.flex-direction"),
+    active_coverage!("official.property.container-name"),
+    active_coverage!("official.property.container-type"),
+    active_coverage!("official.property.container"),
     active_coverage!("official.property.flex-flow"),
     active_coverage!("baseline.property.flex-grow"),
     active_coverage!("baseline.property.flex-shrink"),
@@ -2210,6 +2213,9 @@ const FONT_SOURCE_REMAINDER: &str =
 
 const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
     match property {
+        CssKnownProperty::Container
+        | CssKnownProperty::ContainerName
+        | CssKnownProperty::ContainerType => X_CONDITIONAL5,
         CssKnownProperty::All => O_CASCADE4,
         CssKnownProperty::Display
         | CssKnownProperty::BorderCollapse
@@ -2612,7 +2618,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 504] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 507] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4104,6 +4110,21 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 504] = [
         CssKnownProperty::FlexWrap,
         "flex-wrap",
         "baseline.property.flex-wrap"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ContainerName,
+        "container-name",
+        "official.property.container-name"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ContainerType,
+        "container-type",
+        "official.property.container-type"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::Container,
+        "container",
+        "official.property.container"
     ),
     property_feature!(CssKnownProperty::Float, "float", "baseline.property.float"),
     property_feature!(CssKnownProperty::Clear, "clear", "baseline.property.clear"),

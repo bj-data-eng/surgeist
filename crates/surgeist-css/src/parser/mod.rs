@@ -19,6 +19,7 @@ pub use fragments::{
     parse_property_value_text, parse_property_value_text_for_grammar, parse_rule, parse_selector,
     parse_selector_list, parse_style_block,
 };
+mod container_properties;
 mod container_scroll;
 mod container_style;
 mod generated_content;
@@ -47,8 +48,10 @@ use cssparser::{
     match_ignore_ascii_case,
 };
 
+use crate::{CssContainer, CssContainerNames, CssContainerType};
 use background::*;
 use box_model::*;
+use container_properties::*;
 use counter_style::{parse_counter_style_name, parse_counter_style_rule};
 use effects::*;
 use font_face::parse_font_face_rule;

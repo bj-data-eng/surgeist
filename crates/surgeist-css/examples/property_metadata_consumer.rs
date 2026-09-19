@@ -1,13 +1,15 @@
 #![forbid(unsafe_code)]
 //! Independent contract cases for the selected public metadata and grammar slice.
 //! CSS Box 3, Backgrounds 3, Cascade 5, Color 4, Fonts 4, Writing Modes 4,
-//! Variables 1, and the pinned Grid 3 define values and shorthand semantics.
+//! Variables 1, Conditional Rules 5, and the pinned Grid 3 define values and shorthand semantics.
 //! Grammar-handle identity, explicit unavailable metadata, and source occurrence
 //! retention are Surgeist public contracts. No contextual style is resolved.
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
 const LONGHANDS: &[P] = &[
+    P::ContainerName,
+    P::ContainerType,
     P::MarginTop,
     P::MarginRight,
     P::MarginBottom,
@@ -39,6 +41,7 @@ const LONGHANDS: &[P] = &[
     P::TextOrientation,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
+    (P::Container, &[P::ContainerName, P::ContainerType], &[]),
     (
         P::Margin,
         &[P::MarginTop, P::MarginRight, P::MarginBottom, P::MarginLeft],
@@ -176,6 +179,8 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
     };
     assert_eq!(value.property().known_property(), property);
     match value.view() {
+        CssLonghandValueRef::ContainerName(v) => assert_eq!(*v, CssContainerNames::None),
+        CssLonghandValueRef::ContainerType(v) => assert_eq!(*v, CssContainerType::Normal),
         CssLonghandValueRef::MarginTop(v)
         | CssLonghandValueRef::MarginRight(v)
         | CssLonghandValueRef::MarginBottom(v)
@@ -237,7 +242,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 40);
+    assert_eq!(expected.len(), 43);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();
