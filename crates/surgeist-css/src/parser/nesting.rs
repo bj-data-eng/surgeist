@@ -5,14 +5,14 @@ use cssparser::{
 
 use super::queries::parse_media_query_list;
 use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
-use super::selectors::{SelectorRecovery, parse_nested_style_selector_list};
+use super::selectors::{SelectorAnchorMode, SelectorRecovery, parse_nested_style_selector_list};
 use super::supports::{parse_supports_condition, with_supports_prelude_context};
 use super::{
     CssContainerPrelude, CssScopePrelude, Recovered, StrictDeclarationParser,
     block_item_diagnostic, consume_failed_rule_block, is_declaration_recovery_unit,
     parse_container_prelude, parse_layer_prelude, parse_scope_prelude, parse_scoped_rule_list,
     structural_recovery_action, structural_recovery_production, structural_rule_diagnostic,
-    with_container_prelude_context,
+    with_container_prelude_context, with_scope_prelude_context,
 };
 use crate::error::{
     CssFeatureId, Error, invalid_at_rule_block, invalid_at_rule_placement, invalid_syntax,
@@ -302,14 +302,8 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
                     input,
                     &mut self.diagnostics,
                     &self.recovery,
-                ).map_err(|error| {
-                    with_at_rule_prelude_context(
-                        error,
-                        "scope",
-                        "baseline.rule.scope",
-                        "a supported @scope prelude",
-                    )
-                })?,
+                    SelectorAnchorMode::Nesting,
+                ).map_err(with_scope_prelude_context)?,
             )),
             "import" => Err(invalid_at_rule_placement(
                 input.current_source_location(),

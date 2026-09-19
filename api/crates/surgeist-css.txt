@@ -4051,6 +4051,7 @@ pub fn surgeist_css::CssCompoundSelector::key(&self) -> core::option::Option<&al
 pub const fn surgeist_css::CssCompoundSelector::nesting_selectors(&self) -> usize
 pub fn surgeist_css::CssCompoundSelector::pseudo_classes(&self) -> &[surgeist_css::CssPseudoClass]
 pub const fn surgeist_css::CssCompoundSelector::pseudo_elements(&self) -> core::option::Option<&surgeist_css::CssPseudoElementSequence>
+pub const fn surgeist_css::CssCompoundSelector::scope_anchors(&self) -> usize
 pub const fn surgeist_css::CssCompoundSelector::tag(&self) -> core::option::Option<&alloc::string::String>
 pub fn surgeist_css::CssCompoundSelector::type_selector(&self) -> core::option::Option<&surgeist_css::CssQualifiedSelectorName>
 pub struct surgeist_css::CssCompoundSelectorArgument

@@ -1304,7 +1304,15 @@ with no preceding declarations leaves the leading slot available. Qualified
 parsing that produces no rule, such as a semicolon-terminated prelude or the
 custom-property-looking fallback, leaves the current declaration run intact.
 `CssCompoundSelector::nesting_selectors()` records symbolic parent anchors independently of
-`has_scope_anchor()`. No parent selector list is expanded during parsing. `CssScopedStyleRule` follows the same
+`scope_anchors()`, which preserves scope-anchor multiplicity; `has_scope_anchor()`
+remains its nonzero predicate. Explicit `:scope` remains a separate pseudo-class.
+For a style-nested `@scope`, root `&` refers to the nearest ancestor style;
+limit `&` refers to the introduced scope. An ordinary root inside another scope
+uses that enclosing scope, while a root without either ancestor retains a
+parentless nesting anchor. Repeated anchors remain distinct, including within
+functional selector arguments. Boundary lists still exclude pseudo-elements
+and leading combinators. No parent selector list is expanded during parsing.
+`CssScopedStyleRule` follows the same
 leading-declarations and ordered-child contract: its `rules()` returns ordinary `CssRule`
 nesting children relative to the scoped style parent. A scope with a style ancestor retains
 its direct declaration runs as `CssScopedRule::NestedDeclarations`, including runs inside

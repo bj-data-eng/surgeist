@@ -373,6 +373,22 @@ impl RecoveryState {
         Ok(self.component_openings_in(start..end))
     }
 
+    pub(super) fn check_component_contents<'i>(
+        &self,
+        source: &str,
+        input: &Parser<'i, '_>,
+        enclosing_production: &'static str,
+    ) -> Result<(), ParseError<'i, Error>> {
+        scan_nested_tokens(
+            source,
+            input.position().byte_index(),
+            self.depth.get(),
+            enclosing_production,
+            ScanBoundary::ComponentContents,
+        )
+        .map(|_| ())
+    }
+
     pub(super) fn check_comma_member_components<'i>(
         &self,
         source: &str,
@@ -835,6 +851,7 @@ enum ScanBoundary {
     FailedCurlyBlock,
     SpecializedPrelude,
     CommaMember,
+    ComponentContents,
 }
 
 // Validate nesting and return the exclusive grammar-unit boundary. Token starts
@@ -855,6 +872,12 @@ fn scan_nested_tokens<'i>(
             if blocks.last().is_some_and(|kind| *kind == closing) {
                 blocks.pop();
                 continue;
+            }
+            // The caller has already entered this component. Its closing
+            // delimiter ends the scan; following sibling components have their
+            // own depth context and must not be counted inside this one.
+            if blocks.is_empty() && matches!(boundary, ScanBoundary::ComponentContents) {
+                return Ok(token_start);
             }
             if blocks.is_empty()
                 && matches!(boundary, ScanBoundary::FailedCurlyBlock)

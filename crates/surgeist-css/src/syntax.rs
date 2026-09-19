@@ -17819,7 +17819,7 @@ impl CssNthAnPlusB {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssCompoundSelector {
-    scope_anchor: bool,
+    scope_anchors: usize,
     nesting_selectors: usize,
     type_selector: Option<Box<(CssQualifiedSelectorName, bool)>>,
     tag: Option<String>,
@@ -17880,7 +17880,7 @@ impl CssCompoundSelector {
         });
         let ids = key.into_iter().collect();
         Self::new_with_qualified_type_and_pseudo_elements(
-            scope_anchor,
+            usize::from(scope_anchor),
             type_selector,
             ids,
             classes,
@@ -17892,7 +17892,7 @@ impl CssCompoundSelector {
 
     #[must_use]
     pub(crate) fn new_with_qualified_type_and_pseudo_elements(
-        scope_anchor: bool,
+        scope_anchors: usize,
         type_selector: Option<(CssQualifiedSelectorName, bool)>,
         ids: Vec<String>,
         classes: Vec<String>,
@@ -17905,7 +17905,7 @@ impl CssCompoundSelector {
             .and_then(|(type_selector, _)| type_selector.local_name_string())
             .cloned();
         Self {
-            scope_anchor,
+            scope_anchors,
             nesting_selectors: 0,
             type_selector: type_selector.map(Box::new),
             tag,
@@ -17936,7 +17936,17 @@ impl CssCompoundSelector {
 
     #[must_use]
     pub const fn has_scope_anchor(&self) -> bool {
-        self.scope_anchor
+        self.scope_anchors != 0
+    }
+
+    /// Returns the number of symbolic scope anchors in this compound.
+    ///
+    /// These anchors belong to the selector's scope context, independently of
+    /// ordinary nesting selectors and explicit `:scope` pseudo-classes.
+    /// The count preserves authored multiplicity without evaluating specificity.
+    #[must_use]
+    pub const fn scope_anchors(&self) -> usize {
+        self.scope_anchors
     }
 
     /// Returns the current namespace-aware type or universal selector.
@@ -18002,7 +18012,7 @@ impl CssCompoundSelector {
     fn append_suffix(&mut self, suffix: Self) -> Option<()> {
         debug_assert!(suffix.type_selector.is_none());
         debug_assert!(suffix.ids.is_empty());
-        debug_assert!(!suffix.scope_anchor);
+        debug_assert!(!suffix.has_scope_anchor());
         if self.pseudo_elements.is_some() {
             return None;
         }

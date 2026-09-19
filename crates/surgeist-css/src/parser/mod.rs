@@ -2110,14 +2110,13 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                 Ok(StrictAtRulePrelude::Container(prelude))
             },
             "scope" => Ok(StrictAtRulePrelude::Scope(
-                parse_scope_prelude(self.source, input, &mut self.diagnostics, &self.recovery).map_err(|error| {
-                    with_at_rule_prelude_context(
-                        error,
-                        "scope",
-                        "baseline.rule.scope",
-                        "a supported @scope prelude",
-                    )
-                })?,
+                parse_scope_prelude(
+                    self.source,
+                    input,
+                    &mut self.diagnostics,
+                    &self.recovery,
+                    selectors::SelectorAnchorMode::Nesting,
+                ).map_err(with_scope_prelude_context)?,
             )),
             _ => Err(input.new_error(cssparser::BasicParseErrorKind::AtRuleInvalid(name))),
         }
@@ -3355,11 +3354,13 @@ fn parse_scope_prelude<'i, 't>(
     input: &mut Parser<'i, 't>,
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     state: &RecoveryState,
+    root_anchors: selectors::SelectorAnchorMode,
 ) -> std::result::Result<CssScopePrelude, ParseError<'i, Error>> {
     let root = if input.try_parse(Parser::expect_parenthesis_block).is_ok() {
+        let _boundary_depth = state.enter_component_block(source, input, "baseline.rule.scope")?;
         Some(input.parse_nested_block(|input| {
             let mut recovery = SelectorRecovery::new(source, diagnostics, state.clone());
-            parse_scope_boundary_selector_list(input, &mut recovery)
+            parse_scope_boundary_selector_list(input, &mut recovery, root_anchors)
         })?)
     } else {
         None
@@ -3370,9 +3371,14 @@ fn parse_scope_prelude<'i, 't>(
         .is_ok()
     {
         input.expect_parenthesis_block().map_err(basic)?;
+        let _boundary_depth = state.enter_component_block(source, input, "baseline.rule.scope")?;
         Some(input.parse_nested_block(|input| {
             let mut recovery = SelectorRecovery::new(source, diagnostics, state.clone());
-            parse_scope_boundary_selector_list(input, &mut recovery)
+            parse_scope_boundary_selector_list(
+                input,
+                &mut recovery,
+                selectors::SelectorAnchorMode::Scope,
+            )
         })?)
     } else {
         None
@@ -3386,6 +3392,19 @@ fn parse_scope_prelude<'i, 't>(
     }
 
     Ok(CssScopePrelude { root, limit })
+}
+
+fn with_scope_prelude_context(error: ParseError<'_, Error>) -> ParseError<'_, Error> {
+    if crate::error::is_nesting_limit_error(&error) {
+        error
+    } else {
+        with_at_rule_prelude_context(
+            error,
+            "scope",
+            "baseline.rule.scope",
+            "a supported @scope prelude",
+        )
+    }
 }
 
 fn parse_counter_style_prelude<'i, 't>(
@@ -3570,14 +3589,17 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                 })?,
             )),
             "scope" => Ok(ScopedAtRulePrelude::Scope(
-                parse_scope_prelude(self.source, input, &mut self.diagnostics, &self.recovery).map_err(|error| {
-                    with_at_rule_prelude_context(
-                        error,
-                        "scope",
-                        "baseline.rule.scope",
-                        "a supported @scope prelude",
-                    )
-                })?,
+                parse_scope_prelude(
+                    self.source,
+                    input,
+                    &mut self.diagnostics,
+                    &self.recovery,
+                    if self.has_style_ancestor {
+                        selectors::SelectorAnchorMode::Nesting
+                    } else {
+                        selectors::SelectorAnchorMode::Scope
+                    },
+                ).map_err(with_scope_prelude_context)?,
             )),
             "import" => Err(invalid_at_rule_placement(
                 input.current_source_location(),

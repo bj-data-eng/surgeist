@@ -146,11 +146,14 @@ pub(super) fn parse_rule_selector_list<'i, 't>(
 pub(super) fn parse_scope_boundary_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
+    anchors: SelectorAnchorMode,
 ) -> std::result::Result<CssScopeSelectorList, ParseError<'i, Error>> {
-    recovery.check_depth(input)?;
+    recovery
+        .state
+        .check_component_contents(recovery.source, input, "baseline.selector.complex")?;
     let selectors = parse_rule_selector_list_with_options(
         input,
-        SelectorParseOptions::scope_boundary(),
+        SelectorParseOptions::scope_boundary(anchors),
         recovery,
     )?;
     CssScopeSelectorList::try_new(selectors)
@@ -266,10 +269,15 @@ pub(super) fn parse_rule_selector<'i, 't>(
 }
 
 #[derive(Clone, Copy)]
+pub(super) enum SelectorAnchorMode {
+    Nesting,
+    Scope,
+}
+
+#[derive(Clone, Copy)]
 struct SelectorParseOptions {
     allow_has: bool,
-    allow_scope_anchor: bool,
-    allow_nesting_selectors: bool,
+    anchors: SelectorAnchorMode,
     allow_pseudo_elements: bool,
     compound_only: bool,
     pseudo_suffix: Option<bool>,
@@ -279,8 +287,7 @@ impl SelectorParseOptions {
     const fn standard() -> Self {
         Self {
             allow_has: true,
-            allow_scope_anchor: false,
-            allow_nesting_selectors: true,
+            anchors: SelectorAnchorMode::Nesting,
             allow_pseudo_elements: true,
             compound_only: false,
             pseudo_suffix: None,
@@ -295,28 +302,23 @@ impl SelectorParseOptions {
     }
 
     const fn nested_style() -> Self {
-        Self {
-            allow_nesting_selectors: true,
-            ..Self::standard()
-        }
+        Self::standard()
     }
 
     const fn scoped_style() -> Self {
         Self {
             allow_has: true,
-            allow_scope_anchor: true,
-            allow_nesting_selectors: false,
+            anchors: SelectorAnchorMode::Scope,
             allow_pseudo_elements: true,
             compound_only: false,
             pseudo_suffix: None,
         }
     }
 
-    const fn scope_boundary() -> Self {
+    const fn scope_boundary(anchors: SelectorAnchorMode) -> Self {
         Self {
             allow_has: true,
-            allow_scope_anchor: false,
-            allow_nesting_selectors: false,
+            anchors,
             allow_pseudo_elements: false,
             compound_only: false,
             pseudo_suffix: None,
@@ -643,7 +645,7 @@ fn parse_compound_selector_model_with_options<'i, 't>(
 
     let parsed_type_selector = parse_type_selector(input, recovery)?;
     let type_selector = parsed_type_selector.map(|parsed| (parsed.name, parsed.legacy_projection));
-    let mut scope_anchor = false;
+    let mut scope_anchors = 0;
     let mut nesting_selectors = 0;
     let mut id_names = Vec::new();
     let mut class_names = Vec::new();
@@ -671,23 +673,10 @@ fn parse_compound_selector_model_with_options<'i, 't>(
         }
 
         if input.try_parse(|input| input.expect_delim('&')).is_ok() {
-            if options.allow_nesting_selectors {
-                nesting_selectors += 1;
-                continue;
+            match options.anchors {
+                SelectorAnchorMode::Nesting => nesting_selectors += 1,
+                SelectorAnchorMode::Scope => scope_anchors += 1,
             }
-            if !options.allow_scope_anchor {
-                return Err(invalid_selector(
-                    input,
-                    "scope anchor selector `&` is only supported inside scoped rules",
-                ));
-            }
-            if scope_anchor {
-                return Err(invalid_selector(
-                    input,
-                    "scope anchor selector `&` is only supported once per compound selector",
-                ));
-            }
-            scope_anchor = true;
             continue;
         }
 
@@ -745,7 +734,7 @@ fn parse_compound_selector_model_with_options<'i, 't>(
                 let message = format!("unexpected selector token `{}`", token.to_css_string());
                 input.reset(&state);
                 if type_selector.is_none()
-                    && !scope_anchor
+                    && scope_anchors == 0
                     && nesting_selectors == 0
                     && id_names.is_empty()
                     && class_names.is_empty()
@@ -763,7 +752,7 @@ fn parse_compound_selector_model_with_options<'i, 't>(
     }
 
     if type_selector.is_none()
-        && !scope_anchor
+        && scope_anchors == 0
         && nesting_selectors == 0
         && id_names.is_empty()
         && class_names.is_empty()
@@ -778,7 +767,7 @@ fn parse_compound_selector_model_with_options<'i, 't>(
     }
     Ok(
         CssCompoundSelector::new_with_qualified_type_and_pseudo_elements(
-            scope_anchor,
+            scope_anchors,
             type_selector,
             id_names,
             class_names,
