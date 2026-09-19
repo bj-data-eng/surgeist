@@ -487,6 +487,7 @@ pub surgeist_css::CssContainerConditionKind::GeneralEnclosed(surgeist_css::CssCo
 pub surgeist_css::CssContainerConditionKind::Not(alloc::boxed::Box<surgeist_css::CssContainerCondition>)
 pub surgeist_css::CssContainerConditionKind::Or(surgeist_css::CssContainerConditionList)
 pub surgeist_css::CssContainerConditionKind::Parenthesized(alloc::boxed::Box<surgeist_css::CssContainerCondition>)
+pub surgeist_css::CssContainerConditionKind::ScrollState(surgeist_css::CssContainerScrollQuery)
 pub surgeist_css::CssContainerConditionKind::Style(surgeist_css::CssContainerStyleQuery)
 #[non_exhaustive] pub enum surgeist_css::CssContainerConstructionError
 pub surgeist_css::CssContainerConstructionError::Component(surgeist_css::CssComponentValueError)
@@ -521,6 +522,45 @@ pub surgeist_css::CssContainerOrientationRef::Pending(&'a surgeist_css::CssConta
 #[non_exhaustive] pub enum surgeist_css::CssContainerRatioRef<'a>
 pub surgeist_css::CssContainerRatioRef::Numeric(&'a surgeist_css::CssMediaRatio)
 pub surgeist_css::CssContainerRatioRef::Pending(&'a surgeist_css::CssContainerPendingValue)
+#[non_exhaustive] pub enum surgeist_css::CssContainerScrollDirectionKeyword
+pub surgeist_css::CssContainerScrollDirectionKeyword::Block
+pub surgeist_css::CssContainerScrollDirectionKeyword::BlockEnd
+pub surgeist_css::CssContainerScrollDirectionKeyword::BlockStart
+pub surgeist_css::CssContainerScrollDirectionKeyword::Bottom
+pub surgeist_css::CssContainerScrollDirectionKeyword::Inline
+pub surgeist_css::CssContainerScrollDirectionKeyword::InlineEnd
+pub surgeist_css::CssContainerScrollDirectionKeyword::InlineStart
+pub surgeist_css::CssContainerScrollDirectionKeyword::Left
+pub surgeist_css::CssContainerScrollDirectionKeyword::None
+pub surgeist_css::CssContainerScrollDirectionKeyword::Right
+pub surgeist_css::CssContainerScrollDirectionKeyword::Top
+pub surgeist_css::CssContainerScrollDirectionKeyword::X
+pub surgeist_css::CssContainerScrollDirectionKeyword::Y
+impl surgeist_css::CssContainerScrollDirectionKeyword
+pub const fn surgeist_css::CssContainerScrollDirectionKeyword::name(self) -> &'static str
+#[non_exhaustive] pub enum surgeist_css::CssContainerScrollDirectionValueRef<'a>
+pub surgeist_css::CssContainerScrollDirectionValueRef::Keyword(surgeist_css::CssContainerScrollDirectionKeyword)
+pub surgeist_css::CssContainerScrollDirectionValueRef::Pending(&'a surgeist_css::CssContainerPendingValue)
+#[non_exhaustive] pub enum surgeist_css::CssContainerScrollFeature
+pub surgeist_css::CssContainerScrollFeature::Boolean(surgeist_css::CssContainerScrollFeatureKind)
+pub surgeist_css::CssContainerScrollFeature::Scrollable(surgeist_css::CssContainerScrollDirectionValue)
+pub surgeist_css::CssContainerScrollFeature::Scrolled(surgeist_css::CssContainerScrollDirectionValue)
+pub surgeist_css::CssContainerScrollFeature::Snapped(surgeist_css::CssContainerSnappedValue)
+pub surgeist_css::CssContainerScrollFeature::Stuck(surgeist_css::CssContainerStuckValue)
+#[non_exhaustive] pub enum surgeist_css::CssContainerScrollFeatureKind
+pub surgeist_css::CssContainerScrollFeatureKind::Scrollable
+pub surgeist_css::CssContainerScrollFeatureKind::Scrolled
+pub surgeist_css::CssContainerScrollFeatureKind::Snapped
+pub surgeist_css::CssContainerScrollFeatureKind::Stuck
+impl surgeist_css::CssContainerScrollFeatureKind
+pub const fn surgeist_css::CssContainerScrollFeatureKind::name(self) -> &'static str
+#[non_exhaustive] pub enum surgeist_css::CssContainerScrollQueryKind
+pub surgeist_css::CssContainerScrollQueryKind::And(surgeist_css::CssContainerScrollQueryList)
+pub surgeist_css::CssContainerScrollQueryKind::Feature(surgeist_css::CssContainerScrollFeature)
+pub surgeist_css::CssContainerScrollQueryKind::GeneralEnclosed(surgeist_css::CssContainerGeneralEnclosed)
+pub surgeist_css::CssContainerScrollQueryKind::Not(alloc::boxed::Box<surgeist_css::CssContainerScrollQuery>)
+pub surgeist_css::CssContainerScrollQueryKind::Or(surgeist_css::CssContainerScrollQueryList)
+pub surgeist_css::CssContainerScrollQueryKind::Parenthesized(alloc::boxed::Box<surgeist_css::CssContainerScrollQuery>)
 #[non_exhaustive] pub enum surgeist_css::CssContainerSizeFeatureKind
 pub surgeist_css::CssContainerSizeFeatureKind::AspectRatio
 pub surgeist_css::CssContainerSizeFeatureKind::BlockSize
@@ -530,6 +570,33 @@ pub surgeist_css::CssContainerSizeFeatureKind::Orientation
 pub surgeist_css::CssContainerSizeFeatureKind::Width
 impl surgeist_css::CssContainerSizeFeatureKind
 pub const fn surgeist_css::CssContainerSizeFeatureKind::name(self) -> &'static str
+#[non_exhaustive] pub enum surgeist_css::CssContainerSnappedKeyword
+pub surgeist_css::CssContainerSnappedKeyword::Block
+pub surgeist_css::CssContainerSnappedKeyword::Both
+pub surgeist_css::CssContainerSnappedKeyword::Inline
+pub surgeist_css::CssContainerSnappedKeyword::None
+pub surgeist_css::CssContainerSnappedKeyword::X
+pub surgeist_css::CssContainerSnappedKeyword::Y
+impl surgeist_css::CssContainerSnappedKeyword
+pub const fn surgeist_css::CssContainerSnappedKeyword::name(self) -> &'static str
+#[non_exhaustive] pub enum surgeist_css::CssContainerSnappedValueRef<'a>
+pub surgeist_css::CssContainerSnappedValueRef::Keyword(surgeist_css::CssContainerSnappedKeyword)
+pub surgeist_css::CssContainerSnappedValueRef::Pending(&'a surgeist_css::CssContainerPendingValue)
+#[non_exhaustive] pub enum surgeist_css::CssContainerStuckKeyword
+pub surgeist_css::CssContainerStuckKeyword::BlockEnd
+pub surgeist_css::CssContainerStuckKeyword::BlockStart
+pub surgeist_css::CssContainerStuckKeyword::Bottom
+pub surgeist_css::CssContainerStuckKeyword::InlineEnd
+pub surgeist_css::CssContainerStuckKeyword::InlineStart
+pub surgeist_css::CssContainerStuckKeyword::Left
+pub surgeist_css::CssContainerStuckKeyword::None
+pub surgeist_css::CssContainerStuckKeyword::Right
+pub surgeist_css::CssContainerStuckKeyword::Top
+impl surgeist_css::CssContainerStuckKeyword
+pub const fn surgeist_css::CssContainerStuckKeyword::name(self) -> &'static str
+#[non_exhaustive] pub enum surgeist_css::CssContainerStuckValueRef<'a>
+pub surgeist_css::CssContainerStuckValueRef::Keyword(surgeist_css::CssContainerStuckKeyword)
+pub surgeist_css::CssContainerStuckValueRef::Pending(&'a surgeist_css::CssContainerPendingValue)
 #[non_exhaustive] pub enum surgeist_css::CssContainerStyleFeature
 pub surgeist_css::CssContainerStyleFeature::Boolean(surgeist_css::CssContainerStyleFeatureName)
 pub surgeist_css::CssContainerStyleFeature::Plain
@@ -570,6 +637,9 @@ pub surgeist_css::CssContainerStyleRangeRef::Descending::right_inclusive: bool
 pub surgeist_css::CssContainerValueDomain::Length
 pub surgeist_css::CssContainerValueDomain::Orientation
 pub surgeist_css::CssContainerValueDomain::Ratio
+pub surgeist_css::CssContainerValueDomain::ScrollDirection
+pub surgeist_css::CssContainerValueDomain::Snapped
+pub surgeist_css::CssContainerValueDomain::Stuck
 #[non_exhaustive] pub enum surgeist_css::CssContent
 pub surgeist_css::CssContent::Items(surgeist_css::CssContentList)
 pub surgeist_css::CssContent::None
@@ -4039,6 +4109,41 @@ impl surgeist_css::CssContainerRule
 pub const fn surgeist_css::CssContainerRule::position(&self) -> surgeist_css::CssSourcePosition
 pub const fn surgeist_css::CssContainerRule::prelude(&self) -> &surgeist_css::CssContainerPrelude
 pub fn surgeist_css::CssContainerRule::rules(&self) -> &[surgeist_css::CssRule]
+pub struct surgeist_css::CssContainerScrollDirectionValue
+impl surgeist_css::CssContainerScrollDirectionValue
+pub fn surgeist_css::CssContainerScrollDirectionValue::components(&self) -> &surgeist_css::CssComponentValues
+pub fn surgeist_css::CssContainerScrollDirectionValue::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssContainerScrollDirectionValue::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub fn surgeist_css::CssContainerScrollDirectionValue::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssContainerScrollDirectionValue::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssContainerScrollDirectionValue::view(&self) -> surgeist_css::CssContainerScrollDirectionValueRef<'_>
+pub struct surgeist_css::CssContainerScrollQuery
+impl surgeist_css::CssContainerScrollQuery
+pub fn surgeist_css::CssContainerScrollQuery::components(&self) -> &[surgeist_css::CssComponentValue]
+pub fn surgeist_css::CssContainerScrollQuery::kind(&self) -> &surgeist_css::CssContainerScrollQueryKind
+pub fn surgeist_css::CssContainerScrollQuery::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssContainerScrollQuery::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub fn surgeist_css::CssContainerScrollQuery::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssContainerScrollQuery::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub struct surgeist_css::CssContainerScrollQueryList
+impl surgeist_css::CssContainerScrollQueryList
+pub fn surgeist_css::CssContainerScrollQueryList::queries(&self) -> &[surgeist_css::CssContainerScrollQuery]
+pub struct surgeist_css::CssContainerSnappedValue
+impl surgeist_css::CssContainerSnappedValue
+pub fn surgeist_css::CssContainerSnappedValue::components(&self) -> &surgeist_css::CssComponentValues
+pub fn surgeist_css::CssContainerSnappedValue::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssContainerSnappedValue::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub fn surgeist_css::CssContainerSnappedValue::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssContainerSnappedValue::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssContainerSnappedValue::view(&self) -> surgeist_css::CssContainerSnappedValueRef<'_>
+pub struct surgeist_css::CssContainerStuckValue
+impl surgeist_css::CssContainerStuckValue
+pub fn surgeist_css::CssContainerStuckValue::components(&self) -> &surgeist_css::CssComponentValues
+pub fn surgeist_css::CssContainerStuckValue::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssContainerStuckValue::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub fn surgeist_css::CssContainerStuckValue::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssContainerStuckValue::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssContainerStuckValue::view(&self) -> surgeist_css::CssContainerStuckValueRef<'_>
 pub struct surgeist_css::CssContainerStyleQuery
 impl surgeist_css::CssContainerStyleQuery
 pub fn surgeist_css::CssContainerStyleQuery::components(&self) -> &[surgeist_css::CssComponentValue]

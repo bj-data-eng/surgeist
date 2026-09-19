@@ -860,7 +860,7 @@ fn assert_archived_unicode_feff_rejection(row: &Row) -> bool {
 // Conditional 5 query-in-parens admits general-enclosed syntax. These three
 // historical rejections remain unchanged in the archive, while current syntax
 // retains the condition and independently expected nested style. The ordinary
-// property style query now has recognized authored structure.
+// property style query and scroll-state feature now have recognized structure.
 fn assert_archived_container_opaque_acceptance(row: &Row) -> bool {
     let (input, query) = match row.case_id.as_str() {
         "catalog.non-property.baseline.rule.container.boundary" => (
@@ -895,6 +895,23 @@ fn assert_archived_container_opaque_acceptance(row: &Row) -> bool {
             value.kind(),
             surgeist_css::CssContainerConditionKind::Style(_)
         ));
+    } else if query == "scroll-state(stuck: top)" {
+        let surgeist_css::CssContainerConditionKind::ScrollState(scroll) = value.kind() else {
+            panic!("scroll-state")
+        };
+        let surgeist_css::CssContainerScrollQueryKind::Feature(
+            surgeist_css::CssContainerScrollFeature::Stuck(operand),
+        ) = scroll.kind()
+        else {
+            panic!("stuck feature")
+        };
+        assert!(matches!(
+            operand.view(),
+            surgeist_css::CssContainerStuckValueRef::Keyword(
+                surgeist_css::CssContainerStuckKeyword::Top
+            )
+        ));
+        assert_eq!(operand.serialize().unwrap().as_css(), "top");
     } else {
         assert!(matches!(
             value.kind(),

@@ -14,7 +14,7 @@ pub(crate) use crate::container_features::*;
 pub(crate) use crate::media::*;
 pub(crate) use crate::media_features::*;
 pub(crate) use crate::numeric::*;
-use crate::{CssContainerStyleQuery, CssFontFeatureValuesRule};
+use crate::{CssContainerScrollQuery, CssContainerStyleQuery, CssFontFeatureValuesRule};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -3830,6 +3830,7 @@ pub enum CssContainerConditionKind {
     GeneralEnclosed(CssContainerGeneralEnclosed),
     Feature(CssContainerFeatureQuery),
     Style(CssContainerStyleQuery),
+    ScrollState(CssContainerScrollQuery),
     /// An explicit grouping pair around a condition, including redundant pairs.
     Parenthesized(Box<CssContainerCondition>),
     Not(Box<CssContainerCondition>),

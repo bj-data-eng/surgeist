@@ -1609,7 +1609,7 @@ use `CssComponentValue::try_ident` and checked prelude construction for decoded
 names requiring escapes, such as names containing spaces or leading digits.
 
 Container conditions retain explicit parentheses, homogeneous `and` or `or`
-lists, `not`, recognized size and authored style features, and opaque
+lists, `not`, recognized size, style and scroll-state features, and opaque
 operands. `CssContainerCondition` has private fields; inspect its
 `CssContainerConditionKind` through `kind()`. A `Parenthesized` node retains each
 explicit group around a recognized condition, including redundant groups.
@@ -1665,6 +1665,44 @@ lexical spelling and origins, including whitespace-only parsed operands.
 See `examples/container_style_semantic_consumer.rs` for inspection without
 reparsing serialized text. The former `CssContainerStyleQuery` enum's presence
 and value variants migrate to `query.kind()` and `CssContainerStyleFeature`.
+
+`CssContainerConditionKind::ScrollState` carries a checked
+`CssContainerScrollQuery`. Its `kind()` exposes feature, explicit parentheses,
+negation, homogeneous lists and general-enclosed inner operands. The four
+`CssContainerScrollFeatureKind` identities are stuck, snapped, scrollable and
+scrolled. Bare features carry that identity without an invented comparison.
+Plain features use coupled variants: stuck has the none/physical-or-logical-edge
+domain, snapped has none/x/y/block/inline/both, and scrollable/scrolled share
+none, the physical/logical edges, and x/y/block/inline. Their distinct feature
+variants preserve scrollability versus scroll-history meaning.
+
+`CssContainerStuckValueRef`, `CssContainerSnappedValueRef` and
+`CssContainerScrollDirectionValueRef` expose a keyword or
+`Pending(CssContainerPendingValue)`. Pending domains are `Stuck`, `Snapped` and
+`ScrollDirection`. The complete nontrivia-bounded value components are retained,
+including compound values such as `top var(--empty)` and `var(--a) var(--b)`;
+no variable or fallback is evaluated. The complete query region separately
+retains its surrounding trivia. Names/operators cannot be substituted and the
+four discrete features do not accept min/max or range-form syntax.
+
+Whole-value deferral follows the selected Conditional5 container-query variable
+extension together with Variables1 parsing rules; this is their combined
+interpretation, not a separately stated scroll-specific production. A pending
+colon value uses declaration-value syntax, so `stuck: top > var(--edge)` is
+retained pending, while `stuck > var(--edge)` is an unsupported range form.
+Style queries' special comparison-token exclusions do not apply to scroll
+values. Invalid keyword domains, malformed variables and unknown direct
+features remain outer general-enclosed. Grouping an unknown feature preserves
+it as an inner opaque node. `scroll-state(var(--query))` likewise retains an
+opaque inner function and does not substitute a whole query.
+
+Scroll nodes share recursive lexical ownership. Typed/pending operands own only
+their selected component snapshots, retaining parsed, programmatic and mixed
+origins without copying enclosing or sibling query trees. Checked query limits
+and trusted EOF recovery apply before recognition and opaque fallback, as for
+other container queries. Snapshots, direction resolution, scroll history and
+matching belong downstream. See `examples/container_scroll_semantic_consumer.rs`
+for inspecting keyword and pending-domain payloads without reparsing text.
 
 The six size features are typed: `CssContainerFeatureQuery::Boolean` carries
 `CssContainerSizeFeatureKind`; width, height, inline-size, block-size and
@@ -1730,9 +1768,8 @@ Size operands additionally use the selected
 [Values4 numeric grammar](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking)
 and narrowly imported [Values5 §9](https://www.w3.org/TR/2024/WD-css-values-5-20241111/#tree-counting).
 Style-query authored support is bounded by the implemented property grammar
-registry. Remaining property inventory gaps and unimplemented scroll-state
-authored features keep container coverage partial; opaque retention does
-not implement those features.
+registry. Remaining property inventory gaps keep overall container coverage
+partial; opaque retention does not implement an unrecognized feature.
 Whole-rule serialization still needs CSS support.
 Container selection, condition evaluation and mutable CSSOM objects belong
 to downstream owners.

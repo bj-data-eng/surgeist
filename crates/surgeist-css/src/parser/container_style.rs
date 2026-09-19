@@ -1,4 +1,5 @@
 //! Component-native style grammar; probes select regions of one lexical root.
+use super::query_components::ComponentCursor as Cursor;
 use crate::container_style::StyleRangeKind;
 use crate::supports::{SupportsLexical, trivia};
 use crate::*;
@@ -104,41 +105,6 @@ impl StyleNode {
             ),
         };
         CssContainerStyleQuery::new(kind, lexical)
-    }
-}
-
-struct Cursor<'a> {
-    items: &'a [CssComponentValue],
-    index: usize,
-}
-impl<'a> Cursor<'a> {
-    fn new(items: &'a [CssComponentValue]) -> Self {
-        Self { items, index: 0 }
-    }
-    fn next(&mut self) -> Option<&'a CssComponentValue> {
-        self.skip();
-        let item = self.items.get(self.index)?;
-        self.index += 1;
-        Some(item)
-    }
-    fn skip(&mut self) {
-        while self.items.get(self.index).is_some_and(trivia) {
-            self.index += 1;
-        }
-    }
-    fn ident(&mut self, keyword: &str) -> bool {
-        self.skip();
-        if matches!(self.items.get(self.index).map(CssComponentValue::view), Some(CssComponentValueRef::Token(CssValueTokenRef::Ident(name))) if name.eq_ignore_ascii_case(keyword))
-        {
-            self.index += 1;
-            true
-        } else {
-            false
-        }
-    }
-    fn done(&mut self) -> bool {
-        self.skip();
-        self.index == self.items.len()
     }
 }
 

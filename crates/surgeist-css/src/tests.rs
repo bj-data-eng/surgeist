@@ -5483,7 +5483,7 @@ fn container_condition_parser_retains_unrecognized_enclosures() {
         "(width: min-content)",
         "(aspect-ratio: -1 / 1)",
         "style(future-property: red)",
-        "scroll-state(stuck: top)",
+        "scroll-state(future: top)",
         "(width > )",
     ] {
         let condition = parse_container_condition_for_test(css).expect("valid opaque enclosure");
@@ -5492,6 +5492,23 @@ fn container_condition_parser_retains_unrecognized_enclosures() {
         };
         assert_eq!(value.serialize().unwrap().as_css(), css);
     }
+}
+
+#[test]
+fn container_condition_parser_recognizes_scroll_state_keyword_features() {
+    let condition = parse_container_condition_for_test("scroll-state(stuck: top)").unwrap();
+    let CssContainerConditionKind::ScrollState(query) = condition.kind() else {
+        panic!("scroll-state")
+    };
+    let CssContainerScrollQueryKind::Feature(CssContainerScrollFeature::Stuck(value)) =
+        query.kind()
+    else {
+        panic!("stuck")
+    };
+    assert!(matches!(
+        value.view(),
+        CssContainerStuckValueRef::Keyword(CssContainerStuckKeyword::Top)
+    ));
 }
 
 #[test]

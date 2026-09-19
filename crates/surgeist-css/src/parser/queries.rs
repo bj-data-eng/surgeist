@@ -1,3 +1,4 @@
+use super::query_components::ComponentCursor as ContainerCursor;
 #[cfg(test)]
 use cssparser::ParserInput;
 use cssparser::{
@@ -269,6 +270,7 @@ enum ContainerNodeKind {
     Opaque,
     Feature(CssContainerFeatureQuery),
     Style(super::container_style::StyleNode),
+    Scroll(super::container_scroll::ScrollNode),
     Parenthesized(Box<ContainerNode>),
     Not(Box<ContainerNode>),
     And(Vec<ContainerNode>),
@@ -289,6 +291,14 @@ impl ContainerNode {
                     .position(|value| !container_trivia(value))
                     .expect("style function");
                 CssContainerConditionKind::Style(style.into_query(lexical.children(opener)))
+            }
+            ContainerNodeKind::Scroll(scroll) => {
+                let opener = lexical
+                    .items()
+                    .iter()
+                    .position(|value| !container_trivia(value))
+                    .expect("scroll-state function");
+                CssContainerConditionKind::ScrollState(scroll.into_query(lexical.children(opener)))
             }
             ContainerNodeKind::Parenthesized(child) => {
                 let opener = lexical
@@ -324,41 +334,6 @@ impl ContainerNode {
     }
 }
 
-struct ContainerCursor<'a> {
-    items: &'a [CssComponentValue],
-    index: usize,
-}
-impl<'a> ContainerCursor<'a> {
-    fn new(items: &'a [CssComponentValue]) -> Self {
-        Self { items, index: 0 }
-    }
-    fn peek(&mut self) -> Option<&'a CssComponentValue> {
-        while self.items.get(self.index).is_some_and(container_trivia) {
-            self.index += 1;
-        }
-        self.items.get(self.index)
-    }
-    fn next(&mut self) -> Option<&'a CssComponentValue> {
-        let value = self.peek()?;
-        self.index += 1;
-        Some(value)
-    }
-    fn ident(&mut self, expected: &str) -> bool {
-        if matches!(self.peek().map(CssComponentValue::view), Some(CssComponentValueRef::Token(CssValueTokenRef::Ident(name))) if name.eq_ignore_ascii_case(expected))
-        {
-            self.index += 1;
-            true
-        } else {
-            false
-        }
-    }
-    fn token(&mut self) -> Option<CssValueTokenRef<'a>> {
-        match self.next()?.view() {
-            CssComponentValueRef::Token(token) => Some(token),
-            _ => None,
-        }
-    }
-}
 fn container_trivia(value: &CssComponentValue) -> bool {
     matches!(
         value.view(),
@@ -455,6 +430,13 @@ fn container_atom(
         {
             if let Some(style) = super::container_style::parse(function.values().items()) {
                 return Ok(ContainerNodeKind::Style(style));
+            }
+        }
+        CssComponentValueRef::Function(function)
+            if function.name().eq_ignore_ascii_case("scroll-state") =>
+        {
+            if let Some(scroll) = super::container_scroll::parse(function.values().items())? {
+                return Ok(ContainerNodeKind::Scroll(scroll));
             }
         }
         CssComponentValueRef::Block(block) if block.kind() == crate::CssBlockKind::Parenthesis => {
@@ -697,22 +679,7 @@ fn container_range(
 fn container_operand(
     items: &[CssComponentValue],
 ) -> ContainerFeatureResult<(CssComponentValues, bool)> {
-    let items = significant(items);
-    if items.is_empty()
-        || items.iter().any(|item| {
-            matches!(
-                item.view(),
-                CssComponentValueRef::Token(
-                    CssValueTokenRef::Semicolon | CssValueTokenRef::Delim('!')
-                )
-            )
-        })
-    {
-        return Err(ContainerFeatureError::Grammar);
-    }
-    let pending = super::variables::checked_variable_components(items)
-        .ok_or(ContainerFeatureError::Grammar)?;
-    Ok((CssComponentValues::try_new(items.to_vec())?, pending))
+    super::query_components::authored_operand(items)?.ok_or(ContainerFeatureError::Grammar)
 }
 fn container_numeric(
     values: CssComponentValues,

@@ -1,4 +1,4 @@
-//! Authored size-feature values. Contextual substitution and matching are external.
+//! Authored container-feature values. Contextual substitution and matching are external.
 use crate::component_values::CssCanonicalBuilder;
 use crate::*;
 
@@ -33,6 +33,9 @@ pub enum CssContainerValueDomain {
     Length,
     Ratio,
     Orientation,
+    Stuck,
+    Snapped,
+    ScrollDirection,
 }
 
 /// A complete operand with checked `var()` syntax, awaiting external substitution.
