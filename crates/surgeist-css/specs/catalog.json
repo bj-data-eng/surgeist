@@ -173,6 +173,21 @@
         "latest_published_url": "https://www.w3.org/TR/css-values-5/",
         "publication_history_url": "https://www.w3.org/standards/history/css-values-5/",
         "source_resolution": "Latest published Values 5 edition before the cutoff, confirmed from W3C publication history on 2026-09-19. Conditional Rules 5 section 6.1 explicitly refers to tree-counting functions. Import only section 9 authored signatures and numeric integration for container size queries; Values 5 is not selected in full."
+      },
+      {
+        "id": "css-syntax-3-block-contents-definition",
+        "kind": "immutable-specification-source",
+        "date": "2026-07-30T11:04:22Z",
+        "url": "https://raw.githubusercontent.com/w3c/csswg-drafts/f971255463f01fb740e2a3a7ecfe83e319cddab9/css-syntax-3/Overview.bs",
+        "sha256": "b3b69f509779b1af89d8f299e2b250f27f17896c2dd3d486665117073e6a32cf",
+        "bytes": 145581,
+        "repository": "https://github.com/w3c/csswg-drafts",
+        "revision": "f971255463f01fb740e2a3a7ecfe83e319cddab9",
+        "path": "css-syntax-3/Overview.bs",
+        "latest_published_url": "https://www.w3.org/TR/css-syntax-3/",
+        "publication_history_url": "https://www.w3.org/standards/history/css-syntax-3/",
+        "revision_discovery_url": "https://api.github.com/repos/w3c/csswg-drafts/commits?path=css-syntax-3%2FOverview.bs&until=2026-09-10T02%3A16%3A24Z&per_page=1",
+        "source_resolution": "The selected 2021-12-24 Syntax 3 publication lacks block-contents, which selected Conditional Rules 5 and Nesting 1 reference. Pin the latest source-file revision before the cutoff for only that production and its scoped block-parsing dependencies. Preserve the selected published Syntax 3 edition, tokenizer and other entry points. The definition record explicitly reconciles a missing terminal declaration transfer; this source is not adopted unqualified or selected in full."
       }
     ],
     "definitions": [
@@ -462,6 +477,136 @@
           "root"
         ],
         "downstream_requirements": "Query-container selection, flat-tree and originating-element context, integer evaluation, dependency tracking and invalidation remain downstream. Other Values 5 definitions are not imported by this record."
+      },
+      {
+        "id": "block-contents-production",
+        "source_id": "css-syntax-3-block-contents-definition",
+        "signatures": [
+          "<block-contents>"
+        ],
+        "sections": [
+          {
+            "anchor": "block-contents",
+            "url": "https://github.com/w3c/csswg-drafts/blob/f971255463f01fb740e2a3a7ecfe83e319cddab9/css-syntax-3/Overview.bs#L3464",
+            "source_lines": {
+              "first": 3464,
+              "last": 3482
+            }
+          },
+          {
+            "anchor": "parse-block-contents",
+            "url": "https://github.com/w3c/csswg-drafts/blob/f971255463f01fb740e2a3a7ecfe83e319cddab9/css-syntax-3/Overview.bs#L2374",
+            "source_lines": {
+              "first": 2374,
+              "last": 2389
+            }
+          },
+          {
+            "anchor": "consume-block",
+            "url": "https://github.com/w3c/csswg-drafts/blob/f971255463f01fb740e2a3a7ecfe83e319cddab9/css-syntax-3/Overview.bs#L2792",
+            "source_lines": {
+              "first": 2792,
+              "last": 2806
+            }
+          },
+          {
+            "anchor": "consume-block-contents",
+            "url": "https://github.com/w3c/csswg-drafts/blob/f971255463f01fb740e2a3a7ecfe83e319cddab9/css-syntax-3/Overview.bs#L2809",
+            "source_lines": {
+              "first": 2809,
+              "last": 2886
+            }
+          },
+          {
+            "anchor": "consume-at-rule",
+            "url": "https://github.com/w3c/csswg-drafts/blob/f971255463f01fb740e2a3a7ecfe83e319cddab9/css-syntax-3/Overview.bs#L2604",
+            "source_lines": {
+              "first": 2604,
+              "last": 2660
+            }
+          },
+          {
+            "anchor": "consume-qualified-rule",
+            "url": "https://github.com/w3c/csswg-drafts/blob/f971255463f01fb740e2a3a7ecfe83e319cddab9/css-syntax-3/Overview.bs#L2663",
+            "source_lines": {
+              "first": 2663,
+              "last": 2789
+            }
+          },
+          {
+            "anchor": "consume-declaration",
+            "url": "https://github.com/w3c/csswg-drafts/blob/f971255463f01fb740e2a3a7ecfe83e319cddab9/css-syntax-3/Overview.bs#L2962",
+            "source_lines": {
+              "first": 2962,
+              "last": 3066
+            }
+          },
+          {
+            "anchor": "consume-list-of-components",
+            "url": "https://github.com/w3c/csswg-drafts/blob/f971255463f01fb740e2a3a7ecfe83e319cddab9/css-syntax-3/Overview.bs#L3069",
+            "source_lines": {
+              "first": 3069,
+              "last": 3180
+            }
+          },
+          {
+            "anchor": "css-tree",
+            "url": "https://github.com/w3c/csswg-drafts/blob/f971255463f01fb740e2a3a7ecfe83e319cddab9/css-syntax-3/Overview.bs#L1940",
+            "source_lines": {
+              "first": 1940,
+              "last": 2035
+            }
+          },
+          {
+            "anchor": "parser-definitions",
+            "url": "https://github.com/w3c/csswg-drafts/blob/f971255463f01fb740e2a3a7ecfe83e319cddab9/css-syntax-3/Overview.bs#L2037",
+            "source_lines": {
+              "first": 2037,
+              "last": 2167
+            }
+          }
+        ],
+        "required_by": [
+          {
+            "module_id": "css-conditional-5",
+            "section_url": "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule",
+            "requirement": "The container rule body uses block-contents; its own selected conditional-group rules establish valid children and contextual meaning."
+          },
+          {
+            "module_id": "css-conditional-5",
+            "section_url": "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#at-ruledef-supports-condition",
+            "requirement": "The supports-condition rule body also uses block-contents; retaining this dependency does not claim that rule is implemented."
+          },
+          {
+            "module_id": "css-nesting-1",
+            "section_url": "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nesting-other-at-rules",
+            "requirement": "Nested group bodies use block-contents; sections 3.3, 3.4 and 5 require ordered declaration runs and preservation of declarations after child rules."
+          }
+        ],
+        "authored_owner": "css",
+        "authored_requirements": [
+          "Use the category-neutral block-contents production only where selected rules reference it; the owning rule defines valid declarations and child rules. Its spelling alone neither permits every at-rule nor establishes style ancestry.",
+          "Retain accepted declarations and child rules in authored order, including declaration-only bodies and final declaration runs at a closing brace or EOF. Apply the explicit terminal-retention reconciliation below.",
+          "Use the listed block parser, rule/declaration consumers, component consumers, result records and token-stream operations only as dependencies of those selected block-contents contexts. Preserve contextual validation, recovery boundaries and parent-specific declaration materialization.",
+          "This import does not replace the selected 2021 stylesheet/declaration-list entry points or tokenizer, import unrelated unicode-range tokenization, or establish page placement, selector matching or live CSSOM behavior. Other selected contexts retain their own defining requirements."
+        ],
+        "localized_reconciliation": {
+          "id": "terminal-declaration-retention",
+          "source_url": "https://github.com/w3c/csswg-drafts/blob/f971255463f01fb740e2a3a7ecfe83e319cddab9/css-syntax-3/Overview.bs#L2823",
+          "conflict": "The consumer accumulates accepted declarations in decls but returns only rules at lines 2837-2840. No surrounding entry, block, rule or token-stream operation transfers that pending list. Literal execution loses declaration-only bodies and trailing runs, contrary to selected Nesting retention requirements.",
+          "controlling_sources": [
+            "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nesting-other-at-rules",
+            "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/",
+            "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nested-declarations-rule"
+          ],
+          "adopted_behavior": "For selected style and style-nested group contexts, append the current nonempty accepted declaration list exactly once before returning at EOF or a closing brace. Preserve prior flush/reset order and the parent distinction between leading declarations and nested declaration rules. Other contexts must independently admit declarations and define their role; this reconciliation does not make rejected declarations valid.",
+          "scope": "A localized source reconciliation with explicit selected retention requirements, not a claim that the pinned algorithm contains the missing step, not a replacement source revision, and not an undefined-CSS or general later-source-precedence exemption."
+        },
+        "downstream_owners": [
+          "style",
+          "root"
+        ],
+        "downstream_requirements": "Mutable CSSOM objects and identity, matching, cascade execution, invalidation and application of conditional rules remain downstream. Authored ordering and intrinsic recovery remain CSS responsibilities."
       }
     ]
   },

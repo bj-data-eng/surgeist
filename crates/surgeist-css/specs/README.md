@@ -113,6 +113,25 @@ validation is a different grammar. Only this name definition is imported.
 Definition environments, cycle handling, evaluation and live APIs remain with
 style and root integration.
 
+Selected Conditional Rules 5 and Nesting 1 reference `block-contents`, absent
+from the selected published Syntax 3 edition. A separate immutable pre-cutoff
+Syntax source pins this production and its scoped block-parsing dependencies.
+The production is category-neutral: each consuming rule still defines valid
+children and declarations. It does not itself imply style ancestry or admit
+page rules. Both `@container` and `@supports-condition` are recorded consumers;
+recording a dependency is not an implementation claim.
+
+The pinned block consumer omits transferring its final accepted declaration run
+before returning at a closing brace or EOF. The definition's
+`localized_reconciliation` records this exact source conflict and the selected
+Nesting retention requirements that control style and style-nested group bodies:
+retain the nonempty final run exactly once, preserving authored order and
+parent-specific materialization. Other contexts retain their own admission
+requirements. This explicit reconciliation neither makes general CSS syntax
+undefined nor replaces the selected 2021 tokenizer and unrelated parser entry
+points. The catalog keeps the original hash and identifies the affected source
+lines; it does not silently substitute a corrected draft.
+
 ## Applying the catalog
 
 Read `selection_policy`, `authored_scope_definitions`, and `owners` before using
