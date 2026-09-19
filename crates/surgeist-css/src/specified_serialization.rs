@@ -93,6 +93,26 @@ impl std::error::Error for CssSpecifiedValueSerializationError {}
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 use CssSpecifiedValueSerializationErrorKind as Kind;
 
+pub(crate) fn serialize_keyword_sequence(
+    text: &str,
+    limits: CssSpecifiedValueSerializationLimits,
+) -> Result<String> {
+    if limits.max_input_nodes() == 0 {
+        return Err(CssSpecifiedValueSerializationError::new(
+            Kind::InputNodeLimit,
+        ));
+    }
+    if limits.max_projection_nodes() == 0 {
+        return Err(CssSpecifiedValueSerializationError::new(
+            Kind::ProjectionNodeLimit,
+        ));
+    }
+    if text.len() > limits.max_css_bytes() {
+        return Err(CssSpecifiedValueSerializationError::new(Kind::ByteLimit));
+    }
+    Ok(text.to_owned())
+}
+
 impl CssOpacityValue {
     /// Produces canonical specified opacity, without computed-value clamping.
     ///

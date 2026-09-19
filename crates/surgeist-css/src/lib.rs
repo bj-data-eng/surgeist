@@ -1128,6 +1128,7 @@ pub use display::{
 };
 pub use integer_value::CssIntegerLiteral;
 mod specified_serialization;
+mod writing_modes;
 pub use opacity_scalar::{CssOpacityScalar, CssOpacityScalarKind};
 pub use specified_serialization::{
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,

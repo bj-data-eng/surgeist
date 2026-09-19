@@ -447,7 +447,7 @@ unfinished. This property migration does not complete the other Grid3 families.
 padding, border width, style and color, the four side-border shorthands, `border`,
 the five border-image longhands, `flow-tolerance`, `color`, `font-family`,
 `text-orientation`, its legacy `glyph-orientation-vertical` grammar, `opacity`, `display`,
-`order`, `visibility`,
+`order`, `visibility`, `direction`, `unicode-bidi`, `writing-mode`,
 the `container` shorthand and its two longhands, and `all`.
 The shared property schema owns their
 member lists, initial values and reset-only components. Other known properties
@@ -460,6 +460,28 @@ contribution retains the exact `CssOpacityValue`, including percentages,
 calculations and out-of-range specified values. Computed clamping belongs to
 style. Raw authored value text remains separate from canonical specified-value
 serialization, which is not established by expansion.
+
+The canonical Writing Modes properties use four distinct keyword domains:
+`CssDirection`, `CssUnicodeBidi`, `CssWritingMode`, and `CssTextOrientation`.
+Their intrinsic initials are respectively `Ltr`, `Normal`, `HorizontalTb`, and
+`Mixed`. Direction, writing-mode and text-orientation inherit by default;
+unicode-bidi does not. Each expands to one longhand. The `all` reset continues
+to exclude direction and unicode-bidi.
+
+Each enum exposes `serialize_specified()` and its bounded variant, emitting
+canonical lowercase keywords with the shared one-input-node, one-projection-node
+and exact-byte budgets. Direction and WritingMode wrappers expose `current()`;
+UnicodeBidi keeps `bidi()`, and TextOrientation keeps `orientation()`. Authored
+wrapper text and parsed/programmatic component origins remain unchanged.
+The selected [Writing Modes4 definition](https://www.w3.org/TR/2019/CR-css-writing-modes-4-20190730/#block-flow)
+includes both `sideways-rl` and `sideways-lr`; the other canonical keyword sets
+also occur in the selected Writing Modes3 publication.
+
+Normalization preserves authored order and conditions. It does not execute bidi
+isolation, direction propagation, glyph rotation, or layout. Optional old SVG
+writing-mode spellings and `sideways-right` are not selected. This canonical
+keyword boundary does not complete `text-combine-upright` or settle numeric/math
+admission for the legacy glyph-orientation alias.
 
 Visibility uses the existing `CssVisibility::{Visible, Hidden, Collapse}` values.
 It is inherited by default and its ordinary initial value is `Visible`.

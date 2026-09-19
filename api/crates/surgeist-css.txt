@@ -840,6 +840,9 @@ pub surgeist_css::CssDelay::Literal(surgeist_css::CssDelayLiteral)
 #[non_exhaustive] pub enum surgeist_css::CssDirection
 pub surgeist_css::CssDirection::Ltr
 pub surgeist_css::CssDirection::Rtl
+impl surgeist_css::CssDirection
+pub fn surgeist_css::CssDirection::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssDirection::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssDisplay
 pub surgeist_css::CssDisplay::Block
 pub surgeist_css::CssDisplay::Flex
@@ -2101,6 +2104,7 @@ pub surgeist_css::CssLonghandValueRef::BorderTopWidth(&'a surgeist_css::CssLengt
 pub surgeist_css::CssLonghandValueRef::Color(&'a surgeist_css::CssAuthoredColor)
 pub surgeist_css::CssLonghandValueRef::ContainerName(&'a surgeist_css::CssContainerNames)
 pub surgeist_css::CssLonghandValueRef::ContainerType(&'a surgeist_css::CssContainerType)
+pub surgeist_css::CssLonghandValueRef::Direction(&'a surgeist_css::CssDirection)
 pub surgeist_css::CssLonghandValueRef::Display(&'a surgeist_css::CssDisplayValue)
 pub surgeist_css::CssLonghandValueRef::FlowTolerance(&'a surgeist_css::CssFlowTolerance)
 pub surgeist_css::CssLonghandValueRef::FontFamily(&'a surgeist_css::CssFontFamilyList)
@@ -2115,7 +2119,9 @@ pub surgeist_css::CssLonghandValueRef::PaddingLeft(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::PaddingRight(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::PaddingTop(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::TextOrientation(&'a surgeist_css::CssTextOrientation)
+pub surgeist_css::CssLonghandValueRef::UnicodeBidi(&'a surgeist_css::CssUnicodeBidi)
 pub surgeist_css::CssLonghandValueRef::Visibility(&'a surgeist_css::CssVisibility)
+pub surgeist_css::CssLonghandValueRef::WritingMode(&'a surgeist_css::CssWritingMode)
 pub enum surgeist_css::CssMathFunction
 pub surgeist_css::CssMathFunction::Abs
 pub surgeist_css::CssMathFunction::Acos
@@ -2915,6 +2921,9 @@ pub surgeist_css::CssTextDecorationThickness::Length(surgeist_css::CssTextDecora
 pub surgeist_css::CssTextOrientation::Mixed
 pub surgeist_css::CssTextOrientation::Sideways
 pub surgeist_css::CssTextOrientation::Upright
+impl surgeist_css::CssTextOrientation
+pub fn surgeist_css::CssTextOrientation::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextOrientation::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTextOverflow
 pub surgeist_css::CssTextOverflow::Clip
 pub surgeist_css::CssTextOverflow::Ellipsis
@@ -3049,6 +3058,9 @@ pub surgeist_css::CssUnicodeBidi::Isolate
 pub surgeist_css::CssUnicodeBidi::IsolateOverride
 pub surgeist_css::CssUnicodeBidi::Normal
 pub surgeist_css::CssUnicodeBidi::Plaintext
+impl surgeist_css::CssUnicodeBidi
+pub fn surgeist_css::CssUnicodeBidi::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssUnicodeBidi::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssUnknownMediaFeatureReason
 pub surgeist_css::CssUnknownMediaFeatureReason::InvalidOperation
 pub surgeist_css::CssUnknownMediaFeatureReason::InvalidValue
@@ -3154,6 +3166,9 @@ pub surgeist_css::CssWritingMode::SidewaysLr
 pub surgeist_css::CssWritingMode::SidewaysRl
 pub surgeist_css::CssWritingMode::VerticalLr
 pub surgeist_css::CssWritingMode::VerticalRl
+impl surgeist_css::CssWritingMode
+pub fn surgeist_css::CssWritingMode::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssWritingMode::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssZIndex
 pub surgeist_css::CssZIndex::Auto
 pub surgeist_css::CssZIndex::Integer(i32)
@@ -4545,6 +4560,8 @@ pub struct surgeist_css::CssDirectionPropertyValue
 impl surgeist_css::CssDirectionPropertyValue
 pub fn surgeist_css::CssDirectionPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssDirectionPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssDirection>
+impl surgeist_css::CssDirectionPropertyValue
+pub const fn surgeist_css::CssDirectionPropertyValue::current(&self) -> &surgeist_css::CssDirection
 pub struct surgeist_css::CssDirectionality
 impl surgeist_css::CssDirectionality
 pub fn surgeist_css::CssDirectionality::as_str(&self) -> &str
@@ -6857,6 +6874,8 @@ pub struct surgeist_css::CssWritingModePropertyValue
 impl surgeist_css::CssWritingModePropertyValue
 pub fn surgeist_css::CssWritingModePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssWritingModePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssWritingMode>
+impl surgeist_css::CssWritingModePropertyValue
+pub const fn surgeist_css::CssWritingModePropertyValue::current(&self) -> &surgeist_css::CssWritingMode
 pub struct surgeist_css::CssZIndexPropertyValue
 impl surgeist_css::CssZIndexPropertyValue
 pub fn surgeist_css::CssZIndexPropertyValue::as_css(&self) -> &str

@@ -5609,3 +5609,37 @@ fn visibility_uses_its_selected_display_definition_without_changing_overflow() {
     assert_eq!(overflow.source().id().as_str(), "O-CSS2");
     assert_eq!(overflow.production(), "visufx.html#propdef-overflow");
 }
+
+#[test]
+fn canonical_writing_modes_sources_include_selected_level_four_sideways_values() {
+    for (feature, source, production) in [
+        (
+            "baseline.property.direction",
+            "O-WRITING3",
+            "#propdef-direction",
+        ),
+        (
+            "official.property.unicode-bidi",
+            "O-WRITING3",
+            "#propdef-unicode-bidi",
+        ),
+        (
+            "baseline.property.writing-mode",
+            "S-WRITING4",
+            "#propdef-writing-mode",
+        ),
+        (
+            "official.property.text-orientation",
+            "O-WRITING3",
+            "#propdef-text-orientation",
+        ),
+    ] {
+        let metadata = feature_metadata(feature).unwrap();
+        assert_eq!(metadata.source().id().as_str(), source);
+        assert_eq!(metadata.production(), production);
+        assert_eq!(metadata.status(), CssSupportStatus::Complete);
+    }
+    for text in ["sideways-rl", "sideways-lr"] {
+        assert!(parse_style_attribute(&format!("writing-mode:{text}")).is_clean());
+    }
+}

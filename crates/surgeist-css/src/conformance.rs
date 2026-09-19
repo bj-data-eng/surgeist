@@ -2275,8 +2275,8 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         CssKnownProperty::Direction
         | CssKnownProperty::TextCombineUpright
         | CssKnownProperty::TextOrientation
-        | CssKnownProperty::UnicodeBidi
-        | CssKnownProperty::WritingMode => O_WRITING3,
+        | CssKnownProperty::UnicodeBidi => O_WRITING3,
+        CssKnownProperty::WritingMode => S_WRITING4,
         CssKnownProperty::ColumnCount
         | CssKnownProperty::ColumnFill
         | CssKnownProperty::ColumnRule
@@ -4078,7 +4078,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 508] = [
         "position",
         "baseline.property.position"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::Direction,
         "direction",
         "baseline.property.direction"
@@ -4432,7 +4432,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 508] = [
         "line-height",
         "baseline.property.line-height"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::WritingMode,
         "writing-mode",
         "baseline.property.writing-mode"

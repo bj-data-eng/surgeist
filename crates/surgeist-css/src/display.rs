@@ -1,8 +1,8 @@
 //! Current authored Display3 values and the selected standalone Grid3 extensions.
 
+use crate::specified_serialization::serialize_keyword_sequence;
 use crate::{
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, CssVisibility,
+    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits, CssVisibility,
 };
 
 /// The outer display type of an ordinary display value.
@@ -251,25 +251,4 @@ impl CssVisibility {
         };
         serialize_keyword_sequence(text, limits)
     }
-}
-
-fn serialize_keyword_sequence(
-    text: &str,
-    limits: CssSpecifiedValueSerializationLimits,
-) -> Result<String, CssSpecifiedValueSerializationError> {
-    use CssSpecifiedValueSerializationErrorKind as Kind;
-    if limits.max_input_nodes() == 0 {
-        return Err(CssSpecifiedValueSerializationError::new(
-            Kind::InputNodeLimit,
-        ));
-    }
-    if limits.max_projection_nodes() == 0 {
-        return Err(CssSpecifiedValueSerializationError::new(
-            Kind::ProjectionNodeLimit,
-        ));
-    }
-    if text.len() > limits.max_css_bytes() {
-        return Err(CssSpecifiedValueSerializationError::new(Kind::ByteLimit));
-    }
-    Ok(text.to_owned())
 }
