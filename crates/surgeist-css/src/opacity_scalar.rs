@@ -234,7 +234,9 @@ pub(crate) fn serialize_binary32(
     )
 }
 
-fn exact_legacy_value(text: &str) -> Option<f32> {
+// Shared exact-fidelity proof for ordinary numeric consumers. The input must be
+// a checked CSS numeric representation, without a unit or percentage suffix.
+pub(crate) fn exact_legacy_value(text: &str) -> Option<f32> {
     let decimal = Decimal::lexical(text)?;
     if decimal.len == 0 {
         return Some(0.0);

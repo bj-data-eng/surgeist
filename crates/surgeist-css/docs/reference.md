@@ -1612,6 +1612,8 @@ semantics, blending, or writing-mode resolution.
 `glyph-orientation-vertical` is the selected Writing Modes legacy shorthand,
 not a name-equivalent schema alias. Its restricted `auto`, `0`, `0deg`, `90`,
 and `90deg` grammar maps to a parser-produced `text-orientation` declaration.
+Degree dimensions must equal zero or ninety in their exact authored numeric
+spelling: `9e1deg` is accepted, while `90.000001deg` and `1e-100deg` are rejected.
 The schema therefore keeps `CssKnownProperty::TextOrientation.aliases()` empty,
 while the conformance catalog exposes the explicit
 `official.property-alias.glyph-orientation-vertical` record.

@@ -195,29 +195,53 @@ pub(super) fn parse_unicode_bidi<'i, 't>(
 
 pub(super) fn parse_glyph_orientation_vertical<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextOrientation, ParseError<'i, Error>> {
+    let start = input.state();
     let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Ident(ident) if ident.eq_ignore_ascii_case("auto") => Ok(CssTextOrientation::Mixed),
+    let value = match input.next().map_err(basic)? {
+        Token::Ident(ident) if ident.eq_ignore_ascii_case("auto") => {
+            Some(CssTextOrientation::Mixed)
+        }
         Token::Number {
             int_value: Some(0), ..
-        } => Ok(CssTextOrientation::Upright),
-        Token::Dimension {
-            value: 0.0, unit, ..
-        } if unit.eq_ignore_ascii_case("deg") => Ok(CssTextOrientation::Upright),
+        } => Some(CssTextOrientation::Upright),
         Token::Number {
             int_value: Some(90),
             ..
-        } => Ok(CssTextOrientation::Sideways),
-        Token::Dimension {
-            value: 90.0, unit, ..
-        } if unit.eq_ignore_ascii_case("deg") => Ok(CssTextOrientation::Sideways),
-        _ => Err(unsupported_value_at(
+        } => Some(CssTextOrientation::Sideways),
+        Token::Dimension { unit, .. } if unit.eq_ignore_ascii_case("deg") => {
+            input.reset(&start);
+            input.skip_whitespace();
+            let offset = input.position().byte_index();
+            let component = numeric.collect(input).map_err(|error| {
+                unsupported_value_at(
+                    numeric.error_location(&error, location, offset),
+                    None,
+                    "invalid glyph orientation dimension",
+                )
+            })?;
+            match component.view() {
+                crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension {
+                    number,
+                    ..
+                }) => match crate::opacity_scalar::exact_legacy_value(number.representation()) {
+                    Some(0.0) => Some(CssTextOrientation::Upright),
+                    Some(90.0) => Some(CssTextOrientation::Sideways),
+                    _ => None,
+                },
+                _ => None,
+            }
+        }
+        _ => None,
+    };
+    value.ok_or_else(|| {
+        unsupported_value_at(
             location,
             None,
             "glyph-orientation-vertical accepts only auto, 0deg, 90deg, 0, or 90",
-        )),
-    }
+        )
+    })
 }
 
 pub(super) fn parse_text_align<'i, 't>(

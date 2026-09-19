@@ -4347,7 +4347,7 @@ fn parse_known_declaration_body<'i, 't>(
             parse_known_property_value(known_property, authored, input, numeric)
         }
         CssResolvedPropertyName::LegacyShorthand(alias) => {
-            parse_legacy_property_alias_value(alias, authored, input)
+            parse_legacy_property_alias_value(alias, authored, input, numeric)
         }
     }
     .map_err(|error| with_property_context(error, context_name))?;
@@ -4363,10 +4363,11 @@ fn parse_legacy_property_alias_value<'i, 't>(
     alias: CssLegacyPropertyAlias,
     authored: CssAuthoredDeclarationValue,
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssKnownDeclaration, ParseError<'i, Error>> {
     match alias {
         CssLegacyPropertyAlias::GlyphOrientationVertical => {
-            let value = parse_glyph_orientation_vertical(input)?;
+            let value = parse_glyph_orientation_vertical(input, numeric)?;
             Ok(CssKnownDeclaration::from_value(
                 CssKnownDeclarationValue::TextOrientation(CssDeclaredValue::Value(
                     CssTextOrientationPropertyValue::new(authored, value),
