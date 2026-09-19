@@ -1323,8 +1323,24 @@ An invalid or unknown counter-style descriptor is dropped individually with a
 typed `DropDescriptor` diagnostic, preserving valid neighboring descriptors.
 An invalid effective combination, such as `system: extends` with an authored
 `symbols` definition, drops the complete at-rule. Counter-style rules are
-top-level block rules; malformed preludes, statement forms, and nested placement
-drop the smallest established at-rule unit and leave later siblings eligible.
+block rules admitted at stylesheet level, in ordinary conditional and layer rule
+lists, and in ordinary scopes. Malformed preludes, statement forms and placement
+beneath a style-rule ancestor drop the smallest established at-rule unit and
+leave later siblings eligible.
+
+Ordinary scope bodies also retain `@font-face` and `@keyframes` definitions.
+`CssScopedRule::{CounterStyle, FontFace, Keyframes}` carries the same payload as
+its ordinary `CssRule` counterpart. Normalization records each definition once
+under its authored parent context; scope does not create a new definition
+identity or localize these names. Counter-style names retain their tree-scoped
+semantics. Conditional application, font loading and name lookup belong
+downstream. Definitions remain invalid beneath style-rule ancestors, including
+through nested scope, media, supports, container and layer groups. These
+placement contracts follow the selected
+[Conditional Rules 3](https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/),
+[Cascade 6 scope nesting](https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-nesting)
+and [Nesting 1](https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nesting-other-at-rules)
+editions.
 
 `CssRule::Page` retains the default page form or one of the finite
 `CssPageSelector::{Left, Right, First}` choices, valid declarations in authored

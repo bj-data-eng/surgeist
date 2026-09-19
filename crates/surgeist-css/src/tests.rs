@@ -1381,10 +1381,50 @@ fn scope_rule_parser_rejects_malformed_scope_syntax() {
         "@scope (.card) to (.stop) extra { .title { color: black; } }",
         "@scope (.card::before) { .title { color: black; } }",
         "@scope (.card) to (.stop::after) { .title { color: black; } }",
-        "@scope (.card) { @font-face { font-family: Test; src: local(Test); } }",
     ] {
         assert!(parse_sheet(css).is_err(), "{css} should reject");
     }
+}
+
+#[test]
+fn scope_rule_parser_retains_global_font_definition() {
+    let sheet =
+        parse_sheet("@scope (.card) { @font-face { font-family: Test; src: local(Test); } }")
+            .unwrap();
+    let [CssRule::Scope(scope)] = sheet.rules() else {
+        panic!("scope")
+    };
+    let [CssScopedRule::FontFace(font)] = scope.rules().rules() else {
+        panic!("font definition")
+    };
+    assert_eq!(
+        font.descriptors().font_family().unwrap().value().as_str(),
+        "Test"
+    );
+    assert!(
+        matches!(font.descriptors().src().unwrap().value().sources(), [CssFontFaceSource::Local(name)] if name.as_str() == "Test")
+    );
+    let with_neighbors = parse_sheet("@scope (.card) { .ok { color: black; } @font-face { font-family: Test; src: local(Test); } } .after { color: blue; }").unwrap();
+    let [CssRule::Scope(scope), CssRule::Style(after)] = with_neighbors.rules() else {
+        panic!("scope and later style")
+    };
+    let [CssScopedRule::Style(before), CssScopedRule::FontFace(font)] = scope.rules().rules()
+    else {
+        panic!("style and global font definition")
+    };
+    assert!(
+        matches!(before.selectors().selectors(), [CssScopedStyleSelector::Selector(CssSelector::Class(name))] if name == "ok")
+    );
+    assert!(
+        matches!(after.selectors().selectors()[0].selector(), CssSelector::Class(name) if name == "after")
+    );
+    assert_eq!(
+        font.descriptors().font_family().unwrap().value().as_str(),
+        "Test"
+    );
+    assert!(
+        matches!(font.descriptors().src().unwrap().value().sources(), [CssFontFaceSource::Local(name)] if name.as_str() == "Test")
+    );
 }
 
 #[test]
@@ -4392,7 +4432,7 @@ fn malformed_sheet_surfaces_emit_expected_typed_diagnostics() {
 fn malformed_authored_surfaces_emit_recovery_diagnostics() {
     for css in [
         "@layer reset; @layer , theme; .ok { color: black; }",
-        "@scope (.card) { .ok { color: black; } @font-face { font-family: Test; src: local(Test); } } .after { color: blue; }",
+        "@scope (.card) { .ok { color: black; } @font-face extra { font-family: Test; src: local(Test); } } .after { color: blue; }",
         ".ok { color: black; } .bad::before .later { color: red; } .after { color: blue; }",
         ".ok { content: \"good\"; content: normal \"bad\"; color: red; }",
         ".ok { list-style: square inside; counter-reset: none item; color: red; }",

@@ -350,7 +350,7 @@ fn counter_style_descriptor_recovery_keeps_valid_occurrences_and_siblings() {
 }
 
 #[test]
-fn counter_style_rules_enforce_top_level_body_phase_and_exact_positions() {
+fn counter_style_rules_preserve_body_phase_nested_definitions_and_exact_positions() {
     let source = concat!(
         "@counter-style 🧭 { symbols: \"x\"; suffix: \"🚀\"; } ",
         "@import \"late.css\"; ",
@@ -383,15 +383,19 @@ fn counter_style_rules_enforce_top_level_body_phase_and_exact_positions() {
             .iter()
             .map(|diagnostic| diagnostic.error().code())
             .collect::<Vec<_>>(),
-        vec![
-            CssErrorCode::InvalidAtRulePlacement,
-            CssErrorCode::InvalidAtRulePlacement,
-        ]
+        vec![CssErrorCode::InvalidAtRulePlacement]
     );
     let CssRule::Media(media) = &report.syntax().rules()[1] else {
         panic!("expected media rule")
     };
-    assert!(matches!(media.rules(), [CssRule::Style(_)]));
+    let [CssRule::CounterStyle(nested), CssRule::Style(_)] = media.rules() else {
+        panic!("expected nested definition and retained sibling")
+    };
+    assert_eq!(nested.name().as_str(), "nested");
+    assert_eq!(
+        nested.position().byte_offset().value(),
+        source.find("@counter-style nested").unwrap()
+    );
 }
 
 #[test]
@@ -510,10 +514,35 @@ fn c11_rule_recovery_preserves_siblings_and_boundaries() {
         panic!("expected recovered media parent")
     };
     // Conditional Rules 3 §3 permits @page in an ordinary conditional rule list.
-    // https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#contents-of
-    let [CssRule::Page(nested_page), CssRule::Style(sibling)] = media.rules() else {
-        panic!("expected the page followed by its retained style sibling")
+    // https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/
+    let [
+        CssRule::CounterStyle(nested_counter),
+        CssRule::Page(nested_page),
+        CssRule::Style(sibling),
+    ] = media.rules()
+    else {
+        panic!("expected counter, page and retained style sibling")
     };
+    assert_eq!(nested_counter.name().as_str(), "media-child");
+    assert_eq!(
+        nested_counter.position().byte_offset().value(),
+        source.find("@counter-style media-child").unwrap()
+    );
+    let CssRule::Scope(scope) = &report.syntax().rules()[4] else {
+        panic!("scope")
+    };
+    let [
+        surgeist_css::CssScopedRule::CounterStyle(scoped_counter),
+        surgeist_css::CssScopedRule::Style(_),
+    ] = scope.rules().rules()
+    else {
+        panic!("counter and scoped sibling")
+    };
+    assert_eq!(scoped_counter.name().as_str(), "scope-child");
+    assert_eq!(
+        scoped_counter.position().byte_offset().value(),
+        source.find("@counter-style scope-child").unwrap()
+    );
     assert_eq!(
         nested_page.selector(),
         Some(surgeist_css::CssPageSelector::Right)
@@ -554,19 +583,11 @@ fn c11_rule_recovery_preserves_siblings_and_boundaries() {
             CssErrorCode::InvalidAtRulePlacement,
         ),
         (
-            "@counter-style media-child { symbols: m; }",
-            CssErrorCode::InvalidAtRulePlacement,
-        ),
-        (
             "@counter-style style-child { symbols: s; }",
             CssErrorCode::InvalidAtRulePlacement,
         ),
         (
             "@page :first { margin: 3cm; }",
-            CssErrorCode::InvalidAtRulePlacement,
-        ),
-        (
-            "@counter-style scope-child { symbols: c; }",
             CssErrorCode::InvalidAtRulePlacement,
         ),
         (

@@ -851,6 +851,9 @@ fn scoped_rule_into_chunk_rule(rule: CssScopedRule) -> CssRule {
             rule.names().clone(),
             rule.position(),
         )),
+        CssScopedRule::CounterStyle(rule) => CssRule::CounterStyle(rule),
+        CssScopedRule::FontFace(rule) => CssRule::FontFace(rule),
+        CssScopedRule::Keyframes(rule) => CssRule::Keyframes(rule),
         CssScopedRule::Scope(rule) => CssRule::Scope(rule),
         CssScopedRule::CustomMedia(rule) => CssRule::CustomMedia(rule),
         CssScopedRule::FontFeatureValues(rule) => CssRule::FontFeatureValues(rule),
@@ -1185,16 +1188,16 @@ fn into_scoped_rule(rule: CssRule) -> Option<CssScopedRule> {
             ),
             rule.position(),
         ))),
+        CssRule::CounterStyle(rule) => Some(CssScopedRule::CounterStyle(rule)),
+        CssRule::FontFace(rule) => Some(CssScopedRule::FontFace(rule)),
+        CssRule::Keyframes(rule) => Some(CssScopedRule::Keyframes(rule)),
         CssRule::Scope(rule) => Some(CssScopedRule::Scope(rule)),
         CssRule::CustomMedia(rule) => Some(CssScopedRule::CustomMedia(rule)),
         CssRule::FontFeatureValues(rule) => Some(CssScopedRule::FontFeatureValues(rule)),
         CssRule::NestedDeclarations(_)
         | CssRule::Import(_)
         | CssRule::Namespace(_)
-        | CssRule::CounterStyle(_)
-        | CssRule::Page(_)
-        | CssRule::FontFace(_)
-        | CssRule::Keyframes(_) => None,
+        | CssRule::Page(_) => None,
     }
 }
 
@@ -1214,6 +1217,9 @@ fn scoped_rule_start(rule: &CssScopedRule) -> usize {
                 .byte_offset()
                 .value();
         }
+        CssScopedRule::CounterStyle(rule) => rule.position(),
+        CssScopedRule::FontFace(rule) => rule.position(),
+        CssScopedRule::Keyframes(rule) => rule.position(),
         CssScopedRule::Style(rule) => rule.position(),
         CssScopedRule::Media(rule) => rule.position(),
         CssScopedRule::Supports(rule) => rule.position(),
@@ -1975,36 +1981,9 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                 })?;
                 Ok(StrictAtRulePrelude::Namespace(prelude))
             },
-            "counter-style" => {
-                if self.top_level_phase.is_none() {
-                    return Err(top_level_only_at_rule_placement(
-                        input.current_source_location(),
-                        "counter-style",
-                    ));
-                }
-                let name = parse_counter_style_name(input).map_err(|error| {
-                    with_at_rule_prelude_context(
-                        error,
-                        "counter-style",
-                        "later.rule.counter-style",
-                        "one non-reserved counter-style name",
-                    )
-                })?;
-                let following = self
-                    .source
-                    .get(input.position().byte_index()..)
-                    .unwrap_or_default()
-                    .trim_start();
-                if following.is_empty() || following.starts_with(';') {
-                    return Err(invalid_at_rule_body(
-                        input,
-                        "counter-style",
-                        "later.rule.counter-style",
-                        "a block-form counter-style rule",
-                    ));
-                }
-                Ok(StrictAtRulePrelude::CounterStyle(name))
-            },
+            "counter-style" => Ok(StrictAtRulePrelude::CounterStyle(
+                parse_counter_style_prelude(self.source, input)?,
+            )),
             "page" => {
                 let selector = parse_page_selector(input).map_err(|error| {
                     with_at_rule_prelude_context(
@@ -2032,17 +2011,7 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
             "custom-media" => Ok(StrictAtRulePrelude::CustomMedia(Box::new(parse_custom_media_prelude(self.source, input, &self.recovery)?))),
             "font-feature-values" => Ok(StrictAtRulePrelude::FontFeatureValues(font_feature_values::parse_families(self.source, input, &self.recovery)?)),
             "font-face" => {
-                if !input.is_exhausted() {
-                    return Err(with_at_rule_prelude_context(
-                        invalid_syntax(
-                            input.current_source_location(),
-                            "unexpected token after font-face at-rule name",
-                        ),
-                        "font-face",
-                        "baseline.rule.font-face",
-                        "an empty @font-face prelude",
-                    ));
-                }
+                parse_font_face_prelude(input)?;
                 Ok(StrictAtRulePrelude::FontFace)
             },
             "layer" => Ok(StrictAtRulePrelude::Layer(
@@ -2056,25 +2025,7 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                 })?,
             )),
             "keyframes" => {
-                let name = parse_keyframes_name(input).map_err(|error| {
-                    with_at_rule_prelude_context(
-                        error,
-                        "keyframes",
-                        "baseline.rule.keyframes",
-                        "a supported keyframes name",
-                    )
-                })?;
-                if !input.is_exhausted() {
-                    return Err(with_at_rule_prelude_context(
-                        invalid_syntax(
-                            input.current_source_location(),
-                            "unexpected token after keyframes name",
-                        ),
-                        "keyframes",
-                        "baseline.rule.keyframes",
-                        "the end of the @keyframes prelude",
-                    ));
-                }
+                let name = parse_keyframes_prelude(input)?;
                 Ok(StrictAtRulePrelude::Keyframes(name))
             },
             "media" => {
@@ -3332,6 +3283,75 @@ fn parse_scope_prelude<'i, 't>(
     Ok(CssScopePrelude { root, limit })
 }
 
+fn parse_counter_style_prelude<'i, 't>(
+    source: &'i str,
+    input: &mut Parser<'i, 't>,
+) -> Result<CssCounterStyleName, ParseError<'i, Error>> {
+    let name = parse_counter_style_name(input).map_err(|error| {
+        with_at_rule_prelude_context(
+            error,
+            "counter-style",
+            "later.rule.counter-style",
+            "one non-reserved counter-style name",
+        )
+    })?;
+    let following = source
+        .get(input.position().byte_index()..)
+        .unwrap_or_default()
+        .trim_start();
+    if following.is_empty() || following.starts_with(';') {
+        return Err(invalid_at_rule_body(
+            input,
+            "counter-style",
+            "later.rule.counter-style",
+            "a block-form counter-style rule",
+        ));
+    }
+    Ok(name)
+}
+
+fn parse_font_face_prelude<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> Result<(), ParseError<'i, Error>> {
+    if !input.is_exhausted() {
+        return Err(with_at_rule_prelude_context(
+            invalid_syntax(
+                input.current_source_location(),
+                "unexpected token after font-face at-rule name",
+            ),
+            "font-face",
+            "baseline.rule.font-face",
+            "an empty @font-face prelude",
+        ));
+    }
+    Ok(())
+}
+
+fn parse_keyframes_prelude<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> Result<CssKeyframesName, ParseError<'i, Error>> {
+    let name = parse_keyframes_name(input).map_err(|error| {
+        with_at_rule_prelude_context(
+            error,
+            "keyframes",
+            "baseline.rule.keyframes",
+            "a supported keyframes name",
+        )
+    })?;
+    if !input.is_exhausted() {
+        return Err(with_at_rule_prelude_context(
+            invalid_syntax(
+                input.current_source_location(),
+                "unexpected token after keyframes name",
+            ),
+            "keyframes",
+            "baseline.rule.keyframes",
+            "the end of the @keyframes prelude",
+        ));
+    }
+    Ok(name)
+}
+
 struct ScopedRuleParser<'s> {
     has_style_ancestor: bool,
     source: &'s str,
@@ -3340,6 +3360,9 @@ struct ScopedRuleParser<'s> {
 }
 
 enum ScopedAtRulePrelude {
+    CounterStyle(CssCounterStyleName),
+    FontFace,
+    Keyframes(CssKeyframesName),
     CustomMedia(Box<CustomMediaPrelude>),
     FontFeatureValues(Vec<CssFontFaceFamily>),
     Media(CssMediaQueryList),
@@ -3352,6 +3375,9 @@ enum ScopedAtRulePrelude {
 impl ScopedAtRulePrelude {
     fn production(&self) -> &'static str {
         match self {
+            Self::CounterStyle(_) => "later.rule.counter-style",
+            Self::FontFace => "baseline.rule.font-face",
+            Self::Keyframes(_) => "baseline.rule.keyframes",
             Self::CustomMedia(_) => "ext.rule.custom-media",
             Self::FontFeatureValues(_) => "later.rule.font-feature-values",
             Self::Media(_) => "baseline.rule.media",
@@ -3452,25 +3478,32 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                 }
                 Ok(ScopedAtRulePrelude::FontFeatureValues(font_feature_values::parse_families(self.source, input, &self.recovery)?))
             },
-            "font-face" => Err(invalid_at_rule_placement(
-                input.current_source_location(),
-                "font-face",
-                "a stylesheet or conditional group rule list",
-            )),
-            "keyframes" => Err(invalid_at_rule_placement(
-                input.current_source_location(),
-                "keyframes",
-                "a stylesheet or conditional group rule list",
-            )),
+            "font-face" => {
+                if self.has_style_ancestor {
+                    return Err(invalid_at_rule_placement(input.current_source_location(), "font-face", "a rule list without a style-rule ancestor"));
+                }
+                parse_font_face_prelude(input)?;
+                Ok(ScopedAtRulePrelude::FontFace)
+            },
+            "keyframes" => {
+                if self.has_style_ancestor {
+                    return Err(invalid_at_rule_placement(input.current_source_location(), "keyframes", "a rule list without a style-rule ancestor"));
+                }
+                let name = parse_keyframes_prelude(input)?;
+                Ok(ScopedAtRulePrelude::Keyframes(name))
+            },
             "namespace" => Err(invalid_at_rule_placement(
                 input.current_source_location(),
                 "namespace",
                 "the stylesheet top level",
             )),
-            "counter-style" => Err(top_level_only_at_rule_placement(
-                input.current_source_location(),
-                "counter-style",
-            )),
+            "counter-style" => {
+                if self.has_style_ancestor {
+                    return Err(invalid_at_rule_placement(input.current_source_location(), "counter-style", "a rule list without a style-rule ancestor"));
+                }
+                let name = parse_counter_style_prelude(self.source, input)?;
+                Ok(ScopedAtRulePrelude::CounterStyle(name))
+            },
             "page" => Err(top_level_only_at_rule_placement(
                 input.current_source_location(),
                 "page",
@@ -3507,7 +3540,10 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                     ),
                 )])
             }
-            ScopedAtRulePrelude::FontFeatureValues(_)
+            ScopedAtRulePrelude::CounterStyle(_)
+            | ScopedAtRulePrelude::FontFace
+            | ScopedAtRulePrelude::Keyframes(_)
+            | ScopedAtRulePrelude::FontFeatureValues(_)
             | ScopedAtRulePrelude::Media(_)
             | ScopedAtRulePrelude::Supports(_)
             | ScopedAtRulePrelude::Container(_)
@@ -3529,6 +3565,39 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
             start.source_location(),
         );
         let result = match prelude {
+            ScopedAtRulePrelude::CounterStyle(name) => {
+                let rule = parse_counter_style_rule(
+                    self.source,
+                    name,
+                    input,
+                    start,
+                    &mut self.diagnostics,
+                    self.recovery.clone(),
+                )?;
+                Ok(vec![CssScopedRule::CounterStyle(rule)])
+            }
+            ScopedAtRulePrelude::FontFace => {
+                let rule = parse_font_face_rule(
+                    self.source,
+                    input,
+                    start,
+                    &mut self.diagnostics,
+                    self.recovery.clone(),
+                )?;
+                Ok(vec![CssScopedRule::FontFace(rule)])
+            }
+            ScopedAtRulePrelude::Keyframes(name) => {
+                let rule = parse_keyframes_rule(
+                    self.source,
+                    name,
+                    input,
+                    start,
+                    &mut self.diagnostics,
+                    self.recovery.clone(),
+                )?;
+                Ok(vec![CssScopedRule::Keyframes(rule)])
+            }
+
             ScopedAtRulePrelude::CustomMedia(_) => Err(invalid_at_rule_block(
                 input,
                 "custom-media",

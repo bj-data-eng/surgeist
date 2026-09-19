@@ -2653,8 +2653,11 @@ pub surgeist_css::CssScanMode::Interlace
 pub surgeist_css::CssScanMode::Progressive
 #[non_exhaustive] pub enum surgeist_css::CssScopedRule
 pub surgeist_css::CssScopedRule::Container(surgeist_css::CssScopedContainerRule)
+pub surgeist_css::CssScopedRule::CounterStyle(surgeist_css::CssCounterStyleRule)
 pub surgeist_css::CssScopedRule::CustomMedia(surgeist_css::CssCustomMediaRule)
+pub surgeist_css::CssScopedRule::FontFace(surgeist_css::CssFontFaceRule)
 pub surgeist_css::CssScopedRule::FontFeatureValues(surgeist_css::CssFontFeatureValuesRule)
+pub surgeist_css::CssScopedRule::Keyframes(surgeist_css::CssKeyframesRule)
 pub surgeist_css::CssScopedRule::LayerBlock(surgeist_css::CssScopedLayerBlockRule)
 pub surgeist_css::CssScopedRule::LayerStatement(surgeist_css::CssScopedLayerStatementRule)
 pub surgeist_css::CssScopedRule::Media(surgeist_css::CssScopedMediaRule)

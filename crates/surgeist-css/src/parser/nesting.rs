@@ -295,9 +295,10 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
                 "namespace",
                 "the stylesheet top level",
             )),
-            "counter-style" => Err(super::top_level_only_at_rule_placement(
+            "counter-style" => Err(invalid_at_rule_placement(
                 input.current_source_location(),
                 "counter-style",
+                "a rule list without a style-rule ancestor",
             )),
             "page" => Err(super::top_level_only_at_rule_placement(
                 input.current_source_location(),

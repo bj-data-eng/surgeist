@@ -1734,6 +1734,15 @@ fn scoped_rule_observables(
     frozen: &mut FrozenDeclarationCursor<'_>,
 ) {
     match rule {
+        CssScopedRule::CounterStyle(rule) => {
+            rule_observables(&CssRule::CounterStyle(rule.clone()), retained, frozen)
+        }
+        CssScopedRule::FontFace(rule) => {
+            rule_observables(&CssRule::FontFace(rule.clone()), retained, frozen)
+        }
+        CssScopedRule::Keyframes(rule) => {
+            rule_observables(&CssRule::Keyframes(rule.clone()), retained, frozen)
+        }
         CssScopedRule::FontFeatureValues(_) => {
             retained.push("rule:later.rule.font-feature-values".to_owned())
         }

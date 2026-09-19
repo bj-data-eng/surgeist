@@ -2977,6 +2977,12 @@ impl CssScopedRuleList {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssScopedRule {
+    /// A global counter definition retained in its authored scope context.
+    CounterStyle(CssCounterStyleRule),
+    /// A global font definition retained in its authored scope context.
+    FontFace(CssFontFaceRule),
+    /// A global animation definition retained in its authored scope context.
+    Keyframes(CssKeyframesRule),
     CustomMedia(crate::CssCustomMediaRule),
     FontFeatureValues(CssFontFeatureValuesRule),
     Style(CssScopedStyleRule),
