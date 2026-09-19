@@ -300,9 +300,10 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
                 "counter-style",
                 "a rule list without a style-rule ancestor",
             )),
-            "page" => Err(super::top_level_only_at_rule_placement(
+            "page" => Err(invalid_at_rule_placement(
                 input.current_source_location(),
                 "page",
+                "a rule list without a style-rule ancestor",
             )),
             _ => Err(input.new_error(cssparser::BasicParseErrorKind::AtRuleInvalid(name))),
         }
@@ -367,8 +368,13 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
                 ))
             }
             NestedStyleAtRulePrelude::Scope(prelude) => {
-                let recovered =
-                    parse_scoped_rule_list(self.source, input, self.recovery.clone(), true)?;
+                let recovered = parse_scoped_rule_list(
+                    self.source,
+                    input,
+                    self.recovery.clone(),
+                    true,
+                    super::ScopedBodyKind::Scope,
+                )?;
                 self.diagnostics.extend(recovered.diagnostics);
                 let rules = recovered.syntax;
                 CssRule::Scope(CssScopeRule::new(

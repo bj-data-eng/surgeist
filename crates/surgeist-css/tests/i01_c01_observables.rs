@@ -1740,6 +1740,9 @@ fn scoped_rule_observables(
         CssScopedRule::FontFace(rule) => {
             rule_observables(&CssRule::FontFace(rule.clone()), retained, frozen)
         }
+        CssScopedRule::Page(rule) => {
+            rule_observables(&CssRule::Page(rule.clone()), retained, frozen)
+        }
         CssScopedRule::Keyframes(rule) => {
             rule_observables(&CssRule::Keyframes(rule.clone()), retained, frozen)
         }

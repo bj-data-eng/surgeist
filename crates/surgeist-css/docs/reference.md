@@ -1350,8 +1350,14 @@ percentages, `auto`, zero, and negative values. Known non-margin, unknown, and
 invalid margin declarations receive their existing typed declaration
 diagnostics and are dropped individually. Block-form page rules are accepted at
 the stylesheet top level and inside ordinary conditional and layer rule lists.
-They remain invalid in style-rule bodies, including conditional groups with a
-style ancestor. Margin-box nested at-rules remain unsupported.
+Inside scope, ordinary conditional and layer bodies retain the same payload as
+`CssScopedRule::Page`; page selectors do not become scoped element selectors.
+A directly enclosing scope body rejects a page under the selected Syntax 3 and
+Cascade 6 content-category interpretation. Entering another scope restores that
+body restriction. Pages remain invalid in style-rule bodies, including all group
+chains with a style ancestor. Normalization retains a page leaf and its authored
+parent without emitting its margin declarations as element-style declarations.
+Margin-box nested at-rules remain unsupported.
 
 Ordinary conditional and layer rule lists consume semicolon-prefixed input as
 a qualified rule. For example, `@media all { a {} ;b {} c {} }` retains `a` and

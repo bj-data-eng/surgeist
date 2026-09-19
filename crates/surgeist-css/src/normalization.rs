@@ -1071,6 +1071,9 @@ impl Normalizer {
                         context.rule,
                     );
                 }
+                CssScopedRule::Page(value) => {
+                    self.record_rule(RuleContextKind::Page(value.clone()), position, context.rule);
+                }
                 CssScopedRule::Keyframes(value) => {
                     self.record_rule(
                         RuleContextKind::Keyframes(value.clone()),
@@ -1125,6 +1128,7 @@ fn scoped_position(rule: &CssScopedRule) -> Option<CssSourcePosition> {
         CssScopedRule::CounterStyle(value) => value.position(),
         CssScopedRule::FontFace(value) => value.position(),
         CssScopedRule::Keyframes(value) => value.position(),
+        CssScopedRule::Page(value) => value.position(),
         CssScopedRule::Style(value) => value.position(),
         CssScopedRule::Media(value) => value.position(),
         CssScopedRule::Supports(value) => value.position(),

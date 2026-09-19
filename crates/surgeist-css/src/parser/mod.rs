@@ -507,11 +507,20 @@ fn parse_style_attribute_inner(source: &str) -> crate::CssParseReport<CssDeclara
     crate::CssParseReport::new(syntax, diagnostics)
 }
 
+#[derive(Clone, Copy)]
+enum ScopedBodyKind {
+    Scope,
+    OrdinaryGroup,
+}
+
 #[derive(Clone)]
 enum BoundedParseContext {
     Sheet,
     Style,
-    Scoped { has_style_ancestor: bool },
+    Scoped {
+        has_style_ancestor: bool,
+        body: ScopedBodyKind,
+    },
 }
 
 impl BoundedParseContext {
@@ -523,7 +532,8 @@ impl BoundedParseContext {
             self,
             Self::Style
                 | Self::Scoped {
-                    has_style_ancestor: true
+                    has_style_ancestor: true,
+                    ..
                 }
         )
     }
@@ -612,9 +622,10 @@ fn parse_sheet_bounded_with_captures(
         return match context {
             BoundedParseContext::Sheet => parse_sheet_inner(source, recovery),
             BoundedParseContext::Style => parse_style_context_inner(source, recovery),
-            BoundedParseContext::Scoped { has_style_ancestor } => {
-                parse_scoped_context_inner(source, recovery, has_style_ancestor)
-            }
+            BoundedParseContext::Scoped {
+                has_style_ancestor,
+                body,
+            } => parse_scoped_context_inner(source, recovery, has_style_ancestor, body),
         };
     };
     if matches!(&preflight.outcome, StructuralPreflightOutcome::Split) {
@@ -630,7 +641,11 @@ fn parse_sheet_bounded_with_captures(
     // Parse at most one bounded structural chunk at a time. Same-length masks
     // retain original byte/line coordinates, and the completed child syntax is
     // spliced back into its parser-produced enclosing groups.
-    let scoped_context = matches!(context, BoundedParseContext::Scoped { .. });
+    let scoped_body = match &context {
+        BoundedParseContext::Scoped { body, .. } => Some(*body),
+        _ => None,
+    };
+    let inherited_style_ancestor = context.has_style_ancestor();
     let outer = parse_sheet_bounded_with_captures(
         &masked,
         source_snapshot,
@@ -643,8 +658,8 @@ fn parse_sheet_bounded_with_captures(
     match preflight.outcome {
         StructuralPreflightOutcome::Split => {
             let isolated = isolate_source_span(source, preflight.unit_start, preflight.unit_end);
-            let has_style_ancestor =
-                preflight
+            let has_style_ancestor = inherited_style_ancestor
+                || preflight
                     .style_ancestry_starts
                     .last()
                     .is_some_and(|&content_start| {
@@ -656,13 +671,26 @@ fn parse_sheet_bounded_with_captures(
                 .is_some_and(|&content_start| style_context_captures.contains_parsed(content_start))
             {
                 BoundedParseContext::Style
-            } else if scoped_context
+            } else if scoped_body.is_some()
                 || preflight
                     .parents
                     .iter()
                     .any(|parent| matches!(parent.kind, GroupKind::Scope))
             {
-                BoundedParseContext::Scoped { has_style_ancestor }
+                let body = match preflight.parents.last().map(|parent| parent.kind) {
+                    Some(GroupKind::Scope) => ScopedBodyKind::Scope,
+                    Some(
+                        GroupKind::Media
+                        | GroupKind::Supports
+                        | GroupKind::Layer
+                        | GroupKind::Container,
+                    ) => ScopedBodyKind::OrdinaryGroup,
+                    _ => scoped_body.unwrap_or(ScopedBodyKind::Scope),
+                };
+                BoundedParseContext::Scoped {
+                    has_style_ancestor,
+                    body,
+                }
             } else {
                 BoundedParseContext::Sheet
             };
@@ -757,10 +785,17 @@ fn parse_scoped_context_inner(
     source: &str,
     recovery: RecoveryState,
     has_style_ancestor: bool,
+    body: ScopedBodyKind,
 ) -> crate::CssParseReport<CssSheet> {
     let mut input = ParserInput::new(source);
     let mut parser = Parser::new(&mut input);
-    match parse_scoped_rule_list(source, &mut parser, recovery.clone(), has_style_ancestor) {
+    match parse_scoped_rule_list(
+        source,
+        &mut parser,
+        recovery.clone(),
+        has_style_ancestor,
+        body,
+    ) {
         Ok(recovered) => {
             let mut sheet = CssSheet::new();
             for rule in recovered.syntax.rules().iter().cloned() {
@@ -857,6 +892,7 @@ fn scoped_rule_into_chunk_rule(rule: CssScopedRule) -> CssRule {
         CssScopedRule::CounterStyle(rule) => CssRule::CounterStyle(rule),
         CssScopedRule::FontFace(rule) => CssRule::FontFace(rule),
         CssScopedRule::Keyframes(rule) => CssRule::Keyframes(rule),
+        CssScopedRule::Page(rule) => CssRule::Page(rule),
         CssScopedRule::Scope(rule) => CssRule::Scope(rule),
         CssScopedRule::CustomMedia(rule) => CssRule::CustomMedia(rule),
         CssScopedRule::FontFeatureValues(rule) => CssRule::FontFeatureValues(rule),
@@ -1194,13 +1230,11 @@ fn into_scoped_rule(rule: CssRule) -> Option<CssScopedRule> {
         CssRule::CounterStyle(rule) => Some(CssScopedRule::CounterStyle(rule)),
         CssRule::FontFace(rule) => Some(CssScopedRule::FontFace(rule)),
         CssRule::Keyframes(rule) => Some(CssScopedRule::Keyframes(rule)),
+        CssRule::Page(rule) => Some(CssScopedRule::Page(rule)),
         CssRule::Scope(rule) => Some(CssScopedRule::Scope(rule)),
         CssRule::CustomMedia(rule) => Some(CssScopedRule::CustomMedia(rule)),
         CssRule::FontFeatureValues(rule) => Some(CssScopedRule::FontFeatureValues(rule)),
-        CssRule::NestedDeclarations(_)
-        | CssRule::Import(_)
-        | CssRule::Namespace(_)
-        | CssRule::Page(_) => None,
+        CssRule::NestedDeclarations(_) | CssRule::Import(_) | CssRule::Namespace(_) => None,
     }
 }
 
@@ -1223,6 +1257,7 @@ fn scoped_rule_start(rule: &CssScopedRule) -> usize {
         CssScopedRule::CounterStyle(rule) => rule.position(),
         CssScopedRule::FontFace(rule) => rule.position(),
         CssScopedRule::Keyframes(rule) => rule.position(),
+        CssScopedRule::Page(rule) => rule.position(),
         CssScopedRule::Style(rule) => rule.position(),
         CssScopedRule::Media(rule) => rule.position(),
         CssScopedRule::Supports(rule) => rule.position(),
@@ -1987,30 +2022,7 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
             "counter-style" => Ok(StrictAtRulePrelude::CounterStyle(
                 parse_counter_style_prelude(self.source, input)?,
             )),
-            "page" => {
-                let selector = parse_page_selector(input).map_err(|error| {
-                    with_at_rule_prelude_context(
-                        error,
-                        "page",
-                        "later.rule.page",
-                        "an empty prelude or one of :left, :right, or :first",
-                    )
-                })?;
-                let following = self
-                    .source
-                    .get(input.position().byte_index()..)
-                    .unwrap_or_default()
-                    .trim_start();
-                if following.is_empty() || following.starts_with(';') {
-                    return Err(invalid_at_rule_body(
-                        input,
-                        "page",
-                        "later.rule.page",
-                        "a block-form page rule",
-                    ));
-                }
-                Ok(StrictAtRulePrelude::Page(selector))
-            },
+            "page" => Ok(StrictAtRulePrelude::Page(parse_page_prelude(self.source, input)?)),
             "custom-media" => Ok(StrictAtRulePrelude::CustomMedia(Box::new(parse_custom_media_prelude(self.source, input, &self.recovery)?))),
             "font-feature-values" => Ok(StrictAtRulePrelude::FontFeatureValues(font_feature_values::parse_families(self.source, input, &self.recovery)?)),
             "font-face" => {
@@ -2337,8 +2349,13 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                 ))])
             }
             StrictAtRulePrelude::Scope(prelude) => {
-                let recovered =
-                    parse_scoped_rule_list(self.source, input, self.recovery.clone(), false)?;
+                let recovered = parse_scoped_rule_list(
+                    self.source,
+                    input,
+                    self.recovery.clone(),
+                    false,
+                    ScopedBodyKind::Scope,
+                )?;
                 self.diagnostics.extend(recovered.diagnostics);
                 let rules = recovered.syntax;
                 self.mark_successful_body_rule();
@@ -3049,11 +3066,39 @@ fn parse_semicolon_qualified_rule<'i, 't>(
     Some(result.map_err(|error| (error, input.slice_from(start.position()))))
 }
 
-pub(super) fn parse_scoped_rule_list<'i, 't>(
+fn parse_page_prelude<'i, 't>(
+    source: &'i str,
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<Option<CssPageSelector>, ParseError<'i, Error>> {
+    let selector = parse_page_selector(input).map_err(|error| {
+        with_at_rule_prelude_context(
+            error,
+            "page",
+            "later.rule.page",
+            "an empty prelude or one of :left, :right, or :first",
+        )
+    })?;
+    let following = source
+        .get(input.position().byte_index()..)
+        .unwrap_or_default()
+        .trim_start();
+    if following.is_empty() || following.starts_with(';') {
+        return Err(invalid_at_rule_body(
+            input,
+            "page",
+            "later.rule.page",
+            "a block-form page rule",
+        ));
+    }
+    Ok(selector)
+}
+
+fn parse_scoped_rule_list<'i, 't>(
     source: &'i str,
     input: &mut Parser<'i, 't>,
     recovery: RecoveryState,
     has_style_ancestor: bool,
+    body: ScopedBodyKind,
 ) -> std::result::Result<Recovered<CssScopedRuleList>, ParseError<'i, Error>> {
     if has_style_ancestor {
         recovery.record_style_context(input.position().byte_index());
@@ -3063,6 +3108,7 @@ pub(super) fn parse_scoped_rule_list<'i, 't>(
         diagnostics: Vec::new(),
         recovery,
         has_style_ancestor,
+        body,
     };
     let mut rules = Vec::new();
     let mut diagnostics = Vec::new();
@@ -3357,12 +3403,14 @@ fn parse_keyframes_prelude<'i, 't>(
 
 struct ScopedRuleParser<'s> {
     has_style_ancestor: bool,
+    body: ScopedBodyKind,
     source: &'s str,
     diagnostics: Vec<crate::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 }
 
 enum ScopedAtRulePrelude {
+    Page(Option<CssPageSelector>),
     CounterStyle(CssCounterStyleName),
     FontFace,
     Keyframes(CssKeyframesName),
@@ -3378,6 +3426,7 @@ enum ScopedAtRulePrelude {
 impl ScopedAtRulePrelude {
     fn production(&self) -> &'static str {
         match self {
+            Self::Page(_) => "later.rule.page",
             Self::CounterStyle(_) => "later.rule.counter-style",
             Self::FontFace => "baseline.rule.font-face",
             Self::Keyframes(_) => "baseline.rule.keyframes",
@@ -3507,10 +3556,12 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                 let name = parse_counter_style_prelude(self.source, input)?;
                 Ok(ScopedAtRulePrelude::CounterStyle(name))
             },
-            "page" => Err(top_level_only_at_rule_placement(
-                input.current_source_location(),
-                "page",
-            )),
+            "page" => {
+                if self.has_style_ancestor || matches!(self.body, ScopedBodyKind::Scope) {
+                    return Err(invalid_at_rule_placement(input.current_source_location(), "page", "an ordinary group body without a style-rule ancestor"));
+                }
+                Ok(ScopedAtRulePrelude::Page(parse_page_prelude(self.source, input)?))
+            },
             _ => Err(input.new_error(cssparser::BasicParseErrorKind::AtRuleInvalid(name))),
         }
     }
@@ -3543,7 +3594,8 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                     ),
                 )])
             }
-            ScopedAtRulePrelude::CounterStyle(_)
+            ScopedAtRulePrelude::Page(_)
+            | ScopedAtRulePrelude::CounterStyle(_)
             | ScopedAtRulePrelude::FontFace
             | ScopedAtRulePrelude::Keyframes(_)
             | ScopedAtRulePrelude::FontFeatureValues(_)
@@ -3568,6 +3620,17 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
             start.source_location(),
         );
         let result = match prelude {
+            ScopedAtRulePrelude::Page(selector) => {
+                let rule = parse_page_rule(
+                    self.source,
+                    selector,
+                    input,
+                    start,
+                    &mut self.diagnostics,
+                    self.recovery.clone(),
+                )?;
+                Ok(vec![CssScopedRule::Page(rule)])
+            }
             ScopedAtRulePrelude::CounterStyle(name) => {
                 let rule = parse_counter_style_rule(
                     self.source,
@@ -3624,6 +3687,7 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                     input,
                     self.recovery.clone(),
                     self.has_style_ancestor,
+                    ScopedBodyKind::OrdinaryGroup,
                 )?;
                 self.diagnostics.extend(recovered.diagnostics);
                 let rules = recovered.syntax;
@@ -3637,6 +3701,7 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                     input,
                     self.recovery.clone(),
                     self.has_style_ancestor,
+                    ScopedBodyKind::OrdinaryGroup,
                 )?;
                 self.diagnostics.extend(recovered.diagnostics);
                 let rules = recovered.syntax;
@@ -3650,6 +3715,7 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                     input,
                     self.recovery.clone(),
                     self.has_style_ancestor,
+                    ScopedBodyKind::OrdinaryGroup,
                 )?;
                 self.diagnostics.extend(recovered.diagnostics);
                 let rules = recovered.syntax;
@@ -3672,6 +3738,7 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                     input,
                     self.recovery.clone(),
                     self.has_style_ancestor,
+                    ScopedBodyKind::OrdinaryGroup,
                 )?;
                 self.diagnostics.extend(recovered.diagnostics);
                 let rules = recovered.syntax;
@@ -3685,6 +3752,7 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                     input,
                     self.recovery.clone(),
                     self.has_style_ancestor,
+                    ScopedBodyKind::Scope,
                 )?;
                 self.diagnostics.extend(recovered.diagnostics);
                 let rules = recovered.syntax;
