@@ -780,8 +780,31 @@ fn structural_preflight_drops_only_style_level_257_with_exact_parent_order() {
     let [CssRule::Style(root), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("expected retained root and sibling");
     };
-    let chain = style_chain(root);
-    assert_eq!(chain.len(), 256);
+    let mut chain = vec![root];
+    for _ in 1..256 {
+        let [CssRule::Style(child)] = chain.last().unwrap().rules() else {
+            panic!("expected the next retained style level");
+        };
+        chain.push(child);
+    }
+    let leaf = chain.last().unwrap();
+    assert_eq!(leaf.declarations().len(), 1);
+    let [CssRule::NestedDeclarations(after_rejected)] = leaf.rules() else {
+        panic!("the rejected depth-257 child partitions the final declaration run");
+    };
+    assert_eq!(after_rejected.declarations().len(), 1);
+    assert_eq!(
+        leaf.declarations()[0].known().unwrap().property(),
+        surgeist_css::CssKnownProperty::Color
+    );
+    assert_eq!(
+        after_rejected.declarations()[0].known().unwrap().property(),
+        surgeist_css::CssKnownProperty::Opacity
+    );
+    assert_eq!(
+        after_rejected.position().byte_offset().value(),
+        source.find("opacity:1").unwrap()
+    );
     for (level, style) in chain.iter().enumerate() {
         assert_eq!(
             selector_classes(style.selectors().selectors()[0].selector()),

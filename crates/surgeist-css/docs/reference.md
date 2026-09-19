@@ -1290,6 +1290,12 @@ Read each list member explicitly instead of assuming a separate rule for each se
 rules and later `CssRule::NestedDeclarations` runs in source order. A nested declarations
 rule exposes its validated nonempty `declarations()` and the first declaration's `position()`;
 it inherits the containing style rule's selector context without inventing an `&` selector.
+A rejected complete qualified rule or any at-rule boundary transfers a preceding
+nonempty declaration run, even when no child rule is retained. Later runs remain
+separate nodes, including adjacent declaration-run nodes. A rejected first rule
+with no preceding declarations leaves the leading slot available. Qualified
+parsing that produces no rule, such as a semicolon-terminated prelude or the
+custom-property-looking fallback, leaves the current declaration run intact.
 `CssCompoundSelector::nesting_selectors()` records symbolic parent anchors independently of
 `has_scope_anchor()`. No parent selector list is expanded during parsing. `CssScopedStyleRule` follows the same
 leading-declarations and ordered-child contract: its `rules()` returns ordinary `CssRule`

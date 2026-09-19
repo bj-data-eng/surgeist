@@ -1014,7 +1014,7 @@ fn splice_style_body(
 ) -> (CssDeclarationList, Vec<CssRule>) {
     let mut declarations = leading.as_slice().to_vec();
     let mut nested = rules.to_vec();
-    if parents.is_empty() && !child_rules.is_empty() {
+    if parents.is_empty() {
         let split = declarations.partition_point(|declaration| {
             declaration
                 .position()
@@ -1023,7 +1023,14 @@ fn splice_style_body(
                 .value()
                 < child_start
         });
-        let trailing = declarations.split_off(split);
+        // A rejected complete chunk still transfers a nonempty preceding run.
+        // With no preceding list and no retained child, the leading slot stays
+        // available. Structural split candidates exclude custom declarations.
+        let trailing = if split > 0 || !child_rules.is_empty() {
+            declarations.split_off(split)
+        } else {
+            Vec::new()
+        };
         if !trailing.is_empty() {
             nested.insert(
                 0,

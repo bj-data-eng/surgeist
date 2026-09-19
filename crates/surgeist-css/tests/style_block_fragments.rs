@@ -91,10 +91,18 @@ fn typed_declarations_and_nested_runs_remain_in_authored_order() {
 
     let report = parse("{color:red; @unknown x; color:blue}");
     let block = report.syntax().as_ref().unwrap();
-    assert!(block.rules().is_empty());
-    assert_eq!(block.declarations().len(), 2);
+    let [CssRule::NestedDeclarations(after)] = block.rules() else {
+        panic!("rejected at-rule partitions the declarations")
+    };
+    assert_eq!(block.declarations().len(), 1);
+    assert_eq!(after.declarations().len(), 1);
     color(&block.declarations()[0], [255, 0, 0]);
-    color(&block.declarations()[1], [0, 0, 255]);
+    color(&after.declarations()[0], [0, 0, 255]);
+    assert_eq!(after.position().byte_offset().value(), 24);
+    let [diagnostic] = report.diagnostics() else {
+        panic!("one rejected at-rule")
+    };
+    assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
 }
 
 #[test]

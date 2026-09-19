@@ -54,10 +54,12 @@ pub(super) fn parse_style_contents<'i, 't>(
         diagnostics: Vec::new(),
         recovery,
         qualified_resource_error: None,
+        boundary: StyleRuleBoundary::None,
     };
     let mut declarations = Vec::new();
     let mut rules = Vec::new();
     let mut declaration_buffer = Vec::new();
+    let mut leading_slot_open = true;
     let mut previous_end = input.position().byte_index();
 
     let mut items = RuleBodyParser::new(input, &mut body_parser);
@@ -67,6 +69,7 @@ pub(super) fn parse_style_contents<'i, 't>(
         // errors. Preserve only typed resource failures for this one item so they
         // cannot become an ordinary declaration error or leak into the next item.
         items.parser.qualified_resource_error = None;
+        items.parser.boundary = StyleRuleBoundary::None;
         let item = items.next();
         let qualified_resource_error = items.parser.qualified_resource_error.take();
         let Some(item) = item else {
@@ -87,12 +90,22 @@ pub(super) fn parse_style_contents<'i, 't>(
             .unwrap_or((false, None));
         let progress_outcome = progress.finish(items.input, item.is_ok());
         let unit_end = items.input.position().byte_index();
+        if items.parser.boundary.partitions(failed_at_block) {
+            flush_declarations(
+                &mut declaration_buffer,
+                &mut declarations,
+                &mut rules,
+                &mut leading_slot_open,
+            );
+        }
         match item {
             Ok(StyleBlockItem::Declaration(declaration)) => {
                 declaration_buffer.push(*declaration);
             }
             Ok(StyleBlockItem::NestedRules(nested_rules)) => {
-                flush_declarations(&mut declaration_buffer, &mut declarations, &mut rules);
+                if !nested_rules.is_empty() {
+                    leading_slot_open = false;
+                }
                 rules.extend(nested_rules);
             }
             Err((error, failed_unit))
@@ -131,7 +144,12 @@ pub(super) fn parse_style_contents<'i, 't>(
             break;
         }
     }
-    flush_declarations(&mut declaration_buffer, &mut declarations, &mut rules);
+    flush_declarations(
+        &mut declaration_buffer,
+        &mut declarations,
+        &mut rules,
+        &mut leading_slot_open,
+    );
     Ok(Recovered {
         syntax: StyleContents {
             declarations: CssDeclarationList::new(declarations),
@@ -145,11 +163,15 @@ fn flush_declarations(
     buffer: &mut Vec<CssDeclaration>,
     leading: &mut Vec<CssDeclaration>,
     rules: &mut Vec<CssRule>,
+    leading_slot_open: &mut bool,
 ) {
     if buffer.is_empty() {
         return;
     }
-    if rules.is_empty() {
+    if *leading_slot_open {
+        // A transferred first list occupies the leading slot even if the rule
+        // that caused this transfer is rejected and leaves no retained child.
+        *leading_slot_open = false;
         leading.append(buffer);
     } else {
         rules.push(CssRule::NestedDeclarations(CssNestedDeclarationsRule::new(
@@ -158,11 +180,30 @@ fn flush_declarations(
     }
 }
 
+// cssparser's custom-property-looking fallback bypasses qualified callbacks.
+// A semicolon/EOF failure can enter the prelude callback but never reaches a
+// block. Only actual block consumption completes that qualified-rule boundary.
+#[derive(Clone, Copy)]
+enum StyleRuleBoundary {
+    None,
+    AtRule,
+    QualifiedPrelude,
+    QualifiedBlock,
+}
+
+impl StyleRuleBoundary {
+    fn partitions(self, failed_at_block: bool) -> bool {
+        matches!(self, Self::AtRule | Self::QualifiedBlock)
+            || (matches!(self, Self::QualifiedPrelude) && failed_at_block)
+    }
+}
+
 struct NestedStyleRuleParser<'s> {
     source: &'s str,
     diagnostics: Vec<crate::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
     qualified_resource_error: Option<ParseError<'s, Error>>,
+    boundary: StyleRuleBoundary,
 }
 
 enum StyleBlockItem {
@@ -200,6 +241,7 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
         name: CowRcStr<'i>,
         input: &mut Parser<'i, 't>,
     ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
+        self.boundary = StyleRuleBoundary::AtRule;
         match_ignore_ascii_case! { &name,
             "media" => {
                 let query = parse_media_query_list(
@@ -399,6 +441,7 @@ impl<'i> QualifiedRuleParser<'i> for NestedStyleRuleParser<'i> {
         &mut self,
         input: &mut Parser<'i, 't>,
     ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
+        self.boundary = StyleRuleBoundary::QualifiedPrelude;
         let mut recovery =
             SelectorRecovery::new(self.source, &mut self.diagnostics, self.recovery.clone());
         let result = parse_nested_style_selector_list(input, &mut recovery);
@@ -416,6 +459,7 @@ impl<'i> QualifiedRuleParser<'i> for NestedStyleRuleParser<'i> {
         start: &ParserState,
         input: &mut Parser<'i, 't>,
     ) -> std::result::Result<Self::QualifiedRule, ParseError<'i, Self::Error>> {
+        self.boundary = StyleRuleBoundary::QualifiedBlock;
         let result = (|| {
             let mut depth =
                 self.recovery

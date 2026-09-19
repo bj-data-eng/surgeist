@@ -150,10 +150,40 @@ fn invalid_nested_rules_do_not_hide_valid_declarations_or_later_children() {
     let [CssRule::Style(parent)] = report.syntax().rules() else {
         panic!("expected retained authored parent");
     };
-    assert_eq!(parent.declarations().len(), 2);
-    let [CssRule::Style(child), CssRule::NestedDeclarations(after)] = parent.rules() else {
-        panic!("expected valid child and trailing declaration run");
+    assert_eq!(parent.declarations().len(), 1);
+    let [
+        CssRule::NestedDeclarations(before),
+        CssRule::Style(child),
+        CssRule::NestedDeclarations(after),
+    ] = parent.rules()
+    else {
+        panic!("expected separate runs around the valid child");
     };
+    assert_eq!(before.declarations().len(), 1);
     assert_eq!(child.declarations().len(), 1);
     assert_eq!(after.declarations().len(), 1);
+    for (declaration, expected) in [
+        (&parent.declarations()[0], "red"),
+        (&before.declarations()[0], "green"),
+        (&child.declarations()[0], "1"),
+        (&after.declarations()[0], "black"),
+    ] {
+        assert_eq!(
+            declaration
+                .value_components()
+                .serialize()
+                .unwrap()
+                .as_css()
+                .trim(),
+            expected
+        );
+    }
+    assert_eq!(
+        before.position().byte_offset().value(),
+        source.find("color: green").unwrap()
+    );
+    assert_eq!(
+        after.position().byte_offset().value(),
+        source.find("color: black").unwrap()
+    );
 }

@@ -3031,7 +3031,8 @@ impl CssScopedStyleRule {
         &self.selectors
     }
 
-    /// Returns leading declarations before the first retained child rule.
+    /// Returns leading declarations when the first retained body item is a declaration run.
+    /// A rejected rule can end this run without producing a retained child.
     #[must_use]
     pub const fn declarations(&self) -> &CssDeclarationList {
         &self.declarations
@@ -4305,7 +4306,8 @@ impl CssStyleBlock {
         Self { contents, origin }
     }
 
-    /// Returns the leading declarations, before the first retained child rule.
+    /// Returns leading declarations when the first retained body item is a declaration run.
+    /// A rejected rule can end this run without producing a retained child.
     #[must_use]
     pub const fn declarations(&self) -> &CssDeclarationList {
         &self.contents.declarations
@@ -4360,7 +4362,8 @@ impl CssStyleRule {
         &self.selectors
     }
 
-    /// Returns the leading declarations, before the first retained child rule.
+    /// Returns leading declarations when the first retained body item is a declaration run.
+    /// A rejected rule can end this run without producing a retained child.
     #[must_use]
     pub const fn declarations(&self) -> &CssDeclarationList {
         &self.contents.declarations
