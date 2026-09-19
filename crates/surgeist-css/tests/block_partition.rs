@@ -283,7 +283,7 @@ fn rejected_rule_preserves_distinct_adjacent_declaration_runs() {
 }
 
 #[test]
-fn malformed_neighbor_keeps_original_declarations_in_distinct_normalized_contexts() {
+fn malformed_neighbor_preserves_exact_original_parse_payload_and_partition() {
     // Exact existing structured_rules input; corrected partition, no deleted coverage.
     let source = ".card { color: red; .bad, { color: blue; } color: green; .child { opacity: 1; } color: black; }";
     let report = parse_sheet(source);
@@ -311,6 +311,38 @@ fn malformed_neighbor_keeps_original_declarations_in_distinct_normalized_context
     color(&parent.declarations()[0], "red");
     color(&green.declarations()[0], "green");
     declaration(&child.declarations()[0], CssKnownProperty::Opacity, "1");
+    color(&black.declarations()[0], "black");
+}
+
+#[test]
+fn malformed_neighbor_keeps_original_declarations_in_distinct_normalized_contexts() {
+    // Independent color-child fixture stays within existing intrinsic expansion coverage.
+    let source = ".card { color: red; .bad, { color: blue; } color: green; .child { color: white; } color: black; }";
+    let report = parse_sheet(source);
+    assert_eq!(report.diagnostics().len(), 1);
+    let [CssRule::Style(parent)] = report.syntax().rules() else {
+        panic!("parent")
+    };
+    assert_eq!(parent.declarations().len(), 1);
+    let [
+        CssRule::NestedDeclarations(green),
+        CssRule::Style(child),
+        CssRule::NestedDeclarations(black),
+    ] = parent.rules()
+    else {
+        panic!("green, child, black")
+    };
+    assert_eq!(
+        (
+            green.declarations().len(),
+            child.declarations().len(),
+            black.declarations().len()
+        ),
+        (1, 1, 1)
+    );
+    color(&parent.declarations()[0], "red");
+    color(&green.declarations()[0], "green");
+    color(&child.declarations()[0], "white");
     color(&black.declarations()[0], "black");
     let normalized = normalize_sheet(report.syntax()).unwrap();
     let values: Vec<_> = normalized
