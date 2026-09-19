@@ -39,6 +39,7 @@ const LONGHANDS: &[P] = &[
     P::Color,
     P::FontFamily,
     P::TextOrientation,
+    P::Opacity,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
     (P::Container, &[P::ContainerName, P::ContainerType], &[]),
@@ -232,6 +233,9 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         }
         CssLonghandValueRef::TextOrientation(v) => assert_eq!(*v, CssTextOrientation::Mixed),
         CssLonghandValueRef::FlowTolerance(v) => assert_eq!(v, &CssFlowTolerance::normal()),
+        CssLonghandValueRef::Opacity(v) => {
+            assert!(matches!(v, CssOpacityValue::Literal(value) if value.value() == 1.0));
+        }
         other => panic!("unexpected ordinary initial: {other:?}"),
     }
 }
@@ -242,7 +246,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 43);
+    assert_eq!(expected.len(), 44);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();
@@ -350,6 +354,7 @@ fn memberships_and_resets() {
         (CssPropertyNameRef::Known(P::UnicodeBidi), true),
         (CssPropertyNameRef::Custom(&custom), true),
         (CssPropertyNameRef::Known(P::Color), false),
+        (CssPropertyNameRef::Known(P::Opacity), false),
         (CssPropertyNameRef::Known(P::Width), false),
     ] {
         assert_eq!(meta.excludes(name), excluded);

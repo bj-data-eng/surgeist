@@ -446,12 +446,19 @@ unfinished. This property migration does not complete the other Grid3 families.
 `expand_declaration` currently covers custom declarations, physical margin and
 padding, border width, style and color, the four side-border shorthands, `border`,
 the five border-image longhands, `flow-tolerance`, `color`, `font-family`,
-`text-orientation`, its legacy `glyph-orientation-vertical` grammar, and `all`.
+`text-orientation`, its legacy `glyph-orientation-vertical` grammar, `opacity`,
+the `container` shorthand and its two longhands, and `all`.
 The shared property schema owns their
 member lists, initial values and reset-only components. Other known properties
 return typed unsupported errors preserving their identity. The stylesheet
 normalizer uses this same expansion boundary, so its complete property coverage
 remains unfinished.
+
+Opacity is a non-inherited longhand with numeric initial value `1`. Its ordinary
+contribution retains the exact `CssOpacityValue`, including percentages,
+calculations and out-of-range specified values. Computed clamping belongs to
+style. Raw authored value text remains separate from canonical specified-value
+serialization, which is not established by expansion.
 
 Custom declarations produce `CssContributions::Custom`. Its `declaration()` view
 retains the case-sensitive name and either authored token text or a whole-value
