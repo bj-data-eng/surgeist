@@ -8,10 +8,7 @@ fn bounded<T: Send>(
     recovery::finish_report(source, bounded_execution(source, parse))
 }
 
-pub(super) fn bounded_execution<T: Send>(
-    source: &str,
-    parse: impl FnOnce() -> T + Send,
-) -> T {
+pub(super) fn bounded_execution<T: Send>(source: &str, parse: impl FnOnce() -> T + Send) -> T {
     // Recursive value and selector grammar can have larger frames than
     // structural rule parsing. This threshold is not an admission limit.
     if recovery::maximum_nested_depth(source) < 64 {
