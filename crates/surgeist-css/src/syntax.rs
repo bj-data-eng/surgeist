@@ -9,11 +9,14 @@
 //! construction preserves supplied token origins without inventing coordinates.
 //! Downstream adapters can inspect either without depending on parser internals.
 
-use crate::CssValueOrigin;
 pub(crate) use crate::container_features::*;
 pub(crate) use crate::media::*;
 pub(crate) use crate::media_features::*;
 pub(crate) use crate::numeric::*;
+use crate::{
+    CssColorAngleLiteral, CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError,
+    CssValueOrigin,
+};
 use crate::{CssContainerScrollQuery, CssContainerStyleQuery, CssFontFeatureValuesRule};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -15315,45 +15318,129 @@ impl CssAuthoredColor {
         }
     }
 
-    pub(crate) fn has_exact_i01_projection(&self) -> bool {
-        match &self.representation {
-            CssAuthoredColorRepresentation::Lab(value)
-            | CssAuthoredColorRepresentation::Oklab(value) => {
-                authored_alpha_has_exact_i01_projection(value.alpha())
+    /// Proves the actual candidate payload, including its scale, before pairing.
+    pub(crate) fn matches_i01(&self, candidate: &CssColor) -> bool {
+        use crate::color_scalar::{alpha_matches, channel_matches, hue_matches, relative_matches};
+        let mut pending = vec![(self, candidate)];
+        while let Some((current, candidate)) = pending.pop() {
+            let valid = match (&current.representation, candidate) {
+                (CssAuthoredColorRepresentation::PreservedI01(value), candidate) => {
+                    value == candidate
+                }
+                (CssAuthoredColorRepresentation::CurrentColor, CssColor::CurrentColor) => true,
+                (CssAuthoredColorRepresentation::Transparent, candidate) => {
+                    *candidate == CssColor::TRANSPARENT
+                }
+                (
+                    CssAuthoredColorRepresentation::Hex(_)
+                    | CssAuthoredColorRepresentation::Named(_),
+                    CssColor::Rgba(_),
+                ) => true,
+                (CssAuthoredColorRepresentation::System(_), CssColor::System(_)) => true,
+                (CssAuthoredColorRepresentation::Rgb(value), CssColor::Rgba(candidate)) => {
+                    value
+                        .channels()
+                        .iter()
+                        .zip([candidate.red(), candidate.green(), candidate.blue()])
+                        .all(|(channel, byte)| {
+                            channel_matches(channel, Some(f32::from(byte)), 255, 100)
+                        })
+                        && alpha_matches(value.alpha(), Some(candidate.alpha()))
+                }
+                (CssAuthoredColorRepresentation::Hsl(value), CssColor::Hsl(candidate)) => {
+                    hue_matches(value.hue(), candidate.hue())
+                        && channel_matches(value.saturation(), candidate.saturation(), 1, 100)
+                        && channel_matches(value.lightness(), candidate.lightness(), 1, 100)
+                        && alpha_matches(value.alpha(), candidate.alpha())
+                }
+                (CssAuthoredColorRepresentation::Hwb(value), CssColor::Hwb(candidate)) => {
+                    hue_matches(value.hue(), candidate.hue())
+                        && channel_matches(value.whiteness(), candidate.whiteness(), 1, 100)
+                        && channel_matches(value.blackness(), candidate.blackness(), 1, 100)
+                        && alpha_matches(value.alpha(), candidate.alpha())
+                }
+                (CssAuthoredColorRepresentation::Lab(value), CssColor::Lab(candidate)) => {
+                    channel_matches(value.lightness(), candidate.lightness(), 1, 1)
+                        && channel_matches(value.a(), candidate.a(), 5, 4)
+                        && channel_matches(value.b(), candidate.b(), 5, 4)
+                        && alpha_matches(value.alpha(), candidate.alpha())
+                }
+                (CssAuthoredColorRepresentation::Oklab(value), CssColor::Oklab(candidate)) => {
+                    channel_matches(value.lightness(), candidate.lightness(), 1, 100)
+                        && channel_matches(value.a(), candidate.a(), 1, 250)
+                        && channel_matches(value.b(), candidate.b(), 1, 250)
+                        && alpha_matches(value.alpha(), candidate.alpha())
+                }
+                (CssAuthoredColorRepresentation::Lch(value), CssColor::Lch(candidate)) => {
+                    channel_matches(value.lightness(), candidate.lightness(), 1, 1)
+                        && channel_matches(value.chroma(), candidate.chroma(), 3, 2)
+                        && hue_matches(value.hue(), candidate.hue())
+                        && alpha_matches(value.alpha(), candidate.alpha())
+                }
+                (CssAuthoredColorRepresentation::Oklch(value), CssColor::Oklch(candidate)) => {
+                    channel_matches(value.lightness(), candidate.lightness(), 1, 100)
+                        && channel_matches(value.chroma(), candidate.chroma(), 1, 250)
+                        && hue_matches(value.hue(), candidate.hue())
+                        && alpha_matches(value.alpha(), candidate.alpha())
+                }
+                (
+                    CssAuthoredColorRepresentation::Predefined(value),
+                    CssColor::ColorFunction(candidate),
+                ) => {
+                    value.color_space() == candidate.color_space()
+                        && value
+                            .channels()
+                            .iter()
+                            .zip(candidate.components())
+                            .all(|(value, candidate)| channel_matches(value, *candidate, 1, 100))
+                        && alpha_matches(value.alpha(), candidate.alpha())
+                }
+                (
+                    CssAuthoredColorRepresentation::ColorMix(value),
+                    CssColor::ColorMix(candidate),
+                ) => {
+                    let weights_match =
+                        |current: &CssAuthoredColorMixComponent,
+                         candidate: &CssColorMixComponent| {
+                            match (current.percentage(), candidate.percentage()) {
+                                (None, None) => true,
+                                (Some(current), Some(candidate)) => {
+                                    current.value() == Some(candidate)
+                                }
+                                _ => false,
+                            }
+                        };
+                    pending.push((value.left().color(), candidate.left().color()));
+                    pending.push((value.right().color(), candidate.right().color()));
+                    value.interpolation() == candidate.interpolation()
+                        && weights_match(value.left(), candidate.left())
+                        && weights_match(value.right(), candidate.right())
+                }
+                (
+                    CssAuthoredColorRepresentation::Relative(value),
+                    CssColor::Relative(candidate),
+                ) => {
+                    pending.push((value.source(), candidate.source()));
+                    value.function() == candidate.function()
+                        && value.channels().len() == candidate.components().len()
+                        && value
+                            .channels()
+                            .iter()
+                            .zip(candidate.components())
+                            .all(|(value, candidate)| relative_matches(value, candidate))
+                        && match (value.alpha(), candidate.alpha()) {
+                            (None, None) => true,
+                            (Some(value), Some(candidate)) => relative_matches(value, candidate),
+                            _ => false,
+                        }
+                }
+                _ => false,
+            };
+            if !valid {
+                return false;
             }
-            CssAuthoredColorRepresentation::Lch(value)
-            | CssAuthoredColorRepresentation::Oklch(value) => {
-                authored_alpha_has_exact_i01_projection(value.alpha())
-            }
-            CssAuthoredColorRepresentation::Predefined(value) => {
-                authored_alpha_has_exact_i01_projection(value.alpha())
-            }
-            CssAuthoredColorRepresentation::Relative(_) => true,
-            CssAuthoredColorRepresentation::ColorMix(value) => value.has_exact_i01_projection(),
-            CssAuthoredColorRepresentation::CurrentColor
-            | CssAuthoredColorRepresentation::Transparent
-            | CssAuthoredColorRepresentation::Hex(_)
-            | CssAuthoredColorRepresentation::Named(_)
-            | CssAuthoredColorRepresentation::System(_)
-            | CssAuthoredColorRepresentation::Rgb(_)
-            | CssAuthoredColorRepresentation::Hsl(_)
-            | CssAuthoredColorRepresentation::Hwb(_)
-            | CssAuthoredColorRepresentation::PreservedI01(_) => true,
         }
-    }
-}
-
-fn authored_alpha_has_exact_i01_projection(alpha: Option<&CssAuthoredColorComponent>) -> bool {
-    match alpha {
-        None | Some(CssAuthoredColorComponent::None) => true,
-        Some(CssAuthoredColorComponent::Number(value)) => (0.0..=1.0).contains(&value.value()),
-        Some(CssAuthoredColorComponent::Percentage(value)) => {
-            (0.0..=100.0).contains(&value.value())
-        }
-        Some(
-            CssAuthoredColorComponent::NumberCalculation(_)
-            | CssAuthoredColorComponent::PercentageCalculation(_),
-        ) => false,
+        true
     }
 }
 
@@ -15448,6 +15535,8 @@ pub enum CssAuthoredColorSyntax {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssAuthoredColorComponent {
+    ExactNumber(CssColorNumberLiteral),
+    ExactPercentage(CssColorPercentageLiteral),
     None,
     Number(CssFiniteNumber),
     Percentage(CssFiniteNumber),
@@ -15463,8 +15552,10 @@ impl CssAuthoredColorComponent {
     pub(crate) const fn domain(&self) -> Option<CssCalculationType> {
         match self {
             Self::None => None,
-            Self::Number(_) | Self::NumberCalculation(_) => Some(CssCalculationType::Number),
-            Self::Percentage(_) | Self::PercentageCalculation(_) => {
+            Self::Number(_) | Self::ExactNumber(_) | Self::NumberCalculation(_) => {
+                Some(CssCalculationType::Number)
+            }
+            Self::Percentage(_) | Self::ExactPercentage(_) | Self::PercentageCalculation(_) => {
                 Some(CssCalculationType::Percentage)
             }
         }
@@ -15474,6 +15565,8 @@ impl CssAuthoredColorComponent {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssAuthoredHue {
+    ExactNumber(CssColorNumberLiteral),
+    ExactAngle(CssColorAngleLiteral),
     None,
     Number(CssFiniteNumber),
     Angle(CssAngleLiteral),
@@ -15764,6 +15857,9 @@ pub enum CssRelativeColorChannel {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssRelativeColorExpressionValue {
+    ExactNumber(CssColorNumberLiteral),
+    ExactPercentage(CssColorPercentageLiteral),
+    ExactAngle(CssColorAngleLiteral),
     None,
     Number(CssFiniteNumber),
     Percentage(CssFiniteNumber),
@@ -15942,27 +16038,64 @@ impl CssAuthoredPredefinedColor {
 }
 
 /// A checked authored percentage trailing one preserved `color-mix()` component.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssAuthoredColorMixPercentage {
-    value: CssFiniteNumber,
+    value: ColorMixPercentageValue,
 }
-
+#[derive(Clone, Debug, PartialEq)]
+enum ColorMixPercentageValue {
+    Finite(CssFiniteNumber),
+    Exact(CssColorPercentageLiteral),
+}
 impl CssAuthoredColorMixPercentage {
     #[must_use]
     pub const fn try_new(value: f32) -> Option<Self> {
         if value >= 0.0 && value <= 100.0 {
             match CssFiniteNumber::try_new(value) {
-                Some(value) => Some(Self { value }),
+                Some(value) => Some(Self {
+                    value: ColorMixPercentageValue::Finite(value),
+                }),
                 None => None,
             }
         } else {
             None
         }
     }
-
+    /// Checks the exact literal coefficient against the inclusive 0..100 range.
+    pub fn try_from_component(
+        component: crate::CssComponentValue,
+    ) -> Result<Self, CssColorScalarError> {
+        let literal = CssColorPercentageLiteral::try_from_component(component)?;
+        if !crate::opacity_scalar::LexicalDecimal::new(literal.numeric().representation())
+            .in_percentage_range()
+        {
+            return Err(CssColorScalarError::out_of_range(literal.origin().clone()));
+        }
+        Ok(Self {
+            value: match crate::opacity_scalar::exact_legacy_value(
+                literal.numeric().representation(),
+            ) {
+                Some(value) => ColorMixPercentageValue::Finite(
+                    CssFiniteNumber::try_new(value).expect("proved finite"),
+                ),
+                None => ColorMixPercentageValue::Exact(literal),
+            },
+        })
+    }
+    /// Returns the exact binary32 subset, never a rounded approximation.
     #[must_use]
-    pub const fn value(self) -> f32 {
-        self.value.value()
+    pub const fn value(&self) -> Option<f32> {
+        match &self.value {
+            ColorMixPercentageValue::Finite(v) => Some(v.value()),
+            ColorMixPercentageValue::Exact(_) => None,
+        }
+    }
+    #[must_use]
+    pub const fn exact_literal(&self) -> Option<&CssColorPercentageLiteral> {
+        match &self.value {
+            ColorMixPercentageValue::Exact(v) => Some(v),
+            ColorMixPercentageValue::Finite(_) => None,
+        }
     }
 }
 
@@ -15988,8 +16121,8 @@ impl CssAuthoredColorMixComponent {
     }
 
     #[must_use]
-    pub const fn percentage(&self) -> Option<CssAuthoredColorMixPercentage> {
-        self.percentage
+    pub const fn percentage(&self) -> Option<&CssAuthoredColorMixPercentage> {
+        self.percentage.as_ref()
     }
 }
 
@@ -16032,11 +16165,6 @@ impl CssAuthoredColorMix {
     #[must_use]
     pub const fn right(&self) -> &CssAuthoredColorMixComponent {
         &self.right
-    }
-
-    fn has_exact_i01_projection(&self) -> bool {
-        self.left.color().has_exact_i01_projection()
-            && self.right.color().has_exact_i01_projection()
     }
 }
 

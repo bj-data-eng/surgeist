@@ -489,13 +489,13 @@ fn public_color_mix_construction_rejects_hue_in_a_rectangular_space() {
 
     assert_eq!(
         CssAuthoredColorMixPercentage::try_new(0.0).unwrap().value(),
-        0.0
+        Some(0.0)
     );
     assert_eq!(
         CssAuthoredColorMixPercentage::try_new(100.0)
             .unwrap()
             .value(),
-        100.0,
+        Some(100.0),
     );
     for invalid in [-1.0, 101.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
         assert!(CssAuthoredColorMixPercentage::try_new(invalid).is_none());

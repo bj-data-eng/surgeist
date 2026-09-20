@@ -1118,10 +1118,15 @@ pub use media::*;
 mod media_features;
 mod normalization;
 pub use media_features::*;
+mod color_scalar;
 mod display;
 mod integer_value;
 mod numeric;
 mod opacity_scalar;
+pub use color_scalar::{
+    CssColorAngleLiteral, CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError,
+    CssColorScalarErrorKind,
+};
 pub use display::{
     CssDisplayBox, CssDisplayInside, CssDisplayInternal, CssDisplayLegacy,
     CssDisplayListItemInside, CssDisplayOutside, CssDisplayValue,

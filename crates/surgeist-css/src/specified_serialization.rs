@@ -175,39 +175,16 @@ impl CssOpacityValue {
 }
 
 fn format_lexical(text: &str, percentage: bool, limit: usize) -> Result<String> {
-    let negative = text.starts_with('-');
-    let text = text.strip_prefix(['+', '-']).unwrap_or(text);
-    let (mantissa, exponent) = text.split_once(['e', 'E']).unwrap_or((text, "0"));
-    let first = mantissa.bytes().position(|c| matches!(c, b'1'..=b'9'));
-    let Some(first) = first else {
-        return format_digits(std::iter::empty(), 0, 0, false, limit);
-    };
-    let last = mantissa
-        .bytes()
-        .rposition(|c| matches!(c, b'1'..=b'9'))
-        .expect("nonzero mantissa");
-    let significant = &mantissa[first..=last];
-    let len = significant.len() - usize::from(significant.contains('.'));
-    let fractional = mantissa
-        .find('.')
-        .map_or(0, |point| mantissa.len() - point - 1);
-    let trailing = mantissa[last + 1..].bytes().filter(|c| *c != b'.').count();
-    // An exponent outside i128 cannot be canceled by a usize-sized source into
-    // a usize-sized output. Parse without allocating exponent-sized storage.
-    let exponent = exponent
-        .parse::<i128>()
-        .map_err(|_| CssSpecifiedValueSerializationError::new(Kind::ByteLimit))?
-        .checked_sub(fractional as i128)
-        .and_then(|e| e.checked_add(trailing as i128))
-        .and_then(|e| e.checked_sub(if percentage { 2 } else { 0 }))
+    format_lexical_shift(text, if percentage { -2 } else { 0 }, limit)
+}
+
+pub(crate) fn format_lexical_shift(text: &str, shift: i128, limit: usize) -> Result<String> {
+    let value = crate::opacity_scalar::LexicalDecimal::new(text);
+    let exponent = value
+        .exponent
+        .and_then(|e| e.checked_add(shift))
         .ok_or_else(|| CssSpecifiedValueSerializationError::new(Kind::ByteLimit))?;
-    format_digits(
-        significant.bytes().filter(|c| *c != b'.').map(|c| c - b'0'),
-        len,
-        exponent,
-        negative,
-        limit,
-    )
+    format_digits(value.digits(), value.len, exponent, value.negative, limit)
 }
 
 pub(crate) fn format_digits(

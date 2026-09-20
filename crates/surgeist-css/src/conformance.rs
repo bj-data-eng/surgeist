@@ -3082,7 +3082,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 509] = [
         O_COLOR4,
         "#the-hsl-notation",
         "Legacy percentage channels and modern number, percentage, none, and typed calculation channels are supported.",
-        "Exact ordinary color scalar transport and canonical color serialization remain incomplete.",
+        "Canonical color serialization remains incomplete.",
     ),
     CssFeatureMetadata::partial(
         "official.value.hwb",
@@ -3091,7 +3091,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 509] = [
         O_COLOR4,
         "#the-hwb-notation",
         "Modern number, percentage, none, and typed calculation channels are supported.",
-        "Exact ordinary color scalar transport and canonical color serialization remain incomplete.",
+        "Canonical color serialization remains incomplete.",
     ),
     CssFeatureMetadata::complete(
         "official.value.lab",

@@ -667,9 +667,7 @@ fn color4_value_and_property_metadata_match_public_authored_behavior() {
         assert_eq!(metadata.supported_subset(), Some(subset));
         assert_eq!(
             metadata.unsupported_remainder(),
-            Some(
-                "Exact ordinary color scalar transport and canonical color serialization remain incomplete."
-            )
+            Some("Canonical color serialization remains incomplete.")
         );
         assert_eq!(metadata.recognized_unsupported_code(), None);
         assert!(metadata.baseline_alias_targets().is_empty());

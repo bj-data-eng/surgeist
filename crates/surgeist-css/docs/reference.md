@@ -988,8 +988,37 @@ calculations remain symbolic. Modern HSL/HSLA saturation and lightness, and
 HWB whiteness and blackness, accept numbers, percentages, `none`, and typed
 calculations. Their number and percentage domains remain distinct; legacy
 comma-separated HSL/HSLA keeps percentage-only saturation and lightness.
-The HSL/HWB catalog entries remain Partial because exact ordinary color
-scalar transport and canonical color serialization are unfinished.
+The HSL/HWB catalog entries remain Partial because canonical color
+serialization is unfinished.
+
+Ordinary color numbers, percentages, and hue dimensions retain their exact
+finite decimal coefficients, including values beyond the tokenizer's float
+range. Exactly representable binary32 coefficients keep the existing finite
+variants. Other coefficients use `ExactNumber`, `ExactPercentage`, or
+`ExactAngle` in the appropriate channel model. Their checked
+`CssColorNumberLiteral`, `CssColorPercentageLiteral`, and
+`CssColorAngleLiteral` payloads retain the original component and provenance;
+the angle payload also retains its unit. Percentages classify the authored
+coefficient directly. Typed calculations keep their separate binary64
+semantics. `display-p3-linear` uses the same current predefined-color model as
+the other spaces, including `none`, calculations, and exact literals.
+
+`CssAuthoredColorMixPercentage` no longer implements `Copy`. Its `value()`
+returns `Option<f32>`; use `exact_literal()` for a retained exact percentage.
+`CssAuthoredColorMixComponent::percentage()` now borrows its optional weight.
+Existing finite `try_new` construction keeps its range contract, while
+`try_from_component` distinguishes an invalid component from an out-of-range
+percentage through `CssColorScalarError`. Exact literal range checks reject
+negative nonzero weights and weights above 100 even when the float cache
+would round them to a boundary.
+
+Every parsed compatibility projection checks the actual frozen payload,
+including its percentage scale and nested colors. Finite membership alone
+does not prove a lossless projection: even an exactly representable authored
+percentage can change during the old parser's divide-and-multiply sequence.
+Unproved projections return `None` while the current color remains available.
+Raw component serialization preserves authored tokens; it does not provide
+canonical color serialization.
 
 The current opacity model likewise preserves a
 finite number or percentage, including signed and out-of-range specified

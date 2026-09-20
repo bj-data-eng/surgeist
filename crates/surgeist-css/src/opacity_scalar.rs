@@ -99,6 +99,73 @@ pub(crate) fn admit_opacity_scalar(
     Ok(CssOpacityValue::ExactScalar(scalar))
 }
 
+/// Normalized borrowed metadata for an already checked finite decimal token.
+/// The coefficient remains in the original source regardless of its length.
+pub(crate) struct LexicalDecimal<'a> {
+    significant: &'a str,
+    pub(crate) len: usize,
+    pub(crate) exponent: Option<i128>,
+    pub(crate) negative: bool,
+    pub(crate) exponent_negative: bool,
+}
+impl<'a> LexicalDecimal<'a> {
+    pub(crate) fn new(text: &'a str) -> Self {
+        let negative = text.starts_with('-');
+        let text = text.strip_prefix(['+', '-']).unwrap_or(text);
+        let (mantissa, exponent_text) = text.split_once(['e', 'E']).unwrap_or((text, "0"));
+        let Some(first) = mantissa.bytes().position(|c| matches!(c, b'1'..=b'9')) else {
+            return Self {
+                significant: "",
+                len: 0,
+                exponent: Some(0),
+                negative: false,
+                exponent_negative: false,
+            };
+        };
+        let last = mantissa
+            .bytes()
+            .rposition(|c| matches!(c, b'1'..=b'9'))
+            .expect("nonzero mantissa");
+        let significant = &mantissa[first..=last];
+        let len = significant.len() - usize::from(significant.contains('.'));
+        let fractional = mantissa
+            .find('.')
+            .map_or(0, |point| mantissa.len() - point - 1);
+        let trailing = mantissa[last + 1..].bytes().filter(|c| *c != b'.').count();
+        let exponent = exponent_text
+            .parse::<i128>()
+            .ok()
+            .and_then(|e| e.checked_sub(fractional as i128))
+            .and_then(|e| e.checked_add(trailing as i128));
+        Self {
+            significant,
+            len,
+            exponent,
+            negative,
+            exponent_negative: exponent_text.starts_with('-'),
+        }
+    }
+    pub(crate) fn digits(&self) -> impl Iterator<Item = u8> + '_ {
+        self.significant
+            .bytes()
+            .filter(|c| *c != b'.')
+            .map(|c| c - b'0')
+    }
+    pub(crate) fn in_percentage_range(&self) -> bool {
+        if self.len == 0 {
+            return true;
+        }
+        if self.negative {
+            return false;
+        }
+        let Some(exponent) = self.exponent else {
+            return self.exponent_negative;
+        };
+        let point = exponent.saturating_add(self.len as i128);
+        point < 3 || (point == 3 && self.len == 1 && self.digits().next() == Some(1))
+    }
+}
+
 // A binary32 exact decimal needs at most 112 significant coefficient digits.
 // This fixed bound is used only to prove membership in the legacy subset: a
 // larger lexical coefficient remains valid in CssOpacityScalar.
@@ -125,47 +192,17 @@ impl Decimal {
     // Input is already a checked CSS numeric representation. Delay trailing
     // zeros so an arbitrarily long redundant suffix does not fill the buffer.
     fn lexical(text: &str) -> Option<Self> {
-        let negative = text.starts_with('-');
-        let text = text.strip_prefix(['+', '-']).unwrap_or(text);
-        let (mantissa, exponent) = text.split_once(['e', 'E']).unwrap_or((text, "0"));
+        let lexical = LexicalDecimal::new(text);
+        if lexical.len > DIGITS {
+            return None;
+        }
         let mut value = Self::zero();
-        let mut fractional = 0usize;
-        let mut after_point = false;
-        let mut trailing = 0usize;
-        for byte in mantissa.bytes() {
-            if byte == b'.' {
-                after_point = true;
-                continue;
-            }
-            if after_point {
-                fractional = fractional.checked_add(1)?;
-            }
-            let digit = byte - b'0';
-            if digit == 0 {
-                if value.len != 0 {
-                    trailing = trailing.checked_add(1)?;
-                }
-                continue;
-            }
-            let next = value.len.checked_add(trailing)?.checked_add(1)?;
-            if next > DIGITS {
-                return None;
-            }
-            value.len = next;
-            value.digits[next - 1] = digit;
-            trailing = 0;
+        value.len = lexical.len;
+        for (target, digit) in value.digits.iter_mut().zip(lexical.digits()) {
+            *target = digit;
         }
-        if value.len == 0 {
-            return Some(value);
-        }
-        // An exponent outside i128 cannot be canceled by a token's usize-sized
-        // fractional/trailing counts into the small binary32 exponent range.
-        value.exponent = exponent
-            .parse::<i128>()
-            .ok()?
-            .checked_sub(i128::try_from(fractional).ok()?)?
-            .checked_add(i128::try_from(trailing).ok()?)?;
-        value.negative = negative;
+        value.exponent = lexical.exponent?;
+        value.negative = lexical.negative;
         Some(value)
     }
 
@@ -232,6 +269,42 @@ pub(crate) fn serialize_binary32(
         value.negative,
         limit,
     )
+}
+
+// Exact equality left * numerator / denominator == right, for finite binary32
+// operands and small fixed color-space bases. No floating-point arithmetic.
+pub(crate) fn binary32_scaled_eq(left: f32, numerator: u32, denominator: u32, right: f32) -> bool {
+    fn multiply(mut value: Decimal, factor: u32) -> Option<Decimal> {
+        if value.len == 0 || factor == 0 {
+            return Some(Decimal::zero());
+        }
+        let mut carry = 0_u64;
+        for digit in value.digits[..value.len].iter_mut().rev() {
+            let product = u64::from(*digit) * u64::from(factor) + carry;
+            *digit = (product % 10) as u8;
+            carry = product / 10;
+        }
+        while carry != 0 {
+            if value.len == DIGITS {
+                return None;
+            }
+            value.digits.copy_within(..value.len, 1);
+            value.digits[0] = (carry % 10) as u8;
+            value.len += 1;
+            carry /= 10;
+        }
+        while value.digits[value.len - 1] == 0 {
+            value.len -= 1;
+            value.exponent += 1;
+        }
+        Some(value)
+    }
+    left.is_finite()
+        && right.is_finite()
+        && denominator != 0
+        && multiply(Decimal::binary32(left), numerator)
+            .zip(multiply(Decimal::binary32(right), denominator))
+            .is_some_and(|(a, b)| a == b)
 }
 
 // Shared exact-fidelity proof for ordinary numeric consumers. The input must be

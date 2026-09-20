@@ -113,9 +113,9 @@ fn color_mix_preserved_subset_retains_space_hue_components_and_order() {
         Some(CssHueInterpolationMethod::Longer),
     );
     assert!(color_mix.left().color().lab_value().is_some());
-    assert_eq!(color_mix.left().percentage().unwrap().value(), 25.0);
+    assert_eq!(color_mix.left().percentage().unwrap().value(), Some(25.0));
     assert!(color_mix.right().color().relative_value().is_some());
-    assert_eq!(color_mix.right().percentage().unwrap().value(), 75.0);
+    assert_eq!(color_mix.right().percentage().unwrap().value(), Some(75.0));
     assert!(value.i01_subset().is_none());
 }
 
@@ -336,9 +336,6 @@ fn relative_color_channels_reject_foreign_names_dimensions_and_malformed_grammar
         "rgb(from red r g b extra)",
         "rgb(from red r g b /)",
         "rgb(from red r g b / alpha / alpha)",
-        "rgb(from red 1e999 g b)",
-        "rgb(from red r 1e999% b)",
-        "hsl(from red 1e999deg s l)",
         "color(from red --custom r g b)",
         "alpha(from red r g b)",
     ] {
@@ -705,6 +702,10 @@ fn authored_predefined_colors_preserve_supported_space_and_channel_kinds() {
         ("srgb", CssPredefinedColorSpace::Srgb),
         ("srgb-linear", CssPredefinedColorSpace::SrgbLinear),
         ("display-p3", CssPredefinedColorSpace::DisplayP3),
+        (
+            "display-p3-linear",
+            CssPredefinedColorSpace::DisplayP3Linear,
+        ),
         ("a98-rgb", CssPredefinedColorSpace::A98Rgb),
         ("prophoto-rgb", CssPredefinedColorSpace::ProphotoRgb),
         ("rec2020", CssPredefinedColorSpace::Rec2020),
@@ -738,9 +739,18 @@ fn authored_predefined_colors_preserve_supported_space_and_channel_kinds() {
 }
 
 #[test]
-fn frozen_display_p3_linear_color_remains_a_compatibility_only_branch() {
+fn display_p3_linear_color_preserves_current_channels_and_exact_compatibility() {
     let value = color_value("color: color(display-p3-linear 1 0.5 0)");
-    assert!(value.current().predefined_value().is_none());
+    let current = value.current().predefined_value().unwrap();
+    assert_eq!(
+        current.color_space(),
+        CssPredefinedColorSpace::DisplayP3Linear
+    );
+    for (channel, expected) in current.channels().iter().zip([1.0, 0.5, 0.0]) {
+        assert!(
+            matches!(channel, CssAuthoredColorComponent::Number(value) if value.value() == expected)
+        );
+    }
     assert!(matches!(
         value.i01_subset(),
         Some(surgeist_css::CssColor::ColorFunction(color))
@@ -756,16 +766,26 @@ fn out_of_range_predefined_alpha_has_no_lossy_compatibility_projection() {
 }
 
 #[test]
-fn frozen_predefined_literal_keeps_its_exact_compatibility_projection() {
+fn predefined_inexact_literals_have_no_rounded_compatibility_projection() {
     let value = color_value("color: color(display-p3 0.8 0.2 0.1 / 90%)");
     assert_eq!(
         value.current().predefined_value().unwrap().color_space(),
         CssPredefinedColorSpace::DisplayP3,
     );
-    assert!(matches!(
-        value.i01_subset(),
-        Some(surgeist_css::CssColor::ColorFunction(_))
-    ));
+    for (channel, expected) in value
+        .current()
+        .predefined_value()
+        .unwrap()
+        .channels()
+        .iter()
+        .zip(["0.8", "0.2", "0.1"])
+    {
+        let CssAuthoredColorComponent::ExactNumber(literal) = channel else {
+            panic!("nonbinary32 authored coefficient must remain exact");
+        };
+        assert_eq!(literal.numeric().representation(), expected);
+    }
+    assert!(value.i01_subset().is_none());
 }
 
 #[test]

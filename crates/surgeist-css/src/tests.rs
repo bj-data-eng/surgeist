@@ -159,16 +159,16 @@ fn cssparser_color_dependency_is_available_for_color_parsing() {
 }
 
 #[test]
-fn parses_cssparser_color_absolute_forms() {
+fn parses_authored_absolute_color_forms() {
     let cases = [
-        ("red", "rgba"),
-        ("rebeccapurple", "rgba"),
-        ("transparent", "rgba"),
+        ("red", "named"),
+        ("rebeccapurple", "named"),
+        ("transparent", "transparent"),
         ("currentcolor", "currentcolor"),
-        ("#abcd", "rgba"),
-        ("#11223344", "rgba"),
-        ("rgb(255 0 0 / 50%)", "rgba"),
-        ("rgba(255, 0, 0, 0.5)", "rgba"),
+        ("#abcd", "hex"),
+        ("#11223344", "hex"),
+        ("rgb(255 0 0 / 50%)", "rgb"),
+        ("rgba(255, 0, 0, 0.5)", "rgb"),
         ("hsl(120deg 100% 25% / 0.75)", "hsl"),
         ("hwb(90 10% 20% / 0.8)", "hwb"),
         ("lab(50% 20 -30 / 0.9)", "lab"),
@@ -181,8 +181,13 @@ fn parses_cssparser_color_absolute_forms() {
 
     for (value, expected_kind) in cases {
         let css = format!(".panel {{ color: {value}; }}");
-        let value = declaration_value!(&css, Color);
-        let color = value;
+        let declaration = declaration(&css, CssProperty::Color);
+        let CssKnownPropertyValueRef::Color(value) =
+            declaration.known().unwrap().property_value().unwrap()
+        else {
+            panic!("color property");
+        };
+        let color = value.current();
         assert_eq!(color.kind_name(), expected_kind, "{css}");
     }
 }
@@ -305,7 +310,7 @@ fn rgba_hex_alpha_preserves_channels() {
 }
 
 #[test]
-fn rejects_non_finite_cssparser_color_components() {
+fn preserves_finite_css_color_coefficients_beyond_machine_range() {
     for css in [
         ".panel { color: hsl(1e999 100% 50%); }",
         ".panel { color: hwb(1e999 10% 20%); }",
@@ -315,7 +320,38 @@ fn rejects_non_finite_cssparser_color_components() {
         ".panel { color: oklch(0.5 1e999 0); }",
         ".panel { color: color(display-p3 1e999 0 0 / 1); }",
     ] {
-        assert!(parse_sheet(css).is_err(), "{css} should reject");
+        let declaration = declaration(css, CssProperty::Color);
+        let CssKnownPropertyValueRef::Color(value) =
+            declaration.known().unwrap().property_value().unwrap()
+        else {
+            panic!("color property");
+        };
+        assert!(value.i01_subset().is_none(), "{css}");
+        let color = value.current();
+        let literal = if let Some(hsl) = color.hsl_value() {
+            let CssAuthoredHue::ExactNumber(literal) = hsl.hue() else {
+                panic!("exact HSL hue");
+            };
+            literal
+        } else if let Some(hwb) = color.hwb_value() {
+            let CssAuthoredHue::ExactNumber(literal) = hwb.hue() else {
+                panic!("exact HWB hue");
+            };
+            literal
+        } else {
+            let channel = if let Some(lab) = color.lab_value().or(color.oklab_value()) {
+                lab.a()
+            } else if let Some(lch) = color.lch_value().or(color.oklch_value()) {
+                lch.chroma()
+            } else {
+                &color.predefined_value().unwrap().channels()[0]
+            };
+            let CssAuthoredColorComponent::ExactNumber(literal) = channel else {
+                panic!("exact color channel");
+            };
+            literal
+        };
+        assert_eq!(literal.numeric().representation(), "1e999", "{css}");
     }
 }
 

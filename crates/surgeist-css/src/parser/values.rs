@@ -509,26 +509,23 @@ pub(super) fn parse_color<'i, 't>(
     if next_is_authored_relative_color(input) {
         let current = parse_authored_relative_color(input, numeric)
             .map_err(|error| with_color_context(error, None))?;
-        let i01_subset = parse_compatibility_color_text(input.slice_from(start));
+        let i01_subset = parse_compatibility_color_text(input.slice_from(start))
+            .filter(|candidate| current.matches_i01(candidate));
         return Ok(CssParsedColor::new(current, i01_subset));
     }
     if next_is_color_mix(input) {
         let current = parse_authored_color_mix(input, numeric)
             .map_err(|error| with_color_context(error, None))?;
-        let i01_subset = parse_compatibility_color_text(input.slice_from(start));
+        let i01_subset = parse_compatibility_color_text(input.slice_from(start))
+            .filter(|candidate| current.matches_i01(candidate));
         return Ok(CssParsedColor::new(current, i01_subset));
-    }
-    if let Ok(color) = input.try_parse(parse_compatibility_only_predefined_color) {
-        return Ok(CssParsedColor::from_i01(color));
     }
     let start = input.position();
     if next_is_selected_authored_color(input) {
         let current = parse_selected_authored_color(input, numeric)
             .map_err(|error| with_color_context(error, None))?;
-        let i01_subset = current
-            .has_exact_i01_projection()
-            .then(|| parse_compatibility_color_text(input.slice_from(start)))
-            .flatten();
+        let i01_subset = parse_compatibility_color_text(input.slice_from(start))
+            .filter(|candidate| current.matches_i01(candidate));
         return Ok(CssParsedColor::new(current, i01_subset));
     }
     parse_color_inner(input)
@@ -560,22 +557,6 @@ fn next_is_authored_relative_color<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
     };
     input.reset(&state);
     is_relative
-}
-
-fn parse_compatibility_only_predefined_color<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssColor, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let color = parse_color_inner(input)?;
-    if matches!(
-        color,
-        CssColor::ColorFunction(ref value)
-            if value.color_space() == CssPredefinedColorSpace::DisplayP3Linear
-    ) {
-        Ok(color)
-    } else {
-        Err(invalid_color(location, None))
-    }
 }
 
 fn next_is_selected_authored_color<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
@@ -828,6 +809,7 @@ fn parse_authored_predefined_color<'i, 't>(
         "srgb" => CssPredefinedColorSpace::Srgb,
         "srgb-linear" => CssPredefinedColorSpace::SrgbLinear,
         "display-p3" => CssPredefinedColorSpace::DisplayP3,
+        "display-p3-linear" => CssPredefinedColorSpace::DisplayP3Linear,
         "a98-rgb" => CssPredefinedColorSpace::A98Rgb,
         "prophoto-rgb" => CssPredefinedColorSpace::ProphotoRgb,
         "rec2020" => CssPredefinedColorSpace::Rec2020,
@@ -869,12 +851,12 @@ fn parse_authored_color_component<'i, 't>(
         Token::Ident(ident) if allow_none && ident.eq_ignore_ascii_case("none") => {
             Ok(CssAuthoredColorComponent::None)
         }
-        Token::Number { value, .. } => CssFiniteNumber::try_new(value)
-            .map(CssAuthoredColorComponent::Number)
-            .ok_or_else(|| invalid_color(location, Some("component"))),
-        Token::Percentage { unit_value, .. } => CssFiniteNumber::try_new(unit_value * 100.0)
-            .map(CssAuthoredColorComponent::Percentage)
-            .ok_or_else(|| invalid_color(location, Some("component"))),
+        Token::Number { .. } | Token::Percentage { .. } => {
+            input.reset(&before_opener);
+            let component = collect_color_scalar(input, numeric)?;
+            crate::color_scalar::component(component)
+                .map_err(|error| crate::error::invalid_component_value(location, error))
+        }
         Token::Function(name) if is_math_function(&name) => {
             parse_authored_number_or_percentage_calculation(
                 input,
@@ -901,6 +883,7 @@ fn parse_authored_percentage_component<'i, 't>(
         value,
         CssAuthoredColorComponent::None
             | CssAuthoredColorComponent::Percentage(_)
+            | CssAuthoredColorComponent::ExactPercentage(_)
             | CssAuthoredColorComponent::PercentageCalculation(_)
     ) {
         Ok(value)
@@ -947,31 +930,15 @@ fn parse_authored_hue<'i, 't>(
         Token::Ident(ident) if allow_none && ident.eq_ignore_ascii_case("none") => {
             Ok(CssAuthoredHue::None)
         }
-        Token::Number { value, .. } => CssFiniteNumber::try_new(value)
-            .map(CssAuthoredHue::Number)
-            .ok_or_else(|| invalid_color(location, Some("hue"))),
-        token @ Token::Dimension { .. } => {
-            let Token::Dimension {
-                value, ref unit, ..
-            } = token
-            else {
-                unreachable!("matched dimension token")
-            };
-            let unit = match unit.to_ascii_lowercase().as_str() {
-                "deg" => CssAngleUnit::Degrees,
-                "grad" => CssAngleUnit::Gradians,
-                "rad" => CssAngleUnit::Radians,
-                "turn" => CssAngleUnit::Turns,
-                _ => {
-                    return Err(with_color_context(
-                        location.new_unexpected_token_error::<Error>(token),
-                        Some("hue"),
-                    ));
-                }
-            };
-            CssAngleLiteral::try_new(value, unit)
-                .map(CssAuthoredHue::Angle)
-                .ok_or_else(|| invalid_color(location, Some("hue")))
+        token @ (Token::Number { .. } | Token::Dimension { .. }) => {
+            input.reset(&before_opener);
+            let component = collect_color_scalar(input, numeric)?;
+            crate::color_scalar::hue(component).map_err(|_| {
+                with_color_context(
+                    location.new_unexpected_token_error::<Error>(token),
+                    Some("hue"),
+                )
+            })
         }
         Token::Function(name) if is_math_function(&name) => {
             if let Ok(expression) = input.try_parse(|input| {
@@ -1202,18 +1169,39 @@ fn parse_typed_relative_color_expression<'i, 't>(
             };
             CssRelativeColorExpressionValue::Channel(channel)
         }
-        Token::Number { value, .. } => CssFiniteNumber::try_new(value)
-            .map(CssRelativeColorExpressionValue::Number)
-            .ok_or_else(|| invalid_color(location, Some("relative channel")))?,
-        Token::Percentage { unit_value, .. } => CssFiniteNumber::try_new(unit_value * 100.0)
-            .map(CssRelativeColorExpressionValue::Percentage)
-            .ok_or_else(|| invalid_color(location, Some("relative channel")))?,
-        Token::Dimension { value, unit, .. }
-            if matches!(result_domain, CssRelativeColorResultDomain::Hue) =>
-        {
-            parse_relative_angle(value, &unit)
-                .map(CssRelativeColorExpressionValue::Angle)
-                .ok_or_else(|| invalid_color(location, Some("relative hue")))?
+        Token::Number { .. } | Token::Percentage { .. } => {
+            input.reset(&before_opener);
+            let component = collect_color_scalar(input, numeric)?;
+            match crate::color_scalar::component(component)
+                .map_err(|error| crate::error::invalid_component_value(location, error))?
+            {
+                CssAuthoredColorComponent::Number(value) => {
+                    CssRelativeColorExpressionValue::Number(value)
+                }
+                CssAuthoredColorComponent::Percentage(value) => {
+                    CssRelativeColorExpressionValue::Percentage(value)
+                }
+                CssAuthoredColorComponent::ExactNumber(value) => {
+                    CssRelativeColorExpressionValue::ExactNumber(value)
+                }
+                CssAuthoredColorComponent::ExactPercentage(value) => {
+                    CssRelativeColorExpressionValue::ExactPercentage(value)
+                }
+                _ => unreachable!("ordinary numeric component"),
+            }
+        }
+        Token::Dimension { .. } if matches!(result_domain, CssRelativeColorResultDomain::Hue) => {
+            input.reset(&before_opener);
+            let component = collect_color_scalar(input, numeric)?;
+            match crate::color_scalar::hue(component)
+                .map_err(|error| crate::error::invalid_component_value(location, error))?
+            {
+                CssAuthoredHue::Angle(value) => CssRelativeColorExpressionValue::Angle(value),
+                CssAuthoredHue::ExactAngle(value) => {
+                    CssRelativeColorExpressionValue::ExactAngle(value)
+                }
+                _ => unreachable!("ordinary angle component"),
+            }
         }
         Token::Function(name) if is_math_function(&name) => {
             let expression = parse_numeric_function(
@@ -1252,11 +1240,14 @@ fn relative_direct_value_is_valid(
         CssRelativeColorExpressionValue::None
         | CssRelativeColorExpressionValue::Channel(_)
         | CssRelativeColorExpressionValue::Calculation(_) => true,
-        CssRelativeColorExpressionValue::Number(_) => true,
-        CssRelativeColorExpressionValue::Percentage(_) => {
+        CssRelativeColorExpressionValue::Number(_)
+        | CssRelativeColorExpressionValue::ExactNumber(_) => true,
+        CssRelativeColorExpressionValue::Percentage(_)
+        | CssRelativeColorExpressionValue::ExactPercentage(_) => {
             !matches!(domain, CssRelativeColorResultDomain::Hue)
         }
-        CssRelativeColorExpressionValue::Angle(_) => {
+        CssRelativeColorExpressionValue::Angle(_)
+        | CssRelativeColorExpressionValue::ExactAngle(_) => {
             matches!(domain, CssRelativeColorResultDomain::Hue)
         }
     }
@@ -1346,17 +1337,6 @@ fn relative_channel_type(
         }
         (_, R | G | B | A | C | X | Y | Z | Alpha | H | S | L | W) => CssCalculationType::Number,
     }
-}
-
-fn parse_relative_angle(value: f32, unit: &str) -> Option<CssAngleLiteral> {
-    let unit = match unit.to_ascii_lowercase().as_str() {
-        "deg" => CssAngleUnit::Degrees,
-        "grad" => CssAngleUnit::Gradians,
-        "rad" => CssAngleUnit::Radians,
-        "turn" => CssAngleUnit::Turns,
-        _ => return None,
-    };
-    CssAngleLiteral::try_new(value, unit)
 }
 
 fn parse_relative_color<'i, 't>(
@@ -1630,7 +1610,7 @@ fn parse_authored_color_mix_component<'i, 't>(
 ) -> std::result::Result<CssAuthoredColorMixComponent, ParseError<'i, Error>> {
     let (color, _) = parse_color(input, numeric)?.into_parts();
     let percentage = if next_is_percentage(input) {
-        Some(parse_authored_color_mix_percentage(input)?)
+        Some(parse_authored_color_mix_percentage(input, numeric)?)
     } else {
         None
     };
@@ -1646,11 +1626,29 @@ fn next_is_percentage<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
 
 fn parse_authored_color_mix_percentage<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
 ) -> std::result::Result<CssAuthoredColorMixPercentage, ParseError<'i, Error>> {
     let location = input.current_source_location();
-    let percentage = input.expect_percentage().map_err(basic)? * 100.0;
-    CssAuthoredColorMixPercentage::try_new(percentage)
-        .ok_or_else(|| invalid_color(location, Some("color-mix component percentage")))
+    let component = collect_color_scalar(input, numeric)?;
+    CssAuthoredColorMixPercentage::try_from_component(component)
+        .map_err(|_| invalid_color(location, Some("color-mix component percentage")))
+}
+
+fn collect_color_scalar<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
+) -> Result<crate::CssComponentValue, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let offset = input.position().byte_index();
+    let location = input.current_source_location();
+    numeric.collect(input).map_err(|error| {
+        let location = numeric.error_location(&error, location, offset);
+        if let Some(component) = error.component_error() {
+            crate::error::invalid_component_value(location, component.clone())
+        } else {
+            invalid_color(location, Some("component"))
+        }
+    })
 }
 
 fn parse_color_mix_arguments<'i, 't>(

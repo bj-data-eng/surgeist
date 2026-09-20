@@ -86,6 +86,8 @@ pub surgeist_css::CssAttributeMatcher::Prefix(alloc::string::String)
 pub surgeist_css::CssAttributeMatcher::Substring(alloc::string::String)
 pub surgeist_css::CssAttributeMatcher::Suffix(alloc::string::String)
 #[non_exhaustive] pub enum surgeist_css::CssAuthoredColorComponent
+pub surgeist_css::CssAuthoredColorComponent::ExactNumber(surgeist_css::CssColorNumberLiteral)
+pub surgeist_css::CssAuthoredColorComponent::ExactPercentage(surgeist_css::CssColorPercentageLiteral)
 pub surgeist_css::CssAuthoredColorComponent::None
 pub surgeist_css::CssAuthoredColorComponent::Number(surgeist_css::CssFiniteNumber)
 pub surgeist_css::CssAuthoredColorComponent::NumberCalculation(surgeist_css::CssNumberCalculation)
@@ -133,6 +135,8 @@ pub surgeist_css::CssAuthoredGridTrackSizeKind::MinMax
 #[non_exhaustive] pub enum surgeist_css::CssAuthoredHue
 pub surgeist_css::CssAuthoredHue::Angle(surgeist_css::CssAngleLiteral)
 pub surgeist_css::CssAuthoredHue::AngleCalculation(surgeist_css::CssAngleCalculation)
+pub surgeist_css::CssAuthoredHue::ExactAngle(surgeist_css::CssColorAngleLiteral)
+pub surgeist_css::CssAuthoredHue::ExactNumber(surgeist_css::CssColorNumberLiteral)
 pub surgeist_css::CssAuthoredHue::None
 pub surgeist_css::CssAuthoredHue::Number(surgeist_css::CssFiniteNumber)
 pub surgeist_css::CssAuthoredHue::NumberCalculation(surgeist_css::CssNumberCalculation)
@@ -432,6 +436,9 @@ pub surgeist_css::CssColorInterpolationSpace::Oklch
 pub surgeist_css::CssColorInterpolationSpace::Predefined(surgeist_css::CssPredefinedColorSpace)
 impl surgeist_css::CssColorInterpolationSpace
 pub const fn surgeist_css::CssColorInterpolationSpace::is_polar(self) -> bool
+#[non_exhaustive] pub enum surgeist_css::CssColorScalarErrorKind
+pub surgeist_css::CssColorScalarErrorKind::InvalidComponent
+pub surgeist_css::CssColorScalarErrorKind::OutOfRange
 #[non_exhaustive] pub enum surgeist_css::CssColorSchemePreference
 pub surgeist_css::CssColorSchemePreference::Dark
 pub surgeist_css::CssColorSchemePreference::Light
@@ -2672,6 +2679,9 @@ pub surgeist_css::CssRelativeColorEnvironment::Xyz(surgeist_css::CssPredefinedCo
 pub surgeist_css::CssRelativeColorExpressionValue::Angle(surgeist_css::CssAngleLiteral)
 pub surgeist_css::CssRelativeColorExpressionValue::Calculation(surgeist_css::CssRelativeColorCalculation)
 pub surgeist_css::CssRelativeColorExpressionValue::Channel(surgeist_css::CssRelativeColorChannel)
+pub surgeist_css::CssRelativeColorExpressionValue::ExactAngle(surgeist_css::CssColorAngleLiteral)
+pub surgeist_css::CssRelativeColorExpressionValue::ExactNumber(surgeist_css::CssColorNumberLiteral)
+pub surgeist_css::CssRelativeColorExpressionValue::ExactPercentage(surgeist_css::CssColorPercentageLiteral)
 pub surgeist_css::CssRelativeColorExpressionValue::None
 pub surgeist_css::CssRelativeColorExpressionValue::Number(surgeist_css::CssFiniteNumber)
 pub surgeist_css::CssRelativeColorExpressionValue::Percentage(surgeist_css::CssFiniteNumber)
@@ -3407,11 +3417,13 @@ pub struct surgeist_css::CssAuthoredColorMixComponent
 impl surgeist_css::CssAuthoredColorMixComponent
 pub const fn surgeist_css::CssAuthoredColorMixComponent::color(&self) -> &surgeist_css::CssAuthoredColor
 pub fn surgeist_css::CssAuthoredColorMixComponent::new(color: surgeist_css::CssAuthoredColor, percentage: core::option::Option<surgeist_css::CssAuthoredColorMixPercentage>) -> Self
-pub const fn surgeist_css::CssAuthoredColorMixComponent::percentage(&self) -> core::option::Option<surgeist_css::CssAuthoredColorMixPercentage>
+pub const fn surgeist_css::CssAuthoredColorMixComponent::percentage(&self) -> core::option::Option<&surgeist_css::CssAuthoredColorMixPercentage>
 pub struct surgeist_css::CssAuthoredColorMixPercentage
 impl surgeist_css::CssAuthoredColorMixPercentage
+pub const fn surgeist_css::CssAuthoredColorMixPercentage::exact_literal(&self) -> core::option::Option<&surgeist_css::CssColorPercentageLiteral>
+pub fn surgeist_css::CssAuthoredColorMixPercentage::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssColorScalarError>
 pub const fn surgeist_css::CssAuthoredColorMixPercentage::try_new(value: f32) -> core::option::Option<Self>
-pub const fn surgeist_css::CssAuthoredColorMixPercentage::value(self) -> f32
+pub const fn surgeist_css::CssAuthoredColorMixPercentage::value(&self) -> core::option::Option<f32>
 pub struct surgeist_css::CssAuthoredDeclarationValue
 impl surgeist_css::CssAuthoredDeclarationValue
 pub fn surgeist_css::CssAuthoredDeclarationValue::as_css(&self) -> &str
@@ -3971,6 +3983,13 @@ pub const fn surgeist_css::CssClipRect::left(&self) -> &surgeist_css::CssClipEdg
 pub const fn surgeist_css::CssClipRect::new(top: surgeist_css::CssClipEdge, right: surgeist_css::CssClipEdge, bottom: surgeist_css::CssClipEdge, left: surgeist_css::CssClipEdge) -> Self
 pub const fn surgeist_css::CssClipRect::right(&self) -> &surgeist_css::CssClipEdge
 pub const fn surgeist_css::CssClipRect::top(&self) -> &surgeist_css::CssClipEdge
+pub struct surgeist_css::CssColorAngleLiteral
+impl surgeist_css::CssColorAngleLiteral
+pub const fn surgeist_css::CssColorAngleLiteral::component(&self) -> &surgeist_css::CssComponentValue
+pub fn surgeist_css::CssColorAngleLiteral::numeric(&self) -> surgeist_css::CssNumericTokenRef<'_>
+pub const fn surgeist_css::CssColorAngleLiteral::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssColorAngleLiteral::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub const fn surgeist_css::CssColorAngleLiteral::unit(&self) -> surgeist_css::CssAngleUnit
 pub struct surgeist_css::CssColorComponentExpression
 impl surgeist_css::CssColorComponentExpression
 pub const fn surgeist_css::CssColorComponentExpression::authored(&self) -> &surgeist_css::CssAuthoredDeclarationValue
@@ -4001,11 +4020,33 @@ impl surgeist_css::CssColorMixComponent
 pub const fn surgeist_css::CssColorMixComponent::color(&self) -> &surgeist_css::CssColor
 pub const fn surgeist_css::CssColorMixComponent::percentage(&self) -> core::option::Option<f32>
 pub fn surgeist_css::CssColorMixComponent::try_new(color: surgeist_css::CssColor, percentage: core::option::Option<f32>) -> core::option::Option<Self>
+pub struct surgeist_css::CssColorNumberLiteral
+impl surgeist_css::CssColorNumberLiteral
+pub const fn surgeist_css::CssColorNumberLiteral::component(&self) -> &surgeist_css::CssComponentValue
+pub fn surgeist_css::CssColorNumberLiteral::numeric(&self) -> surgeist_css::CssNumericTokenRef<'_>
+pub const fn surgeist_css::CssColorNumberLiteral::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssColorNumberLiteral::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub struct surgeist_css::CssColorPercentageLiteral
+impl surgeist_css::CssColorPercentageLiteral
+pub const fn surgeist_css::CssColorPercentageLiteral::component(&self) -> &surgeist_css::CssComponentValue
+pub fn surgeist_css::CssColorPercentageLiteral::numeric(&self) -> surgeist_css::CssNumericTokenRef<'_>
+pub const fn surgeist_css::CssColorPercentageLiteral::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssColorPercentageLiteral::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
 pub struct surgeist_css::CssColorPropertyValue
 impl surgeist_css::CssColorPropertyValue
 pub fn surgeist_css::CssColorPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssColorPropertyValue::current(&self) -> &surgeist_css::CssAuthoredColor
 pub const fn surgeist_css::CssColorPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssColor>
+pub struct surgeist_css::CssColorScalarError
+impl surgeist_css::CssColorScalarError
+pub const fn surgeist_css::CssColorScalarError::kind(&self) -> surgeist_css::CssColorScalarErrorKind
+pub const fn surgeist_css::CssColorScalarError::origin(&self) -> &surgeist_css::CssValueOrigin
+impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssColorScalarError
+pub fn surgeist_css::CssColorScalarError::from(source: surgeist_css::CssComponentValueError) -> Self
+impl core::error::Error for surgeist_css::CssColorScalarError
+pub fn surgeist_css::CssColorScalarError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssColorScalarError
+pub fn surgeist_css::CssColorScalarError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssColorStopList
 impl surgeist_css::CssColorStopList
 pub fn surgeist_css::CssColorStopList::items(&self) -> &[surgeist_css::CssColorStopListItem]
@@ -4096,6 +4137,8 @@ pub struct surgeist_css::CssComponentValueError
 impl surgeist_css::CssComponentValueError
 pub const fn surgeist_css::CssComponentValueError::kind(&self) -> surgeist_css::CssComponentValueErrorKind
 pub const fn surgeist_css::CssComponentValueError::origin(&self) -> &surgeist_css::CssValueOrigin
+impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssColorScalarError
+pub fn surgeist_css::CssColorScalarError::from(source: surgeist_css::CssComponentValueError) -> Self
 impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssContainerConstructionError
 pub fn surgeist_css::CssContainerConstructionError::from(error: surgeist_css::CssComponentValueError) -> Self
 impl core::convert::From<surgeist_css::CssComponentValueError> for surgeist_css::CssCustomMediaConstructionError
