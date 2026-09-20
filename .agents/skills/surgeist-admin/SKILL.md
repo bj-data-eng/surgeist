@@ -111,6 +111,34 @@ commands. Reuse the owning row for this evidence; use a separate linked record
 only when the evidence is genuinely shared or too substantial for that row.
 This does not replace required checks or independent reproduction.
 
+### Review report lifecycle
+
+Use the applicable PISCT review skill and its shared protocol for judgment and
+self-contained reports. This skill owns retention, not a second review rubric.
+For retention, CLEAN means `accepted`; NOT CLEAN means `changes_requested` or
+`blocked`. Preserve the actual result and its distinction between defects and
+missing evidence in the ledger. Acceptance applies only to the reviewed scope;
+a clean planning review does not verify implementation.
+
+- Keep NOT CLEAN reports and their needed working evidence while findings or
+  evidence gaps remain open. Record the next action in the owning row. A fix or
+  passing test alone does not turn a review CLEAN; obtain the applicable review
+  of the corrected basis.
+- For CLEAN reviews, save the decisive review evidence described above in the
+  owning ledger row, confirm the stored result is retrievable and sufficient
+  without the report, then delete the temporary report and consumed supporting
+  files. Remove superseded NOT CLEAN reports once their findings and limitations
+  have been resolved by that review and their dispositions are recorded.
+- Audits and inventories are not automatically acceptance reviews. Move their
+  requirements, unresolved findings, and reusable source facts into the owning
+  ledger or tracked artifact. After verifying that transfer, delete the consumed
+  temporary audit. Keep only inputs with a concrete unfinished consumer.
+
+Do not retain completed reports merely because another temporary file names
+them. Current checkpoints must use durable evidence; historical filenames do not
+create a retention obligation. Do not erase unresolved findings or promote a
+scope-limited verdict to milestone completion during cleanup.
+
 A log path, JSON filename, or checksum alone is not evidence of success. Before
 discarding a uniquely useful report, put its decisive observations and source
 references in the owning row. If raw data is essential to reproduce an outcome,
