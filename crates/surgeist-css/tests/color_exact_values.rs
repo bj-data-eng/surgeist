@@ -296,7 +296,11 @@ fn finite_coefficients_still_refuse_lossy_frozen_percentage_round_trips() {
         let text = format!("color-mix(in srgb, red {coefficient}%, blue)");
         for declaration in [parsed(&text), checked(&text)] {
             let mix = wrapper(&declaration).current().color_mix_value().unwrap();
-            let weight = mix.left().percentage().unwrap();
+            let weight = mix.components()[0]
+                .weight()
+                .unwrap()
+                .literal_value()
+                .unwrap();
             assert_eq!(weight.value(), Some(expected));
             assert!(weight.exact_literal().is_none());
             assert!(wrapper(&declaration).i01_subset().is_none());
@@ -390,12 +394,10 @@ fn aggregate_projection_cannot_reparse_an_unrepresentable_child() {
                 matches!(hsl.saturation(), CssAuthoredColorComponent::Percentage(value) if value.value() == 30.0)
             );
         } else {
-            let weight = colors
-                .top()
-                .color_mix_value()
+            let weight = colors.top().color_mix_value().unwrap().components()[0]
+                .weight()
                 .unwrap()
-                .left()
-                .percentage()
+                .literal_value()
                 .unwrap();
             assert_eq!(
                 weight.exact_literal().unwrap().numeric().representation(),
@@ -548,7 +550,7 @@ fn deep_mixed_color_graph_retains_exact_leaf_at_the_shared_depth_boundary() {
             let mut visited = 1;
             loop {
                 if let Some(mix) = current.color_mix_value() {
-                    current = mix.left().color();
+                    current = mix.components()[0].color();
                 } else if let Some(relative) = current.relative_value() {
                     current = relative.source();
                 } else {

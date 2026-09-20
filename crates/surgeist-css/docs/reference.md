@@ -1005,7 +1005,8 @@ the other spaces, including `none`, calculations, and exact literals.
 
 `CssAuthoredColorMixPercentage` no longer implements `Copy`. Its `value()`
 returns `Option<f32>`; use `exact_literal()` for a retained exact percentage.
-`CssAuthoredColorMixComponent::percentage()` now borrows its optional weight.
+`CssAuthoredColorMixComponent::weight()` borrows its optional weight;
+`literal_value()` distinguishes a literal from a calculated weight.
 Existing finite `try_new` construction keeps its range contract, while
 `try_from_component` distinguishes an invalid component from an out-of-range
 percentage through `CssColorScalarError`. Exact literal range checks reject
@@ -1116,10 +1117,38 @@ assert!(opacity.i01_subset().is_none());
 The preserved Color 5 surface is intentionally narrower: relative colors cover
 `rgb`/`rgba`, `hsl`/`hsla`, `hwb`, `lab`, `lch`, `oklab`, `oklch`, and
 predefined RGB/XYZ `color()` spaces with closed per-family channel
-environments. `color-mix()` requires an interpolation method and exactly two
-colors, accepts optional trailing percentages, and permits hue interpolation
-methods only in polar spaces. This crate does not provide `alpha()`, custom
-color profiles, `light-dark()`, or `device-cmyk()`.
+environments. `color-mix()` accepts a nonempty ordered list of colors, with
+an optional interpolation method. Omission is retained and means Oklab when
+resolved. Each color can have one percentage weight before or after it.
+Ordinary literals must lie within 0..100; genuine percentage calculations
+remain symbolic without specified-stage range rejection. All-zero weights
+remain valid authored input. Hue interpolation methods belong only to polar
+spaces. Custom interpolation names retain their case-sensitive decoded identity,
+including bare `--`; their availability requires a downstream profile registry.
+This crate does not yet provide custom-profile color operands, `alpha()`,
+`light-dark()`, or `device-cmyk()`.
+
+`CssAuthoredColorMix::components()` replaces the former `left()` and `right()`
+getters. `interpolation()` returns the optional checked authored method;
+`predefined()` and `custom_profile()` distinguish its forms. Use
+`try_from_components` for complete construction, including empty-list and
+combined color/calculation depth checks. The two-color `try_new` convenience
+remains available.
+
+`CssAuthoredColorMixComponent::with_weight` accepts either a checked literal or
+a `CssAuthoredColorMixWeight::try_calculation` result. The latter requires a
+retained math function with Percentage result type: even an in-range bare
+percentage calculation root is rejected, without fabricating `calc()` syntax.
+The literal-only `new` convenience remains available. Use `weight()` and then
+`literal_value()` or `calculation()`; an omitted weight stays distinct from a
+present calculation.
+
+Frozen compatibility remains limited to proved explicit two-color forms with
+predefined methods and literal weights. New list forms remain available through
+the current model even when `i01_subset()` is `None`. Pending substitution and
+strict grammar reentry share the ordinary mix parser; parsing does not distribute
+weights, resolve profiles, or evaluate colors. Canonical mix serialization remains
+unfinished; raw serialization retains the authored component graph.
 
 These values remain authored syntax. This crate does not clamp computed color
 or opacity values, resolve `currentcolor` or system colors, evaluate relative

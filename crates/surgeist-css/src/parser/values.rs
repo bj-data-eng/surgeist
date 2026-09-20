@@ -1574,54 +1574,109 @@ fn parse_authored_color_mix_arguments<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> std::result::Result<CssAuthoredColorMix, ParseError<'i, Error>> {
-    input.expect_ident_matching("in").map_err(basic)?;
-    let interpolation = parse_authored_color_mix_interpolation_method(input)?;
-    input.expect_comma().map_err(basic)?;
-    let left = parse_authored_color_mix_component(input, numeric)?;
-    input.expect_comma().map_err(basic)?;
-    let right = parse_authored_color_mix_component(input, numeric)?;
-    input.expect_exhausted().map_err(basic)?;
-
-    CssAuthoredColorMix::try_new(interpolation, left, right).ok_or_else(|| {
-        invalid_color(
-            input.current_source_location(),
-            Some("color-mix interpolation"),
-        )
+    let start = input.position().byte_index();
+    let location = input.current_source_location();
+    let interpolation = if input
+        .try_parse(|input| input.expect_ident_matching("in"))
+        .is_ok()
+    {
+        let value = parse_authored_color_mix_interpolation_method(input)?;
+        input.expect_comma().map_err(basic)?;
+        Some(value)
+    } else {
+        None
+    };
+    let mut components = vec![parse_authored_color_mix_component(input, numeric)?];
+    while !input.is_exhausted() {
+        input.expect_comma().map_err(basic)?;
+        components.push(parse_authored_color_mix_component(input, numeric)?);
+    }
+    CssAuthoredColorMix::try_from_components(interpolation, components).map_err(|error| match error
+    {
+        CssColorMixConstructionError::EmptyComponents => {
+            invalid_color(location, Some("color-mix component"))
+        }
+        CssColorMixConstructionError::NestingLimit
+        | CssColorMixConstructionError::CapacityOverflow => {
+            let kind = if error == CssColorMixConstructionError::NestingLimit {
+                crate::CssComponentValueErrorKind::NestingLimit
+            } else {
+                crate::CssComponentValueErrorKind::CapacityOverflow
+            };
+            crate::error::invalid_component_value(
+                location,
+                crate::CssComponentValueError::new(
+                    kind,
+                    numeric.origin_at(start).expect("mix argument token origin"),
+                ),
+            )
+        }
     })
 }
 
 fn parse_authored_color_mix_interpolation_method<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssColorInterpolationMethod, ParseError<'i, Error>> {
+) -> std::result::Result<CssAuthoredColorInterpolation, ParseError<'i, Error>> {
+    let state = input.state();
+    if let Ok(name) = input.expect_ident_cloned()
+        && let Some(profile) = CssColorProfileName::try_new(name.as_ref())
+    {
+        return Ok(CssAuthoredColorInterpolation::custom(profile));
+    }
+    input.reset(&state);
     let space = parse_color_mix_interpolation_space(input)?;
     let hue_location = input.current_source_location();
     let hue = input.try_parse(parse_color_mix_hue_interpolation).ok();
-    let interpolation = CssColorInterpolationMethod::new(space, hue);
-    if hue.is_some() && !space.is_polar() {
-        Err(invalid_color(hue_location, Some("hue interpolation")))
-    } else {
-        Ok(interpolation)
-    }
+    CssAuthoredColorInterpolation::try_predefined(CssColorInterpolationMethod::new(space, hue))
+        .ok_or_else(|| invalid_color(hue_location, Some("hue interpolation")))
 }
 
 fn parse_authored_color_mix_component<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> std::result::Result<CssAuthoredColorMixComponent, ParseError<'i, Error>> {
-    let (color, _) = parse_color(input, numeric)?.into_parts();
-    let percentage = if next_is_percentage(input) {
-        Some(parse_authored_color_mix_percentage(input, numeric)?)
+    let leading = if next_is_mix_weight(input) {
+        Some(parse_authored_color_mix_weight(input, numeric)?)
     } else {
         None
     };
-    Ok(CssAuthoredColorMixComponent::new(color, percentage))
+    let (color, _) = parse_color(input, numeric)?.into_parts();
+    let weight = if leading.is_none() && next_is_mix_weight(input) {
+        Some(parse_authored_color_mix_weight(input, numeric)?)
+    } else {
+        leading
+    };
+    Ok(CssAuthoredColorMixComponent::with_weight(color, weight))
 }
 
-fn next_is_percentage<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
+fn next_is_mix_weight(input: &mut Parser<'_, '_>) -> bool {
     let state = input.state();
-    let is_percentage = matches!(input.next(), Ok(Token::Percentage { .. }));
+    let result = match input.next() {
+        Ok(Token::Percentage { .. }) => true,
+        Ok(Token::Function(name)) => is_math_function(name),
+        _ => false,
+    };
     input.reset(&state);
-    is_percentage
+    result
+}
+
+fn parse_authored_color_mix_weight<'i>(
+    input: &mut Parser<'i, '_>,
+    numeric: &NumericInputContext<'_>,
+) -> Result<CssAuthoredColorMixWeight, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let state = input.state();
+    let location = input.current_source_location();
+    if matches!(input.next(), Ok(Token::Function(_))) {
+        let expression =
+            parse_numeric_function(input, &state, numeric, CalculationRoot::Percentage)?;
+        return CssAuthoredColorMixWeight::try_calculation(
+            CssPercentageCalculation::from_expression(expression),
+        )
+        .map_err(|error| crate::error::invalid_component_value(location, error));
+    }
+    input.reset(&state);
+    parse_authored_color_mix_percentage(input, numeric).map(CssAuthoredColorMixWeight::literal)
 }
 
 fn parse_authored_color_mix_percentage<'i, 't>(

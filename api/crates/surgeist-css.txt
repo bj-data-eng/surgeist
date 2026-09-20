@@ -436,6 +436,13 @@ pub surgeist_css::CssColorInterpolationSpace::Oklch
 pub surgeist_css::CssColorInterpolationSpace::Predefined(surgeist_css::CssPredefinedColorSpace)
 impl surgeist_css::CssColorInterpolationSpace
 pub const fn surgeist_css::CssColorInterpolationSpace::is_polar(self) -> bool
+#[non_exhaustive] pub enum surgeist_css::CssColorMixConstructionError
+pub surgeist_css::CssColorMixConstructionError::CapacityOverflow
+pub surgeist_css::CssColorMixConstructionError::EmptyComponents
+pub surgeist_css::CssColorMixConstructionError::NestingLimit
+impl core::error::Error for surgeist_css::CssColorMixConstructionError
+impl core::fmt::Display for surgeist_css::CssColorMixConstructionError
+pub fn surgeist_css::CssColorMixConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssColorScalarErrorKind
 pub surgeist_css::CssColorScalarErrorKind::InvalidComponent
 pub surgeist_css::CssColorScalarErrorKind::OutOfRange
@@ -3407,23 +3414,36 @@ pub const fn surgeist_css::CssAuthoredColor::predefined_value(&self) -> core::op
 pub const fn surgeist_css::CssAuthoredColor::relative_value(&self) -> core::option::Option<&surgeist_css::CssAuthoredRelativeColor>
 pub const fn surgeist_css::CssAuthoredColor::rgb_value(&self) -> core::option::Option<&surgeist_css::CssAuthoredRgbColor>
 pub const fn surgeist_css::CssAuthoredColor::system(&self) -> core::option::Option<surgeist_css::CssAuthoredSystemColor>
+pub struct surgeist_css::CssAuthoredColorInterpolation(_)
+impl surgeist_css::CssAuthoredColorInterpolation
+pub fn surgeist_css::CssAuthoredColorInterpolation::custom(name: surgeist_css::CssColorProfileName) -> Self
+pub fn surgeist_css::CssAuthoredColorInterpolation::custom_profile(&self) -> core::option::Option<&surgeist_css::CssColorProfileName>
+pub fn surgeist_css::CssAuthoredColorInterpolation::predefined(&self) -> core::option::Option<surgeist_css::CssColorInterpolationMethod>
+pub fn surgeist_css::CssAuthoredColorInterpolation::try_predefined(method: surgeist_css::CssColorInterpolationMethod) -> core::option::Option<Self>
 pub struct surgeist_css::CssAuthoredColorMix
 impl surgeist_css::CssAuthoredColorMix
-pub const fn surgeist_css::CssAuthoredColorMix::interpolation(&self) -> &surgeist_css::CssColorInterpolationMethod
-pub const fn surgeist_css::CssAuthoredColorMix::left(&self) -> &surgeist_css::CssAuthoredColorMixComponent
-pub const fn surgeist_css::CssAuthoredColorMix::right(&self) -> &surgeist_css::CssAuthoredColorMixComponent
+pub fn surgeist_css::CssAuthoredColorMix::components(&self) -> &[surgeist_css::CssAuthoredColorMixComponent]
+pub const fn surgeist_css::CssAuthoredColorMix::interpolation(&self) -> core::option::Option<&surgeist_css::CssAuthoredColorInterpolation>
+pub fn surgeist_css::CssAuthoredColorMix::try_from_components(interpolation: core::option::Option<surgeist_css::CssAuthoredColorInterpolation>, components: alloc::vec::Vec<surgeist_css::CssAuthoredColorMixComponent>) -> core::result::Result<Self, surgeist_css::CssColorMixConstructionError>
 pub fn surgeist_css::CssAuthoredColorMix::try_new(interpolation: surgeist_css::CssColorInterpolationMethod, left: surgeist_css::CssAuthoredColorMixComponent, right: surgeist_css::CssAuthoredColorMixComponent) -> core::option::Option<Self>
 pub struct surgeist_css::CssAuthoredColorMixComponent
 impl surgeist_css::CssAuthoredColorMixComponent
 pub const fn surgeist_css::CssAuthoredColorMixComponent::color(&self) -> &surgeist_css::CssAuthoredColor
 pub fn surgeist_css::CssAuthoredColorMixComponent::new(color: surgeist_css::CssAuthoredColor, percentage: core::option::Option<surgeist_css::CssAuthoredColorMixPercentage>) -> Self
-pub const fn surgeist_css::CssAuthoredColorMixComponent::percentage(&self) -> core::option::Option<&surgeist_css::CssAuthoredColorMixPercentage>
+pub const fn surgeist_css::CssAuthoredColorMixComponent::weight(&self) -> core::option::Option<&surgeist_css::CssAuthoredColorMixWeight>
+pub fn surgeist_css::CssAuthoredColorMixComponent::with_weight(color: surgeist_css::CssAuthoredColor, weight: core::option::Option<surgeist_css::CssAuthoredColorMixWeight>) -> Self
 pub struct surgeist_css::CssAuthoredColorMixPercentage
 impl surgeist_css::CssAuthoredColorMixPercentage
 pub const fn surgeist_css::CssAuthoredColorMixPercentage::exact_literal(&self) -> core::option::Option<&surgeist_css::CssColorPercentageLiteral>
 pub fn surgeist_css::CssAuthoredColorMixPercentage::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssColorScalarError>
 pub const fn surgeist_css::CssAuthoredColorMixPercentage::try_new(value: f32) -> core::option::Option<Self>
 pub const fn surgeist_css::CssAuthoredColorMixPercentage::value(&self) -> core::option::Option<f32>
+pub struct surgeist_css::CssAuthoredColorMixWeight(_)
+impl surgeist_css::CssAuthoredColorMixWeight
+pub fn surgeist_css::CssAuthoredColorMixWeight::calculation(&self) -> core::option::Option<&surgeist_css::CssPercentageCalculation>
+pub fn surgeist_css::CssAuthoredColorMixWeight::literal(value: surgeist_css::CssAuthoredColorMixPercentage) -> Self
+pub fn surgeist_css::CssAuthoredColorMixWeight::literal_value(&self) -> core::option::Option<&surgeist_css::CssAuthoredColorMixPercentage>
+pub fn surgeist_css::CssAuthoredColorMixWeight::try_calculation(value: surgeist_css::CssPercentageCalculation) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
 pub struct surgeist_css::CssAuthoredDeclarationValue
 impl surgeist_css::CssAuthoredDeclarationValue
 pub fn surgeist_css::CssAuthoredDeclarationValue::as_css(&self) -> &str
@@ -4032,6 +4052,10 @@ pub const fn surgeist_css::CssColorPercentageLiteral::component(&self) -> &surge
 pub fn surgeist_css::CssColorPercentageLiteral::numeric(&self) -> surgeist_css::CssNumericTokenRef<'_>
 pub const fn surgeist_css::CssColorPercentageLiteral::origin(&self) -> &surgeist_css::CssValueOrigin
 pub fn surgeist_css::CssColorPercentageLiteral::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub struct surgeist_css::CssColorProfileName(_)
+impl surgeist_css::CssColorProfileName
+pub fn surgeist_css::CssColorProfileName::as_str(&self) -> &str
+pub fn surgeist_css::CssColorProfileName::try_new(decoded: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
 pub struct surgeist_css::CssColorPropertyValue
 impl surgeist_css::CssColorPropertyValue
 pub fn surgeist_css::CssColorPropertyValue::as_css(&self) -> &str

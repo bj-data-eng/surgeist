@@ -105,17 +105,43 @@ fn color_mix_preserved_subset_retains_space_hue_components_and_order() {
         .color_mix_value()
         .expect("checked current color-mix branch");
     assert_eq!(
-        color_mix.interpolation().space(),
+        color_mix
+            .interpolation()
+            .unwrap()
+            .predefined()
+            .unwrap()
+            .space(),
         CssColorInterpolationSpace::Oklch,
     );
     assert_eq!(
-        color_mix.interpolation().hue(),
+        color_mix
+            .interpolation()
+            .unwrap()
+            .predefined()
+            .unwrap()
+            .hue(),
         Some(CssHueInterpolationMethod::Longer),
     );
-    assert!(color_mix.left().color().lab_value().is_some());
-    assert_eq!(color_mix.left().percentage().unwrap().value(), Some(25.0));
-    assert!(color_mix.right().color().relative_value().is_some());
-    assert_eq!(color_mix.right().percentage().unwrap().value(), Some(75.0));
+    assert!(color_mix.components()[0].color().lab_value().is_some());
+    assert_eq!(
+        color_mix.components()[0]
+            .weight()
+            .unwrap()
+            .literal_value()
+            .unwrap()
+            .value(),
+        Some(25.0)
+    );
+    assert!(color_mix.components()[1].color().relative_value().is_some());
+    assert_eq!(
+        color_mix.components()[1]
+            .weight()
+            .unwrap()
+            .literal_value()
+            .unwrap()
+            .value(),
+        Some(75.0)
+    );
     assert!(value.i01_subset().is_none());
 }
 
@@ -149,20 +175,15 @@ fn color_mix_preserved_subset_accepts_supported_spaces_and_polar_hue_methods() {
 }
 
 #[test]
-fn color_mix_preserved_subset_rejects_unsupported_remainder_and_malformed_components() {
+fn color_mix_rejects_malformed_components_and_unimplemented_color_functions() {
     for invalid in [
         "color-mix(srgb, red, blue)",
-        "color-mix(in --custom, red, blue)",
         "color-mix(in srgb longer hue, red, blue)",
         "color-mix(in lab shorter hue, red, blue)",
-        "color-mix(in srgb, 25% red, blue)",
-        "color-mix(in srgb, red)",
-        "color-mix(in srgb, red, blue, green)",
         "color-mix(in srgb, red 101%, blue)",
         "color-mix(in srgb, red -1%, blue)",
         "color-mix(in srgb, red 25% 30%, blue)",
         "color-mix(in srgb, red,, blue)",
-        "color-mix(red, blue)",
         "light-dark(red, blue)",
         "device-cmyk(0 0 0 1)",
     ] {

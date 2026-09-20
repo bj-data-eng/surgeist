@@ -482,8 +482,8 @@ fn public_color_mix_construction_rejects_hue_in_a_rectangular_space() {
             CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb),
             Some(CssHueInterpolationMethod::Longer),
         ),
-        color_mix.left().clone(),
-        color_mix.right().clone(),
+        color_mix.components()[0].clone(),
+        color_mix.components()[1].clone(),
     );
     assert!(invalid.is_none());
 

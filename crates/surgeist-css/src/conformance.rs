@@ -2190,9 +2190,9 @@ const CLIP_PATH_REMAINDER: &str =
     "Reference-box combinations and path(), shape(), rect(), and xywh() remain unsupported.";
 const COLOR5_RELATIVE_SUBSET: &str = "The eight preserved relative-color families are supported: rgb()/rgba(), hsl()/hsla(), hwb(), lab(), lch(), oklab(), oklch(), and color() in a predefined RGB or XYZ space.";
 const COLOR5_RELATIVE_REMAINDER: &str = "alpha(), custom-profile parameters, and other unselected CSS Color 5 color functions remain unsupported.";
-const COLOR5_MIX_SUBSET: &str = "The preserved color-mix() subset requires an interpolation method, exactly two colors, optional trailing percentages, and a predefined or polar color space.";
+const COLOR5_MIX_SUBSET: &str = "Authored color-mix() supports an optional interpolation method, ordered nonempty color lists, literal or calculated percentage weights before or after colors, and predefined, polar or symbolic custom spaces.";
 const COLOR5_MIX_REMAINDER: &str =
-    "Other valid forms of the dated CSS Color 5 color-mix() production remain unsupported.";
+    "Additional shared color alternatives and canonical color serialization remain incomplete.";
 const GRID_REPEAT_SUBSET: &str = "Non-recursive integer track and fixed repeats, plus one Grid 3 automatic repeat with general track-size content and fixed-size surroundings where the consumer permits it, are supported.";
 const GRID_REPEAT_REMAINDER: &str = "Subgrid name-repeat, wider Values math functions, and other unselected Grid forms remain unsupported.";
 const GRID_PROPERTY_SUBSET: &str = "The structural grammar supports non-recursive integer track and fixed repeats, one Grid 3 automatic repeat with general track-size content and fixed-size surroundings where permitted, and repeat-free automatic track-size lists.";

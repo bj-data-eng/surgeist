@@ -695,6 +695,13 @@ pub(crate) struct CssCalculationExpression {
     closing: Option<CssValueOrigin>,
 }
 impl CssCalculationExpression {
+    pub(crate) fn component_nesting_depth(&self) -> u32 {
+        self.components
+            .as_ref()
+            .expect("checked root component graph")
+            .nesting_depth()
+    }
+
     fn canonical_len(&self, limit: usize) -> Option<usize> {
         let mut nodes = vec![self];
         let mut length = 0usize;

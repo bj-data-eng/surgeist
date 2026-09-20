@@ -253,7 +253,6 @@ fn parses_color_mix_with_hue_interpolation() {
 #[test]
 fn rejects_invalid_color_mix_forms_strictly() {
     assert!(parse_sheet(".panel { color: color-mix(); }").is_err());
-    assert!(parse_sheet(".panel { color: color-mix(in oklch, red); }").is_err());
     assert!(parse_sheet(".panel { color: color-mix(in unknown, red, blue); }").is_err());
     assert!(parse_sheet(".panel { color: color-mix(in oklch, red 10% 20%, blue); }").is_err());
 }
@@ -358,6 +357,7 @@ fn preserves_finite_css_color_coefficients_beyond_machine_range() {
 #[test]
 fn color_surface_accepts_expanded_strict_forms() {
     for css in [
+        ".panel { color: color-mix(in oklch, red); }",
         ".panel { color: red; }",
         ".panel { background-color: rebeccapurple; }",
         ".panel { border-color: #11223344; }",
@@ -379,7 +379,6 @@ fn color_surface_rejects_invalid_forms_without_recovery() {
         ".panel { color: color(unknown-space 1 0 0); }",
         ".panel { color: MadeUpSystemColor; }",
         ".panel { color: color-mix(); }",
-        ".panel { color: color-mix(in oklch, red); }",
         ".panel { color: rgb(from red r g); }",
         ".panel { color: rgb(from red r g b /); }",
     ] {

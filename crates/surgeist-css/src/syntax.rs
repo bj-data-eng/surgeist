@@ -15402,19 +15402,26 @@ impl CssAuthoredColor {
                     let weights_match =
                         |current: &CssAuthoredColorMixComponent,
                          candidate: &CssColorMixComponent| {
-                            match (current.percentage(), candidate.percentage()) {
+                            match (current.weight(), candidate.percentage()) {
                                 (None, None) => true,
-                                (Some(current), Some(candidate)) => {
-                                    current.value() == Some(candidate)
-                                }
+                                (Some(current), Some(candidate)) => current
+                                    .literal_value()
+                                    .is_some_and(|value| value.value() == Some(candidate)),
                                 _ => false,
                             }
                         };
-                    pending.push((value.left().color(), candidate.left().color()));
-                    pending.push((value.right().color(), candidate.right().color()));
-                    value.interpolation() == candidate.interpolation()
-                        && weights_match(value.left(), candidate.left())
-                        && weights_match(value.right(), candidate.right())
+                    let [left, right] = value.components() else {
+                        return false;
+                    };
+                    pending.push((left.color(), candidate.left().color()));
+                    pending.push((right.color(), candidate.right().color()));
+                    value
+                        .interpolation()
+                        .and_then(CssAuthoredColorInterpolation::predefined)
+                        .as_ref()
+                        == Some(candidate.interpolation())
+                        && weights_match(left, candidate.left())
+                        && weights_match(right, candidate.right())
                 }
                 (
                     CssAuthoredColorRepresentation::Relative(value),
@@ -16099,72 +16106,361 @@ impl CssAuthoredColorMixPercentage {
     }
 }
 
-/// One checked authored color and optional trailing percentage in `color-mix()`.
+/// A case-sensitive decoded custom color-profile identifier.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssColorProfileName(String);
+
+impl CssColorProfileName {
+    pub fn try_new(decoded: impl Into<String>) -> Option<Self> {
+        let decoded = decoded.into();
+        if !decoded.starts_with("--") {
+            return None;
+        }
+        crate::CssComponentValue::try_ident(decoded.clone()).ok()?;
+        Some(Self(decoded))
+    }
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// A checked predefined interpolation method or symbolic custom profile.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssAuthoredColorInterpolation(ColorInterpolation);
+#[derive(Clone, Debug, PartialEq)]
+enum ColorInterpolation {
+    Predefined(CssColorInterpolationMethod),
+    Custom(CssColorProfileName),
+}
+impl CssAuthoredColorInterpolation {
+    pub fn try_predefined(method: CssColorInterpolationMethod) -> Option<Self> {
+        if method.hue().is_some() && !method.space().is_polar() {
+            return None;
+        }
+        Some(Self(ColorInterpolation::Predefined(method)))
+    }
+    #[must_use]
+    pub fn custom(name: CssColorProfileName) -> Self {
+        Self(ColorInterpolation::Custom(name))
+    }
+    #[must_use]
+    pub fn predefined(&self) -> Option<CssColorInterpolationMethod> {
+        match &self.0 {
+            ColorInterpolation::Predefined(value) => Some(*value),
+            ColorInterpolation::Custom(_) => None,
+        }
+    }
+    #[must_use]
+    pub fn custom_profile(&self) -> Option<&CssColorProfileName> {
+        match &self.0 {
+            ColorInterpolation::Custom(value) => Some(value),
+            ColorInterpolation::Predefined(_) => None,
+        }
+    }
+}
+
+/// A literal weight in range or a symbolic percentage math function.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssAuthoredColorMixWeight(ColorMixWeight);
+#[derive(Clone, Debug, PartialEq)]
+enum ColorMixWeight {
+    Literal(CssAuthoredColorMixPercentage),
+    Calculation(CssPercentageCalculation),
+}
+impl CssAuthoredColorMixWeight {
+    #[must_use]
+    pub fn literal(value: CssAuthoredColorMixPercentage) -> Self {
+        Self(ColorMixWeight::Literal(value))
+    }
+    pub fn try_calculation(
+        value: CssPercentageCalculation,
+    ) -> Result<Self, crate::CssComponentValueError> {
+        use crate::{CssComponentValueRef as V, CssValueTokenRef as T};
+        let mut significant = value
+            .components()
+            .items()
+            .iter()
+            .filter(|v| !matches!(v.view(), V::Comment(_) | V::Token(T::Whitespace(_))));
+        let first = significant.next();
+        if !first.is_some_and(|v| matches!(v.view(), V::Function(_)))
+            || significant.next().is_some()
+        {
+            return Err(crate::CssComponentValueError::new(
+                crate::CssComponentValueErrorKind::InvalidToken,
+                first.map_or_else(|| value.origin().clone(), |v| v.origin().clone()),
+            ));
+        }
+        Ok(Self(ColorMixWeight::Calculation(value)))
+    }
+    #[must_use]
+    pub fn literal_value(&self) -> Option<&CssAuthoredColorMixPercentage> {
+        match &self.0 {
+            ColorMixWeight::Literal(v) => Some(v),
+            ColorMixWeight::Calculation(_) => None,
+        }
+    }
+    #[must_use]
+    pub fn calculation(&self) -> Option<&CssPercentageCalculation> {
+        match &self.0 {
+            ColorMixWeight::Calculation(v) => Some(v),
+            ColorMixWeight::Literal(_) => None,
+        }
+    }
+}
+
+/// One authored color and its optional literal or calculated weight.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssAuthoredColorMixComponent {
     color: Box<CssAuthoredColor>,
-    percentage: Option<CssAuthoredColorMixPercentage>,
+    weight: Option<CssAuthoredColorMixWeight>,
 }
-
 impl CssAuthoredColorMixComponent {
     #[must_use]
     pub fn new(color: CssAuthoredColor, percentage: Option<CssAuthoredColorMixPercentage>) -> Self {
+        Self::with_weight(color, percentage.map(CssAuthoredColorMixWeight::literal))
+    }
+    #[must_use]
+    pub fn with_weight(color: CssAuthoredColor, weight: Option<CssAuthoredColorMixWeight>) -> Self {
         Self {
             color: Box::new(color),
-            percentage,
+            weight,
         }
     }
-
     #[must_use]
     pub const fn color(&self) -> &CssAuthoredColor {
         &self.color
     }
-
     #[must_use]
-    pub const fn percentage(&self) -> Option<&CssAuthoredColorMixPercentage> {
-        self.percentage.as_ref()
+    pub const fn weight(&self) -> Option<&CssAuthoredColorMixWeight> {
+        self.weight.as_ref()
     }
 }
 
-/// The valid-by-construction preserved Color 5 `color-mix()` subset.
+/// A rejected authored mix graph, without invented source coordinates.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssColorMixConstructionError {
+    EmptyComponents,
+    NestingLimit,
+    CapacityOverflow,
+}
+impl std::fmt::Display for CssColorMixConstructionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::EmptyComponents => "color-mix requires at least one component",
+            Self::NestingLimit => "color-mix exceeds the structural nesting limit",
+            Self::CapacityOverflow => "color-mix structural capacity overflow",
+        })
+    }
+}
+impl std::error::Error for CssColorMixConstructionError {}
+
+/// A nonempty ordered authored mix with optional explicit interpolation.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssAuthoredColorMix {
-    interpolation: CssColorInterpolationMethod,
-    left: CssAuthoredColorMixComponent,
-    right: CssAuthoredColorMixComponent,
+    interpolation: Option<CssAuthoredColorInterpolation>,
+    components: Vec<CssAuthoredColorMixComponent>,
+    nesting_depth: u32,
 }
-
 impl CssAuthoredColorMix {
+    pub fn try_from_components(
+        interpolation: Option<CssAuthoredColorInterpolation>,
+        components: Vec<CssAuthoredColorMixComponent>,
+    ) -> Result<Self, CssColorMixConstructionError> {
+        if components.is_empty() {
+            return Err(CssColorMixConstructionError::EmptyComponents);
+        }
+        let nesting_depth = color_mix_depth(&components)?;
+        Ok(Self {
+            interpolation,
+            components,
+            nesting_depth,
+        })
+    }
     #[must_use]
     pub fn try_new(
         interpolation: CssColorInterpolationMethod,
         left: CssAuthoredColorMixComponent,
         right: CssAuthoredColorMixComponent,
     ) -> Option<Self> {
-        if interpolation.hue().is_some() && !interpolation.space().is_polar() {
-            None
-        } else {
-            Some(Self {
+        Self::try_from_components(
+            Some(CssAuthoredColorInterpolation::try_predefined(
                 interpolation,
-                left,
-                right,
-            })
+            )?),
+            vec![left, right],
+        )
+        .ok()
+    }
+    #[must_use]
+    pub const fn interpolation(&self) -> Option<&CssAuthoredColorInterpolation> {
+        self.interpolation.as_ref()
+    }
+    #[must_use]
+    pub fn components(&self) -> &[CssAuthoredColorMixComponent] {
+        &self.components
+    }
+}
+
+fn color_mix_depth(
+    components: &[CssAuthoredColorMixComponent],
+) -> Result<u32, CssColorMixConstructionError> {
+    let mut depth = 1;
+    for component in components {
+        depth = depth.max(
+            1u32.checked_add(authored_color_depth(component.color())?)
+                .ok_or(CssColorMixConstructionError::CapacityOverflow)?,
+        );
+        if let Some(value) = component
+            .weight()
+            .and_then(CssAuthoredColorMixWeight::calculation)
+        {
+            depth = depth.max(
+                1u32.checked_add(value.components().nesting_depth())
+                    .ok_or(CssColorMixConstructionError::CapacityOverflow)?,
+            );
+        }
+        if depth > crate::STRUCTURAL_NESTING_LIMIT {
+            return Err(CssColorMixConstructionError::NestingLimit);
         }
     }
+    Ok(depth)
+}
 
-    #[must_use]
-    pub const fn interpolation(&self) -> &CssColorInterpolationMethod {
-        &self.interpolation
+fn color_component_depth(value: &CssAuthoredColorComponent) -> u32 {
+    match value {
+        CssAuthoredColorComponent::NumberCalculation(v) => v.components().nesting_depth(),
+        CssAuthoredColorComponent::PercentageCalculation(v) => v.components().nesting_depth(),
+        _ => 0,
     }
-
-    #[must_use]
-    pub const fn left(&self) -> &CssAuthoredColorMixComponent {
-        &self.left
+}
+fn color_hue_depth(value: &CssAuthoredHue) -> u32 {
+    match value {
+        CssAuthoredHue::NumberCalculation(v) => v.components().nesting_depth(),
+        CssAuthoredHue::AngleCalculation(v) => v.components().nesting_depth(),
+        _ => 0,
     }
+}
+fn authored_color_depth(mut color: &CssAuthoredColor) -> Result<u32, CssColorMixConstructionError> {
+    use CssAuthoredColorRepresentation as R;
+    let mut ancestors = 0u32;
+    let mut maximum = 0u32;
+    loop {
+        let alpha =
+            |v: &Option<CssAuthoredColorComponent>| v.as_ref().map_or(0, color_component_depth);
+        let channels = |v: &[CssAuthoredColorComponent; 3]| {
+            v.iter().map(color_component_depth).max().unwrap_or(0)
+        };
+        let depth = match &color.representation {
+            R::CurrentColor | R::Transparent | R::Hex(_) | R::Named(_) | R::System(_) => 0,
+            R::Rgb(v) => 1 + channels(&v.channels).max(alpha(&v.alpha)),
+            R::Hsl(v) => {
+                1 + color_hue_depth(&v.hue)
+                    .max(color_component_depth(&v.saturation))
+                    .max(color_component_depth(&v.lightness))
+                    .max(alpha(&v.alpha))
+            }
+            R::Hwb(v) => {
+                1 + color_hue_depth(&v.hue)
+                    .max(color_component_depth(&v.whiteness))
+                    .max(color_component_depth(&v.blackness))
+                    .max(alpha(&v.alpha))
+            }
+            R::Lab(v) | R::Oklab(v) => {
+                1 + color_component_depth(&v.lightness)
+                    .max(color_component_depth(&v.a))
+                    .max(color_component_depth(&v.b))
+                    .max(alpha(&v.alpha))
+            }
+            R::Lch(v) | R::Oklch(v) => {
+                1 + color_component_depth(&v.lightness)
+                    .max(color_component_depth(&v.chroma))
+                    .max(color_hue_depth(&v.hue))
+                    .max(alpha(&v.alpha))
+            }
+            R::Predefined(v) => 1 + channels(&v.channels).max(alpha(&v.alpha)),
+            // Every mix constructor caches the complete checked subtree depth.
+            R::ColorMix(v) => v.nesting_depth,
+            R::Relative(v) => {
+                ancestors = ancestors
+                    .checked_add(1)
+                    .ok_or(CssColorMixConstructionError::CapacityOverflow)?;
+                for expression in v.channels.iter().chain(v.alpha.iter()) {
+                    let depth = match &expression.value {
+                        CssRelativeColorExpressionValue::Calculation(calc) => {
+                            calc.data.expression.component_nesting_depth()
+                        }
+                        _ => 0,
+                    };
+                    maximum = maximum.max(
+                        ancestors
+                            .checked_add(depth)
+                            .ok_or(CssColorMixConstructionError::CapacityOverflow)?,
+                    );
+                }
+                if ancestors > crate::STRUCTURAL_NESTING_LIMIT
+                    || maximum > crate::STRUCTURAL_NESTING_LIMIT
+                {
+                    return Err(CssColorMixConstructionError::NestingLimit);
+                }
+                color = &v.source;
+                continue;
+            }
+            R::PreservedI01(v) => legacy_color_depth(v)?,
+        };
+        maximum = maximum.max(
+            ancestors
+                .checked_add(depth)
+                .ok_or(CssColorMixConstructionError::CapacityOverflow)?,
+        );
+        return if maximum > crate::STRUCTURAL_NESTING_LIMIT {
+            Err(CssColorMixConstructionError::NestingLimit)
+        } else {
+            Ok(maximum)
+        };
+    }
+}
 
-    #[must_use]
-    pub const fn right(&self) -> &CssAuthoredColorMixComponent {
-        &self.right
+fn legacy_color_depth(color: &CssColor) -> Result<u32, CssColorMixConstructionError> {
+    let mut pending = vec![(color, 0u32)];
+    let mut maximum = 0;
+    while let Some((color, enclosing)) = pending.pop() {
+        let depth = enclosing
+            .checked_add(match color {
+                CssColor::CurrentColor | CssColor::System(_) | CssColor::Rgba(_) => 0,
+                _ => 1,
+            })
+            .ok_or(CssColorMixConstructionError::CapacityOverflow)?;
+        maximum = maximum.max(depth);
+        if maximum > crate::STRUCTURAL_NESTING_LIMIT {
+            return Err(CssColorMixConstructionError::NestingLimit);
+        }
+        match color {
+            CssColor::ColorMix(v) => {
+                pending.push((v.left().color(), depth));
+                pending.push((v.right().color(), depth));
+            }
+            CssColor::Relative(v) => {
+                pending.push((v.source(), depth));
+                // Frozen expressions retain only authored text; use the shared
+                // component owner, never a second numeric grammar or evaluator.
+                for expression in v.components().iter().chain(v.alpha()) {
+                    let values = crate::parse_component_values(expression.authored().as_css())
+                        .map_err(|_| CssColorMixConstructionError::NestingLimit)?;
+                    maximum = maximum.max(
+                        depth
+                            .checked_add(values.nesting_depth())
+                            .ok_or(CssColorMixConstructionError::CapacityOverflow)?,
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+    if maximum > crate::STRUCTURAL_NESTING_LIMIT {
+        Err(CssColorMixConstructionError::NestingLimit)
+    } else {
+        Ok(maximum)
     }
 }
 
