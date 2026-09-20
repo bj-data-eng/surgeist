@@ -1211,7 +1211,7 @@ const EXPECTED: &[ExpectedFeature] = &[
             "Known-property values with syntactically admissible var() references remain authored and symbolic.",
         ),
         unsupported_remainder: Some(
-            "Other valid CSS Variables substitution functions and post-substitution forms are outside the I01 subset.",
+            "Descriptor-context var() handling remains incomplete; variable resolution belongs to style.",
         ),
         recognized_code: None,
         positive: Some(Input::Style("width: var(--width, 1px)")),

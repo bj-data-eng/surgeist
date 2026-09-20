@@ -277,5 +277,9 @@ fn value(items: &[CssComponentValue]) -> bool {
             }
         }
     }
-    super::variables::checked_variable_components(items).is_some()
+    super::variables::checked_variable_components(
+        items,
+        super::variables::SubstitutionContext::PermissiveStyleOperand,
+    )
+    .is_some()
 }

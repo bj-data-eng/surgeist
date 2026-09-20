@@ -592,7 +592,7 @@ Canonical ordering and shortening follow the selected
 [CSSOM value serialization rules](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serializing-css-values).
 This support does not execute box generation, blockification, inlinification,
 cascade, or layout, and does not complete the other Display3/Grid3 properties.
-Shared `env()` admission is not established by this property implementation.
+Shared `env()` admission follows the authored environment substitution rules below.
 
 Custom declarations produce `CssContributions::Custom`. Its `declaration()` view
 retains the case-sensitive name and either authored token text or a whole-value
@@ -616,7 +616,7 @@ it does not select cascade targets.
 A substitution-dependent declaration returns `CssExpansion::Pending`. Once the
 downstream substitution owner supplies complete replacement components,
 `CssPendingSubstitution::reenter` returns `CssContributions` or a typed error,
-never another pending result. It rejects residual `var()` at any nesting depth
+never another pending result. It rejects residual `var()` or `env()` at any nesting depth
 before applying the original property grammar. Grammar and component failures
 retain the same origin mapping as `parse_property_value`. Failure publishes no
 partial contributions, and the pending handle remains available for another
@@ -627,6 +627,37 @@ through `source()`. Contributions from reentry share one replacement component
 tree, available through `replacement_components()`, including its original token
 origins. These operations preserve symbolic lengths, colors and images; style
 owns variable environments, invalid-at-computed-value handling and cascade.
+
+## Authored environment substitutions
+
+The required [Env1 definitions](https://www.w3.org/TR/2025/WD-css-env-1-20250923/#env-function)
+allow known property values containing valid `env()` references to remain pending.
+Names are case-sensitive custom identifiers; unknown platform names are retained.
+Ordinary indices use exact nonnegative integer tokens without a machine-size bound.
+Integer calculations remain symbolic, including results whose range requires later
+computed-value handling. CSS does not look up environment values or select fallbacks.
+
+The selected fallback grammar distinguishes `env(foo)` from `env(foo,)`:
+the first has no fallback; the second does not match the intrinsic production.
+`env(foo, )` contains a whitespace-token fallback, and `env(foo,,)` contains a comma.
+`var()` retains its separate explicit empty-fallback exception.
+
+Whole-property pending admission considers each function family independently.
+A family qualifies when at least one occurrence exists and every occurrence of
+that family matches its grammar. Either qualifying family defers the property:
+`env(var(--name))` is pending through `var()`, while `var(env(foo))` is pending
+through `env()`. This preserves authored syntax without choosing substitution order.
+Otherwise-permitted custom-property and style-query token streams can retain
+malformed `env()` calls; retention does not certify future substitution success.
+Custom properties still reject malformed `var()` references. A failed typed style
+query can survive as general-enclosed syntax under the container-query grammar.
+
+Parsed and checked construction preserve the same token boundaries, origins and
+importance. Size and scroll-state query operands retain their existing admission
+rules. The public `D-ENV1` source uses `LaterStandard`, whose catalog meaning is a
+standards-track source outside the selected whole-module profile. Its required
+shared-value record remains partial because the font-palette descriptor consumer
+is unfinished; importing these definitions does not add Env1 as a selected module.
 
 ## Intrinsic metadata and authored grammar identity
 

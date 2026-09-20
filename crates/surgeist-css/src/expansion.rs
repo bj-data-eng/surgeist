@@ -9,11 +9,12 @@
 use std::fmt;
 use std::sync::Arc;
 
+use crate::parser::contains_substitution;
 use crate::properties::{CssKnownDeclaration, CssKnownDeclaredValueRef, CssKnownPropertyValueRef};
 use crate::syntax::*;
 use crate::{
-    CssBorderColors, CssComponentValueRef, CssComponentValues, CssContainer, CssContainerNames,
-    CssContainerType, CssKnownProperty, CssPropertyValueParseError,
+    CssBorderColors, CssComponentValues, CssContainer, CssContainerNames, CssContainerType,
+    CssKnownProperty, CssPropertyValueParseError,
 };
 
 /// Why intrinsic expansion could not produce completed contributions.
@@ -57,7 +58,7 @@ impl fmt::Display for CssExpansionError {
                 )
             }
             CssExpansionErrorKind::ResidualSubstitution => {
-                formatter.write_str("replacement still contains var() substitution")
+                formatter.write_str("replacement still contains var() or env() substitution")
             }
             CssExpansionErrorKind::InvalidReplacement(error) => fmt::Display::fmt(error, formatter),
         }
@@ -481,7 +482,7 @@ impl CssPendingSubstitution {
     /// or an error, never another pending state. It preserves the caller's token
     /// origins and the original declaration's identity and importance.
     ///
-    /// A decoded `var()` at any component depth returns `ResidualSubstitution`
+    /// A decoded `var()` or `env()` at any component depth returns `ResidualSubstitution`
     /// before grammar checking. Other invalid values retain the same mapped
     /// error as [`crate::parse_property_value`], including source resource limits.
     pub fn reenter(
@@ -607,16 +608,6 @@ fn complete_contributions(
             })
             .collect(),
     }))
-}
-
-fn contains_substitution(values: &CssComponentValues) -> bool {
-    values.items().iter().any(|value| match value.view() {
-        CssComponentValueRef::Function(function) => {
-            function.name().eq_ignore_ascii_case("var") || contains_substitution(function.values())
-        }
-        CssComponentValueRef::Block(block) => contains_substitution(block.values()),
-        CssComponentValueRef::Token(_) | CssComponentValueRef::Comment(_) => false,
-    })
 }
 
 #[cfg(test)]

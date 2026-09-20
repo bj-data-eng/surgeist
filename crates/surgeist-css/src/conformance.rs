@@ -701,6 +701,14 @@ const O_VARIABLES1: CssSpecificationSource = dated_source!(
     CssSpecificationTier::Snapshot2026Official,
     "https://www.w3.org/TR/2022/CR-css-variables-1-20220616/"
 );
+// Required definitions only; Env1 is not a selected whole-module profile member.
+const D_ENV1: CssSpecificationSource = dated_source!(
+    "D-ENV1",
+    "CSS Environment Variables",
+    "1",
+    CssSpecificationTier::LaterStandard,
+    "https://www.w3.org/TR/2025/WD-css-env-1-20250923/"
+);
 const O_BOX3: CssSpecificationSource = dated_source!(
     "O-BOX3",
     "CSS Box Model",
@@ -1180,6 +1188,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     O_CASCADE4,
     O_VALUES3,
     O_VARIABLES1,
+    D_ENV1,
     O_BOX3,
     O_COLOR4,
     O_BACKGROUNDS3,
@@ -2013,6 +2022,7 @@ static OFFICIAL_NON_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
     active_coverage!("official.value.position"),
     active_coverage!("official.value.calc"),
     active_coverage!("baseline.value.substitution-dependent"),
+    active_coverage!("required.value.environment-substitution"),
     active_coverage!("official.value.box-edge-keywords"),
     active_coverage!("official.value.color"),
     active_coverage!("official.value.alpha"),
@@ -2610,7 +2620,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 508] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 509] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -2851,7 +2861,16 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 508] = [
         O_VARIABLES1,
         "#using-variables",
         "Known-property values with syntactically admissible var() references remain authored and symbolic.",
-        "Other valid CSS Variables substitution functions and post-substitution forms are outside the I01 subset.",
+        "Descriptor-context var() handling remains incomplete; variable resolution belongs to style.",
+    ),
+    CssFeatureMetadata::partial(
+        "required.value.environment-substitution",
+        CssFeatureKind::Value,
+        "env() in authored property values",
+        D_ENV1,
+        "#funcdef-env,#env-function,#env-in-shorthands",
+        "Known-property values qualify for pending substitution through valid env() functions, including exact integer indices, symbolic integer calculations and token-preserving fallbacks. Strict replacement reentry rejects residual env().",
+        "The required font-palette descriptor consumer remains unimplemented. Environment lookup and substitution execution belong to style; this record does not select the complete Env1 module.",
     ),
     CssFeatureMetadata::complete(
         "official.value.css-wide-keyword",

@@ -71,7 +71,10 @@ pub(super) fn authored_operand(
     {
         return Ok(None);
     }
-    let Some(pending) = super::variables::checked_variable_components(items) else {
+    let Some(pending) = super::variables::checked_variable_components(
+        items,
+        super::variables::SubstitutionContext::ExistingVarOnlyQuery,
+    ) else {
         return Ok(None);
     };
     Ok(Some((

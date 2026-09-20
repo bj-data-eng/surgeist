@@ -1112,6 +1112,12 @@ impl CssSerializedValue {
             .find(|(_, candidate)| candidate.as_slice() == path)
             .map(|(range, _)| range.start)
     }
+    pub(crate) fn component_end_for_path(&self, path: &[usize]) -> Option<usize> {
+        self.component_paths
+            .iter()
+            .find(|(_, candidate)| candidate.as_slice() == path)
+            .map(|(range, _)| range.end)
+    }
     /// Finds complete sibling components, never a token fragment or a reconstructed graph.
     pub(crate) fn component_paths_in_range(&self, range: Range<usize>) -> Option<Vec<&[usize]>> {
         if range.start > range.end || range.end > self.css.len() {

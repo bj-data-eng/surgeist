@@ -86,6 +86,7 @@ use timing::*;
 use typography::*;
 pub(crate) use values::numeric_relative_channel;
 use values::*;
+pub(crate) use variables::contains_substitution;
 use variables::{
     collect_authored_declaration_value, parse_custom_property_name, parse_custom_property_value,
 };
@@ -4161,8 +4162,11 @@ pub(super) fn parse_declaration_core<'i, 't>(
         let ((value, components, origin), importance) =
             parse_declaration_boundary(input, &context, |input| {
                 collect_declaration_value(input, source_snapshot, |input| {
-                    parse_custom_property_value(input)
-                        .map_err(|error| with_property_context(error, name.as_ref()))
+                    parse_custom_property_value(
+                        input,
+                        &crate::numeric::NumericInputContext::parsed(source_snapshot),
+                    )
+                    .map_err(|error| with_property_context(error, name.as_ref()))
                 })
             })?;
         (
@@ -4291,9 +4295,11 @@ fn parse_property_value_from_parser<'i>(
         PropertyValueGrammar::Known(grammar) => {
             parse_known_declaration_body(grammar.resolved(), parser, numeric)
         }
-        PropertyValueGrammar::Custom(name) => parse_custom_property_value(parser).map(|value| {
-            CssDeclarationBody::Custom(CssCustomDeclaration::new(name.clone(), value))
-        }),
+        PropertyValueGrammar::Custom(name) => {
+            parse_custom_property_value(parser, numeric).map(|value| {
+                CssDeclarationBody::Custom(CssCustomDeclaration::new(name.clone(), value))
+            })
+        }
     }?;
     parser.expect_exhausted()?;
     Ok(body)
@@ -4307,8 +4313,12 @@ fn parse_known_declaration_body<'i, 't>(
     let known_property = resolved_property.property();
     let context_name = known_property.canonical_name();
     let state = input.state();
-    let (authored, has_substitution) = collect_authored_declaration_value(input)
-        .map_err(|error| with_property_context(error, context_name))?;
+    let (authored, has_substitution) = collect_authored_declaration_value(
+        input,
+        numeric,
+        variables::SubstitutionContext::KnownProperty,
+    )
+    .map_err(|error| with_property_context(error, context_name))?;
     if has_substitution {
         return Ok(CssDeclarationBody::Known(
             CssKnownDeclaration::from_substitution_dependent(
