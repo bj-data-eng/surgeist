@@ -1,0 +1,4 @@
+interface:
+  display_name: "Surgeist Administration"
+  short_description: "Keep Surgeist plans, evidence, and scratch work organized"
+  default_prompt: "Use $surgeist-admin to organize the current Surgeist work and retain a concise, durable handoff."

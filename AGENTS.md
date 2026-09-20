@@ -5,6 +5,12 @@ focused PISCT skill for bounded work. Preserve a workflow explicitly selected
 by higher-priority instructions. This guide grants no mutation, installation,
 commit, publication, or cross-repository authority.
 
+Use the repository-local
+[$surgeist-admin](.agents/skills/surgeist-admin/SKILL.md) for plans, ledger
+organization, evidence retention, temporary files, and pause/resume handoffs.
+It owns Surgeist's administrative storage conventions; PISCT continues to own
+the engineering workflow.
+
 ## Authority Split
 
 This file is the repository's committed discovery entry point. It owns the
