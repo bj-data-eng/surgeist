@@ -204,6 +204,21 @@
         "bytes": 113268,
         "latest_published_url": "https://www.w3.org/TR/css-env-1/",
         "source_resolution": "Latest published Env 1 edition before the cutoff, identified by the latest-publication metadata inspected on 2026-09-19. Selected Fonts 4 section 9.2 expressly permits env() in descriptor values. Import only the required authored function grammar, property/descriptor pending semantics, shorthand behavior and environment-reference identity; this does not select the module, device-variable inventory or environment APIs in full."
+      },
+      {
+        "id": "css-values-5-mix-normalization-definitions",
+        "kind": "immutable-specification-source",
+        "date": "2026-09-04T19:41:09Z",
+        "url": "https://raw.githubusercontent.com/w3c/csswg-drafts/23abdab4aba7521d84efc6428466618222de1bd6/css-values-5/Overview.bs",
+        "sha256": "e6d5093499619450110a8ce94b39a8fda8960a28c72eac49f1b2fbb051a000fd",
+        "bytes": 205541,
+        "repository": "https://github.com/w3c/csswg-drafts",
+        "revision": "23abdab4aba7521d84efc6428466618222de1bd6",
+        "path": "css-values-5/Overview.bs",
+        "latest_published_url": "https://www.w3.org/TR/css-values-5/",
+        "publication_history_url": "https://www.w3.org/standards/history/css-values-5/",
+        "revision_discovery_url": "https://api.github.com/repos/w3c/csswg-drafts/commits?path=css-values-5%2FOverview.bs&until=2026-09-10T02%3A16%3A24Z&per_page=1",
+        "source_resolution": "Selected Color 5 sections 3.2 and 3.3 directly reference the Values 5 editor definitions of mix item and normalize mix percentages. The latest published Values 5 edition before the cutoff remains 2024-11-11 and lacks those definitions, despite being named by the Color 5 bibliography. Pin only the required definitions from the latest source-file revision before the cutoff, using its committer timestamp. Preserve the separate published tree-counting import; this source is not a later published edition, a whole-module replacement, or selection of Values 5 in full."
       }
     ],
     "definitions": [
@@ -668,6 +683,52 @@
           "root"
         ],
         "downstream_requirements": "Environment values, index lookup, fallback selection, computed substitution, dependency tracking and invalidation require downstream context. Fonts 4 defines root-element context for its descriptors. Env 1 issue-9ee89738 leaves broader insertion locations unspecified; issue-42f9a2dd and issue-9806265e leave aspects of substitution timing unspecified. These individual omissions do not remove the explicit authored property/descriptor requirements. Device-variable inventories, author-definition APIs and the rest of Env 1 are not imported."
+      },
+      {
+        "id": "color-mix-percentage-normalization",
+        "source_id": "css-values-5-mix-normalization-definitions",
+        "sections": [
+          {
+            "anchor": "mix-item",
+            "url": "https://github.com/w3c/csswg-drafts/blob/23abdab4aba7521d84efc6428466618222de1bd6/css-values-5/Overview.bs#L944",
+            "source_lines": {
+              "first": 944,
+              "last": 947
+            }
+          },
+          {
+            "anchor": "normalize-mix-percentages",
+            "url": "https://github.com/w3c/csswg-drafts/blob/23abdab4aba7521d84efc6428466618222de1bd6/css-values-5/Overview.bs#L962",
+            "source_lines": {
+              "first": 962,
+              "last": 1003
+            }
+          }
+        ],
+        "required_by": [
+          {
+            "module_id": "css-color-5",
+            "section_url": "https://www.w3.org/TR/2026/WD-css-color-5-20260908/#color-mix-percent-norm",
+            "requirement": "Color mix percentages use the referenced mix normalization algorithm."
+          },
+          {
+            "module_id": "css-color-5",
+            "section_url": "https://www.w3.org/TR/2026/WD-css-color-5-20260908/#calculate-a-color-mix",
+            "requirement": "Color mix calculation normalizes its ordered mix items with force normalization enabled and uses the returned leftover percentage to determine the alpha multiplier."
+          }
+        ],
+        "authored_owner": "css",
+        "authored_requirements": [
+          "Retain each authored mix item as its color and optional weight, including order, omission, exact ordinary coefficients, symbolic calculations and provenance; parsing is not normalization or color evaluation.",
+          "Use selected Color 5 and Values 4 for authored grammar, numeric range phases and context-independent specified serialization. Importing this algorithm does not replace those definitions or defer CSS-owned authored serialization to contextual execution."
+        ],
+        "downstream_owners": [
+          "style",
+          "render",
+          "animation",
+          "root"
+        ],
+        "downstream_requirements": "Resolved color computation applies the imported six-step normalization algorithm with the force-normalization flag enabled as selected Color 5 requires, preserving its original total for leftover calculation and its zero-total branch. Color 5 owns singleton handling, ordered interpolation and alpha multiplication; contextual colors and execution require their downstream owners. This record does not claim implemented normalization, interpolation or complete color serialization. Other Values 5 mix, interpolate and substitution functions are not imported."
       }
     ]
   },

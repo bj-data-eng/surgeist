@@ -114,6 +114,16 @@ nodes and checks the enclosing numeric domain; style and root supply the query
 container, tree context, evaluation and invalidation. This import neither
 selects Values 5 in full nor replaces the selected Values 4 edition.
 
+Color 5 also directly references Values 5 mix items and percentage normalization.
+Those definitions are absent from the latest published 2024 edition. A separate
+immutable CSSWG source revision from 4 September 2026 pins only these required
+definitions; it leaves the published tree-counting import unchanged. CSS retains
+ordered authored colors, optional weights and specified-value facts. Resolved
+color computation applies the normalization algorithm with Color 5's force flag
+and leftover-alpha rule; this source import does not claim that execution or
+complete color serialization is implemented. Other Values 5 functions are not
+selected by this dependency.
+
 Media Queries 5 custom-media names require the extension-name production from
 CSS Extensions 1. The catalog pins an immutable pre-cutoff source revision for
 that definition because no published edition was found. It accepts identifiers
