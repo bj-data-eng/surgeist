@@ -442,6 +442,9 @@ pub(crate) fn project_specified(
                 Unit::Number,
                 node.ty,
             )?,
+            NodeKind::ProfileChannel(name) => {
+                projection.add(Kind::Symbol(super::escaped_profile_name(name)), node.ty)?
+            }
             NodeKind::Variable(channel) => projection.add(
                 Kind::Symbol(format!("{channel:?}").to_ascii_lowercase()),
                 node.ty,

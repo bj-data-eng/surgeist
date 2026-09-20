@@ -1125,8 +1125,36 @@ remain symbolic without specified-stage range rejection. All-zero weights
 remain valid authored input. Hue interpolation methods belong only to polar
 spaces. Custom interpolation names retain their case-sensitive decoded identity,
 including bare `--`; their availability requires a downstream profile registry.
-This crate does not yet provide custom-profile color operands, `alpha()`,
-`light-dark()`, or `device-cmyk()`.
+Custom-profile `color(--Profile ...)` preserves a nonempty variable channel
+list, exact numbers and percentages, missing components and optional alpha.
+`color(from <color> --Profile ...)` retains unbound profile-channel references;
+profile existence and channel count are not grammar checks. Component names
+preserve decoded spelling and exclude only ASCII-insensitive `none`. A direct
+`pi` is a profile reference, while `calc(pi)` is a numeric constant. A custom
+channel named `alpha` remains an unbound profile reference.
+
+`alpha(from <color> [ / <alpha-value> ]?)` preserves its source and optional
+replacement alpha. Its only channel keyword is transparency `alpha`.
+`CssTypedRelativeColorExpression::try_alpha_from_components` checks that
+vocabulary. Omitted alpha, explicit `none`, and a channel reference remain
+distinct. This crate does not yet provide `light-dark()`, `contrast-color()`,
+or `device-cmyk()`.
+
+Use `CssAuthoredCustomColor::try_new`,
+`CssAuthoredRelativeCustomColor::try_new`, and `CssAuthoredAlphaColor::try_new`
+for checked construction, then `CssAuthoredColor::from_custom`,
+`from_relative_custom`, or `from_alpha`. `CssProfileColorExpression` exposes
+literal, reference and calculation views with the supplied component graph and
+origins. Its scoped calculations do not make arbitrary names valid in ordinary
+numeric expressions. Constructors enforce nonempty channel lists, expression
+environments and combined color/calculation depth.
+
+`absolute_eligibility()` reports authored eligibility, profile dependence, or a
+contextual exclusion. It inspects every child; a contextual exclusion takes
+precedence over profile dependence, with the first exclusion in authored order
+reported. Eligibility does not establish that a profile is loaded or a color
+can be computed. All new custom and alpha forms conservatively lack an I01
+projection, including when nested inside older color forms.
 
 `CssAuthoredColorMix::components()` replaces the former `left()` and `right()`
 getters. `interpolation()` returns the optional checked authored method;

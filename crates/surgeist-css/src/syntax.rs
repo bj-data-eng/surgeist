@@ -15051,7 +15051,7 @@ pub(crate) fn calc_has_negative_component(calc: &CssCalcLength) -> bool {
     }
 }
 
-/// A parser-owned authored color that preserves its specified Color 4 branch.
+/// An authored color retaining its specified syntax and symbolic dependencies.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssAuthoredColor {
     representation: CssAuthoredColorRepresentation,
@@ -15072,12 +15072,50 @@ enum CssAuthoredColorRepresentation {
     Oklab(CssAuthoredLabColor),
     Oklch(CssAuthoredLchColor),
     Predefined(CssAuthoredPredefinedColor),
+    Custom(CssAuthoredCustomColor),
+    // Keep retained profile-expression metadata out of every inline color value.
+    RelativeCustom(Box<CssAuthoredRelativeCustomColor>),
+    Alpha(CssAuthoredAlphaColor),
     Relative(CssAuthoredRelativeColor),
     ColorMix(CssAuthoredColorMix),
     PreservedI01(CssColor),
 }
 
 impl CssAuthoredColor {
+    pub const fn from_custom(value: CssAuthoredCustomColor) -> Self {
+        Self {
+            representation: CssAuthoredColorRepresentation::Custom(value),
+        }
+    }
+    pub fn from_relative_custom(value: CssAuthoredRelativeCustomColor) -> Self {
+        Self {
+            representation: CssAuthoredColorRepresentation::RelativeCustom(Box::new(value)),
+        }
+    }
+    pub const fn from_alpha(value: CssAuthoredAlphaColor) -> Self {
+        Self {
+            representation: CssAuthoredColorRepresentation::Alpha(value),
+        }
+    }
+    pub const fn custom_value(&self) -> Option<&CssAuthoredCustomColor> {
+        match &self.representation {
+            CssAuthoredColorRepresentation::Custom(v) => Some(v),
+            _ => None,
+        }
+    }
+    pub const fn relative_custom_value(&self) -> Option<&CssAuthoredRelativeCustomColor> {
+        match &self.representation {
+            CssAuthoredColorRepresentation::RelativeCustom(v) => Some(v),
+            _ => None,
+        }
+    }
+    pub const fn alpha_value(&self) -> Option<&CssAuthoredAlphaColor> {
+        match &self.representation {
+            CssAuthoredColorRepresentation::Alpha(v) => Some(v),
+            _ => None,
+        }
+    }
+
     pub(crate) const fn current_color() -> Self {
         Self {
             representation: CssAuthoredColorRepresentation::CurrentColor,
@@ -15311,6 +15349,9 @@ impl CssAuthoredColor {
             CssAuthoredColorRepresentation::Lch(_) => "lch",
             CssAuthoredColorRepresentation::Oklab(_) => "oklab",
             CssAuthoredColorRepresentation::Oklch(_) => "oklch",
+            CssAuthoredColorRepresentation::Custom(_) => "color",
+            CssAuthoredColorRepresentation::RelativeCustom(_) => "relative",
+            CssAuthoredColorRepresentation::Alpha(_) => "alpha",
             CssAuthoredColorRepresentation::Predefined(_) => "color",
             CssAuthoredColorRepresentation::Relative(_) => "relative",
             CssAuthoredColorRepresentation::ColorMix(_) => "color-mix",
@@ -15809,6 +15850,278 @@ impl CssAuthoredLchColor {
     }
 }
 
+/// Decoded custom-profile component name. Binding belongs to profile resolution.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssColorProfileComponentName(String);
+impl CssColorProfileComponentName {
+    pub fn try_new(decoded: impl Into<String>) -> Option<Self> {
+        let decoded = decoded.into();
+        if decoded.eq_ignore_ascii_case("none") {
+            return None;
+        }
+        crate::CssComponentValue::try_ident(decoded.clone()).ok()?;
+        Some(Self(decoded))
+    }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+/// Intrinsic failures while composing an authored color graph.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssAuthoredColorConstructionError {
+    EmptyComponents,
+    NestingLimit,
+    CapacityOverflow,
+    InvalidExpressionEnvironment,
+}
+impl std::fmt::Display for CssAuthoredColorConstructionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::EmptyComponents => "color requires at least one component",
+            Self::NestingLimit => "color nesting limit exceeded",
+            Self::CapacityOverflow => "color capacity overflow",
+            Self::InvalidExpressionEnvironment => "color expression environment mismatch",
+        })
+    }
+}
+impl std::error::Error for CssAuthoredColorConstructionError {}
+impl From<ColorGraphDepthError> for CssAuthoredColorConstructionError {
+    fn from(value: ColorGraphDepthError) -> Self {
+        match value {
+            ColorGraphDepthError::NestingLimit => Self::NestingLimit,
+            ColorGraphDepthError::CapacityOverflow => Self::CapacityOverflow,
+        }
+    }
+}
+fn composed_color_depth(child_depth: u32) -> Result<u32, CssAuthoredColorConstructionError> {
+    let depth = child_depth
+        .checked_add(1)
+        .ok_or(CssAuthoredColorConstructionError::CapacityOverflow)?;
+    if depth > crate::STRUCTURAL_NESTING_LIMIT {
+        return Err(CssAuthoredColorConstructionError::NestingLimit);
+    }
+    Ok(depth)
+}
+/// A nonempty authored custom `color()` without profile binding or evaluation.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssAuthoredCustomColor {
+    profile: CssColorProfileName,
+    channels: Vec<CssAuthoredColorComponent>,
+    alpha: Option<CssAuthoredColorComponent>,
+    nesting_depth: u32,
+}
+impl CssAuthoredCustomColor {
+    pub fn try_new(
+        profile: CssColorProfileName,
+        channels: Vec<CssAuthoredColorComponent>,
+        alpha: Option<CssAuthoredColorComponent>,
+    ) -> Result<Self, CssAuthoredColorConstructionError> {
+        if channels.is_empty() {
+            return Err(CssAuthoredColorConstructionError::EmptyComponents);
+        }
+        let nesting_depth = composed_color_depth(
+            channels
+                .iter()
+                .chain(alpha.iter())
+                .map(color_component_depth)
+                .max()
+                .unwrap_or(0),
+        )?;
+        Ok(Self {
+            profile,
+            channels,
+            alpha,
+            nesting_depth,
+        })
+    }
+    pub const fn profile(&self) -> &CssColorProfileName {
+        &self.profile
+    }
+    pub fn channels(&self) -> &[CssAuthoredColorComponent] {
+        &self.channels
+    }
+    pub const fn alpha(&self) -> Option<&CssAuthoredColorComponent> {
+        self.alpha.as_ref()
+    }
+}
+/// A custom relative color retaining unbound profile references in authored order.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssAuthoredRelativeCustomColor {
+    source: Box<CssAuthoredColor>,
+    profile: CssColorProfileName,
+    channels: Vec<crate::CssProfileColorExpression>,
+    alpha: Option<crate::CssProfileColorExpression>,
+    nesting_depth: u32,
+}
+impl CssAuthoredRelativeCustomColor {
+    pub fn try_new(
+        source: CssAuthoredColor,
+        profile: CssColorProfileName,
+        channels: Vec<crate::CssProfileColorExpression>,
+        alpha: Option<crate::CssProfileColorExpression>,
+    ) -> Result<Self, CssAuthoredColorConstructionError> {
+        if channels.is_empty() {
+            return Err(CssAuthoredColorConstructionError::EmptyComponents);
+        }
+        let expressions = channels
+            .iter()
+            .chain(alpha.iter())
+            .map(|v| v.components().nesting_depth())
+            .max()
+            .unwrap_or(0);
+        let nesting_depth = composed_color_depth(expressions.max(authored_color_depth(&source)?))?;
+        Ok(Self {
+            source: Box::new(source),
+            profile,
+            channels,
+            alpha,
+            nesting_depth,
+        })
+    }
+    pub const fn source(&self) -> &CssAuthoredColor {
+        &self.source
+    }
+    pub const fn profile(&self) -> &CssColorProfileName {
+        &self.profile
+    }
+    pub fn channels(&self) -> &[crate::CssProfileColorExpression] {
+        &self.channels
+    }
+    pub const fn alpha(&self) -> Option<&crate::CssProfileColorExpression> {
+        self.alpha.as_ref()
+    }
+}
+/// Authored `alpha(from ...)`, preserving omission independently from `none`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssAuthoredAlphaColor {
+    source: Box<CssAuthoredColor>,
+    alpha: Option<CssTypedRelativeColorExpression>,
+    nesting_depth: u32,
+}
+impl CssAuthoredAlphaColor {
+    pub fn try_new(
+        source: CssAuthoredColor,
+        alpha: Option<CssTypedRelativeColorExpression>,
+    ) -> Result<Self, CssAuthoredColorConstructionError> {
+        if alpha.as_ref().is_some_and(|v| {
+            v.environment() != CssRelativeColorEnvironment::Alpha
+                || v.result_domain() != CssRelativeColorResultDomain::Alpha
+        }) {
+            return Err(CssAuthoredColorConstructionError::InvalidExpressionEnvironment);
+        }
+        let expression_depth = match alpha.as_ref().map(CssTypedRelativeColorExpression::value) {
+            Some(CssRelativeColorExpressionValue::Calculation(v)) => {
+                v.data.expression.component_nesting_depth()
+            }
+            _ => 0,
+        };
+        let nesting_depth =
+            composed_color_depth(expression_depth.max(authored_color_depth(&source)?))?;
+        Ok(Self {
+            source: Box::new(source),
+            alpha,
+            nesting_depth,
+        })
+    }
+    pub const fn source(&self) -> &CssAuthoredColor {
+        &self.source
+    }
+    pub const fn alpha(&self) -> Option<&CssTypedRelativeColorExpression> {
+        self.alpha.as_ref()
+    }
+}
+/// Authored eligibility only; this does not promise a usable computed color.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssAbsoluteColorEligibility {
+    Eligible,
+    ProfileDependent,
+    Contextual(CssAbsoluteColorExclusion),
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssAbsoluteColorExclusion {
+    CurrentColor,
+    SystemColor,
+    LightDark,
+    ContrastColor,
+    DeviceCmyk,
+}
+impl CssAuthoredColor {
+    pub fn absolute_eligibility(&self) -> CssAbsoluteColorEligibility {
+        enum Pending<'a> {
+            Current(&'a CssAuthoredColor),
+            Frozen(&'a CssColor),
+        }
+        use CssAbsoluteColorEligibility as E;
+        use CssAbsoluteColorExclusion as X;
+        use CssAuthoredColorRepresentation as R;
+        let mut pending = vec![Pending::Current(self)];
+        let mut profile = false;
+        while let Some(next) = pending.pop() {
+            match next {
+                Pending::Current(color) => match &color.representation {
+                    R::CurrentColor => return E::Contextual(X::CurrentColor),
+                    R::System(_) => return E::Contextual(X::SystemColor),
+                    R::Custom(_) => profile = true,
+                    R::RelativeCustom(v) => {
+                        profile = true;
+                        pending.push(Pending::Current(v.source()));
+                    }
+                    R::Alpha(v) => pending.push(Pending::Current(v.source())),
+                    R::Relative(v) => pending.push(Pending::Current(v.source())),
+                    R::ColorMix(v) => {
+                        profile |= v
+                            .interpolation()
+                            .is_some_and(|v| v.custom_profile().is_some());
+                        pending.extend(
+                            v.components()
+                                .iter()
+                                .rev()
+                                .map(|v| Pending::Current(v.color())),
+                        );
+                    }
+                    R::PreservedI01(v) => pending.push(Pending::Frozen(v)),
+                    R::Transparent
+                    | R::Hex(_)
+                    | R::Named(_)
+                    | R::Rgb(_)
+                    | R::Hsl(_)
+                    | R::Hwb(_)
+                    | R::Lab(_)
+                    | R::Lch(_)
+                    | R::Oklab(_)
+                    | R::Oklch(_)
+                    | R::Predefined(_) => {}
+                },
+                Pending::Frozen(color) => match color {
+                    CssColor::CurrentColor => return E::Contextual(X::CurrentColor),
+                    CssColor::System(_) => return E::Contextual(X::SystemColor),
+                    CssColor::Relative(v) => pending.push(Pending::Frozen(v.source())),
+                    CssColor::ColorMix(v) => {
+                        pending.push(Pending::Frozen(v.right().color()));
+                        pending.push(Pending::Frozen(v.left().color()));
+                    }
+                    CssColor::Rgba(_)
+                    | CssColor::Hsl(_)
+                    | CssColor::Hwb(_)
+                    | CssColor::Lab(_)
+                    | CssColor::Lch(_)
+                    | CssColor::Oklab(_)
+                    | CssColor::Oklch(_)
+                    | CssColor::ColorFunction(_) => {}
+                },
+            }
+        }
+        if profile {
+            E::ProfileDependent
+        } else {
+            E::Eligible
+        }
+    }
+}
+
 /// A parser-owned absolute `color()` value in a predefined Color 4 space.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssAuthoredPredefinedColor {
@@ -15821,6 +16134,7 @@ pub struct CssAuthoredPredefinedColor {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssRelativeColorEnvironment {
+    Alpha,
     Rgb,
     Hsl,
     Hwb,
@@ -16302,14 +16616,28 @@ impl CssAuthoredColorMix {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+enum ColorGraphDepthError {
+    NestingLimit,
+    CapacityOverflow,
+}
+impl From<ColorGraphDepthError> for CssColorMixConstructionError {
+    fn from(value: ColorGraphDepthError) -> Self {
+        match value {
+            ColorGraphDepthError::NestingLimit => Self::NestingLimit,
+            ColorGraphDepthError::CapacityOverflow => Self::CapacityOverflow,
+        }
+    }
+}
+
 fn color_mix_depth(
     components: &[CssAuthoredColorMixComponent],
-) -> Result<u32, CssColorMixConstructionError> {
+) -> Result<u32, ColorGraphDepthError> {
     let mut depth = 1;
     for component in components {
         depth = depth.max(
             1u32.checked_add(authored_color_depth(component.color())?)
-                .ok_or(CssColorMixConstructionError::CapacityOverflow)?,
+                .ok_or(ColorGraphDepthError::CapacityOverflow)?,
         );
         if let Some(value) = component
             .weight()
@@ -16317,11 +16645,11 @@ fn color_mix_depth(
         {
             depth = depth.max(
                 1u32.checked_add(value.components().nesting_depth())
-                    .ok_or(CssColorMixConstructionError::CapacityOverflow)?,
+                    .ok_or(ColorGraphDepthError::CapacityOverflow)?,
             );
         }
         if depth > crate::STRUCTURAL_NESTING_LIMIT {
-            return Err(CssColorMixConstructionError::NestingLimit);
+            return Err(ColorGraphDepthError::NestingLimit);
         }
     }
     Ok(depth)
@@ -16341,7 +16669,7 @@ fn color_hue_depth(value: &CssAuthoredHue) -> u32 {
         _ => 0,
     }
 }
-fn authored_color_depth(mut color: &CssAuthoredColor) -> Result<u32, CssColorMixConstructionError> {
+fn authored_color_depth(mut color: &CssAuthoredColor) -> Result<u32, ColorGraphDepthError> {
     use CssAuthoredColorRepresentation as R;
     let mut ancestors = 0u32;
     let mut maximum = 0u32;
@@ -16381,10 +16709,13 @@ fn authored_color_depth(mut color: &CssAuthoredColor) -> Result<u32, CssColorMix
             R::Predefined(v) => 1 + channels(&v.channels).max(alpha(&v.alpha)),
             // Every mix constructor caches the complete checked subtree depth.
             R::ColorMix(v) => v.nesting_depth,
+            R::Custom(v) => v.nesting_depth,
+            R::RelativeCustom(v) => v.nesting_depth,
+            R::Alpha(v) => v.nesting_depth,
             R::Relative(v) => {
                 ancestors = ancestors
                     .checked_add(1)
-                    .ok_or(CssColorMixConstructionError::CapacityOverflow)?;
+                    .ok_or(ColorGraphDepthError::CapacityOverflow)?;
                 for expression in v.channels.iter().chain(v.alpha.iter()) {
                     let depth = match &expression.value {
                         CssRelativeColorExpressionValue::Calculation(calc) => {
@@ -16395,13 +16726,13 @@ fn authored_color_depth(mut color: &CssAuthoredColor) -> Result<u32, CssColorMix
                     maximum = maximum.max(
                         ancestors
                             .checked_add(depth)
-                            .ok_or(CssColorMixConstructionError::CapacityOverflow)?,
+                            .ok_or(ColorGraphDepthError::CapacityOverflow)?,
                     );
                 }
                 if ancestors > crate::STRUCTURAL_NESTING_LIMIT
                     || maximum > crate::STRUCTURAL_NESTING_LIMIT
                 {
-                    return Err(CssColorMixConstructionError::NestingLimit);
+                    return Err(ColorGraphDepthError::NestingLimit);
                 }
                 color = &v.source;
                 continue;
@@ -16411,17 +16742,17 @@ fn authored_color_depth(mut color: &CssAuthoredColor) -> Result<u32, CssColorMix
         maximum = maximum.max(
             ancestors
                 .checked_add(depth)
-                .ok_or(CssColorMixConstructionError::CapacityOverflow)?,
+                .ok_or(ColorGraphDepthError::CapacityOverflow)?,
         );
         return if maximum > crate::STRUCTURAL_NESTING_LIMIT {
-            Err(CssColorMixConstructionError::NestingLimit)
+            Err(ColorGraphDepthError::NestingLimit)
         } else {
             Ok(maximum)
         };
     }
 }
 
-fn legacy_color_depth(color: &CssColor) -> Result<u32, CssColorMixConstructionError> {
+fn legacy_color_depth(color: &CssColor) -> Result<u32, ColorGraphDepthError> {
     let mut pending = vec![(color, 0u32)];
     let mut maximum = 0;
     while let Some((color, enclosing)) = pending.pop() {
@@ -16430,10 +16761,10 @@ fn legacy_color_depth(color: &CssColor) -> Result<u32, CssColorMixConstructionEr
                 CssColor::CurrentColor | CssColor::System(_) | CssColor::Rgba(_) => 0,
                 _ => 1,
             })
-            .ok_or(CssColorMixConstructionError::CapacityOverflow)?;
+            .ok_or(ColorGraphDepthError::CapacityOverflow)?;
         maximum = maximum.max(depth);
         if maximum > crate::STRUCTURAL_NESTING_LIMIT {
-            return Err(CssColorMixConstructionError::NestingLimit);
+            return Err(ColorGraphDepthError::NestingLimit);
         }
         match color {
             CssColor::ColorMix(v) => {
@@ -16446,11 +16777,11 @@ fn legacy_color_depth(color: &CssColor) -> Result<u32, CssColorMixConstructionEr
                 // component owner, never a second numeric grammar or evaluator.
                 for expression in v.components().iter().chain(v.alpha()) {
                     let values = crate::parse_component_values(expression.authored().as_css())
-                        .map_err(|_| CssColorMixConstructionError::NestingLimit)?;
+                        .map_err(|_| ColorGraphDepthError::NestingLimit)?;
                     maximum = maximum.max(
                         depth
                             .checked_add(values.nesting_depth())
-                            .ok_or(CssColorMixConstructionError::CapacityOverflow)?,
+                            .ok_or(ColorGraphDepthError::CapacityOverflow)?,
                     );
                 }
             }
@@ -16458,7 +16789,7 @@ fn legacy_color_depth(color: &CssColor) -> Result<u32, CssColorMixConstructionEr
         }
     }
     if maximum > crate::STRUCTURAL_NESTING_LIMIT {
-        Err(CssColorMixConstructionError::NestingLimit)
+        Err(ColorGraphDepthError::NestingLimit)
     } else {
         Ok(maximum)
     }

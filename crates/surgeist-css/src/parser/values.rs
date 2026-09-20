@@ -574,6 +574,7 @@ fn next_is_selected_authored_color<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
                 || name.eq_ignore_ascii_case("oklab")
                 || name.eq_ignore_ascii_case("oklch")
                 || name.eq_ignore_ascii_case("color")
+                || name.eq_ignore_ascii_case("alpha")
         }
         Ok(_) | Err(_) => false,
     };
@@ -648,9 +649,40 @@ fn parse_selected_authored_color<'i, 't>(
         Token::Function(name) if name.eq_ignore_ascii_case("oklch") => input
             .parse_nested_block(|input| parse_authored_lch(input, numeric))
             .map(CssAuthoredColor::oklch),
-        Token::Function(name) if name.eq_ignore_ascii_case("color") => input
-            .parse_nested_block(|input| parse_authored_predefined_color(input, numeric))
-            .map(CssAuthoredColor::predefined),
+        Token::Function(name) if name.eq_ignore_ascii_case("color") => {
+            input.parse_nested_block(|input| {
+                if let Ok(profile) = input.try_parse(|input| {
+                    let name = input.expect_ident().map_err(basic)?;
+                    CssColorProfileName::try_new(name.as_ref())
+                        .ok_or_else(|| invalid_color(location, None))
+                }) {
+                    parse_authored_custom_arguments(input, numeric, profile)
+                } else {
+                    parse_authored_predefined_color(input, numeric)
+                        .map(CssAuthoredColor::predefined)
+                }
+            })
+        }
+        Token::Function(name) if name.eq_ignore_ascii_case("alpha") => {
+            input.parse_nested_block(|input| {
+                input.expect_ident_matching("from").map_err(basic)?;
+                let (source, _) = parse_color(input, numeric)?.into_parts();
+                let alpha = if input.try_parse(|input| input.expect_delim('/')).is_ok() {
+                    Some(parse_typed_relative_color_expression(
+                        input,
+                        numeric,
+                        CssRelativeColorEnvironment::Alpha,
+                        CssRelativeColorResultDomain::Alpha,
+                    )?)
+                } else {
+                    None
+                };
+                input.expect_exhausted().map_err(basic)?;
+                CssAuthoredAlphaColor::try_new(source, alpha)
+                    .map(CssAuthoredColor::from_alpha)
+                    .map_err(|_| invalid_color(location, None))
+            })
+        }
         token => Err(with_color_context(
             location.new_unexpected_token_error::<Error>(token),
             None,
@@ -799,6 +831,42 @@ fn parse_authored_lch<'i, 't>(
     Ok(CssAuthoredLchColor::new(lightness, chroma, hue, alpha))
 }
 
+fn parse_authored_custom_arguments<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
+    profile: CssColorProfileName,
+) -> Result<CssAuthoredColor, ParseError<'i, Error>> {
+    let location = input.current_source_location();
+    let mut channels = Vec::new();
+    let mut alpha = None;
+    while !input.is_exhausted() {
+        if input.try_parse(|input| input.expect_delim('/')).is_ok() {
+            alpha = Some(parse_authored_color_component(input, numeric, true)?);
+            break;
+        }
+        channels.push(parse_authored_color_component(input, numeric, true)?);
+    }
+    input.expect_exhausted().map_err(basic)?;
+    CssAuthoredCustomColor::try_new(profile, channels, alpha)
+        .map(CssAuthoredColor::from_custom)
+        .map_err(|_| invalid_color(location, None))
+}
+fn parse_profile_expression<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
+) -> Result<crate::CssProfileColorExpression, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let offset = input.position().byte_index();
+    let location = input.current_source_location();
+    let component = numeric
+        .collect(input)
+        .map_err(|error| calculation_error(numeric.error_location(&error, location, offset)))?;
+    let values = crate::CssComponentValues::try_new(vec![component])
+        .map_err(|_| calculation_error(location))?;
+    crate::CssProfileColorExpression::from_parser_components(values, numeric)
+        .map_err(|error| calculation_error(numeric.error_location(&error, location, offset)))
+}
+
 fn parse_authored_predefined_color<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
@@ -906,17 +974,21 @@ fn parse_authored_number_or_percentage_calculation<'i, 't>(
     before_opener: &cssparser::ParserState,
     location: cssparser::SourceLocation,
 ) -> std::result::Result<CssAuthoredColorComponent, ParseError<'i, Error>> {
-    if let Ok(expression) = input.try_parse(|input| {
-        parse_numeric_function(input, before_opener, numeric, CalculationRoot::Number)
-    }) {
-        return Ok(CssAuthoredColorComponent::NumberCalculation(
+    let expression = parse_numeric_function(
+        input,
+        before_opener,
+        numeric,
+        CalculationRoot::NumberPercentage,
+    )?;
+    match expression.result_type() {
+        CssCalculationType::Number => Ok(CssAuthoredColorComponent::NumberCalculation(
             CssNumberCalculation::from_expression(expression),
-        ));
+        )),
+        CssCalculationType::Percentage => Ok(CssAuthoredColorComponent::PercentageCalculation(
+            CssPercentageCalculation::from_expression(expression),
+        )),
+        _ => Err(invalid_color(location, Some("component"))),
     }
-    parse_numeric_function(input, before_opener, numeric, CalculationRoot::Percentage)
-        .map(CssPercentageCalculation::from_expression)
-        .map(CssAuthoredColorComponent::PercentageCalculation)
-        .map_err(|_| invalid_color(location, Some("component")))
 }
 
 fn parse_authored_hue<'i, 't>(
@@ -1039,20 +1111,39 @@ fn parse_authored_relative_color<'i, 't>(
     let Some(function) = relative_color_function_from_name(&name) else {
         return Err(location.new_unexpected_token_error(Token::Function(name)));
     };
-    input
-        .parse_nested_block(|input| {
-            parse_authored_relative_color_arguments(input, numeric, function)
-        })
-        .map(CssAuthoredColor::relative)
+    input.parse_nested_block(|input| {
+        parse_authored_relative_color_arguments(input, numeric, function)
+    })
 }
 
 fn parse_authored_relative_color_arguments<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
     function: RelativeColorFunction,
-) -> std::result::Result<CssAuthoredRelativeColor, ParseError<'i, Error>> {
+) -> std::result::Result<CssAuthoredColor, ParseError<'i, Error>> {
     input.expect_ident_matching("from").map_err(basic)?;
     let (source, _) = parse_color(input, numeric)?.into_parts();
+    if matches!(function, RelativeColorFunction::Color) {
+        let location = input.current_source_location();
+        if let Ok(profile) = input.try_parse(|input| {
+            let name = input.expect_ident().map_err(basic)?;
+            CssColorProfileName::try_new(name.as_ref()).ok_or_else(|| invalid_color(location, None))
+        }) {
+            let mut channels = Vec::new();
+            let mut alpha = None;
+            while !input.is_exhausted() {
+                if input.try_parse(|input| input.expect_delim('/')).is_ok() {
+                    alpha = Some(parse_profile_expression(input, numeric)?);
+                    break;
+                }
+                channels.push(parse_profile_expression(input, numeric)?);
+            }
+            input.expect_exhausted().map_err(basic)?;
+            return CssAuthoredRelativeCustomColor::try_new(source, profile, channels, alpha)
+                .map(CssAuthoredColor::from_relative_custom)
+                .map_err(|_| invalid_color(location, None));
+        }
+    }
     let (function, environment, domains) = relative_color_signature(input, function)?;
     let channels = [
         parse_typed_relative_color_expression(input, numeric, environment, domains[0])?,
@@ -1070,13 +1161,13 @@ fn parse_authored_relative_color_arguments<'i, 't>(
         None
     };
     input.expect_exhausted().map_err(basic)?;
-    Ok(CssAuthoredRelativeColor::new(
+    Ok(CssAuthoredColor::relative(CssAuthoredRelativeColor::new(
         function,
         environment,
         source,
         channels,
         alpha,
-    ))
+    )))
 }
 
 fn relative_color_signature<'i, 't>(
@@ -1267,6 +1358,13 @@ fn relative_color_channel(
 ) -> Option<CssRelativeColorChannel> {
     use CssRelativeColorChannel::{A, Alpha, B, C, G, H, L, R, S, W, X, Y, Z};
     let channel = match environment {
+        CssRelativeColorEnvironment::Alpha => {
+            if ident.eq_ignore_ascii_case("alpha") {
+                Alpha
+            } else {
+                return None;
+            }
+        }
         CssRelativeColorEnvironment::Rgb | CssRelativeColorEnvironment::PredefinedRgb(_) => {
             match_ignore_ascii_case! { ident,
                 "r" => R,

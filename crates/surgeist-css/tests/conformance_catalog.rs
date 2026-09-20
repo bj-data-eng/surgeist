@@ -89,8 +89,8 @@ const CLIP_PATH_SUBSET: &str =
 const CLIP_PATH_REMAINDER: &str =
     "Reference-box combinations and path(), shape(), rect(), and xywh() remain unsupported.";
 
-const COLOR5_RELATIVE_SUBSET: &str = "The eight preserved relative-color families are supported: rgb()/rgba(), hsl()/hsla(), hwb(), lab(), lch(), oklab(), oklch(), and color() in a predefined RGB or XYZ space.";
-const COLOR5_RELATIVE_REMAINDER: &str = "alpha(), custom-profile parameters, and other unselected CSS Color 5 color functions remain unsupported.";
+const COLOR5_RELATIVE_SUBSET: &str = "Relative rgb()/rgba(), hsl()/hsla(), hwb(), lab(), lch(), oklab(), oklch(), predefined and custom-profile color(), and alpha() preserve authored channels and symbolic calculations.";
+const COLOR5_RELATIVE_REMAINDER: &str = "Unselected CSS Color 5 source-color functions remain unsupported; profile binding and color evaluation belong to downstream resolution.";
 const COLOR5_MIX_SUBSET: &str = "Authored color-mix() supports an optional interpolation method, ordered nonempty color lists, literal or calculated percentage weights before or after colors, and predefined, polar or symbolic custom spaces.";
 const COLOR5_MIX_REMAINDER: &str =
     "Additional shared color alternatives and canonical color serialization remain incomplete.";

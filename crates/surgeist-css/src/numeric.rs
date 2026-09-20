@@ -670,6 +670,7 @@ enum NodeKind {
     Value(Box<CssComponentValue>),
     Constant(CssNumericConstant),
     Variable(CssRelativeColorChannel),
+    ProfileChannel(crate::CssColorProfileComponentName),
     TreeCounting(CssTreeCountingFunction),
     Sum(Vec<(Option<CssCalculationSumOperator>, CssCalculationExpression)>),
     Product(
@@ -720,6 +721,7 @@ impl CssCalculationExpression {
                         _ => 0,
                     })?
                 }
+                NodeKind::ProfileChannel(c) => escaped_profile_name(c).len(),
                 NodeKind::Constant(c) => c.name().len(),
                 NodeKind::TreeCounting(function) => function.name().len().checked_add(2)?,
                 NodeKind::Variable(c) => {
@@ -803,6 +805,7 @@ impl CssCalculationExpression {
                     };
                     emit(text, &node.origin);
                 }
+                NodeKind::ProfileChannel(name) => emit(escaped_profile_name(name), &node.origin),
                 NodeKind::Constant(constant) => emit(constant.name().to_owned(), &node.origin),
                 NodeKind::TreeCounting(function) => {
                     emit(format!("{}(", function.name()), &node.origin);
@@ -974,6 +977,11 @@ impl CssCalculationExpression {
                     node: self,
                 })
             }
+            NodeKind::ProfileChannel(_) => {
+                CssCalculationExpressionRef::ProfileChannel(CssCalculationProfileChannelRef {
+                    node: self,
+                })
+            }
             NodeKind::Variable(_) => {
                 CssCalculationExpressionRef::Variable(CssCalculationVariableRef { node: self })
             }
@@ -1008,6 +1016,7 @@ pub enum CssCalculationExpressionRef<'a> {
     Value(CssCalculationValueRef<'a>),
     Constant(CssCalculationConstantRef<'a>),
     Variable(CssCalculationVariableRef<'a>),
+    ProfileChannel(CssCalculationProfileChannelRef<'a>),
     TreeCounting(CssCalculationTreeCountingRef<'a>),
     Sum(CssCalculationSumRef<'a>),
     Product(CssCalculationProductRef<'a>),
@@ -1021,6 +1030,7 @@ impl<'a> CssCalculationExpressionRef<'a> {
             Self::Value(v) => v.literal().origin(),
             Self::Constant(v) => v.origin(),
             Self::Variable(v) => v.origin(),
+            Self::ProfileChannel(v) => v.origin(),
             Self::TreeCounting(v) => v.origin(),
             Self::Sum(v) => v.origin(),
             Self::Product(v) => v.origin(),
@@ -1033,6 +1043,7 @@ impl<'a> CssCalculationExpressionRef<'a> {
             Self::Value(v) => v.literal().numeric_type(),
             Self::Constant(v) => v.node.ty,
             Self::Variable(v) => v.node.ty,
+            Self::ProfileChannel(v) => v.node.ty,
             Self::TreeCounting(v) => v.node.ty,
             Self::Sum(v) => v.node.ty,
             Self::Product(v) => v.node.ty,
@@ -1287,6 +1298,8 @@ impl<'a> CssCalculationFunctionRef<'a> {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CalculationRoot {
+    ProfileRelative,
+    NumberPercentage,
     NamedDimensionOrNumber,
     Number,
     Integer,
@@ -1323,7 +1336,7 @@ impl CalculationRoot {
             Self::Relative(_, crate::CssRelativeColorResultDomain::Hue) => {
                 t.hint.is_none() && (t.is_number() || t.is(CssNumericDimension::Angle))
             }
-            Self::Relative(_, _) => {
+            Self::NumberPercentage | Self::ProfileRelative | Self::Relative(_, _) => {
                 t.hint.is_none() && (t.is_number() || t.is(CssNumericDimension::Percentage))
             }
         }
@@ -1681,6 +1694,10 @@ fn parse_node<'a>(
             };
             if let Some(v) = constant {
                 (NodeKind::Constant(v), CssNumericType::NUMBER)
+            } else if root == CalculationRoot::ProfileRelative {
+                let name = crate::CssColorProfileComponentName::try_new(name)
+                    .ok_or_else(|| error(CssNumericConstructionErrorKind::InvalidArgumentType))?;
+                (NodeKind::ProfileChannel(name), CssNumericType::NUMBER)
             } else if let CalculationRoot::Relative(environment, _) = root {
                 let (channel, ty) = crate::parser::numeric_relative_channel(environment, name)
                     .ok_or_else(|| error(CssNumericConstructionErrorKind::InvalidArgumentType))?;
@@ -2425,6 +2442,237 @@ impl CssFrequencyCalculation {
             crate::CssFrequencyUnit::Kilohertz => "khz",
         };
         Self::try_from_components(programmatic_dimension(value, unit)?).ok()
+    }
+}
+
+fn escaped_profile_name(name: &crate::CssColorProfileComponentName) -> String {
+    let mut text = String::new();
+    cssparser::serialize_identifier(name.as_str(), &mut text)
+        .expect("String writing is infallible");
+    text
+}
+
+/// A symbolic profile descriptor component in a checked numeric expression.
+#[derive(Clone, Copy, Debug)]
+pub struct CssCalculationProfileChannelRef<'a> {
+    node: &'a CssCalculationExpression,
+}
+impl<'a> CssCalculationProfileChannelRef<'a> {
+    pub fn name(self) -> &'a crate::CssColorProfileComponentName {
+        let NodeKind::ProfileChannel(name) = &self.node.kind else {
+            unreachable!("checked profile reference")
+        };
+        name
+    }
+    pub fn origin(self) -> &'a CssValueOrigin {
+        &self.node.origin
+    }
+    pub fn numeric_type(self) -> CssNumericType {
+        self.node.ty
+    }
+}
+
+/// One nonbinding expression in a custom profile's component environment.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssProfileColorExpression {
+    value: ProfileExpression,
+    components: CssComponentValues,
+    origin: CssValueOrigin,
+}
+#[derive(Clone, Debug, PartialEq)]
+enum ProfileExpression {
+    Literal(crate::CssAuthoredColorComponent),
+    Reference(crate::CssColorProfileComponentName),
+    Calculation(CssProfileColorCalculation),
+}
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+pub enum CssProfileColorExpressionRef<'a> {
+    Literal(&'a crate::CssAuthoredColorComponent),
+    Reference(&'a crate::CssColorProfileComponentName),
+    Calculation(&'a CssProfileColorCalculation),
+}
+impl CssProfileColorExpression {
+    pub fn try_from_components(values: CssComponentValues) -> Result<Self> {
+        Self::from_components(values, AdmissionPolicy::Strict)
+    }
+    pub(crate) fn from_parser_components(
+        values: CssComponentValues,
+        context: &NumericInputContext<'_>,
+    ) -> Result<Self> {
+        Self::from_components(
+            values,
+            match context {
+                NumericInputContext::Parsed(_) => AdmissionPolicy::RecoveredSyntax,
+                NumericInputContext::Components(..) => AdmissionPolicy::Strict,
+            },
+        )
+    }
+    fn from_components(values: CssComponentValues, policy: AdmissionPolicy) -> Result<Self> {
+        validate_components(&values, CssComponentValueLimits::default(), policy)?;
+        let mut significant = values.items().iter().filter(|c| !trivia(c));
+        let component = significant.next().ok_or_else(|| {
+            CssNumericConstructionError::at(CssNumericConstructionErrorKind::EmptyValue, None)
+        })?;
+        if let Some(extra) = significant.next() {
+            return Err(CssNumericConstructionError::at(
+                CssNumericConstructionErrorKind::MultipleValues,
+                Some(extra),
+            ));
+        }
+        let origin = component.origin().clone();
+        let value = match component.view() {
+            CssComponentValueRef::Token(CssValueTokenRef::Ident(name))
+                if name.eq_ignore_ascii_case("none") =>
+            {
+                ProfileExpression::Literal(crate::CssAuthoredColorComponent::None)
+            }
+            CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) => {
+                ProfileExpression::Reference(
+                    crate::CssColorProfileComponentName::try_new(name).ok_or_else(|| {
+                        CssNumericConstructionError::at(
+                            CssNumericConstructionErrorKind::InvalidArgumentType,
+                            Some(component),
+                        )
+                    })?,
+                )
+            }
+            CssComponentValueRef::Token(
+                CssValueTokenRef::Number(_) | CssValueTokenRef::Percentage(_),
+            ) => ProfileExpression::Literal(
+                crate::color_scalar::component(component.clone())
+                    .map_err(CssNumericConstructionError::component)?,
+            ),
+            _ => {
+                let expression = construct_with_policy(
+                    values.clone(),
+                    CalculationRoot::ProfileRelative,
+                    CssComponentValueLimits::default(),
+                    policy,
+                )?;
+                let mut references = Vec::new();
+                let mut pending = vec![&expression];
+                while let Some(node) = pending.pop() {
+                    match &node.kind {
+                        NodeKind::ProfileChannel(name) => references.push(name.clone()),
+                        NodeKind::Sum(v) => pending.extend(v.iter().rev().map(|(_, e)| e)),
+                        NodeKind::Product(v) => pending.extend(v.iter().rev().map(|(_, e)| e)),
+                        NodeKind::Group(e) => pending.push(e),
+                        NodeKind::Function { args, .. } => {
+                            pending.extend(args.iter().rev().flatten())
+                        }
+                        _ => {}
+                    }
+                }
+                ProfileExpression::Calculation(CssProfileColorCalculation {
+                    expression: Box::new(expression),
+                    references,
+                })
+            }
+        };
+        Ok(Self {
+            value,
+            components: values,
+            origin,
+        })
+    }
+    pub fn view(&self) -> CssProfileColorExpressionRef<'_> {
+        match &self.value {
+            ProfileExpression::Literal(v) => CssProfileColorExpressionRef::Literal(v),
+            ProfileExpression::Reference(v) => CssProfileColorExpressionRef::Reference(v),
+            ProfileExpression::Calculation(v) => CssProfileColorExpressionRef::Calculation(v),
+        }
+    }
+    pub fn origin(&self) -> &CssValueOrigin {
+        &self.origin
+    }
+    pub fn components(&self) -> &CssComponentValues {
+        &self.components
+    }
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssProfileColorCalculation {
+    expression: Box<CssCalculationExpression>,
+    references: Vec<crate::CssColorProfileComponentName>,
+}
+impl CssProfileColorCalculation {
+    pub fn expression(&self) -> CssCalculationExpressionRef<'_> {
+        self.expression.as_ref().as_ref()
+    }
+    pub fn references(&self) -> &[crate::CssColorProfileComponentName] {
+        &self.references
+    }
+    pub fn components(&self) -> &CssComponentValues {
+        self.expression.components.as_ref().expect("checked root")
+    }
+    pub fn origin(&self) -> &CssValueOrigin {
+        &self.expression.origin
+    }
+    pub fn result_type(&self) -> CssCalculationType {
+        self.expression.result_type()
+    }
+}
+
+impl crate::CssTypedRelativeColorExpression {
+    /// Checks an expression in the alpha-only origin environment.
+    pub fn try_alpha_from_components(values: CssComponentValues) -> Result<Self> {
+        use crate::{
+            CssAuthoredColorComponent as C, CssRelativeColorEnvironment as E,
+            CssRelativeColorExpressionValue as V, CssRelativeColorResultDomain as D,
+        };
+        validate_components(
+            &values,
+            CssComponentValueLimits::default(),
+            AdmissionPolicy::Strict,
+        )?;
+        let mut significant = values.items().iter().filter(|c| !trivia(c));
+        let component = significant.next().ok_or_else(|| {
+            CssNumericConstructionError::at(CssNumericConstructionErrorKind::EmptyValue, None)
+        })?;
+        if let Some(extra) = significant.next() {
+            return Err(CssNumericConstructionError::at(
+                CssNumericConstructionErrorKind::MultipleValues,
+                Some(extra),
+            ));
+        }
+        let value = match component.view() {
+            CssComponentValueRef::Token(CssValueTokenRef::Ident(name))
+                if name.eq_ignore_ascii_case("none") =>
+            {
+                V::None
+            }
+            CssComponentValueRef::Token(CssValueTokenRef::Ident(name))
+                if name.eq_ignore_ascii_case("alpha") =>
+            {
+                V::Channel(CssRelativeColorChannel::Alpha)
+            }
+            CssComponentValueRef::Token(
+                CssValueTokenRef::Number(_) | CssValueTokenRef::Percentage(_),
+            ) => match crate::color_scalar::component(component.clone())
+                .map_err(CssNumericConstructionError::component)?
+            {
+                C::Number(v) => V::Number(v),
+                C::Percentage(v) => V::Percentage(v),
+                C::ExactNumber(v) => V::ExactNumber(v),
+                C::ExactPercentage(v) => V::ExactPercentage(v),
+                _ => unreachable!("scalar token"),
+            },
+            _ => {
+                let authored = values
+                    .serialize()
+                    .map_err(CssNumericConstructionError::component)?;
+                let authored = crate::CssAuthoredDeclarationValue::new(authored.as_css());
+                let expression = construct(
+                    values,
+                    CalculationRoot::Relative(E::Alpha, D::Alpha),
+                    CssComponentValueLimits::default(),
+                )?;
+                V::Calculation(crate::CssRelativeColorCalculation::from_expression(
+                    authored, expression,
+                ))
+            }
+        };
+        Ok(Self::new(E::Alpha, D::Alpha, value))
     }
 }
 

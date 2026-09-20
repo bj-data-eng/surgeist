@@ -357,7 +357,6 @@ fn relative_color_channels_reject_foreign_names_dimensions_and_malformed_grammar
         "rgb(from red r g b extra)",
         "rgb(from red r g b /)",
         "rgb(from red r g b / alpha / alpha)",
-        "color(from red --custom r g b)",
         "alpha(from red r g b)",
     ] {
         let source = format!("color: {invalid}; opacity: 0.5");
@@ -820,7 +819,6 @@ fn invalid_perceptual_and_predefined_color_forms_drop_only_the_declaration() {
         "lch(50% 20 10deg / 1 / 2)",
         "oklab(50% 20 30deg)",
         "oklch(50% 20 30deg, 1)",
-        "color(--custom 1 2 3)",
         "color(srgb 1 2)",
         "color(srgb 1, 2, 3)",
         "color(srgb 1 2 3 4)",
@@ -1028,4 +1026,21 @@ fn opacity_ordinary_global_and_substitution_values_remain_distinct() {
             .declared_value(),
         CssKnownDeclaredValueRef::SubstitutionDependent(_)
     ));
+}
+
+#[test]
+fn custom_profile_colors_are_retained_with_their_valid_sibling() {
+    for color in ["color(--custom 1 2 3)", "color(from red --custom r g b)"] {
+        let report = parse_style_attribute(&format!("color: {color}; opacity: 0.5"));
+        assert!(report.is_clean(), "{color}: {:?}", report.diagnostics());
+        assert_eq!(report.syntax().len(), 2);
+        assert_eq!(
+            report.syntax()[0].known().unwrap().property(),
+            CssKnownProperty::Color
+        );
+        assert_eq!(
+            report.syntax()[1].known().unwrap().property(),
+            CssKnownProperty::Opacity
+        );
+    }
 }

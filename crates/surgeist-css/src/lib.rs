@@ -1148,13 +1148,14 @@ mod syntax;
 pub use numeric::{
     CssAngleCalculation, CssCalculationConstantRef, CssCalculationExpressionRef,
     CssCalculationFunctionRef, CssCalculationProductFactorRef, CssCalculationProductOperator,
-    CssCalculationProductRef, CssCalculationSumOperator, CssCalculationSumRef,
-    CssCalculationSumTermRef, CssCalculationTreeCountingRef, CssCalculationType,
-    CssCalculationUnaryRef, CssCalculationValueRef, CssCalculationVariableRef,
+    CssCalculationProductRef, CssCalculationProfileChannelRef, CssCalculationSumOperator,
+    CssCalculationSumRef, CssCalculationSumTermRef, CssCalculationTreeCountingRef,
+    CssCalculationType, CssCalculationUnaryRef, CssCalculationValueRef, CssCalculationVariableRef,
     CssFrequencyCalculation, CssIntegerCalculation, CssLengthCalculation,
     CssLengthPercentageCalculation, CssMathFunction, CssNumberCalculation, CssNumericConstant,
     CssNumericConstructionError, CssNumericConstructionErrorKind, CssNumericDimension,
     CssNumericLiteralRef, CssNumericType, CssNumericUnit, CssPercentageCalculation,
+    CssProfileColorCalculation, CssProfileColorExpression, CssProfileColorExpressionRef,
     CssResolutionCalculation, CssRoundingStrategy, CssTimeCalculation, CssTreeCountingFunction,
 };
 #[cfg(test)]

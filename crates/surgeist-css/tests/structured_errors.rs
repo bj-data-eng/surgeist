@@ -336,11 +336,11 @@ fn color_domain_failure_reports_the_responsible_component_and_retains_its_siblin
 
 #[test]
 fn predefined_color_space_failure_reports_the_responsible_ident_and_retains_its_sibling() {
-    let source = "color: color(--custom 1 2 3); opacity: 0.5";
+    let source = "color: color(unknown-space 1 2 3); opacity: 0.5";
     let report = parse_style_attribute(source);
     assert_eq!(report.syntax().len(), 1);
     let [diagnostic] = report.diagnostics() else {
-        panic!("custom color profile must recover once");
+        panic!("unknown predefined color space must recover once");
     };
     assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidColorSyntax);
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
@@ -353,14 +353,14 @@ fn predefined_color_space_failure_reports_the_responsible_ident_and_retains_its_
     );
     let encountered = detail.encountered().expect("responsible profile name");
     assert_eq!(encountered.kind(), CssTokenKind::Ident);
-    assert_eq!(encountered.authored(), "--custom");
+    assert_eq!(encountered.authored(), "unknown-space");
     assert_eq!(
         report.syntax()[0].known().unwrap().property(),
         CssKnownProperty::Opacity
     );
     {
         let failure = surgeist_css::validate_style_attribute(source)
-            .expect_err("strict validation rejects custom color profiles");
+            .expect_err("strict validation rejects unknown predefined color spaces");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
 }
