@@ -4256,10 +4256,12 @@ fn parse_property_value_body_selected(
     source: &str,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssDeclarationBody, Error> {
-    let mut input = ParserInput::new(source);
-    let mut parser = Parser::new(&mut input);
-    parse_property_value_from_parser(grammar, source, &mut parser, numeric)
-        .map_err(|error| from_parse_error(source, error))
+    fragments::bounded_execution(source, || {
+        let mut input = ParserInput::new(source);
+        let mut parser = Parser::new(&mut input);
+        parse_property_value_from_parser(grammar, source, &mut parser, numeric)
+            .map_err(|error| from_parse_error(source, error))
+    })
 }
 
 fn parse_property_value_from_parser<'i>(

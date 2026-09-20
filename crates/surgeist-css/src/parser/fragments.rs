@@ -5,12 +5,19 @@ fn bounded<T: Send>(
     source: &str,
     parse: impl FnOnce() -> crate::CssParseReport<T> + Send,
 ) -> crate::CssParseReport<T> {
-    // Selector recursion has larger frames than structural rule parsing. Route
-    // deeply nested fragments conservatively; this is not an admission limit.
+    recovery::finish_report(source, bounded_execution(source, parse))
+}
+
+pub(super) fn bounded_execution<T: Send>(
+    source: &str,
+    parse: impl FnOnce() -> T + Send,
+) -> T {
+    // Recursive value and selector grammar can have larger frames than
+    // structural rule parsing. This threshold is not an admission limit.
     if recovery::maximum_nested_depth(source) < 64 {
-        return recovery::finish_report(source, parse());
+        return parse();
     }
-    let report = std::thread::scope(|scope| {
+    std::thread::scope(|scope| {
         let thread = std::thread::Builder::new()
             .name("surgeist-css-fragment-parser".into())
             .stack_size(16 * 1024 * 1024)
@@ -20,8 +27,7 @@ fn bounded<T: Send>(
             Ok(value) => value,
             Err(panic) => std::panic::resume_unwind(panic),
         }
-    });
-    recovery::finish_report(source, report)
+    })
 }
 
 fn reject(
