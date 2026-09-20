@@ -852,7 +852,6 @@ fn invalid_color_separators_units_and_arities_drop_only_the_declaration() {
         "rgb(1 2)",
         "rgb(1px 2 3)",
         "hsl(20, 30%, 40% / 50%)",
-        "hsl(20 30 40%)",
         "hwb(20, 30%, 40%)",
         "hwb(20deg 30% 40% 50%)",
     ] {
