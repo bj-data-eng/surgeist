@@ -979,12 +979,19 @@ not promote an aggregate or an unselected production.
 
 ## Authored colors and frozen I01 compatibility
 
-The current color model preserves the authored Color 4 grammar rather than a
-computed color. It distinguishes named, transparent, current, hexadecimal,
+The current color model retains supported authored Color 4 forms. It
+distinguishes named, transparent, current, hexadecimal,
 current and deprecated system, legacy and modern RGB/HSL, HWB, Lab/LCH,
 Oklab/Oklch, and predefined `color()` branches. Finite specified components
 remain authored even when they are outside a computed range, and typed
-calculations remain symbolic. The current opacity model likewise preserves a
+calculations remain symbolic. Modern HSL/HSLA saturation and lightness, and
+HWB whiteness and blackness, accept numbers, percentages, `none`, and typed
+calculations. Their number and percentage domains remain distinct; legacy
+comma-separated HSL/HSLA keeps percentage-only saturation and lightness.
+The HSL/HWB catalog entries remain Partial because exact ordinary color
+scalar transport and canonical color serialization are unfinished.
+
+The current opacity model likewise preserves a
 finite number or percentage, including signed and out-of-range specified
 values. Ordinary opacity scalars retain the exact authored decimal even when
 the tokenizer's binary32 cache underflows or overflows. `CssOpacityValue::ExactScalar`

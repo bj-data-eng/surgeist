@@ -752,8 +752,8 @@ fn parse_authored_hsl<'i, 't>(
             alpha,
         ))
     } else {
-        let saturation = parse_authored_percentage_component(input, numeric, true)?;
-        let lightness = parse_authored_percentage_component(input, numeric, true)?;
+        let saturation = parse_authored_color_component(input, numeric, true)?;
+        let lightness = parse_authored_color_component(input, numeric, true)?;
         let alpha = if input.try_parse(|input| input.expect_delim('/')).is_ok() {
             Some(parse_authored_alpha(input, numeric, true)?)
         } else {
@@ -775,8 +775,8 @@ fn parse_authored_hwb<'i, 't>(
     numeric: &NumericInputContext<'_>,
 ) -> std::result::Result<CssAuthoredHwbColor, ParseError<'i, Error>> {
     let hue = parse_authored_hue(input, numeric, true)?;
-    let whiteness = parse_authored_percentage_component(input, numeric, true)?;
-    let blackness = parse_authored_percentage_component(input, numeric, true)?;
+    let whiteness = parse_authored_color_component(input, numeric, true)?;
+    let blackness = parse_authored_color_component(input, numeric, true)?;
     let alpha = if input.try_parse(|input| input.expect_delim('/')).is_ok() {
         Some(parse_authored_alpha(input, numeric, true)?)
     } else {

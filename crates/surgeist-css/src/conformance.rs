@@ -3075,19 +3075,23 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 509] = [
         O_COLOR4,
         "#currentcolor-color",
     ),
-    CssFeatureMetadata::complete(
+    CssFeatureMetadata::partial(
         "official.value.hsl",
         CssFeatureKind::Value,
         "hsl()/hsla()",
         O_COLOR4,
         "#the-hsl-notation",
+        "Legacy percentage channels and modern number, percentage, none, and typed calculation channels are supported.",
+        "Exact ordinary color scalar transport and canonical color serialization remain incomplete.",
     ),
-    CssFeatureMetadata::complete(
+    CssFeatureMetadata::partial(
         "official.value.hwb",
         CssFeatureKind::Value,
         "hwb()",
         O_COLOR4,
         "#the-hwb-notation",
+        "Modern number, percentage, none, and typed calculation channels are supported.",
+        "Exact ordinary color scalar transport and canonical color serialization remain incomplete.",
     ),
     CssFeatureMetadata::complete(
         "official.value.lab",

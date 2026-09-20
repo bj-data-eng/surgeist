@@ -641,18 +641,39 @@ fn color4_value_and_property_metadata_match_public_authored_behavior() {
         "#currentcolor-color",
         "currentColor",
     );
-    assert_complete_color4_value(
-        "official.value.hsl",
-        "hsl()/hsla()",
-        "#the-hsl-notation",
-        "hsl(30deg 120% -20% / none)",
-    );
-    assert_complete_color4_value(
-        "official.value.hwb",
-        "hwb()",
-        "#the-hwb-notation",
-        "hwb(none 20% 120% / -10%)",
-    );
+    for (id, spelling, production, accepted, subset) in [
+        (
+            "official.value.hsl",
+            "hsl()/hsla()",
+            "#the-hsl-notation",
+            "hsl(30deg 120 -20% / none)",
+            "Legacy percentage channels and modern number, percentage, none, and typed calculation channels are supported.",
+        ),
+        (
+            "official.value.hwb",
+            "hwb()",
+            "#the-hwb-notation",
+            "hwb(none 20 120% / -10%)",
+            "Modern number, percentage, none, and typed calculation channels are supported.",
+        ),
+    ] {
+        assert_clean_color(accepted);
+        let metadata = feature_metadata(id).unwrap();
+        assert_eq!(metadata.kind(), CssFeatureKind::Value);
+        assert_eq!(metadata.spelling(), spelling);
+        assert_eq!(metadata.source().id().as_str(), "O-COLOR4");
+        assert_eq!(metadata.production(), production);
+        assert_eq!(metadata.status(), CssSupportStatus::Partial);
+        assert_eq!(metadata.supported_subset(), Some(subset));
+        assert_eq!(
+            metadata.unsupported_remainder(),
+            Some(
+                "Exact ordinary color scalar transport and canonical color serialization remain incomplete."
+            )
+        );
+        assert_eq!(metadata.recognized_unsupported_code(), None);
+        assert!(metadata.baseline_alias_targets().is_empty());
+    }
     assert_complete_color4_value(
         "official.value.lab",
         "lab()",
