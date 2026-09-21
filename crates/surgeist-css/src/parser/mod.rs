@@ -84,8 +84,8 @@ use supports::{
 };
 use timing::*;
 use typography::*;
-pub(crate) use values::numeric_relative_channel;
 use values::*;
+pub(crate) use values::{adapt_legacy_relative_expression, numeric_relative_channel};
 pub(crate) use variables::contains_substitution;
 use variables::{
     collect_authored_declaration_value, parse_custom_property_name, parse_custom_property_value,

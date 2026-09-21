@@ -3451,6 +3451,8 @@ pub const fn surgeist_css::CssAuthoredColor::relative_custom_value(&self) -> cor
 pub const fn surgeist_css::CssAuthoredColor::relative_value(&self) -> core::option::Option<&surgeist_css::CssAuthoredRelativeColor>
 pub const fn surgeist_css::CssAuthoredColor::rgb_value(&self) -> core::option::Option<&surgeist_css::CssAuthoredRgbColor>
 pub const fn surgeist_css::CssAuthoredColor::system(&self) -> core::option::Option<surgeist_css::CssAuthoredSystemColor>
+pub fn surgeist_css::CssAuthoredColor::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAuthoredColor::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssAuthoredColorInterpolation(_)
 impl surgeist_css::CssAuthoredColorInterpolation
 pub fn surgeist_css::CssAuthoredColorInterpolation::custom(name: surgeist_css::CssColorProfileName) -> Self

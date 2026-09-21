@@ -93,24 +93,113 @@ impl std::error::Error for CssSpecifiedValueSerializationError {}
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 use CssSpecifiedValueSerializationErrorKind as Kind;
 
+/// Monotonic resources shared by every projection participating in one public
+/// specified-value serialization. Dropping a child arena never refunds work.
+pub(crate) struct SpecifiedSerializationContext {
+    limits: CssSpecifiedValueSerializationLimits,
+    input_nodes: usize,
+    projection_nodes: usize,
+    css_bytes: usize,
+}
+
+impl SpecifiedSerializationContext {
+    pub(crate) const fn new(limits: CssSpecifiedValueSerializationLimits) -> Self {
+        Self {
+            limits,
+            input_nodes: 0,
+            projection_nodes: 0,
+            css_bytes: 0,
+        }
+    }
+
+    fn charge(current: &mut usize, amount: usize, limit: usize, kind: Kind) -> Result<()> {
+        let next = current
+            .checked_add(amount)
+            .ok_or_else(|| CssSpecifiedValueSerializationError::new(Kind::CapacityOverflow))?;
+        if next > limit {
+            return Err(CssSpecifiedValueSerializationError::new(kind));
+        }
+        *current = next;
+        Ok(())
+    }
+
+    pub(crate) fn charge_input(&mut self, amount: usize) -> Result<()> {
+        Self::charge(
+            &mut self.input_nodes,
+            amount,
+            self.limits.max_input_nodes(),
+            Kind::InputNodeLimit,
+        )
+    }
+
+    pub(crate) fn charge_projection(&mut self, amount: usize) -> Result<()> {
+        Self::charge(
+            &mut self.projection_nodes,
+            amount,
+            self.limits.max_projection_nodes(),
+            Kind::ProjectionNodeLimit,
+        )
+    }
+
+    pub(crate) fn remaining_bytes(&self) -> usize {
+        self.limits.max_css_bytes() - self.css_bytes
+    }
+
+    pub(crate) fn remaining_input_nodes(&self) -> usize {
+        self.limits.max_input_nodes() - self.input_nodes
+    }
+
+    pub(crate) fn remaining_projection_nodes(&self) -> usize {
+        self.limits.max_projection_nodes() - self.projection_nodes
+    }
+
+    pub(crate) fn append(&mut self, output: &mut String, text: &str) -> Result<()> {
+        debug_assert_eq!(output.len(), self.css_bytes);
+        let next = self
+            .css_bytes
+            .checked_add(text.len())
+            .ok_or_else(|| CssSpecifiedValueSerializationError::new(Kind::CapacityOverflow))?;
+        if next > self.limits.max_css_bytes() {
+            return Err(CssSpecifiedValueSerializationError::new(Kind::ByteLimit));
+        }
+        output
+            .try_reserve(text.len())
+            .map_err(|_| CssSpecifiedValueSerializationError::new(Kind::CapacityOverflow))?;
+        output.push_str(text);
+        self.css_bytes = next;
+        Ok(())
+    }
+
+    /// Appends to a caller-owned scratch value without charging final-output
+    /// bytes. The scratch value is still bounded by the final output space that
+    /// remains, so branch selection cannot allocate a per-channel value larger
+    /// than the public operation could return.
+    pub(crate) fn append_temporary(&self, output: &mut String, text: &str) -> Result<()> {
+        let next = output
+            .len()
+            .checked_add(text.len())
+            .ok_or_else(|| CssSpecifiedValueSerializationError::new(Kind::CapacityOverflow))?;
+        if next > self.remaining_bytes() {
+            return Err(CssSpecifiedValueSerializationError::new(Kind::ByteLimit));
+        }
+        output
+            .try_reserve(text.len())
+            .map_err(|_| CssSpecifiedValueSerializationError::new(Kind::CapacityOverflow))?;
+        output.push_str(text);
+        Ok(())
+    }
+}
+
 pub(crate) fn serialize_keyword_sequence(
     text: &str,
     limits: CssSpecifiedValueSerializationLimits,
 ) -> Result<String> {
-    if limits.max_input_nodes() == 0 {
-        return Err(CssSpecifiedValueSerializationError::new(
-            Kind::InputNodeLimit,
-        ));
-    }
-    if limits.max_projection_nodes() == 0 {
-        return Err(CssSpecifiedValueSerializationError::new(
-            Kind::ProjectionNodeLimit,
-        ));
-    }
-    if text.len() > limits.max_css_bytes() {
-        return Err(CssSpecifiedValueSerializationError::new(Kind::ByteLimit));
-    }
-    Ok(text.to_owned())
+    let mut context = SpecifiedSerializationContext::new(limits);
+    context.charge_input(1)?;
+    context.charge_projection(1)?;
+    let mut output = String::new();
+    context.append(&mut output, text)?;
+    Ok(output)
 }
 
 impl CssOpacityValue {

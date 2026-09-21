@@ -8,6 +8,7 @@ use crate::{
     CssComponentValueRef, CssSpecifiedValueSerializationError as Error,
     CssSpecifiedValueSerializationErrorKind as ErrorKind,
     CssSpecifiedValueSerializationLimits as Limits, CssValueTokenRef,
+    specified_serialization::SpecifiedSerializationContext,
 };
 use std::collections::BTreeMap;
 
@@ -93,15 +94,13 @@ struct Node {
     resolved_magnitude: Option<f64>,
 }
 
-struct Projection {
+struct Projection<'a> {
     arena: Vec<Node>,
-    limits: Limits,
+    context: &'a mut SpecifiedSerializationContext,
 }
-impl Projection {
+impl Projection<'_> {
     fn add(&mut self, kind: Kind, ty: CssNumericType) -> Result<Id> {
-        if self.arena.len() >= self.limits.max_projection_nodes() {
-            return Err(Error::new(ErrorKind::ProjectionNodeLimit));
-        }
+        self.context.charge_projection(1)?;
         self.arena
             .try_reserve(1)
             .map_err(|_| Error::new(ErrorKind::CapacityOverflow))?;
@@ -375,16 +374,81 @@ pub(crate) fn project_specified(
     expression: &CssCalculationExpression,
     limits: Limits,
 ) -> Result<String> {
+    let mut context = SpecifiedSerializationContext::new(limits);
+    let mut output = String::new();
+    project_specified_into(expression, &mut context, &mut output)?;
+    Ok(output)
+}
+
+/// A private summary used by owning color slots to distinguish a fully numeric
+/// result from retained context without reparsing the emitted CSS.
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) struct NumericProjectionOutcome {
+    pub(crate) context_dependent: bool,
+    pub(crate) scalar_value: Option<f64>,
+}
+
+/// Slot-owned dimensional conversion applied to a projected calculation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NumericProjectionScale {
+    Identity,
+    Number { numerator: u64, denominator: u64 },
+    PercentageToNumber { numerator: u64, denominator: u64 },
+    NumberToPercentage { numerator: u64, denominator: u64 },
+}
+
+/// Projects into one caller-owned output and cumulative resource context.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn project_specified_into(
+    expression: &CssCalculationExpression,
+    context: &mut SpecifiedSerializationContext,
+    output: &mut String,
+) -> Result<NumericProjectionOutcome> {
+    project_specified_impl(
+        expression,
+        NumericProjectionScale::Identity,
+        context,
+        output,
+        true,
+    )
+}
+
+/// Projects one child into bounded scratch storage for caller-side branch
+/// selection. Input and projection work remain cumulative; final-output bytes
+/// are charged only if the caller later appends the returned text.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn capture_specified(
+    expression: &CssCalculationExpression,
+    context: &mut SpecifiedSerializationContext,
+) -> Result<(String, NumericProjectionOutcome)> {
+    capture_specified_scaled(expression, NumericProjectionScale::Identity, context)
+}
+
+pub(crate) fn capture_specified_scaled(
+    expression: &CssCalculationExpression,
+    scale: NumericProjectionScale,
+    context: &mut SpecifiedSerializationContext,
+) -> Result<(String, NumericProjectionOutcome)> {
+    let mut output = String::new();
+    let outcome = project_specified_impl(expression, scale, context, &mut output, false)?;
+    Ok((output, outcome))
+}
+
+fn project_specified_impl(
+    expression: &CssCalculationExpression,
+    scale: NumericProjectionScale,
+    context: &mut SpecifiedSerializationContext,
+    output: &mut String,
+    charge_output: bool,
+) -> Result<NumericProjectionOutcome> {
     let mut projection = Projection {
         arena: Vec::new(),
-        limits,
+        context,
     };
     let mut stack = vec![(expression, false)];
     let mut results = Vec::new();
-    let mut input_nodes = 1usize;
-    if input_nodes > limits.max_input_nodes() {
-        return Err(Error::new(ErrorKind::InputNodeLimit));
-    }
+    projection.context.charge_input(1)?;
     while let Some((node, finish)) = stack.pop() {
         if !finish {
             let child_count = match &node.kind {
@@ -394,12 +458,7 @@ pub(crate) fn project_specified(
                 NodeKind::Function { args, .. } => args.iter().flatten().count(),
                 _ => 0,
             };
-            input_nodes = input_nodes
-                .checked_add(child_count)
-                .ok_or_else(|| Error::new(ErrorKind::CapacityOverflow))?;
-            if input_nodes > limits.max_input_nodes() {
-                return Err(Error::new(ErrorKind::InputNodeLimit));
-            }
+            projection.context.charge_input(child_count)?;
             let children: Vec<_> = match &node.kind {
                 NodeKind::Group(child) => vec![child.as_ref()],
                 NodeKind::Sum(children) => children.iter().map(|(_, child)| child).collect(),
@@ -443,7 +502,8 @@ pub(crate) fn project_specified(
                 node.ty,
             )?,
             NodeKind::ProfileChannel(name) => {
-                projection.add(Kind::Symbol(super::escaped_profile_name(name)), node.ty)?
+                let name = super::capture_identifier(name.as_str(), projection.context)?;
+                projection.add(Kind::Symbol(name), node.ty)?
             }
             NodeKind::Variable(channel) => projection.add(
                 Kind::Symbol(format!("{channel:?}").to_ascii_lowercase()),
@@ -492,7 +552,46 @@ pub(crate) fn project_specified(
         };
         results.push(id);
     }
-    projection.serialize(results[0])
+    let root = apply_scale(&mut projection, results[0], scale)?;
+    let outcome = NumericProjectionOutcome {
+        context_dependent: projection.arena[root].resolved_magnitude.is_none(),
+        scalar_value: projection.scalar(root).map(|value| value.value),
+    };
+    projection.serialize(root, output, charge_output)?;
+    Ok(outcome)
+}
+
+fn apply_scale(
+    projection: &mut Projection<'_>,
+    root: Id,
+    scale: NumericProjectionScale,
+) -> Result<Id> {
+    let number = CssNumericType::NUMBER;
+    let percentage = CssNumericType::dimension(CssNumericDimension::Percentage);
+    let (numerator, denominator, unit, target) = match scale {
+        NumericProjectionScale::Identity => return Ok(root),
+        NumericProjectionScale::Number {
+            numerator,
+            denominator,
+        } => (numerator, denominator, Unit::Number, number),
+        NumericProjectionScale::PercentageToNumber {
+            numerator,
+            denominator,
+        } => (numerator, denominator, Unit::Percentage, number),
+        NumericProjectionScale::NumberToPercentage {
+            numerator,
+            denominator,
+        } => (numerator, denominator, Unit::Percentage, percentage),
+    };
+    debug_assert_ne!(denominator, 0);
+    let factor = numerator as f64 / denominator as f64;
+    let factor_type = if matches!(unit, Unit::Percentage) {
+        percentage
+    } else {
+        number
+    };
+    let factor = projection.value(factor, unit, factor_type)?;
+    projection.product(vec![root, factor], target)
 }
 
 fn lexical_value(representation: &str) -> f64 {
@@ -548,9 +647,8 @@ enum Output {
     Text(String),
 }
 
-impl Projection {
-    fn serialize(&self, root: Id) -> Result<String> {
-        let mut output = String::new();
+impl Projection<'_> {
+    fn serialize(&mut self, root: Id, output: &mut String, charge_output: bool) -> Result<()> {
         let mut work = Vec::new();
         if matches!(
             self.arena[root].kind,
@@ -565,17 +663,11 @@ impl Projection {
         while let Some(item) = work.pop() {
             let (id, position) = match item {
                 Output::Text(text) => {
-                    let len = output
-                        .len()
-                        .checked_add(text.len())
-                        .ok_or_else(|| Error::new(ErrorKind::CapacityOverflow))?;
-                    if len > self.limits.max_css_bytes() {
-                        return Err(Error::new(ErrorKind::ByteLimit));
+                    if charge_output {
+                        self.context.append(output, &text)?;
+                    } else {
+                        self.context.append_temporary(output, &text)?;
                     }
-                    output
-                        .try_reserve(text.len())
-                        .map_err(|_| Error::new(ErrorKind::CapacityOverflow))?;
-                    output.push_str(&text);
                     continue;
                 }
                 Output::Node(id, position) => (id, position),
@@ -685,7 +777,7 @@ impl Projection {
             }
             work.extend(next.into_iter().rev());
         }
-        Ok(output)
+        Ok(())
     }
     fn sort_key(&self, id: Id) -> (u8, &str) {
         match self.scalar(id).map(|value| &value.unit) {
@@ -835,6 +927,87 @@ mod tests {
     }
 
     #[test]
+    fn shared_context_charges_sequential_numeric_children_cumulatively() {
+        let value = CssNumberCalculation::try_from_components(
+            parse_component_values("calc(1 / 2)").unwrap(),
+        )
+        .unwrap();
+
+        // The checked tree is the calc group, product, and two leaves.
+        let mut input_context = SpecifiedSerializationContext::new(Limits::new(4, 100, 100));
+        let mut output = String::new();
+        project_specified_into(&value.expression, &mut input_context, &mut output).unwrap();
+        assert_eq!(output, "calc(0.5)");
+        assert_eq!(
+            project_specified_into(&value.expression, &mut input_context, &mut output)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::InputNodeLimit
+        );
+
+        let mut projection_context = SpecifiedSerializationContext::new(Limits::new(100, 4, 100));
+        let mut output = String::new();
+        project_specified_into(&value.expression, &mut projection_context, &mut output).unwrap();
+        assert_eq!(
+            project_specified_into(&value.expression, &mut projection_context, &mut output,)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::ProjectionNodeLimit
+        );
+    }
+
+    #[test]
+    fn shared_context_emits_into_one_bounded_output_and_reports_dependence() {
+        let value = CssNumberCalculation::try_from_components(
+            parse_component_values("calc(1 / 2)").unwrap(),
+        )
+        .unwrap();
+        let mut context = SpecifiedSerializationContext::new(Limits::new(100, 100, 11));
+        let mut output = String::new();
+        context.append(&mut output, "[").unwrap();
+        let outcome = project_specified_into(&value.expression, &mut context, &mut output).unwrap();
+        context.append(&mut output, "]").unwrap();
+        assert_eq!(output, "[calc(0.5)]");
+        assert!(!outcome.context_dependent);
+        assert_eq!(outcome.scalar_value, Some(0.5));
+
+        let contextual = CssNumberCalculation::try_from_components(
+            parse_component_values("calc(1em / 1px)").unwrap(),
+        )
+        .unwrap();
+        let mut context = SpecifiedSerializationContext::new(Limits::default());
+        let mut output = String::new();
+        let outcome =
+            project_specified_into(&contextual.expression, &mut context, &mut output).unwrap();
+        assert_eq!(output, "calc(1em / 1px)");
+        assert!(outcome.context_dependent);
+        assert_eq!(outcome.scalar_value, None);
+    }
+
+    #[test]
+    fn bounded_capture_defers_only_final_output_charging() {
+        let value = CssNumberCalculation::try_from_components(
+            parse_component_values("calc(1 / 2)").unwrap(),
+        )
+        .unwrap();
+        let mut context = SpecifiedSerializationContext::new(Limits::new(4, 100, 10));
+        let (captured, outcome) = capture_specified(&value.expression, &mut context).unwrap();
+        assert_eq!(captured, "calc(0.5)");
+        assert_eq!(outcome.scalar_value, Some(0.5));
+
+        let mut output = String::new();
+        context.append(&mut output, "[").unwrap();
+        context.append(&mut output, &captured).unwrap();
+        assert_eq!(output, "[calc(0.5)");
+        assert_eq!(
+            capture_specified(&value.expression, &mut context)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::InputNodeLimit
+        );
+    }
+
+    #[test]
     fn resolved_compound_dimensions_feed_later_inverse_and_cancellation() {
         for (source, expected) in [
             ("calc((2px * 3px) / (2px * 3px))", "calc(1)"),
@@ -850,9 +1023,10 @@ mod tests {
 
     #[test]
     fn cumulative_budget_counts_replacements_not_only_live_roots() {
+        let mut context = SpecifiedSerializationContext::new(Limits::new(100, 3, 100));
         let mut projection = Projection {
             arena: Vec::new(),
-            limits: Limits::new(100, 3, 100),
+            context: &mut context,
         };
         let first = projection
             .value(1.0, Unit::Number, CssNumericType::NUMBER)
@@ -863,15 +1037,18 @@ mod tests {
             projection.negate(third).unwrap_err().kind(),
             ErrorKind::ProjectionNodeLimit
         );
-        assert_eq!(projection.serialize(third).unwrap(), "calc(1)");
+        let mut output = String::new();
+        projection.serialize(third, &mut output, true).unwrap();
+        assert_eq!(output, "calc(1)");
     }
 
     #[test]
     fn scalar_distribution_charges_each_derived_value_and_replacement() {
         let evaluate = |cap| -> Result<String> {
+            let mut context = SpecifiedSerializationContext::new(Limits::new(100, cap, 100));
             let mut projection = Projection {
                 arena: Vec::new(),
-                limits: Limits::new(100, cap, 100),
+                context: &mut context,
             };
             let length = CssNumericType::dimension(CssNumericDimension::Length);
             let em = projection.value(1.0, Unit::Context("em".into()), length)?;
@@ -885,7 +1062,9 @@ mod tests {
                 None,
                 CssNumericType::NUMBER,
             )?;
-            projection.serialize(sign)
+            let mut output = String::new();
+            projection.serialize(sign, &mut output, true)?;
+            Ok(output)
         };
         assert_eq!(
             evaluate(6).unwrap_err().kind(),

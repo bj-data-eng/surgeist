@@ -1323,6 +1323,22 @@ fn parse_typed_relative_color_expression<'i, 't>(
     ))
 }
 
+pub(crate) fn adapt_legacy_relative_expression(
+    values: &crate::CssComponentValues,
+    serialized: &crate::CssSerializedValue,
+    environment: CssRelativeColorEnvironment,
+    result_domain: CssRelativeColorResultDomain,
+) -> Option<CssTypedRelativeColorExpression> {
+    let mut input = cssparser::ParserInput::new(serialized.as_css());
+    let mut parser = cssparser::Parser::new(&mut input);
+    let numeric = NumericInputContext::components(values, serialized);
+    let expression =
+        parse_typed_relative_color_expression(&mut parser, &numeric, environment, result_domain)
+            .ok()?;
+    parser.expect_exhausted().ok()?;
+    Some(expression)
+}
+
 fn relative_direct_value_is_valid(
     domain: CssRelativeColorResultDomain,
     value: &CssRelativeColorExpressionValue,

@@ -15051,6 +15051,8 @@ pub(crate) fn calc_has_negative_component(calc: &CssCalcLength) -> bool {
     }
 }
 
+mod color_serialization;
+
 /// An authored color retaining its specified syntax and symbolic dependencies.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssAuthoredColor {
@@ -15082,6 +15084,19 @@ enum CssAuthoredColorRepresentation {
 }
 
 impl CssAuthoredColor {
+    /// Produces canonical specified color text without resolving external color context.
+    pub fn to_specified_css(&self) -> Result<String, crate::CssSpecifiedValueSerializationError> {
+        self.to_specified_css_with_limits(crate::CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Produces canonical specified color text under cumulative resource limits.
+    pub fn to_specified_css_with_limits(
+        &self,
+        limits: crate::CssSpecifiedValueSerializationLimits,
+    ) -> Result<String, crate::CssSpecifiedValueSerializationError> {
+        color_serialization::serialize(self, limits)
+    }
+
     pub const fn from_custom(value: CssAuthoredCustomColor) -> Self {
         Self {
             representation: CssAuthoredColorRepresentation::Custom(value),

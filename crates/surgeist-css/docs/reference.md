@@ -1021,6 +1021,23 @@ Unproved projections return `None` while the current color remains available.
 Raw component serialization preserves authored tokens; it does not provide
 canonical color serialization.
 
+`CssAuthoredColor::to_specified_css()` is the canonical specified-color front
+door. `to_specified_css_with_limits()` applies the same cumulative input-node,
+projection-node, and UTF-8 output limits used by numeric specified
+serialization. Both methods borrow the checked authored graph and return one
+atomic string or `CssSpecifiedValueSerializationError`; successful and failed
+calls leave the graph and its origins unchanged.
+
+The serializer distinguishes standalone colors, origins nested in relative and
+`alpha()` forms, declared relative expressions, and mix traversal. It preserves
+symbolic context, custom-profile identifier case, explicit relative alpha
+overrides, and missing components. It performs only the source-selected pure
+HSL/HWB and exact scalar conversions; it does not bind profiles, resolve
+relative channels, execute a mix, acquire host context, or gamut-map a color.
+Origin colors retain unclamped authored component domains with modern
+punctuation. Ordinary direct alpha is clamped and rounded to six places before
+text emission, while alpha calculations retain their calculation provenance.
+
 The current opacity model likewise preserves a
 finite number or percentage, including signed and out-of-range specified
 values. Ordinary opacity scalars retain the exact authored decimal even when
@@ -1176,7 +1193,10 @@ predefined methods and literal weights. New list forms remain available through
 the current model even when `i01_subset()` is `None`. Pending substitution and
 strict grammar reentry share the ordinary mix parser; parsing does not distribute
 weights, resolve profiles, or evaluate colors. Canonical mix serialization remains
-unfinished; raw serialization retains the authored component graph.
+declared rather than computed: explicit weights remain explicit, known omitted
+weights are filled exactly before selected six-place rounding, calculation
+weights keep unknown omissions, and equal effective shares plus the default
+`oklab` interpolation are omitted.
 
 These values remain authored syntax. This crate does not clamp computed color
 or opacity values, resolve `currentcolor` or system colors, evaluate relative

@@ -8,7 +8,10 @@ use crate::{
 use std::fmt;
 
 mod projection;
-pub(crate) use projection::project_specified;
+pub(crate) use projection::{
+    NumericProjectionOutcome, NumericProjectionScale, capture_specified, capture_specified_scaled,
+    project_specified, project_specified_into,
+};
 
 /// Explicit provenance for an existing parser cursor; never ambient parser state.
 pub(crate) enum NumericInputContext<'a> {
@@ -2445,6 +2448,48 @@ impl CssFrequencyCalculation {
     }
 }
 
+struct BoundedIdentifierWriter {
+    text: String,
+    limit: usize,
+    byte_limit: bool,
+}
+
+impl fmt::Write for BoundedIdentifierWriter {
+    fn write_str(&mut self, text: &str) -> fmt::Result {
+        let Some(next) = self.text.len().checked_add(text.len()) else {
+            return Err(fmt::Error);
+        };
+        if next > self.limit {
+            self.byte_limit = true;
+            return Err(fmt::Error);
+        }
+        self.text.try_reserve(text.len()).map_err(|_| fmt::Error)?;
+        self.text.push_str(text);
+        Ok(())
+    }
+}
+
+pub(crate) fn capture_identifier(
+    decoded: &str,
+    context: &crate::specified_serialization::SpecifiedSerializationContext,
+) -> std::result::Result<String, crate::CssSpecifiedValueSerializationError> {
+    let mut writer = BoundedIdentifierWriter {
+        text: String::new(),
+        limit: context.remaining_bytes(),
+        byte_limit: false,
+    };
+    if cssparser::serialize_identifier(decoded, &mut writer).is_err() {
+        return Err(crate::CssSpecifiedValueSerializationError::new(
+            if writer.byte_limit {
+                crate::CssSpecifiedValueSerializationErrorKind::ByteLimit
+            } else {
+                crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow
+            },
+        ));
+    }
+    Ok(writer.text)
+}
+
 fn escaped_profile_name(name: &crate::CssColorProfileComponentName) -> String {
     let mut text = String::new();
     cssparser::serialize_identifier(name.as_str(), &mut text)
@@ -2613,6 +2658,64 @@ impl CssProfileColorCalculation {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum SpecifiedCalculationRef<'a> {
+    Number(&'a CssNumberCalculation),
+    Percentage(&'a CssPercentageCalculation),
+    Angle(&'a CssAngleCalculation),
+    Profile(&'a CssProfileColorCalculation),
+}
+
+/// Streams a checked numeric child directly when the owning serializer has
+/// already selected its branch and does not need captured text for dispatch.
+#[allow(dead_code)]
+pub(crate) fn project_calculation_specified_into(
+    calculation: SpecifiedCalculationRef<'_>,
+    context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+    output: &mut String,
+) -> std::result::Result<NumericProjectionOutcome, crate::CssSpecifiedValueSerializationError> {
+    let expression = match calculation {
+        SpecifiedCalculationRef::Number(value) => &value.expression,
+        SpecifiedCalculationRef::Percentage(value) => &value.expression,
+        SpecifiedCalculationRef::Angle(value) => &value.expression,
+        SpecifiedCalculationRef::Profile(value) => &value.expression,
+    };
+    project_specified_into(expression, context, output)
+}
+
+pub(crate) fn capture_calculation_specified(
+    calculation: SpecifiedCalculationRef<'_>,
+    context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+) -> std::result::Result<
+    (String, NumericProjectionOutcome),
+    crate::CssSpecifiedValueSerializationError,
+> {
+    let expression = match calculation {
+        SpecifiedCalculationRef::Number(value) => &value.expression,
+        SpecifiedCalculationRef::Percentage(value) => &value.expression,
+        SpecifiedCalculationRef::Angle(value) => &value.expression,
+        SpecifiedCalculationRef::Profile(value) => &value.expression,
+    };
+    capture_specified(expression, context)
+}
+
+pub(crate) fn capture_calculation_specified_scaled(
+    calculation: SpecifiedCalculationRef<'_>,
+    scale: NumericProjectionScale,
+    context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+) -> std::result::Result<
+    (String, NumericProjectionOutcome),
+    crate::CssSpecifiedValueSerializationError,
+> {
+    let expression = match calculation {
+        SpecifiedCalculationRef::Number(value) => &value.expression,
+        SpecifiedCalculationRef::Percentage(value) => &value.expression,
+        SpecifiedCalculationRef::Angle(value) => &value.expression,
+        SpecifiedCalculationRef::Profile(value) => &value.expression,
+    };
+    capture_specified_scaled(expression, scale, context)
+}
+
 impl crate::CssTypedRelativeColorExpression {
     /// Checks an expression in the alpha-only origin environment.
     pub fn try_alpha_from_components(values: CssComponentValues) -> Result<Self> {
@@ -2673,6 +2776,28 @@ impl crate::CssTypedRelativeColorExpression {
             }
         };
         Ok(Self::new(E::Alpha, D::Alpha, value))
+    }
+}
+
+#[cfg(test)]
+mod specified_helpers_tests {
+    use super::*;
+    use crate::{
+        CssSpecifiedValueSerializationErrorKind as ErrorKind,
+        CssSpecifiedValueSerializationLimits as Limits,
+        specified_serialization::SpecifiedSerializationContext,
+    };
+
+    #[test]
+    fn identifier_capture_uses_the_shared_escape_owner_and_remaining_byte_bound() {
+        let context = SpecifiedSerializationContext::new(Limits::new(0, 0, 4));
+        assert_eq!(capture_identifier("a b", &context).unwrap(), r"a\ b");
+
+        let context = SpecifiedSerializationContext::new(Limits::new(0, 0, 3));
+        assert_eq!(
+            capture_identifier("a b", &context).unwrap_err().kind(),
+            ErrorKind::ByteLimit
+        );
     }
 }
 
