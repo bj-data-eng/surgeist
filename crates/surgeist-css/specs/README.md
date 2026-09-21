@@ -151,6 +151,15 @@ undefined nor replaces the selected 2021 tokenizer and unrelated parser entry
 points. The catalog keeps the original hash and identifies the affected source
 lines; it does not silently substitute a corrected draft.
 
+The top-level `source_reconciliations` also records five bounded Color 4 and
+Color 5 serialization decisions: grammar-valid relative alpha with explicit
+override retention, case-sensitive custom profile identifiers, nonnegative
+omitted mix weights, phase-specific numeric rounding, and deferred HSL or HWB
+conversion when contextual channel math remains unresolved. The exact radian
+factor and generated mix-share precision are implementation selections folded
+into those decisions; ordinary alpha omission follows the selected normative
+order rather than creating another source conflict.
+
 ## Applying the catalog
 
 Read `selection_policy`, `authored_scope_definitions`, and `owners` before using

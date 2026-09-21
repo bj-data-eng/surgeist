@@ -2445,6 +2445,41 @@
       "source_sha256": "7b6b68c34d00d7f6945e66e4e2efa913266299f597d5825393cae85dac1cc78c",
       "decision": "Serialize a finite numeric or calc-operator root as one calc argument, removing exactly its outer pair of parentheses when present. Retain the comma-separated children algorithm for named function roots.",
       "justification": "Section 10.1 requires one calculation argument for calc. The selected child loop would emit calc() for a leaf or comma-separated arguments for an operator. Section 10.13 calculation-tree serialization supplies the valid operator representation."
+    },
+    {
+      "id": "css-color-5-serialize-alpha-relative-overrides",
+      "source": "https://www.w3.org/TR/2026/WD-css-color-5-20260908/#serial-relative-color",
+      "source_sha256": "f749cb75ec1c0faca7d2443546c88be4e22750526dd45f9fefcfcdd079ed3c09",
+      "decision": "Serialize alpha() in its grammar-valid declared form: alpha(from <origin>) when the override was omitted, or alpha(from <origin> / <override>) for every explicit override, including none and unity. Retain every explicit alpha override on fixed and custom relative colors; omission remains omission. Normalize direct percentage overrides to alpha numbers, clamp direct alpha literals, project math without evaluating the origin, and keep profile component references symbolic.",
+      "justification": "The section's alpha branch requires a colorspace argument that alpha() grammar does not admit, while its non-unity-only rule changes semantics when an explicit unity override replaces a non-unity origin alpha. Grammar-valid declared serialization must preserve origin identity and the omitted-versus-explicit distinction without acquiring computed-color context."
+    },
+    {
+      "id": "css-color-5-serialize-custom-identifier-case",
+      "source": "https://www.w3.org/TR/2026/WD-css-color-5-20260908/#serial-color-mix",
+      "source_sha256": "f749cb75ec1c0faca7d2443546c88be4e22750526dd45f9fefcfcdd079ed3c09",
+      "decision": "Lowercase predefined colorspace keywords only. Preserve decoded author-defined profile and profile-component spelling, using the existing canonical CSS identifier escaping, in ordinary and relative color(), origin colors, and color-mix() interpolation.",
+      "justification": "The all-lowercase colorspace prose cannot override the selected Values 4 case-sensitive <dashed-ident> identity. Custom names such as --P and --p remain distinct, while escape-equivalent spellings of the same decoded identifier retain one canonical escaped serialization."
+    },
+    {
+      "id": "css-color-5-serialize-mix-omitted-weights",
+      "source": "https://www.w3.org/TR/2026/WD-css-color-5-20260908/#serial-color-mix",
+      "source_sha256": "f749cb75ec1c0faca7d2443546c88be4e22750526dd45f9fefcfcdd079ed3c09",
+      "decision": "Clamp only the exact literal sum used to generate omitted mix percentages to 100%, preserve every explicit literal percentage, and leave omitted percentages unfilled whenever any explicit weight is a calculation. Compare exact effective shares before formatting. When generated rational shares must be emitted, round percentage coefficients to six fractional places, nearest with halfway ties toward positive infinity, and trim trailing zeros.",
+      "justification": "The section's unbounded specified-sum formula can generate negative percentages outside its own [0,100] grammar. The pinned Values 5 normalization definition clamps the specified sum before filling omissions and only later normalizes computed weights. Six-place generated output is the selected deterministic precision, not computed normalization; calculation weights remain unknown."
+    },
+    {
+      "id": "css-color-4-serialize-numeric-phase-rounding",
+      "source": "https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#serializing-alpha-values",
+      "source_sha256": "bada647312a73c4cd4484dc177d67d22cf70df6c451b0e8c5dd5efc29c3415ba",
+      "decision": "Use phase-specific numeric operations: exact finite-decimal normalization and scaling for direct literals; fixed six-place rounding where required for modern alpha and selected pure numeric color output; the shared binary64 policy for projected math; and explicit color conversions. Convert direct radians with the exact finite factor 1007958012753983 / 17592186044416. Decide ordinary alpha omission from exact clamped equality with one before rounding. Apply the legacy byte-alpha integer algorithm only to genuinely byte-backed alpha, including 236 serializing as 0.925 despite the inconsistent example.",
+      "justification": "No single formatter satisfies the selected exact-decimal, fixed-precision, calculation, conversion, and legacy-byte rules. Values 4 permits finite implementation precision. Color 4's byte algorithm rounds 236 / 0.255 to the nearest integer before division by 1000, while its example omits that mandated step; its ordinary alpha algorithm also tests clamped unity before serialization rounding."
+    },
+    {
+      "id": "css-color-4-serialize-deferred-hsl-hwb",
+      "source": "https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#resolving-sRGB-values",
+      "source_sha256": "bada647312a73c4cd4484dc177d67d22cf70df6c451b0e8c5dd5efc29c3415ba",
+      "decision": "For a non-missing standalone HSL or HWB color, convert to sRGB when every projected non-alpha channel is numeric. When at least one projected non-alpha calculation remains context-dependent, retain a canonical modern same-family hsl() or hwb() function with projected typed channels; a symbolic alpha alone does not defer conversion. Missing components continue to use the separate Color 4 missing-preserving branch.",
+      "justification": "The section requires HSL and HWB sRGB resolution and its historical scalar-calculation simplification, but selected Values 4 specified calculations can retain unresolved contextual units that CSS cannot evaluate. Same-family projection preserves that dependence without external unit resolution, invented symbolic RGB algebra, or computed-value acquisition."
     }
   ]
 }
