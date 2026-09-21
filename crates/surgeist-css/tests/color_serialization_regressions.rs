@@ -37,17 +37,20 @@ fn symbolic_percentage_conversion_preserves_grammar_and_value() {
     for (source, expected) in [
         (
             "color(srgb calc(1em / 1px * 50%) 0 0)",
-            "color(srgb calc(0.5 * 1em / 1px) 0 0)",
+            "color(srgb calc(0.5) 0 0)",
         ),
         (
             "alpha(from red / calc(1em / 1px * 50%))",
-            "alpha(from red / calc(0.5 * 1em / 1px))",
+            "alpha(from red / calc(0.5))",
         ),
     ] {
         let output = color(source).to_specified_css().unwrap();
-        // 50% of the unit reference is 0.5; contextual unit ratios stay symbolic.
+        // Reentry must succeed while the ratio stays symbolic. Independently
+        // substitute equal units: 50% of the unit reference must then be 0.5.
+        color(&output);
+        assert!(output.contains("1em") && output.contains("1px"));
         assert_eq!(
-            color(&output).to_specified_css().unwrap(),
+            color(&output.replace("1em", "1px")).to_specified_css().unwrap(),
             expected,
             "{source}: {output}"
         );
