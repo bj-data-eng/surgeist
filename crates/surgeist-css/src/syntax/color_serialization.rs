@@ -885,7 +885,7 @@ fn component_projection_with_text(
                 text,
                 contextual: false,
                 missing: false,
-                percentage: false,
+                percentage: target == ComponentTarget::Percentage,
                 calculation: false,
             })
         }
@@ -1243,11 +1243,11 @@ fn serialize_rgb(
         .iter()
         .any(CssAuthoredColorComponent::is_none)
     {
-        let channels = value
+        let mut channels = value
             .channels()
             .iter()
             .map(|channel| {
-                component_projection(
+                component_projection_with_text(
                     channel,
                     Factor {
                         numerator: 1,
@@ -1258,10 +1258,21 @@ fn serialize_rgb(
                         denominator: 100,
                     },
                     ComponentTarget::Number,
+                    false,
                     context,
                 )
             })
             .collect::<Result<Vec<_>>>()?;
+        for channel in &mut channels {
+            if channel.text.is_empty() {
+                channel.text = channel
+                    .exact
+                    .as_ref()
+                    .expect("unmaterialized direct scalar")
+                    .clone_with_budget(context)?
+                    .format_exact_or_rounded(6, context.remaining_bytes(), context)?;
+            }
+        }
         return modern_function("color(srgb", &channels, alpha.as_deref(), context);
     }
     let mut channels = value
@@ -1461,8 +1472,7 @@ fn serialize_hsl(
         hue.exact.as_ref(),
         saturation.exact.as_ref(),
         lightness.exact.as_ref(),
-    ) && exact_hsl_work_is_bounded(hue, saturation, lightness, context)
-    {
+    ) {
         let channels = exact_hsl_text(hue, saturation, lightness, context)?;
         return legacy_rgb(&channels, alpha.as_deref(), context);
     }
@@ -1478,21 +1488,6 @@ fn serialize_hsl(
     legacy_rgb(&channels, alpha.as_deref(), context)
 }
 
-fn exact_hsl_work_is_bounded(
-    hue: &crate::opacity_scalar::ExactRational,
-    saturation: &crate::opacity_scalar::ExactRational,
-    lightness: &crate::opacity_scalar::ExactRational,
-    context: &SpecifiedSerializationContext,
-) -> bool {
-    let bounds = [hue, saturation, lightness]
-        .map(crate::opacity_scalar::ExactRational::alignment_limb_bound);
-    if bounds.iter().any(Option::is_none) {
-        return false;
-    }
-    let largest = bounds.into_iter().flatten().max().unwrap_or(0);
-    largest <= context.remaining_projection_nodes() / 64
-}
-
 fn exact_hsl_text(
     hue: &crate::opacity_scalar::ExactRational,
     saturation: &crate::opacity_scalar::ExactRational,
@@ -1500,6 +1495,26 @@ fn exact_hsl_text(
     context: &mut SpecifiedSerializationContext,
 ) -> Result<[String; 3]> {
     use crate::opacity_scalar::ExactRational as Exact;
+
+    // At half lightness, hue vertices have channels (1 ± saturation) / 2.
+    // Saturation at least one therefore clips each vertex to an exact endpoint,
+    // without expanding a potentially enormous authored decimal exponent.
+    if lightness.compare_integer(50, context)?.is_eq()
+        && saturation.compare_integer(100, context)?.is_ge()
+    {
+        for (angle, channels) in [
+            (0, ["255", "0", "0"]),
+            (60, ["255", "255", "0"]),
+            (120, ["0", "255", "0"]),
+            (180, ["0", "255", "255"]),
+            (240, ["0", "0", "255"]),
+            (300, ["255", "0", "255"]),
+        ] {
+            if hue.compare_integer(angle, context)?.is_eq() {
+                return Ok(channels.map(str::to_owned));
+            }
+        }
+    }
 
     let saturation = saturation
         .clone_with_budget(context)?
@@ -1631,8 +1646,7 @@ fn serialize_hwb(
         hue.exact.as_ref(),
         white.exact.as_ref(),
         black.exact.as_ref(),
-    ) && exact_hsl_work_is_bounded(hue, white, black, context)
-    {
+    ) {
         let channels = exact_hwb_text(hue, white, black, context)?;
         return legacy_rgb(&channels, alpha.as_deref(), context);
     }

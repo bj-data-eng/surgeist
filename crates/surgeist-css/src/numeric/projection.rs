@@ -577,7 +577,7 @@ fn apply_scale(
         NumericProjectionScale::PercentageToNumber {
             numerator,
             denominator,
-        } => (numerator, denominator, Unit::Percentage, number),
+        } => (denominator, numerator, Unit::Percentage, number),
         NumericProjectionScale::NumberToPercentage {
             numerator,
             denominator,
@@ -591,6 +591,12 @@ fn apply_scale(
         number
     };
     let factor = projection.value(factor, unit, factor_type)?;
+    let factor = if matches!(scale, NumericProjectionScale::PercentageToNumber { .. }) {
+        // Cancel the percentage dimension even when the root remains symbolic.
+        projection.invert(factor)?
+    } else {
+        factor
+    };
     projection.product(vec![root, factor], target)
 }
 

@@ -149,10 +149,6 @@ impl SpecifiedSerializationContext {
         self.limits.max_input_nodes() - self.input_nodes
     }
 
-    pub(crate) fn remaining_projection_nodes(&self) -> usize {
-        self.limits.max_projection_nodes() - self.projection_nodes
-    }
-
     pub(crate) fn append(&mut self, output: &mut String, text: &str) -> Result<()> {
         debug_assert_eq!(output.len(), self.css_bytes);
         let next = self

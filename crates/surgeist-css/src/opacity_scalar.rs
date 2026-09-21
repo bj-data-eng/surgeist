@@ -780,18 +780,6 @@ impl ExactRational {
         self.compare(&other, context)
     }
 
-    pub(crate) fn alignment_limb_bound(&self) -> Option<usize> {
-        let coefficient_limbs = self.coefficient.limbs.len().max(1);
-        let decimal_shift = if self.exponent >= 0 {
-            usize::try_from(self.exponent).ok()?
-        } else {
-            usize::try_from(self.exponent.unsigned_abs()).ok()?
-        };
-        coefficient_limbs
-            .checked_add(decimal_shift.div_ceil(DECIMAL_LIMB_DIGITS))
-            .and_then(|value| value.checked_add(1))
-    }
-
     pub(crate) fn max_zero(
         self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
@@ -1084,8 +1072,23 @@ impl ExactRational {
         other: &Self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
     ) -> Result<std::cmp::Ordering, crate::CssSpecifiedValueSerializationError> {
-        if self.is_zero() && other.is_zero() {
-            return Ok(std::cmp::Ordering::Equal);
+        match (self.is_zero(), other.is_zero()) {
+            (true, true) => return Ok(std::cmp::Ordering::Equal),
+            (true, false) => {
+                return Ok(if other.negative {
+                    std::cmp::Ordering::Greater
+                } else {
+                    std::cmp::Ordering::Less
+                });
+            }
+            (false, true) => {
+                return Ok(if self.negative {
+                    std::cmp::Ordering::Less
+                } else {
+                    std::cmp::Ordering::Greater
+                });
+            }
+            (false, false) => {}
         }
         if self.negative != other.negative {
             return Ok(if self.negative {
@@ -1627,6 +1630,28 @@ impl ExactRational {
             negative: false,
             unbounded_tiny: false,
         })
+    }
+
+    /// Keeps terminating conversions exact and rounds only repeating ratios.
+    pub(crate) fn format_exact_or_rounded(
+        self,
+        places: usize,
+        byte_limit: usize,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+    ) -> Result<String, crate::CssSpecifiedValueSerializationError> {
+        let value = self.reduce_fraction(context)?;
+        let mut denominator = value.denominator;
+        while denominator.is_multiple_of(2) {
+            denominator /= 2;
+        }
+        while denominator.is_multiple_of(5) {
+            denominator /= 5;
+        }
+        if denominator == 1 {
+            value.format_exact(byte_limit, context)
+        } else {
+            value.format_rounded(places, byte_limit, context)
+        }
     }
 
     pub(crate) fn format_exact(

@@ -50,7 +50,9 @@ fn symbolic_percentage_conversion_preserves_grammar_and_value() {
         color(&output);
         assert!(output.contains("1em") && output.contains("1px"));
         assert_eq!(
-            color(&output.replace("1em", "1px")).to_specified_css().unwrap(),
+            color(&output.replace("1em", "1px"))
+                .to_specified_css()
+                .unwrap(),
             expected,
             "{source}: {output}"
         );
@@ -102,5 +104,20 @@ fn missing_hsl_hwb_use_percentages_for_exact_number_channels() {
             expected,
             "{source}"
         );
+    }
+}
+
+#[test]
+fn huge_saturation_vertices_keep_exact_clipped_endpoints() {
+    for (angle, expected) in [
+        (0, "rgb(255, 0, 0)"),
+        (60, "rgb(255, 255, 0)"),
+        (120, "rgb(0, 255, 0)"),
+        (180, "rgb(0, 255, 255)"),
+        (240, "rgb(0, 0, 255)"),
+        (300, "rgb(255, 0, 255)"),
+    ] {
+        let source = format!("hsl({angle} 1e2000000% 50%)");
+        assert_eq!(color(&source).to_specified_css().unwrap(), expected);
     }
 }
