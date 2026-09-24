@@ -1197,6 +1197,34 @@ pub fn surgeist_css::CssFontFormatHint::is_equivalent_to(self, other: Self) -> b
 pub surgeist_css::CssFontKerning::Auto
 pub surgeist_css::CssFontKerning::None
 pub surgeist_css::CssFontKerning::Normal
+#[non_exhaustive] pub enum surgeist_css::CssFontPaletteBase
+pub surgeist_css::CssFontPaletteBase::Dark
+pub surgeist_css::CssFontPaletteBase::Index(surgeist_css::CssFontPaletteIndex)
+pub surgeist_css::CssFontPaletteBase::Light
+#[non_exhaustive] pub enum surgeist_css::CssFontPaletteConstructionError
+pub surgeist_css::CssFontPaletteConstructionError::ContextualColor(surgeist_css::CssAbsoluteColorExclusion)
+pub surgeist_css::CssFontPaletteConstructionError::InvalidName
+pub surgeist_css::CssFontPaletteConstructionError::MissingFontFamily
+pub surgeist_css::CssFontPaletteConstructionError::NegativeIndex
+impl core::error::Error for surgeist_css::CssFontPaletteConstructionError
+impl core::fmt::Display for surgeist_css::CssFontPaletteConstructionError
+pub fn surgeist_css::CssFontPaletteConstructionError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+#[non_exhaustive] pub enum surgeist_css::CssFontPaletteDescriptorKind
+pub surgeist_css::CssFontPaletteDescriptorKind::BasePalette
+pub surgeist_css::CssFontPaletteDescriptorKind::FontFamily
+pub surgeist_css::CssFontPaletteDescriptorKind::OverrideColors
+impl surgeist_css::CssFontPaletteDescriptorKind
+pub const fn surgeist_css::CssFontPaletteDescriptorKind::css_name(self) -> &'static str
+#[non_exhaustive] pub enum surgeist_css::CssFontPaletteDescriptorValueRef<'a>
+pub surgeist_css::CssFontPaletteDescriptorValueRef::BasePalette(&'a surgeist_css::CssFontPaletteBase)
+pub surgeist_css::CssFontPaletteDescriptorValueRef::FontFamily(&'a [surgeist_css::CssFontFaceFamily])
+pub surgeist_css::CssFontPaletteDescriptorValueRef::OverrideColors(&'a [surgeist_css::CssFontPaletteOverride])
+pub surgeist_css::CssFontPaletteDescriptorValueRef::Pending(&'a surgeist_css::CssSubstitutionDependentValue)
+#[non_exhaustive] pub enum surgeist_css::CssFontPaletteValueErrorKind
+pub surgeist_css::CssFontPaletteValueErrorKind::Component(surgeist_css::CssComponentValueErrorKind)
+pub surgeist_css::CssFontPaletteValueErrorKind::Grammar(surgeist_css::ErrorKind)
+pub surgeist_css::CssFontPaletteValueErrorKind::NotPending
+pub surgeist_css::CssFontPaletteValueErrorKind::ResidualSubstitution
 #[non_exhaustive] pub enum surgeist_css::CssFontSize
 pub surgeist_css::CssFontSize::Large
 pub surgeist_css::CssFontSize::Larger
@@ -2754,6 +2782,7 @@ pub surgeist_css::CssRule::CounterStyle(surgeist_css::CssCounterStyleRule)
 pub surgeist_css::CssRule::CustomMedia(surgeist_css::CssCustomMediaRule)
 pub surgeist_css::CssRule::FontFace(surgeist_css::CssFontFaceRule)
 pub surgeist_css::CssRule::FontFeatureValues(surgeist_css::CssFontFeatureValuesRule)
+pub surgeist_css::CssRule::FontPaletteValues(surgeist_css::CssFontPaletteValuesRule)
 pub surgeist_css::CssRule::Import(surgeist_css::CssImportRule)
 pub surgeist_css::CssRule::Keyframes(surgeist_css::CssKeyframesRule)
 pub surgeist_css::CssRule::LayerBlock(surgeist_css::CssLayerBlockRule)
@@ -2765,6 +2794,9 @@ pub surgeist_css::CssRule::Page(surgeist_css::CssPageRule)
 pub surgeist_css::CssRule::Scope(surgeist_css::CssScopeRule)
 pub surgeist_css::CssRule::Style(surgeist_css::CssStyleRule)
 pub surgeist_css::CssRule::Supports(surgeist_css::CssSupportsRule)
+impl surgeist_css::CssRule
+pub fn surgeist_css::CssRule::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedRuleSerializationError>
+pub fn surgeist_css::CssRule::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedRuleSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssRuleContextKindRef<'a>
 pub surgeist_css::CssRuleContextKindRef::Container
 pub surgeist_css::CssRuleContextKindRef::Container::prelude: &'a surgeist_css::CssContainerPrelude
@@ -2772,6 +2804,7 @@ pub surgeist_css::CssRuleContextKindRef::CounterStyle(&'a surgeist_css::CssCount
 pub surgeist_css::CssRuleContextKindRef::CustomMedia(&'a surgeist_css::CssCustomMediaRule)
 pub surgeist_css::CssRuleContextKindRef::FontFace(&'a surgeist_css::CssFontFaceRule)
 pub surgeist_css::CssRuleContextKindRef::FontFeatureValues(&'a surgeist_css::CssFontFeatureValuesRule)
+pub surgeist_css::CssRuleContextKindRef::FontPaletteValues(&'a surgeist_css::CssFontPaletteValuesRule)
 pub surgeist_css::CssRuleContextKindRef::Import(&'a surgeist_css::CssImportRule)
 pub surgeist_css::CssRuleContextKindRef::Keyframes(&'a surgeist_css::CssKeyframesRule)
 pub surgeist_css::CssRuleContextKindRef::LayerBlock(core::option::Option<&'a surgeist_css::CssLayerName>)
@@ -2798,6 +2831,7 @@ pub surgeist_css::CssScopedRule::CounterStyle(surgeist_css::CssCounterStyleRule)
 pub surgeist_css::CssScopedRule::CustomMedia(surgeist_css::CssCustomMediaRule)
 pub surgeist_css::CssScopedRule::FontFace(surgeist_css::CssFontFaceRule)
 pub surgeist_css::CssScopedRule::FontFeatureValues(surgeist_css::CssFontFeatureValuesRule)
+pub surgeist_css::CssScopedRule::FontPaletteValues(surgeist_css::CssFontPaletteValuesRule)
 pub surgeist_css::CssScopedRule::Keyframes(surgeist_css::CssKeyframesRule)
 pub surgeist_css::CssScopedRule::LayerBlock(surgeist_css::CssScopedLayerBlockRule)
 pub surgeist_css::CssScopedRule::LayerStatement(surgeist_css::CssScopedLayerStatementRule)
@@ -2847,6 +2881,10 @@ pub surgeist_css::CssSpecificationTier::Snapshot2026Official
 pub surgeist_css::CssSpecificationTier::Snapshot2026Reliable
 pub surgeist_css::CssSpecificationTier::Snapshot2026Stable
 pub surgeist_css::CssSpecificationTier::SurgeistExtension
+#[non_exhaustive] pub enum surgeist_css::CssSpecifiedRuleSerializationErrorKind
+pub surgeist_css::CssSpecifiedRuleSerializationErrorKind::Resource(surgeist_css::CssSpecifiedValueSerializationErrorKind)
+pub surgeist_css::CssSpecifiedRuleSerializationErrorKind::UnsupportedEncoding
+pub surgeist_css::CssSpecifiedRuleSerializationErrorKind::UnsupportedRule
 #[non_exhaustive] pub enum surgeist_css::CssSpecifiedValueSerializationErrorKind
 pub surgeist_css::CssSpecifiedValueSerializationErrorKind::ByteLimit
 pub surgeist_css::CssSpecifiedValueSerializationErrorKind::CapacityOverflow
@@ -5055,6 +5093,53 @@ pub struct surgeist_css::CssFontLocalName
 impl surgeist_css::CssFontLocalName
 pub fn surgeist_css::CssFontLocalName::as_str(&self) -> &str
 pub fn surgeist_css::CssFontLocalName::try_new(name: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssFontPaletteDescriptor
+impl surgeist_css::CssFontPaletteDescriptor
+pub const fn surgeist_css::CssFontPaletteDescriptor::new(value: surgeist_css::CssFontPaletteDescriptorValue) -> Self
+pub const fn surgeist_css::CssFontPaletteDescriptor::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub const fn surgeist_css::CssFontPaletteDescriptor::value(&self) -> &surgeist_css::CssFontPaletteDescriptorValue
+pub struct surgeist_css::CssFontPaletteDescriptorValue
+impl surgeist_css::CssFontPaletteDescriptorValue
+pub const fn surgeist_css::CssFontPaletteDescriptorValue::components(&self) -> &surgeist_css::CssComponentValues
+pub const fn surgeist_css::CssFontPaletteDescriptorValue::kind(&self) -> surgeist_css::CssFontPaletteDescriptorKind
+pub fn surgeist_css::CssFontPaletteDescriptorValue::reparse_after_substitution(&self, replacement: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssFontPaletteValueError>
+pub fn surgeist_css::CssFontPaletteDescriptorValue::reparse_after_substitution_with_limits(&self, replacement: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssFontPaletteValueError>
+pub fn surgeist_css::CssFontPaletteDescriptorValue::try_new(kind: surgeist_css::CssFontPaletteDescriptorKind, components: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssFontPaletteValueError>
+pub fn surgeist_css::CssFontPaletteDescriptorValue::try_new_with_limits(kind: surgeist_css::CssFontPaletteDescriptorKind, components: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssFontPaletteValueError>
+pub fn surgeist_css::CssFontPaletteDescriptorValue::view(&self) -> surgeist_css::CssFontPaletteDescriptorValueRef<'_>
+impl surgeist_css::CssFontPaletteDescriptorValue
+pub fn surgeist_css::CssFontPaletteDescriptorValue::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontPaletteDescriptorValue::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssFontPaletteIndex
+impl surgeist_css::CssFontPaletteIndex
+pub fn surgeist_css::CssFontPaletteIndex::try_new(value: surgeist_css::CssIntegerValue) -> core::result::Result<Self, surgeist_css::CssFontPaletteConstructionError>
+pub const fn surgeist_css::CssFontPaletteIndex::value(&self) -> &surgeist_css::CssIntegerValue
+pub struct surgeist_css::CssFontPaletteName(_)
+impl surgeist_css::CssFontPaletteName
+pub fn surgeist_css::CssFontPaletteName::as_str(&self) -> &str
+pub fn surgeist_css::CssFontPaletteName::try_new(value: &str) -> core::result::Result<Self, surgeist_css::CssFontPaletteConstructionError>
+pub struct surgeist_css::CssFontPaletteOverride
+impl surgeist_css::CssFontPaletteOverride
+pub const fn surgeist_css::CssFontPaletteOverride::color(&self) -> &surgeist_css::CssAuthoredColor
+pub const fn surgeist_css::CssFontPaletteOverride::index(&self) -> &surgeist_css::CssFontPaletteIndex
+pub fn surgeist_css::CssFontPaletteOverride::try_new(index: surgeist_css::CssFontPaletteIndex, color: surgeist_css::CssAuthoredColor) -> core::result::Result<Self, surgeist_css::CssFontPaletteConstructionError>
+pub struct surgeist_css::CssFontPaletteValueError
+impl surgeist_css::CssFontPaletteValueError
+pub fn surgeist_css::CssFontPaletteValueError::kind(&self) -> &surgeist_css::CssFontPaletteValueErrorKind
+pub fn surgeist_css::CssFontPaletteValueError::origin(&self) -> &surgeist_css::CssSerializedOrigin
+impl core::error::Error for surgeist_css::CssFontPaletteValueError
+pub fn surgeist_css::CssFontPaletteValueError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssFontPaletteValueError
+pub fn surgeist_css::CssFontPaletteValueError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_css::CssFontPaletteValuesRule
+impl surgeist_css::CssFontPaletteValuesRule
+pub fn surgeist_css::CssFontPaletteValuesRule::descriptors(&self) -> &[surgeist_css::CssFontPaletteDescriptor]
+pub const fn surgeist_css::CssFontPaletteValuesRule::name(&self) -> &surgeist_css::CssFontPaletteName
+pub const fn surgeist_css::CssFontPaletteValuesRule::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub fn surgeist_css::CssFontPaletteValuesRule::try_new(name: surgeist_css::CssFontPaletteName, descriptors: alloc::vec::Vec<surgeist_css::CssFontPaletteDescriptor>) -> core::result::Result<Self, surgeist_css::CssFontPaletteConstructionError>
+impl surgeist_css::CssFontPaletteValuesRule
+pub fn surgeist_css::CssFontPaletteValuesRule::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontPaletteValuesRule::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssFontPropertyValue
 impl surgeist_css::CssFontPropertyValue
 pub fn surgeist_css::CssFontPropertyValue::as_css(&self) -> &str
@@ -6476,6 +6561,9 @@ impl surgeist_css::CssSheet
 pub const fn surgeist_css::CssSheet::encoding(&self) -> core::option::Option<&surgeist_css::CssEncodingDeclaration>
 pub const fn surgeist_css::CssSheet::new() -> Self
 pub fn surgeist_css::CssSheet::rules(&self) -> &[surgeist_css::CssRule]
+impl surgeist_css::CssSheet
+pub fn surgeist_css::CssSheet::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedRuleSerializationError>
+pub fn surgeist_css::CssSheet::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedRuleSerializationError>
 pub struct surgeist_css::CssShorthandMetadata
 impl surgeist_css::CssShorthandMetadata
 pub const fn surgeist_css::CssShorthandMetadata::is_legacy(&self) -> bool
@@ -6523,6 +6611,14 @@ pub const fn surgeist_css::CssSpecificationSource::url(self) -> core::option::Op
 pub struct surgeist_css::CssSpecificationSourceId(_)
 impl surgeist_css::CssSpecificationSourceId
 pub const fn surgeist_css::CssSpecificationSourceId::as_str(self) -> &'static str
+pub struct surgeist_css::CssSpecifiedRuleSerializationError
+impl surgeist_css::CssSpecifiedRuleSerializationError
+pub const fn surgeist_css::CssSpecifiedRuleSerializationError::kind(&self) -> surgeist_css::CssSpecifiedRuleSerializationErrorKind
+pub const fn surgeist_css::CssSpecifiedRuleSerializationError::rule_index(&self) -> core::option::Option<usize>
+impl core::error::Error for surgeist_css::CssSpecifiedRuleSerializationError
+pub fn surgeist_css::CssSpecifiedRuleSerializationError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssSpecifiedRuleSerializationError
+pub fn surgeist_css::CssSpecifiedRuleSerializationError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssSpecifiedValueSerializationError
 impl surgeist_css::CssSpecifiedValueSerializationError
 pub const fn surgeist_css::CssSpecifiedValueSerializationError::kind(&self) -> surgeist_css::CssSpecifiedValueSerializationErrorKind
@@ -7056,6 +7152,7 @@ pub fn surgeist_css::parse_component_values(source: &str) -> core::result::Resul
 pub fn surgeist_css::parse_component_values_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::parse_declaration(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssDeclaration>>
 pub fn surgeist_css::parse_font_face_descriptor_value(source: &str, descriptor: surgeist_css::CssFontFaceDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontFaceDescriptorValue>>
+pub fn surgeist_css::parse_font_palette_descriptor_value(source: &str, descriptor: surgeist_css::CssFontPaletteDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontPaletteDescriptorValue>>
 pub fn surgeist_css::parse_media_query(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssMediaQuery>
 pub fn surgeist_css::parse_media_query_list(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssMediaQueryList>
 pub fn surgeist_css::parse_property_value(property: surgeist_css::CssPropertyNameRef<'_>, value: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>

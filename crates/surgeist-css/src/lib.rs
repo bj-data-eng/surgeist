@@ -470,7 +470,8 @@
 //! style-rule ancestry rejects them. Normalization retains one opaque payload and
 //! its parent contexts, without emitting property contributions or applying font
 //! mapping/cascade. Normalization limits do not count payload declarations or bound
-//! payload allocation. General rule serialization remains unfinished.
+//! payload allocation. General rule serialization beyond the supported palette
+//! rule kind remains unfinished.
 //!
 //! [`CssFontFaceDescriptors::occurrences`] exposes valid descriptor occurrences
 //! in authored order, while typed effective accessors return the last valid
@@ -989,9 +990,10 @@
 //! `ext.media.range.resolution`, `ext.media.range.color`, and
 //! `ext.media.range.monochrome` records remain Partial with explicit subset and
 //! remainder metadata. `@font-feature-values` is Partial under its documented
-//! provisional Fonts 4 policy, with general rule serialization unfinished. C13's
-//! 456 public catalog records plus C14's 31 additions reconcile to exactly 487
-//! records. That catalog cardinality is distinct from the immutable official
+//! provisional Fonts 4 policy, with its rule serialization unfinished. C13's
+//! 456 public catalog records plus C14's 31 additions reached 487 at that point;
+//! subsequent selected records bring the current catalog to 513. That catalog
+//! cardinality is distinct from the immutable official
 //! inventory of exactly 162 property units, one normative legacy shorthand, and
 //! 167 non-property units. All 219 I01 baseline records retain their
 //! classifications, and the exclusion registry remains exactly 131 rows.
@@ -1098,6 +1100,7 @@ mod conformance;
 mod error;
 mod expansion;
 mod font_feature_values;
+mod font_palette_serialization;
 mod font_palette_values;
 mod imports;
 pub use imports::*;
@@ -1124,6 +1127,7 @@ mod display;
 mod integer_value;
 mod numeric;
 mod opacity_scalar;
+mod pending_serialization;
 pub use color_scalar::{
     CssColorAngleLiteral, CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError,
     CssColorScalarErrorKind,
@@ -1182,6 +1186,9 @@ pub use expansion::{
     CssUniversalResetMetadata, CssUserAgentInitial, expand_declaration,
 };
 pub use font_feature_values::*;
+pub use font_palette_serialization::{
+    CssSpecifiedRuleSerializationError, CssSpecifiedRuleSerializationErrorKind,
+};
 pub use font_palette_values::*;
 pub use normalization::{
     CssNormalizationError, CssNormalizationErrorKind, CssNormalizationLimits,

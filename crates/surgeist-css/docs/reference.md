@@ -655,9 +655,10 @@ query can survive as general-enclosed syntax under the container-query grammar.
 Parsed and checked construction preserve the same token boundaries, origins and
 importance. Size and scroll-state query operands retain their existing admission
 rules. The public `D-ENV1` source uses `LaterStandard`, whose catalog meaning is a
-standards-track source outside the selected whole-module profile. Its required
-shared-value record remains partial because the font-palette descriptor consumer
-is unfinished; importing these definitions does not add Env1 as a selected module.
+standards-track source outside the selected whole-module profile. Its shared-value
+record remains partial for other Env1 contexts and execution; the selected
+font-palette descriptor consumer is included. This does not add Env1 as a
+selected whole module.
 
 ## Intrinsic metadata and authored grammar identity
 
@@ -1375,7 +1376,44 @@ groups. Normalization emits one opaque rule payload with its parent contexts;
 it preserves complete body order and emits no property contributions. Payload
 members do not individually consume normalization declaration/rule budgets, and
 those budgets do not cap allocation. Font matching, mapping winners and cascade
-remain downstream; the shared canonical rule writer is unfinished.
+remain downstream; canonical serialization of this rule kind is unfinished.
+
+`@font-palette-values <dashed-ident>` retains a decoded, case-sensitive name,
+including bare `--`, and every valid descriptor occurrence in authored order.
+`font-family` is required: a nonempty list of named families or a whole-value
+substitution-dependent occurrence satisfies authored presence. Unquoted generic
+family keywords are invalid; quoted spellings are literal family names. An
+invalid descriptor is dropped independently, but a definition with no retained
+family descriptor is discarded. `base-palette` accepts `light`, `dark`, an exact
+nonnegative integer token, or symbolic Integer-root math. `override-colors`
+accepts a nonempty comma-separated list of nonnegative indices and absolute
+colors; repeated indices are retained, not resolved. Missing optional
+descriptors remain absent. This follows [pinned Fonts 4 §9.2](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-palette-values)
+and [pinned Color 5's absolute-color definition](https://www.w3.org/TR/2026/WD-css-color-5-20260908/#absolute-color).
+
+Valid `var()` or `env()` anywhere in a descriptor defers its entire value before
+ordinary grammar. `CssFontPaletteDescriptorValue::try_new` checks supplied
+components without replacing their parsed or programmatic origins. A pending
+value's `reparse_after_substitution` accepts caller-supplied components and
+rejects any residual, including nested or escaped, substitution function before
+checking the ordinary descriptor grammar. No substitution environment, font
+lookup, palette execution, or root-element evaluation is supplied here.
+
+`CssFontPaletteDescriptorValue::to_specified_css` and
+`CssFontPaletteValuesRule::to_specified_css` produce canonical specified text
+without changing their retained component syntax. They preserve duplicate
+descriptors and override pairs, normalize keywords and exact integers, and use
+the shared numeric and color serializers; pending values keep their complete
+token stream. Their `_with_limits` forms charge input, projection, and bytes
+across the whole value or rule. The shared `CssRule` and `CssSheet` specified
+writers compose supported palette rules under one cumulative budget, joining
+sheet rules with a newline; unsupported rule kinds and legacy encoding metadata
+return typed errors rather than partial output. Palette rule brace spacing,
+descriptor punctuation, and sheet joining are deterministic product policy:
+the selected CSSOM does not define a palette-specific `cssText` algorithm.
+Ordinary media/supports/container/layer/scope rule lists retain the authored
+palette with its structural parent; a style-rule ancestor forbids it. No live
+CSSOM or contextual color/profile evaluation is implied.
 
 `@font-face` retains every valid descriptor occurrence in authored order;
 effective typed accessors return the last valid occurrence. Source-list grammar
@@ -1937,12 +1975,14 @@ signed symbolic operands and source-ordered chained comparisons.
 The `@font-feature-values` record is `Partial`: its authored parser,
 checked model and normalization are implemented under the pinned Fonts 4 edition;
 three conflicting grammar requirements retain a documented provisional policy.
-General rule serialization remains unfinished.
+Rule serialization for `@font-feature-values` remains unfinished; the selected
+palette rule kind has a canonical specified writer.
 
 The preceding public support catalog contained 456 records. The 31 additions
 above brought it to 487; fourteen additional media feature records and two
-custom-media rule/reference records bring the current public support catalog
-to 503 records, as declared in
+custom-media rule/reference records reached 503. Later selected additions,
+including four palette rule/descriptor records, bring the current public support
+catalog to 513 records, as declared in
 [the catalog source](../src/conformance.rs). That
 catalog cardinality is distinct from the immutable official inventory of
 exactly 162 property units (161 canonical properties plus the custom-property
