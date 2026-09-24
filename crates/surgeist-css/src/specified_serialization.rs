@@ -263,6 +263,87 @@ fn format_lexical(text: &str, percentage: bool, limit: usize) -> Result<String> 
     format_lexical_shift(text, if percentage { -2 } else { 0 }, limit)
 }
 
+#[cfg(test)]
+mod composed_value_tests {
+    use super::*;
+    use crate::{CssAuthoredColor, CssIntegerCalculation, CssIntegerValue};
+
+    #[test]
+    fn color_and_integer_share_input_projection_and_output_limits() {
+        let color = CssAuthoredColor::transparent();
+        let integer = CssIntegerValue::Literal(7);
+
+        let mut context =
+            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(2, 2, 13));
+        let mut css = String::new();
+        color.append_specified(&mut context, &mut css).unwrap();
+        context.append(&mut css, " ").unwrap();
+        integer.append_specified(&mut context, &mut css).unwrap();
+        assert_eq!(css, "transparent 7");
+
+        for (limits, expected) in [
+            (
+                CssSpecifiedValueSerializationLimits::new(1, 2, 13),
+                Kind::InputNodeLimit,
+            ),
+            (
+                CssSpecifiedValueSerializationLimits::new(2, 1, 13),
+                Kind::ProjectionNodeLimit,
+            ),
+            (
+                CssSpecifiedValueSerializationLimits::new(2, 2, 12),
+                Kind::ByteLimit,
+            ),
+        ] {
+            let mut context = SpecifiedSerializationContext::new(limits);
+            let mut css = String::new();
+            color.append_specified(&mut context, &mut css).unwrap();
+            context.append(&mut css, " ").unwrap();
+            assert_eq!(
+                integer
+                    .append_specified(&mut context, &mut css)
+                    .unwrap_err()
+                    .kind(),
+                expected
+            );
+            assert_eq!(css, "transparent ");
+        }
+    }
+
+    #[test]
+    fn sequential_colors_and_integer_calculation_cannot_reset_byte_limit() {
+        let color = CssAuthoredColor::transparent();
+        let calculation = CssIntegerValue::Calculation(CssIntegerCalculation::literal(2));
+
+        let mut context = SpecifiedSerializationContext::new(
+            CssSpecifiedValueSerializationLimits::new(100, 100, 21),
+        );
+        let mut css = String::new();
+        color.append_specified(&mut context, &mut css).unwrap();
+        assert_eq!(
+            color
+                .append_specified(&mut context, &mut css)
+                .unwrap_err()
+                .kind(),
+            Kind::ByteLimit
+        );
+
+        let mut context = SpecifiedSerializationContext::new(
+            CssSpecifiedValueSerializationLimits::new(100, 100, 11),
+        );
+        let mut css = String::new();
+        color.append_specified(&mut context, &mut css).unwrap();
+        assert_eq!(
+            calculation
+                .append_specified(&mut context, &mut css)
+                .unwrap_err()
+                .kind(),
+            Kind::ByteLimit
+        );
+        assert_eq!(css, "transparent");
+    }
+}
+
 pub(crate) fn format_lexical_shift(text: &str, shift: i128, limit: usize) -> Result<String> {
     let value = crate::opacity_scalar::LexicalDecimal::new(text);
     let exponent = value

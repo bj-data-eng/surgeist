@@ -26,27 +26,40 @@ enum Work<'a> {
 pub(super) fn serialize(value: &CssAuthoredColor, limits: Limits) -> Result<String> {
     let mut context = SpecifiedSerializationContext::new(limits);
     let mut output = String::new();
-    let mut work = Vec::new();
-    reserve_work(&mut work, 1)?;
-    work.push(Work::Color(value, Mode::Standalone));
+    value.append_specified(&mut context, &mut output)?;
+    Ok(output)
+}
 
-    while let Some(item) = work.pop() {
-        match item {
-            Work::Text(text) => context.append(&mut output, text)?,
-            Work::Owned(text) => context.append(&mut output, &text)?,
-            Work::Color(color, mode) => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
-                schedule_authored(color, mode, &mut context, &mut work)?;
-            }
-            Work::Frozen(color, mode) => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
-                schedule_frozen(color, mode, &mut context, &mut work)?;
+impl CssAuthoredColor {
+    /// Appends one checked color to a caller's cumulative specified-CSS budget.
+    /// The caller owns the output and context for its entire composed value.
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<()> {
+        let mut work = Vec::new();
+        reserve_work(&mut work, 1)?;
+        work.push(Work::Color(self, Mode::Standalone));
+
+        while let Some(item) = work.pop() {
+            match item {
+                Work::Text(text) => context.append(output, text)?,
+                Work::Owned(text) => context.append(output, &text)?,
+                Work::Color(color, mode) => {
+                    context.charge_input(1)?;
+                    context.charge_projection(1)?;
+                    schedule_authored(color, mode, context, &mut work)?;
+                }
+                Work::Frozen(color, mode) => {
+                    context.charge_input(1)?;
+                    context.charge_projection(1)?;
+                    schedule_frozen(color, mode, context, &mut work)?;
+                }
             }
         }
+        Ok(())
     }
-    Ok(output)
 }
 
 fn reserve_work(work: &mut Vec<Work<'_>>, additional: usize) -> Result<()> {

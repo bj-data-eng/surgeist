@@ -4,7 +4,7 @@ use crate::{
     CssComponentValue, CssComponentValueError, CssComponentValueErrorKind, CssComponentValueRef,
     CssIntegerValue, CssNumericTokenKind, CssNumericTokenRef, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
-    CssValueTokenRef,
+    CssValueTokenRef, specified_serialization::SpecifiedSerializationContext,
 };
 
 /// One checked lexical integer token, without a machine-integer magnitude bound.
@@ -103,20 +103,24 @@ impl CssIntegerValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let mut output = String::new();
+        self.append_specified(&mut context, &mut output)?;
+        Ok(output)
+    }
+
+    /// Appends one integer to a caller's cumulative specified-CSS budget.
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<(), CssSpecifiedValueSerializationError> {
         if let Self::Calculation(calculation) = self {
-            return crate::numeric::project_specified(&calculation.expression, limits);
+            crate::numeric::project_specified_into(&calculation.expression, context, output)?;
+            return Ok(());
         }
-        use CssSpecifiedValueSerializationErrorKind as Kind;
-        if limits.max_input_nodes() == 0 {
-            return Err(CssSpecifiedValueSerializationError::new(
-                Kind::InputNodeLimit,
-            ));
-        }
-        if limits.max_projection_nodes() == 0 {
-            return Err(CssSpecifiedValueSerializationError::new(
-                Kind::ProjectionNodeLimit,
-            ));
-        }
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
         match self {
             Self::Literal(value) => {
                 // The entire i32 decimal representation fits on the stack.
@@ -135,13 +139,18 @@ impl CssIntegerValue {
                     start -= 1;
                     buffer[start] = b'-';
                 }
-                serialize_integer_digits(
+                let text = serialize_integer_digits(
                     std::str::from_utf8(&buffer[start..]).expect("ASCII integer digits"),
-                    limits.max_css_bytes(),
-                )
+                    context.remaining_bytes(),
+                )?;
+                context.append(output, &text)
             }
             Self::ExactLiteral(literal) => {
-                serialize_integer_digits(literal.numeric().representation(), limits.max_css_bytes())
+                let text = serialize_integer_digits(
+                    literal.numeric().representation(),
+                    context.remaining_bytes(),
+                )?;
+                context.append(output, &text)
             }
             Self::Calculation(_) => unreachable!("calculation handled above"),
         }
