@@ -92,8 +92,7 @@ const CLIP_PATH_REMAINDER: &str =
 const COLOR5_RELATIVE_SUBSET: &str = "Relative rgb()/rgba(), hsl()/hsla(), hwb(), lab(), lch(), oklab(), oklch(), predefined and custom-profile color(), and alpha() preserve authored channels and symbolic calculations.";
 const COLOR5_RELATIVE_REMAINDER: &str = "Unselected CSS Color 5 source-color functions remain unsupported; profile binding and color evaluation belong to downstream resolution.";
 const COLOR5_MIX_SUBSET: &str = "Authored color-mix() supports an optional interpolation method, ordered nonempty color lists, literal or calculated percentage weights before or after colors, and predefined, polar or symbolic custom spaces.";
-const COLOR5_MIX_REMAINDER: &str =
-    "Additional shared color alternatives and canonical color serialization remain incomplete.";
+const COLOR5_MIX_REMAINDER: &str = "Unselected contextual Color 5 alternatives and downstream color evaluation remain outside this authored subset.";
 const GRID_REPEAT_SUBSET: &str = "Non-recursive integer track and fixed repeats, plus one Grid 3 automatic repeat with general track-size content and fixed-size surroundings where the consumer permits it, are supported.";
 const GRID_REPEAT_REMAINDER: &str = "Subgrid name-repeat, wider Values math functions, and other unselected Grid forms remain unsupported.";
 const GRID_PROPERTY_SUBSET: &str = "The structural grammar supports non-recursive integer track and fixed repeats, one Grid 3 automatic repeat with general track-size content and fixed-size surroundings where permitted, and repeat-free automatic track-size lists.";
@@ -641,37 +640,18 @@ fn color4_value_and_property_metadata_match_public_authored_behavior() {
         "#currentcolor-color",
         "currentColor",
     );
-    for (id, spelling, production, accepted, subset) in [
-        (
-            "official.value.hsl",
-            "hsl()/hsla()",
-            "#the-hsl-notation",
-            "hsl(30deg 120 -20% / none)",
-            "Legacy percentage channels and modern number, percentage, none, and typed calculation channels are supported.",
-        ),
-        (
-            "official.value.hwb",
-            "hwb()",
-            "#the-hwb-notation",
-            "hwb(none 20 120% / -10%)",
-            "Modern number, percentage, none, and typed calculation channels are supported.",
-        ),
-    ] {
-        assert_clean_color(accepted);
-        let metadata = feature_metadata(id).unwrap();
-        assert_eq!(metadata.kind(), CssFeatureKind::Value);
-        assert_eq!(metadata.spelling(), spelling);
-        assert_eq!(metadata.source().id().as_str(), "O-COLOR4");
-        assert_eq!(metadata.production(), production);
-        assert_eq!(metadata.status(), CssSupportStatus::Partial);
-        assert_eq!(metadata.supported_subset(), Some(subset));
-        assert_eq!(
-            metadata.unsupported_remainder(),
-            Some("Canonical color serialization remains incomplete.")
-        );
-        assert_eq!(metadata.recognized_unsupported_code(), None);
-        assert!(metadata.baseline_alias_targets().is_empty());
-    }
+    assert_complete_color4_value(
+        "official.value.hsl",
+        "hsl()/hsla()",
+        "#the-hsl-notation",
+        "hsl(30deg 120 -20% / none)",
+    );
+    assert_complete_color4_value(
+        "official.value.hwb",
+        "hwb()",
+        "#the-hwb-notation",
+        "hwb(none 20 120% / -10%)",
+    );
     assert_complete_color4_value(
         "official.value.lab",
         "lab()",
@@ -1222,15 +1202,15 @@ const EXPECTED: &[ExpectedFeature] = &[
     ExpectedFeature {
         id: "baseline.value.substitution-dependent",
         kind: CssFeatureKind::Value,
-        spelling: "preserved known-property values containing substitution functions",
+        spelling: "preserved known-property and font-palette descriptor values containing substitution functions",
         source: ExpectedSource::Id("O-VARIABLES1"),
         production: "#using-variables",
         status: CssSupportStatus::Partial,
         supported_subset: Some(
-            "Known-property values with syntactically admissible var() references remain authored and symbolic.",
+            "Known-property and font-palette descriptor values with syntactically admissible var() references remain authored and symbolic.",
         ),
         unsupported_remainder: Some(
-            "Descriptor-context var() handling remains incomplete; variable resolution belongs to style.",
+            "Other descriptor contexts outside the selected authored consumers remain unsupported; variable resolution belongs to style.",
         ),
         recognized_code: None,
         positive: Some(Input::Style("width: var(--width, 1px)")),
@@ -1317,6 +1297,66 @@ const EXPECTED: &[ExpectedFeature] = &[
             Input::Sheet("@font-feature-values Font One { @styleset { nice: 21; } }"),
             CssErrorCode::InvalidDescriptorValue,
         )),
+    },
+    ExpectedFeature {
+        id: "later.rule.font-palette-values",
+        kind: CssFeatureKind::Rule,
+        spelling: "@font-palette-values",
+        source: ExpectedSource::Id("I-FONTS4-20260907"),
+        production: "#font-palette-values",
+        status: CssSupportStatus::Complete,
+        supported_subset: None,
+        unsupported_remainder: None,
+        recognized_code: None,
+        positive: Some(Input::Sheet(
+            "@font-palette-values --brand { font-family: Demo; }",
+        )),
+        negative: None,
+    },
+    ExpectedFeature {
+        id: "later.descriptor.font-palette-values.font-family",
+        kind: CssFeatureKind::Descriptor,
+        spelling: "font-family in @font-palette-values",
+        source: ExpectedSource::Id("I-FONTS4-20260907"),
+        production: "#font-family-2-desc",
+        status: CssSupportStatus::Complete,
+        supported_subset: None,
+        unsupported_remainder: None,
+        recognized_code: None,
+        positive: Some(Input::Sheet(
+            "@font-palette-values --brand { font-family: Demo, \"serif\"; }",
+        )),
+        negative: None,
+    },
+    ExpectedFeature {
+        id: "later.descriptor.font-palette-values.base-palette",
+        kind: CssFeatureKind::Descriptor,
+        spelling: "base-palette in @font-palette-values",
+        source: ExpectedSource::Id("I-FONTS4-20260907"),
+        production: "#base-palette-desc",
+        status: CssSupportStatus::Complete,
+        supported_subset: None,
+        unsupported_remainder: None,
+        recognized_code: None,
+        positive: Some(Input::Sheet(
+            "@font-palette-values --brand { font-family: Demo; base-palette: dark; }",
+        )),
+        negative: None,
+    },
+    ExpectedFeature {
+        id: "later.descriptor.font-palette-values.override-colors",
+        kind: CssFeatureKind::Descriptor,
+        spelling: "override-colors in @font-palette-values",
+        source: ExpectedSource::Id("I-FONTS4-20260907"),
+        production: "#override-color",
+        status: CssSupportStatus::Complete,
+        supported_subset: None,
+        unsupported_remainder: None,
+        recognized_code: None,
+        positive: Some(Input::Sheet(
+            "@font-palette-values --brand { font-family: Demo; override-colors: 0 red; }",
+        )),
+        negative: None,
     },
     ExpectedFeature {
         id: "baseline.descriptor.font-family",

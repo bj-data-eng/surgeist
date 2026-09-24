@@ -316,6 +316,11 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
                 "font-feature-values",
                 "a rule list without a style-rule ancestor",
             )),
+            "font-palette-values" => Err(invalid_at_rule_placement(
+                input.current_source_location(),
+                "font-palette-values",
+                "a rule list without a style-rule ancestor",
+            )),
             "font-face" => Err(invalid_at_rule_placement(
                 input.current_source_location(),
                 "font-face",

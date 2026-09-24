@@ -196,7 +196,7 @@ fn recovered_neighbor_and_pending_normalization_keep_occurrence_order() {
 }
 
 #[test]
-fn env_catalog_keeps_required_source_and_descriptor_remainder_distinct() {
+fn env_catalog_keeps_required_source_and_remaining_contexts_distinct() {
     let feature = feature_metadata("required.value.environment-substitution").unwrap();
     assert_eq!(feature.kind(), CssFeatureKind::Value);
     assert_eq!(feature.status(), CssSupportStatus::Partial);
@@ -213,7 +213,7 @@ fn env_catalog_keeps_required_source_and_descriptor_remainder_distinct() {
     assert_eq!(
         feature.unsupported_remainder(),
         Some(
-            "The required font-palette descriptor consumer remains unimplemented. Environment lookup and substitution execution belong to style; this record does not select the complete Env1 module."
+            "Other Env1 contexts and environment lookup/substitution execution remain outside this authored subset; this record does not select the complete Env1 module."
         )
     );
 }

@@ -2109,6 +2109,8 @@ fn production_for_at_rule(name: &str) -> CssProductionId {
         CssProductionId::new("baseline.rule.layer-block")
     } else if name.eq_ignore_ascii_case("font-face") {
         CssProductionId::new("baseline.rule.font-face")
+    } else if name.eq_ignore_ascii_case("font-palette-values") {
+        CssProductionId::new("later.rule.font-palette-values")
     } else if name.eq_ignore_ascii_case("keyframes") {
         CssProductionId::new("baseline.rule.keyframes")
     } else if name.eq_ignore_ascii_case("media") {
@@ -2133,6 +2135,8 @@ fn unsupported_at_rule_feature(name: &str) -> Option<CssFeatureId> {
         Some(CssFeatureId::new("later.rule.page"))
     } else if name.eq_ignore_ascii_case("font-feature-values") {
         Some(CssFeatureId::new("later.rule.font-feature-values"))
+    } else if name.eq_ignore_ascii_case("font-palette-values") {
+        Some(CssFeatureId::new("later.rule.font-palette-values"))
     } else {
         None
     }
@@ -2162,6 +2166,7 @@ fn is_page_margin_box_name(name: &str) -> bool {
 
 fn at_rule_requires_block(name: &str) -> bool {
     name.eq_ignore_ascii_case("font-face")
+        || name.eq_ignore_ascii_case("font-palette-values")
         || name.eq_ignore_ascii_case("keyframes")
         || name.eq_ignore_ascii_case("media")
         || name.eq_ignore_ascii_case("container")

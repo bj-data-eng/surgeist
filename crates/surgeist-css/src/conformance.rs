@@ -2191,8 +2191,7 @@ const CLIP_PATH_REMAINDER: &str =
 const COLOR5_RELATIVE_SUBSET: &str = "Relative rgb()/rgba(), hsl()/hsla(), hwb(), lab(), lch(), oklab(), oklch(), predefined and custom-profile color(), and alpha() preserve authored channels and symbolic calculations.";
 const COLOR5_RELATIVE_REMAINDER: &str = "Unselected CSS Color 5 source-color functions remain unsupported; profile binding and color evaluation belong to downstream resolution.";
 const COLOR5_MIX_SUBSET: &str = "Authored color-mix() supports an optional interpolation method, ordered nonempty color lists, literal or calculated percentage weights before or after colors, and predefined, polar or symbolic custom spaces.";
-const COLOR5_MIX_REMAINDER: &str =
-    "Additional shared color alternatives and canonical color serialization remain incomplete.";
+const COLOR5_MIX_REMAINDER: &str = "Unselected contextual Color 5 alternatives and downstream color evaluation remain outside this authored subset.";
 const GRID_REPEAT_SUBSET: &str = "Non-recursive integer track and fixed repeats, plus one Grid 3 automatic repeat with general track-size content and fixed-size surroundings where the consumer permits it, are supported.";
 const GRID_REPEAT_REMAINDER: &str = "Subgrid name-repeat, wider Values math functions, and other unselected Grid forms remain unsupported.";
 const GRID_PROPERTY_SUBSET: &str = "The structural grammar supports non-recursive integer track and fixed repeats, one Grid 3 automatic repeat with general track-size content and fixed-size surroundings where permitted, and repeat-free automatic track-size lists.";
@@ -2620,7 +2619,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 509] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 513] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -2857,20 +2856,20 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 509] = [
     CssFeatureMetadata::partial(
         "baseline.value.substitution-dependent",
         CssFeatureKind::Value,
-        "preserved known-property values containing substitution functions",
+        "preserved known-property and font-palette descriptor values containing substitution functions",
         O_VARIABLES1,
         "#using-variables",
-        "Known-property values with syntactically admissible var() references remain authored and symbolic.",
-        "Descriptor-context var() handling remains incomplete; variable resolution belongs to style.",
+        "Known-property and font-palette descriptor values with syntactically admissible var() references remain authored and symbolic.",
+        "Other descriptor contexts outside the selected authored consumers remain unsupported; variable resolution belongs to style.",
     ),
     CssFeatureMetadata::partial(
         "required.value.environment-substitution",
         CssFeatureKind::Value,
-        "env() in authored property values",
+        "env() in authored property and font-palette descriptor values",
         D_ENV1,
         "#funcdef-env,#env-function,#env-in-shorthands",
-        "Known-property values qualify for pending substitution through valid env() functions, including exact integer indices, symbolic integer calculations and token-preserving fallbacks. Strict replacement reentry rejects residual env().",
-        "The required font-palette descriptor consumer remains unimplemented. Environment lookup and substitution execution belong to style; this record does not select the complete Env1 module.",
+        "Known-property and font-palette descriptor values qualify for pending substitution through valid env() functions, including exact integer indices, symbolic integer calculations and token-preserving fallbacks. Strict replacement reentry rejects residual env().",
+        "Other Env1 contexts and environment lookup/substitution execution remain outside this authored subset; this record does not select the complete Env1 module.",
     ),
     CssFeatureMetadata::complete(
         "official.value.css-wide-keyword",
@@ -3075,23 +3074,19 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 509] = [
         O_COLOR4,
         "#currentcolor-color",
     ),
-    CssFeatureMetadata::partial(
+    CssFeatureMetadata::complete(
         "official.value.hsl",
         CssFeatureKind::Value,
         "hsl()/hsla()",
         O_COLOR4,
         "#the-hsl-notation",
-        "Legacy percentage channels and modern number, percentage, none, and typed calculation channels are supported.",
-        "Canonical color serialization remains incomplete.",
     ),
-    CssFeatureMetadata::partial(
+    CssFeatureMetadata::complete(
         "official.value.hwb",
         CssFeatureKind::Value,
         "hwb()",
         O_COLOR4,
         "#the-hwb-notation",
-        "Modern number, percentage, none, and typed calculation channels are supported.",
-        "Canonical color serialization remains incomplete.",
     ),
     CssFeatureMetadata::complete(
         "official.value.lab",
@@ -3839,6 +3834,34 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 509] = [
         "#font-feature-values-syntax",
         "Ordered family lists, all seven subsidiary blocks, font-display, exact unbounded nonnegative integer tokens, checked construction, local recovery, ordinary group placement, and opaque normalization.",
         "Provisional section 6.9.1 constraints conflict with section 6.9.2 on character-variant one-index cardinality, first indexes above 99, and styleset indexes above 20. These three requirements remain unresolved. General rule serialization is unfinished; no CSSOM mapping or cascade is provided.",
+    ),
+    CssFeatureMetadata::complete(
+        "later.rule.font-palette-values",
+        CssFeatureKind::Rule,
+        "@font-palette-values",
+        I_FONTS4_20260907,
+        "#font-palette-values",
+    ),
+    CssFeatureMetadata::complete(
+        "later.descriptor.font-palette-values.font-family",
+        CssFeatureKind::Descriptor,
+        "font-family in @font-palette-values",
+        I_FONTS4_20260907,
+        "#font-family-2-desc",
+    ),
+    CssFeatureMetadata::complete(
+        "later.descriptor.font-palette-values.base-palette",
+        CssFeatureKind::Descriptor,
+        "base-palette in @font-palette-values",
+        I_FONTS4_20260907,
+        "#base-palette-desc",
+    ),
+    CssFeatureMetadata::complete(
+        "later.descriptor.font-palette-values.override-colors",
+        CssFeatureKind::Descriptor,
+        "override-colors in @font-palette-values",
+        I_FONTS4_20260907,
+        "#override-color",
     ),
     CssFeatureMetadata::complete(
         "baseline.descriptor.font-family",

@@ -395,6 +395,66 @@ pub fn parse_font_face_descriptor_value(
     })
 }
 
+/// Parses one complete raw `@font-palette-values` descriptor value.
+///
+/// The selected descriptor grammar is checked without a surrounding rule or
+/// fabricated descriptor-name position. Valid var()/env() defers the whole
+/// value. Retained components and diagnostics refer to the original input;
+/// this function neither substitutes values nor performs font lookup.
+pub fn parse_font_palette_descriptor_value(
+    source: &str,
+    descriptor: CssFontPaletteDescriptorKind,
+) -> crate::CssParseReport<Option<CssFontPaletteDescriptorValue>> {
+    bounded(source, || {
+        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+        let mut parser_input = ParserInput::new(source);
+        let mut input = Parser::new(&mut parser_input);
+        let result = (|| {
+            let openings = state.check_component_values(source, &input, "css.descriptor")?;
+            let start = input.state();
+            loop {
+                let token_start = input.position();
+                let location = input.current_source_location();
+                let Ok(token) = input.next_including_whitespace_and_comments().cloned() else {
+                    break;
+                };
+                if matches!(
+                    token,
+                    Token::Semicolon
+                        | Token::CurlyBracketBlock
+                        | Token::CloseCurlyBracket
+                        | Token::CloseParenthesis
+                        | Token::CloseSquareBracket
+                ) {
+                    return Err(crate::error::invalid_descriptor_token_at(
+                        location,
+                        "font-palette-values",
+                        descriptor.css_name(),
+                        &token,
+                        input.slice_from(token_start),
+                    ));
+                }
+                finish_nested_component(&mut input, &token)?;
+            }
+            input.reset(&start);
+            let value = font_palette_values::parse_descriptor_value_from_parser(
+                &mut input, descriptor, &state,
+            )?;
+            input.expect_exhausted().map_err(basic)?;
+            state.retain_component_closures(openings);
+            Ok(value)
+        })();
+        let (syntax, diagnostics) = match result {
+            Ok(value) => (Some(value), state.take_implicit_closure_diagnostics(source)),
+            Err(error) => (
+                None,
+                vec![reject(source, error, crate::CssRecoveryAction::RejectInput)],
+            ),
+        };
+        crate::CssParseReport::new(syntax, diagnostics)
+    })
+}
+
 /// Parses a complete raw property value using a supplied semantic property name.
 ///
 /// Importance is supplied separately: root annotations, semicolons and stray

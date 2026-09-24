@@ -476,6 +476,16 @@ pub(super) fn checked_variable_components(
     }
 }
 
+/// An ordinary descriptor defers as a whole when either independent
+/// substitution family qualifies. An invalid var() does not veto a valid env().
+pub(crate) fn descriptor_substitution_qualifies(
+    items: &[CssComponentValue],
+    numeric: &NumericInputContext<'_>,
+) -> Result<bool, CssComponentValueError> {
+    let summary = summarize(items, Some(numeric), true)?;
+    Ok(summary.var.qualifies() || summary.env.qualifies())
+}
+
 #[derive(Clone, Copy)]
 enum SubstitutionKind {
     Var,

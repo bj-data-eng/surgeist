@@ -1098,6 +1098,7 @@ mod conformance;
 mod error;
 mod expansion;
 mod font_feature_values;
+mod font_palette_values;
 mod imports;
 pub use imports::*;
 mod custom_media;
@@ -1181,6 +1182,7 @@ pub use expansion::{
     CssUniversalResetMetadata, CssUserAgentInitial, expand_declaration,
 };
 pub use font_feature_values::*;
+pub use font_palette_values::*;
 pub use normalization::{
     CssNormalizationError, CssNormalizationErrorKind, CssNormalizationLimits,
     CssNormalizationResource, CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedReport,
@@ -1189,10 +1191,10 @@ pub use normalization::{
     normalize_sheet, normalize_sheet_with_limits,
 };
 pub use parser::{
-    CssNamespaceContext, parse_declaration, parse_font_face_descriptor_value, parse_media_query,
-    parse_media_query_list, parse_property_value_text, parse_property_value_text_for_grammar,
-    parse_rule, parse_selector, parse_selector_list, parse_sheet, parse_style_attribute,
-    parse_style_block,
+    CssNamespaceContext, parse_declaration, parse_font_face_descriptor_value,
+    parse_font_palette_descriptor_value, parse_media_query, parse_media_query_list,
+    parse_property_value_text, parse_property_value_text_for_grammar, parse_rule, parse_selector,
+    parse_selector_list, parse_sheet, parse_style_attribute, parse_style_block,
 };
 pub use properties::*;
 pub use property_value::{

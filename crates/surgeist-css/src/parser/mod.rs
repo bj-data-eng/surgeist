@@ -13,11 +13,13 @@ mod counter_style;
 mod effects;
 mod font_face;
 mod font_feature_values;
+pub(crate) mod font_palette_values;
 mod fragments;
 pub use fragments::{
-    parse_declaration, parse_font_face_descriptor_value, parse_media_query, parse_media_query_list,
-    parse_property_value_text, parse_property_value_text_for_grammar, parse_rule, parse_selector,
-    parse_selector_list, parse_style_block,
+    parse_declaration, parse_font_face_descriptor_value, parse_font_palette_descriptor_value,
+    parse_media_query, parse_media_query_list, parse_property_value_text,
+    parse_property_value_text_for_grammar, parse_rule, parse_selector, parse_selector_list,
+    parse_style_block,
 };
 mod container_properties;
 mod container_scroll;
@@ -48,7 +50,10 @@ use cssparser::{
     match_ignore_ascii_case,
 };
 
-use crate::{CssContainer, CssContainerNames, CssContainerType};
+use crate::{
+    CssContainer, CssContainerNames, CssContainerType, CssFontPaletteDescriptorKind,
+    CssFontPaletteDescriptorValue, CssFontPaletteName,
+};
 use background::*;
 use box_model::*;
 use container_properties::*;
@@ -147,6 +152,7 @@ static IMPLEMENTED_RULES: &[CssFeatureId] = &[
     CssFeatureId::new("later.rule.counter-style"),
     CssFeatureId::new("later.rule.page"),
     CssFeatureId::new("later.rule.font-feature-values"),
+    CssFeatureId::new("later.rule.font-palette-values"),
     CssFeatureId::new("ext.rule.custom-media"),
 ];
 
@@ -218,9 +224,19 @@ static ATOMIC_IMPLEMENTATION_INVENTORIES: &[CssAtomicImplementationInventory] = 
         stable_ids: font_feature_values::IMPLEMENTED_RULES,
     },
     CssAtomicImplementationInventory {
+        module: "crate::parser::font_palette_values",
+        kind: CssAtomicImplementationKind::Rule,
+        stable_ids: font_palette_values::IMPLEMENTED_RULES,
+    },
+    CssAtomicImplementationInventory {
         module: "crate::parser::font_face",
         kind: CssAtomicImplementationKind::Descriptor,
         stable_ids: font_face::IMPLEMENTED_DESCRIPTORS,
+    },
+    CssAtomicImplementationInventory {
+        module: "crate::parser::font_palette_values",
+        kind: CssAtomicImplementationKind::Descriptor,
+        stable_ids: font_palette_values::IMPLEMENTED_DESCRIPTORS,
     },
     CssAtomicImplementationInventory {
         module: "crate::parser::font_face",
@@ -903,6 +919,7 @@ fn scoped_rule_into_chunk_rule(rule: CssScopedRule) -> CssRule {
         CssScopedRule::Scope(rule) => CssRule::Scope(rule),
         CssScopedRule::CustomMedia(rule) => CssRule::CustomMedia(rule),
         CssScopedRule::FontFeatureValues(rule) => CssRule::FontFeatureValues(rule),
+        CssScopedRule::FontPaletteValues(rule) => CssRule::FontPaletteValues(rule),
     }
 }
 
@@ -1262,6 +1279,7 @@ fn into_scoped_rule(rule: CssRule) -> Option<CssScopedRule> {
         CssRule::Scope(rule) => Some(CssScopedRule::Scope(rule)),
         CssRule::CustomMedia(rule) => Some(CssScopedRule::CustomMedia(rule)),
         CssRule::FontFeatureValues(rule) => Some(CssScopedRule::FontFeatureValues(rule)),
+        CssRule::FontPaletteValues(rule) => Some(CssScopedRule::FontPaletteValues(rule)),
         CssRule::Import(_) | CssRule::Namespace(_) => None,
     }
 }
@@ -1279,6 +1297,13 @@ fn scoped_rule_start(rule: &CssScopedRule) -> usize {
             return rule
                 .position()
                 .expect("parser-owned font rule has a source position")
+                .byte_offset()
+                .value();
+        }
+        CssScopedRule::FontPaletteValues(rule) => {
+            return rule
+                .position()
+                .expect("parser-owned palette rule has a source position")
                 .byte_offset()
                 .value();
         }
@@ -1348,6 +1373,13 @@ fn rule_start(rule: &CssRule) -> usize {
             return rule
                 .position()
                 .expect("parser-owned font rule has a source position")
+                .byte_offset()
+                .value();
+        }
+        CssRule::FontPaletteValues(rule) => {
+            return rule
+                .position()
+                .expect("parser-owned palette rule has a source position")
                 .byte_offset()
                 .value();
         }
@@ -1891,6 +1923,7 @@ impl<'s> StrictRuleParser<'s> {
 enum StrictAtRulePrelude {
     CustomMedia(Box<CustomMediaPrelude>),
     FontFeatureValues(Vec<CssFontFaceFamily>),
+    FontPaletteValues(CssFontPaletteName),
     Encoding(String),
     Import(Box<CssImportPrelude>),
     Namespace(CssNamespacePrelude),
@@ -1910,6 +1943,7 @@ impl StrictAtRulePrelude {
         match self {
             Self::CustomMedia(_) => "ext.rule.custom-media",
             Self::FontFeatureValues(_) => "later.rule.font-feature-values",
+            Self::FontPaletteValues(_) => "later.rule.font-palette-values",
             Self::Encoding(_) => "css.encoding-declaration",
             Self::Import(_) => "baseline.rule.import",
             Self::Namespace(_) => "later.rule.namespace",
@@ -2054,6 +2088,7 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
             "page" => Ok(StrictAtRulePrelude::Page(parse_page_prelude(self.source, input)?)),
             "custom-media" => Ok(StrictAtRulePrelude::CustomMedia(Box::new(parse_custom_media_prelude(self.source, input, &self.recovery)?))),
             "font-feature-values" => Ok(StrictAtRulePrelude::FontFeatureValues(font_feature_values::parse_families(self.source, input, &self.recovery)?)),
+            "font-palette-values" => Ok(StrictAtRulePrelude::FontPaletteValues(font_palette_values::parse_name(self.source, input, &self.recovery)?)),
             "font-face" => {
                 parse_font_face_prelude(input)?;
                 Ok(StrictAtRulePrelude::FontFace)
@@ -2208,6 +2243,7 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                 ))])
             }
             StrictAtRulePrelude::FontFeatureValues(_) => Err(()),
+            StrictAtRulePrelude::FontPaletteValues(_) => Err(()),
             StrictAtRulePrelude::FontFace => Err(()),
             StrictAtRulePrelude::Keyframes(_) => Err(()),
             StrictAtRulePrelude::Media(_) => Err(()),
@@ -2307,6 +2343,18 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                 )?;
                 self.mark_successful_body_rule();
                 Ok(vec![CssRule::FontFeatureValues(rule)])
+            }
+            StrictAtRulePrelude::FontPaletteValues(name) => {
+                let rule = font_palette_values::parse_rule(
+                    self.source,
+                    name,
+                    input,
+                    start,
+                    &mut self.diagnostics,
+                    self.recovery.clone(),
+                )?;
+                self.mark_successful_body_rule();
+                Ok(vec![CssRule::FontPaletteValues(rule)])
             }
             StrictAtRulePrelude::FontFace => {
                 let rule = parse_font_face_rule(
@@ -3497,6 +3545,28 @@ struct ScopedRuleParser<'s> {
     recovery: RecoveryState,
 }
 
+impl<'s> ScopedRuleParser<'s> {
+    // Keep descriptor parsing off the recursive group-rule frame. Deep scoped
+    // rule lists run on the test thread's ordinary stack.
+    #[inline(never)]
+    fn parse_font_palette_block<'t>(
+        &mut self,
+        name: CssFontPaletteName,
+        input: &mut Parser<'s, 't>,
+        start: &ParserState,
+    ) -> Result<Vec<CssScopedRule>, ParseError<'s, Error>> {
+        let rule = font_palette_values::parse_rule(
+            self.source,
+            name,
+            input,
+            start,
+            &mut self.diagnostics,
+            self.recovery.clone(),
+        )?;
+        Ok(vec![CssScopedRule::FontPaletteValues(rule)])
+    }
+}
+
 enum ScopedAtRulePrelude {
     Page(Option<CssPageSelector>),
     CounterStyle(CssCounterStyleName),
@@ -3504,6 +3574,7 @@ enum ScopedAtRulePrelude {
     Keyframes(CssKeyframesName),
     CustomMedia(Box<CustomMediaPrelude>),
     FontFeatureValues(Vec<CssFontFaceFamily>),
+    FontPaletteValues(CssFontPaletteName),
     Media(CssMediaQueryList),
     Supports(CssSupportsCondition),
     Container(CssContainerPrelude),
@@ -3520,6 +3591,7 @@ impl ScopedAtRulePrelude {
             Self::Keyframes(_) => "baseline.rule.keyframes",
             Self::CustomMedia(_) => "ext.rule.custom-media",
             Self::FontFeatureValues(_) => "later.rule.font-feature-values",
+            Self::FontPaletteValues(_) => "later.rule.font-palette-values",
             Self::Media(_) => "baseline.rule.media",
             Self::Supports(_) => "baseline.rule.supports",
             Self::Container(_) => "baseline.rule.container",
@@ -3622,6 +3694,12 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                 }
                 Ok(ScopedAtRulePrelude::FontFeatureValues(font_feature_values::parse_families(self.source, input, &self.recovery)?))
             },
+            "font-palette-values" => {
+                if self.has_style_ancestor {
+                    return Err(invalid_at_rule_placement(input.current_source_location(), "font-palette-values", "a rule list without a style-rule ancestor"));
+                }
+                Ok(ScopedAtRulePrelude::FontPaletteValues(font_palette_values::parse_name(self.source, input, &self.recovery)?))
+            },
             "font-face" => {
                 if self.has_style_ancestor {
                     return Err(invalid_at_rule_placement(input.current_source_location(), "font-face", "a rule list without a style-rule ancestor"));
@@ -3691,6 +3769,7 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
             | ScopedAtRulePrelude::FontFace
             | ScopedAtRulePrelude::Keyframes(_)
             | ScopedAtRulePrelude::FontFeatureValues(_)
+            | ScopedAtRulePrelude::FontPaletteValues(_)
             | ScopedAtRulePrelude::Media(_)
             | ScopedAtRulePrelude::Supports(_)
             | ScopedAtRulePrelude::Container(_)
@@ -3773,6 +3852,9 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                     self.recovery.clone(),
                 )?;
                 Ok(vec![CssScopedRule::FontFeatureValues(rule)])
+            }
+            ScopedAtRulePrelude::FontPaletteValues(name) => {
+                self.parse_font_palette_block(name, input, start)
             }
             ScopedAtRulePrelude::Media(query) => {
                 let recovered = parse_scoped_rule_list(

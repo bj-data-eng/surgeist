@@ -17,7 +17,10 @@ use crate::{
     CssColorAngleLiteral, CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError,
     CssValueOrigin,
 };
-use crate::{CssContainerScrollQuery, CssContainerStyleQuery, CssFontFeatureValuesRule};
+use crate::{
+    CssContainerScrollQuery, CssContainerStyleQuery, CssFontFeatureValuesRule,
+    CssFontPaletteValuesRule,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -132,6 +135,7 @@ pub enum CssRule {
     LayerBlock(CssLayerBlockRule),
     FontFace(CssFontFaceRule),
     FontFeatureValues(CssFontFeatureValuesRule),
+    FontPaletteValues(CssFontPaletteValuesRule),
     Keyframes(CssKeyframesRule),
     Style(CssStyleRule),
     NestedDeclarations(CssNestedDeclarationsRule),
@@ -2992,6 +2996,7 @@ pub enum CssScopedRule {
     Keyframes(CssKeyframesRule),
     CustomMedia(crate::CssCustomMediaRule),
     FontFeatureValues(CssFontFeatureValuesRule),
+    FontPaletteValues(CssFontPaletteValuesRule),
     Style(CssScopedStyleRule),
     Media(CssScopedMediaRule),
     Supports(CssScopedSupportsRule),
