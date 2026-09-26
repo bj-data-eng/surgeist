@@ -1129,6 +1129,7 @@ mod integer_value;
 mod numeric;
 mod opacity_scalar;
 mod pending_serialization;
+mod scroll_snap;
 pub use aspect_ratio::{CssRatioOperand, CssSpecifiedRatio};
 pub use color_scalar::{
     CssColorAngleLiteral, CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError,
@@ -1139,9 +1140,16 @@ pub use display::{
     CssDisplayListItemInside, CssDisplayOutside, CssDisplayValue,
 };
 pub use integer_value::CssIntegerLiteral;
+pub use scroll_snap::{
+    CssScrollMarginPair, CssScrollMarginShorthand, CssScrollPaddingPair, CssScrollPaddingShorthand,
+    CssScrollPaddingValue, CssScrollSideKind, CssScrollSnapAlign, CssScrollSnapAlignment,
+    CssScrollSnapAxis, CssScrollSnapStop, CssScrollSnapStrictness, CssScrollSnapType,
+};
+mod specified_length;
 mod specified_serialization;
 mod writing_modes;
 pub use opacity_scalar::{CssOpacityScalar, CssOpacityScalarKind};
+pub use specified_length::{CssSpecifiedLength, CssSpecifiedNonNegativeLengthPercentage};
 pub use specified_serialization::{
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
     CssSpecifiedValueSerializationLimits,
@@ -1185,7 +1193,7 @@ pub use expansion::{
     CssLonghandContributions, CssLonghandInitialValue, CssLonghandMetadata, CssLonghandProperty,
     CssLonghandValue, CssLonghandValueRef, CssPendingSubstitution, CssPropertyKindRef,
     CssPropertyMetadata, CssPropertyMetadataError, CssShorthandMetadata, CssUniversalReset,
-    CssUniversalResetMetadata, CssUserAgentInitial, expand_declaration,
+    CssUniversalResetMetadata, CssUnresolvedStandard, CssUserAgentInitial, expand_declaration,
 };
 pub use font_feature_values::*;
 pub use font_palette_serialization::{

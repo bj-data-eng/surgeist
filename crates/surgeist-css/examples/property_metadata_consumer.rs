@@ -46,6 +46,25 @@ const LONGHANDS: &[P] = &[
     P::CaptionSide,
     P::EmptyCells,
     P::TableLayout,
+    P::ScrollSnapType,
+    P::ScrollSnapAlign,
+    P::ScrollSnapStop,
+    P::ScrollPaddingTop,
+    P::ScrollPaddingRight,
+    P::ScrollPaddingBottom,
+    P::ScrollPaddingLeft,
+    P::ScrollPaddingBlockStart,
+    P::ScrollPaddingBlockEnd,
+    P::ScrollPaddingInlineStart,
+    P::ScrollPaddingInlineEnd,
+    P::ScrollMarginTop,
+    P::ScrollMarginRight,
+    P::ScrollMarginBottom,
+    P::ScrollMarginLeft,
+    P::ScrollMarginBlockStart,
+    P::ScrollMarginBlockEnd,
+    P::ScrollMarginInlineStart,
+    P::ScrollMarginInlineEnd,
     P::Order,
     P::AspectRatio,
     P::Visibility,
@@ -55,6 +74,26 @@ const LONGHANDS: &[P] = &[
     P::TextCombineUpright,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
+    (
+        P::ScrollPaddingBlock,
+        &[P::ScrollPaddingBlockStart, P::ScrollPaddingBlockEnd],
+        &[],
+    ),
+    (
+        P::ScrollPaddingInline,
+        &[P::ScrollPaddingInlineStart, P::ScrollPaddingInlineEnd],
+        &[],
+    ),
+    (
+        P::ScrollMarginBlock,
+        &[P::ScrollMarginBlockStart, P::ScrollMarginBlockEnd],
+        &[],
+    ),
+    (
+        P::ScrollMarginInline,
+        &[P::ScrollMarginInlineStart, P::ScrollMarginInlineEnd],
+        &[],
+    ),
     (P::Container, &[P::ContainerName, P::ContainerType], &[]),
     (
         P::Margin,
@@ -267,6 +306,32 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::CaptionSide(v) => assert_eq!(*v, CssCaptionSide::Top),
         CssLonghandValueRef::EmptyCells(v) => assert_eq!(*v, CssEmptyCells::Show),
         CssLonghandValueRef::TableLayout(v) => assert_eq!(*v, CssTableLayout::Auto),
+        CssLonghandValueRef::ScrollSnapType(v) => assert_eq!(*v, CssScrollSnapType::None),
+        CssLonghandValueRef::ScrollSnapAlign(v) => assert_eq!(
+            *v,
+            CssScrollSnapAlign::new(CssScrollSnapAlignment::None, None)
+        ),
+        CssLonghandValueRef::ScrollSnapStop(v) => assert_eq!(*v, CssScrollSnapStop::Normal),
+        CssLonghandValueRef::ScrollPaddingTop(v)
+        | CssLonghandValueRef::ScrollPaddingRight(v)
+        | CssLonghandValueRef::ScrollPaddingBottom(v)
+        | CssLonghandValueRef::ScrollPaddingLeft(v)
+        | CssLonghandValueRef::ScrollPaddingBlockStart(v)
+        | CssLonghandValueRef::ScrollPaddingBlockEnd(v)
+        | CssLonghandValueRef::ScrollPaddingInlineStart(v)
+        | CssLonghandValueRef::ScrollPaddingInlineEnd(v) => {
+            assert_eq!(*v, CssScrollPaddingValue::Auto)
+        }
+        CssLonghandValueRef::ScrollMarginTop(v)
+        | CssLonghandValueRef::ScrollMarginRight(v)
+        | CssLonghandValueRef::ScrollMarginBottom(v)
+        | CssLonghandValueRef::ScrollMarginLeft(v)
+        | CssLonghandValueRef::ScrollMarginBlockStart(v)
+        | CssLonghandValueRef::ScrollMarginBlockEnd(v)
+        | CssLonghandValueRef::ScrollMarginInlineStart(v)
+        | CssLonghandValueRef::ScrollMarginInlineEnd(v) => {
+            assert_eq!(*v, CssSpecifiedLength::zero())
+        }
         CssLonghandValueRef::Opacity(v) => {
             assert!(matches!(v, CssOpacityValue::Literal(value) if value.value() == 1.0));
         }
@@ -280,7 +345,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 57);
+    assert_eq!(expected.len(), 80);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();
@@ -303,6 +368,14 @@ fn metadata_and_initials() {
             Err(CssPropertyMetadataError::Unavailable(g)) => {
                 assert!(!expected.contains(&property));
                 assert_eq!(g, handle);
+            }
+            Err(CssPropertyMetadataError::UnresolvedStandard { grammar, reason }) => {
+                assert!(matches!(property, P::ScrollPadding | P::ScrollMargin));
+                assert_eq!(grammar, handle);
+                assert_eq!(
+                    reason,
+                    CssUnresolvedStandard::LogicalShorthandResetMembership
+                );
             }
             other => panic!("unexpected capability result: {other:?}"),
         }

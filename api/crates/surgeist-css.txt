@@ -1025,6 +1025,9 @@ pub surgeist_css::CssExpansion::Pending(surgeist_css::CssPendingSubstitution)
 #[non_exhaustive] pub enum surgeist_css::CssExpansionErrorKind
 pub surgeist_css::CssExpansionErrorKind::InvalidReplacement(surgeist_css::CssPropertyValueParseError)
 pub surgeist_css::CssExpansionErrorKind::ResidualSubstitution
+pub surgeist_css::CssExpansionErrorKind::UnresolvedStandard
+pub surgeist_css::CssExpansionErrorKind::UnresolvedStandard::property: surgeist_css::CssKnownProperty
+pub surgeist_css::CssExpansionErrorKind::UnresolvedStandard::reason: surgeist_css::CssUnresolvedStandard
 pub surgeist_css::CssExpansionErrorKind::UnsupportedProperty(surgeist_css::CssKnownProperty)
 #[non_exhaustive] pub enum surgeist_css::CssFeatureKind
 pub surgeist_css::CssFeatureKind::ContainerQuery
@@ -1775,6 +1778,31 @@ pub surgeist_css::CssKnownProperty::Right
 pub surgeist_css::CssKnownProperty::Rotate
 pub surgeist_css::CssKnownProperty::RowGap
 pub surgeist_css::CssKnownProperty::Scale
+pub surgeist_css::CssKnownProperty::ScrollMargin
+pub surgeist_css::CssKnownProperty::ScrollMarginBlock
+pub surgeist_css::CssKnownProperty::ScrollMarginBlockEnd
+pub surgeist_css::CssKnownProperty::ScrollMarginBlockStart
+pub surgeist_css::CssKnownProperty::ScrollMarginBottom
+pub surgeist_css::CssKnownProperty::ScrollMarginInline
+pub surgeist_css::CssKnownProperty::ScrollMarginInlineEnd
+pub surgeist_css::CssKnownProperty::ScrollMarginInlineStart
+pub surgeist_css::CssKnownProperty::ScrollMarginLeft
+pub surgeist_css::CssKnownProperty::ScrollMarginRight
+pub surgeist_css::CssKnownProperty::ScrollMarginTop
+pub surgeist_css::CssKnownProperty::ScrollPadding
+pub surgeist_css::CssKnownProperty::ScrollPaddingBlock
+pub surgeist_css::CssKnownProperty::ScrollPaddingBlockEnd
+pub surgeist_css::CssKnownProperty::ScrollPaddingBlockStart
+pub surgeist_css::CssKnownProperty::ScrollPaddingBottom
+pub surgeist_css::CssKnownProperty::ScrollPaddingInline
+pub surgeist_css::CssKnownProperty::ScrollPaddingInlineEnd
+pub surgeist_css::CssKnownProperty::ScrollPaddingInlineStart
+pub surgeist_css::CssKnownProperty::ScrollPaddingLeft
+pub surgeist_css::CssKnownProperty::ScrollPaddingRight
+pub surgeist_css::CssKnownProperty::ScrollPaddingTop
+pub surgeist_css::CssKnownProperty::ScrollSnapAlign
+pub surgeist_css::CssKnownProperty::ScrollSnapStop
+pub surgeist_css::CssKnownProperty::ScrollSnapType
 pub surgeist_css::CssKnownProperty::ScrollbarWidth
 pub surgeist_css::CssKnownProperty::TableLayout
 pub surgeist_css::CssKnownProperty::TextAlign
@@ -2020,6 +2048,31 @@ pub surgeist_css::CssKnownPropertyValueRef::Right(&'a surgeist_css::CssRightProp
 pub surgeist_css::CssKnownPropertyValueRef::Rotate(&'a surgeist_css::CssRotatePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::RowGap(&'a surgeist_css::CssRowGapPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Scale(&'a surgeist_css::CssScalePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollMargin(&'a surgeist_css::CssScrollMarginPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollMarginBlock(&'a surgeist_css::CssScrollMarginBlockPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollMarginBlockEnd(&'a surgeist_css::CssScrollMarginBlockEndPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollMarginBlockStart(&'a surgeist_css::CssScrollMarginBlockStartPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollMarginBottom(&'a surgeist_css::CssScrollMarginBottomPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollMarginInline(&'a surgeist_css::CssScrollMarginInlinePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollMarginInlineEnd(&'a surgeist_css::CssScrollMarginInlineEndPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollMarginInlineStart(&'a surgeist_css::CssScrollMarginInlineStartPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollMarginLeft(&'a surgeist_css::CssScrollMarginLeftPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollMarginRight(&'a surgeist_css::CssScrollMarginRightPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollMarginTop(&'a surgeist_css::CssScrollMarginTopPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollPadding(&'a surgeist_css::CssScrollPaddingPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollPaddingBlock(&'a surgeist_css::CssScrollPaddingBlockPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollPaddingBlockEnd(&'a surgeist_css::CssScrollPaddingBlockEndPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollPaddingBlockStart(&'a surgeist_css::CssScrollPaddingBlockStartPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollPaddingBottom(&'a surgeist_css::CssScrollPaddingBottomPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollPaddingInline(&'a surgeist_css::CssScrollPaddingInlinePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollPaddingInlineEnd(&'a surgeist_css::CssScrollPaddingInlineEndPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollPaddingInlineStart(&'a surgeist_css::CssScrollPaddingInlineStartPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollPaddingLeft(&'a surgeist_css::CssScrollPaddingLeftPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollPaddingRight(&'a surgeist_css::CssScrollPaddingRightPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollPaddingTop(&'a surgeist_css::CssScrollPaddingTopPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollSnapAlign(&'a surgeist_css::CssScrollSnapAlignPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollSnapStop(&'a surgeist_css::CssScrollSnapStopPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollSnapType(&'a surgeist_css::CssScrollSnapTypePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ScrollbarWidth(&'a surgeist_css::CssScrollbarWidthPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TableLayout(&'a surgeist_css::CssTableLayoutPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextAlign(&'a surgeist_css::CssTextAlignPropertyValue)
@@ -2200,6 +2253,25 @@ pub surgeist_css::CssLonghandValueRef::PaddingBottom(&'a surgeist_css::CssLength
 pub surgeist_css::CssLonghandValueRef::PaddingLeft(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::PaddingRight(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::PaddingTop(&'a surgeist_css::CssLength)
+pub surgeist_css::CssLonghandValueRef::ScrollMarginBlockEnd(&'a surgeist_css::CssSpecifiedLength)
+pub surgeist_css::CssLonghandValueRef::ScrollMarginBlockStart(&'a surgeist_css::CssSpecifiedLength)
+pub surgeist_css::CssLonghandValueRef::ScrollMarginBottom(&'a surgeist_css::CssSpecifiedLength)
+pub surgeist_css::CssLonghandValueRef::ScrollMarginInlineEnd(&'a surgeist_css::CssSpecifiedLength)
+pub surgeist_css::CssLonghandValueRef::ScrollMarginInlineStart(&'a surgeist_css::CssSpecifiedLength)
+pub surgeist_css::CssLonghandValueRef::ScrollMarginLeft(&'a surgeist_css::CssSpecifiedLength)
+pub surgeist_css::CssLonghandValueRef::ScrollMarginRight(&'a surgeist_css::CssSpecifiedLength)
+pub surgeist_css::CssLonghandValueRef::ScrollMarginTop(&'a surgeist_css::CssSpecifiedLength)
+pub surgeist_css::CssLonghandValueRef::ScrollPaddingBlockEnd(&'a surgeist_css::CssScrollPaddingValue)
+pub surgeist_css::CssLonghandValueRef::ScrollPaddingBlockStart(&'a surgeist_css::CssScrollPaddingValue)
+pub surgeist_css::CssLonghandValueRef::ScrollPaddingBottom(&'a surgeist_css::CssScrollPaddingValue)
+pub surgeist_css::CssLonghandValueRef::ScrollPaddingInlineEnd(&'a surgeist_css::CssScrollPaddingValue)
+pub surgeist_css::CssLonghandValueRef::ScrollPaddingInlineStart(&'a surgeist_css::CssScrollPaddingValue)
+pub surgeist_css::CssLonghandValueRef::ScrollPaddingLeft(&'a surgeist_css::CssScrollPaddingValue)
+pub surgeist_css::CssLonghandValueRef::ScrollPaddingRight(&'a surgeist_css::CssScrollPaddingValue)
+pub surgeist_css::CssLonghandValueRef::ScrollPaddingTop(&'a surgeist_css::CssScrollPaddingValue)
+pub surgeist_css::CssLonghandValueRef::ScrollSnapAlign(&'a surgeist_css::CssScrollSnapAlign)
+pub surgeist_css::CssLonghandValueRef::ScrollSnapStop(&'a surgeist_css::CssScrollSnapStop)
+pub surgeist_css::CssLonghandValueRef::ScrollSnapType(&'a surgeist_css::CssScrollSnapType)
 pub surgeist_css::CssLonghandValueRef::TableLayout(&'a surgeist_css::CssTableLayout)
 pub surgeist_css::CssLonghandValueRef::TextCombineUpright(&'a surgeist_css::CssTextCombineUpright)
 pub surgeist_css::CssLonghandValueRef::TextOrientation(&'a surgeist_css::CssTextOrientation)
@@ -2619,6 +2691,9 @@ pub surgeist_css::CssPropertyKindRef::Shorthand(&'a surgeist_css::CssShorthandMe
 pub surgeist_css::CssPropertyKindRef::UniversalReset(&'a surgeist_css::CssUniversalResetMetadata)
 #[non_exhaustive] pub enum surgeist_css::CssPropertyMetadataError
 pub surgeist_css::CssPropertyMetadataError::Unavailable(surgeist_css::CssPropertyGrammar)
+pub surgeist_css::CssPropertyMetadataError::UnresolvedStandard
+pub surgeist_css::CssPropertyMetadataError::UnresolvedStandard::grammar: surgeist_css::CssPropertyGrammar
+pub surgeist_css::CssPropertyMetadataError::UnresolvedStandard::reason: surgeist_css::CssUnresolvedStandard
 impl core::error::Error for surgeist_css::CssPropertyMetadataError
 impl core::fmt::Display for surgeist_css::CssPropertyMetadataError
 pub fn surgeist_css::CssPropertyMetadataError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -2867,6 +2942,44 @@ pub surgeist_css::CssScopedRule::Supports(surgeist_css::CssScopedSupportsRule)
 #[non_exhaustive] pub enum surgeist_css::CssScopedStyleSelector
 pub surgeist_css::CssScopedStyleSelector::Relative(surgeist_css::CssRelativeSelector)
 pub surgeist_css::CssScopedStyleSelector::Selector(surgeist_css::CssSelector)
+#[non_exhaustive] pub enum surgeist_css::CssScrollPaddingValue
+pub surgeist_css::CssScrollPaddingValue::Auto
+pub surgeist_css::CssScrollPaddingValue::LengthPercentage(surgeist_css::CssSpecifiedNonNegativeLengthPercentage)
+impl surgeist_css::CssScrollPaddingValue
+pub fn surgeist_css::CssScrollPaddingValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssScrollPaddingValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssScrollSideKind
+pub surgeist_css::CssScrollSideKind::Logical
+pub surgeist_css::CssScrollSideKind::Physical
+#[non_exhaustive] pub enum surgeist_css::CssScrollSnapAlignment
+pub surgeist_css::CssScrollSnapAlignment::Center
+pub surgeist_css::CssScrollSnapAlignment::End
+pub surgeist_css::CssScrollSnapAlignment::None
+pub surgeist_css::CssScrollSnapAlignment::Start
+#[non_exhaustive] pub enum surgeist_css::CssScrollSnapAxis
+pub surgeist_css::CssScrollSnapAxis::Block
+pub surgeist_css::CssScrollSnapAxis::Both
+pub surgeist_css::CssScrollSnapAxis::Inline
+pub surgeist_css::CssScrollSnapAxis::X
+pub surgeist_css::CssScrollSnapAxis::Y
+#[non_exhaustive] pub enum surgeist_css::CssScrollSnapStop
+pub surgeist_css::CssScrollSnapStop::Always
+pub surgeist_css::CssScrollSnapStop::Normal
+impl surgeist_css::CssScrollSnapStop
+pub fn surgeist_css::CssScrollSnapStop::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssScrollSnapStop::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssScrollSnapStrictness
+pub surgeist_css::CssScrollSnapStrictness::Mandatory
+pub surgeist_css::CssScrollSnapStrictness::Proximity
+#[non_exhaustive] pub enum surgeist_css::CssScrollSnapType
+pub surgeist_css::CssScrollSnapType::Axis
+pub surgeist_css::CssScrollSnapType::Axis::axis: surgeist_css::CssScrollSnapAxis
+pub surgeist_css::CssScrollSnapType::Axis::strictness: core::option::Option<surgeist_css::CssScrollSnapStrictness>
+pub surgeist_css::CssScrollSnapType::None
+impl surgeist_css::CssScrollSnapType
+pub const fn surgeist_css::CssScrollSnapType::axis(axis: surgeist_css::CssScrollSnapAxis, strictness: core::option::Option<surgeist_css::CssScrollSnapStrictness>) -> Self
+pub fn surgeist_css::CssScrollSnapType::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssScrollSnapType::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssScrollbarWidth
 pub surgeist_css::CssScrollbarWidth::Auto
 pub surgeist_css::CssScrollbarWidth::None
@@ -3178,6 +3291,8 @@ pub surgeist_css::CssUnknownMediaFeatureReason::UnknownName
 #[non_exhaustive] pub enum surgeist_css::CssUnknownMediaFeatureRef<'a>
 pub surgeist_css::CssUnknownMediaFeatureRef::Boolean
 pub surgeist_css::CssUnknownMediaFeatureRef::Range(&'a surgeist_css::CssMediaRange<surgeist_css::CssComponentValues>)
+#[non_exhaustive] pub enum surgeist_css::CssUnresolvedStandard
+pub surgeist_css::CssUnresolvedStandard::LogicalShorthandResetMembership
 #[non_exhaustive] pub enum surgeist_css::CssUrlModifier
 pub surgeist_css::CssUrlModifier::Function(surgeist_css::CssUrlModifierFunction)
 pub surgeist_css::CssUrlModifier::Ident(surgeist_css::CssIdent)
@@ -6541,6 +6656,146 @@ impl surgeist_css::CssScopedSupportsRule
 pub const fn surgeist_css::CssScopedSupportsRule::condition(&self) -> &surgeist_css::CssSupportsCondition
 pub const fn surgeist_css::CssScopedSupportsRule::position(&self) -> surgeist_css::CssSourcePosition
 pub const fn surgeist_css::CssScopedSupportsRule::rules(&self) -> &surgeist_css::CssScopedRuleList
+pub struct surgeist_css::CssScrollMarginBlockEndPropertyValue
+impl surgeist_css::CssScrollMarginBlockEndPropertyValue
+pub fn surgeist_css::CssScrollMarginBlockEndPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollMarginBlockEndPropertyValue::current(&self) -> &surgeist_css::CssSpecifiedLength
+pub struct surgeist_css::CssScrollMarginBlockPropertyValue
+impl surgeist_css::CssScrollMarginBlockPropertyValue
+pub fn surgeist_css::CssScrollMarginBlockPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollMarginBlockPropertyValue::current(&self) -> &surgeist_css::CssScrollMarginPair
+pub struct surgeist_css::CssScrollMarginBlockStartPropertyValue
+impl surgeist_css::CssScrollMarginBlockStartPropertyValue
+pub fn surgeist_css::CssScrollMarginBlockStartPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollMarginBlockStartPropertyValue::current(&self) -> &surgeist_css::CssSpecifiedLength
+pub struct surgeist_css::CssScrollMarginBottomPropertyValue
+impl surgeist_css::CssScrollMarginBottomPropertyValue
+pub fn surgeist_css::CssScrollMarginBottomPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollMarginBottomPropertyValue::current(&self) -> &surgeist_css::CssSpecifiedLength
+pub struct surgeist_css::CssScrollMarginInlineEndPropertyValue
+impl surgeist_css::CssScrollMarginInlineEndPropertyValue
+pub fn surgeist_css::CssScrollMarginInlineEndPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollMarginInlineEndPropertyValue::current(&self) -> &surgeist_css::CssSpecifiedLength
+pub struct surgeist_css::CssScrollMarginInlinePropertyValue
+impl surgeist_css::CssScrollMarginInlinePropertyValue
+pub fn surgeist_css::CssScrollMarginInlinePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollMarginInlinePropertyValue::current(&self) -> &surgeist_css::CssScrollMarginPair
+pub struct surgeist_css::CssScrollMarginInlineStartPropertyValue
+impl surgeist_css::CssScrollMarginInlineStartPropertyValue
+pub fn surgeist_css::CssScrollMarginInlineStartPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollMarginInlineStartPropertyValue::current(&self) -> &surgeist_css::CssSpecifiedLength
+pub struct surgeist_css::CssScrollMarginLeftPropertyValue
+impl surgeist_css::CssScrollMarginLeftPropertyValue
+pub fn surgeist_css::CssScrollMarginLeftPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollMarginLeftPropertyValue::current(&self) -> &surgeist_css::CssSpecifiedLength
+pub struct surgeist_css::CssScrollMarginPair(_)
+impl surgeist_css::CssScrollMarginPair
+pub const fn surgeist_css::CssScrollMarginPair::authored_end(&self) -> core::option::Option<&surgeist_css::CssSpecifiedLength>
+pub const fn surgeist_css::CssScrollMarginPair::end(&self) -> &surgeist_css::CssSpecifiedLength
+pub const fn surgeist_css::CssScrollMarginPair::new(start: surgeist_css::CssSpecifiedLength, end: core::option::Option<surgeist_css::CssSpecifiedLength>) -> Self
+pub fn surgeist_css::CssScrollMarginPair::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssScrollMarginPair::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub const fn surgeist_css::CssScrollMarginPair::start(&self) -> &surgeist_css::CssSpecifiedLength
+pub struct surgeist_css::CssScrollMarginPropertyValue
+impl surgeist_css::CssScrollMarginPropertyValue
+pub fn surgeist_css::CssScrollMarginPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollMarginPropertyValue::current(&self) -> &surgeist_css::CssScrollMarginShorthand
+pub struct surgeist_css::CssScrollMarginRightPropertyValue
+impl surgeist_css::CssScrollMarginRightPropertyValue
+pub fn surgeist_css::CssScrollMarginRightPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollMarginRightPropertyValue::current(&self) -> &surgeist_css::CssSpecifiedLength
+pub struct surgeist_css::CssScrollMarginShorthand(_)
+impl surgeist_css::CssScrollMarginShorthand
+pub fn surgeist_css::CssScrollMarginShorthand::authored_values(&self) -> &[surgeist_css::CssSpecifiedLength]
+pub const fn surgeist_css::CssScrollMarginShorthand::kind(&self) -> surgeist_css::CssScrollSideKind
+pub fn surgeist_css::CssScrollMarginShorthand::role(&self, index: usize) -> core::option::Option<&surgeist_css::CssSpecifiedLength>
+pub fn surgeist_css::CssScrollMarginShorthand::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssScrollMarginShorthand::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssScrollMarginShorthand::try_new(kind: surgeist_css::CssScrollSideKind, authored: alloc::vec::Vec<surgeist_css::CssSpecifiedLength>) -> core::option::Option<Self>
+pub struct surgeist_css::CssScrollMarginTopPropertyValue
+impl surgeist_css::CssScrollMarginTopPropertyValue
+pub fn surgeist_css::CssScrollMarginTopPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollMarginTopPropertyValue::current(&self) -> &surgeist_css::CssSpecifiedLength
+pub struct surgeist_css::CssScrollPaddingBlockEndPropertyValue
+impl surgeist_css::CssScrollPaddingBlockEndPropertyValue
+pub fn surgeist_css::CssScrollPaddingBlockEndPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollPaddingBlockEndPropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingValue
+pub struct surgeist_css::CssScrollPaddingBlockPropertyValue
+impl surgeist_css::CssScrollPaddingBlockPropertyValue
+pub fn surgeist_css::CssScrollPaddingBlockPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollPaddingBlockPropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingPair
+pub struct surgeist_css::CssScrollPaddingBlockStartPropertyValue
+impl surgeist_css::CssScrollPaddingBlockStartPropertyValue
+pub fn surgeist_css::CssScrollPaddingBlockStartPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollPaddingBlockStartPropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingValue
+pub struct surgeist_css::CssScrollPaddingBottomPropertyValue
+impl surgeist_css::CssScrollPaddingBottomPropertyValue
+pub fn surgeist_css::CssScrollPaddingBottomPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollPaddingBottomPropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingValue
+pub struct surgeist_css::CssScrollPaddingInlineEndPropertyValue
+impl surgeist_css::CssScrollPaddingInlineEndPropertyValue
+pub fn surgeist_css::CssScrollPaddingInlineEndPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollPaddingInlineEndPropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingValue
+pub struct surgeist_css::CssScrollPaddingInlinePropertyValue
+impl surgeist_css::CssScrollPaddingInlinePropertyValue
+pub fn surgeist_css::CssScrollPaddingInlinePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollPaddingInlinePropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingPair
+pub struct surgeist_css::CssScrollPaddingInlineStartPropertyValue
+impl surgeist_css::CssScrollPaddingInlineStartPropertyValue
+pub fn surgeist_css::CssScrollPaddingInlineStartPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollPaddingInlineStartPropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingValue
+pub struct surgeist_css::CssScrollPaddingLeftPropertyValue
+impl surgeist_css::CssScrollPaddingLeftPropertyValue
+pub fn surgeist_css::CssScrollPaddingLeftPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollPaddingLeftPropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingValue
+pub struct surgeist_css::CssScrollPaddingPair(_)
+impl surgeist_css::CssScrollPaddingPair
+pub const fn surgeist_css::CssScrollPaddingPair::authored_end(&self) -> core::option::Option<&surgeist_css::CssScrollPaddingValue>
+pub const fn surgeist_css::CssScrollPaddingPair::end(&self) -> &surgeist_css::CssScrollPaddingValue
+pub const fn surgeist_css::CssScrollPaddingPair::new(start: surgeist_css::CssScrollPaddingValue, end: core::option::Option<surgeist_css::CssScrollPaddingValue>) -> Self
+pub fn surgeist_css::CssScrollPaddingPair::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssScrollPaddingPair::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub const fn surgeist_css::CssScrollPaddingPair::start(&self) -> &surgeist_css::CssScrollPaddingValue
+pub struct surgeist_css::CssScrollPaddingPropertyValue
+impl surgeist_css::CssScrollPaddingPropertyValue
+pub fn surgeist_css::CssScrollPaddingPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollPaddingPropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingShorthand
+pub struct surgeist_css::CssScrollPaddingRightPropertyValue
+impl surgeist_css::CssScrollPaddingRightPropertyValue
+pub fn surgeist_css::CssScrollPaddingRightPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollPaddingRightPropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingValue
+pub struct surgeist_css::CssScrollPaddingShorthand(_)
+impl surgeist_css::CssScrollPaddingShorthand
+pub fn surgeist_css::CssScrollPaddingShorthand::authored_values(&self) -> &[surgeist_css::CssScrollPaddingValue]
+pub const fn surgeist_css::CssScrollPaddingShorthand::kind(&self) -> surgeist_css::CssScrollSideKind
+pub fn surgeist_css::CssScrollPaddingShorthand::role(&self, index: usize) -> core::option::Option<&surgeist_css::CssScrollPaddingValue>
+pub fn surgeist_css::CssScrollPaddingShorthand::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssScrollPaddingShorthand::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssScrollPaddingShorthand::try_new(kind: surgeist_css::CssScrollSideKind, authored: alloc::vec::Vec<surgeist_css::CssScrollPaddingValue>) -> core::option::Option<Self>
+pub struct surgeist_css::CssScrollPaddingTopPropertyValue
+impl surgeist_css::CssScrollPaddingTopPropertyValue
+pub fn surgeist_css::CssScrollPaddingTopPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollPaddingTopPropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingValue
+pub struct surgeist_css::CssScrollSnapAlign
+impl surgeist_css::CssScrollSnapAlign
+pub const fn surgeist_css::CssScrollSnapAlign::authored_inline(&self) -> core::option::Option<surgeist_css::CssScrollSnapAlignment>
+pub const fn surgeist_css::CssScrollSnapAlign::block(&self) -> surgeist_css::CssScrollSnapAlignment
+pub const fn surgeist_css::CssScrollSnapAlign::inline(&self) -> surgeist_css::CssScrollSnapAlignment
+pub const fn surgeist_css::CssScrollSnapAlign::new(block: surgeist_css::CssScrollSnapAlignment, inline: core::option::Option<surgeist_css::CssScrollSnapAlignment>) -> Self
+pub fn surgeist_css::CssScrollSnapAlign::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssScrollSnapAlign::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssScrollSnapAlignPropertyValue
+impl surgeist_css::CssScrollSnapAlignPropertyValue
+pub fn surgeist_css::CssScrollSnapAlignPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollSnapAlignPropertyValue::current(&self) -> &surgeist_css::CssScrollSnapAlign
+pub struct surgeist_css::CssScrollSnapStopPropertyValue
+impl surgeist_css::CssScrollSnapStopPropertyValue
+pub fn surgeist_css::CssScrollSnapStopPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollSnapStopPropertyValue::current(&self) -> &surgeist_css::CssScrollSnapStop
+pub struct surgeist_css::CssScrollSnapTypePropertyValue
+impl surgeist_css::CssScrollSnapTypePropertyValue
+pub fn surgeist_css::CssScrollSnapTypePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollSnapTypePropertyValue::current(&self) -> &surgeist_css::CssScrollSnapType
 pub struct surgeist_css::CssScrollbarWidthPropertyValue
 impl surgeist_css::CssScrollbarWidthPropertyValue
 pub fn surgeist_css::CssScrollbarWidthPropertyValue::as_css(&self) -> &str
@@ -6646,6 +6901,25 @@ pub const fn surgeist_css::CssSpecificationSource::url(self) -> core::option::Op
 pub struct surgeist_css::CssSpecificationSourceId(_)
 impl surgeist_css::CssSpecificationSourceId
 pub const fn surgeist_css::CssSpecificationSourceId::as_str(self) -> &'static str
+pub struct surgeist_css::CssSpecifiedLength
+impl surgeist_css::CssSpecifiedLength
+pub fn surgeist_css::CssSpecifiedLength::calculation(&self) -> core::option::Option<&surgeist_css::CssLengthCalculation>
+pub fn surgeist_css::CssSpecifiedLength::literal_component(&self) -> core::option::Option<&surgeist_css::CssComponentValue>
+pub fn surgeist_css::CssSpecifiedLength::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssSpecifiedLength::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSpecifiedLength::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSpecifiedLength::try_from_calculation(calculation: surgeist_css::CssLengthCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssSpecifiedLength::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssSpecifiedLength::zero() -> Self
+pub struct surgeist_css::CssSpecifiedNonNegativeLengthPercentage
+impl surgeist_css::CssSpecifiedNonNegativeLengthPercentage
+pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::calculation(&self) -> core::option::Option<&surgeist_css::CssLengthPercentageCalculation>
+pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::literal_component(&self) -> core::option::Option<&surgeist_css::CssComponentValue>
+pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(calculation: surgeist_css::CssLengthPercentageCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub struct surgeist_css::CssSpecifiedRatio
 impl surgeist_css::CssSpecifiedRatio
 pub const fn surgeist_css::CssSpecifiedRatio::denominator(&self) -> core::option::Option<&surgeist_css::CssRatioOperand>

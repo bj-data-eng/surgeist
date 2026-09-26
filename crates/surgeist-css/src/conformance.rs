@@ -831,6 +831,14 @@ profile_source!(
     "https://www.w3.org/TR/2021/CR-css-scrollbars-1-20211209/"
 );
 profile_source!(
+    R_SCROLLSNAP1,
+    "R-SCROLLSNAP1",
+    "CSS Scroll Snap",
+    "1",
+    CssSpecificationTier::Snapshot2026Reliable,
+    "https://www.w3.org/TR/2021/CR-css-scroll-snap-1-20210311/"
+);
+profile_source!(
     R_GRID1,
     "R-GRID1",
     "CSS Grid Layout",
@@ -1221,6 +1229,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     O_COUNTERSTYLES3,
     R_MEDIA4,
     R_SCROLLBARS1,
+    R_SCROLLSNAP1,
     R_GRID1,
     R_GRID2,
     R_CASCADE5,
@@ -2436,6 +2445,31 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         CssKnownProperty::Order => S_DISPLAY3,
         CssKnownProperty::AspectRatio => X_SIZING4_20260904,
         CssKnownProperty::ScrollbarWidth => R_SCROLLBARS1,
+        CssKnownProperty::ScrollSnapType
+        | CssKnownProperty::ScrollSnapAlign
+        | CssKnownProperty::ScrollSnapStop
+        | CssKnownProperty::ScrollPaddingTop
+        | CssKnownProperty::ScrollPaddingRight
+        | CssKnownProperty::ScrollPaddingBottom
+        | CssKnownProperty::ScrollPaddingLeft
+        | CssKnownProperty::ScrollPaddingBlockStart
+        | CssKnownProperty::ScrollPaddingBlockEnd
+        | CssKnownProperty::ScrollPaddingInlineStart
+        | CssKnownProperty::ScrollPaddingInlineEnd
+        | CssKnownProperty::ScrollPaddingBlock
+        | CssKnownProperty::ScrollPaddingInline
+        | CssKnownProperty::ScrollPadding
+        | CssKnownProperty::ScrollMarginTop
+        | CssKnownProperty::ScrollMarginRight
+        | CssKnownProperty::ScrollMarginBottom
+        | CssKnownProperty::ScrollMarginLeft
+        | CssKnownProperty::ScrollMarginBlockStart
+        | CssKnownProperty::ScrollMarginBlockEnd
+        | CssKnownProperty::ScrollMarginInlineStart
+        | CssKnownProperty::ScrollMarginInlineEnd
+        | CssKnownProperty::ScrollMarginBlock
+        | CssKnownProperty::ScrollMarginInline
+        | CssKnownProperty::ScrollMargin => R_SCROLLSNAP1,
         CssKnownProperty::PointerEvents | CssKnownProperty::UserSelect => X_UI4,
         CssKnownProperty::Transform
         | CssKnownProperty::TransformBox
@@ -2637,7 +2671,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 513] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 538] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -5318,6 +5352,131 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 513] = [
         "table-layout",
         "tables.html#propdef-table-layout",
         &[],
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollSnapType,
+        "scroll-snap-type",
+        "official.property.scroll-snap-type"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollSnapAlign,
+        "scroll-snap-align",
+        "official.property.scroll-snap-align"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollSnapStop,
+        "scroll-snap-stop",
+        "official.property.scroll-snap-stop"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollPaddingTop,
+        "scroll-padding-top",
+        "official.property.scroll-padding-top"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollPaddingRight,
+        "scroll-padding-right",
+        "official.property.scroll-padding-right"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollPaddingBottom,
+        "scroll-padding-bottom",
+        "official.property.scroll-padding-bottom"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollPaddingLeft,
+        "scroll-padding-left",
+        "official.property.scroll-padding-left"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollPaddingBlockStart,
+        "scroll-padding-block-start",
+        "official.property.scroll-padding-block-start"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollPaddingBlockEnd,
+        "scroll-padding-block-end",
+        "official.property.scroll-padding-block-end"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollPaddingInlineStart,
+        "scroll-padding-inline-start",
+        "official.property.scroll-padding-inline-start"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollPaddingInlineEnd,
+        "scroll-padding-inline-end",
+        "official.property.scroll-padding-inline-end"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollMarginTop,
+        "scroll-margin-top",
+        "official.property.scroll-margin-top"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollMarginRight,
+        "scroll-margin-right",
+        "official.property.scroll-margin-right"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollMarginBottom,
+        "scroll-margin-bottom",
+        "official.property.scroll-margin-bottom"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollMarginLeft,
+        "scroll-margin-left",
+        "official.property.scroll-margin-left"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollMarginBlockStart,
+        "scroll-margin-block-start",
+        "official.property.scroll-margin-block-start"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollMarginBlockEnd,
+        "scroll-margin-block-end",
+        "official.property.scroll-margin-block-end"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollMarginInlineStart,
+        "scroll-margin-inline-start",
+        "official.property.scroll-margin-inline-start"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollMarginInlineEnd,
+        "scroll-margin-inline-end",
+        "official.property.scroll-margin-inline-end"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollPaddingBlock,
+        "scroll-padding-block",
+        "official.property.scroll-padding-block"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollPaddingInline,
+        "scroll-padding-inline",
+        "official.property.scroll-padding-inline"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollMarginBlock,
+        "scroll-margin-block",
+        "official.property.scroll-margin-block"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollMarginInline,
+        "scroll-margin-inline",
+        "official.property.scroll-margin-inline"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollPadding,
+        "scroll-padding",
+        "official.property.scroll-padding"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollMargin,
+        "scroll-margin",
+        "official.property.scroll-margin"
     ),
     CssFeatureMetadata::complete_property(
         "official.property.widows",

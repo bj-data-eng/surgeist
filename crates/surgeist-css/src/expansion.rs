@@ -9,8 +9,10 @@
 use std::fmt;
 use std::sync::Arc;
 
+use crate::CssSpecifiedLength;
 use crate::parser::contains_substitution;
 use crate::properties::{CssKnownDeclaration, CssKnownDeclaredValueRef, CssKnownPropertyValueRef};
+use crate::scroll_snap::*;
 use crate::syntax::*;
 use crate::{
     CssBorderColors, CssComponentValues, CssContainer, CssContainerNames, CssContainerType,
@@ -27,6 +29,19 @@ pub enum CssExpansionErrorKind {
     ResidualSubstitution,
     /// Replacement components failed serialization or the original property grammar.
     InvalidReplacement(CssPropertyValueParseError),
+    /// The selected source leaves a complete intrinsic target/reset footprint unresolved.
+    UnresolvedStandard {
+        property: CssKnownProperty,
+        reason: CssUnresolvedStandard,
+    },
+}
+
+/// A source-defined authored grammar whose intrinsic expansion footprint is unsettled.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssUnresolvedStandard {
+    /// Logical 1 leaves physical/logical four-side shorthand reset membership open.
+    LogicalShorthandResetMembership,
 }
 
 /// A typed expansion capability or strict-reentry failure.
@@ -61,6 +76,11 @@ impl fmt::Display for CssExpansionError {
                 formatter.write_str("replacement still contains var() or env() substitution")
             }
             CssExpansionErrorKind::InvalidReplacement(error) => fmt::Display::fmt(error, formatter),
+            CssExpansionErrorKind::UnresolvedStandard { property, .. } => write!(
+                formatter,
+                "the selected standard leaves {} expansion membership unresolved",
+                property.canonical_name()
+            ),
         }
     }
 }
@@ -98,11 +118,11 @@ macro_rules! define_expansion_schema {
         $value:ty, $wrapper:ident, $representation:ident, $parser:ident, $dispatch:block
         $(, expansion = $kind:ident { $($metadata:tt)* })?;
     )*) => {
-        define_expansion_schema!(@collect [] [] [];
+        define_expansion_schema!(@collect [] [] [] [];
             $($( $variant, $kind { $($metadata)* }; )?)*
         );
     };
-    (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*];
+    (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($unresolved:tt)*];
         $variant:ident, longhand {
             wrapper: $wrapper_kind:ident, value: $value:ty,
             accessor: $accessor:ident, inherited: $inherited:literal, initial_kind: $initial_kind:ident, initial: $initial:expr
@@ -110,10 +130,10 @@ macro_rules! define_expansion_schema {
     ) => {
         define_expansion_schema!(@collect
             [$($longhands)* ($variant, $value, $accessor, $inherited, $initial_kind, $initial)]
-            [$($shorthands)*] [$($universal)*]; $($rest)*
+            [$($shorthands)*] [$($universal)*] [$($unresolved)*]; $($rest)*
         );
     };
-    (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*];
+    (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($unresolved:tt)*];
         $variant:ident, shorthand {
             wrapper: $wrapper_kind:ident, accessor: $accessor:ident,
             members: [$($member:ident => $projection:expr),+],
@@ -123,24 +143,34 @@ macro_rules! define_expansion_schema {
         define_expansion_schema!(@collect
             [$($longhands)*]
             [$($shorthands)* ($variant, $accessor, [$($member => $projection),+], [$($reset),*])]
-            [$($universal)*]; $($rest)*
+            [$($universal)*] [$($unresolved)*]; $($rest)*
         );
     };
-    (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*];
+    (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($unresolved:tt)*];
         $variant:ident, universal { exclude_custom: $exclude_custom:literal,
             excluded: [$($excluded:ident),+]
         }; $($rest:tt)*
     ) => {
         define_expansion_schema!(@collect
             [$($longhands)*] [$($shorthands)*]
-            [$($universal)* ($variant, $exclude_custom, [$($excluded),+])]; $($rest)*
+            [$($universal)* ($variant, $exclude_custom, [$($excluded),+])]
+            [$($unresolved)*]; $($rest)*
+        );
+    };
+    (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($unresolved:tt)*];
+        $variant:ident, unresolved { wrapper: $wrapper_kind:ident, reason: $reason:expr }; $($rest:tt)*
+    ) => {
+        define_expansion_schema!(@collect
+            [$($longhands)*] [$($shorthands)*] [$($universal)*]
+            [$($unresolved)* ($variant, $reason)]; $($rest)*
         );
     };
     (@collect
         [$(($longhand:ident, $value:ty, $accessor:ident, $inherited:literal, $initial_kind:ident, $initial:expr))*]
         [$(($shorthand:ident, $shorthand_accessor:ident,
             [$($member:ident => $projection:expr),+], [$($reset:ident),*]))*]
-        [($universal:ident, $exclude_custom:literal, [$($excluded:ident),+])];
+        [($universal:ident, $exclude_custom:literal, [$($excluded:ident),+])]
+        [$(($unresolved_property:ident, $unresolved_reason:expr))*];
     ) => {
         #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
         enum Longhand {
@@ -251,6 +281,12 @@ macro_rules! define_expansion_schema {
                     };
                     Ok(&METADATA)
                 },
+                $(CssKnownProperty::$unresolved_property => Err(
+                    CssPropertyMetadataError::UnresolvedStandard {
+                        grammar,
+                        reason: $unresolved_reason,
+                    }
+                ),)*
                 _ => Err(CssPropertyMetadataError::Unavailable(grammar)),
             }
         }
@@ -264,6 +300,12 @@ macro_rules! define_expansion_schema {
                 $(CssKnownProperty::$shorthand => {
                     Ok(ExpansionShape::Longhands(&[$(Longhand::$member,)+ $(Longhand::$reset,)*]))
                 })*
+                $(CssKnownProperty::$unresolved_property => Err(CssExpansionError::new(
+                    CssExpansionErrorKind::UnresolvedStandard {
+                        property,
+                        reason: $unresolved_reason,
+                    }
+                )),)*
                 _ => Err(CssExpansionError::new(CssExpansionErrorKind::UnsupportedProperty(property))),
             }
         }
@@ -541,12 +583,18 @@ pub fn expand_declaration(source: &CssDeclaration) -> Result<CssExpansion, CssEx
             )));
         }
     };
-    let shape = expansion_shape(known.property())?;
-    if known.substitution_dependent().is_some() {
+    let shape = expansion_shape(known.property());
+    if known.substitution_dependent().is_some()
+        && matches!(
+            shape.as_ref().map_err(CssExpansionError::kind),
+            Ok(_) | Err(CssExpansionErrorKind::UnresolvedStandard { .. })
+        )
+    {
         return Ok(CssExpansion::Pending(CssPendingSubstitution {
             source: source.clone(),
         }));
     }
+    let shape = shape?;
     complete_contributions(
         known,
         shape,
@@ -564,10 +612,16 @@ pub(crate) fn expansion_member_count(source: &CssDeclaration) -> Result<usize, C
     let Some(known) = source.known() else {
         return Ok(1);
     };
-    let shape = expansion_shape(known.property())?;
-    if known.substitution_dependent().is_some() {
+    let shape = expansion_shape(known.property());
+    if known.substitution_dependent().is_some()
+        && matches!(
+            shape.as_ref().map_err(CssExpansionError::kind),
+            Ok(_) | Err(CssExpansionErrorKind::UnresolvedStandard { .. })
+        )
+    {
         return Ok(1);
     }
+    let shape = shape?;
     Ok(match shape {
         ExpansionShape::Longhands(members) => members.len(),
         ExpansionShape::UniversalReset => 1,
@@ -737,11 +791,21 @@ impl OwnedContributionValue {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssPropertyMetadataError {
     Unavailable(crate::CssPropertyGrammar),
+    /// The grammar is supported but the shorthand's complete target set is unsettled.
+    UnresolvedStandard {
+        grammar: crate::CssPropertyGrammar,
+        reason: CssUnresolvedStandard,
+    },
 }
 impl fmt::Display for CssPropertyMetadataError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unavailable(g) => write!(f, "intrinsic metadata unavailable for {}", g.name()),
+            Self::UnresolvedStandard { grammar, .. } => write!(
+                f,
+                "the selected standard leaves {} shorthand membership unresolved",
+                grammar.name()
+            ),
         }
     }
 }

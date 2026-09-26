@@ -37,6 +37,7 @@ mod query_components;
 pub(crate) use queries::{construct_media_condition, construct_media_query};
 pub(crate) use supports::{construct_supports_condition, construct_supports_declaration};
 mod recovery;
+mod scroll_snap;
 mod selectors;
 mod supports;
 mod timing;
@@ -52,7 +53,10 @@ use cssparser::{
 
 use crate::{
     CssContainer, CssContainerNames, CssContainerType, CssFontPaletteDescriptorKind,
-    CssFontPaletteDescriptorValue, CssFontPaletteName,
+    CssFontPaletteDescriptorValue, CssFontPaletteName, CssScrollMarginPair,
+    CssScrollMarginShorthand, CssScrollPaddingPair, CssScrollPaddingShorthand,
+    CssScrollPaddingValue, CssScrollSnapAlign, CssScrollSnapStop, CssScrollSnapType,
+    CssSpecifiedLength,
 };
 use background::*;
 use box_model::*;
@@ -80,6 +84,7 @@ use recovery::{
     StructuralPreflightOutcome, StyleContextCaptures, preflight_specialized_eof_limit,
     preflight_structural_nesting, recovery_action_for_error,
 };
+use scroll_snap::*;
 use selectors::{
     SelectorRecovery, parse_rule_selector_list, parse_scope_boundary_selector_list,
     parse_scoped_style_selector_list,
@@ -370,14 +375,25 @@ macro_rules! define_property_dispatch {
                     Ok(CssKnownDeclaration::from_global(CssKnownProperty::All, keyword))
                 }
                 $(crate::CssKnownProperty::$variant => {
-                    let _authored_value_type = std::marker::PhantomData::<$value>;
-                    let _representation_type = stringify!($representation);
-                    let value = $dispatch;
-                    Ok(CssKnownDeclaration::from_value(
-                        CssKnownDeclarationValue::$variant(CssDeclaredValue::Value(
-                            $wrapper::new(authored, value),
-                        )),
-                    ))
+                    // Keep each property's parsed value and wrapper construction in its own
+                    // frame: one generated dispatch frame exhausts deep rule-parsing stacks.
+                    #[inline(never)]
+                    fn parse_variant<'i, 't>(
+                        authored: CssAuthoredDeclarationValue,
+                        $input: &mut Parser<'i, 't>,
+                        $numeric: &crate::numeric::NumericInputContext<'_>,
+                    ) -> std::result::Result<CssKnownDeclaration, ParseError<'i, Error>> {
+                        let _ = $numeric;
+                        let _authored_value_type = std::marker::PhantomData::<$value>;
+                        let _representation_type = stringify!($representation);
+                        let value = $dispatch;
+                        Ok(CssKnownDeclaration::from_value(
+                            CssKnownDeclarationValue::$variant(CssDeclaredValue::Value(
+                                $wrapper::new(authored, value),
+                            )),
+                        ))
+                    }
+                    parse_variant(authored, $input, $numeric)
                 },)*
             }
         }

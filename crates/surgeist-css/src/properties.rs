@@ -6,8 +6,9 @@
 
 use crate::box_values::{CssBorderColors, CssParsedBorderColors};
 use crate::display::*;
+use crate::scroll_snap::*;
 use crate::syntax::*;
-use crate::{CssContainer, CssContainerNames, CssContainerType};
+use crate::{CssContainer, CssContainerNames, CssContainerType, CssSpecifiedLength};
 
 macro_rules! property_schema {
     ($callback:ident, $input:ident, $numeric:ident) => {
@@ -30,6 +31,31 @@ macro_rules! property_schema {
             PageBreakInside, "page-break-inside", [], "official.property.page-break-inside", CssPageBreakInside, CssPageBreakInsidePropertyValue, CssPageBreakInsidePropertyValueRepresentation, parse_page_break_inside, { parse_page_break_inside($input)? };
             Quotes, "quotes", [], "official.property.quotes", CssQuotes, CssQuotesPropertyValue, CssQuotesPropertyValueRepresentation, parse_quotes, { parse_quotes($input)? };
             TableLayout, "table-layout", [], "official.property.table-layout", CssTableLayout, CssTableLayoutPropertyValue, CssTableLayoutPropertyValueRepresentation, parse_table_layout, { parse_table_layout($input)? }, expansion = longhand { wrapper: existing, value: CssTableLayout, accessor: layout, inherited: false, initial_kind: value, initial: CssTableLayout::Auto };
+            ScrollSnapType, "scroll-snap-type", [], "official.property.scroll-snap-type", CssScrollSnapType, CssScrollSnapTypePropertyValue, CssScrollSnapTypePropertyValueRepresentation, parse_scroll_snap_type, { parse_scroll_snap_type($input)? }, expansion = longhand { wrapper: additive, value: CssScrollSnapType, accessor: current, inherited: false, initial_kind: value, initial: CssScrollSnapType::None };
+            ScrollSnapAlign, "scroll-snap-align", [], "official.property.scroll-snap-align", CssScrollSnapAlign, CssScrollSnapAlignPropertyValue, CssScrollSnapAlignPropertyValueRepresentation, parse_scroll_snap_align, { parse_scroll_snap_align($input)? }, expansion = longhand { wrapper: additive, value: CssScrollSnapAlign, accessor: current, inherited: false, initial_kind: value, initial: CssScrollSnapAlign::new(CssScrollSnapAlignment::None, None) };
+            ScrollSnapStop, "scroll-snap-stop", [], "official.property.scroll-snap-stop", CssScrollSnapStop, CssScrollSnapStopPropertyValue, CssScrollSnapStopPropertyValueRepresentation, parse_scroll_snap_stop, { parse_scroll_snap_stop($input)? }, expansion = longhand { wrapper: additive, value: CssScrollSnapStop, accessor: current, inherited: false, initial_kind: value, initial: CssScrollSnapStop::Normal };
+            ScrollPaddingTop, "scroll-padding-top", [], "official.property.scroll-padding-top", CssScrollPaddingValue, CssScrollPaddingTopPropertyValue, CssScrollPaddingTopPropertyValueRepresentation, parse_scroll_padding_value, { parse_scroll_padding_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssScrollPaddingValue, accessor: current, inherited: false, initial_kind: value, initial: CssScrollPaddingValue::Auto };
+            ScrollPaddingRight, "scroll-padding-right", [], "official.property.scroll-padding-right", CssScrollPaddingValue, CssScrollPaddingRightPropertyValue, CssScrollPaddingRightPropertyValueRepresentation, parse_scroll_padding_value, { parse_scroll_padding_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssScrollPaddingValue, accessor: current, inherited: false, initial_kind: value, initial: CssScrollPaddingValue::Auto };
+            ScrollPaddingBottom, "scroll-padding-bottom", [], "official.property.scroll-padding-bottom", CssScrollPaddingValue, CssScrollPaddingBottomPropertyValue, CssScrollPaddingBottomPropertyValueRepresentation, parse_scroll_padding_value, { parse_scroll_padding_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssScrollPaddingValue, accessor: current, inherited: false, initial_kind: value, initial: CssScrollPaddingValue::Auto };
+            ScrollPaddingLeft, "scroll-padding-left", [], "official.property.scroll-padding-left", CssScrollPaddingValue, CssScrollPaddingLeftPropertyValue, CssScrollPaddingLeftPropertyValueRepresentation, parse_scroll_padding_value, { parse_scroll_padding_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssScrollPaddingValue, accessor: current, inherited: false, initial_kind: value, initial: CssScrollPaddingValue::Auto };
+            ScrollPaddingBlockStart, "scroll-padding-block-start", [], "official.property.scroll-padding-block-start", CssScrollPaddingValue, CssScrollPaddingBlockStartPropertyValue, CssScrollPaddingBlockStartPropertyValueRepresentation, parse_scroll_padding_value, { parse_scroll_padding_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssScrollPaddingValue, accessor: current, inherited: false, initial_kind: value, initial: CssScrollPaddingValue::Auto };
+            ScrollPaddingBlockEnd, "scroll-padding-block-end", [], "official.property.scroll-padding-block-end", CssScrollPaddingValue, CssScrollPaddingBlockEndPropertyValue, CssScrollPaddingBlockEndPropertyValueRepresentation, parse_scroll_padding_value, { parse_scroll_padding_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssScrollPaddingValue, accessor: current, inherited: false, initial_kind: value, initial: CssScrollPaddingValue::Auto };
+            ScrollPaddingInlineStart, "scroll-padding-inline-start", [], "official.property.scroll-padding-inline-start", CssScrollPaddingValue, CssScrollPaddingInlineStartPropertyValue, CssScrollPaddingInlineStartPropertyValueRepresentation, parse_scroll_padding_value, { parse_scroll_padding_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssScrollPaddingValue, accessor: current, inherited: false, initial_kind: value, initial: CssScrollPaddingValue::Auto };
+            ScrollPaddingInlineEnd, "scroll-padding-inline-end", [], "official.property.scroll-padding-inline-end", CssScrollPaddingValue, CssScrollPaddingInlineEndPropertyValue, CssScrollPaddingInlineEndPropertyValueRepresentation, parse_scroll_padding_value, { parse_scroll_padding_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssScrollPaddingValue, accessor: current, inherited: false, initial_kind: value, initial: CssScrollPaddingValue::Auto };
+            ScrollMarginTop, "scroll-margin-top", [], "official.property.scroll-margin-top", CssSpecifiedLength, CssScrollMarginTopPropertyValue, CssScrollMarginTopPropertyValueRepresentation, parse_scroll_margin_length, { parse_scroll_margin_length($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssSpecifiedLength, accessor: current, inherited: false, initial_kind: value, initial: CssSpecifiedLength::zero() };
+            ScrollMarginRight, "scroll-margin-right", [], "official.property.scroll-margin-right", CssSpecifiedLength, CssScrollMarginRightPropertyValue, CssScrollMarginRightPropertyValueRepresentation, parse_scroll_margin_length, { parse_scroll_margin_length($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssSpecifiedLength, accessor: current, inherited: false, initial_kind: value, initial: CssSpecifiedLength::zero() };
+            ScrollMarginBottom, "scroll-margin-bottom", [], "official.property.scroll-margin-bottom", CssSpecifiedLength, CssScrollMarginBottomPropertyValue, CssScrollMarginBottomPropertyValueRepresentation, parse_scroll_margin_length, { parse_scroll_margin_length($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssSpecifiedLength, accessor: current, inherited: false, initial_kind: value, initial: CssSpecifiedLength::zero() };
+            ScrollMarginLeft, "scroll-margin-left", [], "official.property.scroll-margin-left", CssSpecifiedLength, CssScrollMarginLeftPropertyValue, CssScrollMarginLeftPropertyValueRepresentation, parse_scroll_margin_length, { parse_scroll_margin_length($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssSpecifiedLength, accessor: current, inherited: false, initial_kind: value, initial: CssSpecifiedLength::zero() };
+            ScrollMarginBlockStart, "scroll-margin-block-start", [], "official.property.scroll-margin-block-start", CssSpecifiedLength, CssScrollMarginBlockStartPropertyValue, CssScrollMarginBlockStartPropertyValueRepresentation, parse_scroll_margin_length, { parse_scroll_margin_length($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssSpecifiedLength, accessor: current, inherited: false, initial_kind: value, initial: CssSpecifiedLength::zero() };
+            ScrollMarginBlockEnd, "scroll-margin-block-end", [], "official.property.scroll-margin-block-end", CssSpecifiedLength, CssScrollMarginBlockEndPropertyValue, CssScrollMarginBlockEndPropertyValueRepresentation, parse_scroll_margin_length, { parse_scroll_margin_length($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssSpecifiedLength, accessor: current, inherited: false, initial_kind: value, initial: CssSpecifiedLength::zero() };
+            ScrollMarginInlineStart, "scroll-margin-inline-start", [], "official.property.scroll-margin-inline-start", CssSpecifiedLength, CssScrollMarginInlineStartPropertyValue, CssScrollMarginInlineStartPropertyValueRepresentation, parse_scroll_margin_length, { parse_scroll_margin_length($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssSpecifiedLength, accessor: current, inherited: false, initial_kind: value, initial: CssSpecifiedLength::zero() };
+            ScrollMarginInlineEnd, "scroll-margin-inline-end", [], "official.property.scroll-margin-inline-end", CssSpecifiedLength, CssScrollMarginInlineEndPropertyValue, CssScrollMarginInlineEndPropertyValueRepresentation, parse_scroll_margin_length, { parse_scroll_margin_length($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssSpecifiedLength, accessor: current, inherited: false, initial_kind: value, initial: CssSpecifiedLength::zero() };
+            ScrollPaddingBlock, "scroll-padding-block", [], "official.property.scroll-padding-block", CssScrollPaddingPair, CssScrollPaddingBlockPropertyValue, CssScrollPaddingBlockPropertyValueRepresentation, parse_scroll_padding_pair, { parse_scroll_padding_pair($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: current, members: [ ScrollPaddingBlockStart => |value: &CssScrollPaddingPair| Some(value.start().clone()), ScrollPaddingBlockEnd => |value: &CssScrollPaddingPair| Some(value.end().clone()) ], reset_only: [] };
+            ScrollPaddingInline, "scroll-padding-inline", [], "official.property.scroll-padding-inline", CssScrollPaddingPair, CssScrollPaddingInlinePropertyValue, CssScrollPaddingInlinePropertyValueRepresentation, parse_scroll_padding_pair, { parse_scroll_padding_pair($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: current, members: [ ScrollPaddingInlineStart => |value: &CssScrollPaddingPair| Some(value.start().clone()), ScrollPaddingInlineEnd => |value: &CssScrollPaddingPair| Some(value.end().clone()) ], reset_only: [] };
+            ScrollMarginBlock, "scroll-margin-block", [], "official.property.scroll-margin-block", CssScrollMarginPair, CssScrollMarginBlockPropertyValue, CssScrollMarginBlockPropertyValueRepresentation, parse_scroll_margin_pair, { parse_scroll_margin_pair($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: current, members: [ ScrollMarginBlockStart => |value: &CssScrollMarginPair| Some(value.start().clone()), ScrollMarginBlockEnd => |value: &CssScrollMarginPair| Some(value.end().clone()) ], reset_only: [] };
+            ScrollMarginInline, "scroll-margin-inline", [], "official.property.scroll-margin-inline", CssScrollMarginPair, CssScrollMarginInlinePropertyValue, CssScrollMarginInlinePropertyValueRepresentation, parse_scroll_margin_pair, { parse_scroll_margin_pair($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: current, members: [ ScrollMarginInlineStart => |value: &CssScrollMarginPair| Some(value.start().clone()), ScrollMarginInlineEnd => |value: &CssScrollMarginPair| Some(value.end().clone()) ], reset_only: [] };
+            ScrollPadding, "scroll-padding", [], "official.property.scroll-padding", CssScrollPaddingShorthand, CssScrollPaddingPropertyValue, CssScrollPaddingPropertyValueRepresentation, parse_scroll_padding_shorthand, { parse_scroll_padding_shorthand($input, $numeric)? }, expansion = unresolved { wrapper: additive, reason: CssUnresolvedStandard::LogicalShorthandResetMembership };
+            ScrollMargin, "scroll-margin", [], "official.property.scroll-margin", CssScrollMarginShorthand, CssScrollMarginPropertyValue, CssScrollMarginPropertyValueRepresentation, parse_scroll_margin_shorthand, { parse_scroll_margin_shorthand($input, $numeric)? }, expansion = unresolved { wrapper: additive, reason: CssUnresolvedStandard::LogicalShorthandResetMembership };
             Widows, "widows", [], "official.property.widows", CssPageLineMinimum, CssWidowsPropertyValue, CssWidowsPropertyValueRepresentation, parse_page_line_minimum, { parse_page_line_minimum($input, $numeric, "widows")? };
             WordSpacing, "word-spacing", [], "official.property.word-spacing", CssWordSpacing, CssWordSpacingPropertyValue, CssWordSpacingPropertyValueRepresentation, parse_word_spacing, { parse_word_spacing($input, $numeric)? };
             Position, "position", [], "baseline.property.position", CssLayoutPosition, CssPositionPropertyValue, CssPositionPropertyValueRepresentation, parse_position, { parse_position($input)? };
@@ -2655,6 +2681,45 @@ macro_rules! define_expansion_current_accessor {
     ($wrapper:ident, $representation:ident, $value:ty $(, $kind:ident { $($metadata:tt)* })?) => {};
 }
 
+// The schema annotation selects a current-only wrapper for newly authored
+// families without maintaining a second list of their property names.
+macro_rules! define_property_value_from_schema {
+    ($variant:ident, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
+        longhand { wrapper: additive, $($metadata:tt)* }) => {
+        define_additive_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            $value,
+            current
+        );
+    };
+    ($variant:ident, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
+        shorthand { wrapper: additive, $($metadata:tt)* }) => {
+        define_additive_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            $value,
+            current
+        );
+    };
+    ($variant:ident, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
+        unresolved { wrapper: additive, $($metadata:tt)* }) => {
+        define_additive_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            $value,
+            current
+        );
+    };
+    ($variant:ident, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident
+        $(, $kind:ident { $($metadata:tt)* })?) => {
+        define_property_value!($variant, $canonical, $value, $wrapper, $representation);
+    };
+}
+
 macro_rules! define_property_identity {
     ($input:ident, $numeric:ident;
         All, $all_canonical:literal, [$($all_alias:literal),*], $all_stable_id:literal,
@@ -2757,8 +2822,9 @@ macro_rules! define_property_identity {
         }
 
         $(
-            define_property_value!(
+            define_property_value_from_schema!(
                 $variant, $canonical, $value, $wrapper, $representation
+                $(, $expansion { $($metadata)* })?
             );
             define_expansion_current_accessor!(
                 $wrapper, $representation, $value

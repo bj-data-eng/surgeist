@@ -492,6 +492,28 @@ adds `inline-start | inline-end` only with `left | right` support, which this pr
 selected. Caption positioning relative to writing mode remains for downstream
 style and layout interpretation; CSS retains the authored `top | bottom` value.
 
+The selected [Scroll Snap 1 publication](https://www.w3.org/TR/2021/CR-css-scroll-snap-1-20210311/)
+defines 25 authored properties: `scroll-snap-type`, `scroll-snap-align`,
+`scroll-snap-stop`, and the physical, flow-relative, axis-pair and four-side
+`scroll-padding`/`scroll-margin` families. Values retain exact signed length
+or nonnegative length-percentage literals and typed math without narrowing to
+`f32`. Padding additionally retains `auto`. Pair and four-side models retain
+the authored component count; bounded specified serialization emits the shortest
+equivalent component sequence, including a retained `logical` marker. The
+[selected Logical 1 §4.7 draft](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#logical-shorthand-keyword)
+defines that marker and its block-start, inline-start, block-end, inline-end
+ordering. These authored values remain symbolic until style and layout have
+writing-mode and scroll-container context.
+
+The 19 terminal properties and four block/inline axis shorthands have intrinsic
+metadata and completed longhand contributions. The two four-side shorthands
+accept their full authored grammar, including CSS-wide keywords and pending
+substitution, but their complete physical/logical reset membership is unsettled
+in the selected Logical 1 text. Their metadata and completed expansion return a
+typed `UnresolvedStandard` reason; strict substitution reentry checks the
+replacement grammar first. Support metadata reports complete authored grammar
+for all 25 names and does not imply completed shorthand expansion for those two.
+
 Opacity is a non-inherited longhand with numeric initial value `1`. Its ordinary
 contribution retains the exact `CssOpacityValue`, including percentages,
 calculations and out-of-range specified values. Computed clamping belongs to
