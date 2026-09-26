@@ -14,6 +14,10 @@ use crate::error::{
 };
 use crate::properties::{CssKnownProperty, CssKnownPropertyValueRef};
 use crate::syntax::*;
+use crate::{
+    CssBoxSideKind, CssComponentValueRef, CssMarginValue, CssSpecifiedLengthPercentage,
+    CssValueTokenRef,
+};
 
 pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] =
     &[CssFeatureId::new("official.selector.page-pseudo")];
@@ -234,37 +238,48 @@ fn is_css2_page_margin_value(parsed: &ParsedDeclaration) -> bool {
         return false;
     };
     match known.property_value() {
-        Some(CssKnownPropertyValueRef::Margin(value)) => value.i01_subset().is_some_and(|edges| {
-            [&edges.top, &edges.right, &edges.bottom, &edges.left]
-                .into_iter()
-                .all(is_css2_page_length)
-        }),
-        Some(CssKnownPropertyValueRef::MarginTop(value)) => {
-            value.i01_subset().is_some_and(is_css2_page_length)
+        Some(CssKnownPropertyValueRef::Margin(value)) => {
+            value.current().kind() == CssBoxSideKind::Physical
+                && value
+                    .current()
+                    .assigned_values()
+                    .into_iter()
+                    .all(is_css2_page_margin)
         }
-        Some(CssKnownPropertyValueRef::MarginRight(value)) => {
-            value.i01_subset().is_some_and(is_css2_page_length)
-        }
-        Some(CssKnownPropertyValueRef::MarginBottom(value)) => {
-            value.i01_subset().is_some_and(is_css2_page_length)
-        }
-        Some(CssKnownPropertyValueRef::MarginLeft(value)) => {
-            value.i01_subset().is_some_and(is_css2_page_length)
-        }
+        Some(CssKnownPropertyValueRef::MarginTop(value)) => is_css2_page_margin(value.current()),
+        Some(CssKnownPropertyValueRef::MarginRight(value)) => is_css2_page_margin(value.current()),
+        Some(CssKnownPropertyValueRef::MarginBottom(value)) => is_css2_page_margin(value.current()),
+        Some(CssKnownPropertyValueRef::MarginLeft(value)) => is_css2_page_margin(value.current()),
         _ => false,
     }
 }
 
-const fn is_css2_page_length(value: &CssLength) -> bool {
+fn is_css2_page_margin(value: &CssMarginValue) -> bool {
     match value {
-        CssLength::Px(_) | CssLength::Percent(_) | CssLength::Zero | CssLength::Auto => true,
-        CssLength::Dimension(value) => matches!(
-            value.unit(),
-            CssLengthUnit::Cm
-                | CssLengthUnit::Mm
-                | CssLengthUnit::In
-                | CssLengthUnit::Pc
-                | CssLengthUnit::Pt
+        CssMarginValue::Auto => true,
+        CssMarginValue::LengthPercentage(value) => is_css2_page_length_percentage(value),
+    }
+}
+
+fn is_css2_page_length_percentage(value: &CssSpecifiedLengthPercentage) -> bool {
+    let Some(component) = value.literal_component() else {
+        return false;
+    };
+    match component.view() {
+        CssComponentValueRef::Token(CssValueTokenRef::Number(number)) => {
+            crate::opacity_scalar::LexicalDecimal::new(number.representation()).len == 0
+        }
+        CssComponentValueRef::Token(CssValueTokenRef::Percentage(_)) => true,
+        CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit, .. }) => matches!(
+            CssLengthUnit::from_css_unit(unit),
+            Some(
+                CssLengthUnit::Px
+                    | CssLengthUnit::Cm
+                    | CssLengthUnit::Mm
+                    | CssLengthUnit::In
+                    | CssLengthUnit::Pc
+                    | CssLengthUnit::Pt
+            )
         ),
         _ => false,
     }

@@ -22,8 +22,9 @@ use surgeist_css::{
     CssGlobalKeyword, CssImageValue, CssImportance, CssKnownProperty as Property,
     CssKnownPropertyValueRef, CssLength, CssLonghandContribution, CssLonghandContributions,
     CssLonghandValueRef, CssPendingSubstitution, CssPredefinedColorSpace, CssPropertyNameRef,
-    CssPropertyValueErrorKind, CssSerializedOrigin, CssTextAlign, CssValueOrigin,
-    expand_declaration, parse_component_values, parse_property_value, parse_style_attribute,
+    CssPropertyValueErrorKind, CssSerializedOrigin, CssTextAlign, CssUnresolvedStandard,
+    CssValueOrigin, expand_declaration, parse_component_values, parse_property_value,
+    parse_style_attribute,
 };
 
 const MARGINS: [Property; 4] = [
@@ -38,6 +39,8 @@ const PADDINGS: [Property; 4] = [
     Property::PaddingBottom,
     Property::PaddingLeft,
 ];
+const MARGIN_BLOCK: [Property; 2] = [Property::MarginBlockStart, Property::MarginBlockEnd];
+const PADDING_BLOCK: [Property; 2] = [Property::PaddingBlockStart, Property::PaddingBlockEnd];
 const WIDTHS: [Property; 4] = [
     Property::BorderTopWidth,
     Property::BorderRightWidth,
@@ -122,38 +125,6 @@ fn assert_members(values: &CssLonghandContributions, expected: &[Property]) {
 fn length(item: &CssLonghandContribution) -> &CssLength {
     match (item.property(), item.value()) {
         (
-            Property::MarginTop,
-            CssContributionValueRef::Ordinary(CssLonghandValueRef::MarginTop(value)),
-        )
-        | (
-            Property::MarginRight,
-            CssContributionValueRef::Ordinary(CssLonghandValueRef::MarginRight(value)),
-        )
-        | (
-            Property::MarginBottom,
-            CssContributionValueRef::Ordinary(CssLonghandValueRef::MarginBottom(value)),
-        )
-        | (
-            Property::MarginLeft,
-            CssContributionValueRef::Ordinary(CssLonghandValueRef::MarginLeft(value)),
-        )
-        | (
-            Property::PaddingTop,
-            CssContributionValueRef::Ordinary(CssLonghandValueRef::PaddingTop(value)),
-        )
-        | (
-            Property::PaddingRight,
-            CssContributionValueRef::Ordinary(CssLonghandValueRef::PaddingRight(value)),
-        )
-        | (
-            Property::PaddingBottom,
-            CssContributionValueRef::Ordinary(CssLonghandValueRef::PaddingBottom(value)),
-        )
-        | (
-            Property::PaddingLeft,
-            CssContributionValueRef::Ordinary(CssLonghandValueRef::PaddingLeft(value)),
-        )
-        | (
             Property::BorderTopWidth,
             CssContributionValueRef::Ordinary(CssLonghandValueRef::BorderTopWidth(value)),
         )
@@ -170,6 +141,27 @@ fn length(item: &CssLonghandContribution) -> &CssLength {
             CssContributionValueRef::Ordinary(CssLonghandValueRef::BorderLeftWidth(value)),
         ) => value,
         other => panic!("expected coupled length contribution: {other:?}"),
+    }
+}
+
+fn spacing(item: &CssLonghandContribution) -> String {
+    match item.value() {
+        CssContributionValueRef::Ordinary(value) => match value {
+            CssLonghandValueRef::MarginTop(value)
+            | CssLonghandValueRef::MarginRight(value)
+            | CssLonghandValueRef::MarginBottom(value)
+            | CssLonghandValueRef::MarginLeft(value)
+            | CssLonghandValueRef::MarginBlockStart(value)
+            | CssLonghandValueRef::MarginBlockEnd(value) => value.serialize_specified().unwrap(),
+            CssLonghandValueRef::PaddingTop(value)
+            | CssLonghandValueRef::PaddingRight(value)
+            | CssLonghandValueRef::PaddingBottom(value)
+            | CssLonghandValueRef::PaddingLeft(value)
+            | CssLonghandValueRef::PaddingBlockStart(value)
+            | CssLonghandValueRef::PaddingBlockEnd(value) => value.serialize_specified().unwrap(),
+            other => panic!("expected spacing value: {other:?}"),
+        },
+        other => panic!("expected ordinary spacing value: {other:?}"),
     }
 }
 
@@ -278,25 +270,60 @@ fn assert_image_initials(values: &CssLonghandContributions) {
 }
 
 fn four_sided_length_shorthands() {
-    for (property, sides) in [
-        (Property::Margin, MARGINS),
-        (Property::Padding, PADDINGS),
-        (Property::BorderWidth, WIDTHS),
-    ] {
+    for (property, sides) in [(Property::Margin, MARGINS), (Property::Padding, PADDINGS)] {
         for (css, expected) in [
-            ("1px", [1.0, 1.0, 1.0, 1.0]),
-            ("1px 2px", [1.0, 2.0, 1.0, 2.0]),
-            ("1px 2px 3px", [1.0, 2.0, 3.0, 2.0]),
-            ("1px 2px 3px 4px", [1.0, 2.0, 3.0, 4.0]),
+            ("1px", ["1px", "1px", "1px", "1px"]),
+            ("1px 2px", ["1px", "2px", "1px", "2px"]),
+            ("1px 2px 3px", ["1px", "2px", "3px", "2px"]),
+            ("1px 2px 3px 4px", ["1px", "2px", "3px", "4px"]),
         ] {
-            let values = expanded(&declaration(property, css, CssImportance::Normal));
-            assert_members(&values, &sides);
-            for (side, expected) in sides.into_iter().zip(expected) {
-                assert_eq!(
-                    length(member(&values, side)),
-                    &CssLength::try_px(expected).unwrap()
-                );
-            }
+            let source = declaration(property, css, CssImportance::Normal);
+            let current = source.known().unwrap().property_value().unwrap();
+            let assigned = match current {
+                CssKnownPropertyValueRef::Margin(value) => {
+                    assert_eq!(value.as_css(), css);
+                    value
+                        .current()
+                        .assigned_values()
+                        .map(|side| side.serialize_specified().unwrap())
+                }
+                CssKnownPropertyValueRef::Padding(value) => {
+                    assert_eq!(value.as_css(), css);
+                    value
+                        .current()
+                        .assigned_values()
+                        .map(|side| side.serialize_specified().unwrap())
+                }
+                other => panic!("expected checked box spacing: {other:?}"),
+            };
+            assert_eq!(assigned, expected);
+            assert_eq!(sides.len(), assigned.len());
+            assert_eq!(
+                expand_declaration(&source).unwrap_err().kind(),
+                &CssExpansionErrorKind::UnresolvedStandard {
+                    property,
+                    reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
+                }
+            );
+        }
+    }
+    for (css, expected) in [
+        ("1px", [1.0, 1.0, 1.0, 1.0]),
+        ("1px 2px", [1.0, 2.0, 1.0, 2.0]),
+        ("1px 2px 3px", [1.0, 2.0, 3.0, 2.0]),
+        ("1px 2px 3px 4px", [1.0, 2.0, 3.0, 4.0]),
+    ] {
+        let values = expanded(&declaration(
+            Property::BorderWidth,
+            css,
+            CssImportance::Normal,
+        ));
+        assert_members(&values, &WIDTHS);
+        for (side, expected) in WIDTHS.into_iter().zip(expected) {
+            assert_eq!(
+                length(member(&values, side)),
+                &CssLength::try_px(expected).unwrap()
+            );
         }
     }
     let source = declaration(Property::Margin, "auto 10% -3px", CssImportance::Normal);
@@ -305,24 +332,21 @@ fn four_sided_length_shorthands() {
         panic!("authored margin");
     };
     assert_eq!(
-        authored.current().left,
-        CssLength::try_percent(10.0).unwrap()
+        authored
+            .current()
+            .assigned_values()
+            .map(|side| side.serialize_specified().unwrap()),
+        ["auto", "10%", "-3px", "10%"]
     );
     assert_eq!(authored.as_css(), "auto 10% -3px");
-    let values = expanded(&source);
     assert_eq!(
-        length(member(&values, Property::MarginTop)),
-        &CssLength::Auto
+        expand_declaration(&source).unwrap_err().kind(),
+        &CssExpansionErrorKind::UnresolvedStandard {
+            property: Property::Margin,
+            reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
+        }
     );
-    assert_eq!(
-        length(member(&values, Property::MarginLeft)),
-        &CssLength::try_percent(10.0).unwrap()
-    );
-    assert_eq!(
-        length(member(&values, Property::MarginBottom)),
-        &CssLength::try_px(-3.0).unwrap()
-    );
-    println!("four-sided lengths: ok");
+    println!("four-sided authored values and reset boundary: ok");
 }
 
 fn four_sided_styles_and_current_colors() {
@@ -496,7 +520,12 @@ fn full_border_resets_all_five_image_values() {
 }
 
 fn ordinary_longhands_retain_typed_values() {
-    for property in MARGINS.into_iter().chain(PADDINGS).chain(WIDTHS) {
+    for property in MARGINS.into_iter().chain(PADDINGS) {
+        let values = expanded(&declaration(property, "7px", CssImportance::Normal));
+        assert_members(&values, &[property]);
+        assert_eq!(spacing(member(&values, property)), "7px");
+    }
+    for property in WIDTHS {
         let values = expanded(&declaration(property, "7px", CssImportance::Normal));
         assert_members(&values, &[property]);
         assert_eq!(
@@ -600,8 +629,8 @@ fn globals_include_reset_only_members_and_all_stays_symbolic() {
         ("revert-layer", CssGlobalKeyword::RevertLayer),
     ] {
         for (property, expected) in [
-            (Property::Margin, MARGINS.to_vec()),
-            (Property::Padding, PADDINGS.to_vec()),
+            (Property::MarginBlock, MARGIN_BLOCK.to_vec()),
+            (Property::PaddingBlock, PADDING_BLOCK.to_vec()),
             (Property::BorderWidth, WIDTHS.to_vec()),
             (Property::BorderStyle, STYLES.to_vec()),
             (Property::BorderColor, COLORS.to_vec()),
@@ -656,7 +685,7 @@ fn globals_include_reset_only_members_and_all_stays_symbolic() {
 }
 
 fn contribution_sources_preserve_occurrence_and_importance() {
-    let css = "/*😀*/ margin: 1px 2px !important";
+    let css = "/*😀*/ margin-block: 1px 2px !important";
     let report = parse_style_attribute(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let source = report.syntax()[0].clone();
@@ -680,8 +709,16 @@ fn contribution_sources_preserve_occurrence_and_importance() {
                 .same_snapshot(source.parsed_value().unwrap().source())
         );
     }
-    let first = declaration(Property::Margin, "var(--gap)", CssImportance::Important);
-    let separate = declaration(Property::Margin, "var(--gap)", CssImportance::Important);
+    let first = declaration(
+        Property::MarginBlock,
+        "var(--gap)",
+        CssImportance::Important,
+    );
+    let separate = declaration(
+        Property::MarginBlock,
+        "var(--gap)",
+        CssImportance::Important,
+    );
     assert_eq!(first, separate);
     assert!(!first.same_occurrence(&separate));
     let first_pending = pending_expansion(&first);
@@ -706,7 +743,7 @@ fn contribution_sources_preserve_occurrence_and_importance() {
 }
 
 fn pending_reentry_preserves_original_and_replacement_provenance() {
-    let source_text = "margin: var(--gap) !important";
+    let source_text = "margin-block: var(--gap) !important";
     let report = parse_style_attribute(source_text);
     assert!(report.is_clean());
     let source = &report.syntax()[0];
@@ -723,19 +760,9 @@ fn pending_reentry_preserves_original_and_replacement_provenance() {
     let CssContributions::Longhands(values) = completed else {
         panic!("completed margin members");
     };
-    assert_members(&values, &MARGINS);
-    for property in [Property::MarginTop, Property::MarginBottom] {
-        assert_eq!(
-            length(member(&values, property)),
-            &CssLength::try_px(7.0).unwrap()
-        );
-    }
-    for property in [Property::MarginRight, Property::MarginLeft] {
-        assert_eq!(
-            length(member(&values, property)),
-            &CssLength::try_percent(11.0).unwrap()
-        );
-    }
+    assert_members(&values, &MARGIN_BLOCK);
+    assert_eq!(spacing(member(&values, Property::MarginBlockStart)), "7px");
+    assert_eq!(spacing(member(&values, Property::MarginBlockEnd)), "11%");
     for item in values.items() {
         assert!(item.source().same_occurrence(source));
         assert!(
@@ -799,7 +826,7 @@ fn pending_reentry_preserves_original_and_replacement_provenance() {
 }
 
 fn strict_reentry_rejects_atomically_and_preserves_out_of_slice_identity() {
-    let source = declaration(Property::Padding, "var(--gap)", CssImportance::Normal);
+    let source = declaration(Property::PaddingBlock, "var(--gap)", CssImportance::Normal);
     let pending = pending_expansion(&source);
     for css in [
         "var(--still-pending)",
@@ -820,24 +847,21 @@ fn strict_reentry_rejects_atomically_and_preserves_out_of_slice_identity() {
         let CssContributions::Longhands(values) = completed else {
             panic!("complete valid retry after residual substitution");
         };
-        assert_members(&values, &PADDINGS);
-        for property in PADDINGS {
-            assert_eq!(
-                length(member(&values, property)),
-                &CssLength::try_px(3.0).unwrap()
-            );
+        assert_members(&values, &PADDING_BLOCK);
+        for property in PADDING_BLOCK {
+            assert_eq!(spacing(member(&values, property)), "3px");
         }
     }
     for (css, responsible) in [
         ("-1px", Some("-1px")),
         ("1px blue", Some("blue")),
-        ("1px 2px 3px 4px 5px", None),
+        ("1px 2px 3px", None),
         ("1px;color:red", Some(";")),
         ("1px!important", Some("!")),
     ] {
         let replacement = parse_component_values(css).unwrap();
         let expected_error = parse_property_value(
-            CssPropertyNameRef::Known(Property::Padding),
+            CssPropertyNameRef::Known(Property::PaddingBlock),
             replacement.clone(),
             CssImportance::Normal,
         )
@@ -872,12 +896,9 @@ fn strict_reentry_rejects_atomically_and_preserves_out_of_slice_identity() {
         let CssContributions::Longhands(values) = completed else {
             panic!("complete valid retry");
         };
-        assert_members(&values, &PADDINGS);
-        for property in PADDINGS {
-            assert_eq!(
-                length(member(&values, property)),
-                &CssLength::try_px(3.0).unwrap()
-            );
+        assert_members(&values, &PADDING_BLOCK);
+        for property in PADDING_BLOCK {
+            assert_eq!(spacing(member(&values, property)), "3px");
         }
     }
     let source = declaration(Property::TextAlign, "start", CssImportance::Normal);

@@ -975,6 +975,14 @@ profile_source!(
     "https://www.w3.org/TR/2026/WD-css-sizing-3-20260904/"
 );
 profile_source!(
+    I_LOGICAL1_20251204,
+    "I-LOGICAL1-20251204",
+    "CSS Logical Properties and Values",
+    "1",
+    CssSpecificationTier::Snapshot2026Interop,
+    "https://www.w3.org/TR/2025/WD-css-logical-1-20251204/"
+);
+profile_source!(
     I_TRANSFORMS2,
     "I-TRANSFORMS2",
     "CSS Transforms",
@@ -1247,6 +1255,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     I_FILTER1,
     I_SIZING3,
     I_SIZING3_20260904,
+    I_LOGICAL1_20251204,
     I_TRANSFORMS2,
     I_LISTS3,
     I_POSITION3,
@@ -2354,6 +2363,18 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::PaddingRight
         | CssKnownProperty::PaddingBottom
         | CssKnownProperty::PaddingLeft => O_BOX3,
+        CssKnownProperty::MarginBlockStart
+        | CssKnownProperty::MarginBlockEnd
+        | CssKnownProperty::MarginInlineStart
+        | CssKnownProperty::MarginInlineEnd
+        | CssKnownProperty::MarginBlock
+        | CssKnownProperty::MarginInline
+        | CssKnownProperty::PaddingBlockStart
+        | CssKnownProperty::PaddingBlockEnd
+        | CssKnownProperty::PaddingInlineStart
+        | CssKnownProperty::PaddingInlineEnd
+        | CssKnownProperty::PaddingBlock
+        | CssKnownProperty::PaddingInline => I_LOGICAL1_20251204,
         CssKnownProperty::Color | CssKnownProperty::Opacity => O_COLOR4,
         CssKnownProperty::Border
         | CssKnownProperty::BorderTop
@@ -2670,7 +2691,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 544] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 556] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4778,55 +4799,115 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 544] = [
         "box-decoration-break",
         "baseline.property.box-decoration-break"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::Margin,
         "margin",
         "baseline.property.margin"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::MarginTop,
         "margin-top",
         "baseline.property.margin-top"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::MarginRight,
         "margin-right",
         "baseline.property.margin-right"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::MarginBottom,
         "margin-bottom",
         "baseline.property.margin-bottom"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::MarginLeft,
         "margin-left",
         "baseline.property.margin-left"
     ),
-    property_feature!(
+    complete_property_feature!(
+        CssKnownProperty::MarginBlockStart,
+        "margin-block-start",
+        "official.property.margin-block-start"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MarginBlockEnd,
+        "margin-block-end",
+        "official.property.margin-block-end"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MarginInlineStart,
+        "margin-inline-start",
+        "official.property.margin-inline-start"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MarginInlineEnd,
+        "margin-inline-end",
+        "official.property.margin-inline-end"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MarginBlock,
+        "margin-block",
+        "official.property.margin-block"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MarginInline,
+        "margin-inline",
+        "official.property.margin-inline"
+    ),
+    complete_property_feature!(
         CssKnownProperty::Padding,
         "padding",
         "baseline.property.padding"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::PaddingTop,
         "padding-top",
         "baseline.property.padding-top"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::PaddingRight,
         "padding-right",
         "baseline.property.padding-right"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::PaddingBottom,
         "padding-bottom",
         "baseline.property.padding-bottom"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::PaddingLeft,
         "padding-left",
         "baseline.property.padding-left"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::PaddingBlockStart,
+        "padding-block-start",
+        "official.property.padding-block-start"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::PaddingBlockEnd,
+        "padding-block-end",
+        "official.property.padding-block-end"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::PaddingInlineStart,
+        "padding-inline-start",
+        "official.property.padding-inline-start"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::PaddingInlineEnd,
+        "padding-inline-end",
+        "official.property.padding-inline-end"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::PaddingBlock,
+        "padding-block",
+        "official.property.padding-block"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::PaddingInline,
+        "padding-inline",
+        "official.property.padding-inline"
     ),
     complete_property_feature!(
         CssKnownProperty::Border,

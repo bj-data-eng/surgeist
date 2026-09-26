@@ -328,6 +328,9 @@ pub fn surgeist_css::CssBoxEdgeKeyword::from_keyword(keyword: &str) -> core::opt
 #[non_exhaustive] pub enum surgeist_css::CssBoxShadow
 pub surgeist_css::CssBoxShadow::None
 pub surgeist_css::CssBoxShadow::Shadows(surgeist_css::CssBoxShadowList)
+pub enum surgeist_css::CssBoxSideKind
+pub surgeist_css::CssBoxSideKind::Logical
+pub surgeist_css::CssBoxSideKind::Physical
 #[non_exhaustive] pub enum surgeist_css::CssBoxSize
 pub surgeist_css::CssBoxSize::CalcSize(surgeist_css::CssCalcSize)
 pub surgeist_css::CssBoxSize::Contain
@@ -1760,7 +1763,13 @@ pub surgeist_css::CssKnownProperty::ListStyleImage
 pub surgeist_css::CssKnownProperty::ListStylePosition
 pub surgeist_css::CssKnownProperty::ListStyleType
 pub surgeist_css::CssKnownProperty::Margin
+pub surgeist_css::CssKnownProperty::MarginBlock
+pub surgeist_css::CssKnownProperty::MarginBlockEnd
+pub surgeist_css::CssKnownProperty::MarginBlockStart
 pub surgeist_css::CssKnownProperty::MarginBottom
+pub surgeist_css::CssKnownProperty::MarginInline
+pub surgeist_css::CssKnownProperty::MarginInlineEnd
+pub surgeist_css::CssKnownProperty::MarginInlineStart
 pub surgeist_css::CssKnownProperty::MarginLeft
 pub surgeist_css::CssKnownProperty::MarginRight
 pub surgeist_css::CssKnownProperty::MarginTop
@@ -1793,7 +1802,13 @@ pub surgeist_css::CssKnownProperty::OverflowWrap
 pub surgeist_css::CssKnownProperty::OverflowX
 pub surgeist_css::CssKnownProperty::OverflowY
 pub surgeist_css::CssKnownProperty::Padding
+pub surgeist_css::CssKnownProperty::PaddingBlock
+pub surgeist_css::CssKnownProperty::PaddingBlockEnd
+pub surgeist_css::CssKnownProperty::PaddingBlockStart
 pub surgeist_css::CssKnownProperty::PaddingBottom
+pub surgeist_css::CssKnownProperty::PaddingInline
+pub surgeist_css::CssKnownProperty::PaddingInlineEnd
+pub surgeist_css::CssKnownProperty::PaddingInlineStart
 pub surgeist_css::CssKnownProperty::PaddingLeft
 pub surgeist_css::CssKnownProperty::PaddingRight
 pub surgeist_css::CssKnownProperty::PaddingTop
@@ -2036,7 +2051,13 @@ pub surgeist_css::CssKnownPropertyValueRef::ListStyleImage(&'a surgeist_css::Css
 pub surgeist_css::CssKnownPropertyValueRef::ListStylePosition(&'a surgeist_css::CssListStylePositionPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ListStyleType(&'a surgeist_css::CssListStyleTypePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Margin(&'a surgeist_css::CssMarginPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MarginBlock(&'a surgeist_css::CssMarginBlockPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MarginBlockEnd(&'a surgeist_css::CssMarginBlockEndPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MarginBlockStart(&'a surgeist_css::CssMarginBlockStartPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MarginBottom(&'a surgeist_css::CssMarginBottomPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MarginInline(&'a surgeist_css::CssMarginInlinePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MarginInlineEnd(&'a surgeist_css::CssMarginInlineEndPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MarginInlineStart(&'a surgeist_css::CssMarginInlineStartPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MarginLeft(&'a surgeist_css::CssMarginLeftPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MarginRight(&'a surgeist_css::CssMarginRightPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MarginTop(&'a surgeist_css::CssMarginTopPropertyValue)
@@ -2069,7 +2090,13 @@ pub surgeist_css::CssKnownPropertyValueRef::OverflowWrap(&'a surgeist_css::CssOv
 pub surgeist_css::CssKnownPropertyValueRef::OverflowX(&'a surgeist_css::CssOverflowXPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::OverflowY(&'a surgeist_css::CssOverflowYPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Padding(&'a surgeist_css::CssPaddingPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::PaddingBlock(&'a surgeist_css::CssPaddingBlockPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::PaddingBlockEnd(&'a surgeist_css::CssPaddingBlockEndPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::PaddingBlockStart(&'a surgeist_css::CssPaddingBlockStartPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::PaddingBottom(&'a surgeist_css::CssPaddingBottomPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::PaddingInline(&'a surgeist_css::CssPaddingInlinePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::PaddingInlineEnd(&'a surgeist_css::CssPaddingInlineEndPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::PaddingInlineStart(&'a surgeist_css::CssPaddingInlineStartPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::PaddingLeft(&'a surgeist_css::CssPaddingLeftPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::PaddingRight(&'a surgeist_css::CssPaddingRightPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::PaddingTop(&'a surgeist_css::CssPaddingTopPropertyValue)
@@ -2285,10 +2312,14 @@ pub surgeist_css::CssLonghandValueRef::FlowTolerance(&'a surgeist_css::CssFlowTo
 pub surgeist_css::CssLonghandValueRef::FontFamily(&'a surgeist_css::CssFontFamilyList)
 pub surgeist_css::CssLonghandValueRef::Height(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::InlineSize(&'a surgeist_css::CssSizeValue)
-pub surgeist_css::CssLonghandValueRef::MarginBottom(&'a surgeist_css::CssLength)
-pub surgeist_css::CssLonghandValueRef::MarginLeft(&'a surgeist_css::CssLength)
-pub surgeist_css::CssLonghandValueRef::MarginRight(&'a surgeist_css::CssLength)
-pub surgeist_css::CssLonghandValueRef::MarginTop(&'a surgeist_css::CssLength)
+pub surgeist_css::CssLonghandValueRef::MarginBlockEnd(&'a surgeist_css::CssMarginValue)
+pub surgeist_css::CssLonghandValueRef::MarginBlockStart(&'a surgeist_css::CssMarginValue)
+pub surgeist_css::CssLonghandValueRef::MarginBottom(&'a surgeist_css::CssMarginValue)
+pub surgeist_css::CssLonghandValueRef::MarginInlineEnd(&'a surgeist_css::CssMarginValue)
+pub surgeist_css::CssLonghandValueRef::MarginInlineStart(&'a surgeist_css::CssMarginValue)
+pub surgeist_css::CssLonghandValueRef::MarginLeft(&'a surgeist_css::CssMarginValue)
+pub surgeist_css::CssLonghandValueRef::MarginRight(&'a surgeist_css::CssMarginValue)
+pub surgeist_css::CssLonghandValueRef::MarginTop(&'a surgeist_css::CssMarginValue)
 pub surgeist_css::CssLonghandValueRef::MaxBlockSize(&'a surgeist_css::CssMaxSizeValue)
 pub surgeist_css::CssLonghandValueRef::MaxHeight(&'a surgeist_css::CssMaxSizeValue)
 pub surgeist_css::CssLonghandValueRef::MaxInlineSize(&'a surgeist_css::CssMaxSizeValue)
@@ -2299,10 +2330,14 @@ pub surgeist_css::CssLonghandValueRef::MinInlineSize(&'a surgeist_css::CssSizeVa
 pub surgeist_css::CssLonghandValueRef::MinWidth(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::Opacity(&'a surgeist_css::CssOpacityValue)
 pub surgeist_css::CssLonghandValueRef::Order(&'a surgeist_css::CssIntegerValue)
-pub surgeist_css::CssLonghandValueRef::PaddingBottom(&'a surgeist_css::CssLength)
-pub surgeist_css::CssLonghandValueRef::PaddingLeft(&'a surgeist_css::CssLength)
-pub surgeist_css::CssLonghandValueRef::PaddingRight(&'a surgeist_css::CssLength)
-pub surgeist_css::CssLonghandValueRef::PaddingTop(&'a surgeist_css::CssLength)
+pub surgeist_css::CssLonghandValueRef::PaddingBlockEnd(&'a surgeist_css::CssPaddingValue)
+pub surgeist_css::CssLonghandValueRef::PaddingBlockStart(&'a surgeist_css::CssPaddingValue)
+pub surgeist_css::CssLonghandValueRef::PaddingBottom(&'a surgeist_css::CssPaddingValue)
+pub surgeist_css::CssLonghandValueRef::PaddingInlineEnd(&'a surgeist_css::CssPaddingValue)
+pub surgeist_css::CssLonghandValueRef::PaddingInlineStart(&'a surgeist_css::CssPaddingValue)
+pub surgeist_css::CssLonghandValueRef::PaddingLeft(&'a surgeist_css::CssPaddingValue)
+pub surgeist_css::CssLonghandValueRef::PaddingRight(&'a surgeist_css::CssPaddingValue)
+pub surgeist_css::CssLonghandValueRef::PaddingTop(&'a surgeist_css::CssPaddingValue)
 pub surgeist_css::CssLonghandValueRef::ScrollMarginBlockEnd(&'a surgeist_css::CssSpecifiedLength)
 pub surgeist_css::CssLonghandValueRef::ScrollMarginBlockStart(&'a surgeist_css::CssSpecifiedLength)
 pub surgeist_css::CssLonghandValueRef::ScrollMarginBottom(&'a surgeist_css::CssSpecifiedLength)
@@ -2329,6 +2364,17 @@ pub surgeist_css::CssLonghandValueRef::UnicodeBidi(&'a surgeist_css::CssUnicodeB
 pub surgeist_css::CssLonghandValueRef::Visibility(&'a surgeist_css::CssVisibility)
 pub surgeist_css::CssLonghandValueRef::Width(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::WritingMode(&'a surgeist_css::CssWritingMode)
+#[non_exhaustive] pub enum surgeist_css::CssMarginValue
+pub surgeist_css::CssMarginValue::Auto
+pub surgeist_css::CssMarginValue::LengthPercentage(surgeist_css::CssSpecifiedLengthPercentage)
+impl surgeist_css::CssMarginValue
+pub fn surgeist_css::CssMarginValue::length_percentage(&self) -> core::option::Option<&surgeist_css::CssSpecifiedLengthPercentage>
+pub fn surgeist_css::CssMarginValue::origin(&self) -> core::option::Option<&surgeist_css::CssValueOrigin>
+pub fn surgeist_css::CssMarginValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMarginValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::cmp::Eq for surgeist_css::CssMarginValue
+impl core::cmp::PartialEq for surgeist_css::CssMarginValue
+pub fn surgeist_css::CssMarginValue::eq(&self, other: &Self) -> bool
 pub enum surgeist_css::CssMathFunction
 pub surgeist_css::CssMathFunction::Abs
 pub surgeist_css::CssMathFunction::Acos
@@ -5950,36 +5996,66 @@ pub struct surgeist_css::CssLonghandValue
 impl surgeist_css::CssLonghandValue
 pub fn surgeist_css::CssLonghandValue::property(&self) -> surgeist_css::CssLonghandProperty
 pub fn surgeist_css::CssLonghandValue::view(&self) -> surgeist_css::CssLonghandValueRef<'_>
+pub struct surgeist_css::CssMarginBlockEndPropertyValue
+impl surgeist_css::CssMarginBlockEndPropertyValue
+pub fn surgeist_css::CssMarginBlockEndPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMarginBlockEndPropertyValue::current(&self) -> &surgeist_css::CssMarginValue
+pub struct surgeist_css::CssMarginBlockPropertyValue
+impl surgeist_css::CssMarginBlockPropertyValue
+pub fn surgeist_css::CssMarginBlockPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMarginBlockPropertyValue::current(&self) -> &surgeist_css::CssMarginPair
+pub struct surgeist_css::CssMarginBlockStartPropertyValue
+impl surgeist_css::CssMarginBlockStartPropertyValue
+pub fn surgeist_css::CssMarginBlockStartPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMarginBlockStartPropertyValue::current(&self) -> &surgeist_css::CssMarginValue
 pub struct surgeist_css::CssMarginBottomPropertyValue
 impl surgeist_css::CssMarginBottomPropertyValue
 pub fn surgeist_css::CssMarginBottomPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMarginBottomPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
-impl surgeist_css::CssMarginBottomPropertyValue
-pub const fn surgeist_css::CssMarginBottomPropertyValue::current(&self) -> &surgeist_css::CssLength
+pub const fn surgeist_css::CssMarginBottomPropertyValue::current(&self) -> &surgeist_css::CssMarginValue
+pub struct surgeist_css::CssMarginInlineEndPropertyValue
+impl surgeist_css::CssMarginInlineEndPropertyValue
+pub fn surgeist_css::CssMarginInlineEndPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMarginInlineEndPropertyValue::current(&self) -> &surgeist_css::CssMarginValue
+pub struct surgeist_css::CssMarginInlinePropertyValue
+impl surgeist_css::CssMarginInlinePropertyValue
+pub fn surgeist_css::CssMarginInlinePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMarginInlinePropertyValue::current(&self) -> &surgeist_css::CssMarginPair
+pub struct surgeist_css::CssMarginInlineStartPropertyValue
+impl surgeist_css::CssMarginInlineStartPropertyValue
+pub fn surgeist_css::CssMarginInlineStartPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMarginInlineStartPropertyValue::current(&self) -> &surgeist_css::CssMarginValue
 pub struct surgeist_css::CssMarginLeftPropertyValue
 impl surgeist_css::CssMarginLeftPropertyValue
 pub fn surgeist_css::CssMarginLeftPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMarginLeftPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
-impl surgeist_css::CssMarginLeftPropertyValue
-pub const fn surgeist_css::CssMarginLeftPropertyValue::current(&self) -> &surgeist_css::CssLength
+pub const fn surgeist_css::CssMarginLeftPropertyValue::current(&self) -> &surgeist_css::CssMarginValue
+pub struct surgeist_css::CssMarginPair(_)
+impl surgeist_css::CssMarginPair
+pub fn surgeist_css::CssMarginPair::authored_end(&self) -> core::option::Option<&surgeist_css::CssMarginValue>
+pub fn surgeist_css::CssMarginPair::end(&self) -> &surgeist_css::CssMarginValue
+pub fn surgeist_css::CssMarginPair::new(start: surgeist_css::CssMarginValue, authored_end: core::option::Option<surgeist_css::CssMarginValue>) -> Self
+pub fn surgeist_css::CssMarginPair::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMarginPair::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMarginPair::start(&self) -> &surgeist_css::CssMarginValue
 pub struct surgeist_css::CssMarginPropertyValue
 impl surgeist_css::CssMarginPropertyValue
 pub fn surgeist_css::CssMarginPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMarginPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssEdges>
-impl surgeist_css::CssMarginPropertyValue
-pub const fn surgeist_css::CssMarginPropertyValue::current(&self) -> &surgeist_css::CssEdges
+pub const fn surgeist_css::CssMarginPropertyValue::current(&self) -> &surgeist_css::CssMarginShorthand
 pub struct surgeist_css::CssMarginRightPropertyValue
 impl surgeist_css::CssMarginRightPropertyValue
 pub fn surgeist_css::CssMarginRightPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMarginRightPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
-impl surgeist_css::CssMarginRightPropertyValue
-pub const fn surgeist_css::CssMarginRightPropertyValue::current(&self) -> &surgeist_css::CssLength
+pub const fn surgeist_css::CssMarginRightPropertyValue::current(&self) -> &surgeist_css::CssMarginValue
+pub struct surgeist_css::CssMarginShorthand(_)
+impl surgeist_css::CssMarginShorthand
+pub fn surgeist_css::CssMarginShorthand::assigned_values(&self) -> [&surgeist_css::CssMarginValue; 4]
+pub fn surgeist_css::CssMarginShorthand::authored_values(&self) -> &[surgeist_css::CssMarginValue]
+pub fn surgeist_css::CssMarginShorthand::kind(&self) -> surgeist_css::CssBoxSideKind
+pub fn surgeist_css::CssMarginShorthand::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMarginShorthand::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMarginShorthand::try_new(kind: surgeist_css::CssBoxSideKind, authored_values: alloc::vec::Vec<surgeist_css::CssMarginValue>) -> core::option::Option<Self>
 pub struct surgeist_css::CssMarginTopPropertyValue
 impl surgeist_css::CssMarginTopPropertyValue
 pub fn surgeist_css::CssMarginTopPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMarginTopPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
-impl surgeist_css::CssMarginTopPropertyValue
-pub const fn surgeist_css::CssMarginTopPropertyValue::current(&self) -> &surgeist_css::CssLength
+pub const fn surgeist_css::CssMarginTopPropertyValue::current(&self) -> &surgeist_css::CssMarginValue
 pub struct surgeist_css::CssMaskImagePropertyValue
 impl surgeist_css::CssMaskImagePropertyValue
 pub fn surgeist_css::CssMaskImagePropertyValue::as_css(&self) -> &str
@@ -6352,36 +6428,76 @@ pub struct surgeist_css::CssOverflowYPropertyValue
 impl surgeist_css::CssOverflowYPropertyValue
 pub fn surgeist_css::CssOverflowYPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssOverflowYPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssOverflow>
+pub struct surgeist_css::CssPaddingBlockEndPropertyValue
+impl surgeist_css::CssPaddingBlockEndPropertyValue
+pub fn surgeist_css::CssPaddingBlockEndPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssPaddingBlockEndPropertyValue::current(&self) -> &surgeist_css::CssPaddingValue
+pub struct surgeist_css::CssPaddingBlockPropertyValue
+impl surgeist_css::CssPaddingBlockPropertyValue
+pub fn surgeist_css::CssPaddingBlockPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssPaddingBlockPropertyValue::current(&self) -> &surgeist_css::CssPaddingPair
+pub struct surgeist_css::CssPaddingBlockStartPropertyValue
+impl surgeist_css::CssPaddingBlockStartPropertyValue
+pub fn surgeist_css::CssPaddingBlockStartPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssPaddingBlockStartPropertyValue::current(&self) -> &surgeist_css::CssPaddingValue
 pub struct surgeist_css::CssPaddingBottomPropertyValue
 impl surgeist_css::CssPaddingBottomPropertyValue
 pub fn surgeist_css::CssPaddingBottomPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPaddingBottomPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
-impl surgeist_css::CssPaddingBottomPropertyValue
-pub const fn surgeist_css::CssPaddingBottomPropertyValue::current(&self) -> &surgeist_css::CssLength
+pub const fn surgeist_css::CssPaddingBottomPropertyValue::current(&self) -> &surgeist_css::CssPaddingValue
+pub struct surgeist_css::CssPaddingInlineEndPropertyValue
+impl surgeist_css::CssPaddingInlineEndPropertyValue
+pub fn surgeist_css::CssPaddingInlineEndPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssPaddingInlineEndPropertyValue::current(&self) -> &surgeist_css::CssPaddingValue
+pub struct surgeist_css::CssPaddingInlinePropertyValue
+impl surgeist_css::CssPaddingInlinePropertyValue
+pub fn surgeist_css::CssPaddingInlinePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssPaddingInlinePropertyValue::current(&self) -> &surgeist_css::CssPaddingPair
+pub struct surgeist_css::CssPaddingInlineStartPropertyValue
+impl surgeist_css::CssPaddingInlineStartPropertyValue
+pub fn surgeist_css::CssPaddingInlineStartPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssPaddingInlineStartPropertyValue::current(&self) -> &surgeist_css::CssPaddingValue
 pub struct surgeist_css::CssPaddingLeftPropertyValue
 impl surgeist_css::CssPaddingLeftPropertyValue
 pub fn surgeist_css::CssPaddingLeftPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPaddingLeftPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
-impl surgeist_css::CssPaddingLeftPropertyValue
-pub const fn surgeist_css::CssPaddingLeftPropertyValue::current(&self) -> &surgeist_css::CssLength
+pub const fn surgeist_css::CssPaddingLeftPropertyValue::current(&self) -> &surgeist_css::CssPaddingValue
+pub struct surgeist_css::CssPaddingPair(_)
+impl surgeist_css::CssPaddingPair
+pub fn surgeist_css::CssPaddingPair::authored_end(&self) -> core::option::Option<&surgeist_css::CssPaddingValue>
+pub fn surgeist_css::CssPaddingPair::end(&self) -> &surgeist_css::CssPaddingValue
+pub fn surgeist_css::CssPaddingPair::new(start: surgeist_css::CssPaddingValue, authored_end: core::option::Option<surgeist_css::CssPaddingValue>) -> Self
+pub fn surgeist_css::CssPaddingPair::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPaddingPair::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPaddingPair::start(&self) -> &surgeist_css::CssPaddingValue
 pub struct surgeist_css::CssPaddingPropertyValue
 impl surgeist_css::CssPaddingPropertyValue
 pub fn surgeist_css::CssPaddingPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPaddingPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssEdges>
-impl surgeist_css::CssPaddingPropertyValue
-pub const fn surgeist_css::CssPaddingPropertyValue::current(&self) -> &surgeist_css::CssEdges
+pub const fn surgeist_css::CssPaddingPropertyValue::current(&self) -> &surgeist_css::CssPaddingShorthand
 pub struct surgeist_css::CssPaddingRightPropertyValue
 impl surgeist_css::CssPaddingRightPropertyValue
 pub fn surgeist_css::CssPaddingRightPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPaddingRightPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
-impl surgeist_css::CssPaddingRightPropertyValue
-pub const fn surgeist_css::CssPaddingRightPropertyValue::current(&self) -> &surgeist_css::CssLength
+pub const fn surgeist_css::CssPaddingRightPropertyValue::current(&self) -> &surgeist_css::CssPaddingValue
+pub struct surgeist_css::CssPaddingShorthand(_)
+impl surgeist_css::CssPaddingShorthand
+pub fn surgeist_css::CssPaddingShorthand::assigned_values(&self) -> [&surgeist_css::CssPaddingValue; 4]
+pub fn surgeist_css::CssPaddingShorthand::authored_values(&self) -> &[surgeist_css::CssPaddingValue]
+pub fn surgeist_css::CssPaddingShorthand::kind(&self) -> surgeist_css::CssBoxSideKind
+pub fn surgeist_css::CssPaddingShorthand::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPaddingShorthand::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPaddingShorthand::try_new(kind: surgeist_css::CssBoxSideKind, authored_values: alloc::vec::Vec<surgeist_css::CssPaddingValue>) -> core::option::Option<Self>
 pub struct surgeist_css::CssPaddingTopPropertyValue
 impl surgeist_css::CssPaddingTopPropertyValue
 pub fn surgeist_css::CssPaddingTopPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPaddingTopPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
-impl surgeist_css::CssPaddingTopPropertyValue
-pub const fn surgeist_css::CssPaddingTopPropertyValue::current(&self) -> &surgeist_css::CssLength
+pub const fn surgeist_css::CssPaddingTopPropertyValue::current(&self) -> &surgeist_css::CssPaddingValue
+pub struct surgeist_css::CssPaddingValue(_)
+impl surgeist_css::CssPaddingValue
+pub fn surgeist_css::CssPaddingValue::length_percentage(&self) -> &surgeist_css::CssSpecifiedNonNegativeLengthPercentage
+pub fn surgeist_css::CssPaddingValue::new(value: surgeist_css::CssSpecifiedNonNegativeLengthPercentage) -> Self
+pub fn surgeist_css::CssPaddingValue::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssPaddingValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPaddingValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::cmp::Eq for surgeist_css::CssPaddingValue
+impl core::cmp::PartialEq for surgeist_css::CssPaddingValue
+pub fn surgeist_css::CssPaddingValue::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssPageBreakAfterPropertyValue
 impl surgeist_css::CssPageBreakAfterPropertyValue
 pub fn surgeist_css::CssPageBreakAfterPropertyValue::as_css(&self) -> &str
@@ -7018,6 +7134,16 @@ pub fn surgeist_css::CssSpecifiedLength::serialize_specified_with_limits(&self, 
 pub fn surgeist_css::CssSpecifiedLength::try_from_calculation(calculation: surgeist_css::CssLengthCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub fn surgeist_css::CssSpecifiedLength::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub fn surgeist_css::CssSpecifiedLength::zero() -> Self
+pub struct surgeist_css::CssSpecifiedLengthPercentage
+impl surgeist_css::CssSpecifiedLengthPercentage
+pub fn surgeist_css::CssSpecifiedLengthPercentage::calculation(&self) -> core::option::Option<&surgeist_css::CssLengthPercentageCalculation>
+pub fn surgeist_css::CssSpecifiedLengthPercentage::literal_component(&self) -> core::option::Option<&surgeist_css::CssComponentValue>
+pub fn surgeist_css::CssSpecifiedLengthPercentage::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssSpecifiedLengthPercentage::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSpecifiedLengthPercentage::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSpecifiedLengthPercentage::try_from_calculation(calculation: surgeist_css::CssLengthPercentageCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssSpecifiedLengthPercentage::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssSpecifiedLengthPercentage::zero() -> Self
 pub struct surgeist_css::CssSpecifiedNonNegativeLengthPercentage
 impl surgeist_css::CssSpecifiedNonNegativeLengthPercentage
 pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::calculation(&self) -> core::option::Option<&surgeist_css::CssLengthPercentageCalculation>
@@ -7027,6 +7153,7 @@ pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::serialize_specifie
 pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(calculation: surgeist_css::CssLengthPercentageCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::zero() -> Self
 pub struct surgeist_css::CssSpecifiedRatio
 impl surgeist_css::CssSpecifiedRatio
 pub const fn surgeist_css::CssSpecifiedRatio::denominator(&self) -> core::option::Option<&surgeist_css::CssRatioOperand>

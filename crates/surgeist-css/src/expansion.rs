@@ -10,6 +10,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::CssSpecifiedLength;
+use crate::box_spacing::*;
 use crate::parser::contains_substitution;
 use crate::properties::{CssKnownDeclaration, CssKnownDeclaredValueRef, CssKnownPropertyValueRef};
 use crate::scroll_snap::*;
@@ -17,7 +18,8 @@ use crate::sizing::{CssMaxSizeValue, CssSizeValue};
 use crate::syntax::*;
 use crate::{
     CssBorderColors, CssComponentValues, CssContainer, CssContainerNames, CssContainerType,
-    CssKnownProperty, CssPropertyValueParseError,
+    CssKnownProperty, CssPropertyValueParseError, CssSpecifiedLengthPercentage,
+    CssSpecifiedNonNegativeLengthPercentage,
 };
 
 /// Why intrinsic expansion could not produce completed contributions.

@@ -299,7 +299,7 @@ fn env_in_replacement_is_residual_before_any_replacement_grammar_check() {
 
 #[test]
 fn shorthand_env_pending_reenters_with_one_original_occurrence() {
-    let source = parsed("margin", "env(future, 1px 2px)");
+    let source = parsed("margin-block", "env(future, 1px 2px)");
     assert_eq!(
         source
             .known()
@@ -310,18 +310,16 @@ fn shorthand_env_pending_reenters_with_one_original_occurrence() {
         "env(future, 1px 2px)"
     );
     let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
-        panic!("pending margin")
+        panic!("pending margin-block")
     };
     assert!(pending.source().same_occurrence(&source));
     let replacement = parse_component_values("1px 2px").unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
-        panic!("margin longhands")
+        panic!("margin-block longhands")
     };
     let expected = [
-        CssKnownProperty::MarginTop,
-        CssKnownProperty::MarginRight,
-        CssKnownProperty::MarginBottom,
-        CssKnownProperty::MarginLeft,
+        CssKnownProperty::MarginBlockStart,
+        CssKnownProperty::MarginBlockEnd,
     ];
     assert_eq!(values.items().len(), expected.len());
     for (value, property) in values.items().iter().zip(expected) {
@@ -329,6 +327,16 @@ fn shorthand_env_pending_reenters_with_one_original_occurrence() {
         assert!(value.source().same_occurrence(&source));
         assert_eq!(value.source().importance(), CssImportance::Important);
         assert_eq!(value.replacement_components(), Some(&replacement));
-        assert!(value.ordinary_value().is_some());
+        let expected = match property {
+            CssKnownProperty::MarginBlockStart => "1px",
+            CssKnownProperty::MarginBlockEnd => "2px",
+            _ => unreachable!(),
+        };
+        let actual = match value.ordinary_value().unwrap().view() {
+            CssLonghandValueRef::MarginBlockStart(value)
+            | CssLonghandValueRef::MarginBlockEnd(value) => value.serialize_specified().unwrap(),
+            other => panic!("typed margin-block replacement: {other:?}"),
+        };
+        assert_eq!(actual, expected);
     }
 }

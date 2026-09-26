@@ -27,13 +27,27 @@ fn assert_margin(page: &CssPageRule) {
     else {
         panic!("typed margin")
     };
-    let edges = value.i01_subset().unwrap();
-    assert!(matches!(edges.top, CssLength::Px(value) if value.value() == -1.0));
-    assert!(matches!(edges.right, CssLength::Percent(value) if value.value() == 2.0));
-    assert!(matches!(edges.bottom, CssLength::Auto));
-    assert!(
-        matches!(edges.left, CssLength::Dimension(value) if value.value() == 3.0 && value.unit() == CssLengthUnit::Cm)
-    );
+    let [top, right, bottom, left] = value.current().assigned_values();
+    for (side, expected) in [(top, "-1px"), (right, "2%"), (left, "3cm")] {
+        let CssMarginValue::LengthPercentage(length_percentage) = side else {
+            panic!("exact page margin literal")
+        };
+        let literal = length_percentage.literal_component().unwrap();
+        match (expected, literal.view()) {
+            ("-1px", CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })) => {
+                assert_eq!((number.representation(), unit), ("-1", "px"));
+            }
+            ("2%", CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))) => {
+                assert_eq!(number.representation(), "2");
+            }
+            ("3cm", CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })) => {
+                assert_eq!((number.representation(), unit), ("3", "cm"));
+            }
+            other => panic!("unexpected page margin token: {other:?}"),
+        }
+        assert_eq!(side.serialize_specified().unwrap(), expected);
+    }
+    assert!(matches!(bottom, CssMarginValue::Auto));
 }
 
 #[test]

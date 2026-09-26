@@ -82,20 +82,6 @@ pub(super) fn parse_inset_component<'i, 't>(
     parse_length_with(input, numeric, LengthGrammar::Inset)
 }
 
-pub(super) fn parse_margin_component<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssLength, ParseError<'i, Error>> {
-    parse_length_with(input, numeric, LengthGrammar::Margin)
-}
-
-pub(super) fn parse_padding_component<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssLength, ParseError<'i, Error>> {
-    parse_length_with(input, numeric, LengthGrammar::Padding)
-}
-
 pub(super) fn parse_border_width_component<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
@@ -143,8 +129,6 @@ pub(super) enum LengthGrammar {
     BoxSize,
     FlowTolerance,
     Inset,
-    Margin,
-    Padding,
     BorderWidth,
     Radius,
     ShadowOffset,
@@ -173,8 +157,6 @@ impl LengthGrammar {
             Self::BoxSize
                 | Self::FlowTolerance
                 | Self::Inset
-                | Self::Margin
-                | Self::Padding
                 | Self::Radius
                 | Self::Gap
                 | Self::FontSize
@@ -189,7 +171,7 @@ impl LengthGrammar {
     }
 
     const fn allows_auto(self) -> bool {
-        matches!(self, Self::BoxSize | Self::Inset | Self::Margin)
+        matches!(self, Self::BoxSize | Self::Inset)
     }
 
     const fn allows_intrinsic(self) -> bool {
@@ -210,8 +192,6 @@ impl LengthGrammar {
             Self::BoxSize
                 | Self::FlowTolerance
                 | Self::Inset
-                | Self::Margin
-                | Self::Padding
                 | Self::Radius
                 | Self::Gap
                 | Self::FontSize
@@ -229,7 +209,6 @@ impl LengthGrammar {
         matches!(
             self,
             Self::BoxSize
-                | Self::Padding
                 | Self::BorderWidth
                 | Self::Radius
                 | Self::ShadowBlur
@@ -246,8 +225,6 @@ impl LengthGrammar {
             Self::BoxSize => "box size",
             Self::FlowTolerance => "flow-tolerance",
             Self::Inset => "inset",
-            Self::Margin => "margin",
-            Self::Padding => "padding",
             Self::BorderWidth => "border-width",
             Self::Radius => "border-radius",
             Self::ShadowOffset => "box-shadow",

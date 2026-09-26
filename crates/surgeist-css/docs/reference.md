@@ -468,8 +468,9 @@ unfinished. This property migration does not complete the other Grid3 families.
 
 ## Intrinsic declaration expansion
 
-`expand_declaration` currently covers custom declarations, physical margin and
-padding, border width, style and color, the four side-border shorthands, `border`,
+`expand_declaration` currently covers custom declarations, physical and logical
+margin/padding longhands, their logical axis pairs, border width, style and color,
+the four side-border shorthands, `border`,
 the five border-image longhands, `border-collapse`, `caption-side`, `empty-cells`,
 `table-layout`, `flow-tolerance`, `color`, `font-family`,
 `text-orientation`, its legacy `glyph-orientation-vertical` grammar, `opacity`, `display`, `box-sizing`,
@@ -2618,3 +2619,33 @@ diagnostic source snapshots and offsets; those origins remain inspectable on
 the values. Intrinsic keywords and `calc-size()`/`fit-content()` identities use
 their normalized checked kinds. Property wrappers still retain original
 `as_css()` spelling, so differently authored declarations remain distinct.
+
+## Authored box spacing
+
+The selected [Box 3 margin and padding definitions](https://www.w3.org/TR/2024/REC-css-box-3-20240411/#margin-properties)
+and [Logical 1 draft](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#margin-properties)
+give physical and flow-relative margin/padding longhands checked values. Margins
+accept `auto`, signed exact length-percentage literals, and deferred math;
+padding accepts nonnegative exact literals and deferred math, without `auto`.
+All sixteen longhands are noninherited and start at zero. The four block/inline
+axis pairs accept one or two values and expand to their two longhands, retaining
+the authored component count and source occurrence.
+
+The physical `margin` and `padding` shorthands accept one to four values. A
+leading `logical` marker selects the block-start, inline-start, block-end,
+inline-end role order; otherwise the physical top, right, bottom, left order
+applies. Their checked four-side values expose `assigned_values()` for these
+roles. Completed expansion and stylesheet normalization currently return the
+typed `LogicalShorthandResetMembership` unresolved-standard error for either
+four-side shorthand, including CSS-wide values. Pending substitution remains
+symbolic; valid replacement tokens reenter the owning grammar before a
+completed expansion reports the unresolved membership.
+The selected Logical 1 draft leaves their reset membership unresolved, so
+normalization does not silently assign a longhand set.
+
+The ten physical wrappers' former `i01_subset()` view of `CssLength` or
+`CssEdges` is removed. Use `current()` for `CssMarginValue`, `CssPaddingValue`,
+`CssMarginShorthand`, or `CssPaddingShorthand`; inspect exact literals or
+calculations through their checked length-percentage values. `as_css()` retains
+the authored spelling, while `serialize_specified()` renders a bounded
+canonical specified value.

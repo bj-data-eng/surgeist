@@ -1,6 +1,7 @@
 use surgeist_css::{
-    CssErrorCode, CssImportance, CssKnownProperty, CssLength, CssLengthUnit, CssPageSelector,
-    CssRecoveryAction, CssRule, CssSupportStatus, ErrorKind, feature_metadata, parse_sheet,
+    CssErrorCode, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssMarginValue,
+    CssPageSelector, CssRecoveryAction, CssRule, CssSupportStatus, ErrorKind, feature_metadata,
+    parse_sheet,
 };
 
 #[test]
@@ -54,6 +55,49 @@ fn page_rules_and_pseudos_retain_valid_authored_structure() {
 }
 
 #[test]
+fn page_margin_filter_keeps_exact_css2_literals_and_rejects_logical_or_math() {
+    let source =
+        "@page { margin-left:-1e999px; margin-right:1e-999%; margin-top:auto; margin-bottom:0 }";
+    let report = parse_sheet(source);
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    let [CssRule::Page(page)] = report.syntax().rules() else {
+        panic!("one page rule")
+    };
+    assert_eq!(page.declarations().len(), 4);
+    let Some(CssKnownPropertyValueRef::MarginLeft(left)) = page.declarations()[0]
+        .known()
+        .and_then(|known| known.property_value())
+    else {
+        panic!("exact signed page margin")
+    };
+    let CssMarginValue::LengthPercentage(left) = left.current() else {
+        panic!("signed length")
+    };
+    assert_eq!(left.literal_component().unwrap().origin(), left.origin());
+    let specified = left.serialize_specified().unwrap();
+    assert_eq!(specified.len(), 1003);
+    assert!(specified.starts_with("-1") && specified.ends_with("px"));
+
+    let invalid = parse_sheet(
+        "@page { margin-top:1px; margin:logical 1px; margin-right:calc(1px + 2%); margin-bottom:auto }",
+    );
+    assert_eq!(invalid.diagnostics().len(), 2);
+    assert_eq!(invalid.syntax().rules().len(), 1);
+    let [CssRule::Page(page)] = invalid.syntax().rules() else {
+        panic!("one recovered page rule")
+    };
+    assert_eq!(page.declarations().len(), 2);
+    assert_eq!(
+        page.declarations()[0].known().unwrap().property(),
+        CssKnownProperty::MarginTop
+    );
+    assert_eq!(
+        page.declarations()[1].known().unwrap().property(),
+        CssKnownProperty::MarginBottom
+    );
+}
+
+#[test]
 fn page_margin_declarations_accept_only_the_css2_page_domain() {
     let report = parse_sheet(concat!(
         "@page { ",
@@ -76,15 +120,11 @@ fn page_margin_declarations_accept_only_the_css2_page_domain() {
     let surgeist_css::CssKnownPropertyValueRef::Margin(margin) = margin else {
         panic!("expected typed margin")
     };
-    let edges = margin.i01_subset().unwrap();
-    assert!(matches!(edges.top, CssLength::Px(value) if value.value() == -1.0));
-    assert!(matches!(edges.right, CssLength::Percent(value) if value.value() == 2.0));
-    assert!(matches!(edges.bottom, CssLength::Auto));
-    assert!(matches!(
-        edges.left,
-        CssLength::Dimension(value)
-            if value.value() == 3.0 && value.unit() == CssLengthUnit::Cm
-    ));
+    let [top, right, bottom, left] = margin.current().assigned_values();
+    assert_eq!(top.serialize_specified().unwrap(), "-1px");
+    assert_eq!(right.serialize_specified().unwrap(), "2%");
+    assert!(matches!(bottom, CssMarginValue::Auto));
+    assert_eq!(left.serialize_specified().unwrap(), "3cm");
 }
 
 #[test]

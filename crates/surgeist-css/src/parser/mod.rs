@@ -9,6 +9,7 @@
 
 mod background;
 mod box_model;
+mod box_spacing;
 mod counter_style;
 mod effects;
 mod font_face;
@@ -52,6 +53,7 @@ use cssparser::{
     match_ignore_ascii_case,
 };
 
+use crate::box_spacing::*;
 use crate::{
     CssContainer, CssContainerNames, CssContainerType, CssFontPaletteDescriptorKind,
     CssFontPaletteDescriptorValue, CssFontPaletteName, CssMaxSizeValue, CssScrollMarginPair,
@@ -61,6 +63,7 @@ use crate::{
 };
 use background::*;
 use box_model::*;
+use box_spacing::*;
 use container_properties::*;
 use counter_style::{parse_counter_style_name, parse_counter_style_rule};
 use effects::*;

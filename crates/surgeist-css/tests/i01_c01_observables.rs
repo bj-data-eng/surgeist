@@ -2384,6 +2384,64 @@ fn frozen_preferred_size_payload(value: &surgeist_css::CssSizeValue) -> String {
     }
 }
 
+fn assert_frozen_spacing_literal(
+    component: &surgeist_css::CssComponentValue,
+    expected: &str,
+) -> &'static str {
+    use surgeist_css::{CssComponentValueRef, CssValueTokenRef};
+    match (expected, component.view()) {
+        ("0", CssComponentValueRef::Token(CssValueTokenRef::Number(number)))
+            if number.representation() == "0" =>
+        {
+            "Zero"
+        }
+        ("1px", CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }))
+            if number.representation() == "1" && unit.eq_ignore_ascii_case("px") =>
+        {
+            "Px(CssFiniteNumber { value: 1.0 })"
+        }
+        ("10px", CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }))
+            if number.representation() == "10" && unit.eq_ignore_ascii_case("px") =>
+        {
+            "Px(CssFiniteNumber { value: 10.0 })"
+        }
+        ("12px", CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }))
+            if number.representation() == "12" && unit.eq_ignore_ascii_case("px") =>
+        {
+            "Px(CssFiniteNumber { value: 12.0 })"
+        }
+        ("2%", CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)))
+            if number.representation() == "2" =>
+        {
+            "Percent(CssFiniteNumber { value: 2.0 })"
+        }
+        ("5%", CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)))
+            if number.representation() == "5" =>
+        {
+            "Percent(CssFiniteNumber { value: 5.0 })"
+        }
+        _ => panic!("frozen spacing literal changed numeric representation or unit: {expected}"),
+    }
+}
+
+fn frozen_margin_payload(value: &surgeist_css::CssMarginValue, expected: &str) -> String {
+    match (expected, value) {
+        ("auto", surgeist_css::CssMarginValue::Auto) => "Auto".into(),
+        (_, surgeist_css::CssMarginValue::LengthPercentage(value)) => {
+            assert_frozen_spacing_literal(value.literal_component().unwrap(), expected).into()
+        }
+        _ => panic!("frozen margin branch changed: {expected}"),
+    }
+}
+
+fn frozen_padding_payload(value: &surgeist_css::CssPaddingValue, expected: &str) -> String {
+    assert_frozen_spacing_literal(
+        value.length_percentage().literal_component().unwrap(),
+        expected,
+    )
+    .into()
+}
+
 fn assert_known_property_value(
     property: surgeist_css::CssKnownProperty,
     value: surgeist_css::CssKnownPropertyValueRef<'_>,
@@ -2539,8 +2597,13 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::MarginLeft,
             surgeist_css::CssKnownPropertyValueRef::MarginLeft(value),
         ) if authored.value == "calc(3px + 4%)" => {
-            let old = assert_captured_sum(
-                value.i01_subset().unwrap(),
+            let old = assert_captured_sum_calculation(
+                value
+                    .current()
+                    .length_percentage()
+                    .unwrap()
+                    .calculation()
+                    .unwrap(),
                 "calc(3px + 4%)",
                 ("3", false),
                 ("4", true),
@@ -2561,8 +2624,8 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::PaddingBottom,
             surgeist_css::CssKnownPropertyValueRef::PaddingBottom(value),
         ) if authored.value == "calc(3px + 4%)" => {
-            let old = assert_captured_sum(
-                value.i01_subset().unwrap(),
+            let old = assert_captured_sum_calculation(
+                value.current().length_percentage().calculation().unwrap(),
                 "calc(3px + 4%)",
                 ("3", false),
                 ("4", true),
@@ -2615,15 +2678,23 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::Padding,
             surgeist_css::CssKnownPropertyValueRef::Padding(value),
         ) if authored.value == "1px 2% calc(3px + 4%) 0" => {
-            let current = value.i01_subset().unwrap();
-            assert_eq!(current.top, surgeist_css::CssLength::try_px(1.0).unwrap());
-            assert_eq!(
-                current.right,
-                surgeist_css::CssLength::try_percent(2.0).unwrap()
+            let current = value.current();
+            assert_eq!(current.authored_values().len(), 4);
+            let [top, right, bottom, left] = current.assigned_values();
+            assert_frozen_spacing_literal(
+                top.length_percentage().literal_component().unwrap(),
+                "1px",
             );
-            assert_eq!(current.left, surgeist_css::CssLength::Zero);
-            let bottom = assert_captured_sum(
-                &current.bottom,
+            assert_frozen_spacing_literal(
+                right.length_percentage().literal_component().unwrap(),
+                "2%",
+            );
+            assert_frozen_spacing_literal(
+                left.length_percentage().literal_component().unwrap(),
+                "0",
+            );
+            let bottom = assert_captured_sum_calculation(
+                bottom.length_percentage().calculation().unwrap(),
                 "calc(3px + 4%)",
                 ("3", false),
                 ("4", true),
@@ -2646,6 +2717,143 @@ fn assert_known_property_value(
             return;
         }
 
+        (
+            surgeist_css::CssKnownProperty::Margin,
+            surgeist_css::CssKnownPropertyValueRef::Margin(value),
+        ) => {
+            assert_eq!(authored.value, "auto 10px 5%");
+            let current = value.current();
+            assert_eq!(current.kind(), surgeist_css::CssBoxSideKind::Physical);
+            assert_eq!(current.authored_values().len(), 3);
+            let [top, right, bottom, left] = current.assigned_values();
+            let top = frozen_margin_payload(top, "auto");
+            let right = frozen_margin_payload(right, "10px");
+            let bottom = frozen_margin_payload(bottom, "5%");
+            let left = frozen_margin_payload(left, "10px");
+            let old = format!(
+                "CssEdges {{ top: {top}, right: {right}, bottom: {bottom}, left: {left} }}"
+            );
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &old,
+                semantic,
+                authored,
+            );
+            return;
+        }
+        (
+            surgeist_css::CssKnownProperty::MarginTop,
+            surgeist_css::CssKnownPropertyValueRef::MarginTop(value),
+        ) => {
+            let old = frozen_margin_payload(value.current(), authored.value);
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &old,
+                semantic,
+                authored,
+            );
+            return;
+        }
+        (
+            surgeist_css::CssKnownProperty::MarginRight,
+            surgeist_css::CssKnownPropertyValueRef::MarginRight(value),
+        ) => {
+            let old = frozen_margin_payload(value.current(), authored.value);
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &old,
+                semantic,
+                authored,
+            );
+            return;
+        }
+        (
+            surgeist_css::CssKnownProperty::MarginBottom,
+            surgeist_css::CssKnownPropertyValueRef::MarginBottom(value),
+        ) => {
+            let old = frozen_margin_payload(value.current(), authored.value);
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &old,
+                semantic,
+                authored,
+            );
+            return;
+        }
+        (
+            surgeist_css::CssKnownProperty::MarginLeft,
+            surgeist_css::CssKnownPropertyValueRef::MarginLeft(value),
+        ) => {
+            let old = frozen_margin_payload(value.current(), authored.value);
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &old,
+                semantic,
+                authored,
+            );
+            return;
+        }
+        (
+            surgeist_css::CssKnownProperty::PaddingTop,
+            surgeist_css::CssKnownPropertyValueRef::PaddingTop(value),
+        ) => {
+            let old = frozen_padding_payload(value.current(), authored.value);
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &old,
+                semantic,
+                authored,
+            );
+            return;
+        }
+        (
+            surgeist_css::CssKnownProperty::PaddingRight,
+            surgeist_css::CssKnownPropertyValueRef::PaddingRight(value),
+        ) => {
+            let old = frozen_padding_payload(value.current(), authored.value);
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &old,
+                semantic,
+                authored,
+            );
+            return;
+        }
+        (
+            surgeist_css::CssKnownProperty::PaddingBottom,
+            surgeist_css::CssKnownPropertyValueRef::PaddingBottom(value),
+        ) => {
+            let old = frozen_padding_payload(value.current(), authored.value);
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &old,
+                semantic,
+                authored,
+            );
+            return;
+        }
+        (
+            surgeist_css::CssKnownProperty::PaddingLeft,
+            surgeist_css::CssKnownPropertyValueRef::PaddingLeft(value),
+        ) => {
+            let old = frozen_padding_payload(value.current(), authored.value);
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &old,
+                semantic,
+                authored,
+            );
+            return;
+        }
         (
             surgeist_css::CssKnownProperty::FontFamily,
             surgeist_css::CssKnownPropertyValueRef::FontFamily(value),
@@ -2796,16 +3004,6 @@ fn assert_known_property_value(
             Left,
             ZIndex,
             BoxDecorationBreak,
-            Margin,
-            MarginTop,
-            MarginRight,
-            MarginBottom,
-            MarginLeft,
-            Padding,
-            PaddingTop,
-            PaddingRight,
-            PaddingBottom,
-            PaddingLeft,
             Border,
             BorderTop,
             BorderRight,

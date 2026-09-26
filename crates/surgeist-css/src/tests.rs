@@ -49,6 +49,20 @@ macro_rules! declaration_value {
     }};
 }
 
+macro_rules! spacing_value {
+    ($input:expr, $variant:ident) => {{
+        let declaration = declaration($input, CssProperty::$variant);
+        let value = declaration
+            .known()
+            .and_then(|known| known.property_value())
+            .expect("ordinary spacing declaration");
+        let CssKnownPropertyValueRef::$variant(value) = value else {
+            panic!("spacing wrapper did not match requested property");
+        };
+        value.current().clone()
+    }};
+}
+
 macro_rules! sizing_value {
     ($input:expr) => {{
         let declaration = declaration($input, CssProperty::Width);
@@ -8200,24 +8214,20 @@ fn rejects_unknown_calc_functions() {
 #[test]
 fn parses_calc_in_edge_shorthands() {
     let sheet = parse_sheet(".panel { margin: calc(4px + 1%) 2px; }").unwrap();
-    let edges = declaration_value!(".panel { margin: calc(4px + 1%) 2px; }", Margin);
-
-    match &edges.top {
-        CssLength::Calc(calc) => {
-            assert!(calc.uses_percentage());
-            assert_eq!(calc.to_css_string(), "calc(4px + 1%)");
-        }
-        other => panic!("expected calc top edge, got {other:?}"),
-    }
-    assert_eq!(edges.right, CssLength::px(2.0));
-    match &edges.bottom {
-        CssLength::Calc(calc) => {
-            assert!(calc.uses_percentage());
-            assert_eq!(calc.to_css_string(), "calc(4px + 1%)");
-        }
-        other => panic!("expected calc bottom edge, got {other:?}"),
-    }
-    assert_eq!(edges.left, CssLength::px(2.0));
+    let edges = spacing_value!(".panel { margin: calc(4px + 1%) 2px; }", Margin);
+    let [top, right, bottom, left] = edges.assigned_values();
+    let CssMarginValue::LengthPercentage(top) = top else {
+        panic!("expected checked calculation")
+    };
+    assert_eq!(
+        top.calculation().unwrap().result_type(),
+        CssCalculationType::LengthPercentage
+    );
+    assert_eq!(top.serialize_specified().unwrap(), "calc(1% + 4px)");
+    assert_eq!(top, bottom.length_percentage().unwrap());
+    assert_eq!(right, left);
+    assert_eq!(right.serialize_specified().unwrap(), "2px");
+    assert_eq!(edges.authored_values().len(), 2);
 
     assert_eq!(style_rule(&sheet.rules()[0]).declarations().len(), 1);
 }
@@ -9158,9 +9168,12 @@ fn rejects_gap_auto() {
 
 #[test]
 fn accepts_margin_auto() {
-    assert_eq!(
-        declaration_value!(".panel { margin: auto; }", Margin),
-        CssEdges::all(CssLength::Auto)
+    let margin = spacing_value!(".panel { margin: auto; }", Margin);
+    assert!(
+        margin
+            .assigned_values()
+            .iter()
+            .all(|value| matches!(value, CssMarginValue::Auto))
     );
 }
 
@@ -9198,12 +9211,14 @@ fn parses_spacing_inset_and_z_index_values() {
 #[test]
 fn parses_spacing_longhands_with_existing_component_rules() {
     assert_eq!(
-        declaration_value!(".panel { margin-left: auto; }", MarginLeft),
-        CssLength::Auto
+        spacing_value!(".panel { margin-left: auto; }", MarginLeft),
+        CssMarginValue::Auto
     );
     assert_eq!(
-        declaration_value!(".panel { padding-top: 12px; }", PaddingTop),
-        CssLength::px(12.0)
+        spacing_value!(".panel { padding-top: 12px; }", PaddingTop)
+            .serialize_specified()
+            .unwrap(),
+        "12px"
     );
     assert_eq!(
         declaration_value!(".panel { border-right-width: 2px; }", BorderRightWidth),

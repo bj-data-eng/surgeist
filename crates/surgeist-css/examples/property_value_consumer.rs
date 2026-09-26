@@ -12,11 +12,11 @@
 
 use surgeist_css::{
     CssAuthoredDeclarationValue, CssComponentValue, CssComponentValueRef, CssComponentValues,
-    CssCustomPropertyName, CssDeclaration, CssEdges, CssGlobalKeyword, CssImportance,
-    CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssParsedOrigin, CssPropertyNameRef,
-    CssPropertyValueErrorKind, CssRule, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
-    ErrorKind, parse_component_values, parse_property_value, parse_sheet, parse_style_attribute,
-    validate_sheet,
+    CssCustomPropertyName, CssDeclaration, CssGlobalKeyword, CssImportance, CssKnownProperty,
+    CssKnownPropertyValueRef, CssMarginShorthand, CssMarginValue, CssParsedOrigin,
+    CssPropertyNameRef, CssPropertyValueErrorKind, CssRule, CssSerializedOrigin, CssValueOrigin,
+    CssValueTokenRef, ErrorKind, parse_component_values, parse_property_value, parse_sheet,
+    parse_style_attribute, validate_sheet,
 };
 
 fn known_value(property: CssKnownProperty, value: &str) -> CssDeclaration {
@@ -28,22 +28,26 @@ fn known_value(property: CssKnownProperty, value: &str) -> CssDeclaration {
     .expect("property grammar")
 }
 
-fn margin(declaration: &CssDeclaration) -> &CssEdges {
+fn margin(declaration: &CssDeclaration) -> &CssMarginShorthand {
     let Some(CssKnownPropertyValueRef::Margin(value)) =
         declaration.known().unwrap().property_value()
     else {
         panic!("expected a typed margin value");
     };
-    value
-        .i01_subset()
-        .expect("these explicit lengths are in the I01 domain")
+    value.current()
 }
 
-fn assert_edges(actual: &CssEdges, expected: [f32; 4]) {
-    assert_eq!(actual.top, CssLength::try_px(expected[0]).unwrap());
-    assert_eq!(actual.right, CssLength::try_px(expected[1]).unwrap());
-    assert_eq!(actual.bottom, CssLength::try_px(expected[2]).unwrap());
-    assert_eq!(actual.left, CssLength::try_px(expected[3]).unwrap());
+fn assert_edges(actual: &CssMarginShorthand, expected: [f32; 4]) {
+    for (value, expected) in actual.assigned_values().iter().zip(expected) {
+        let CssMarginValue::LengthPercentage(length) = value else {
+            panic!("expected authored margin length")
+        };
+        assert!(length.literal_component().is_some());
+        assert_eq!(
+            length.serialize_specified().unwrap(),
+            format!("{expected}px")
+        );
+    }
 }
 
 fn parsed(origin: &CssValueOrigin) -> &CssParsedOrigin {
@@ -283,8 +287,13 @@ fn parsed_declaration_coordinates() {
     else {
         panic!("typed padding")
     };
-    let expected_zero = CssEdges::all(CssLength::Zero);
-    assert_eq!(padding_value.i01_subset(), Some(&expected_zero));
+    assert!(
+        padding_value
+            .current()
+            .assigned_values()
+            .iter()
+            .all(|value| { value.length_percentage().serialize_specified().unwrap() == "0" })
+    );
     assert_eq!(empty.custom().unwrap().name().as_str(), "--Empty");
     assert!(empty.custom().unwrap().value().value().unwrap().is_empty());
     assert!(empty.value_components().items().is_empty());

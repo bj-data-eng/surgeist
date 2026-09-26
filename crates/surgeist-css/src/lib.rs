@@ -1077,7 +1077,7 @@
 //! ```
 //! use surgeist_css::{CssNormalizedItem, normalize_report, parse_sheet};
 //!
-//! let report = parse_sheet(".a, #b { margin: 1px; & .child { padding: 2px } }");
+//! let report = parse_sheet(".a, #b { margin-block: 1px; & .child { padding-block: 2px } }");
 //! let normalized = normalize_report(&report).expect("supported expansion");
 //! assert!(normalized.is_clean());
 //! assert_eq!(normalized.syntax().items().len(), 4);
@@ -1126,6 +1126,7 @@ mod media_features;
 mod normalization;
 pub use media_features::*;
 mod aspect_ratio;
+mod box_spacing;
 mod calc_size;
 mod color_scalar;
 mod display;
@@ -1136,6 +1137,10 @@ mod pending_serialization;
 mod scroll_snap;
 mod sizing;
 pub use aspect_ratio::{CssRatioOperand, CssSpecifiedRatio};
+pub use box_spacing::{
+    CssBoxSideKind, CssMarginPair, CssMarginShorthand, CssMarginValue, CssPaddingPair,
+    CssPaddingShorthand, CssPaddingValue,
+};
 pub use calc_size::{CssCalcSize, CssCalcSizeBasisRef, CssIntrinsicSizeKeyword};
 pub use color_scalar::{
     CssColorAngleLiteral, CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError,
@@ -1156,7 +1161,9 @@ mod specified_length;
 mod specified_serialization;
 mod writing_modes;
 pub use opacity_scalar::{CssOpacityScalar, CssOpacityScalarKind};
-pub use specified_length::{CssSpecifiedLength, CssSpecifiedNonNegativeLengthPercentage};
+pub use specified_length::{
+    CssSpecifiedLength, CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeLengthPercentage,
+};
 pub use specified_serialization::{
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
     CssSpecifiedValueSerializationLimits,

@@ -6,8 +6,9 @@
 //! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-list-of-rules
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#syntax
 use surgeist_css::{
-    CssErrorCode, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
-    CssPageSelector, CssRecoveryAction, CssRule, CssSelector, parse_sheet,
+    CssComponentValue, CssComponentValueRef, CssErrorCode, CssImportance, CssKnownProperty,
+    CssKnownPropertyValueRef, CssMarginValue, CssPageSelector, CssRecoveryAction, CssRule,
+    CssSelector, CssValueTokenRef, parse_sheet,
 };
 
 fn assert_tag(rule: &CssRule, expected: &str) {
@@ -56,9 +57,16 @@ fn nested_page_retains_selector_typed_margin_and_importance() {
     let CssKnownPropertyValueRef::Margin(margin) = known.property_value().unwrap() else {
         panic!("typed page margin")
     };
-    let edges = margin.i01_subset().unwrap();
-    for edge in [&edges.top, &edges.right, &edges.bottom, &edges.left] {
-        assert!(matches!(edge, CssLength::Px(value) if value.value() == 1.0));
+    for edge in margin.current().assigned_values() {
+        let CssMarginValue::LengthPercentage(value) = edge else {
+            panic!("exact page margin length")
+        };
+        let Some(CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })) =
+            value.literal_component().map(CssComponentValue::view)
+        else {
+            panic!("exact pixel token")
+        };
+        assert_eq!((number.representation(), unit), ("1", "px"));
     }
 }
 

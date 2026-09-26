@@ -20,7 +20,7 @@ use surgeist_css::{
     CssComponentValue, CssComponentValues, CssContributionValueRef, CssContributions,
     CssCustomPropertyDeclaredValue, CssCustomPropertyName, CssDeclaration, CssExpansion,
     CssExpansionErrorKind, CssGlobalKeyword, CssImportance, CssKnownProperty as Property,
-    CssLength, CssLonghandContributions, CssLonghandValueRef, CssMediaConditionKind, CssMediaQuery,
+    CssLonghandContributions, CssLonghandValueRef, CssMediaConditionKind, CssMediaQuery,
     CssNormalizationErrorKind, CssNormalizationLimits, CssNormalizationResource,
     CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedSheet, CssPropertyNameRef,
     CssRecoveryAction, CssRule, CssRuleContext, CssRuleContextKindRef, CssScopedRule, CssSelector,
@@ -75,16 +75,17 @@ fn properties(values: &CssLonghandContributions) -> Vec<Property> {
         .collect()
 }
 
-fn margin_lengths(values: &CssLonghandContributions) -> Vec<&CssLength> {
+fn margin_lengths(values: &CssLonghandContributions) -> Vec<String> {
     values
         .items()
         .iter()
         .map(|value| match value.value() {
-            CssContributionValueRef::Ordinary(CssLonghandValueRef::MarginTop(value))
-            | CssContributionValueRef::Ordinary(CssLonghandValueRef::MarginRight(value))
-            | CssContributionValueRef::Ordinary(CssLonghandValueRef::MarginBottom(value))
-            | CssContributionValueRef::Ordinary(CssLonghandValueRef::MarginLeft(value)) => value,
-            other => panic!("expected an ordinary margin: {other:?}"),
+            CssContributionValueRef::Ordinary(CssLonghandValueRef::MarginBlockStart(value))
+            | CssContributionValueRef::Ordinary(CssLonghandValueRef::MarginBlockEnd(value))
+            | CssContributionValueRef::Ordinary(CssLonghandValueRef::MarginLeft(value)) => {
+                value.serialize_specified().unwrap()
+            }
+            other => panic!("expected an ordinary margin-block: {other:?}"),
         })
         .collect()
 }
@@ -145,7 +146,7 @@ fn ancestors(rule: &CssRuleContext) -> Vec<&'static str> {
 }
 
 fn ordered_grouped_contributions() {
-    let report = parse_sheet(".a, #b { margin:1px 2px; margin-left:3px; all:revert-layer }");
+    let report = parse_sheet(".a, #b { margin-block:1px 2px; margin-left:3px; all:revert-layer }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let authored = style(&report.syntax().rules()[0]);
     let normalized = normalize_sheet(report.syntax()).expect("supported declarations");
@@ -175,21 +176,11 @@ fn ordered_grouped_contributions() {
     assert_eq!(first.selector_context().selectors().len(), 2);
     assert_eq!(
         properties(completed(first)),
-        [
-            Property::MarginTop,
-            Property::MarginRight,
-            Property::MarginBottom,
-            Property::MarginLeft,
-        ]
+        [Property::MarginBlockStart, Property::MarginBlockEnd]
     );
-    let one = CssLength::try_px(1.0).unwrap();
-    let two = CssLength::try_px(2.0).unwrap();
-    assert_eq!(margin_lengths(completed(first)), [&one, &two, &one, &two]);
+    assert_eq!(margin_lengths(completed(first)), ["1px", "2px"]);
     assert_eq!(properties(completed(second)), [Property::MarginLeft]);
-    assert_eq!(
-        margin_lengths(completed(second)),
-        [&CssLength::try_px(3.0).unwrap()]
-    );
+    assert_eq!(margin_lengths(completed(second)), ["3px"]);
     let CssExpansion::Contributions(CssContributions::UniversalReset(value)) = reset.expansion()
     else {
         panic!("all remains symbolic")
@@ -229,7 +220,7 @@ fn ordered_grouped_contributions() {
 }
 
 fn pending_shorthand_and_reentry() {
-    let report = parse_sheet(".a { margin:var(--m)!important; margin-left:9px }");
+    let report = parse_sheet(".a { margin-block:var(--m)!important; margin-left:9px }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let normalized = normalize_sheet(report.syntax()).unwrap();
     let declarations = declaration_items(&normalized);
@@ -252,9 +243,7 @@ fn pending_shorthand_and_reentry() {
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("completed margin contributions")
     };
-    let four = CssLength::try_px(4.0).unwrap();
-    let five = CssLength::try_px(5.0).unwrap();
-    assert_eq!(margin_lengths(&values), [&four, &five, &four, &five]);
+    assert_eq!(margin_lengths(&values), ["4px", "5px"]);
     for value in values.items() {
         assert!(value.source().same_occurrence(authored));
         assert_eq!(value.source().importance(), CssImportance::Important);
@@ -347,7 +336,7 @@ fn custom_values_and_construction() {
     ])
     .unwrap();
     let constructed_margin = parse_property_value(
-        CssPropertyNameRef::Known(Property::Margin),
+        CssPropertyNameRef::Known(Property::MarginBlock),
         mixed,
         CssImportance::Normal,
     )
@@ -357,21 +346,13 @@ fn custom_values_and_construction() {
     else {
         panic!("constructed margin contribution")
     };
-    assert_eq!(
-        margin_lengths(&values),
-        [
-            &CssLength::try_px(2.0).unwrap(),
-            &CssLength::try_px(3.0).unwrap(),
-            &CssLength::try_px(2.0).unwrap(),
-            &CssLength::try_px(3.0).unwrap(),
-        ]
-    );
+    assert_eq!(margin_lengths(&values), ["2px", "3px"]);
     assert!(constructed_margin.position().is_none());
     let origins = constructed_margin.value_components().items();
     assert!(matches!(origins[1].origin(), CssValueOrigin::Programmatic));
     assert_eq!(origins[0].origin(), left.items()[0].origin());
     assert_eq!(origins[2].origin(), right.items()[0].origin());
-    let parsed_margin = parse_sheet(".a {margin:2px 3px}");
+    let parsed_margin = parse_sheet(".a {margin-block:2px 3px}");
     assert!(
         parsed_margin.is_clean(),
         "{:?}",
@@ -396,7 +377,8 @@ fn custom_values_and_construction() {
 }
 
 fn nested_declaration_context_identity() {
-    let report = parse_sheet(".a, #b { margin:0; & .c { padding:1px } margin:2px }");
+    let report =
+        parse_sheet(".a, #b { margin-block:0; & .c { padding-block:1px } margin-block:2px }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let normalized = normalize_sheet(report.syntax()).unwrap();
     let all_rules = rules(&normalized);
@@ -446,7 +428,7 @@ fn nested_declaration_context_identity() {
 
 fn pseudo_element_context_preservation() {
     let report = parse_sheet(
-        ".a, .a::before { margin:0; @media screen { margin:1px } & { margin:2px } margin:3px }",
+        ".a, .a::before { margin-block:0; @media screen { margin-block:1px } & { margin-block:2px } margin-block:3px }",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let normalized = normalize_sheet(report.syntax()).unwrap();
@@ -475,10 +457,10 @@ fn pseudo_element_context_preservation() {
 fn nested_selector_binding_classification() {
     let report = parse_sheet(concat!(
         ".a, #b { ",
-        "> .c {margin:1px} .c {margin:2px} .c & {margin:3px} ",
-        "& + & {margin:4px} :is(&,.x) {margin:5px} ",
-        ":where(&) {margin:6px} > :is(&,.x) {margin:7px} ",
-        ":not(:is(&,.x)) {margin:8px} }",
+        "> .c {margin-block:1px} .c {margin-block:2px} .c & {margin-block:3px} ",
+        "& + & {margin-block:4px} :is(&,.x) {margin-block:5px} ",
+        ":where(&) {margin-block:6px} > :is(&,.x) {margin-block:7px} ",
+        ":not(:is(&,.x)) {margin-block:8px} }",
     ));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let normalized = normalize_sheet(report.syntax()).unwrap();
@@ -516,7 +498,7 @@ fn linear_selector_representation() {
     let mut css = String::new();
     for depth in 0..8 {
         css.push_str(&format!(
-            ".a{depth},.b{depth},#c{depth},.d{depth} {{ margin:0; "
+            ".a{depth},.b{depth},#c{depth},.d{depth} {{ margin-block:0; "
         ));
     }
     css.push_str(&"}".repeat(8));
@@ -529,7 +511,7 @@ fn linear_selector_representation() {
     for (index, declaration) in declarations.iter().enumerate() {
         assert_eq!(declaration.order(), index);
         assert_eq!(declaration.selector_context().selectors().len(), 4);
-        assert_eq!(completed(declaration).items().len(), 4);
+        assert_eq!(completed(declaration).items().len(), 2);
         if index == 0 {
             assert!(declaration.selector_context().parent().is_none());
         } else {
@@ -542,7 +524,7 @@ fn linear_selector_representation() {
             );
         }
     }
-    let repeated = parse_sheet(".same {margin:0} .same {margin:0}");
+    let repeated = parse_sheet(".same {margin-block:0} .same {margin-block:0}");
     let normalized = normalize_sheet(repeated.syntax()).unwrap();
     let occurrences = declaration_items(&normalized);
     assert!(
@@ -566,8 +548,8 @@ fn linear_selector_representation() {
 fn symbolic_conditional_and_layer_contexts() {
     let report = parse_sheet(concat!(
         "@layer theme { @media screen { @supports (display:grid) { ",
-        "@container sidebar (inline-size > 30rem) { .a { margin:1px; ",
-        "@media print { padding:2px } margin:3px } } } } }",
+        "@container sidebar (inline-size > 30rem) { .a { margin-block:1px; ",
+        "@media print { padding-block:2px } margin-block:3px } } } } }",
     ));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let normalized = normalize_sheet(report.syntax()).unwrap();
@@ -652,7 +634,7 @@ fn ordered_terminal_payloads() {
         "@font-face {font-family:\"A\";src:local(\"A\"),url(a.woff2) format(woff2)} ",
         "@keyframes pulse {from {opacity:0} to {opacity:1}} ",
         "@counter-style marks {system:cyclic;symbols:x y} @page {margin:1cm} ",
-        ".a {margin:0}",
+        ".a {margin-block:0}",
     ));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let normalized = normalize_sheet(report.syntax()).unwrap();
@@ -724,7 +706,7 @@ fn ordered_terminal_payloads() {
 }
 
 fn atomic_unsupported_declaration() {
-    let css = ".a { margin:0; @media screen { flex-basis:1px; padding:1px } }";
+    let css = ".a { margin-block:0; @media screen { flex-basis:1px; padding-block:1px } }";
     let report = parse_sheet(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
@@ -775,47 +757,47 @@ fn atomic_unsupported_declaration() {
 }
 
 fn normalization_resource_boundaries() {
-    let css = ".a { margin:0; .b { padding:1px } }";
+    let css = ".a { margin-block:0; .b { padding-block:1px } }";
     let report = parse_sheet(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let exact = CssNormalizationLimits::try_new(1, 2, 2, 8).unwrap();
+    let exact = CssNormalizationLimits::try_new(1, 2, 2, 4).unwrap();
     let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
     assert_eq!(normalized.items().len(), 4);
-    assert!(CssNormalizationLimits::try_new(257, 2, 2, 8).is_none());
+    assert!(CssNormalizationLimits::try_new(257, 2, 2, 4).is_none());
     for (limits, resource, limit, position, ordinal) in [
         (
-            CssNormalizationLimits::try_new(0, 2, 2, 8).unwrap(),
+            CssNormalizationLimits::try_new(0, 2, 2, 4).unwrap(),
             CssNormalizationResource::RuleDepth,
             0,
             css.find(".b").unwrap(),
             None,
         ),
         (
-            CssNormalizationLimits::try_new(1, 1, 2, 8).unwrap(),
+            CssNormalizationLimits::try_new(1, 1, 2, 4).unwrap(),
             CssNormalizationResource::Rules,
             1,
             css.find(".b").unwrap(),
             None,
         ),
         (
-            CssNormalizationLimits::try_new(1, 2, 1, 8).unwrap(),
+            CssNormalizationLimits::try_new(1, 2, 1, 4).unwrap(),
             CssNormalizationResource::Declarations,
             1,
-            css.find("padding:").unwrap(),
-            Some(1),
-        ),
-        (
-            CssNormalizationLimits::try_new(1, 2, 2, 7).unwrap(),
-            CssNormalizationResource::Contributions,
-            7,
-            css.find("padding:").unwrap(),
+            css.find("padding-block:").unwrap(),
             Some(1),
         ),
         (
             CssNormalizationLimits::try_new(1, 2, 2, 3).unwrap(),
             CssNormalizationResource::Contributions,
             3,
-            css.find("margin:").unwrap(),
+            css.find("padding-block:").unwrap(),
+            Some(1),
+        ),
+        (
+            CssNormalizationLimits::try_new(1, 2, 2, 1).unwrap(),
+            CssNormalizationResource::Contributions,
+            1,
+            css.find("margin-block:").unwrap(),
             Some(0),
         ),
     ] {
@@ -845,7 +827,7 @@ fn normalization_resource_boundaries() {
         )
         .is_ok()
     );
-    let nested_run = parse_sheet(".a {margin:0; @media screen {padding:1px}}");
+    let nested_run = parse_sheet(".a {margin-block:0; @media screen {padding-block:1px}}");
     assert!(nested_run.is_clean(), "{:?}", nested_run.diagnostics());
     assert!(
         normalize_sheet_with_limits(
@@ -871,7 +853,7 @@ fn normalization_resource_boundaries() {
         None,
         "admitting a nested-declaration rule precedes admitting its declaration"
     );
-    let symbolic = parse_sheet(".a {--x:var(--y);all:unset;margin:var(--m)}");
+    let symbolic = parse_sheet(".a {--x:var(--y);all:unset;margin-block:var(--m)}");
     assert!(symbolic.is_clean(), "{:?}", symbolic.diagnostics());
     assert_eq!(
         declaration_items(
@@ -902,7 +884,7 @@ fn normalization_resource_boundaries() {
 
 fn unchanged_recovery_diagnostics() {
     let report = parse_sheet(
-        ".a {margin:0; padding:nope; @media (width:) and {padding:1px} margin-left:2px}",
+        ".a {margin-block:0; padding-block:nope; @media (width:) and {padding-block:1px} margin-left:2px}",
     );
     assert!(!report.is_clean());
     assert!(
@@ -929,12 +911,12 @@ fn unchanged_recovery_diagnostics() {
         unreachable!()
     };
     assert!(matches!(query.queries(), [CssMediaQuery::Never(_)]));
-    let clean = parse_sheet(".a {margin:0}");
+    let clean = parse_sheet(".a {margin-block:0}");
     let normalized_clean = normalize_report(&clean).unwrap();
     assert!(normalized_clean.is_clean());
     assert!(normalized_clean.diagnostics().is_empty());
     assert_eq!(declaration_items(normalized_clean.syntax()).len(), 1);
-    let opaque = parse_sheet(".a {@media (width:) {padding:1px}}");
+    let opaque = parse_sheet(".a {@media (width:) {padding-block:1px}}");
     assert!(opaque.is_clean(), "{:?}", opaque.diagnostics());
     let normalized_opaque = normalize_report(&opaque).unwrap();
     assert!(normalized_opaque.is_clean());
@@ -962,8 +944,8 @@ fn complete_scoped_rule_traversal() {
         "@scope (.root) to (.stop) { @layer reset; @media screen { ",
         "@supports (display:grid) { @container box (inline-size > 30rem) { ",
         "@layer theme { @scope (.inner) { ",
-        ".a, > .b {margin:1px; & .child {padding:2px} margin:3px} ",
-        "&:hover {margin:4px} } } } } } }",
+        ".a, > .b {margin-block:1px; & .child {padding-block:2px} margin-block:3px} ",
+        "&:hover {margin-block:4px} } } } } } }",
     ));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let normalized = normalize_sheet(report.syntax()).unwrap();

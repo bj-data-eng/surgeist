@@ -68,7 +68,7 @@ fn public_expansion_consumer_compiles_and_preserves_normalized_contribution_cont
     assert_eq!(
         String::from_utf8(output.stdout).expect("UTF-8 consumer output"),
         concat!(
-            "four-sided lengths: ok\n",
+            "four-sided authored values and reset boundary: ok\n",
             "four-sided styles and current colors: ok\n",
             "side border defaults: ok\n",
             "full border image resets: ok\n",
