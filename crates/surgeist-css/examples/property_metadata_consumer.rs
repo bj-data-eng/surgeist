@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 //! Independent contract cases for the selected public metadata and grammar slice.
 //! CSS Box 3, Backgrounds 3, Cascade 5, Color 4, Fonts 4, Writing Modes 4,
-//! Variables 1, Conditional Rules 5, Display 3, and the pinned Grid 3 define values and shorthand semantics.
+//! Variables 1, Conditional Rules 5, Display 3, Sizing 3, and the pinned Grid 3 define values and shorthand semantics.
 //! Grammar-handle identity, explicit unavailable metadata, and source occurrence
 //! retention are Surgeist public contracts. No contextual style is resolved.
 use surgeist_css::CssKnownProperty as P;
@@ -41,6 +41,7 @@ const LONGHANDS: &[P] = &[
     P::TextOrientation,
     P::Opacity,
     P::Display,
+    P::BoxSizing,
     P::Order,
     P::Visibility,
     P::Direction,
@@ -253,6 +254,7 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
                 inside: CssDisplayInside::Flow,
             },
         ),
+        CssLonghandValueRef::BoxSizing(v) => assert_eq!(*v, CssBoxSizing::ContentBox),
         CssLonghandValueRef::Opacity(v) => {
             assert!(matches!(v, CssOpacityValue::Literal(value) if value.value() == 1.0));
         }
@@ -266,7 +268,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 51);
+    assert_eq!(expected.len(), 52);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();

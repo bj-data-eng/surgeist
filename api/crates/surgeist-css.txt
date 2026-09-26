@@ -324,6 +324,9 @@ pub surgeist_css::CssBoxShadow::Shadows(surgeist_css::CssBoxShadowList)
 #[non_exhaustive] pub enum surgeist_css::CssBoxSizing
 pub surgeist_css::CssBoxSizing::BorderBox
 pub surgeist_css::CssBoxSizing::ContentBox
+impl surgeist_css::CssBoxSizing
+pub fn surgeist_css::CssBoxSizing::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBoxSizing::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssBuiltInCounterStyle
 pub surgeist_css::CssBuiltInCounterStyle::Circle
 pub surgeist_css::CssBuiltInCounterStyle::Decimal
@@ -2162,6 +2165,7 @@ pub surgeist_css::CssLonghandValueRef::BorderRightWidth(&'a surgeist_css::CssLen
 pub surgeist_css::CssLonghandValueRef::BorderTopColor(&'a surgeist_css::CssAuthoredColor)
 pub surgeist_css::CssLonghandValueRef::BorderTopStyle(&'a surgeist_css::CssBorderStyle)
 pub surgeist_css::CssLonghandValueRef::BorderTopWidth(&'a surgeist_css::CssLength)
+pub surgeist_css::CssLonghandValueRef::BoxSizing(&'a surgeist_css::CssBoxSizing)
 pub surgeist_css::CssLonghandValueRef::Color(&'a surgeist_css::CssAuthoredColor)
 pub surgeist_css::CssLonghandValueRef::ContainerName(&'a surgeist_css::CssContainerNames)
 pub surgeist_css::CssLonghandValueRef::ContainerType(&'a surgeist_css::CssContainerType)
@@ -4004,6 +4008,8 @@ pub struct surgeist_css::CssBoxSizingPropertyValue
 impl surgeist_css::CssBoxSizingPropertyValue
 pub fn surgeist_css::CssBoxSizingPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBoxSizingPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssBoxSizing>
+impl surgeist_css::CssBoxSizingPropertyValue
+pub const fn surgeist_css::CssBoxSizingPropertyValue::current(&self) -> &surgeist_css::CssBoxSizing
 pub struct surgeist_css::CssByteOffset(_)
 impl surgeist_css::CssByteOffset
 pub const fn surgeist_css::CssByteOffset::value(self) -> usize

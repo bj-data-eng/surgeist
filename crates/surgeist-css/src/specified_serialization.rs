@@ -1,6 +1,6 @@
 //! Bounded, context-independent specified-value text.
 
-use crate::{CssOpacityScalarKind, CssOpacityValue};
+use crate::{CssBoxSizing, CssOpacityScalarKind, CssOpacityValue};
 use std::fmt;
 
 /// Resource policy for specified-value projection and serialization.
@@ -196,6 +196,27 @@ pub(crate) fn serialize_keyword_sequence(
     let mut output = String::new();
     context.append(&mut output, text)?;
     Ok(output)
+}
+
+impl CssBoxSizing {
+    /// Serializes the intrinsic specified keyword without resolving a box size.
+    pub fn serialize_specified(&self) -> Result<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Serializes atomically under input, projection, and output limits.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        serialize_keyword_sequence(
+            match self {
+                Self::ContentBox => "content-box",
+                Self::BorderBox => "border-box",
+            },
+            limits,
+        )
+    }
 }
 
 impl CssOpacityValue {
