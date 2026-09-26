@@ -1132,6 +1132,7 @@ mod normalization;
 pub use media_features::*;
 mod aspect_ratio;
 mod box_spacing;
+mod break_controls;
 mod calc_size;
 mod color_scalar;
 mod column_sizing;

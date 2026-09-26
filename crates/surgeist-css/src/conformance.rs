@@ -2275,9 +2275,6 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::Clip
         | CssKnownProperty::EmptyCells
         | CssKnownProperty::Orphans
-        | CssKnownProperty::PageBreakAfter
-        | CssKnownProperty::PageBreakBefore
-        | CssKnownProperty::PageBreakInside
         | CssKnownProperty::Quotes
         | CssKnownProperty::TableLayout
         | CssKnownProperty::Widows
@@ -2298,6 +2295,9 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::TextDecoration
         | CssKnownProperty::TextTransform
         | CssKnownProperty::ZIndex => O_CSS2,
+        CssKnownProperty::BreakBefore
+        | CssKnownProperty::BreakAfter
+        | CssKnownProperty::BreakInside => S_BREAK3,
         CssKnownProperty::BoxSizing
         | CssKnownProperty::Width
         | CssKnownProperty::Height
@@ -2576,15 +2576,8 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
             _ => default,
         },
         CssKnownProperty::Clip => "visufx.html#propdef-clip",
-        CssKnownProperty::Orphans
-        | CssKnownProperty::PageBreakAfter
-        | CssKnownProperty::PageBreakBefore
-        | CssKnownProperty::PageBreakInside
-        | CssKnownProperty::Widows => match property {
+        CssKnownProperty::Orphans | CssKnownProperty::Widows => match property {
             CssKnownProperty::Orphans => "page.html#propdef-orphans",
-            CssKnownProperty::PageBreakAfter => "page.html#propdef-page-break-after",
-            CssKnownProperty::PageBreakBefore => "page.html#propdef-page-break-before",
-            CssKnownProperty::PageBreakInside => "page.html#propdef-page-break-inside",
             CssKnownProperty::Widows => "page.html#propdef-widows",
             _ => default,
         },
@@ -2696,7 +2689,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 578] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 582] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -5542,24 +5535,24 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 578] = [
         &[],
     ),
     CssFeatureMetadata::complete_property(
-        "official.property.page-break-after",
-        CssKnownProperty::PageBreakAfter,
-        "page-break-after",
-        "page.html#propdef-page-break-after",
+        "official.property.break-after",
+        CssKnownProperty::BreakAfter,
+        "break-after",
+        "#propdef-break-after",
         &[],
     ),
     CssFeatureMetadata::complete_property(
-        "official.property.page-break-before",
-        CssKnownProperty::PageBreakBefore,
-        "page-break-before",
-        "page.html#propdef-page-break-before",
+        "official.property.break-before",
+        CssKnownProperty::BreakBefore,
+        "break-before",
+        "#propdef-break-before",
         &[],
     ),
     CssFeatureMetadata::complete_property(
-        "official.property.page-break-inside",
-        CssKnownProperty::PageBreakInside,
-        "page-break-inside",
-        "page.html#propdef-page-break-inside",
+        "official.property.break-inside",
+        CssKnownProperty::BreakInside,
+        "break-inside",
+        "#propdef-break-inside",
         &[],
     ),
     CssFeatureMetadata::complete_property(
@@ -5798,6 +5791,34 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 578] = [
         "glyph-orientation-vertical",
         O_WRITING3,
         "#propdef-glyph-orientation-vertical",
+    ),
+    CssFeatureMetadata::complete(
+        "official.property.page-break-before",
+        CssFeatureKind::PropertyAlias,
+        "page-break-before",
+        S_BREAK3,
+        "#page-break-properties",
+    ),
+    CssFeatureMetadata::complete(
+        "official.property.page-break-after",
+        CssFeatureKind::PropertyAlias,
+        "page-break-after",
+        S_BREAK3,
+        "#page-break-properties",
+    ),
+    CssFeatureMetadata::complete(
+        "official.property.page-break-inside",
+        CssFeatureKind::PropertyAlias,
+        "page-break-inside",
+        S_BREAK3,
+        "#page-break-properties",
+    ),
+    CssFeatureMetadata::complete(
+        "official.value.page-break-logical-values",
+        CssFeatureKind::Value,
+        "flow-relative page-break values",
+        I_LOGICAL1_20251204,
+        "#page",
     ),
     CssFeatureMetadata::complete(
         "official.selector.group",
@@ -6387,11 +6408,13 @@ pub fn feature_metadata(id: &str) -> Option<&'static CssFeatureMetadata> {
         .find(|feature| feature.id.as_str() == id)
 }
 
-/// Returns support metadata for a recognized non-custom authored property name.
+/// Returns support metadata for a canonical property or name-equivalent alias.
 ///
-/// Canonical names and reviewed aliases use ASCII-case-insensitive matching.
-/// Custom-property names and unknown spellings return `None`; this lookup does
-/// not parse a declaration or classify its diagnostics.
+/// Matching is ASCII-case-insensitive. Distinct legacy shorthand grammars, custom
+/// properties, and unknown spellings return `None`. For legacy grammars, use
+/// [`crate::CssPropertyGrammar::from_name`], then [`feature_metadata`] with the
+/// grammar's feature ID or its intrinsic metadata accessor. This lookup does not
+/// parse a declaration or classify its diagnostics.
 #[must_use]
 pub fn property_support_metadata(name: &str) -> Option<CssPropertySupportMetadata> {
     FEATURE_CATALOG

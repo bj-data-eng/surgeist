@@ -2775,6 +2775,29 @@ The enum and shorthand have bounded canonical specified serialization.
 Cross-axis computed-value coupling and mapping flow-relative axes through the
 element's writing mode belong downstream.
 
+## Authored break controls
+
+The selected [Fragmentation 3 break definitions](https://www.w3.org/TR/2018/CR-css-break-3-20181204/#break-between)
+define `break-before`, `break-after`, and `break-inside` as noninherited
+longhands with `auto` initials. Their `current()` accessors expose finite typed
+keyword domains and bounded canonical serialization. The former canonical
+`page-break-before`, `page-break-after`, and `page-break-inside` spellings are
+now distinct [legacy shorthand grammars](https://www.w3.org/TR/2018/CR-css-break-3-20181204/#page-break-properties)
+that set one modern longhand, have no reset members, and preserve the original
+authored spelling and declaration occurrence. `always` maps to `page` for the
+before/after aliases; the aliases reject modern-only values. [Logical 1 §3](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#page)
+also admits `recto` and `verso` for those two aliases. Look up a legacy spelling
+through `CssPropertyGrammar::from_name`; `CssKnownProperty::from_name` and
+`property_support_metadata` identify canonical properties and name-equivalent
+aliases, excluding distinct legacy grammars. The legacy feature IDs remain
+`official.property.page-break-*`, now classified as `PropertyAlias`; retrieve
+their support records with `feature_metadata(grammar.feature_id().as_str())`
+and their intrinsic metadata with `grammar.metadata()`. Code using the
+old `CssPageBreak*` types or `.page_break()` accessors should use the
+`CssBreakBetween`/`CssBreakInside` values returned by modern wrappers'
+`.current()` accessors. Fragmentation and flow-relative page mapping remain
+downstream behavior.
+
 ## Authored overflow controls
 
 The selected [Overflow 3 definitions](https://www.w3.org/TR/2025/WD-css-overflow-3-20251007/#overflow-clip-margin)

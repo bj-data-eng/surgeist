@@ -351,6 +351,31 @@ pub surgeist_css::CssBoxSizing::ContentBox
 impl surgeist_css::CssBoxSizing
 pub fn surgeist_css::CssBoxSizing::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssBoxSizing::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssBreakBetween
+pub surgeist_css::CssBreakBetween::Auto
+pub surgeist_css::CssBreakBetween::Avoid
+pub surgeist_css::CssBreakBetween::AvoidColumn
+pub surgeist_css::CssBreakBetween::AvoidPage
+pub surgeist_css::CssBreakBetween::AvoidRegion
+pub surgeist_css::CssBreakBetween::Column
+pub surgeist_css::CssBreakBetween::Left
+pub surgeist_css::CssBreakBetween::Page
+pub surgeist_css::CssBreakBetween::Recto
+pub surgeist_css::CssBreakBetween::Region
+pub surgeist_css::CssBreakBetween::Right
+pub surgeist_css::CssBreakBetween::Verso
+impl surgeist_css::CssBreakBetween
+pub fn surgeist_css::CssBreakBetween::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBreakBetween::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssBreakInside
+pub surgeist_css::CssBreakInside::Auto
+pub surgeist_css::CssBreakInside::Avoid
+pub surgeist_css::CssBreakInside::AvoidColumn
+pub surgeist_css::CssBreakInside::AvoidPage
+pub surgeist_css::CssBreakInside::AvoidRegion
+impl surgeist_css::CssBreakInside
+pub fn surgeist_css::CssBreakInside::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBreakInside::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssBuiltInCounterStyle
 pub surgeist_css::CssBuiltInCounterStyle::Circle
 pub surgeist_css::CssBuiltInCounterStyle::Decimal
@@ -1710,6 +1735,9 @@ pub surgeist_css::CssKnownProperty::Bottom
 pub surgeist_css::CssKnownProperty::BoxDecorationBreak
 pub surgeist_css::CssKnownProperty::BoxShadow
 pub surgeist_css::CssKnownProperty::BoxSizing
+pub surgeist_css::CssKnownProperty::BreakAfter
+pub surgeist_css::CssKnownProperty::BreakBefore
+pub surgeist_css::CssKnownProperty::BreakInside
 pub surgeist_css::CssKnownProperty::CaptionSide
 pub surgeist_css::CssKnownProperty::CaretColor
 pub surgeist_css::CssKnownProperty::Clear
@@ -1866,9 +1894,6 @@ pub surgeist_css::CssKnownProperty::PaddingInlineStart
 pub surgeist_css::CssKnownProperty::PaddingLeft
 pub surgeist_css::CssKnownProperty::PaddingRight
 pub surgeist_css::CssKnownProperty::PaddingTop
-pub surgeist_css::CssKnownProperty::PageBreakAfter
-pub surgeist_css::CssKnownProperty::PageBreakBefore
-pub surgeist_css::CssKnownProperty::PageBreakInside
 pub surgeist_css::CssKnownProperty::PlaceContent
 pub surgeist_css::CssKnownProperty::PlaceItems
 pub surgeist_css::CssKnownProperty::PlaceSelf
@@ -2019,6 +2044,9 @@ pub surgeist_css::CssKnownPropertyValueRef::Bottom(&'a surgeist_css::CssBottomPr
 pub surgeist_css::CssKnownPropertyValueRef::BoxDecorationBreak(&'a surgeist_css::CssBoxDecorationBreakPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BoxShadow(&'a surgeist_css::CssBoxShadowPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BoxSizing(&'a surgeist_css::CssBoxSizingPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::BreakAfter(&'a surgeist_css::CssBreakAfterPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::BreakBefore(&'a surgeist_css::CssBreakBeforePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::BreakInside(&'a surgeist_css::CssBreakInsidePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::CaptionSide(&'a surgeist_css::CssCaptionSidePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::CaretColor(&'a surgeist_css::CssCaretColorPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Clear(&'a surgeist_css::CssClearPropertyValue)
@@ -2175,9 +2203,6 @@ pub surgeist_css::CssKnownPropertyValueRef::PaddingInlineStart(&'a surgeist_css:
 pub surgeist_css::CssKnownPropertyValueRef::PaddingLeft(&'a surgeist_css::CssPaddingLeftPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::PaddingRight(&'a surgeist_css::CssPaddingRightPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::PaddingTop(&'a surgeist_css::CssPaddingTopPropertyValue)
-pub surgeist_css::CssKnownPropertyValueRef::PageBreakAfter(&'a surgeist_css::CssPageBreakAfterPropertyValue)
-pub surgeist_css::CssKnownPropertyValueRef::PageBreakBefore(&'a surgeist_css::CssPageBreakBeforePropertyValue)
-pub surgeist_css::CssKnownPropertyValueRef::PageBreakInside(&'a surgeist_css::CssPageBreakInsidePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::PlaceContent(&'a surgeist_css::CssPlaceContentPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::PlaceItems(&'a surgeist_css::CssPlaceItemsPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::PlaceSelf(&'a surgeist_css::CssPlaceSelfPropertyValue)
@@ -2383,6 +2408,9 @@ pub surgeist_css::CssLonghandValueRef::BorderTopStyle(&'a surgeist_css::CssBorde
 pub surgeist_css::CssLonghandValueRef::BorderTopWidth(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::Bottom(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::BoxSizing(&'a surgeist_css::CssBoxSizing)
+pub surgeist_css::CssLonghandValueRef::BreakAfter(&'a surgeist_css::CssBreakBetween)
+pub surgeist_css::CssLonghandValueRef::BreakBefore(&'a surgeist_css::CssBreakBetween)
+pub surgeist_css::CssLonghandValueRef::BreakInside(&'a surgeist_css::CssBreakInside)
 pub surgeist_css::CssLonghandValueRef::CaptionSide(&'a surgeist_css::CssCaptionSide)
 pub surgeist_css::CssLonghandValueRef::Clear(&'a surgeist_css::CssClear)
 pub surgeist_css::CssLonghandValueRef::Color(&'a surgeist_css::CssAuthoredColor)
@@ -2847,15 +2875,6 @@ pub surgeist_css::CssOverflowI01PropertyValue::Single(surgeist_css::CssOverflow)
 pub surgeist_css::CssOverflowWrap::Anywhere
 pub surgeist_css::CssOverflowWrap::BreakWord
 pub surgeist_css::CssOverflowWrap::Normal
-#[non_exhaustive] pub enum surgeist_css::CssPageBreak
-pub surgeist_css::CssPageBreak::Always
-pub surgeist_css::CssPageBreak::Auto
-pub surgeist_css::CssPageBreak::Avoid
-pub surgeist_css::CssPageBreak::Left
-pub surgeist_css::CssPageBreak::Right
-#[non_exhaustive] pub enum surgeist_css::CssPageBreakInside
-pub surgeist_css::CssPageBreakInside::Auto
-pub surgeist_css::CssPageBreakInside::Avoid
 #[non_exhaustive] pub enum surgeist_css::CssPageSelector
 pub surgeist_css::CssPageSelector::First
 pub surgeist_css::CssPageSelector::Left
@@ -4400,6 +4419,18 @@ pub fn surgeist_css::CssBoxSizingPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBoxSizingPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssBoxSizing>
 impl surgeist_css::CssBoxSizingPropertyValue
 pub const fn surgeist_css::CssBoxSizingPropertyValue::current(&self) -> &surgeist_css::CssBoxSizing
+pub struct surgeist_css::CssBreakAfterPropertyValue
+impl surgeist_css::CssBreakAfterPropertyValue
+pub fn surgeist_css::CssBreakAfterPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBreakAfterPropertyValue::current(&self) -> &surgeist_css::CssBreakBetween
+pub struct surgeist_css::CssBreakBeforePropertyValue
+impl surgeist_css::CssBreakBeforePropertyValue
+pub fn surgeist_css::CssBreakBeforePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBreakBeforePropertyValue::current(&self) -> &surgeist_css::CssBreakBetween
+pub struct surgeist_css::CssBreakInsidePropertyValue
+impl surgeist_css::CssBreakInsidePropertyValue
+pub fn surgeist_css::CssBreakInsidePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBreakInsidePropertyValue::current(&self) -> &surgeist_css::CssBreakInside
 pub struct surgeist_css::CssByteOffset(_)
 impl surgeist_css::CssByteOffset
 pub const fn surgeist_css::CssByteOffset::value(self) -> usize
@@ -6791,18 +6822,6 @@ pub fn surgeist_css::CssPaddingValue::serialize_specified_with_limits(&self, lim
 impl core::cmp::Eq for surgeist_css::CssPaddingValue
 impl core::cmp::PartialEq for surgeist_css::CssPaddingValue
 pub fn surgeist_css::CssPaddingValue::eq(&self, other: &Self) -> bool
-pub struct surgeist_css::CssPageBreakAfterPropertyValue
-impl surgeist_css::CssPageBreakAfterPropertyValue
-pub fn surgeist_css::CssPageBreakAfterPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPageBreakAfterPropertyValue::page_break(&self) -> &surgeist_css::CssPageBreak
-pub struct surgeist_css::CssPageBreakBeforePropertyValue
-impl surgeist_css::CssPageBreakBeforePropertyValue
-pub fn surgeist_css::CssPageBreakBeforePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPageBreakBeforePropertyValue::page_break(&self) -> &surgeist_css::CssPageBreak
-pub struct surgeist_css::CssPageBreakInsidePropertyValue
-impl surgeist_css::CssPageBreakInsidePropertyValue
-pub fn surgeist_css::CssPageBreakInsidePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPageBreakInsidePropertyValue::page_break(&self) -> &surgeist_css::CssPageBreakInside
 pub struct surgeist_css::CssPageLineMinimum
 impl surgeist_css::CssPageLineMinimum
 pub const fn surgeist_css::CssPageLineMinimum::calculation(&self) -> core::option::Option<&surgeist_css::CssIntegerCalculation>

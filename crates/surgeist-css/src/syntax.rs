@@ -8250,23 +8250,33 @@ impl CssPageLineMinimum {
     }
 }
 
-/// The authored CSS2 `page-break-before` or `page-break-after` keyword.
+/// The authored `break-before` or `break-after` keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssPageBreak {
+pub enum CssBreakBetween {
     Auto,
-    Always,
     Avoid,
+    AvoidPage,
+    Page,
     Left,
     Right,
+    Recto,
+    Verso,
+    AvoidColumn,
+    Column,
+    AvoidRegion,
+    Region,
 }
 
-/// The authored CSS2 `page-break-inside` keyword.
+/// The authored `break-inside` keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssPageBreakInside {
+pub enum CssBreakInside {
     Auto,
     Avoid,
+    AvoidPage,
+    AvoidColumn,
+    AvoidRegion,
 }
 
 /// One authored opening/closing pair in a `quotes` value.

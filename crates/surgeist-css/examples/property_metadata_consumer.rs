@@ -21,6 +21,9 @@ const LONGHANDS: &[P] = &[
     P::InsetInlineEnd,
     P::Float,
     P::Clear,
+    P::BreakBefore,
+    P::BreakAfter,
+    P::BreakInside,
     P::OverflowX,
     P::OverflowY,
     P::OverflowBlock,
@@ -397,6 +400,10 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::BoxSizing(v) => assert_eq!(*v, CssBoxSizing::ContentBox),
         CssLonghandValueRef::Float(v) => assert_eq!(*v, CssFloat::None),
         CssLonghandValueRef::Clear(v) => assert_eq!(*v, CssClear::None),
+        CssLonghandValueRef::BreakBefore(v) | CssLonghandValueRef::BreakAfter(v) => {
+            assert_eq!(*v, CssBreakBetween::Auto)
+        }
+        CssLonghandValueRef::BreakInside(v) => assert_eq!(*v, CssBreakInside::Auto),
         CssLonghandValueRef::OverflowX(v)
         | CssLonghandValueRef::OverflowY(v)
         | CssLonghandValueRef::OverflowBlock(v)
@@ -483,7 +490,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 137);
+    assert_eq!(expected.len(), 140);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();

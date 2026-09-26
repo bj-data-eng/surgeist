@@ -36,9 +36,9 @@ macro_rules! property_schema {
             Clip, "clip", [], "official.property.clip", CssClip, CssClipPropertyValue, CssClipPropertyValueRepresentation, parse_clip, { parse_clip($input, $numeric)? };
             EmptyCells, "empty-cells", [], "official.property.empty-cells", CssEmptyCells, CssEmptyCellsPropertyValue, CssEmptyCellsPropertyValueRepresentation, parse_empty_cells, { parse_empty_cells($input)? }, expansion = longhand { wrapper: existing, value: CssEmptyCells, accessor: cells, inherited: true, initial_kind: value, initial: CssEmptyCells::Show };
             Orphans, "orphans", [], "official.property.orphans", CssPageLineMinimum, CssOrphansPropertyValue, CssOrphansPropertyValueRepresentation, parse_page_line_minimum, { parse_page_line_minimum($input, $numeric, "orphans")? };
-            PageBreakAfter, "page-break-after", [], "official.property.page-break-after", CssPageBreak, CssPageBreakAfterPropertyValue, CssPageBreakAfterPropertyValueRepresentation, parse_page_break, { parse_page_break($input)? };
-            PageBreakBefore, "page-break-before", [], "official.property.page-break-before", CssPageBreak, CssPageBreakBeforePropertyValue, CssPageBreakBeforePropertyValueRepresentation, parse_page_break, { parse_page_break($input)? };
-            PageBreakInside, "page-break-inside", [], "official.property.page-break-inside", CssPageBreakInside, CssPageBreakInsidePropertyValue, CssPageBreakInsidePropertyValueRepresentation, parse_page_break_inside, { parse_page_break_inside($input)? };
+            BreakAfter, "break-after", [], "official.property.break-after", CssBreakBetween, CssBreakAfterPropertyValue, CssBreakAfterPropertyValueRepresentation, parse_break_between, { parse_break_between($input)? }, expansion = longhand { wrapper: additive, value: CssBreakBetween, accessor: current, inherited: false, initial_kind: value, initial: CssBreakBetween::Auto };
+            BreakBefore, "break-before", [], "official.property.break-before", CssBreakBetween, CssBreakBeforePropertyValue, CssBreakBeforePropertyValueRepresentation, parse_break_between, { parse_break_between($input)? }, expansion = longhand { wrapper: additive, value: CssBreakBetween, accessor: current, inherited: false, initial_kind: value, initial: CssBreakBetween::Auto };
+            BreakInside, "break-inside", [], "official.property.break-inside", CssBreakInside, CssBreakInsidePropertyValue, CssBreakInsidePropertyValueRepresentation, parse_break_inside, { parse_break_inside($input)? }, expansion = longhand { wrapper: additive, value: CssBreakInside, accessor: current, inherited: false, initial_kind: value, initial: CssBreakInside::Auto };
             Quotes, "quotes", [], "official.property.quotes", CssQuotes, CssQuotesPropertyValue, CssQuotesPropertyValueRepresentation, parse_quotes, { parse_quotes($input)? };
             TableLayout, "table-layout", [], "official.property.table-layout", CssTableLayout, CssTableLayoutPropertyValue, CssTableLayoutPropertyValueRepresentation, parse_table_layout, { parse_table_layout($input)? }, expansion = longhand { wrapper: existing, value: CssTableLayout, accessor: layout, inherited: false, initial_kind: value, initial: CssTableLayout::Auto };
             ScrollSnapType, "scroll-snap-type", [], "official.property.scroll-snap-type", CssScrollSnapType, CssScrollSnapTypePropertyValue, CssScrollSnapTypePropertyValueRepresentation, parse_scroll_snap_type, { parse_scroll_snap_type($input)? }, expansion = longhand { wrapper: additive, value: CssScrollSnapType, accessor: current, inherited: false, initial_kind: value, initial: CssScrollSnapType::None };
@@ -1366,7 +1366,7 @@ macro_rules! define_property_value {
         );
     };
     (
-        PageBreakAfter, $canonical:literal, $value:ty, $wrapper:ident,
+        BreakAfter, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
         define_additive_current_property_value!(
@@ -1374,11 +1374,11 @@ macro_rules! define_property_value {
             $wrapper,
             $representation,
             $value,
-            page_break
+            current
         );
     };
     (
-        PageBreakBefore, $canonical:literal, $value:ty, $wrapper:ident,
+        BreakBefore, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
         define_additive_current_property_value!(
@@ -1386,11 +1386,11 @@ macro_rules! define_property_value {
             $wrapper,
             $representation,
             $value,
-            page_break
+            current
         );
     };
     (
-        PageBreakInside, $canonical:literal, $value:ty, $wrapper:ident,
+        BreakInside, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
         define_additive_current_property_value!(
@@ -1398,7 +1398,7 @@ macro_rules! define_property_value {
             $wrapper,
             $representation,
             $value,
-            page_break
+            current
         );
     };
     (
@@ -3342,12 +3342,18 @@ impl CssResolvedPropertyName {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum CssLegacyPropertyAlias {
     GlyphOrientationVertical,
+    PageBreakBefore,
+    PageBreakAfter,
+    PageBreakInside,
 }
 
 impl CssLegacyPropertyAlias {
     pub(crate) const fn target(self) -> CssKnownProperty {
         match self {
             Self::GlyphOrientationVertical => CssKnownProperty::TextOrientation,
+            Self::PageBreakBefore => CssKnownProperty::BreakBefore,
+            Self::PageBreakAfter => CssKnownProperty::BreakAfter,
+            Self::PageBreakInside => CssKnownProperty::BreakInside,
         }
     }
 }
@@ -3356,10 +3362,18 @@ pub(crate) fn resolve_property_name(name: &str) -> Option<CssResolvedPropertyNam
     if let Some(property) = CssKnownProperty::from_name(name) {
         return Some(CssResolvedPropertyName::Canonical(property));
     }
-    name.eq_ignore_ascii_case("glyph-orientation-vertical")
-        .then_some(CssResolvedPropertyName::LegacyShorthand(
-            CssLegacyPropertyAlias::GlyphOrientationVertical,
-        ))
+    let alias = if name.eq_ignore_ascii_case("glyph-orientation-vertical") {
+        CssLegacyPropertyAlias::GlyphOrientationVertical
+    } else if name.eq_ignore_ascii_case("page-break-before") {
+        CssLegacyPropertyAlias::PageBreakBefore
+    } else if name.eq_ignore_ascii_case("page-break-after") {
+        CssLegacyPropertyAlias::PageBreakAfter
+    } else if name.eq_ignore_ascii_case("page-break-inside") {
+        CssLegacyPropertyAlias::PageBreakInside
+    } else {
+        return None;
+    };
+    Some(CssResolvedPropertyName::LegacyShorthand(alias))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3414,6 +3428,15 @@ impl CssPropertyGrammar {
             CssResolvedPropertyName::LegacyShorthand(
                 CssLegacyPropertyAlias::GlyphOrientationVertical,
             ) => "glyph-orientation-vertical",
+            CssResolvedPropertyName::LegacyShorthand(CssLegacyPropertyAlias::PageBreakBefore) => {
+                "page-break-before"
+            }
+            CssResolvedPropertyName::LegacyShorthand(CssLegacyPropertyAlias::PageBreakAfter) => {
+                "page-break-after"
+            }
+            CssResolvedPropertyName::LegacyShorthand(CssLegacyPropertyAlias::PageBreakInside) => {
+                "page-break-inside"
+            }
         }
     }
     /// Returns the canonical property receiving this grammar's value.
@@ -3429,6 +3452,15 @@ impl CssPropertyGrammar {
             CssResolvedPropertyName::LegacyShorthand(
                 CssLegacyPropertyAlias::GlyphOrientationVertical,
             ) => "official.property-alias.glyph-orientation-vertical",
+            CssResolvedPropertyName::LegacyShorthand(CssLegacyPropertyAlias::PageBreakBefore) => {
+                "official.property.page-break-before"
+            }
+            CssResolvedPropertyName::LegacyShorthand(CssLegacyPropertyAlias::PageBreakAfter) => {
+                "official.property.page-break-after"
+            }
+            CssResolvedPropertyName::LegacyShorthand(CssLegacyPropertyAlias::PageBreakInside) => {
+                "official.property.page-break-inside"
+            }
         })
     }
     /// Returns intrinsic metadata for the annotated schema slice.
@@ -3465,6 +3497,21 @@ impl CssKnownProperty {
             Self::TextOrientation => &[CssPropertyGrammar {
                 resolved: CssResolvedPropertyName::LegacyShorthand(
                     CssLegacyPropertyAlias::GlyphOrientationVertical,
+                ),
+            }],
+            Self::BreakBefore => &[CssPropertyGrammar {
+                resolved: CssResolvedPropertyName::LegacyShorthand(
+                    CssLegacyPropertyAlias::PageBreakBefore,
+                ),
+            }],
+            Self::BreakAfter => &[CssPropertyGrammar {
+                resolved: CssResolvedPropertyName::LegacyShorthand(
+                    CssLegacyPropertyAlias::PageBreakAfter,
+                ),
+            }],
+            Self::BreakInside => &[CssPropertyGrammar {
+                resolved: CssResolvedPropertyName::LegacyShorthand(
+                    CssLegacyPropertyAlias::PageBreakInside,
                 ),
             }],
             _ => &[],

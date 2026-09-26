@@ -255,6 +255,45 @@ macro_rules! define_expansion_schema {
                     };
                     return Ok(&METADATA);
                 }
+                crate::properties::CssResolvedPropertyName::LegacyShorthand(
+                    crate::properties::CssLegacyPropertyAlias::PageBreakBefore,
+                ) => {
+                    const METADATA: CssPropertyMetadata = CssPropertyMetadata {
+                        grammar: CssKnownProperty::BreakBefore.legacy_shorthands()[0],
+                        kind: CssPropertyKindRef::Shorthand(&CssShorthandMetadata {
+                            members: &[CssLonghandProperty(Longhand::BreakBefore)],
+                            settable: &[CssLonghandProperty(Longhand::BreakBefore)],
+                            reset: &[], legacy: true,
+                        }),
+                    };
+                    return Ok(&METADATA);
+                }
+                crate::properties::CssResolvedPropertyName::LegacyShorthand(
+                    crate::properties::CssLegacyPropertyAlias::PageBreakAfter,
+                ) => {
+                    const METADATA: CssPropertyMetadata = CssPropertyMetadata {
+                        grammar: CssKnownProperty::BreakAfter.legacy_shorthands()[0],
+                        kind: CssPropertyKindRef::Shorthand(&CssShorthandMetadata {
+                            members: &[CssLonghandProperty(Longhand::BreakAfter)],
+                            settable: &[CssLonghandProperty(Longhand::BreakAfter)],
+                            reset: &[], legacy: true,
+                        }),
+                    };
+                    return Ok(&METADATA);
+                }
+                crate::properties::CssResolvedPropertyName::LegacyShorthand(
+                    crate::properties::CssLegacyPropertyAlias::PageBreakInside,
+                ) => {
+                    const METADATA: CssPropertyMetadata = CssPropertyMetadata {
+                        grammar: CssKnownProperty::BreakInside.legacy_shorthands()[0],
+                        kind: CssPropertyKindRef::Shorthand(&CssShorthandMetadata {
+                            members: &[CssLonghandProperty(Longhand::BreakInside)],
+                            settable: &[CssLonghandProperty(Longhand::BreakInside)],
+                            reset: &[], legacy: true,
+                        }),
+                    };
+                    return Ok(&METADATA);
+                }
                 crate::properties::CssResolvedPropertyName::Canonical(_) => {}
             }
             match grammar.target_property() {

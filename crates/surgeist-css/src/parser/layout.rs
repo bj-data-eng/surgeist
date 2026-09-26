@@ -170,36 +170,75 @@ pub(super) fn parse_page_line_minimum<'i, 't>(
     }
 }
 
-pub(super) fn parse_page_break<'i, 't>(
+pub(super) fn parse_break_between<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssPageBreak, ParseError<'i, Error>> {
+) -> std::result::Result<CssBreakBetween, ParseError<'i, Error>> {
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
-        "auto" => Ok(CssPageBreak::Auto),
-        "always" => Ok(CssPageBreak::Always),
-        "avoid" => Ok(CssPageBreak::Avoid),
-        "left" => Ok(CssPageBreak::Left),
-        "right" => Ok(CssPageBreak::Right),
+        "auto" => Ok(CssBreakBetween::Auto),
+        "avoid" => Ok(CssBreakBetween::Avoid),
+        "avoid-page" => Ok(CssBreakBetween::AvoidPage),
+        "page" => Ok(CssBreakBetween::Page),
+        "left" => Ok(CssBreakBetween::Left),
+        "right" => Ok(CssBreakBetween::Right),
+        "recto" => Ok(CssBreakBetween::Recto),
+        "verso" => Ok(CssBreakBetween::Verso),
+        "avoid-column" => Ok(CssBreakBetween::AvoidColumn),
+        "column" => Ok(CssBreakBetween::Column),
+        "avoid-region" => Ok(CssBreakBetween::AvoidRegion),
+        "region" => Ok(CssBreakBetween::Region),
         _ => Err(unsupported_value(
             input,
             None,
-            unsupported_keyword_reason("page-break", ident.as_ref()),
+            unsupported_keyword_reason("break-before/after", ident.as_ref()),
         )),
+    }
+}
+
+pub(super) fn parse_break_inside<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssBreakInside, ParseError<'i, Error>> {
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    match_ignore_ascii_case! { &ident,
+        "auto" => Ok(CssBreakInside::Auto),
+        "avoid" => Ok(CssBreakInside::Avoid),
+        "avoid-page" => Ok(CssBreakInside::AvoidPage),
+        "avoid-column" => Ok(CssBreakInside::AvoidColumn),
+        "avoid-region" => Ok(CssBreakInside::AvoidRegion),
+        _ => Err(unsupported_value(
+            input,
+            None,
+            unsupported_keyword_reason("break-inside", ident.as_ref()),
+        )),
+    }
+}
+
+pub(super) fn parse_page_break_between<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssBreakBetween, ParseError<'i, Error>> {
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    match_ignore_ascii_case! { &ident,
+        "auto" => Ok(CssBreakBetween::Auto),
+        "always" => Ok(CssBreakBetween::Page),
+        "avoid" => Ok(CssBreakBetween::Avoid),
+        "left" => Ok(CssBreakBetween::Left),
+        "right" => Ok(CssBreakBetween::Right),
+        "recto" => Ok(CssBreakBetween::Recto),
+        "verso" => Ok(CssBreakBetween::Verso),
+        _ => Err(unsupported_value(input, None,
+            unsupported_keyword_reason("page-break-before/after", ident.as_ref()))),
     }
 }
 
 pub(super) fn parse_page_break_inside<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssPageBreakInside, ParseError<'i, Error>> {
+) -> std::result::Result<CssBreakInside, ParseError<'i, Error>> {
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
-        "auto" => Ok(CssPageBreakInside::Auto),
-        "avoid" => Ok(CssPageBreakInside::Avoid),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("page-break-inside", ident.as_ref()),
-        )),
+        "auto" => Ok(CssBreakInside::Auto),
+        "avoid" => Ok(CssBreakInside::Avoid),
+        _ => Err(unsupported_value(input, None,
+            unsupported_keyword_reason("page-break-inside", ident.as_ref()))),
     }
 }
 

@@ -4492,6 +4492,30 @@ fn parse_legacy_property_alias_value<'i, 't>(
                 )),
             ))
         }
+        CssLegacyPropertyAlias::PageBreakBefore => {
+            let value = parse_page_break_between(input)?;
+            Ok(CssKnownDeclaration::from_value(
+                CssKnownDeclarationValue::BreakBefore(CssDeclaredValue::Value(
+                    CssBreakBeforePropertyValue::new(authored, value),
+                )),
+            ))
+        }
+        CssLegacyPropertyAlias::PageBreakAfter => {
+            let value = parse_page_break_between(input)?;
+            Ok(CssKnownDeclaration::from_value(
+                CssKnownDeclarationValue::BreakAfter(CssDeclaredValue::Value(
+                    CssBreakAfterPropertyValue::new(authored, value),
+                )),
+            ))
+        }
+        CssLegacyPropertyAlias::PageBreakInside => {
+            let value = parse_page_break_inside(input)?;
+            Ok(CssKnownDeclaration::from_value(
+                CssKnownDeclarationValue::BreakInside(CssDeclaredValue::Value(
+                    CssBreakInsidePropertyValue::new(authored, value),
+                )),
+            ))
+        }
     }
 }
 

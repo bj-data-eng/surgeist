@@ -1,8 +1,8 @@
 use surgeist_css::{
-    CssBorderCollapse, CssBoxEdgeKeyword, CssCaptionSide, CssClip, CssClipEdge, CssEmptyCells,
-    CssErrorCode, CssGlobalKeyword, CssKnownDeclaredValueRef, CssKnownProperty,
-    CssKnownPropertyValueRef, CssLength, CssPageBreak, CssPageBreakInside, CssQuotes,
-    CssRecoveryAction, CssTableLayout, CssWordSpacing, ErrorKind, parse_style_attribute,
+    CssBorderCollapse, CssBoxEdgeKeyword, CssBreakBetween, CssBreakInside, CssCaptionSide, CssClip,
+    CssClipEdge, CssEmptyCells, CssErrorCode, CssGlobalKeyword, CssKnownDeclaredValueRef,
+    CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssQuotes, CssRecoveryAction,
+    CssTableLayout, CssWordSpacing, ErrorKind, parse_style_attribute,
 };
 
 #[test]
@@ -54,9 +54,9 @@ fn css2_residual_properties_retain_typed_values() {
             "clip",
             "empty-cells",
             "orphans",
-            "page-break-after",
-            "page-break-before",
-            "page-break-inside",
+            "break-after",
+            "break-before",
+            "break-inside",
             "quotes",
             "table-layout",
             "widows",
@@ -155,17 +155,17 @@ fn css2_residual_properties_retain_typed_values() {
             .property_value()
             .unwrap();
         match value {
-            CssKnownPropertyValueRef::PageBreakAfter(value) => {
-                assert_eq!(value.page_break(), &CssPageBreak::Right);
+            CssKnownPropertyValueRef::BreakAfter(value) => {
+                assert_eq!(value.current(), &CssBreakBetween::Right);
             }
-            CssKnownPropertyValueRef::PageBreakBefore(value) => {
-                assert_eq!(value.page_break(), &CssPageBreak::Always);
+            CssKnownPropertyValueRef::BreakBefore(value) => {
+                assert_eq!(value.current(), &CssBreakBetween::Page);
             }
             _ => panic!("expected an outside page-break value"),
         }
     }
 
-    let CssKnownPropertyValueRef::PageBreakInside(page_break_inside) = report.syntax()[8]
+    let CssKnownPropertyValueRef::BreakInside(page_break_inside) = report.syntax()[8]
         .known()
         .unwrap()
         .property_value()
@@ -173,7 +173,7 @@ fn css2_residual_properties_retain_typed_values() {
     else {
         panic!("expected page-break-inside");
     };
-    assert_eq!(page_break_inside.page_break(), &CssPageBreakInside::Avoid);
+    assert_eq!(page_break_inside.current(), &CssBreakInside::Avoid);
 
     let CssKnownPropertyValueRef::Quotes(quotes) = report.syntax()[9]
         .known()
@@ -372,7 +372,11 @@ fn css2_residual_invalid_values_drop_exact_declaration_and_keep_sibling() {
         let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
             panic!("{source}: expected property-specific error");
         };
-        assert_eq!(detail.property().canonical_name(), property, "{source}");
+        assert_eq!(
+            detail.property().canonical_name(),
+            property.strip_prefix("page-").unwrap_or(property),
+            "{source}",
+        );
         assert!(
             diagnostic.error().position().byte_offset().value() < invalid.len() + 1,
             "{source}: responsible position must be inside the dropped declaration",

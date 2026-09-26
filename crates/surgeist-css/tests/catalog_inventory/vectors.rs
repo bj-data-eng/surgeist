@@ -42,21 +42,9 @@ pub const PROPERTY_POSITIVE_VECTORS: &[PropertyVector] = &[
     ),
     vector!("official.property.empty-cells", "empty-cells", "hide"),
     vector!("official.property.orphans", "orphans", "3"),
-    vector!(
-        "official.property.page-break-after",
-        "page-break-after",
-        "right"
-    ),
-    vector!(
-        "official.property.page-break-before",
-        "page-break-before",
-        "always"
-    ),
-    vector!(
-        "official.property.page-break-inside",
-        "page-break-inside",
-        "avoid"
-    ),
+    vector!("official.property.break-after", "break-after", "right"),
+    vector!("official.property.break-before", "break-before", "page"),
+    vector!("official.property.break-inside", "break-inside", "avoid"),
     vector!("official.property.quotes", "quotes", "\"open\" \"close\""),
     vector!("official.property.table-layout", "table-layout", "fixed"),
     vector!("official.property.widows", "widows", "4"),
@@ -732,21 +720,9 @@ pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
     vector!("official.property.clip", "clip", "rect(1px, 2px, 3px)"),
     vector!("official.property.empty-cells", "empty-cells", "auto"),
     vector!("official.property.orphans", "orphans", "0"),
-    vector!(
-        "official.property.page-break-after",
-        "page-break-after",
-        "page"
-    ),
-    vector!(
-        "official.property.page-break-before",
-        "page-break-before",
-        "recto"
-    ),
-    vector!(
-        "official.property.page-break-inside",
-        "page-break-inside",
-        "left"
-    ),
+    vector!("official.property.break-after", "break-after", "always"),
+    vector!("official.property.break-before", "break-before", "always"),
+    vector!("official.property.break-inside", "break-inside", "left"),
     vector!("official.property.quotes", "quotes", "\"open\""),
     vector!("official.property.table-layout", "table-layout", "collapse"),
     vector!("official.property.widows", "widows", "0"),

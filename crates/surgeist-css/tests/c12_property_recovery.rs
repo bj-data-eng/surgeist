@@ -52,19 +52,19 @@ const C12_INVALID_DECLARATIONS: &[InvalidDeclaration] = &[
         authored_name: "page-break-after",
         invalid_value: "always avoid",
         responsible: "avoid",
-        property: CssKnownProperty::PageBreakAfter,
+        property: CssKnownProperty::BreakAfter,
     },
     InvalidDeclaration {
         authored_name: "page-break-before",
         invalid_value: "page",
         responsible: "page",
-        property: CssKnownProperty::PageBreakBefore,
+        property: CssKnownProperty::BreakBefore,
     },
     InvalidDeclaration {
         authored_name: "page-break-inside",
         invalid_value: "always",
         responsible: "always",
-        property: CssKnownProperty::PageBreakInside,
+        property: CssKnownProperty::BreakInside,
     },
     InvalidDeclaration {
         authored_name: "quotes",
