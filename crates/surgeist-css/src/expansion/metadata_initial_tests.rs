@@ -40,6 +40,8 @@ fn omitted_initial_preserves_user_agent_requirement_and_fixed_value() {
     assert_eq!(width.property(), CssKnownProperty::BorderTopWidth);
     assert!(matches!(
         width.view(),
-        CssContributionValueRef::Ordinary(CssLonghandValueRef::BorderTopWidth(CssLength::Medium))
+        CssContributionValueRef::Ordinary(CssLonghandValueRef::BorderTopWidth(
+            CssBorderWidth::Medium
+        ))
     ));
 }

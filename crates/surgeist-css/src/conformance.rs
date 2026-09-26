@@ -2378,6 +2378,12 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::PaddingInline
         | CssKnownProperty::Float
         | CssKnownProperty::Clear => I_LOGICAL1_20251204,
+        CssKnownProperty::BorderBlockStartWidth
+        | CssKnownProperty::BorderBlockEndWidth
+        | CssKnownProperty::BorderInlineStartWidth
+        | CssKnownProperty::BorderInlineEndWidth
+        | CssKnownProperty::BorderBlockWidth
+        | CssKnownProperty::BorderInlineWidth => I_LOGICAL1_20251204,
         CssKnownProperty::Color | CssKnownProperty::Opacity => O_COLOR4,
         CssKnownProperty::Border
         | CssKnownProperty::BorderTop
@@ -2689,7 +2695,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 582] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 589] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -5064,6 +5070,43 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 582] = [
         CssKnownProperty::BorderLeftWidth,
         "border-left-width",
         "baseline.property.border-left-width"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderBlockStartWidth,
+        "border-block-start-width",
+        "official.property.border-block-start-width"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderBlockEndWidth,
+        "border-block-end-width",
+        "official.property.border-block-end-width"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderInlineStartWidth,
+        "border-inline-start-width",
+        "official.property.border-inline-start-width"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderInlineEndWidth,
+        "border-inline-end-width",
+        "official.property.border-inline-end-width"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderBlockWidth,
+        "border-block-width",
+        "official.property.border-block-width"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderInlineWidth,
+        "border-inline-width",
+        "official.property.border-inline-width"
+    ),
+    CssFeatureMetadata::complete(
+        "official.value.border-width-logical-values",
+        CssFeatureKind::Value,
+        "border-width logical switch",
+        I_LOGICAL1_20251204,
+        "#logical-shorthand-keyword",
     ),
     complete_property_feature!(
         CssKnownProperty::BorderImage,

@@ -1131,6 +1131,7 @@ mod media_features;
 mod normalization;
 pub use media_features::*;
 mod aspect_ratio;
+mod border_width;
 mod box_spacing;
 mod break_controls;
 mod calc_size;
@@ -1147,6 +1148,9 @@ mod scroll_snap;
 mod sizing;
 mod sizing_controls;
 pub use aspect_ratio::{CssRatioOperand, CssSpecifiedRatio};
+pub use border_width::{
+    CssBorderValue, CssBorderWidth, CssBorderWidthPair, CssBorderWidthShorthand,
+};
 pub use box_spacing::{
     CssBoxSideKind, CssMarginPair, CssMarginShorthand, CssMarginValue, CssPaddingPair,
     CssPaddingShorthand, CssPaddingValue,

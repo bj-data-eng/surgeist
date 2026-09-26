@@ -17,14 +17,14 @@
 use surgeist_css::{
     CssAuthoredColor, CssAuthoredColorComponent, CssBorderImageOutsetComponent,
     CssBorderImageRepeatKeyword, CssBorderImageSliceComponent, CssBorderImageWidthComponent,
-    CssBorderStyle, CssComponentValue, CssComponentValues, CssContributionValueRef,
+    CssBorderStyle, CssBorderWidth, CssComponentValue, CssComponentValues, CssContributionValueRef,
     CssContributions, CssCustomPropertyName, CssDeclaration, CssExpansion, CssExpansionErrorKind,
     CssGlobalKeyword, CssImageValue, CssImportance, CssKnownProperty as Property,
     CssKnownPropertyValueRef, CssLength, CssLonghandContribution, CssLonghandContributions,
     CssLonghandValueRef, CssPendingSubstitution, CssPredefinedColorSpace, CssPropertyNameRef,
-    CssPropertyValueErrorKind, CssSerializedOrigin, CssTextAlign, CssUnresolvedStandard,
-    CssValueOrigin, expand_declaration, parse_component_values, parse_property_value,
-    parse_style_attribute,
+    CssPropertyValueErrorKind, CssSerializedOrigin, CssSpecifiedNonNegativeLength, CssTextAlign,
+    CssUnresolvedStandard, CssValueOrigin, expand_declaration, parse_component_values,
+    parse_property_value, parse_style_attribute,
 };
 
 const MARGINS: [Property; 4] = [
@@ -122,7 +122,16 @@ fn assert_members(values: &CssLonghandContributions, expected: &[Property]) {
     }
 }
 
-fn length(item: &CssLonghandContribution) -> &CssLength {
+fn border_px(number: &str) -> CssBorderWidth {
+    CssBorderWidth::Length(
+        CssSpecifiedNonNegativeLength::try_from_component(
+            CssComponentValue::try_dimension(number, "px").unwrap(),
+        )
+        .unwrap(),
+    )
+}
+
+fn length(item: &CssLonghandContribution) -> &CssBorderWidth {
     match (item.property(), item.value()) {
         (
             Property::BorderTopWidth,
@@ -308,23 +317,31 @@ fn four_sided_length_shorthands() {
         }
     }
     for (css, expected) in [
-        ("1px", [1.0, 1.0, 1.0, 1.0]),
-        ("1px 2px", [1.0, 2.0, 1.0, 2.0]),
-        ("1px 2px 3px", [1.0, 2.0, 3.0, 2.0]),
-        ("1px 2px 3px 4px", [1.0, 2.0, 3.0, 4.0]),
+        ("1px", ["1", "1", "1", "1"]),
+        ("1px 2px", ["1", "2", "1", "2"]),
+        ("1px 2px 3px", ["1", "2", "3", "2"]),
+        ("1px 2px 3px 4px", ["1", "2", "3", "4"]),
     ] {
-        let values = expanded(&declaration(
-            Property::BorderWidth,
-            css,
-            CssImportance::Normal,
-        ));
-        assert_members(&values, &WIDTHS);
-        for (side, expected) in WIDTHS.into_iter().zip(expected) {
-            assert_eq!(
-                length(member(&values, side)),
-                &CssLength::try_px(expected).unwrap()
-            );
-        }
+        let source = declaration(Property::BorderWidth, css, CssImportance::Normal);
+        let Some(CssKnownPropertyValueRef::BorderWidth(authored)) =
+            source.known().unwrap().property_value()
+        else {
+            panic!("typed border widths")
+        };
+        assert_eq!(
+            authored
+                .current()
+                .assigned_values()
+                .map(|width| width.serialize_specified().unwrap()),
+            expected.map(|n| format!("{n}px"))
+        );
+        assert_eq!(
+            expand_declaration(&source).unwrap_err().kind(),
+            &CssExpansionErrorKind::UnresolvedStandard {
+                property: Property::BorderWidth,
+                reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
+            }
+        );
     }
     let source = declaration(Property::Margin, "auto 10% -3px", CssImportance::Normal);
     let Some(CssKnownPropertyValueRef::Margin(authored)) = source.known().unwrap().property_value()
@@ -433,25 +450,25 @@ fn side_borders_supply_defaults_without_image_resets() {
         for (css, expected_width, expected_style, modern) in [
             (
                 "solid".to_owned(),
-                CssLength::Medium,
+                CssBorderWidth::Medium,
                 CssBorderStyle::Solid,
                 false,
             ),
             (
                 "2px".to_owned(),
-                CssLength::try_px(2.0).unwrap(),
+                border_px("2"),
                 CssBorderStyle::None,
                 false,
             ),
             (
                 MODERN_COLOR.to_owned(),
-                CssLength::Medium,
+                CssBorderWidth::Medium,
                 CssBorderStyle::None,
                 true,
             ),
             (
                 format!("{MODERN_COLOR} dashed 3px"),
-                CssLength::try_px(3.0).unwrap(),
+                border_px("3"),
                 CssBorderStyle::Dashed,
                 true,
             ),
@@ -476,19 +493,19 @@ fn full_border_resets_all_five_image_values() {
     for (css, expected_width, expected_style, modern) in [
         (
             "none".to_owned(),
-            CssLength::Medium,
+            CssBorderWidth::Medium,
             CssBorderStyle::None,
             false,
         ),
         (
             "solid".to_owned(),
-            CssLength::Medium,
+            CssBorderWidth::Medium,
             CssBorderStyle::Solid,
             false,
         ),
         (
             format!("2px dashed {MODERN_COLOR}"),
-            CssLength::try_px(2.0).unwrap(),
+            border_px("2"),
             CssBorderStyle::Dashed,
             true,
         ),
@@ -528,10 +545,7 @@ fn ordinary_longhands_retain_typed_values() {
     for property in WIDTHS {
         let values = expanded(&declaration(property, "7px", CssImportance::Normal));
         assert_members(&values, &[property]);
-        assert_eq!(
-            length(member(&values, property)),
-            &CssLength::try_px(7.0).unwrap()
-        );
+        assert_eq!(length(member(&values, property)), &border_px("7"));
     }
     for property in STYLES {
         let values = expanded(&declaration(property, "dashed", CssImportance::Normal));
@@ -631,7 +645,6 @@ fn globals_include_reset_only_members_and_all_stays_symbolic() {
         for (property, expected) in [
             (Property::MarginBlock, MARGIN_BLOCK.to_vec()),
             (Property::PaddingBlock, PADDING_BLOCK.to_vec()),
-            (Property::BorderWidth, WIDTHS.to_vec()),
             (Property::BorderStyle, STYLES.to_vec()),
             (Property::BorderColor, COLORS.to_vec()),
             (Property::Border, border_members()),
@@ -656,6 +669,14 @@ fn globals_include_reset_only_members_and_all_stays_symbolic() {
                 assert_eq!(item.source().importance(), CssImportance::Important);
             }
         }
+        let border_width = declaration(Property::BorderWidth, css, CssImportance::Important);
+        assert_eq!(
+            expand_declaration(&border_width).unwrap_err().kind(),
+            &CssExpansionErrorKind::UnresolvedStandard {
+                property: Property::BorderWidth,
+                reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
+            }
+        );
         let source = declaration(Property::All, css, CssImportance::Important);
         let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
             expand_declaration(&source).unwrap()

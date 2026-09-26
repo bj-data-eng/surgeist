@@ -115,6 +115,13 @@ fn unresolved_kind() -> CssExpansionErrorKind {
     }
 }
 
+fn expect_rejection<T, E>(result: Result<T, E>) -> E {
+    match result {
+        Err(error) => error,
+        Ok(_) => panic!("expected typed rejection"),
+    }
+}
+
 #[test]
 fn selected_names_have_distinct_stable_ids_and_dated_property_provenance() {
     let mut seen = Vec::new();
@@ -270,10 +277,7 @@ fn four_side_width_accepts_both_roles_but_complete_expansion_is_undefined() {
     ] {
         accepted(FOUR_SIDE, value);
         assert_eq!(
-            expand_declaration(&declaration(FOUR_SIDE, value))
-                .err()
-                .expect("expected typed rejection")
-                .kind(),
+            expect_rejection(expand_declaration(&declaration(FOUR_SIDE, value))).kind(),
             &unresolved_kind()
         );
     }
@@ -290,7 +294,7 @@ fn four_side_width_accepts_both_roles_but_complete_expansion_is_undefined() {
     }
     let grammar = grammar(FOUR_SIDE);
     assert_eq!(
-        grammar.metadata().err().expect("expected typed rejection"),
+        expect_rejection(grammar.metadata()),
         CssPropertyMetadataError::UnresolvedStandard {
             grammar,
             reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
@@ -299,9 +303,7 @@ fn four_side_width_accepts_both_roles_but_complete_expansion_is_undefined() {
     let report = parse_sheet(".a{color:red;border-width:logical thin medium;color:blue}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let original = report.syntax().clone();
-    let error = normalize_sheet(report.syntax())
-        .err()
-        .expect("expected typed rejection");
+    let error = expect_rejection(normalize_sheet(report.syntax()));
     assert!(
         matches!(error.kind(), CssNormalizationErrorKind::UnsupportedDeclaration(expansion)
         if expansion.kind() == &unresolved_kind())
@@ -428,10 +430,7 @@ fn css_wide_all_and_pending_reentry_preserve_original_grammar_and_occurrence() {
             checked(name, text);
             if name == FOUR_SIDE {
                 assert_eq!(
-                    expand_declaration(&source)
-                        .err()
-                        .expect("expected typed rejection")
-                        .kind(),
+                    expect_rejection(expand_declaration(&source)).kind(),
                     &unresolved_kind()
                 );
             } else {
@@ -464,28 +463,20 @@ fn css_wide_all_and_pending_reentry_preserve_original_grammar_and_occurrence() {
             };
             assert!(handle.source().same_occurrence(&source));
             assert!(matches!(
-                handle
-                    .reenter(parse_component_values("1%").unwrap())
-                    .err()
-                    .expect("expected typed rejection")
-                    .kind(),
+                expect_rejection(handle.reenter(parse_component_values("1%").unwrap())).kind(),
                 CssExpansionErrorKind::InvalidReplacement(_)
             ));
             assert_eq!(
-                handle
-                    .reenter(parse_component_values("var(--again)").unwrap())
-                    .err()
-                    .expect("expected typed rejection")
+                expect_rejection(handle.reenter(parse_component_values("var(--again)").unwrap()))
                     .kind(),
                 &CssExpansionErrorKind::ResidualSubstitution
             );
             if PAIRS.contains(&name) {
                 assert!(matches!(
-                    handle
-                        .reenter(parse_component_values("logical 1px").unwrap())
-                        .err()
-                        .expect("expected typed rejection")
-                        .kind(),
+                    expect_rejection(
+                        handle.reenter(parse_component_values("logical 1px").unwrap()),
+                    )
+                    .kind(),
                     CssExpansionErrorKind::InvalidReplacement(_)
                 ));
             }
@@ -497,19 +488,14 @@ fn css_wide_all_and_pending_reentry_preserve_original_grammar_and_occurrence() {
             let replacement = parse_component_values(replacement_text).unwrap();
             if name == FOUR_SIDE {
                 assert_eq!(
-                    handle
-                        .reenter(replacement)
-                        .err()
-                        .expect("expected typed rejection")
-                        .kind(),
+                    expect_rejection(handle.reenter(replacement)).kind(),
                     &unresolved_kind()
                 );
                 assert_eq!(
-                    handle
-                        .reenter(parse_component_values("logical thin medium").unwrap())
-                        .err()
-                        .expect("expected typed rejection")
-                        .kind(),
+                    expect_rejection(
+                        handle.reenter(parse_component_values("logical thin medium").unwrap()),
+                    )
+                    .kind(),
                     &unresolved_kind()
                 );
             } else {

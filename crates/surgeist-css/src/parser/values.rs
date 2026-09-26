@@ -75,13 +75,6 @@ pub(super) fn parse_box_size_value<'i, 't>(
     parse_length_with(input, numeric, LengthGrammar::BoxSize)
 }
 
-pub(super) fn parse_border_width_component<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssLength, ParseError<'i, Error>> {
-    parse_length_with(input, numeric, LengthGrammar::BorderWidth)
-}
-
 pub(super) fn parse_radius_component<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,

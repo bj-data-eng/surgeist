@@ -10,6 +10,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::CssSpecifiedLength;
+use crate::border_width::*;
 use crate::box_spacing::*;
 use crate::contain_intrinsic_size::*;
 use crate::inset::*;

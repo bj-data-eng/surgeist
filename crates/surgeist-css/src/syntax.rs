@@ -10275,13 +10275,6 @@ impl CssBorder {
             None => None,
         }
     }
-
-    pub(crate) const fn has_exact_i01_projection(&self) -> bool {
-        match self.color.as_ref() {
-            Some(color) => color.i01_subset().is_some(),
-            None => true,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

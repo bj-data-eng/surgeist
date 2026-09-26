@@ -1266,8 +1266,11 @@ fn every_aggregate_color_consumer_retains_current_color_mix_without_an_i01_proje
             CssKnownPropertyValueRef::BorderLeft(value) => (value.current(), value.i01_subset()),
             _ => panic!("expected border shorthand wrapper"),
         };
-        assert!(current.current_color().unwrap().color_mix_value().is_some());
-        assert!(current.color().is_none());
+        assert!(current.color().unwrap().color_mix_value().is_some());
+        assert!(
+            current.color().is_some(),
+            "the current model retains the complete color"
+        );
         assert!(projection.is_none());
     }
 

@@ -2818,3 +2818,13 @@ remains symbolic until downstream resolution.
 bounded canonical serializers. Grammar and expansion preserve declaration
 identity and source order; scroll execution, gutter geometry, and text painting
 belong to their downstream owners.
+
+## Authored border widths and physical border triples
+
+The selected [Backgrounds 3 border-width definitions](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#border-width)
+and [Logical 1 logical width definitions](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#propdef-border-block-start-width)
+provide exact `thin | medium | thick | <length [0,∞]>` widths for four physical and four logical longhands, with noninherited `medium` initials. The logical block/inline pairs retain one or two authored values and contribute their respective two longhands. `CssBorderWidth` retains exact numeric spelling and symbolic math, and `CssBorderValue` retains each authored width, style, and color component of the five physical border triples; omitted components contribute their defined initials. `CssBorderValue::color()` is the exact authored color, while the older `CssBorder::color()` is an I01 compatibility projection.
+
+The four-side `border-width` grammar accepts one to four values, with an optional leading `logical` switch. `CssBorderWidthShorthand::assigned_values()` exposes the physical or logical role assignments. The selected [Logical 1 §4.7 issue 3030](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#issue-3d880eb1) leaves the complete complementary reset membership undefined, so completed `border-width` expansion returns `UnresolvedStandard` in **both** modes, including CSS-wide values and valid substitution reentry. Pending substitution remains symbolic. Physical `border` and side-border triples still expand to their defined members; `border` also resets the five border-image members.
+
+The affected wrappers expose `current()` for exact checked values. `i01_subset()` remains a compatibility view where the original width and color can be projected without loss; it does not approximate very large or tiny nonzero numeric values. `as_css()` retains authored spelling, while bounded `serialize_specified()` emits the checked canonical value. Layout, writing-mode mapping, and cascade remain downstream.

@@ -8,6 +8,7 @@
 //! information so callers do not need to parse display strings.
 
 mod background;
+mod border_width;
 mod box_model;
 mod box_spacing;
 mod contain_intrinsic_size;
@@ -57,6 +58,7 @@ use cssparser::{
     match_ignore_ascii_case,
 };
 
+use crate::border_width::*;
 use crate::box_spacing::*;
 use crate::contain_intrinsic_size::{CssContainIntrinsicSize, CssContainIntrinsicSizeValue};
 use crate::inset::{CssInsetPair, CssInsetShorthand, CssInsetValue};
@@ -70,6 +72,7 @@ use crate::{
     CssSizeValue, CssSpecifiedLength,
 };
 use background::*;
+use border_width::*;
 use box_model::*;
 use box_spacing::*;
 use contain_intrinsic_size::*;

@@ -1,8 +1,7 @@
 use cssparser::{ParseError, Parser, match_ignore_ascii_case};
 
 use super::values::{
-    parse_border_width_component, parse_color, parse_radius_component, parse_shadow_blur_length,
-    parse_shadow_length,
+    parse_color, parse_radius_component, parse_shadow_blur_length, parse_shadow_length,
 };
 use crate::box_values::CssParsedBorderColors;
 use crate::error::{CssFeatureId, Error, basic, unsupported_value};
@@ -25,51 +24,6 @@ pub(super) fn parse_box_decoration_break<'i, 't>(
             unsupported_keyword_reason("box-decoration-break", ident.as_ref()),
         )),
     }
-}
-
-pub(super) fn parse_edges<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    mut parse_component: impl FnMut(
-        &mut Parser<'i, 't>,
-    ) -> std::result::Result<CssLength, ParseError<'i, Error>>,
-) -> std::result::Result<CssEdges, ParseError<'i, Error>> {
-    let mut values = Vec::new();
-    while !input.is_exhausted() {
-        values.push(parse_component(input)?);
-        if values.len() == 4 && !input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "edge shorthand has too many values",
-            ));
-        }
-    }
-    Ok(match values.as_slice() {
-        [all] => CssEdges::all(all.clone()),
-        [vertical, horizontal] => CssEdges::new(
-            vertical.clone(),
-            horizontal.clone(),
-            vertical.clone(),
-            horizontal.clone(),
-        ),
-        [top, horizontal, bottom] => CssEdges::new(
-            top.clone(),
-            horizontal.clone(),
-            bottom.clone(),
-            horizontal.clone(),
-        ),
-        [top, right, bottom, left] => {
-            CssEdges::new(top.clone(), right.clone(), bottom.clone(), left.clone())
-        }
-        [] => {
-            return Err(unsupported_value(
-                input,
-                None,
-                "edge shorthand is missing a value",
-            ));
-        }
-        _ => unreachable!("edge shorthand parser caps values at four"),
-    })
 }
 
 pub(super) fn parse_border_styles<'i, 't>(
@@ -141,54 +95,6 @@ pub(super) fn parse_border_style<'i, 't>(
             None,
             unsupported_keyword_reason("border-style", ident.as_ref()),
         )),
-    }
-}
-
-pub(super) fn parse_border<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssBorder, ParseError<'i, Error>> {
-    let mut width = None;
-    let mut style = None;
-    let mut color = None;
-
-    while !input.is_exhausted() {
-        if let Ok(parsed_width) =
-            input.try_parse(|input| parse_border_width_component(input, numeric))
-        {
-            if width.replace(parsed_width).is_some() {
-                return Err(unsupported_value(input, None, "duplicate border width"));
-            }
-            continue;
-        }
-        if let Ok(parsed_style) = input.try_parse(parse_border_style) {
-            if style.replace(parsed_style).is_some() {
-                return Err(unsupported_value(input, None, "duplicate border style"));
-            }
-            continue;
-        }
-        if let Ok(parsed_color) = input.try_parse(|input| parse_color(input, numeric)) {
-            if color.replace(parsed_color).is_some() {
-                return Err(unsupported_value(input, None, "duplicate border color"));
-            }
-            continue;
-        }
-
-        return Err(unsupported_value(
-            input,
-            None,
-            "unsupported border component",
-        ));
-    }
-
-    if width.is_none() && style.is_none() && color.is_none() {
-        Err(unsupported_value(
-            input,
-            None,
-            "border shorthand is missing a component",
-        ))
-    } else {
-        Ok(CssBorder::new_current(width, style, color))
     }
 }
 

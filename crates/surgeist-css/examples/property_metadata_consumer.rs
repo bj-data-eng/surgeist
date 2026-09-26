@@ -52,6 +52,10 @@ const LONGHANDS: &[P] = &[
     P::BorderRightWidth,
     P::BorderBottomWidth,
     P::BorderLeftWidth,
+    P::BorderBlockStartWidth,
+    P::BorderBlockEndWidth,
+    P::BorderInlineStartWidth,
+    P::BorderInlineEndWidth,
     P::BorderTopStyle,
     P::BorderRightStyle,
     P::BorderBottomStyle,
@@ -161,6 +165,16 @@ const SHORTHANDS: &[(P, &[P], &[P])] = &[
         &[],
     ),
     (
+        P::BorderBlockWidth,
+        &[P::BorderBlockStartWidth, P::BorderBlockEndWidth],
+        &[],
+    ),
+    (
+        P::BorderInlineWidth,
+        &[P::BorderInlineStartWidth, P::BorderInlineEndWidth],
+        &[],
+    ),
+    (
         P::ScrollPaddingBlock,
         &[P::ScrollPaddingBlockStart, P::ScrollPaddingBlockEnd],
         &[],
@@ -181,16 +195,6 @@ const SHORTHANDS: &[(P, &[P], &[P])] = &[
         &[],
     ),
     (P::Container, &[P::ContainerName, P::ContainerType], &[]),
-    (
-        P::BorderWidth,
-        &[
-            P::BorderTopWidth,
-            P::BorderRightWidth,
-            P::BorderBottomWidth,
-            P::BorderLeftWidth,
-        ],
-        &[],
-    ),
     (
         P::BorderStyle,
         &[
@@ -341,7 +345,11 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::BorderTopWidth(v)
         | CssLonghandValueRef::BorderRightWidth(v)
         | CssLonghandValueRef::BorderBottomWidth(v)
-        | CssLonghandValueRef::BorderLeftWidth(v) => assert_eq!(*v, CssLength::Medium),
+        | CssLonghandValueRef::BorderLeftWidth(v)
+        | CssLonghandValueRef::BorderBlockStartWidth(v)
+        | CssLonghandValueRef::BorderBlockEndWidth(v)
+        | CssLonghandValueRef::BorderInlineStartWidth(v)
+        | CssLonghandValueRef::BorderInlineEndWidth(v) => assert_eq!(*v, CssBorderWidth::Medium),
         CssLonghandValueRef::BorderTopStyle(v)
         | CssLonghandValueRef::BorderRightStyle(v)
         | CssLonghandValueRef::BorderBottomStyle(v)
@@ -490,7 +498,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 140);
+    assert_eq!(expected.len(), 145);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();
@@ -517,7 +525,12 @@ fn metadata_and_initials() {
             Err(CssPropertyMetadataError::UnresolvedStandard { grammar, reason }) => {
                 assert!(matches!(
                     property,
-                    P::ScrollPadding | P::ScrollMargin | P::Margin | P::Padding | P::Inset
+                    P::ScrollPadding
+                        | P::ScrollMargin
+                        | P::Margin
+                        | P::Padding
+                        | P::Inset
+                        | P::BorderWidth
                 ));
                 assert_eq!(grammar, handle);
                 assert_eq!(
