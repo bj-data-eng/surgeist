@@ -1,6 +1,9 @@
 //! Bounded, context-independent specified-value text.
 
-use crate::{CssBoxSizing, CssOpacityScalarKind, CssOpacityValue};
+use crate::{
+    CssBorderCollapse, CssBoxSizing, CssCaptionSide, CssEmptyCells, CssOpacityScalarKind,
+    CssOpacityValue, CssTableLayout,
+};
 use std::fmt;
 
 /// Resource policy for specified-value projection and serialization.
@@ -213,6 +216,90 @@ impl CssBoxSizing {
             match self {
                 Self::ContentBox => "content-box",
                 Self::BorderBox => "border-box",
+            },
+            limits,
+        )
+    }
+}
+
+impl CssBorderCollapse {
+    /// Serializes the specified table border model keyword.
+    pub fn serialize_specified(&self) -> Result<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Serializes atomically under input, projection, and output limits.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        serialize_keyword_sequence(
+            match self {
+                Self::Collapse => "collapse",
+                Self::Separate => "separate",
+            },
+            limits,
+        )
+    }
+}
+
+impl CssCaptionSide {
+    /// Serializes the specified table caption side keyword.
+    pub fn serialize_specified(&self) -> Result<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Serializes atomically under input, projection, and output limits.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        serialize_keyword_sequence(
+            match self {
+                Self::Top => "top",
+                Self::Bottom => "bottom",
+            },
+            limits,
+        )
+    }
+}
+
+impl CssEmptyCells {
+    /// Serializes the specified empty-cell visibility keyword.
+    pub fn serialize_specified(&self) -> Result<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Serializes atomically under input, projection, and output limits.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        serialize_keyword_sequence(
+            match self {
+                Self::Show => "show",
+                Self::Hide => "hide",
+            },
+            limits,
+        )
+    }
+}
+
+impl CssTableLayout {
+    /// Serializes the specified table layout algorithm keyword.
+    pub fn serialize_specified(&self) -> Result<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Serializes atomically under input, projection, and output limits.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        serialize_keyword_sequence(
+            match self {
+                Self::Auto => "auto",
+                Self::Fixed => "fixed",
             },
             limits,
         )

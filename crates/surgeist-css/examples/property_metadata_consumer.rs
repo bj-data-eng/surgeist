@@ -42,6 +42,10 @@ const LONGHANDS: &[P] = &[
     P::Opacity,
     P::Display,
     P::BoxSizing,
+    P::BorderCollapse,
+    P::CaptionSide,
+    P::EmptyCells,
+    P::TableLayout,
     P::Order,
     P::AspectRatio,
     P::Visibility,
@@ -259,6 +263,10 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
             },
         ),
         CssLonghandValueRef::BoxSizing(v) => assert_eq!(*v, CssBoxSizing::ContentBox),
+        CssLonghandValueRef::BorderCollapse(v) => assert_eq!(*v, CssBorderCollapse::Separate),
+        CssLonghandValueRef::CaptionSide(v) => assert_eq!(*v, CssCaptionSide::Top),
+        CssLonghandValueRef::EmptyCells(v) => assert_eq!(*v, CssEmptyCells::Show),
+        CssLonghandValueRef::TableLayout(v) => assert_eq!(*v, CssTableLayout::Auto),
         CssLonghandValueRef::Opacity(v) => {
             assert!(matches!(v, CssOpacityValue::Literal(value) if value.value() == 1.0));
         }
@@ -272,7 +280,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 53);
+    assert_eq!(expected.len(), 57);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();
@@ -308,6 +316,9 @@ fn metadata_and_initials() {
             matches!(
                 property,
                 P::Color
+                    | P::BorderCollapse
+                    | P::CaptionSide
+                    | P::EmptyCells
                     | P::FontFamily
                     | P::TextOrientation
                     | P::Visibility

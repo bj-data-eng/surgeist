@@ -1,13 +1,11 @@
 #![forbid(unsafe_code)]
 
-//! Existing-public-API RED cases for four CSS2.1 table keyword properties.
+//! Intrinsic longhand contracts for four CSS2.1 table keyword properties.
 //! Source: https://www.w3.org/TR/2011/REC-CSS2-20110607/tables.html
 //! Property tables: border-collapse, caption-side, empty-cells, table-layout.
 //! Logical 1's inline-start/end caption extension is conditional on support for
 //! unselected left/right caption values. Their rejection below is specific to
 //! this selected profile, not a judgment that they are invalid in every CSS UA.
-//! New typed longhand view and specified serializer assertions belong in GREEN,
-//! after functional API implementation, rather than in a compilation RED.
 
 use surgeist_css::*;
 
@@ -19,6 +17,38 @@ enum TableKeyword {
     CaptionSide(CssCaptionSide),
     EmptyCells(CssEmptyCells),
     TableLayout(CssTableLayout),
+}
+
+impl TableKeyword {
+    fn assert_payload(self, actual: CssLonghandValueRef<'_>) {
+        match (self, actual) {
+            (Self::BorderCollapse(expected), CssLonghandValueRef::BorderCollapse(actual)) => {
+                assert_eq!(*actual, expected)
+            }
+            (Self::CaptionSide(expected), CssLonghandValueRef::CaptionSide(actual)) => {
+                assert_eq!(*actual, expected)
+            }
+            (Self::EmptyCells(expected), CssLonghandValueRef::EmptyCells(actual)) => {
+                assert_eq!(*actual, expected)
+            }
+            (Self::TableLayout(expected), CssLonghandValueRef::TableLayout(actual)) => {
+                assert_eq!(*actual, expected)
+            }
+            other => panic!("table longhand payload changed: {other:?}"),
+        }
+    }
+
+    fn serialize(
+        self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String, CssSpecifiedValueSerializationError> {
+        match self {
+            Self::BorderCollapse(value) => value.serialize_specified_with_limits(limits),
+            Self::CaptionSide(value) => value.serialize_specified_with_limits(limits),
+            Self::EmptyCells(value) => value.serialize_specified_with_limits(limits),
+            Self::TableLayout(value) => value.serialize_specified_with_limits(limits),
+        }
+    }
 }
 
 const ORDINARY: &[(Property, &str, TableKeyword)] = &[
@@ -63,6 +93,55 @@ const ORDINARY: &[(Property, &str, TableKeyword)] = &[
         TableKeyword::TableLayout(CssTableLayout::Fixed),
     ),
 ];
+
+#[test]
+fn table_keywords_serialize_all_eight_values_with_atomic_resource_limits() {
+    for (value, text) in [
+        (
+            TableKeyword::BorderCollapse(CssBorderCollapse::Collapse),
+            "collapse",
+        ),
+        (
+            TableKeyword::BorderCollapse(CssBorderCollapse::Separate),
+            "separate",
+        ),
+        (TableKeyword::CaptionSide(CssCaptionSide::Top), "top"),
+        (TableKeyword::CaptionSide(CssCaptionSide::Bottom), "bottom"),
+        (TableKeyword::EmptyCells(CssEmptyCells::Show), "show"),
+        (TableKeyword::EmptyCells(CssEmptyCells::Hide), "hide"),
+        (TableKeyword::TableLayout(CssTableLayout::Auto), "auto"),
+        (TableKeyword::TableLayout(CssTableLayout::Fixed), "fixed"),
+    ] {
+        assert_eq!(
+            value
+                .serialize(CssSpecifiedValueSerializationLimits::default())
+                .unwrap(),
+            text
+        );
+        assert_eq!(
+            value
+                .serialize(CssSpecifiedValueSerializationLimits::new(1, 1, text.len()))
+                .unwrap(),
+            text
+        );
+        for (limits, expected) in [
+            (
+                CssSpecifiedValueSerializationLimits::new(0, 1, text.len()),
+                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            ),
+            (
+                CssSpecifiedValueSerializationLimits::new(1, 0, text.len()),
+                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            ),
+            (
+                CssSpecifiedValueSerializationLimits::new(1, 1, text.len() - 1),
+                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            ),
+        ] {
+            assert_eq!(value.serialize(limits).unwrap_err().kind(), expected);
+        }
+    }
+}
 
 #[test]
 fn table_keywords_report_complete_authored_grammar_from_the_pinned_css2_tables() {
@@ -172,13 +251,27 @@ fn one_longhand(source: &CssDeclaration) -> CssLonghandContributions {
 #[test]
 fn table_keywords_have_source_derived_longhand_inheritance_and_fixed_initials() {
     // CSS2.1 table property definitions give separate/top/show/auto as initials.
-    // The current public longhand view cannot yet inspect those typed payloads;
-    // exact payload assertions follow its functional introduction in GREEN.
-    for (property, inherited) in [
-        (Property::BorderCollapse, true),
-        (Property::CaptionSide, true),
-        (Property::EmptyCells, true),
-        (Property::TableLayout, false),
+    for (property, inherited, expected) in [
+        (
+            Property::BorderCollapse,
+            true,
+            TableKeyword::BorderCollapse(CssBorderCollapse::Separate),
+        ),
+        (
+            Property::CaptionSide,
+            true,
+            TableKeyword::CaptionSide(CssCaptionSide::Top),
+        ),
+        (
+            Property::EmptyCells,
+            true,
+            TableKeyword::EmptyCells(CssEmptyCells::Show),
+        ),
+        (
+            Property::TableLayout,
+            false,
+            TableKeyword::TableLayout(CssTableLayout::Auto),
+        ),
     ] {
         let metadata = property.metadata().expect("intrinsic table metadata");
         let CssPropertyKindRef::Longhand(longhand) = metadata.kind() else {
@@ -192,6 +285,7 @@ fn table_keywords_have_source_derived_longhand_inheritance_and_fixed_initials() 
             panic!("{property:?} has a fixed intrinsic initial")
         };
         assert_eq!(value.property().known_property(), property);
+        expected.assert_payload(value.view());
     }
 }
 
@@ -202,6 +296,7 @@ fn table_keywords_from_parsed_and_checked_construction_contribute_once() {
         assert_authored_keyword(&parsed, expected, keyword);
         let parsed_items = one_longhand(&parsed);
         assert!(parsed_items.items()[0].replacement_components().is_none());
+        expected.assert_payload(parsed_items.items()[0].ordinary_value().unwrap().view());
 
         let components = CssComponentValues::try_new(vec![
             CssComponentValue::try_token(keyword).expect("one identifier token"),
@@ -226,16 +321,38 @@ fn table_keywords_from_parsed_and_checked_construction_contribute_once() {
                 .replacement_components()
                 .is_none()
         );
+        expected.assert_payload(
+            constructed_items.items()[0]
+                .ordinary_value()
+                .unwrap()
+                .view(),
+        );
     }
 }
 
 #[test]
 fn table_keywords_keep_globals_symbolic_and_reenter_pending_values_strictly() {
-    for (property, valid) in [
-        (Property::BorderCollapse, "separate"),
-        (Property::CaptionSide, "bottom"),
-        (Property::EmptyCells, "hide"),
-        (Property::TableLayout, "fixed"),
+    for (property, valid, expected) in [
+        (
+            Property::BorderCollapse,
+            "separate",
+            TableKeyword::BorderCollapse(CssBorderCollapse::Separate),
+        ),
+        (
+            Property::CaptionSide,
+            "bottom",
+            TableKeyword::CaptionSide(CssCaptionSide::Bottom),
+        ),
+        (
+            Property::EmptyCells,
+            "hide",
+            TableKeyword::EmptyCells(CssEmptyCells::Hide),
+        ),
+        (
+            Property::TableLayout,
+            "fixed",
+            TableKeyword::TableLayout(CssTableLayout::Fixed),
+        ),
     ] {
         for (text, keyword) in [
             ("initial", CssGlobalKeyword::Initial),
@@ -290,6 +407,7 @@ fn table_keywords_keep_globals_symbolic_and_reenter_pending_values_strictly() {
                 item.ordinary_value().unwrap().property().known_property(),
                 property
             );
+            expected.assert_payload(item.ordinary_value().unwrap().view());
             assert!(item.source().same_occurrence(&source));
             assert_eq!(item.source().importance(), CssImportance::Important);
             assert_eq!(item.replacement_components(), Some(&replacement));

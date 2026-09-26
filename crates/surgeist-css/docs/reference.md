@@ -470,7 +470,8 @@ unfinished. This property migration does not complete the other Grid3 families.
 
 `expand_declaration` currently covers custom declarations, physical margin and
 padding, border width, style and color, the four side-border shorthands, `border`,
-the five border-image longhands, `flow-tolerance`, `color`, `font-family`,
+the five border-image longhands, `border-collapse`, `caption-side`, `empty-cells`,
+`table-layout`, `flow-tolerance`, `color`, `font-family`,
 `text-orientation`, its legacy `glyph-orientation-vertical` grammar, `opacity`, `display`, `box-sizing`,
 `order`, `aspect-ratio`, `visibility`, `direction`, `unicode-bidi`, `writing-mode`, `text-combine-upright`,
 the `container` shorthand and its two longhands, and `all`.
@@ -479,6 +480,17 @@ member lists, initial values and reset-only components. Other known properties
 return typed unsupported errors preserving their identity. The stylesheet
 normalizer uses this same expansion boundary, so its complete property coverage
 remains unfinished.
+
+The four [selected CSS2 table properties](https://www.w3.org/TR/2011/REC-CSS2-20110607/tables.html)
+expand to one typed longhand each. `border-collapse` accepts `collapse | separate`
+(initial `separate`), `caption-side` accepts `top | bottom` (initial `top`),
+`empty-cells` accepts `show | hide` (initial `show`), and `table-layout` accepts
+`auto | fixed` (initial `auto`). The first three inherit by default; `table-layout`
+does not. Their keyword enums serialize canonically with bounded specified-value
+serialization. The [selected Logical 1 caption-side definition](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#caption-side)
+adds `inline-start | inline-end` only with `left | right` support, which this profile has not
+selected. Caption positioning relative to writing mode remains for downstream
+style and layout interpretation; CSS retains the authored `top | bottom` value.
 
 Opacity is a non-inherited longhand with numeric initial value `1`. Its ordinary
 contribution retains the exact `CssOpacityValue`, including percentages,

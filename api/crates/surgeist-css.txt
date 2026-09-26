@@ -278,6 +278,9 @@ pub surgeist_css::CssBlockKind::SquareBracket
 #[non_exhaustive] pub enum surgeist_css::CssBorderCollapse
 pub surgeist_css::CssBorderCollapse::Collapse
 pub surgeist_css::CssBorderCollapse::Separate
+impl surgeist_css::CssBorderCollapse
+pub fn surgeist_css::CssBorderCollapse::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBorderCollapse::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssBorderImageOutsetComponent
 pub surgeist_css::CssBorderImageOutsetComponent::Length(surgeist_css::CssBorderImageOutsetLength)
 pub surgeist_css::CssBorderImageOutsetComponent::Number(surgeist_css::CssNonNegativeNumber)
@@ -406,6 +409,9 @@ pub fn surgeist_css::CssCalculationValueRef<'a>::literal(self) -> surgeist_css::
 #[non_exhaustive] pub enum surgeist_css::CssCaptionSide
 pub surgeist_css::CssCaptionSide::Bottom
 pub surgeist_css::CssCaptionSide::Top
+impl surgeist_css::CssCaptionSide
+pub fn surgeist_css::CssCaptionSide::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCaptionSide::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssCaretColor
 pub surgeist_css::CssCaretColor::Auto
 pub surgeist_css::CssCaretColor::Color(alloc::boxed::Box<surgeist_css::CssAuthoredColor>)
@@ -983,6 +989,9 @@ pub surgeist_css::CssEllipseRadius::Radii(surgeist_css::CssEllipseRadii)
 #[non_exhaustive] pub enum surgeist_css::CssEmptyCells
 pub surgeist_css::CssEmptyCells::Hide
 pub surgeist_css::CssEmptyCells::Show
+impl surgeist_css::CssEmptyCells
+pub fn surgeist_css::CssEmptyCells::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssEmptyCells::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssErrorCode
 pub surgeist_css::CssErrorCode::InvalidAtRuleBody
 pub surgeist_css::CssErrorCode::InvalidAtRulePlacement
@@ -2156,6 +2165,7 @@ pub surgeist_css::CssLonghandValueRef::AspectRatio(&'a surgeist_css::CssAspectRa
 pub surgeist_css::CssLonghandValueRef::BorderBottomColor(&'a surgeist_css::CssAuthoredColor)
 pub surgeist_css::CssLonghandValueRef::BorderBottomStyle(&'a surgeist_css::CssBorderStyle)
 pub surgeist_css::CssLonghandValueRef::BorderBottomWidth(&'a surgeist_css::CssLength)
+pub surgeist_css::CssLonghandValueRef::BorderCollapse(&'a surgeist_css::CssBorderCollapse)
 pub surgeist_css::CssLonghandValueRef::BorderImageOutset(&'a surgeist_css::CssBorderImageOutset)
 pub surgeist_css::CssLonghandValueRef::BorderImageRepeat(&'a surgeist_css::CssBorderImageRepeat)
 pub surgeist_css::CssLonghandValueRef::BorderImageSlice(&'a surgeist_css::CssBorderImageSlice)
@@ -2171,11 +2181,13 @@ pub surgeist_css::CssLonghandValueRef::BorderTopColor(&'a surgeist_css::CssAutho
 pub surgeist_css::CssLonghandValueRef::BorderTopStyle(&'a surgeist_css::CssBorderStyle)
 pub surgeist_css::CssLonghandValueRef::BorderTopWidth(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::BoxSizing(&'a surgeist_css::CssBoxSizing)
+pub surgeist_css::CssLonghandValueRef::CaptionSide(&'a surgeist_css::CssCaptionSide)
 pub surgeist_css::CssLonghandValueRef::Color(&'a surgeist_css::CssAuthoredColor)
 pub surgeist_css::CssLonghandValueRef::ContainerName(&'a surgeist_css::CssContainerNames)
 pub surgeist_css::CssLonghandValueRef::ContainerType(&'a surgeist_css::CssContainerType)
 pub surgeist_css::CssLonghandValueRef::Direction(&'a surgeist_css::CssDirection)
 pub surgeist_css::CssLonghandValueRef::Display(&'a surgeist_css::CssDisplayValue)
+pub surgeist_css::CssLonghandValueRef::EmptyCells(&'a surgeist_css::CssEmptyCells)
 pub surgeist_css::CssLonghandValueRef::FlowTolerance(&'a surgeist_css::CssFlowTolerance)
 pub surgeist_css::CssLonghandValueRef::FontFamily(&'a surgeist_css::CssFontFamilyList)
 pub surgeist_css::CssLonghandValueRef::MarginBottom(&'a surgeist_css::CssLength)
@@ -2188,6 +2200,7 @@ pub surgeist_css::CssLonghandValueRef::PaddingBottom(&'a surgeist_css::CssLength
 pub surgeist_css::CssLonghandValueRef::PaddingLeft(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::PaddingRight(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::PaddingTop(&'a surgeist_css::CssLength)
+pub surgeist_css::CssLonghandValueRef::TableLayout(&'a surgeist_css::CssTableLayout)
 pub surgeist_css::CssLonghandValueRef::TextCombineUpright(&'a surgeist_css::CssTextCombineUpright)
 pub surgeist_css::CssLonghandValueRef::TextOrientation(&'a surgeist_css::CssTextOrientation)
 pub surgeist_css::CssLonghandValueRef::UnicodeBidi(&'a surgeist_css::CssUnicodeBidi)
@@ -2973,6 +2986,9 @@ pub surgeist_css::CssSystemFont::StatusBar
 #[non_exhaustive] pub enum surgeist_css::CssTableLayout
 pub surgeist_css::CssTableLayout::Auto
 pub surgeist_css::CssTableLayout::Fixed
+impl surgeist_css::CssTableLayout
+pub fn surgeist_css::CssTableLayout::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTableLayout::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTextAlign
 pub surgeist_css::CssTextAlign::Center
 pub surgeist_css::CssTextAlign::End
