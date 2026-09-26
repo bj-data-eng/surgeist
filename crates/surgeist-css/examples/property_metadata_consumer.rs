@@ -12,6 +12,10 @@ const LONGHANDS: &[P] = &[
     P::ContainerType,
     P::Float,
     P::Clear,
+    P::OverflowX,
+    P::OverflowY,
+    P::OverflowBlock,
+    P::OverflowInline,
     P::MarginTop,
     P::MarginRight,
     P::MarginBottom,
@@ -100,6 +104,7 @@ const LONGHANDS: &[P] = &[
     P::TextCombineUpright,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
+    (P::Overflow, &[P::OverflowX, P::OverflowY], &[]),
     (
         P::ContainIntrinsicSize,
         &[P::ContainIntrinsicWidth, P::ContainIntrinsicHeight],
@@ -354,6 +359,10 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::BoxSizing(v) => assert_eq!(*v, CssBoxSizing::ContentBox),
         CssLonghandValueRef::Float(v) => assert_eq!(*v, CssFloat::None),
         CssLonghandValueRef::Clear(v) => assert_eq!(*v, CssClear::None),
+        CssLonghandValueRef::OverflowX(v)
+        | CssLonghandValueRef::OverflowY(v)
+        | CssLonghandValueRef::OverflowBlock(v)
+        | CssLonghandValueRef::OverflowInline(v) => assert_eq!(*v, CssOverflow::Visible),
         CssLonghandValueRef::Width(v)
         | CssLonghandValueRef::Height(v)
         | CssLonghandValueRef::InlineSize(v)
@@ -423,7 +432,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 109);
+    assert_eq!(expected.len(), 114);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();

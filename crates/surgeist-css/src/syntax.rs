@@ -5215,16 +5215,6 @@ pub enum CssAllDeclaredValue {
     SubstitutionDependent(CssSubstitutionDependentValue),
 }
 
-// Kept crate-private for the existing overflow shorthand parser's two-result helper. This is not
-// a declaration value bag and cannot be paired with a property.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) enum CssOverflowParsedValue {
-    Overflow(CssOverflow),
-    OverflowAxes(CssOverflowAxes),
-}
-
-pub(crate) use CssOverflowParsedValue as CssValue;
-
 impl CssAllDeclaredValue {
     /// Returns the symbolic CSS-wide keyword when present.
     #[must_use]
@@ -5460,6 +5450,7 @@ pub enum CssOverflow {
     Clip,
     Hidden,
     Scroll,
+    Auto,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

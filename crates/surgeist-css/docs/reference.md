@@ -2684,3 +2684,23 @@ contribution. The `float` and `clear` property wrappers expose `current()`;
 `None` for flow-relative keywords. `as_css()` retains the original spelling.
 Mapping `inline-start` and `inline-end` to physical sides needs the containing
 block's writing mode and belongs downstream.
+
+## Authored overflow axes
+
+The selected [Overflow 3 §3.1 publication](https://www.w3.org/TR/2025/WD-css-overflow-3-20251007/#overflow-control)
+defines `overflow-x`, `overflow-y`, `overflow-block`, and `overflow-inline`
+with `visible | hidden | clip | scroll | auto`, initial `visible`, and no
+inheritance. Each remains an independent authored axis. The `overflow`
+shorthand accepts one or two of these keywords, setting only x and y in that
+order; an omitted y repeats x. Under the [Cascade 5 value-alias rule](https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/#value-aliasing),
+the legacy `overlay` keyword parses as `auto` while the property wrapper's
+`as_css()` retains its spelling.
+
+`CssOverflowValue` preserves the authored one- or two-keyword form and exposes
+`x()`, `authored_y()`, and `y()` through the shorthand wrapper's `current()`.
+The physical longhand wrappers also expose `current()`. Their `i01_subset()`
+views, and the shorthand's `CssOverflowI01PropertyValue` projection, remain
+available only when every authored keyword is one of the original four.
+The enum and shorthand have bounded canonical specified serialization.
+Cross-axis computed-value coupling and mapping flow-relative axes through the
+element's writing mode belong downstream.

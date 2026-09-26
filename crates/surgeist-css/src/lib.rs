@@ -146,9 +146,10 @@
 //! from literal names, and decoded identifier boundaries are retained rather
 //! than projected into the obsolete joined-string payload.
 //!
-//! The generated [`CssOverflowPropertyValue`] is the authored wrapper for the
-//! `overflow` row. [`CssOverflowI01PropertyValue`] is its renamed I01 payload and
-//! retains the `Single` and `Pair` value shapes.
+//! The generated [`CssOverflowPropertyValue`] exposes a checked [`CssOverflowValue`]
+//! through `current()`. Its `i01_subset()` retains the older
+//! [`CssOverflowI01PropertyValue`] `Single` and `Pair` shapes only when every
+//! authored keyword belongs to that compatibility subset.
 //!
 //! [`CssImportance`] and [`CssSupportStatus`] are exactly the two closed public
 //! enums. All other public enums are non-exhaustive and downstream matches must
@@ -1155,6 +1156,7 @@ pub use display::{
     CssDisplayListItemInside, CssDisplayOutside, CssDisplayValue,
 };
 pub use integer_value::CssIntegerLiteral;
+pub use overflow::CssOverflowValue;
 pub use scroll_snap::{
     CssScrollMarginPair, CssScrollMarginShorthand, CssScrollPaddingPair, CssScrollPaddingShorthand,
     CssScrollPaddingValue, CssScrollSideKind, CssScrollSnapAlign, CssScrollSnapAlignment,
@@ -1162,6 +1164,7 @@ pub use scroll_snap::{
 };
 pub use sizing::{CssBoxSize, CssMaxSizeValue, CssSizeValue};
 mod float_clear;
+mod overflow;
 mod specified_length;
 mod specified_serialization;
 mod writing_modes;

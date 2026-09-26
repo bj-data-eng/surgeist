@@ -12,6 +12,7 @@ use std::sync::Arc;
 use crate::CssSpecifiedLength;
 use crate::box_spacing::*;
 use crate::contain_intrinsic_size::*;
+use crate::overflow::CssOverflowValue;
 use crate::parser::contains_substitution;
 use crate::properties::{CssKnownDeclaration, CssKnownDeclaredValueRef, CssKnownPropertyValueRef};
 use crate::scroll_snap::*;

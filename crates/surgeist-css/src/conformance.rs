@@ -2283,7 +2283,6 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::Widows
         | CssKnownProperty::WordSpacing
         | CssKnownProperty::Position
-        | CssKnownProperty::Overflow
         | CssKnownProperty::Content
         | CssKnownProperty::ListStyleType
         | CssKnownProperty::ListStylePosition
@@ -2441,7 +2440,11 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::FontKerning
         | CssKnownProperty::FontSizeAdjust
         | CssKnownProperty::FontSynthesis => O_FONTS3,
-        CssKnownProperty::OverflowX | CssKnownProperty::OverflowY => X_OVERFLOW3,
+        CssKnownProperty::Overflow
+        | CssKnownProperty::OverflowX
+        | CssKnownProperty::OverflowY
+        | CssKnownProperty::OverflowBlock
+        | CssKnownProperty::OverflowInline => X_OVERFLOW3,
         CssKnownProperty::JustifyItems
         | CssKnownProperty::JustifySelf
         | CssKnownProperty::PlaceContent
@@ -2587,7 +2590,6 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
             CssKnownProperty::ZIndex => "visuren.html#propdef-z-index",
             _ => default,
         },
-        CssKnownProperty::Overflow => "visufx.html#propdef-overflow",
         CssKnownProperty::Content
         | CssKnownProperty::CounterIncrement
         | CssKnownProperty::CounterReset
@@ -2693,7 +2695,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 561] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 563] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4202,20 +4204,30 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 561] = [
         "direction",
         "baseline.property.direction"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::Overflow,
         "overflow",
         "baseline.property.overflow"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::OverflowX,
         "overflow-x",
         "baseline.property.overflow-x"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::OverflowY,
         "overflow-y",
         "baseline.property.overflow-y"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::OverflowBlock,
+        "overflow-block",
+        "ext.property.overflow-block"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::OverflowInline,
+        "overflow-inline",
+        "ext.property.overflow-inline"
     ),
     property_feature!(
         CssKnownProperty::FlexDirection,

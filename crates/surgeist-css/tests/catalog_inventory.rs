@@ -4,8 +4,8 @@ mod catalog_inventory {
 
 use catalog_inventory::vectors::{PROPERTY_NEGATIVE_VECTORS, PROPERTY_POSITIVE_VECTORS};
 use surgeist_css::{
-    CssErrorCode, CssFeatureKind, CssSupportStatus, ErrorKind, feature_metadata,
-    parse_style_attribute, property_support_metadata,
+    CssErrorCode, CssFeatureKind, CssKnownPropertyValueRef, CssOverflow, CssSupportStatus,
+    ErrorKind, feature_metadata, parse_style_attribute, property_support_metadata,
 };
 
 const CSS_WIDE_KEYWORDS: &[&str] = &["inherit", "initial", "unset", "revert", "revert-layer"];
@@ -207,6 +207,45 @@ fn authored_property_cases_exercise_public_parser_behavior() {
             "{} negative must not use substitution-dependent parsing",
             vector.id
         );
+        // These archived negative vectors captured the I01 omission of `auto`.
+        // Overflow 3 §3.1 admits it on both axes and their shorthand; retain the
+        // old vector while checking the current typed result independently.
+        if matches!(
+            vector.id,
+            "baseline.property.overflow"
+                | "baseline.property.overflow-x"
+                | "baseline.property.overflow-y"
+        ) {
+            assert_eq!(vector.authored_value, "auto");
+            let report = parse_style_attribute(&format!(
+                "{}: {}",
+                vector.canonical_name, vector.authored_value
+            ));
+            assert!(report.is_clean(), "{} current auto", vector.id);
+            let [declaration] = report.syntax().as_slice() else {
+                panic!("{} must retain one declaration", vector.id);
+            };
+            let known = declaration.known().expect("known overflow declaration");
+            assert_eq!(known.property().stable_id(), vector.id);
+            match known.property_value().expect("typed overflow value") {
+                CssKnownPropertyValueRef::Overflow(value) => {
+                    assert_eq!(value.current().x(), CssOverflow::Auto);
+                    assert_eq!(value.current().authored_y(), None);
+                    assert_eq!(value.current().y(), CssOverflow::Auto);
+                    assert!(value.i01_subset().is_none());
+                }
+                CssKnownPropertyValueRef::OverflowX(value) => {
+                    assert_eq!(*value.current(), CssOverflow::Auto);
+                    assert!(value.i01_subset().is_none());
+                }
+                CssKnownPropertyValueRef::OverflowY(value) => {
+                    assert_eq!(*value.current(), CssOverflow::Auto);
+                    assert!(value.i01_subset().is_none());
+                }
+                other => panic!("{} wrong current overflow value: {other:?}", vector.id),
+            }
+            continue;
+        }
         let report = parse_style_attribute(&format!(
             "{}: {}",
             vector.canonical_name, vector.authored_value

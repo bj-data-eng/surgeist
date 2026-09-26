@@ -3,6 +3,7 @@ use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
 use super::values::{
     CalculationRoot, LengthGrammar, parse_box_size_value, parse_length_with, parse_numeric_function,
 };
+use crate::CssOverflowValue;
 use crate::display::*;
 use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
@@ -385,6 +386,7 @@ pub(super) fn parse_overflow<'i, 't>(
         "clip" => Ok(CssOverflow::Clip),
         "hidden" => Ok(CssOverflow::Hidden),
         "scroll" => Ok(CssOverflow::Scroll),
+        "auto" | "overlay" => Ok(CssOverflow::Auto),
         _ => Err(unsupported_value(
             input,
             None,
@@ -395,14 +397,14 @@ pub(super) fn parse_overflow<'i, 't>(
 
 pub(super) fn parse_overflow_value<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssValue, ParseError<'i, Error>> {
+) -> std::result::Result<CssOverflowValue, ParseError<'i, Error>> {
     let x = parse_overflow(input)?;
-    if input.is_exhausted() {
-        Ok(CssValue::Overflow(x))
+    let y = if input.is_exhausted() {
+        None
     } else {
-        let y = parse_overflow(input)?;
-        Ok(CssValue::OverflowAxes(CssOverflowAxes::new(x, y)))
-    }
+        Some(parse_overflow(input)?)
+    };
+    Ok(CssOverflowValue::new(x, y))
 }
 
 pub(super) fn parse_flex_direction<'i, 't>(

@@ -5659,14 +5659,14 @@ fn container_property_metadata_cites_each_selected_conditional_definition() {
 }
 
 #[test]
-fn visibility_uses_its_selected_display_definition_without_changing_overflow() {
+fn visibility_and_overflow_use_their_selected_definitions() {
     let visibility = feature_metadata("baseline.property.visibility").unwrap();
     assert_eq!(visibility.source().id().as_str(), "S-DISPLAY3");
     assert_eq!(visibility.production(), "#propdef-visibility");
     assert_eq!(visibility.status(), CssSupportStatus::Complete);
     let overflow = feature_metadata("baseline.property.overflow").unwrap();
-    assert_eq!(overflow.source().id().as_str(), "O-CSS2");
-    assert_eq!(overflow.production(), "visufx.html#propdef-overflow");
+    assert_eq!(overflow.source().id().as_str(), "X-OVERFLOW3");
+    assert_eq!(overflow.production(), "#propdef-overflow");
 }
 
 #[test]

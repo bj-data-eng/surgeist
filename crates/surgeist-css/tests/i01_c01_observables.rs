@@ -766,11 +766,17 @@ fn authored_css_cases_match_selected_public_report_observables() {
     let mut migrated_auto_repeat_cases = 0;
     let mut migrated_unicode_cases = 0;
     let mut migrated_display_cases = 0;
+    let mut migrated_overflow_auto_cases = 0;
     for row in rows {
         // Fixture feature labels record the original capture profile. Validation is
         // now unconditional, so every historical profile runs through the same API.
         if assert_archived_inline_display_rejection(&row) {
             migrated_display_cases += 1;
+            assert_strict_parity(&row);
+            continue;
+        }
+        if assert_archived_overflow_auto_rejection(&row) {
+            migrated_overflow_auto_cases += 1;
             assert_strict_parity(&row);
             continue;
         }
@@ -822,6 +828,72 @@ fn authored_css_cases_match_selected_public_report_observables() {
     );
     assert_eq!(migrated_unicode_cases, 1);
     assert_eq!(migrated_display_cases, 1);
+    assert_eq!(migrated_overflow_auto_cases, 3);
+}
+
+// Overflow 3 §3.1 admits `auto` on the authored overflow axes. Keep the three
+// archived I01 rejection observations verbatim and assert the current values.
+// https://www.w3.org/TR/2025/WD-css-overflow-3-20251007/#overflow-control
+fn assert_archived_overflow_auto_rejection(row: &Row) -> bool {
+    let (property, position) = match row.case_id.as_str() {
+        "catalog.property.baseline.property.overflow-x.boundary" => ("overflow-x", 12),
+        "catalog.property.baseline.property.overflow-y.boundary" => ("overflow-y", 12),
+        "catalog.property.baseline.property.overflow.boundary" => ("overflow", 10),
+        _ => return false,
+    };
+    assert_eq!(row.entry, "style");
+    assert_eq!(row.feature, "both");
+    assert_eq!(row.input, format!("{property}: auto"));
+    assert_eq!(row.clean, "false");
+    assert_eq!(row.retained, "-");
+    assert_eq!(row.values, "-");
+    assert_eq!(row.authored_declarations, "-");
+    assert_eq!(
+        row.diagnostics,
+        format!(
+            "InvalidPropertyValue/InvalidPropertyValue:baseline.property.{property}:a value accepted by the property's grammar:Ident:auto/DropDeclaration@{position}:0:{position}>0:0:0-{}:0:{}:{}",
+            position + 4,
+            position + 4,
+            position + 4,
+        )
+    );
+
+    let report = parse_style_attribute(&row.input);
+    assert!(report.is_clean(), "{} current overflow", row.case_id);
+    let [declaration] = report.syntax().as_slice() else {
+        panic!("{} must retain one declaration", row.case_id);
+    };
+    assert_eq!(declaration.importance(), CssImportance::Normal);
+    let known = declaration.known().expect("known overflow property");
+    assert_eq!(known.property().canonical_name(), property);
+    assert_eq!(
+        known.property().stable_id(),
+        format!("baseline.property.{property}")
+    );
+    match known.property_value().expect("typed overflow value") {
+        surgeist_css::CssKnownPropertyValueRef::Overflow(value) => {
+            assert_eq!(value.current().x(), surgeist_css::CssOverflow::Auto);
+            assert_eq!(value.current().authored_y(), None);
+            assert_eq!(value.current().y(), surgeist_css::CssOverflow::Auto);
+            assert_eq!(value.as_css(), "auto");
+            assert_eq!(value.i01_subset(), None);
+        }
+        surgeist_css::CssKnownPropertyValueRef::OverflowX(value) => {
+            assert_eq!(*value.current(), surgeist_css::CssOverflow::Auto);
+            assert_eq!(value.as_css(), "auto");
+            assert_eq!(value.i01_subset(), None);
+        }
+        surgeist_css::CssKnownPropertyValueRef::OverflowY(value) => {
+            assert_eq!(*value.current(), surgeist_css::CssOverflow::Auto);
+            assert_eq!(value.as_css(), "auto");
+            assert_eq!(value.i01_subset(), None);
+        }
+        other => panic!("{} wrong typed value: {other:?}", row.case_id),
+    }
+    let parsed = declaration.parsed_value().expect("parsed overflow value");
+    assert_eq!(parsed.span().start().byte_offset().value(), position - 1);
+    assert_eq!(parsed.span().end().byte_offset().value(), position + 4);
+    true
 }
 
 // Display3 §2 admits inline with flow inside. Keep the archived I01 rejection

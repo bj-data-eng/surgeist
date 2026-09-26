@@ -58,8 +58,8 @@ use crate::box_spacing::*;
 use crate::contain_intrinsic_size::{CssContainIntrinsicSize, CssContainIntrinsicSizeValue};
 use crate::{
     CssContainer, CssContainerNames, CssContainerType, CssFontPaletteDescriptorKind,
-    CssFontPaletteDescriptorValue, CssFontPaletteName, CssMaxSizeValue, CssScrollMarginPair,
-    CssScrollMarginShorthand, CssScrollPaddingPair, CssScrollPaddingShorthand,
+    CssFontPaletteDescriptorValue, CssFontPaletteName, CssMaxSizeValue, CssOverflowValue,
+    CssScrollMarginPair, CssScrollMarginShorthand, CssScrollPaddingPair, CssScrollPaddingShorthand,
     CssScrollPaddingValue, CssScrollSnapAlign, CssScrollSnapStop, CssScrollSnapType, CssSizeValue,
     CssSpecifiedLength,
 };
@@ -418,15 +418,6 @@ fn parse_all_property<'i, 't>(
         None,
         "`all` only accepts CSS-wide global keywords",
     ))
-}
-
-fn parse_overflow_property<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssOverflowI01PropertyValue, ParseError<'i, Error>> {
-    match parse_overflow_value(input)? {
-        CssValue::Overflow(value) => Ok(CssOverflowI01PropertyValue::Single(value)),
-        CssValue::OverflowAxes(value) => Ok(CssOverflowI01PropertyValue::Pair(value)),
-    }
 }
 
 /// Parses a UTF-8 stylesheet into valid authored syntax and recovery diagnostics.

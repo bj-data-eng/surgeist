@@ -8,6 +8,7 @@ use crate::box_spacing::*;
 use crate::box_values::{CssBorderColors, CssParsedBorderColors};
 use crate::contain_intrinsic_size::*;
 use crate::display::*;
+use crate::overflow::CssOverflowValue;
 use crate::scroll_snap::*;
 use crate::sizing::*;
 use crate::syntax::*;
@@ -63,9 +64,11 @@ macro_rules! property_schema {
             WordSpacing, "word-spacing", [], "official.property.word-spacing", CssWordSpacing, CssWordSpacingPropertyValue, CssWordSpacingPropertyValueRepresentation, parse_word_spacing, { parse_word_spacing($input, $numeric)? };
             Position, "position", [], "baseline.property.position", CssLayoutPosition, CssPositionPropertyValue, CssPositionPropertyValueRepresentation, parse_position, { parse_position($input)? };
             Direction, "direction", [], "baseline.property.direction", CssDirection, CssDirectionPropertyValue, CssDirectionPropertyValueRepresentation, parse_direction, { parse_direction($input)? }, expansion = longhand { wrapper: fallback, value: CssDirection, accessor: current, inherited: true, initial_kind: value, initial: CssDirection::Ltr };
-            Overflow, "overflow", [], "baseline.property.overflow", CssOverflowI01PropertyValue, CssOverflowPropertyValue, CssOverflowPropertyValueRepresentation, parse_overflow_property, { parse_overflow_property($input)? };
-            OverflowX, "overflow-x", [], "baseline.property.overflow-x", CssOverflow, CssOverflowXPropertyValue, CssOverflowXPropertyValueRepresentation, parse_overflow, { parse_overflow($input)? };
-            OverflowY, "overflow-y", [], "baseline.property.overflow-y", CssOverflow, CssOverflowYPropertyValue, CssOverflowYPropertyValueRepresentation, parse_overflow, { parse_overflow($input)? };
+            Overflow, "overflow", [], "baseline.property.overflow", CssOverflowValue, CssOverflowPropertyValue, CssOverflowPropertyValueRepresentation, parse_overflow_value, { parse_overflow_value($input)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ OverflowX => |value: &CssOverflowValue| Some(value.x()), OverflowY => |value: &CssOverflowValue| Some(value.y()) ], reset_only: [] };
+            OverflowX, "overflow-x", [], "baseline.property.overflow-x", CssOverflow, CssOverflowXPropertyValue, CssOverflowXPropertyValueRepresentation, parse_overflow, { parse_overflow($input)? }, expansion = longhand { wrapper: existing, value: CssOverflow, accessor: current, inherited: false, initial_kind: value, initial: CssOverflow::Visible };
+            OverflowY, "overflow-y", [], "baseline.property.overflow-y", CssOverflow, CssOverflowYPropertyValue, CssOverflowYPropertyValueRepresentation, parse_overflow, { parse_overflow($input)? }, expansion = longhand { wrapper: existing, value: CssOverflow, accessor: current, inherited: false, initial_kind: value, initial: CssOverflow::Visible };
+            OverflowBlock, "overflow-block", [], "ext.property.overflow-block", CssOverflow, CssOverflowBlockPropertyValue, CssOverflowBlockPropertyValueRepresentation, parse_overflow, { parse_overflow($input)? }, expansion = longhand { wrapper: additive, value: CssOverflow, accessor: current, inherited: false, initial_kind: value, initial: CssOverflow::Visible };
+            OverflowInline, "overflow-inline", [], "ext.property.overflow-inline", CssOverflow, CssOverflowInlinePropertyValue, CssOverflowInlinePropertyValueRepresentation, parse_overflow, { parse_overflow($input)? }, expansion = longhand { wrapper: additive, value: CssOverflow, accessor: current, inherited: false, initial_kind: value, initial: CssOverflow::Visible };
             FlexDirection, "flex-direction", [], "baseline.property.flex-direction", CssFlexDirection, CssFlexDirectionPropertyValue, CssFlexDirectionPropertyValueRepresentation, parse_flex_direction, { parse_flex_direction($input)? };
             FlexFlow, "flex-flow", [], "official.property.flex-flow", CssFlexFlow, CssFlexFlowPropertyValue, CssFlexFlowPropertyValueRepresentation, parse_flex_flow, { parse_flex_flow($input)? };
             FlexWrap, "flex-wrap", [], "baseline.property.flex-wrap", CssFlexWrap, CssFlexWrapPropertyValue, CssFlexWrapPropertyValueRepresentation, parse_flex_wrap, { parse_flex_wrap($input)? };
@@ -900,7 +903,58 @@ macro_rules! define_grid_property_value {
     };
 }
 
+fn overflow_i01_projection(value: CssOverflow) -> Option<CssOverflow> {
+    match value {
+        CssOverflow::Visible | CssOverflow::Hidden | CssOverflow::Clip | CssOverflow::Scroll => {
+            Some(value)
+        }
+        CssOverflow::Auto => None,
+    }
+}
+
 macro_rules! define_property_value {
+    (Overflow, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssOverflowValue,
+            CssOverflowI01PropertyValue,
+            current,
+            |value: &CssOverflowValue| {
+                let x = overflow_i01_projection(value.x())?;
+                match value.authored_y() {
+                    Some(y) => Some(CssOverflowI01PropertyValue::Pair(CssOverflowAxes::new(
+                        x,
+                        overflow_i01_projection(y)?,
+                    ))),
+                    None => Some(CssOverflowI01PropertyValue::Single(x)),
+                }
+            }
+        );
+    };
+    (OverflowX, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssOverflow,
+            CssOverflow,
+            current,
+            |value: &CssOverflow| overflow_i01_projection(*value)
+        );
+    };
+    (OverflowY, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssOverflow,
+            CssOverflow,
+            current,
+            |value: &CssOverflow| overflow_i01_projection(*value)
+        );
+    };
     (Float, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
         define_current_property_value!(
             $canonical,

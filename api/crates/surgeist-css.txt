@@ -1819,6 +1819,8 @@ pub surgeist_css::CssKnownProperty::OutlineOffset
 pub surgeist_css::CssKnownProperty::OutlineStyle
 pub surgeist_css::CssKnownProperty::OutlineWidth
 pub surgeist_css::CssKnownProperty::Overflow
+pub surgeist_css::CssKnownProperty::OverflowBlock
+pub surgeist_css::CssKnownProperty::OverflowInline
 pub surgeist_css::CssKnownProperty::OverflowWrap
 pub surgeist_css::CssKnownProperty::OverflowX
 pub surgeist_css::CssKnownProperty::OverflowY
@@ -2112,6 +2114,8 @@ pub surgeist_css::CssKnownPropertyValueRef::OutlineOffset(&'a surgeist_css::CssO
 pub surgeist_css::CssKnownPropertyValueRef::OutlineStyle(&'a surgeist_css::CssOutlineStylePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::OutlineWidth(&'a surgeist_css::CssOutlineWidthPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Overflow(&'a surgeist_css::CssOverflowPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::OverflowBlock(&'a surgeist_css::CssOverflowBlockPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::OverflowInline(&'a surgeist_css::CssOverflowInlinePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::OverflowWrap(&'a surgeist_css::CssOverflowWrapPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::OverflowX(&'a surgeist_css::CssOverflowXPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::OverflowY(&'a surgeist_css::CssOverflowYPropertyValue)
@@ -2362,6 +2366,10 @@ pub surgeist_css::CssLonghandValueRef::MinInlineSize(&'a surgeist_css::CssSizeVa
 pub surgeist_css::CssLonghandValueRef::MinWidth(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::Opacity(&'a surgeist_css::CssOpacityValue)
 pub surgeist_css::CssLonghandValueRef::Order(&'a surgeist_css::CssIntegerValue)
+pub surgeist_css::CssLonghandValueRef::OverflowBlock(&'a surgeist_css::CssOverflow)
+pub surgeist_css::CssLonghandValueRef::OverflowInline(&'a surgeist_css::CssOverflow)
+pub surgeist_css::CssLonghandValueRef::OverflowX(&'a surgeist_css::CssOverflow)
+pub surgeist_css::CssLonghandValueRef::OverflowY(&'a surgeist_css::CssOverflow)
 pub surgeist_css::CssLonghandValueRef::PaddingBlockEnd(&'a surgeist_css::CssPaddingValue)
 pub surgeist_css::CssLonghandValueRef::PaddingBlockStart(&'a surgeist_css::CssPaddingValue)
 pub surgeist_css::CssLonghandValueRef::PaddingBottom(&'a surgeist_css::CssPaddingValue)
@@ -2748,10 +2756,14 @@ pub surgeist_css::CssOutlineWidth::Medium
 pub surgeist_css::CssOutlineWidth::Thick
 pub surgeist_css::CssOutlineWidth::Thin
 #[non_exhaustive] pub enum surgeist_css::CssOverflow
+pub surgeist_css::CssOverflow::Auto
 pub surgeist_css::CssOverflow::Clip
 pub surgeist_css::CssOverflow::Hidden
 pub surgeist_css::CssOverflow::Scroll
 pub surgeist_css::CssOverflow::Visible
+impl surgeist_css::CssOverflow
+pub fn surgeist_css::CssOverflow::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssOverflow::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssOverflowI01PropertyValue
 pub surgeist_css::CssOverflowI01PropertyValue::Pair(surgeist_css::CssOverflowAxes)
 pub surgeist_css::CssOverflowI01PropertyValue::Single(surgeist_css::CssOverflow)
@@ -6482,10 +6494,27 @@ pub surgeist_css::CssOverflowAxes::x: surgeist_css::CssOverflow
 pub surgeist_css::CssOverflowAxes::y: surgeist_css::CssOverflow
 impl surgeist_css::CssOverflowAxes
 pub const fn surgeist_css::CssOverflowAxes::new(x: surgeist_css::CssOverflow, y: surgeist_css::CssOverflow) -> Self
+pub struct surgeist_css::CssOverflowBlockPropertyValue
+impl surgeist_css::CssOverflowBlockPropertyValue
+pub fn surgeist_css::CssOverflowBlockPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssOverflowBlockPropertyValue::current(&self) -> &surgeist_css::CssOverflow
+pub struct surgeist_css::CssOverflowInlinePropertyValue
+impl surgeist_css::CssOverflowInlinePropertyValue
+pub fn surgeist_css::CssOverflowInlinePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssOverflowInlinePropertyValue::current(&self) -> &surgeist_css::CssOverflow
 pub struct surgeist_css::CssOverflowPropertyValue
 impl surgeist_css::CssOverflowPropertyValue
 pub fn surgeist_css::CssOverflowPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssOverflowPropertyValue::current(&self) -> &surgeist_css::CssOverflowValue
 pub const fn surgeist_css::CssOverflowPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssOverflowI01PropertyValue>
+pub struct surgeist_css::CssOverflowValue
+impl surgeist_css::CssOverflowValue
+pub const fn surgeist_css::CssOverflowValue::authored_y(&self) -> core::option::Option<surgeist_css::CssOverflow>
+pub const fn surgeist_css::CssOverflowValue::new(x: surgeist_css::CssOverflow, authored_y: core::option::Option<surgeist_css::CssOverflow>) -> Self
+pub fn surgeist_css::CssOverflowValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssOverflowValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub const fn surgeist_css::CssOverflowValue::x(&self) -> surgeist_css::CssOverflow
+pub const fn surgeist_css::CssOverflowValue::y(&self) -> surgeist_css::CssOverflow
 pub struct surgeist_css::CssOverflowWrapPropertyValue
 impl surgeist_css::CssOverflowWrapPropertyValue
 pub fn surgeist_css::CssOverflowWrapPropertyValue::as_css(&self) -> &str
@@ -6493,10 +6522,12 @@ pub const fn surgeist_css::CssOverflowWrapPropertyValue::i01_subset(&self) -> co
 pub struct surgeist_css::CssOverflowXPropertyValue
 impl surgeist_css::CssOverflowXPropertyValue
 pub fn surgeist_css::CssOverflowXPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssOverflowXPropertyValue::current(&self) -> &surgeist_css::CssOverflow
 pub const fn surgeist_css::CssOverflowXPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssOverflow>
 pub struct surgeist_css::CssOverflowYPropertyValue
 impl surgeist_css::CssOverflowYPropertyValue
 pub fn surgeist_css::CssOverflowYPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssOverflowYPropertyValue::current(&self) -> &surgeist_css::CssOverflow
 pub const fn surgeist_css::CssOverflowYPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssOverflow>
 pub struct surgeist_css::CssPaddingBlockEndPropertyValue
 impl surgeist_css::CssPaddingBlockEndPropertyValue

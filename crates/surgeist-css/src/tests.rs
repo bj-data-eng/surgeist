@@ -4522,9 +4522,9 @@ fn leakage_wrong_keyword_and_unit_matrix_rejects_property_family_crossovers() {
             property_name_should_be_recognized: true,
         },
         RejectedDeclarationCase {
-            label: "overflow rejects auto keyword",
+            label: "overflow rejects none keyword",
             property_name: "overflow",
-            authored_value: "auto",
+            authored_value: "none",
             expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
                 property: "overflow",
             },
@@ -6247,9 +6247,9 @@ fn symbolic_color_model_rejects_invalid_percentages_and_component_counts() {
 fn rejection_unsupported_but_syntactically_valid_css_keywords_stay_rejected() {
     assert_rejects_declarations(&[
         RejectedDeclarationCase {
-            label: "overflow auto remains unsupported",
+            label: "overflow none remains unsupported",
             property_name: "overflow",
-            authored_value: "auto",
+            authored_value: "none",
             expected_error: ExpectedErrorKind::UnsupportedValue {
                 property: Some("overflow"),
             },
@@ -8010,7 +8010,7 @@ fn invalid_display_keyword_is_typed_with_property_context() {
 
 #[test]
 fn unsupported_overflow_keyword_is_typed_with_property_context() {
-    let error = parse_sheet(".panel { overflow: auto; }").unwrap_err();
+    let error = parse_sheet(".panel { overflow: none; }").unwrap_err();
 
     let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
         panic!("unexpected error kind: {:?}", error.kind());
