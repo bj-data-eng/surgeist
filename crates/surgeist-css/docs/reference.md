@@ -2649,3 +2649,24 @@ The ten physical wrappers' former `i01_subset()` view of `CssLength` or
 calculations through their checked length-percentage values. `as_css()` retains
 the authored spelling, while `serialize_specified()` renders a bounded
 canonical specified value.
+
+## Authored contained intrinsic sizes
+
+The selected [Sizing 4 §5.2 publication](https://www.w3.org/TR/2026/WD-css-sizing-4-20260904/#intrinsic-size-override)
+defines `contain-intrinsic-width`, `contain-intrinsic-height`,
+`contain-intrinsic-inline-size`, and `contain-intrinsic-block-size`. Each accepts
+an optional `auto` followed by `none` or a nonnegative length. They start at
+`none`, do not inherit, and exclude percentages. The separate
+`contain-intrinsic-size` shorthand accepts one or two whole values, setting
+width then height and repeating the complete first value when the second is
+omitted. Its expansion has no reset-only members; the logical longhands keep
+their own identities.
+
+`CssSpecifiedNonNegativeLength` retains exact ordinary tokens and symbolic
+length math without narrowing through a floating-point value. The checked
+`CssContainIntrinsicSizeValue` and `CssContainIntrinsicSize` models expose the
+fallback, `auto` intent, and authored second component through `current()` on
+their property wrappers. `as_css()` retains original spelling;
+`serialize_specified()` gives bounded canonical output. Remembered sizes,
+containment state, writing-mode mapping, and used box dimensions belong to
+downstream style and layout.

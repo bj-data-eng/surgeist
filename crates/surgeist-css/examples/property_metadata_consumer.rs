@@ -62,6 +62,10 @@ const LONGHANDS: &[P] = &[
     P::MaxHeight,
     P::MaxInlineSize,
     P::MaxBlockSize,
+    P::ContainIntrinsicWidth,
+    P::ContainIntrinsicHeight,
+    P::ContainIntrinsicInlineSize,
+    P::ContainIntrinsicBlockSize,
     P::BorderCollapse,
     P::CaptionSide,
     P::EmptyCells,
@@ -94,6 +98,11 @@ const LONGHANDS: &[P] = &[
     P::TextCombineUpright,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
+    (
+        P::ContainIntrinsicSize,
+        &[P::ContainIntrinsicWidth, P::ContainIntrinsicHeight],
+        &[],
+    ),
     (
         P::MarginBlock,
         &[P::MarginBlockStart, P::MarginBlockEnd],
@@ -353,6 +362,20 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         | CssLonghandValueRef::MaxHeight(v)
         | CssLonghandValueRef::MaxInlineSize(v)
         | CssLonghandValueRef::MaxBlockSize(v) => assert_eq!(*v, CssMaxSizeValue::NONE),
+        CssLonghandValueRef::ContainIntrinsicWidth(v)
+        | CssLonghandValueRef::ContainIntrinsicHeight(v)
+        | CssLonghandValueRef::ContainIntrinsicInlineSize(v)
+        | CssLonghandValueRef::ContainIntrinsicBlockSize(v) => {
+            assert_eq!(
+                *v,
+                CssContainIntrinsicSizeValue::new(CssContainIntrinsicSizeFallback::None)
+            );
+            assert!(!v.uses_auto());
+            assert!(matches!(
+                v.fallback(),
+                CssContainIntrinsicSizeFallback::None
+            ));
+        }
         CssLonghandValueRef::BorderCollapse(v) => assert_eq!(*v, CssBorderCollapse::Separate),
         CssLonghandValueRef::CaptionSide(v) => assert_eq!(*v, CssCaptionSide::Top),
         CssLonghandValueRef::EmptyCells(v) => assert_eq!(*v, CssEmptyCells::Show),
@@ -396,7 +419,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 102);
+    assert_eq!(expected.len(), 107);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();
@@ -522,6 +545,31 @@ fn memberships_and_resets() {
             assert_eq!(value.source().importance(), CssImportance::Important);
         }
     }
+    let source = construct(P::ContainIntrinsicSize.grammar(), "auto 5px none");
+    let values = expanded(&source);
+    assert_eq!(
+        values
+            .items()
+            .iter()
+            .map(|value| value.property())
+            .collect::<Vec<_>>(),
+        [P::ContainIntrinsicWidth, P::ContainIntrinsicHeight]
+    );
+    let [width, height] = values.items() else {
+        panic!("two contained intrinsic-size members")
+    };
+    let CssContributionValueRef::Ordinary(CssLonghandValueRef::ContainIntrinsicWidth(width)) =
+        width.value()
+    else {
+        panic!("typed contained intrinsic width")
+    };
+    let CssContributionValueRef::Ordinary(CssLonghandValueRef::ContainIntrinsicHeight(height)) =
+        height.value()
+    else {
+        panic!("typed contained intrinsic height")
+    };
+    assert_eq!(width.serialize_specified().unwrap(), "auto 5px");
+    assert_eq!(height.serialize_specified().unwrap(), "none");
     let CssPropertyKindRef::UniversalReset(meta) = P::All.metadata().unwrap().kind() else {
         panic!("universal reset")
     };

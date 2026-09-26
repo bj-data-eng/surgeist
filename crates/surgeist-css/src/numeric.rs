@@ -2299,6 +2299,12 @@ root!(CssTimeCalculation, Time);
 root!(CssFrequencyCalculation, Frequency);
 root!(CssResolutionCalculation, Resolution);
 
+impl CssLengthCalculation {
+    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
+        self.expression.structural_eq(&other.expression)
+    }
+}
+
 impl CssLengthPercentageCalculation {
     pub(crate) fn structural_eq(&self, other: &Self) -> bool {
         self.expression.structural_eq(&other.expression)

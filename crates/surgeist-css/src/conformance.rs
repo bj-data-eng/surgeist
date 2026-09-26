@@ -2319,6 +2319,11 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::MaxHeight
         | CssKnownProperty::MaxInlineSize
         | CssKnownProperty::MaxBlockSize => I_SIZING3_20260904,
+        CssKnownProperty::ContainIntrinsicWidth
+        | CssKnownProperty::ContainIntrinsicHeight
+        | CssKnownProperty::ContainIntrinsicInlineSize
+        | CssKnownProperty::ContainIntrinsicBlockSize
+        | CssKnownProperty::ContainIntrinsicSize => X_SIZING4_20260904,
         CssKnownProperty::CaretColor
         | CssKnownProperty::OutlineOffset
         | CssKnownProperty::Resize
@@ -2691,7 +2696,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 556] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 561] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4397,6 +4402,31 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 556] = [
         CssKnownProperty::MaxBlockSize,
         "max-block-size",
         "official.property.max-block-size"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ContainIntrinsicWidth,
+        "contain-intrinsic-width",
+        "ext.property.contain-intrinsic-width"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ContainIntrinsicHeight,
+        "contain-intrinsic-height",
+        "ext.property.contain-intrinsic-height"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ContainIntrinsicInlineSize,
+        "contain-intrinsic-inline-size",
+        "ext.property.contain-intrinsic-inline-size"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ContainIntrinsicBlockSize,
+        "contain-intrinsic-block-size",
+        "ext.property.contain-intrinsic-block-size"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ContainIntrinsicSize,
+        "contain-intrinsic-size",
+        "ext.property.contain-intrinsic-size"
     ),
     property_feature!(
         CssKnownProperty::FlexBasis,

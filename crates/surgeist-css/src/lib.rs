@@ -1129,6 +1129,7 @@ mod aspect_ratio;
 mod box_spacing;
 mod calc_size;
 mod color_scalar;
+mod contain_intrinsic_size;
 mod display;
 mod integer_value;
 mod numeric;
@@ -1146,6 +1147,9 @@ pub use color_scalar::{
     CssColorAngleLiteral, CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError,
     CssColorScalarErrorKind,
 };
+pub use contain_intrinsic_size::{
+    CssContainIntrinsicSize, CssContainIntrinsicSizeFallback, CssContainIntrinsicSizeValue,
+};
 pub use display::{
     CssDisplayBox, CssDisplayInside, CssDisplayInternal, CssDisplayLegacy,
     CssDisplayListItemInside, CssDisplayOutside, CssDisplayValue,
@@ -1162,7 +1166,8 @@ mod specified_serialization;
 mod writing_modes;
 pub use opacity_scalar::{CssOpacityScalar, CssOpacityScalarKind};
 pub use specified_length::{
-    CssSpecifiedLength, CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeLengthPercentage,
+    CssSpecifiedLength, CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeLength,
+    CssSpecifiedNonNegativeLengthPercentage,
 };
 pub use specified_serialization::{
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,

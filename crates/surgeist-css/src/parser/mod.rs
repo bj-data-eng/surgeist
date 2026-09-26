@@ -10,6 +10,7 @@
 mod background;
 mod box_model;
 mod box_spacing;
+mod contain_intrinsic_size;
 mod counter_style;
 mod effects;
 mod font_face;
@@ -54,6 +55,7 @@ use cssparser::{
 };
 
 use crate::box_spacing::*;
+use crate::contain_intrinsic_size::{CssContainIntrinsicSize, CssContainIntrinsicSizeValue};
 use crate::{
     CssContainer, CssContainerNames, CssContainerType, CssFontPaletteDescriptorKind,
     CssFontPaletteDescriptorValue, CssFontPaletteName, CssMaxSizeValue, CssScrollMarginPair,
@@ -64,6 +66,7 @@ use crate::{
 use background::*;
 use box_model::*;
 use box_spacing::*;
+use contain_intrinsic_size::*;
 use container_properties::*;
 use counter_style::{parse_counter_style_name, parse_counter_style_rule};
 use effects::*;

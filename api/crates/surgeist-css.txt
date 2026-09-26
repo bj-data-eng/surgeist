@@ -549,6 +549,12 @@ pub surgeist_css::CssContain::Strict
 pub surgeist_css::CssContainComponent::Layout
 pub surgeist_css::CssContainComponent::Paint
 pub surgeist_css::CssContainComponent::Size
+#[non_exhaustive] pub enum surgeist_css::CssContainIntrinsicSizeFallback
+pub surgeist_css::CssContainIntrinsicSizeFallback::Length(surgeist_css::CssSpecifiedNonNegativeLength)
+pub surgeist_css::CssContainIntrinsicSizeFallback::None
+impl core::cmp::Eq for surgeist_css::CssContainIntrinsicSizeFallback
+impl core::cmp::PartialEq for surgeist_css::CssContainIntrinsicSizeFallback
+pub fn surgeist_css::CssContainIntrinsicSizeFallback::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssContainerConditionKind
 pub surgeist_css::CssContainerConditionKind::And(surgeist_css::CssContainerConditionList)
 pub surgeist_css::CssContainerConditionKind::Feature(surgeist_css::CssContainerFeatureQuery)
@@ -1691,6 +1697,11 @@ pub surgeist_css::CssKnownProperty::ColumnSpan
 pub surgeist_css::CssKnownProperty::ColumnWidth
 pub surgeist_css::CssKnownProperty::Columns
 pub surgeist_css::CssKnownProperty::Contain
+pub surgeist_css::CssKnownProperty::ContainIntrinsicBlockSize
+pub surgeist_css::CssKnownProperty::ContainIntrinsicHeight
+pub surgeist_css::CssKnownProperty::ContainIntrinsicInlineSize
+pub surgeist_css::CssKnownProperty::ContainIntrinsicSize
+pub surgeist_css::CssKnownProperty::ContainIntrinsicWidth
 pub surgeist_css::CssKnownProperty::Container
 pub surgeist_css::CssKnownProperty::ContainerName
 pub surgeist_css::CssKnownProperty::ContainerType
@@ -1979,6 +1990,11 @@ pub surgeist_css::CssKnownPropertyValueRef::ColumnSpan(&'a surgeist_css::CssColu
 pub surgeist_css::CssKnownPropertyValueRef::ColumnWidth(&'a surgeist_css::CssColumnWidthPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Columns(&'a surgeist_css::CssColumnsPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Contain(&'a surgeist_css::CssContainPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ContainIntrinsicBlockSize(&'a surgeist_css::CssContainIntrinsicBlockSizePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ContainIntrinsicHeight(&'a surgeist_css::CssContainIntrinsicHeightPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ContainIntrinsicInlineSize(&'a surgeist_css::CssContainIntrinsicInlineSizePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ContainIntrinsicSize(&'a surgeist_css::CssContainIntrinsicSizePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ContainIntrinsicWidth(&'a surgeist_css::CssContainIntrinsicWidthPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Container(&'a surgeist_css::CssContainerPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ContainerName(&'a surgeist_css::CssContainerNamePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ContainerType(&'a surgeist_css::CssContainerTypePropertyValue)
@@ -2303,6 +2319,10 @@ pub surgeist_css::CssLonghandValueRef::BorderTopWidth(&'a surgeist_css::CssLengt
 pub surgeist_css::CssLonghandValueRef::BoxSizing(&'a surgeist_css::CssBoxSizing)
 pub surgeist_css::CssLonghandValueRef::CaptionSide(&'a surgeist_css::CssCaptionSide)
 pub surgeist_css::CssLonghandValueRef::Color(&'a surgeist_css::CssAuthoredColor)
+pub surgeist_css::CssLonghandValueRef::ContainIntrinsicBlockSize(&'a surgeist_css::CssContainIntrinsicSizeValue)
+pub surgeist_css::CssLonghandValueRef::ContainIntrinsicHeight(&'a surgeist_css::CssContainIntrinsicSizeValue)
+pub surgeist_css::CssLonghandValueRef::ContainIntrinsicInlineSize(&'a surgeist_css::CssContainIntrinsicSizeValue)
+pub surgeist_css::CssLonghandValueRef::ContainIntrinsicWidth(&'a surgeist_css::CssContainIntrinsicSizeValue)
 pub surgeist_css::CssLonghandValueRef::ContainerName(&'a surgeist_css::CssContainerNames)
 pub surgeist_css::CssLonghandValueRef::ContainerType(&'a surgeist_css::CssContainerType)
 pub surgeist_css::CssLonghandValueRef::Direction(&'a surgeist_css::CssDirection)
@@ -4594,6 +4614,42 @@ pub struct surgeist_css::CssContainComponentList
 impl surgeist_css::CssContainComponentList
 pub fn surgeist_css::CssContainComponentList::components(&self) -> &[surgeist_css::CssContainComponent]
 pub fn surgeist_css::CssContainComponentList::try_new(components: alloc::vec::Vec<surgeist_css::CssContainComponent>) -> core::option::Option<Self>
+pub struct surgeist_css::CssContainIntrinsicBlockSizePropertyValue
+impl surgeist_css::CssContainIntrinsicBlockSizePropertyValue
+pub fn surgeist_css::CssContainIntrinsicBlockSizePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssContainIntrinsicBlockSizePropertyValue::current(&self) -> &surgeist_css::CssContainIntrinsicSizeValue
+pub struct surgeist_css::CssContainIntrinsicHeightPropertyValue
+impl surgeist_css::CssContainIntrinsicHeightPropertyValue
+pub fn surgeist_css::CssContainIntrinsicHeightPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssContainIntrinsicHeightPropertyValue::current(&self) -> &surgeist_css::CssContainIntrinsicSizeValue
+pub struct surgeist_css::CssContainIntrinsicInlineSizePropertyValue
+impl surgeist_css::CssContainIntrinsicInlineSizePropertyValue
+pub fn surgeist_css::CssContainIntrinsicInlineSizePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssContainIntrinsicInlineSizePropertyValue::current(&self) -> &surgeist_css::CssContainIntrinsicSizeValue
+pub struct surgeist_css::CssContainIntrinsicSize
+impl surgeist_css::CssContainIntrinsicSize
+pub fn surgeist_css::CssContainIntrinsicSize::authored_height(&self) -> core::option::Option<&surgeist_css::CssContainIntrinsicSizeValue>
+pub fn surgeist_css::CssContainIntrinsicSize::height(&self) -> &surgeist_css::CssContainIntrinsicSizeValue
+pub fn surgeist_css::CssContainIntrinsicSize::new(width: surgeist_css::CssContainIntrinsicSizeValue, authored_height: core::option::Option<surgeist_css::CssContainIntrinsicSizeValue>) -> Self
+pub fn surgeist_css::CssContainIntrinsicSize::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssContainIntrinsicSize::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssContainIntrinsicSize::width(&self) -> &surgeist_css::CssContainIntrinsicSizeValue
+pub struct surgeist_css::CssContainIntrinsicSizePropertyValue
+impl surgeist_css::CssContainIntrinsicSizePropertyValue
+pub fn surgeist_css::CssContainIntrinsicSizePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssContainIntrinsicSizePropertyValue::current(&self) -> &surgeist_css::CssContainIntrinsicSize
+pub struct surgeist_css::CssContainIntrinsicSizeValue
+impl surgeist_css::CssContainIntrinsicSizeValue
+pub fn surgeist_css::CssContainIntrinsicSizeValue::fallback(&self) -> &surgeist_css::CssContainIntrinsicSizeFallback
+pub fn surgeist_css::CssContainIntrinsicSizeValue::new(fallback: surgeist_css::CssContainIntrinsicSizeFallback) -> Self
+pub fn surgeist_css::CssContainIntrinsicSizeValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssContainIntrinsicSizeValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssContainIntrinsicSizeValue::uses_auto(&self) -> bool
+pub fn surgeist_css::CssContainIntrinsicSizeValue::with_auto(fallback: surgeist_css::CssContainIntrinsicSizeFallback) -> Self
+pub struct surgeist_css::CssContainIntrinsicWidthPropertyValue
+impl surgeist_css::CssContainIntrinsicWidthPropertyValue
+pub fn surgeist_css::CssContainIntrinsicWidthPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssContainIntrinsicWidthPropertyValue::current(&self) -> &surgeist_css::CssContainIntrinsicSizeValue
 pub struct surgeist_css::CssContainPropertyValue
 impl surgeist_css::CssContainPropertyValue
 pub fn surgeist_css::CssContainPropertyValue::as_css(&self) -> &str
@@ -7144,6 +7200,16 @@ pub fn surgeist_css::CssSpecifiedLengthPercentage::serialize_specified_with_limi
 pub fn surgeist_css::CssSpecifiedLengthPercentage::try_from_calculation(calculation: surgeist_css::CssLengthPercentageCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub fn surgeist_css::CssSpecifiedLengthPercentage::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub fn surgeist_css::CssSpecifiedLengthPercentage::zero() -> Self
+pub struct surgeist_css::CssSpecifiedNonNegativeLength
+impl surgeist_css::CssSpecifiedNonNegativeLength
+pub fn surgeist_css::CssSpecifiedNonNegativeLength::calculation(&self) -> core::option::Option<&surgeist_css::CssLengthCalculation>
+pub fn surgeist_css::CssSpecifiedNonNegativeLength::literal_component(&self) -> core::option::Option<&surgeist_css::CssComponentValue>
+pub fn surgeist_css::CssSpecifiedNonNegativeLength::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssSpecifiedNonNegativeLength::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSpecifiedNonNegativeLength::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSpecifiedNonNegativeLength::try_from_calculation(calculation: surgeist_css::CssLengthCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssSpecifiedNonNegativeLength::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssSpecifiedNonNegativeLength::zero() -> Self
 pub struct surgeist_css::CssSpecifiedNonNegativeLengthPercentage
 impl surgeist_css::CssSpecifiedNonNegativeLengthPercentage
 pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::calculation(&self) -> core::option::Option<&surgeist_css::CssLengthPercentageCalculation>

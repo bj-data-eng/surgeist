@@ -209,6 +209,112 @@ impl CssSpecifiedLength {
     }
 }
 
+/// A nonnegative CSS `<length>` retaining exact ordinary spelling or deferred math.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssSpecifiedNonNegativeLength {
+    value: SpecifiedLengthValue<CssLengthCalculation>,
+}
+
+impl CssSpecifiedNonNegativeLength {
+    /// Checks a literal length or exact unitless zero without floating-point conversion.
+    pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
+        checked_literal(&component, false, true)?;
+        Ok(Self {
+            value: SpecifiedLengthValue::Literal(Box::new(component)),
+        })
+    }
+
+    /// Retains checked length math; a bare numeric root re-enters literal admission.
+    pub fn try_from_calculation(calculation: CssLengthCalculation) -> ConstructionResult<Self> {
+        let root = significant_root(calculation.components())?;
+        if matches!(root.view(), CssComponentValueRef::Token(_)) {
+            return Self::try_from_component(root.clone());
+        }
+        if !matches!(root.view(), CssComponentValueRef::Function(_)) {
+            return Err(CssNumericConstructionError::at(
+                CssNumericConstructionErrorKind::RootDomainMismatch,
+                Some(root),
+            ));
+        }
+        Ok(Self {
+            value: SpecifiedLengthValue::Calculation(calculation),
+        })
+    }
+
+    /// Constructs the exact unitless-zero initial length.
+    #[must_use]
+    pub fn zero() -> Self {
+        Self::try_from_component(CssComponentValue::try_number("0").expect("zero token"))
+            .expect("zero length")
+    }
+
+    /// Borrows the original ordinary token, when this is a literal.
+    pub fn literal_component(&self) -> Option<&CssComponentValue> {
+        match &self.value {
+            SpecifiedLengthValue::Literal(component) => Some(component),
+            SpecifiedLengthValue::Calculation(_) => None,
+        }
+    }
+
+    /// Borrows the symbolic checked math root, when present.
+    pub fn calculation(&self) -> Option<&CssLengthCalculation> {
+        match &self.value {
+            SpecifiedLengthValue::Literal(_) => None,
+            SpecifiedLengthValue::Calculation(calculation) => Some(calculation),
+        }
+    }
+
+    /// Returns the original parsed or programmatic root origin.
+    pub fn origin(&self) -> &CssValueOrigin {
+        match &self.value {
+            SpecifiedLengthValue::Literal(component) => component.origin(),
+            SpecifiedLengthValue::Calculation(calculation) => calculation.origin(),
+        }
+    }
+
+    /// Serializes the canonical specified length with default resource limits.
+    pub fn serialize_specified(&self) -> SerializationResult<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Serializes the canonical specified length under explicit resource limits.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult<String> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let captured = self.capture_specified(&mut context)?;
+        let mut output = String::new();
+        context.append(&mut output, &captured)?;
+        Ok(output)
+    }
+
+    pub(crate) fn capture_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> SerializationResult<String> {
+        match &self.value {
+            SpecifiedLengthValue::Literal(component) => capture_literal(component, context),
+            SpecifiedLengthValue::Calculation(calculation) => {
+                crate::numeric::capture_specified(&calculation.expression, context)
+                    .map(|(text, _)| text)
+            }
+        }
+    }
+
+    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
+        match (&self.value, &other.value) {
+            (SpecifiedLengthValue::Literal(left), SpecifiedLengthValue::Literal(right)) => {
+                left.structural_eq_ignoring_origin(right)
+            }
+            (SpecifiedLengthValue::Calculation(left), SpecifiedLengthValue::Calculation(right)) => {
+                left.structural_eq(right)
+            }
+            _ => false,
+        }
+    }
+}
+
 /// A signed CSS `<length-percentage>` retaining exact ordinary spelling or deferred math.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSpecifiedLengthPercentage {
