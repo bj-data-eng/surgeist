@@ -42,6 +42,18 @@ const LONGHANDS: &[P] = &[
     P::Opacity,
     P::Display,
     P::BoxSizing,
+    P::Width,
+    P::Height,
+    P::InlineSize,
+    P::BlockSize,
+    P::MinWidth,
+    P::MinHeight,
+    P::MinInlineSize,
+    P::MinBlockSize,
+    P::MaxWidth,
+    P::MaxHeight,
+    P::MaxInlineSize,
+    P::MaxBlockSize,
     P::BorderCollapse,
     P::CaptionSide,
     P::EmptyCells,
@@ -302,6 +314,18 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
             },
         ),
         CssLonghandValueRef::BoxSizing(v) => assert_eq!(*v, CssBoxSizing::ContentBox),
+        CssLonghandValueRef::Width(v)
+        | CssLonghandValueRef::Height(v)
+        | CssLonghandValueRef::InlineSize(v)
+        | CssLonghandValueRef::BlockSize(v)
+        | CssLonghandValueRef::MinWidth(v)
+        | CssLonghandValueRef::MinHeight(v)
+        | CssLonghandValueRef::MinInlineSize(v)
+        | CssLonghandValueRef::MinBlockSize(v) => assert_eq!(*v, CssSizeValue::Auto),
+        CssLonghandValueRef::MaxWidth(v)
+        | CssLonghandValueRef::MaxHeight(v)
+        | CssLonghandValueRef::MaxInlineSize(v)
+        | CssLonghandValueRef::MaxBlockSize(v) => assert_eq!(*v, CssMaxSizeValue::NONE),
         CssLonghandValueRef::BorderCollapse(v) => assert_eq!(*v, CssBorderCollapse::Separate),
         CssLonghandValueRef::CaptionSide(v) => assert_eq!(*v, CssCaptionSide::Top),
         CssLonghandValueRef::EmptyCells(v) => assert_eq!(*v, CssEmptyCells::Show),
@@ -345,7 +369,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 80);
+    assert_eq!(expected.len(), 92);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();
@@ -413,7 +437,7 @@ fn metadata_and_initials() {
         }
     }
     let width_support: CssPropertySupportMetadata = property_support_metadata("width")
-        .expect("recognized support catalog remains available without intrinsic metadata");
+        .expect("recognized sizing support catalog remains available");
     assert_eq!(width_support.property(), P::Width);
     assert_eq!(width_support.canonical_name(), "width");
     assert_eq!(
@@ -424,7 +448,11 @@ fn metadata_and_initials() {
         width_support.feature().id(),
         P::Width.grammar().feature_id()
     );
-    for property in [P::Width, P::Font, P::TextAlign] {
+    assert!(matches!(
+        P::Width.metadata().unwrap().kind(),
+        CssPropertyKindRef::Longhand(_)
+    ));
+    for property in [P::FlexBasis, P::Font, P::TextAlign] {
         assert!(
             matches!(property.metadata(), Err(CssPropertyMetadataError::Unavailable(g)) if g == property.grammar())
         );

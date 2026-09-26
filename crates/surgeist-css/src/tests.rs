@@ -49,6 +49,25 @@ macro_rules! declaration_value {
     }};
 }
 
+macro_rules! sizing_value {
+    ($input:expr) => {{
+        let declaration = declaration($input, CssProperty::Width);
+        let Some(CssKnownPropertyValueRef::Width(value)) =
+            declaration.known().and_then(|known| known.property_value())
+        else {
+            panic!("checked width")
+        };
+        value.current().clone()
+    }};
+}
+
+fn sizing_calculation(value: &CssSizeValue) -> &CssLengthPercentageCalculation {
+    let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = value else {
+        panic!("checked length-percentage")
+    };
+    length.calculation().expect("checked calculation")
+}
+
 macro_rules! single_declaration_value {
     ($property_name:expr, $variant:ident, $authored_value:expr) => {{
         let declaration = parse_single_declaration($property_name, $authored_value);
@@ -7609,36 +7628,39 @@ fn acceptance_interaction_effect_mask_transition_animation_matrix_accepts_suppor
 
 #[test]
 fn parses_calc_width_as_css_calc_length() {
-    let value = declaration_value!(".panel { width: calc(20px + 10%); }", Width);
-
-    match value {
-        CssLength::Calc(calc) => {
-            assert!(calc.uses_percentage());
-            assert_eq!(calc.to_css_string(), "calc(20px + 10%)");
-        }
-        other => panic!("expected calc length, got {other:?}"),
-    }
+    let value = sizing_value!(".panel { width: calc(20px + 10%); }");
+    let calculation = sizing_calculation(&value);
+    assert_eq!(
+        calculation.result_type(),
+        CssCalculationType::LengthPercentage
+    );
+    assert_eq!(value.serialize_specified().unwrap(), "calc(10% + 20px)");
 }
 
 #[test]
 fn parses_nested_calc_width_with_subtraction_as_css_syntax() {
-    let value = declaration_value!(".panel { width: calc(100% - calc(12px + 3%)); }", Width);
-
-    match value {
-        CssLength::Calc(calc) => {
-            assert!(calc.uses_percentage());
-            assert_eq!(calc.to_css_string(), "calc(100% - calc(12px + 3%))");
-        }
-        other => panic!("expected nested calc length, got {other:?}"),
-    }
+    let value = sizing_value!(".panel { width: calc(100% - calc(12px + 3%)); }");
+    let calculation = sizing_calculation(&value);
+    assert_eq!(
+        calculation.result_type(),
+        CssCalculationType::LengthPercentage
+    );
+    let CssCalculationExpressionRef::NestedCalc(root) = calculation.expression() else {
+        panic!("calc root")
+    };
+    let CssCalculationExpressionRef::Sum(sum) = root.operand() else {
+        panic!("outer sum")
+    };
+    assert_eq!(
+        sum.term(1).unwrap().operator(),
+        Some(CssCalculationSumOperator::Subtract)
+    );
 }
 
 #[test]
 fn exposes_nested_calc_terms_structurally() {
-    let value = declaration_value!(".panel { width: calc(100% - calc(12px + 3%)); }", Width);
-    let CssLength::Calc(CssCalcLength::Typed(calc)) = value else {
-        panic!("expected exact calc")
-    };
+    let value = sizing_value!(".panel { width: calc(100% - calc(12px + 3%)); }");
+    let calc = sizing_calculation(&value);
     let CssCalculationExpressionRef::NestedCalc(root) = calc.expression() else {
         panic!("expected calc root")
     };
@@ -7700,16 +7722,24 @@ fn parses_supported_length_units_as_authored_dimensions() {
     ];
 
     for (authored, expected_value, expected_unit) in cases {
-        let value = declaration_value!(&format!(".panel {{ width: {authored}; }}"), Width);
-
-        match value {
-            CssLength::Dimension(length) => {
-                assert_eq!(length.value(), expected_value);
-                assert_eq!(length.unit(), expected_unit);
-                assert_eq!(length.to_css_string(), authored);
-            }
-            other => panic!("expected authored dimension for {authored}, got {other:?}"),
-        }
+        let value = sizing_value!(&format!(".panel {{ width: {authored}; }}"));
+        let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = &value else {
+            panic!("ordinary dimension")
+        };
+        let Some(component) = length.literal_component() else {
+            panic!("ordinary dimension token")
+        };
+        let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
+            component.view()
+        else {
+            panic!("dimension token")
+        };
+        assert_eq!(
+            number.representation().parse::<f32>().unwrap(),
+            expected_value
+        );
+        assert_eq!(CssLengthUnit::from_css_unit(unit), Some(expected_unit));
+        assert_eq!(authored, format!("{}{}", number.representation(), unit));
     }
 }
 
@@ -7728,14 +7758,8 @@ fn parses_supported_calc_length_units_as_authored_dimensions() {
     ];
 
     for (authored, expected_value, expected_unit) in cases {
-        let value = declaration_value!(
-            &format!(".panel {{ width: calc({authored} + 2px); }}"),
-            Width
-        );
-
-        let CssLength::Calc(CssCalcLength::Typed(calc)) = value else {
-            panic!("expected exact calc length")
-        };
+        let value = sizing_value!(&format!(".panel {{ width: calc({authored} + 2px); }}"));
+        let calc = sizing_calculation(&value);
         let CssCalculationExpressionRef::NestedCalc(root) = calc.expression() else {
             panic!("expected calc root")
         };
@@ -7766,10 +7790,21 @@ fn unit_matrix_accepts_every_supported_length_unit_in_ordinary_length_contexts()
         let declaration = parse_single_declaration("width", &authored);
 
         assert_eq!(declaration.property(), &CssProperty::Width);
-        assert_eq!(
-            declaration_payload!(declaration, Width),
-            CssLength::dimension(1.0, unit),
-            "{authored} should preserve its supported length unit",
+        let Some(CssKnownPropertyValueRef::Width(value)) =
+            declaration.known().and_then(|known| known.property_value())
+        else {
+            panic!("checked width")
+        };
+        let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = value.current() else {
+            panic!("ordinary length")
+        };
+        let Some(component) = length.literal_component() else {
+            panic!("ordinary token")
+        };
+        assert!(
+            matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit: authored_unit })
+            if number.representation() == "1" && authored_unit.eq_ignore_ascii_case(unit.as_css_str())),
+            "{authored} should preserve its supported length unit"
         );
     }
 }
@@ -7779,10 +7814,12 @@ fn unit_matrix_accepts_every_supported_length_unit_in_calc_contexts() {
     for unit in supported_length_units() {
         let authored = format!("calc(1{} + 2px)", unit.as_css_str());
         let declaration = parse_single_declaration("width", &authored);
-        let CssLength::Calc(CssCalcLength::Typed(calc)) = declaration_payload!(declaration, Width)
+        let Some(CssKnownPropertyValueRef::Width(value)) =
+            declaration.known().and_then(|known| known.property_value())
         else {
-            panic!("expected exact calc")
+            panic!("checked width")
         };
+        let calc = sizing_calculation(value.current());
         let CssCalculationExpressionRef::NestedCalc(root) = calc.expression() else {
             panic!("expected calc root")
         };

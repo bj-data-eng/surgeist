@@ -106,7 +106,7 @@
 //!
 //! ```
 //! use surgeist_css::{
-//!     CssImportance, CssKnownDeclaredValueRef, CssKnownPropertyValueRef,
+//!     CssBoxSize, CssImportance, CssKnownDeclaredValueRef, CssKnownPropertyValueRef, CssSizeValue,
 //!     parse_style_attribute,
 //! };
 //!
@@ -119,7 +119,10 @@
 //!     CssKnownDeclaredValueRef::Property(property) => match property {
 //!         CssKnownPropertyValueRef::Width(width) => {
 //!             assert_eq!(width.as_css(), "calc(100% - 12px)");
-//!             assert!(width.i01_subset().is_some());
+//!             let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = width.current() else {
+//!                 panic!("expected a length-percentage");
+//!             };
+//!             assert!(length.calculation().is_some());
 //!         }
 //!         _ => panic!("expected width"),
 //!     },
@@ -131,7 +134,7 @@
 //! }
 //! ```
 //!
-//! Each of the 179 property-schema rows generates one private-field
+//! Each property-schema row generates one private-field
 //! `Css<SchemaVariant>PropertyValue` wrapper. Its `as_css()` method returns the
 //! exact authored ordinary value, preserving interior spelling and trivia while
 //! excluding boundary trivia and the terminal importance annotation. For checked construction,
@@ -1123,6 +1126,7 @@ mod media_features;
 mod normalization;
 pub use media_features::*;
 mod aspect_ratio;
+mod calc_size;
 mod color_scalar;
 mod display;
 mod integer_value;
@@ -1130,7 +1134,9 @@ mod numeric;
 mod opacity_scalar;
 mod pending_serialization;
 mod scroll_snap;
+mod sizing;
 pub use aspect_ratio::{CssRatioOperand, CssSpecifiedRatio};
+pub use calc_size::{CssCalcSize, CssCalcSizeBasisRef, CssIntrinsicSizeKeyword};
 pub use color_scalar::{
     CssColorAngleLiteral, CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError,
     CssColorScalarErrorKind,
@@ -1145,6 +1151,7 @@ pub use scroll_snap::{
     CssScrollPaddingValue, CssScrollSideKind, CssScrollSnapAlign, CssScrollSnapAlignment,
     CssScrollSnapAxis, CssScrollSnapStop, CssScrollSnapStrictness, CssScrollSnapType,
 };
+pub use sizing::{CssBoxSize, CssMaxSizeValue, CssSizeValue};
 mod specified_length;
 mod specified_serialization;
 mod writing_modes;
@@ -1163,15 +1170,16 @@ mod syntax;
 pub use numeric::{
     CssAngleCalculation, CssCalculationConstantRef, CssCalculationExpressionRef,
     CssCalculationFunctionRef, CssCalculationProductFactorRef, CssCalculationProductOperator,
-    CssCalculationProductRef, CssCalculationProfileChannelRef, CssCalculationSumOperator,
-    CssCalculationSumRef, CssCalculationSumTermRef, CssCalculationTreeCountingRef,
-    CssCalculationType, CssCalculationUnaryRef, CssCalculationValueRef, CssCalculationVariableRef,
-    CssFrequencyCalculation, CssIntegerCalculation, CssLengthCalculation,
-    CssLengthPercentageCalculation, CssMathFunction, CssNumberCalculation, CssNumericConstant,
-    CssNumericConstructionError, CssNumericConstructionErrorKind, CssNumericDimension,
-    CssNumericLiteralRef, CssNumericType, CssNumericUnit, CssPercentageCalculation,
-    CssProfileColorCalculation, CssProfileColorExpression, CssProfileColorExpressionRef,
-    CssResolutionCalculation, CssRoundingStrategy, CssTimeCalculation, CssTreeCountingFunction,
+    CssCalculationProductRef, CssCalculationProfileChannelRef, CssCalculationSizeRef,
+    CssCalculationSumOperator, CssCalculationSumRef, CssCalculationSumTermRef,
+    CssCalculationTreeCountingRef, CssCalculationType, CssCalculationUnaryRef,
+    CssCalculationValueRef, CssCalculationVariableRef, CssFrequencyCalculation,
+    CssIntegerCalculation, CssLengthCalculation, CssLengthPercentageCalculation, CssMathFunction,
+    CssNumberCalculation, CssNumericConstant, CssNumericConstructionError,
+    CssNumericConstructionErrorKind, CssNumericDimension, CssNumericLiteralRef, CssNumericType,
+    CssNumericUnit, CssPercentageCalculation, CssProfileColorCalculation,
+    CssProfileColorExpression, CssProfileColorExpressionRef, CssResolutionCalculation,
+    CssRoundingStrategy, CssTimeCalculation, CssTreeCountingFunction,
 };
 #[cfg(test)]
 mod test_support;

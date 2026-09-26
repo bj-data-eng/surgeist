@@ -50,8 +50,8 @@ importance to a cascade.
 
 Start with a parsed or checked declaration and call `known()`. For ordinary values, use the
 property-specific wrapper; keep global and substitution-dependent branches
-separate. The assertions below check authored width text and its compatibility
-projection.
+separate. The assertions below check the authored width text and the exact
+checked calculation branch.
 
 Parsing and `parse_property_value` construct `CssKnownDeclaration` through the
 same property grammar. Its fields are private and its `property()` identity is
@@ -67,7 +67,8 @@ wildcard for future variants:
 
 ```rust
 use surgeist_css::{
-    CssImportance, CssKnownDeclaredValueRef, CssKnownPropertyValueRef,
+    CssBoxSize, CssImportance, CssKnownDeclaredValueRef, CssKnownPropertyValueRef,
+    CssSizeValue,
     parse_style_attribute,
 };
 
@@ -80,7 +81,9 @@ match known.declared_value() {
     CssKnownDeclaredValueRef::Property(property) => match property {
         CssKnownPropertyValueRef::Width(width) => {
             assert_eq!(width.as_css(), "calc(100% - 12px)");
-            assert!(width.i01_subset().is_some());
+            assert!(matches!(width.current(), CssSizeValue::BoxSize(
+                CssBoxSize::LengthPercentage(length)
+            ) if length.calculation().is_some()));
         }
         _ => panic!("expected width"),
     },

@@ -1,15 +1,15 @@
 use surgeist_css::{
     CssAngleCalculation, CssAngleUnit, CssAspectRatioValue, CssAuthoredColorComponent,
-    CssAuthoredHue, CssCalcLength, CssCalculationExpressionRef, CssCalculationProductOperator,
-    CssCalculationType, CssCalculationValueRef, CssErrorCode, CssFilterAmount,
-    CssFilterFunctionValue, CssFilterNumber, CssFilterPercentage, CssFilterValue, CssFlexValue,
-    CssFlowToleranceRef, CssFontSize, CssFrequencyCalculation, CssFrequencyUnit,
+    CssAuthoredHue, CssBoxSize, CssCalcLength, CssCalculationExpressionRef,
+    CssCalculationProductOperator, CssCalculationType, CssCalculationValueRef, CssErrorCode,
+    CssFilterAmount, CssFilterFunctionValue, CssFilterNumber, CssFilterPercentage, CssFilterValue,
+    CssFlexValue, CssFlowToleranceRef, CssFontSize, CssFrequencyCalculation, CssFrequencyUnit,
     CssIntegerCalculation, CssIntegerValue, CssKnownPropertyValueRef, CssLength,
     CssLengthCalculation, CssLengthPercentageCalculation, CssLengthUnit, CssLineHeight,
     CssNonNegativeNumberValue, CssNumberCalculation, CssOpacityValue, CssPercentageCalculation,
     CssPositiveNumber, CssPositiveNumberValue, CssRecoveryAction, CssRelativeColorChannel,
-    CssRelativeColorExpressionValue, CssRelativeColorResultDomain, CssTimeCalculation, CssTimeUnit,
-    CssZIndexValue, parse_style_attribute,
+    CssRelativeColorExpressionValue, CssRelativeColorResultDomain, CssSizeValue,
+    CssTimeCalculation, CssTimeUnit, CssZIndexValue, parse_style_attribute,
 };
 
 #[test]
@@ -211,10 +211,9 @@ fn property_consumers_accept_typed_products_and_groups_with_later_siblings() {
         else {
             panic!("expected width wrapper");
         };
-        assert!(matches!(
-            width.i01_subset(),
-            Some(CssLength::Calc(CssCalcLength::Typed(_)))
-        ));
+        assert!(matches!(width.current(), CssSizeValue::BoxSize(
+            CssBoxSize::LengthPercentage(length)
+        ) if length.calculation().is_some()));
     }
 }
 
@@ -417,9 +416,10 @@ fn typed_length_consumer_exposes_exact_products_and_sums() {
     let CssKnownPropertyValueRef::Width(width) = width.property_value().unwrap() else {
         panic!("expected width wrapper");
     };
-    let CssLength::Calc(CssCalcLength::Typed(calculation)) = width.i01_subset().unwrap() else {
+    let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = width.current() else {
         panic!("the sum must use the exact numeric owner");
     };
+    let calculation = length.calculation().expect("exact numeric owner");
     let CssCalculationExpressionRef::Sum(terms) = calculation_body(calculation.expression()) else {
         panic!("expected exact sum")
     };
@@ -429,14 +429,14 @@ fn typed_length_consumer_exposes_exact_products_and_sums() {
     let CssKnownPropertyValueRef::Height(height) = height.property_value().unwrap() else {
         panic!("expected height wrapper");
     };
-    let CssLength::Calc(calc) = height.i01_subset().unwrap() else {
+    let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = height.current() else {
         panic!("expected calculated height");
     };
-    assert!(calc.uses_percentage());
-    assert_eq!(calc.to_css_string(), "calc((1px + 2%) * 3)");
-    let CssCalcLength::Typed(calculation) = calc else {
-        panic!("new length syntax must use the additive typed compatibility branch");
-    };
+    assert_eq!(height.as_css(), "calc((1px + 2%) * 3)");
+    // Distribution is derived from 3 × (1px + 2%), while the typed tree
+    // below retains the authored product for later layout resolution.
+    assert_eq!(length.serialize_specified().unwrap(), "calc(6% + 3px)");
+    let calculation = length.calculation().expect("exact typed calculation");
     assert_eq!(
         calculation.result_type(),
         CssCalculationType::LengthPercentage

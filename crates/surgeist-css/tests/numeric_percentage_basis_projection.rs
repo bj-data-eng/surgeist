@@ -42,6 +42,14 @@ fn percentage_only_sum_remains_percentage_after_scalar_multiplication() {
 }
 
 #[test]
+fn comparisons_preserve_the_unknown_percentage_basis() {
+    for source in ["min(1px, 2%)", "max(1px, 2%)", "clamp(1px, 2%, 3px)"] {
+        assert_eq!(specified(source), source);
+    }
+    assert_eq!(specified("max(1%, 2%)"), "calc(2%)");
+}
+
+#[test]
 fn same_unit_length_sum_can_collapse_before_scalar_multiplication() {
     let calculation = CssLengthPercentageCalculation::try_from_components(
         parse_component_values("calc((1px + 2px) * 3)").unwrap(),

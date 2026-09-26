@@ -4,10 +4,10 @@
 use surgeist_css::{
     CssBlockKind, CssCalculationExpressionRef, CssComponentValue, CssComponentValueErrorKind,
     CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssGlobalKeyword,
-    CssImportance, CssKnownPropertyValueRef, CssLength, CssNamespaceConstraint,
-    CssNamespaceContext, CssOpacityValue, CssRule, CssSelector, CssSerializedOrigin,
-    CssSupportsCondition, CssSupportsConditionKind, CssSupportsConstructionError,
-    CssSupportsDeclaration, CssValueOrigin, CssValueTokenRef, parse_component_values, parse_sheet,
+    CssImportance, CssKnownPropertyValueRef, CssNamespaceConstraint, CssNamespaceContext,
+    CssOpacityValue, CssRule, CssSelector, CssSerializedOrigin, CssSupportsCondition,
+    CssSupportsConditionKind, CssSupportsConstructionError, CssSupportsDeclaration, CssValueOrigin,
+    CssValueTokenRef, parse_component_values, parse_sheet,
 };
 
 fn values(items: Vec<CssComponentValue>) -> CssComponentValues {
@@ -65,7 +65,20 @@ fn programmatic_width_keeps_exact_spelling_and_has_no_source_coordinates() {
     else {
         panic!("typed width")
     };
-    assert!(matches!(width.i01_subset(), Some(CssLength::Px(value)) if value.value() == 1.5));
+    let surgeist_css::CssSizeValue::BoxSize(surgeist_css::CssBoxSize::LengthPercentage(length)) =
+        width.current()
+    else {
+        panic!("typed literal width")
+    };
+    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
+        length.literal_component().unwrap().view()
+    else {
+        panic!("exact typed dimension")
+    };
+    assert_eq!(number.representation(), "+001.5");
+    assert_eq!(unit, "PX");
+    assert_eq!(width.as_css(), "+001.5PX");
+    assert_eq!(width.current().serialize_specified().unwrap(), "1.5px");
     assert_eq!(declaration.serialize().unwrap().as_css(), "width:+001.5PX");
     let wrapped = CssComponentValue::try_block(CssBlockKind::Parenthesis, original).unwrap();
     let condition = CssSupportsCondition::try_from_components(
@@ -544,7 +557,7 @@ fn declaration_limits_count_original_components_and_exact_lexical_output() {
 
 #[test]
 fn parsed_eof_recovery_keeps_the_known_numeric_view_that_checked_construction_rejects() {
-    use surgeist_css::{CssCalcLength, CssRecoveryAction};
+    use surgeist_css::CssRecoveryAction;
     // Ordinary parsing retains EOF closure and uses recovered-syntax numeric
     // admission, as it does for an ordinary declaration's calc(1px at EOF.
     // Import's bare supports declaration is retained without a rule block;
@@ -569,9 +582,12 @@ fn parsed_eof_recovery_keeps_the_known_numeric_view_that_checked_construction_re
     else {
         panic!("known width remains available")
     };
-    let CssLength::Calc(CssCalcLength::Typed(calculation)) = width.i01_subset().unwrap() else {
+    let surgeist_css::CssSizeValue::BoxSize(surgeist_css::CssBoxSize::LengthPercentage(length)) =
+        width.current()
+    else {
         panic!("exact recovered calculation")
     };
+    let calculation = length.calculation().expect("exact recovered calculation");
     assert_eq!(calculation.serialize().unwrap().as_css(), "calc(1px)");
     let CssCalculationExpressionRef::NestedCalc(calc) = calculation.expression() else {
         panic!("calc")

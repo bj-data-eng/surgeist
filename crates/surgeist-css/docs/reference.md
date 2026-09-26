@@ -2583,3 +2583,38 @@ supports conditions, match selectors, resolve URLs, load imported resources,
 apply cascade or substitution, compute layer order, or lower syntax into root or
 sibling types. Environment matching, resource loading, composition, and
 cross-crate adapters remain downstream responsibilities.
+
+## Authored box sizes
+
+`width`, `height`, `inline-size`, `block-size`, and their `min-` and `max-`
+counterparts retain twelve distinct longhand identities. The preferred and
+minimum properties accept `auto` or a checked `CssBoxSize`; maximum properties
+accept `none` or a checked `CssBoxSize`. All twelve are noninherited. Preferred
+and minimum sizes start at `auto`; maximum sizes start at `none`.
+
+`CssBoxSize` preserves nonnegative ordinary length-percentages, deferred math,
+`stretch`, `contain`, intrinsic size keywords, `fit-content`,
+`fit-content(<length-percentage>)`, and `calc-size()`. Its checked ordinary
+length-percentage constructor rejects even tiny negative literals without
+rounding them through a floating-point representation. A calculation remains
+symbolic until the owning layout layer can resolve it. The opaque
+`CssMaxSizeValue` constructor rejects an `auto` basis anywhere inside nested
+`calc-size()`; callers cannot construct an invalid maximum value with an enum
+variant. These grammars follow Sizing 3 (2026-09-04) §§3.1–3.2, the Sizing 4
+(2026-09-04) shared production and explicit definitions, and the required
+Values 5 (2024-11-11) §10 `calc-size()` grammar.
+
+The six physical wrappers now expose `current()` as `CssSizeValue` or
+`CssMaxSizeValue`; their former `i01_subset()` view of `CssLength` is removed.
+Call `literal_component()` for an exact ordinary token or `calculation()` for
+checked math within a `CssBoxSize::LengthPercentage`. The wrapper's `as_css()`
+returns the original authored spelling. `serialize_specified()` produces the
+canonical specified value and may simplify math without changing the retained
+typed expression.
+
+Typed sizing equality compares the checked branch and retained numeric structure,
+including literal spelling, units, operators, order, and grouping. It ignores
+diagnostic source snapshots and offsets; those origins remain inspectable on
+the values. Intrinsic keywords and `calc-size()`/`fit-content()` identities use
+their normalized checked kinds. Property wrappers still retain original
+`as_css()` spelling, so differently authored declarations remain distinct.

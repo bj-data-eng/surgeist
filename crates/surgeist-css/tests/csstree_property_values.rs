@@ -3,9 +3,10 @@
 //! Width, Color and BackgroundImage grammars, independently of captured output.
 //! Literal expectations use numeric/color/URL semantics rather than serialization.
 use surgeist_css::{
-    CssCalcLength, CssCalculationType, CssErrorCode, CssImageLayer, CssImportance,
-    CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssPropertyNameRef, CssRecoveryAction,
-    CssTokenKind, CssValueOrigin, ErrorKind, parse_property_value_text,
+    CssBoxSize, CssCalculationType, CssComponentValueRef, CssErrorCode, CssImageLayer,
+    CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
+    CssRecoveryAction, CssSizeValue, CssTokenKind, CssValueOrigin, CssValueTokenRef, ErrorKind,
+    parse_property_value_text,
 };
 
 #[derive(Clone, Copy)]
@@ -635,13 +636,23 @@ fn raw_property_corpus_obeys_selected_grammar_and_original_coordinates() {
                 let CssKnownPropertyValueRef::Width(value) = known.property_value().unwrap() else {
                     panic!("expected width: {id}");
                 };
+                let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = value.current()
+                else {
+                    panic!("expected literal width: {id}")
+                };
                 let actual = match (
-                    value.i01_subset().unwrap(),
-                    property,
+                    length.literal_component().unwrap().view(),
                     matches!(expected, Percent(_)),
                 ) {
-                    (CssLength::Px(value), CssKnownProperty::Width, false) => value.value(),
-                    (CssLength::Percent(value), CssKnownProperty::Width, true) => value.value(),
+                    (
+                        CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }),
+                        false,
+                    ) if unit.eq_ignore_ascii_case("px") => {
+                        number.representation().parse::<f32>().unwrap()
+                    }
+                    (CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)), true) => {
+                        number.representation().parse::<f32>().unwrap()
+                    }
                     _ => panic!("expected selected literal width unit: {id}"),
                 };
                 assert!(
@@ -677,11 +688,11 @@ fn raw_property_corpus_obeys_selected_grammar_and_original_coordinates() {
                 let CssKnownPropertyValueRef::Width(value) = known.property_value().unwrap() else {
                     panic!("expected width: {id}");
                 };
-                let CssLength::Calc(CssCalcLength::Typed(calculation)) =
-                    value.i01_subset().unwrap()
+                let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = value.current()
                 else {
                     panic!("expected retained typed calculation: {id}");
                 };
+                let calculation = length.calculation().expect("retained typed calculation");
                 assert_eq!(
                     calculation.result_type(),
                     CssCalculationType::LengthPercentage,

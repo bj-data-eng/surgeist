@@ -4,7 +4,7 @@
 //! follow the supplied grammar, explicit importance and original source coordinates.
 use surgeist_css::{
     CssCustomPropertyName, CssGlobalKeyword, CssImportance, CssKnownProperty,
-    CssKnownPropertyValueRef, CssLength, CssPropertyGrammar, CssPropertyNameRef, CssRecoveryAction,
+    CssKnownPropertyValueRef, CssPropertyGrammar, CssPropertyNameRef, CssRecoveryAction,
     CssValueOrigin, parse_component_values, parse_declaration, parse_property_value,
     parse_property_value_text, parse_property_value_text_for_grammar,
 };
@@ -46,7 +46,7 @@ fn literal_width_has_independently_expected_typed_value_and_supplied_importance(
     else {
         panic!("width")
     };
-    assert!(matches!(value.i01_subset(), Some(CssLength::Px(value)) if value.value() == 10.0));
+    assert_eq!(value.current().serialize_specified().unwrap(), "10px");
     assert!(declaration.same_occurrence(&declaration.clone()));
 }
 

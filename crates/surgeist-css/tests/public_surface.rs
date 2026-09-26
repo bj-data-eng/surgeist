@@ -777,7 +777,11 @@ fn public_surface_known_declarations_expose_coupled_authored_value_views() {
         panic!("expected width wrapper");
     };
     assert_eq!(value.as_css(), "calc(100% - 12px)");
-    assert!(value.i01_subset().is_some());
+    assert!(
+        matches!(value.current(), surgeist_css::CssSizeValue::BoxSize(
+        surgeist_css::CssBoxSize::LengthPercentage(length)
+    ) if length.calculation().is_some())
+    );
     assert!(width.global().is_none());
     assert!(width.substitution_dependent().is_none());
 

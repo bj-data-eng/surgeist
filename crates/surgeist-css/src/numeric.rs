@@ -10,7 +10,7 @@ use std::fmt;
 mod projection;
 pub(crate) use projection::{
     NumericProjectionOutcome, NumericProjectionScale, capture_specified, capture_specified_scaled,
-    project_specified, project_specified_into,
+    project_calc_size_sum_into, project_specified, project_specified_into,
 };
 
 /// Explicit provenance for an existing parser cursor; never ambient parser state.
@@ -393,7 +393,15 @@ impl CssNumericConstructionError {
             path: None,
         }
     }
-    fn component(e: CssComponentValueError) -> Self {
+    pub(crate) fn at_origin(kind: CssNumericConstructionErrorKind, origin: CssValueOrigin) -> Self {
+        Self {
+            kind,
+            origin: Some(origin),
+            source: None,
+            path: None,
+        }
+    }
+    pub(crate) fn component(e: CssComponentValueError) -> Self {
         Self {
             kind: match e.kind() {
                 CssComponentValueErrorKind::NestingLimit
@@ -411,10 +419,32 @@ impl CssNumericConstructionError {
     }
 }
 impl CssNumericConstructionError {
-    fn with_path(mut self, path: Option<Box<[usize]>>) -> Self {
+    pub(crate) fn with_path(mut self, path: Option<Box<[usize]>>) -> Self {
         if self.path.is_none() {
             self.path = path;
         }
+        self
+    }
+    pub(crate) fn prefix_path(mut self, prefix: &[usize]) -> Self {
+        let mut path = prefix.to_vec();
+        if let Some(relative) = self.path.take() {
+            path.extend(relative);
+        }
+        self.path = Some(path.into_boxed_slice());
+        self
+    }
+    pub(crate) fn offset_path(mut self, prefix: &[usize], offset: usize) -> Self {
+        let mut path = prefix.to_vec();
+        if let Some(relative) = self.path.take() {
+            let mut relative = relative.into_vec();
+            if let Some(first) = relative.first_mut() {
+                *first = first.saturating_add(offset);
+            }
+            path.extend(relative);
+        } else {
+            path.push(offset);
+        }
+        self.path = Some(path.into_boxed_slice());
         self
     }
 }
@@ -672,6 +702,7 @@ impl CssTreeCountingFunction {
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum NodeKind {
     Value(Box<CssComponentValue>),
+    Size,
     Constant(CssNumericConstant),
     Variable(CssRelativeColorChannel),
     ProfileChannel(crate::CssColorProfileComponentName),
@@ -700,6 +731,80 @@ pub(crate) struct CssCalculationExpression {
     closing: Option<CssValueOrigin>,
 }
 impl CssCalculationExpression {
+    /// Compares checked numeric structure while excluding diagnostic source
+    /// coordinates and the redundant raw root graph. This is deliberately
+    /// separate from the provenance-sensitive raw calculation `PartialEq`.
+    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
+        let mut pending = vec![(self, other)];
+        while let Some((left, right)) = pending.pop() {
+            if left.ty != right.ty
+                || left.syntax.len() != right.syntax.len()
+                || !left
+                    .syntax
+                    .iter()
+                    .zip(&right.syntax)
+                    .all(|(a, b)| a.structural_eq_ignoring_origin(b))
+                || left.closing.is_some() != right.closing.is_some()
+            {
+                return false;
+            }
+            match (&left.kind, &right.kind) {
+                (NodeKind::Value(a), NodeKind::Value(b)) => {
+                    if !a.structural_eq_ignoring_origin(b) {
+                        return false;
+                    }
+                }
+                (NodeKind::Size, NodeKind::Size) => {}
+                (NodeKind::Constant(a), NodeKind::Constant(b)) if a == b => {}
+                (NodeKind::Variable(a), NodeKind::Variable(b)) if a == b => {}
+                (NodeKind::ProfileChannel(a), NodeKind::ProfileChannel(b)) if a == b => {}
+                (NodeKind::TreeCounting(a), NodeKind::TreeCounting(b)) if a == b => {}
+                (NodeKind::Sum(a), NodeKind::Sum(b)) if a.len() == b.len() => {
+                    for ((a_operator, a_child), (b_operator, b_child)) in a.iter().zip(b).rev() {
+                        if a_operator != b_operator {
+                            return false;
+                        }
+                        pending.push((a_child, b_child));
+                    }
+                }
+                (NodeKind::Product(a), NodeKind::Product(b)) if a.len() == b.len() => {
+                    for ((a_operator, a_child), (b_operator, b_child)) in a.iter().zip(b).rev() {
+                        if a_operator != b_operator {
+                            return false;
+                        }
+                        pending.push((a_child, b_child));
+                    }
+                }
+                (NodeKind::Group(a), NodeKind::Group(b)) => pending.push((a, b)),
+                (
+                    NodeKind::Function {
+                        function: a_function,
+                        args: a_args,
+                        strategy: a_strategy,
+                    },
+                    NodeKind::Function {
+                        function: b_function,
+                        args: b_args,
+                        strategy: b_strategy,
+                    },
+                ) if a_function == b_function
+                    && a_strategy == b_strategy
+                    && a_args.len() == b_args.len() =>
+                {
+                    for (a, b) in a_args.iter().zip(b_args).rev() {
+                        match (a, b) {
+                            (Some(a), Some(b)) => pending.push((a, b)),
+                            (None, None) => {}
+                            _ => return false,
+                        }
+                    }
+                }
+                _ => return false,
+            }
+        }
+        true
+    }
+
     pub(crate) fn component_nesting_depth(&self) -> u32 {
         self.components
             .as_ref()
@@ -726,6 +831,7 @@ impl CssCalculationExpression {
                     })?
                 }
                 NodeKind::ProfileChannel(c) => escaped_profile_name(c).len(),
+                NodeKind::Size => 4,
                 NodeKind::Constant(c) => c.name().len(),
                 NodeKind::TreeCounting(function) => function.name().len().checked_add(2)?,
                 NodeKind::Variable(c) => {
@@ -810,6 +916,7 @@ impl CssCalculationExpression {
                     emit(text, &node.origin);
                 }
                 NodeKind::ProfileChannel(name) => emit(escaped_profile_name(name), &node.origin),
+                NodeKind::Size => emit("size".into(), &node.origin),
                 NodeKind::Constant(constant) => emit(constant.name().to_owned(), &node.origin),
                 NodeKind::TreeCounting(function) => {
                     emit(format!("{}(", function.name()), &node.origin);
@@ -976,6 +1083,9 @@ impl CssCalculationExpression {
             NodeKind::Constant(_) => {
                 CssCalculationExpressionRef::Constant(CssCalculationConstantRef { node: self })
             }
+            NodeKind::Size => {
+                CssCalculationExpressionRef::Size(CssCalculationSizeRef { node: self })
+            }
             NodeKind::TreeCounting(_) => {
                 CssCalculationExpressionRef::TreeCounting(CssCalculationTreeCountingRef {
                     node: self,
@@ -1018,6 +1128,7 @@ impl CssCalculationExpression {
 #[non_exhaustive]
 pub enum CssCalculationExpressionRef<'a> {
     Value(CssCalculationValueRef<'a>),
+    Size(CssCalculationSizeRef<'a>),
     Constant(CssCalculationConstantRef<'a>),
     Variable(CssCalculationVariableRef<'a>),
     ProfileChannel(CssCalculationProfileChannelRef<'a>),
@@ -1032,6 +1143,7 @@ impl<'a> CssCalculationExpressionRef<'a> {
     pub fn origin(self) -> &'a CssValueOrigin {
         match self {
             Self::Value(v) => v.literal().origin(),
+            Self::Size(v) => v.origin(),
             Self::Constant(v) => v.origin(),
             Self::Variable(v) => v.origin(),
             Self::ProfileChannel(v) => v.origin(),
@@ -1045,6 +1157,7 @@ impl<'a> CssCalculationExpressionRef<'a> {
     pub fn numeric_type(self) -> CssNumericType {
         match self {
             Self::Value(v) => v.literal().numeric_type(),
+            Self::Size(v) => v.numeric_type(),
             Self::Constant(v) => v.node.ty,
             Self::Variable(v) => v.node.ty,
             Self::ProfileChannel(v) => v.node.ty,
@@ -1054,6 +1167,19 @@ impl<'a> CssCalculationExpressionRef<'a> {
             Self::Group(v) | Self::NestedCalc(v) => v.node.ty,
             Self::Function(v) => v.node.ty,
         }
+    }
+}
+/// The symbolic `size` value within a checked calc-size calculation.
+#[derive(Clone, Copy, Debug)]
+pub struct CssCalculationSizeRef<'a> {
+    node: &'a CssCalculationExpression,
+}
+impl<'a> CssCalculationSizeRef<'a> {
+    pub fn origin(self) -> &'a CssValueOrigin {
+        &self.node.origin
+    }
+    pub fn numeric_type(self) -> CssNumericType {
+        self.node.ty
     }
 }
 impl<'a> CssCalculationValueRef<'a> {
@@ -1422,6 +1548,7 @@ impl std::hash::Hash for ComponentKey<'_> {
 enum NumericAdmissionContext {
     Pure,
     ContainerSize,
+    CalcSizeCalculation,
 }
 
 struct NumericParser<'a> {
@@ -1504,6 +1631,73 @@ fn parse_tree(
         .ready
         .remove(&ComponentKey(component))
         .expect("admitted root node"))
+}
+
+/// Parses one strict calc-sum from an already validated parent graph. `size`
+/// is enabled only for the non-`any` calculation branch of calc-size().
+pub(crate) fn parse_calc_size_sum(
+    items: &[CssComponentValue],
+    allow_size: bool,
+) -> Result<CssCalculationExpression> {
+    let context = if allow_size {
+        NumericAdmissionContext::CalcSizeCalculation
+    } else {
+        NumericAdmissionContext::Pure
+    };
+    let mut parser = NumericParser {
+        root: CalculationRoot::LengthPercentage,
+        context,
+        ready: std::collections::HashMap::new(),
+        paths: std::collections::HashMap::new(),
+    };
+    for (index, component) in items.iter().enumerate() {
+        parser
+            .paths
+            .insert(ComponentKey(component), vec![index].into_boxed_slice());
+        if matches!(
+            component.view(),
+            CssComponentValueRef::Function(_) | CssComponentValueRef::Block(_)
+        ) {
+            let expression = parse_tree(component, parser.root, parser.context, index)?;
+            parser.ready.insert(ComponentKey(component), expression);
+        }
+    }
+    let expression = sequence(items, &mut parser)?;
+    if !CalculationRoot::LengthPercentage.accepts(expression.ty) {
+        return Err(CssNumericConstructionError::at(
+            CssNumericConstructionErrorKind::RootDomainMismatch,
+            items.iter().find(|value| !trivia(value)),
+        )
+        .with_path(
+            items
+                .iter()
+                .position(|value| !trivia(value))
+                .map(|index| vec![index].into_boxed_slice()),
+        ));
+    }
+    Ok(expression)
+}
+
+pub(crate) fn validate_calc_size_graph(
+    values: &CssComponentValues,
+    limits: CssComponentValueLimits,
+    recovered: bool,
+) -> Result<()> {
+    if !recovered && let Some(origin) = values.first_implicit_origin() {
+        return Err(CssNumericConstructionError::at_origin(
+            CssNumericConstructionErrorKind::RecoveredComponent,
+            origin.clone(),
+        ));
+    }
+    validate_components(
+        values,
+        limits,
+        if recovered {
+            AdmissionPolicy::RecoveredSyntax
+        } else {
+            AdmissionPolicy::Strict
+        },
+    )
 }
 
 struct Cursor<'a, 'p> {
@@ -1706,6 +1900,13 @@ fn parse_node<'a>(
                 let (channel, ty) = crate::parser::numeric_relative_channel(environment, name)
                     .ok_or_else(|| error(CssNumericConstructionErrorKind::InvalidArgumentType))?;
                 (NodeKind::Variable(channel), ty.numeric())
+            } else if parser.context == NumericAdmissionContext::CalcSizeCalculation
+                && name.eq_ignore_ascii_case("size")
+            {
+                (
+                    NodeKind::Size,
+                    CssNumericType::dimension(CssNumericDimension::Length),
+                )
             } else {
                 return Err(error(CssNumericConstructionErrorKind::InvalidArgumentType));
             }
@@ -2097,6 +2298,12 @@ root!(CssAngleCalculation, Angle);
 root!(CssTimeCalculation, Time);
 root!(CssFrequencyCalculation, Frequency);
 root!(CssResolutionCalculation, Resolution);
+
+impl CssLengthPercentageCalculation {
+    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
+        self.expression.structural_eq(&other.expression)
+    }
+}
 
 /// Rechecks a mixed-context tree at a pure-length consumer boundary without
 /// serialization or loss of original component provenance.
@@ -2777,6 +2984,36 @@ impl crate::CssTypedRelativeColorExpression {
             }
         };
         Ok(Self::new(E::Alpha, D::Alpha, value))
+    }
+}
+
+#[cfg(test)]
+mod structural_comparison_tests {
+    use super::*;
+
+    fn checked(source: &str) -> CssLengthPercentageCalculation {
+        CssLengthPercentageCalculation::try_from_components(
+            crate::parse_component_values(source).unwrap(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn numeric_structure_ignores_source_coordinates_without_ignoring_syntax() {
+        let value = checked("calc(1px + 2%)");
+        let shifted = checked("  calc(1px + 2%)");
+        assert_ne!(value, shifted, "raw numeric equality retains provenance");
+        assert!(value.structural_eq(&shifted));
+        assert!(value.structural_eq(&checked("CALC(1px + 2%)")));
+
+        for different in [
+            "calc(1px + 2px)",  // numeric type and unit
+            "calc(1px - 2%)",   // operator
+            "calc((1px + 2%))", // group nesting
+            "calc(2px + 2%)",   // exact numeric token
+        ] {
+            assert!(!value.structural_eq(&checked(different)), "{different}");
+        }
     }
 }
 

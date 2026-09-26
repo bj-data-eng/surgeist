@@ -2206,12 +2206,24 @@ fn assert_captured_sum(
     subtract: bool,
     source: &str,
 ) -> String {
-    use surgeist_css::{
-        CssCalcLength, CssCalculationExpressionRef, CssCalculationSumOperator, CssCalculationType,
-        CssCalculationValueRef, CssLength, CssNumericDimension, CssValueOrigin,
-    };
-    let CssLength::Calc(CssCalcLength::Typed(calculation)) = current else {
+    let surgeist_css::CssLength::Calc(surgeist_css::CssCalcLength::Typed(calculation)) = current
+    else {
         panic!("captured calculation must retain the exact current tree");
+    };
+    assert_captured_sum_calculation(calculation, expected_css, first, second, subtract, source)
+}
+
+fn assert_captured_sum_calculation(
+    calculation: &surgeist_css::CssLengthPercentageCalculation,
+    expected_css: &str,
+    first: (&str, bool),
+    second: (&str, bool),
+    subtract: bool,
+    source: &str,
+) -> String {
+    use surgeist_css::{
+        CssCalculationExpressionRef, CssCalculationSumOperator, CssCalculationType,
+        CssCalculationValueRef, CssNumericDimension, CssValueOrigin,
     };
     assert_eq!(
         calculation.result_type(),
@@ -2332,6 +2344,46 @@ fn assert_captured_numeric_metadata(
     }
 }
 
+// This frozen I01 corpus records the former CssLength Debug payload. These
+// cases have an explicitly checked equivalent in the new sizing domain; keep
+// the historical expectation while inspecting the exact current value.
+fn frozen_box_size_payload(value: &surgeist_css::CssBoxSize) -> String {
+    use surgeist_css::{CssBoxSize, CssComponentValueRef, CssValueTokenRef};
+    match value {
+        CssBoxSize::LengthPercentage(length) => {
+            let component = length.literal_component().expect("frozen ordinary literal");
+            match component.view() {
+                CssComponentValueRef::Token(CssValueTokenRef::Number(number))
+                    if number.representation() == "0" =>
+                {
+                    "Zero".into()
+                }
+                CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
+                    if unit.eq_ignore_ascii_case("px") =>
+                {
+                    let literal = number.representation();
+                    assert!(matches!(literal, "1" | "2" | "3"));
+                    let exact = literal.parse::<u8>().unwrap();
+                    format!("Px(CssFiniteNumber {{ value: {exact}.0 }})")
+                }
+                _ => panic!("frozen sizing literal changed its unit or value"),
+            }
+        }
+        CssBoxSize::MinContent => "MinContent".into(),
+        CssBoxSize::MaxContent => "MaxContent".into(),
+        CssBoxSize::FitContent => "FitContent".into(),
+        _ => panic!("frozen sizing keyword changed its branch"),
+    }
+}
+
+fn frozen_preferred_size_payload(value: &surgeist_css::CssSizeValue) -> String {
+    match value {
+        surgeist_css::CssSizeValue::Auto => "Auto".into(),
+        surgeist_css::CssSizeValue::BoxSize(value) => frozen_box_size_payload(value),
+        _ => panic!("frozen sizing value changed branch"),
+    }
+}
+
 fn assert_known_property_value(
     property: surgeist_css::CssKnownProperty,
     value: surgeist_css::CssKnownPropertyValueRef<'_>,
@@ -2344,8 +2396,14 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::Width,
             surgeist_css::CssKnownPropertyValueRef::Width(value),
         ) if authored.value == "calc(100% - 12px)" => {
-            let old = assert_captured_sum(
-                value.i01_subset().unwrap(),
+            let surgeist_css::CssSizeValue::BoxSize(surgeist_css::CssBoxSize::LengthPercentage(
+                length,
+            )) = value.current()
+            else {
+                panic!("frozen width calculation changed branch")
+            };
+            let old = assert_captured_sum_calculation(
+                length.calculation().expect("frozen width calculation"),
                 "calc(100% - 12px)",
                 ("100", true),
                 ("12", false),
@@ -2356,6 +2414,99 @@ fn assert_known_property_value(
                 property.stable_id(),
                 value.as_css(),
                 &old,
+                semantic,
+                authored,
+            );
+            return;
+        }
+
+        (
+            surgeist_css::CssKnownProperty::Width,
+            surgeist_css::CssKnownPropertyValueRef::Width(value),
+        ) => {
+            let payload = frozen_preferred_size_payload(value.current());
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &payload,
+                semantic,
+                authored,
+            );
+            return;
+        }
+        (
+            surgeist_css::CssKnownProperty::Height,
+            surgeist_css::CssKnownPropertyValueRef::Height(value),
+        ) => {
+            let payload = frozen_preferred_size_payload(value.current());
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &payload,
+                semantic,
+                authored,
+            );
+            return;
+        }
+        (
+            surgeist_css::CssKnownProperty::MinWidth,
+            surgeist_css::CssKnownPropertyValueRef::MinWidth(value),
+        ) => {
+            let payload = frozen_preferred_size_payload(value.current());
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &payload,
+                semantic,
+                authored,
+            );
+            return;
+        }
+        (
+            surgeist_css::CssKnownProperty::MinHeight,
+            surgeist_css::CssKnownPropertyValueRef::MinHeight(value),
+        ) => {
+            let payload = frozen_preferred_size_payload(value.current());
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &payload,
+                semantic,
+                authored,
+            );
+            return;
+        }
+        (
+            surgeist_css::CssKnownProperty::MaxWidth,
+            surgeist_css::CssKnownPropertyValueRef::MaxWidth(value),
+        ) => {
+            let payload = value
+                .current()
+                .box_size()
+                .map(frozen_box_size_payload)
+                .unwrap_or_else(|| "None".into());
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &payload,
+                semantic,
+                authored,
+            );
+            return;
+        }
+        (
+            surgeist_css::CssKnownProperty::MaxHeight,
+            surgeist_css::CssKnownPropertyValueRef::MaxHeight(value),
+        ) => {
+            let payload = value
+                .current()
+                .box_size()
+                .map(frozen_box_size_payload)
+                .unwrap_or_else(|| "None".into());
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                &payload,
                 semantic,
                 authored,
             );
@@ -2595,12 +2746,6 @@ fn assert_known_property_value(
             CounterReset,
             CounterIncrement,
             CounterSet,
-            Width,
-            Height,
-            MinWidth,
-            MinHeight,
-            MaxWidth,
-            MaxHeight,
             FlexBasis,
             Gap,
             RowGap,

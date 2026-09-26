@@ -39,6 +39,7 @@ pub(crate) use supports::{construct_supports_condition, construct_supports_decla
 mod recovery;
 mod scroll_snap;
 mod selectors;
+mod sizing;
 mod supports;
 mod timing;
 mod typography;
@@ -53,9 +54,9 @@ use cssparser::{
 
 use crate::{
     CssContainer, CssContainerNames, CssContainerType, CssFontPaletteDescriptorKind,
-    CssFontPaletteDescriptorValue, CssFontPaletteName, CssScrollMarginPair,
+    CssFontPaletteDescriptorValue, CssFontPaletteName, CssMaxSizeValue, CssScrollMarginPair,
     CssScrollMarginShorthand, CssScrollPaddingPair, CssScrollPaddingShorthand,
-    CssScrollPaddingValue, CssScrollSnapAlign, CssScrollSnapStop, CssScrollSnapType,
+    CssScrollPaddingValue, CssScrollSnapAlign, CssScrollSnapStop, CssScrollSnapType, CssSizeValue,
     CssSpecifiedLength,
 };
 use background::*;
@@ -89,6 +90,7 @@ use selectors::{
     SelectorRecovery, parse_rule_selector_list, parse_scope_boundary_selector_list,
     parse_scoped_style_selector_list,
 };
+use sizing::{parse_max_size_value, parse_size_value};
 use supports::{
     parse_supports_condition, parse_supports_declaration, with_supports_prelude_context,
 };

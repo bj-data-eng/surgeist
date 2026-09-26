@@ -421,6 +421,23 @@ pub(crate) fn project_specified_into(
     )
 }
 
+/// Projects a calc-sum in a grammar that supplies its own outer function.
+/// This suppresses only the numeric serializer's calc wrapper.
+pub(crate) fn project_calc_size_sum_into(
+    expression: &CssCalculationExpression,
+    context: &mut SpecifiedSerializationContext,
+    output: &mut String,
+) -> Result<NumericProjectionOutcome> {
+    project_specified_impl_mode(
+        expression,
+        NumericProjectionScale::Identity,
+        context,
+        output,
+        true,
+        false,
+    )
+}
+
 /// Projects one child into bounded scratch storage for caller-side branch
 /// selection. Input and projection work remain cumulative; final-output bytes
 /// are charged only if the caller later appends the returned text.
@@ -448,6 +465,17 @@ fn project_specified_impl(
     context: &mut SpecifiedSerializationContext,
     output: &mut String,
     charge_output: bool,
+) -> Result<NumericProjectionOutcome> {
+    project_specified_impl_mode(expression, scale, context, output, charge_output, true)
+}
+
+fn project_specified_impl_mode(
+    expression: &CssCalculationExpression,
+    scale: NumericProjectionScale,
+    context: &mut SpecifiedSerializationContext,
+    output: &mut String,
+    charge_output: bool,
+    outer_calc: bool,
 ) -> Result<NumericProjectionOutcome> {
     let mut projection = Projection {
         arena: Vec::new(),
@@ -508,6 +536,7 @@ fn project_specified_impl(
                 Unit::Number,
                 node.ty,
             )?,
+            NodeKind::Size => projection.add(Kind::Symbol("size".into()), node.ty)?,
             NodeKind::ProfileChannel(name) => {
                 let name = super::capture_identifier(name.as_str(), projection.context)?;
                 projection.add(Kind::Symbol(name), node.ty)?
@@ -564,7 +593,11 @@ fn project_specified_impl(
         context_dependent: projection.arena[root].resolved_magnitude.is_none(),
         scalar_value: projection.scalar(root).map(|value| value.value),
     };
-    projection.serialize(root, output, charge_output)?;
+    if outer_calc {
+        projection.serialize(root, output, charge_output)?;
+    } else {
+        projection.serialize_mode(root, output, charge_output, false)?;
+    }
     Ok(outcome)
 }
 
@@ -662,11 +695,23 @@ enum Output {
 
 impl Projection<'_> {
     fn serialize(&mut self, root: Id, output: &mut String, charge_output: bool) -> Result<()> {
+        self.serialize_mode(root, output, charge_output, true)
+    }
+
+    fn serialize_mode(
+        &mut self,
+        root: Id,
+        output: &mut String,
+        charge_output: bool,
+        outer_calc: bool,
+    ) -> Result<()> {
         let mut work = Vec::new();
-        if matches!(
-            self.arena[root].kind,
-            Kind::Function { .. } | Kind::Symbol(_)
-        ) {
+        if !outer_calc
+            || matches!(
+                self.arena[root].kind,
+                Kind::Function { .. } | Kind::Symbol(_)
+            )
+        {
             work.push(Output::Node(root, Position::Root));
         } else {
             work.push(Output::Text(")".into()));

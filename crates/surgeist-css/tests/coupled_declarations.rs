@@ -26,10 +26,20 @@ fn coupled_adjacent_properties_expose_distinct_typed_values() {
     else {
         panic!("expected typed width declaration");
     };
-    assert!(matches!(
-        value.i01_subset().expect("typed width"),
-        surgeist_css::CssLength::Px(length) if length.value() == 12.0
-    ));
+    let surgeist_css::CssSizeValue::BoxSize(surgeist_css::CssBoxSize::LengthPercentage(length)) =
+        value.current()
+    else {
+        panic!("checked literal width")
+    };
+    let Some(component) = length.literal_component() else {
+        panic!("ordinary literal")
+    };
+    assert!(
+        matches!(component.view(), surgeist_css::CssComponentValueRef::Token(
+        surgeist_css::CssValueTokenRef::Dimension { number, unit }
+    ) if number.representation() == "12" && unit.eq_ignore_ascii_case("px"))
+    );
+    assert_eq!(value.current().serialize_specified().unwrap(), "12px");
 
     let Some(CssKnownPropertyValueRef::Opacity(value)) =
         opacity.known().and_then(|known| known.property_value())

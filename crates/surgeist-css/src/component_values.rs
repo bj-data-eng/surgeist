@@ -617,6 +617,74 @@ pub enum CssComponentValueRef<'a> {
 }
 
 impl CssComponentValue {
+    /// Compares retained component structure and exact token spelling without
+    /// comparing where either component was obtained. Raw `PartialEq` retains
+    /// its provenance-sensitive contract.
+    pub(crate) fn structural_eq_ignoring_origin(&self, other: &Self) -> bool {
+        let mut pending = vec![(self, other)];
+        while let Some((left, right)) = pending.pop() {
+            let children = match (&left.data, &right.data) {
+                (ComponentData::Token(a), ComponentData::Token(b)) => {
+                    if a.data != b.data
+                        || a.spelling.text != b.spelling.text
+                        || a.implicit_end.as_ref().map(|end| &end.text)
+                            != b.implicit_end.as_ref().map(|end| &end.text)
+                    {
+                        return false;
+                    }
+                    None
+                }
+                (ComponentData::Function(a), ComponentData::Function(b)) => {
+                    if a.name != b.name
+                        || a.opening.text != b.opening.text
+                        || a.closing.text != b.closing.text
+                    {
+                        return false;
+                    }
+                    Some((a.values.items(), b.values.items()))
+                }
+                (ComponentData::Block(a), ComponentData::Block(b)) => {
+                    if a.kind != b.kind
+                        || a.opening.text != b.opening.text
+                        || a.closing.text != b.closing.text
+                    {
+                        return false;
+                    }
+                    Some((a.values.items(), b.values.items()))
+                }
+                (
+                    ComponentData::Comment {
+                        content: a,
+                        spelling: a_spelling,
+                        implicit_end: a_end,
+                    },
+                    ComponentData::Comment {
+                        content: b,
+                        spelling: b_spelling,
+                        implicit_end: b_end,
+                    },
+                ) => {
+                    if a != b
+                        || a_spelling.text != b_spelling.text
+                        || a_end.as_ref().map(|end| &end.text)
+                            != b_end.as_ref().map(|end| &end.text)
+                    {
+                        return false;
+                    }
+                    None
+                }
+                _ => return false,
+            };
+            if let Some((left, right)) = children {
+                if left.len() != right.len() {
+                    return false;
+                }
+                pending.extend(left.iter().zip(right).rev());
+            }
+        }
+        true
+    }
+
     pub(crate) fn collect_from_parser(
         input: &mut cssparser::Parser<'_, '_>,
         source: &CssSourceSnapshot,
@@ -1350,5 +1418,19 @@ mod tests {
         assert_eq!(first, second);
         assert!(!first.source().same_snapshot(second.source()));
         assert!(first.source().same_snapshot(&first.source().clone()));
+    }
+
+    #[test]
+    fn private_structural_comparison_retains_exact_token_representation() {
+        let parsed = parse_component_values("2px").unwrap();
+        let parsed = &parsed.items()[0];
+        let programmatic = CssComponentValue::try_dimension("2", "px").unwrap();
+        assert_ne!(parsed, &programmatic);
+        assert!(parsed.structural_eq_ignoring_origin(&programmatic));
+        assert!(
+            !parsed.structural_eq_ignoring_origin(
+                &CssComponentValue::try_dimension("02", "px").unwrap()
+            )
+        );
     }
 }

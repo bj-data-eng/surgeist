@@ -1810,6 +1810,8 @@ static OFFICIAL_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
     active_coverage!("official.property.empty-cells"),
     active_coverage!("baseline.property.float"),
     active_coverage!("baseline.property.height"),
+    active_coverage!("official.property.inline-size"),
+    active_coverage!("official.property.block-size"),
     active_coverage!("baseline.property.left"),
     active_coverage!("baseline.property.letter-spacing"),
     active_coverage!("baseline.property.line-height"),
@@ -1819,8 +1821,12 @@ static OFFICIAL_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
     active_coverage!("baseline.property.list-style-type"),
     active_coverage!("baseline.property.max-height"),
     active_coverage!("baseline.property.max-width"),
+    active_coverage!("official.property.max-inline-size"),
+    active_coverage!("official.property.max-block-size"),
     active_coverage!("baseline.property.min-height"),
     active_coverage!("baseline.property.min-width"),
+    active_coverage!("official.property.min-inline-size"),
+    active_coverage!("official.property.min-block-size"),
     active_coverage!("official.property.orphans"),
     active_coverage!("baseline.property.overflow"),
     active_coverage!("official.property.page-break-after"),
@@ -2278,12 +2284,6 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::ListStyle
         | CssKnownProperty::CounterReset
         | CssKnownProperty::CounterIncrement
-        | CssKnownProperty::Width
-        | CssKnownProperty::Height
-        | CssKnownProperty::MinWidth
-        | CssKnownProperty::MinHeight
-        | CssKnownProperty::MaxWidth
-        | CssKnownProperty::MaxHeight
         | CssKnownProperty::LineHeight
         | CssKnownProperty::TextAlign
         | CssKnownProperty::TextIndent
@@ -2297,7 +2297,19 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::Bottom
         | CssKnownProperty::Left
         | CssKnownProperty::ZIndex => O_CSS2,
-        CssKnownProperty::BoxSizing => I_SIZING3_20260904,
+        CssKnownProperty::BoxSizing
+        | CssKnownProperty::Width
+        | CssKnownProperty::Height
+        | CssKnownProperty::InlineSize
+        | CssKnownProperty::BlockSize
+        | CssKnownProperty::MinWidth
+        | CssKnownProperty::MinHeight
+        | CssKnownProperty::MinInlineSize
+        | CssKnownProperty::MinBlockSize
+        | CssKnownProperty::MaxWidth
+        | CssKnownProperty::MaxHeight
+        | CssKnownProperty::MaxInlineSize
+        | CssKnownProperty::MaxBlockSize => I_SIZING3_20260904,
         CssKnownProperty::CaretColor
         | CssKnownProperty::OutlineOffset
         | CssKnownProperty::Resize
@@ -2569,20 +2581,7 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
             CssKnownProperty::ListStyleType => "generate.html#propdef-list-style-type",
             _ => default,
         },
-        CssKnownProperty::Width
-        | CssKnownProperty::Height
-        | CssKnownProperty::MinWidth
-        | CssKnownProperty::MinHeight
-        | CssKnownProperty::MaxWidth
-        | CssKnownProperty::MaxHeight
-        | CssKnownProperty::LineHeight
-        | CssKnownProperty::VerticalAlign => match property {
-            CssKnownProperty::Width => "visudet.html#propdef-width",
-            CssKnownProperty::Height => "visudet.html#propdef-height",
-            CssKnownProperty::MinWidth => "visudet.html#propdef-min-width",
-            CssKnownProperty::MinHeight => "visudet.html#propdef-min-height",
-            CssKnownProperty::MaxWidth => "visudet.html#propdef-max-width",
-            CssKnownProperty::MaxHeight => "visudet.html#propdef-max-height",
+        CssKnownProperty::LineHeight | CssKnownProperty::VerticalAlign => match property {
             CssKnownProperty::LineHeight => "visudet.html#propdef-line-height",
             CssKnownProperty::VerticalAlign => "visudet.html#propdef-vertical-align",
             _ => default,
@@ -2671,7 +2670,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 538] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 544] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4322,31 +4321,61 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 538] = [
         "counter-set",
         "baseline.property.counter-set"
     ),
-    property_feature!(CssKnownProperty::Width, "width", "baseline.property.width"),
-    property_feature!(
+    complete_property_feature!(CssKnownProperty::Width, "width", "baseline.property.width"),
+    complete_property_feature!(
         CssKnownProperty::Height,
         "height",
         "baseline.property.height"
     ),
-    property_feature!(
+    complete_property_feature!(
+        CssKnownProperty::InlineSize,
+        "inline-size",
+        "official.property.inline-size"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BlockSize,
+        "block-size",
+        "official.property.block-size"
+    ),
+    complete_property_feature!(
         CssKnownProperty::MinWidth,
         "min-width",
         "baseline.property.min-width"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::MinHeight,
         "min-height",
         "baseline.property.min-height"
     ),
-    property_feature!(
+    complete_property_feature!(
+        CssKnownProperty::MinInlineSize,
+        "min-inline-size",
+        "official.property.min-inline-size"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MinBlockSize,
+        "min-block-size",
+        "official.property.min-block-size"
+    ),
+    complete_property_feature!(
         CssKnownProperty::MaxWidth,
         "max-width",
         "baseline.property.max-width"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::MaxHeight,
         "max-height",
         "baseline.property.max-height"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MaxInlineSize,
+        "max-inline-size",
+        "official.property.max-inline-size"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MaxBlockSize,
+        "max-block-size",
+        "official.property.max-block-size"
     ),
     property_feature!(
         CssKnownProperty::FlexBasis,

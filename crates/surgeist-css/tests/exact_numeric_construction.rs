@@ -192,8 +192,8 @@ fn supports_math_keeps_full_stylesheet_coordinates_after_unicode_prefix() {
 #[test]
 fn textual_numeric_eof_recovery_retains_the_value_but_checked_construction_rejects_it() {
     use surgeist_css::{
-        CssCalcLength, CssErrorCode, CssKnownPropertyValueRef, CssLength, CssLengthCalculation,
-        CssRecoveryAction, parse_style_attribute,
+        CssErrorCode, CssKnownPropertyValueRef, CssLengthCalculation, CssRecoveryAction,
+        parse_style_attribute,
     };
     let report = parse_style_attribute("width:calc(1px");
     assert_eq!(report.syntax().len(), 1, "{:?}", report.diagnostics());
@@ -220,9 +220,12 @@ fn textual_numeric_eof_recovery_retains_the_value_but_checked_construction_rejec
     else {
         panic!("expected width")
     };
-    let CssLength::Calc(CssCalcLength::Typed(calculation)) = width.i01_subset().unwrap() else {
+    let surgeist_css::CssSizeValue::BoxSize(surgeist_css::CssBoxSize::LengthPercentage(length)) =
+        width.current()
+    else {
         panic!("expected exact recovered calculation")
     };
+    let calculation = length.calculation().expect("exact recovered calculation");
     assert_eq!(calculation.serialize().unwrap().as_css(), "calc(1px)");
     let error =
         CssLengthCalculation::try_from_components(calculation.components().clone()).unwrap_err();

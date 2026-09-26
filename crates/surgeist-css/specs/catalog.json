@@ -219,6 +219,17 @@
         "publication_history_url": "https://www.w3.org/standards/history/css-values-5/",
         "revision_discovery_url": "https://api.github.com/repos/w3c/csswg-drafts/commits?path=css-values-5%2FOverview.bs&until=2026-09-10T02%3A16%3A24Z&per_page=1",
         "source_resolution": "Selected Color 5 sections 3.2 and 3.3 directly reference the Values 5 editor definitions of mix item and normalize mix percentages. The latest published Values 5 edition before the cutoff remains 2024-11-11 and lacks those definitions, despite being named by the Color 5 bibliography. Pin only the required definitions from the latest source-file revision before the cutoff, using its committer timestamp. Preserve the separate published tree-counting import; this source is not a later published edition, a whole-module replacement, or selection of Values 5 in full."
+      },
+      {
+        "id": "css-values-5-calc-size-definition",
+        "kind": "w3c-dated-publication",
+        "date": "2024-11-11",
+        "url": "https://www.w3.org/TR/2024/WD-css-values-5-20241111/",
+        "sha256": "af984ef26b3954143b0f270253e3373f06b5255a5ac00aad919a4cb1b334a8ad",
+        "bytes": 661889,
+        "latest_published_url": "https://www.w3.org/TR/css-values-5/",
+        "publication_history_url": "https://www.w3.org/standards/history/css-values-5/",
+        "source_resolution": "The existing Values 5 publication-history evidence selects 2024-11-11 as the latest published edition before the cutoff. Selected Sizing 4 section 3.2 directly requires its calc-size() definition. Import only the function grammar, numeric typing and specified simplification, with interpolation and used-value requirements assigned downstream. This neither replaces the selected Values 4 edition nor selects Values 5 or interpolate-size in full."
       }
     ],
     "definitions": [
@@ -729,6 +740,47 @@
           "root"
         ],
         "downstream_requirements": "Resolved color computation applies the imported six-step normalization algorithm with the force-normalization flag enabled as selected Color 5 requires, preserving its original total for leftover calculation and its zero-total branch. Color 5 owns singleton handling, ordered interpolation and alpha multiplication; contextual colors and execution require their downstream owners. This record does not claim implemented normalization, interpolation or complete color serialization. Other Values 5 mix, interpolate and substitution functions are not imported."
+      },
+      {
+        "id": "intrinsic-sizing-calc-size",
+        "source_id": "css-values-5-calc-size-definition",
+        "signatures": [
+          "calc-size(<calc-size-basis>, <calc-sum>)"
+        ],
+        "sections": [
+          {
+            "anchor": "calc-size",
+            "url": "https://www.w3.org/TR/2024/WD-css-values-5-20241111/#calc-size"
+          },
+          {
+            "anchor": "simplifying-calc-size",
+            "url": "https://www.w3.org/TR/2024/WD-css-values-5-20241111/#simplifying-calc-size"
+          },
+          {
+            "anchor": "resolving-calc-size",
+            "url": "https://www.w3.org/TR/2024/WD-css-values-5-20241111/#resolving-calc-size"
+          }
+        ],
+        "required_by": [
+          {
+            "module_id": "css-sizing-4",
+            "section_url": "https://www.w3.org/TR/2026/WD-css-sizing-4-20260904/#sizing-values",
+            "requirement": "The shared box-size production explicitly includes calc-size(), referring to Values 5 for its definition across physical and flow-relative sizing properties."
+          }
+        ],
+        "authored_owner": "css",
+        "authored_requirements": [
+          "Admit the complete calc-size basis/calculation grammar with length-percentage numeric typing; restrict intrinsic keywords by the owning sizing category and exclude none as a basis.",
+          "Admit the length-valued size keyword only in the calculation argument when its basis is not any. Do not admit contextual size in a basis sum or ordinary numeric construction, including before simplification removes a term.",
+          "Preserve nested bases, symbolic numeric values, intrinsic identity and original origins through checked construction and bounded canonical specified serialization. Apply specified math simplification to each sum without performing interpolation canonicalization."
+        ],
+        "downstream_owners": [
+          "style",
+          "layout",
+          "animation",
+          "root"
+        ],
+        "downstream_requirements": "Style/layout supply intrinsic-size, containing-block, percentage and used-value context. Animation owns the separately defined canonicalize-for-interpolation operation, including basis substitution and de-percentification with bounded expansion. CSS authored serialization does not flatten nested bases or select layout values. This import does not select the adjacent interpolate-size property or unrelated Values 5 functions."
       }
     ]
   },
@@ -2480,6 +2532,20 @@
       "source_sha256": "bada647312a73c4cd4484dc177d67d22cf70df6c451b0e8c5dd5efc29c3415ba",
       "decision": "For a non-missing standalone HSL or HWB color, convert to sRGB when every projected non-alpha channel is numeric. When at least one projected non-alpha calculation remains context-dependent, retain a canonical modern same-family hsl() or hwb() function with projected typed channels; a symbolic alpha alone does not defer conversion. Missing components continue to use the separate Color 4 missing-preserving branch.",
       "justification": "The section requires HSL and HWB sRGB resolution and its historical scalar-calculation simplification, but selected Values 4 specified calculations can retain unresolved contextual units that CSS cannot evaluate. Same-family projection preserves that dependence without external unit resolution, invented symbolic RGB algebra, or computed-value acquisition."
+    },
+    {
+      "id": "css-sizing-3-logical-minimum-initial",
+      "source": "https://www.w3.org/TR/2026/WD-css-sizing-3-20260904/#min-size-properties",
+      "source_sha256": "ca0f1db3d5ad0c9799bf9dc04b9c30b4d9adf8d4d6f222787e4759ed81a6bbad",
+      "decision": "Use auto as the initial value for all four minimum sizing properties, retaining distinct physical and flow-relative identities.",
+      "justification": "The selected Sizing 3 publication explicitly groups min-width, min-height, min-inline-size and min-block-size with initial auto. This newer shared definition supersedes the older Logical 1 table initial 0; Logical 1 still owns writing-mode-dependent mapping."
+    },
+    {
+      "id": "css-sizing-4-shared-box-size-scope",
+      "source": "https://www.w3.org/TR/2026/WD-css-sizing-4-20260904/#sizing-values",
+      "source_sha256": "faaa865895590c6c523bd5faf127ba940886d5113cef822f8d08eb0aac2ea468",
+      "decision": "Apply contain, fit-content() and calc-size() to all twelve selected preferred, minimum and maximum physical and flow-relative sizing properties.",
+      "justification": "Sizing 4 explicitly expands the shared box-size production used by all twelve Sizing 3 sizing properties; its definitions name those same twelve contexts. The adjacent six-name New values table does not narrow the shared production or exclude flow-relative properties."
     }
   ]
 }

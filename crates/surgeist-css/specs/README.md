@@ -114,6 +114,17 @@ nodes and checks the enclosing numeric domain; style and root supply the query
 container, tree context, evaluation and invalidation. This import neither
 selects Values 5 in full nor replaces the selected Values 4 edition.
 
+Sizing 4 separately requires the published Values 5 `calc-size()` definition.
+This narrow import covers its intrinsic basis, contextual `size` keyword,
+numeric typing and specified math simplification. It applies to all twelve
+physical and flow-relative sizing properties through Sizing 4's shared
+`<box-size>` production. Preserve nested bases in specified values; the separate
+interpolation canonicalization and used-value resolution procedures belong to
+animation and style/layout. The import does not select `interpolate-size` or
+other Values 5 functions. Sizing 3's newer shared minimum-size definition also
+supersedes Logical 1's older initial `0` with `auto`, while Logical 1 still owns
+the mapping between physical and flow-relative properties.
+
 Color 5 also directly references Values 5 mix items and percentage normalization.
 Those definitions are absent from the latest published 2024 edition. A separate
 immutable CSSWG source revision from 4 September 2026 pins only these required
