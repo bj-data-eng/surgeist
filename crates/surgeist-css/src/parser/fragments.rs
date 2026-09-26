@@ -411,32 +411,6 @@ pub fn parse_font_palette_descriptor_value(
         let mut input = Parser::new(&mut parser_input);
         let result = (|| {
             let openings = state.check_component_values(source, &input, "css.descriptor")?;
-            let start = input.state();
-            loop {
-                let token_start = input.position();
-                let location = input.current_source_location();
-                let Ok(token) = input.next_including_whitespace_and_comments().cloned() else {
-                    break;
-                };
-                if matches!(
-                    token,
-                    Token::Semicolon
-                        | Token::CurlyBracketBlock
-                        | Token::CloseCurlyBracket
-                        | Token::CloseParenthesis
-                        | Token::CloseSquareBracket
-                ) {
-                    return Err(crate::error::invalid_descriptor_token_at(
-                        location,
-                        "font-palette-values",
-                        descriptor.css_name(),
-                        &token,
-                        input.slice_from(token_start),
-                    ));
-                }
-                finish_nested_component(&mut input, &token)?;
-            }
-            input.reset(&start);
             let value = font_palette_values::parse_descriptor_value_from_parser(
                 &mut input, descriptor, &state,
             )?;

@@ -12,12 +12,11 @@ use crate::error::{
 use crate::font_palette_values::CssFontPaletteDescriptorData;
 use crate::numeric::{CalculationRoot, NumericInputContext};
 use crate::{
-    CssAuthoredDeclarationValue, CssComponentValueRef, CssComponentValues, CssFontFaceFamily,
-    CssFontPaletteBase, CssFontPaletteConstructionError, CssFontPaletteDescriptor,
-    CssFontPaletteDescriptorKind, CssFontPaletteDescriptorValue, CssFontPaletteIndex,
-    CssFontPaletteName, CssFontPaletteOverride, CssFontPaletteValuesRule, CssIntegerCalculation,
-    CssIntegerValue, CssRecoveryAction, CssRecoveryDiagnostic, CssSerializedValue,
-    CssSourcePosition, CssSubstitutionDependentValue, CssValueTokenRef,
+    CssAuthoredDeclarationValue, CssComponentValues, CssFontFaceFamily, CssFontPaletteBase,
+    CssFontPaletteConstructionError, CssFontPaletteDescriptor, CssFontPaletteDescriptorKind,
+    CssFontPaletteDescriptorValue, CssFontPaletteIndex, CssFontPaletteName, CssFontPaletteOverride,
+    CssFontPaletteValuesRule, CssIntegerCalculation, CssIntegerValue, CssRecoveryAction,
+    CssRecoveryDiagnostic, CssSerializedValue, CssSourcePosition, CssSubstitutionDependentValue,
 };
 
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
@@ -175,6 +174,7 @@ pub(super) fn parse_descriptor_value_from_parser<'i>(
     kind: CssFontPaletteDescriptorKind,
     recovery: &RecoveryState,
 ) -> Result<CssFontPaletteDescriptorValue, ParseError<'i, Error>> {
+    validate_descriptor_root(input, kind)?;
     let numeric = NumericInputContext::parsed(recovery.source_snapshot());
     parse_descriptor_boundary(input, "font-palette-values", kind.css_name(), |input| {
         let beginning = input.state();
@@ -195,30 +195,10 @@ pub(crate) fn construct_descriptor_value(
     components: &CssComponentValues,
     serialized: &CssSerializedValue,
 ) -> Result<CssFontPaletteDescriptorData, Error> {
-    for (index, component) in components.items().iter().enumerate() {
-        let invalid_root = match component.view() {
-            CssComponentValueRef::Token(CssValueTokenRef::Semicolon) => true,
-            CssComponentValueRef::Block(block) => block.kind() == crate::CssBlockKind::CurlyBracket,
-            _ => false,
-        };
-        if invalid_root {
-            let offset = serialized
-                .component_offset_for_path(&[index])
-                .expect("serialized root component has an offset");
-            let mut prefix_input = cssparser::ParserInput::new(&serialized.as_css()[..offset]);
-            let mut prefix = Parser::new(&mut prefix_input);
-            while prefix.next_including_whitespace_and_comments().is_ok() {}
-            return Err(from_parse_error(
-                serialized.as_css(),
-                invalid_syntax(
-                    prefix.current_source_location(),
-                    "root descriptor delimiter",
-                ),
-            ));
-        }
-    }
     let mut parser_input = cssparser::ParserInput::new(serialized.as_css());
     let mut input = Parser::new(&mut parser_input);
+    validate_descriptor_root(&mut input, kind)
+        .map_err(|error| from_parse_error(serialized.as_css(), error))?;
     let numeric = NumericInputContext::components(components, serialized);
     parse_descriptor_boundary(
         &mut input,
@@ -231,6 +211,43 @@ pub(crate) fn construct_descriptor_value(
         },
     )
     .map_err(|error| from_parse_error(serialized.as_css(), error))
+}
+
+// All descriptor front doors apply the same root grammar before substitution
+// classification. Nested blocks remain data, including var()/env() fallbacks.
+fn validate_descriptor_root<'i>(
+    input: &mut Parser<'i, '_>,
+    kind: CssFontPaletteDescriptorKind,
+) -> Result<(), ParseError<'i, Error>> {
+    let start = input.state();
+    loop {
+        let token_start = input.position();
+        let location = input.current_source_location();
+        let token = match input.next_including_whitespace_and_comments() {
+            Ok(token) => token.clone(),
+            Err(error) if matches!(error.kind, cssparser::BasicParseErrorKind::EndOfInput) => break,
+            Err(error) => return Err(basic(error)),
+        };
+        if matches!(
+            token,
+            Token::Semicolon
+                | Token::CurlyBracketBlock
+                | Token::CloseCurlyBracket
+                | Token::CloseParenthesis
+                | Token::CloseSquareBracket
+        ) {
+            return Err(crate::error::invalid_descriptor_token_at(
+                location,
+                "font-palette-values",
+                kind.css_name(),
+                &token,
+                input.slice_from(token_start),
+            ));
+        }
+        super::fragments::finish_nested_component(input, &token)?;
+    }
+    input.reset(&start);
+    Ok(())
 }
 
 fn parse_value_data<'i>(
