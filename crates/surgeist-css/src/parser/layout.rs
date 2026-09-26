@@ -552,6 +552,8 @@ pub(super) fn parse_float<'i, 't>(
         "left" => Ok(CssFloat::Left),
         "right" => Ok(CssFloat::Right),
         "none" => Ok(CssFloat::None),
+        "inline-start" => Ok(CssFloat::InlineStart),
+        "inline-end" => Ok(CssFloat::InlineEnd),
         _ => Err(unsupported_value(
             input,
             None,
@@ -569,6 +571,8 @@ pub(super) fn parse_clear<'i, 't>(
         "right" => Ok(CssClear::Right),
         "both" => Ok(CssClear::Both),
         "none" => Ok(CssClear::None),
+        "inline-start" => Ok(CssClear::InlineStart),
+        "inline-end" => Ok(CssClear::InlineEnd),
         _ => Err(unsupported_value(
             input,
             None,

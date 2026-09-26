@@ -444,9 +444,14 @@ pub surgeist_css::CssCircleRadius::Extent(surgeist_css::CssRadialExtent)
 pub surgeist_css::CssCircleRadius::Length(surgeist_css::CssShapeLength)
 #[non_exhaustive] pub enum surgeist_css::CssClear
 pub surgeist_css::CssClear::Both
+pub surgeist_css::CssClear::InlineEnd
+pub surgeist_css::CssClear::InlineStart
 pub surgeist_css::CssClear::Left
 pub surgeist_css::CssClear::None
 pub surgeist_css::CssClear::Right
+impl surgeist_css::CssClear
+pub fn surgeist_css::CssClear::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssClear::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssClip
 pub surgeist_css::CssClip::Auto
 pub surgeist_css::CssClip::Rect(surgeist_css::CssClipRect)
@@ -1135,9 +1140,14 @@ pub surgeist_css::CssFlexWrap::NoWrap
 pub surgeist_css::CssFlexWrap::Wrap
 pub surgeist_css::CssFlexWrap::WrapReverse
 #[non_exhaustive] pub enum surgeist_css::CssFloat
+pub surgeist_css::CssFloat::InlineEnd
+pub surgeist_css::CssFloat::InlineStart
 pub surgeist_css::CssFloat::Left
 pub surgeist_css::CssFloat::None
 pub surgeist_css::CssFloat::Right
+impl surgeist_css::CssFloat
+pub fn surgeist_css::CssFloat::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFloat::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFlowToleranceRef<'a>
 pub surgeist_css::CssFlowToleranceRef::Infinite
 pub surgeist_css::CssFlowToleranceRef::LengthPercentage(&'a surgeist_css::CssLength)
@@ -2318,6 +2328,7 @@ pub surgeist_css::CssLonghandValueRef::BorderTopStyle(&'a surgeist_css::CssBorde
 pub surgeist_css::CssLonghandValueRef::BorderTopWidth(&'a surgeist_css::CssLength)
 pub surgeist_css::CssLonghandValueRef::BoxSizing(&'a surgeist_css::CssBoxSizing)
 pub surgeist_css::CssLonghandValueRef::CaptionSide(&'a surgeist_css::CssCaptionSide)
+pub surgeist_css::CssLonghandValueRef::Clear(&'a surgeist_css::CssClear)
 pub surgeist_css::CssLonghandValueRef::Color(&'a surgeist_css::CssAuthoredColor)
 pub surgeist_css::CssLonghandValueRef::ContainIntrinsicBlockSize(&'a surgeist_css::CssContainIntrinsicSizeValue)
 pub surgeist_css::CssLonghandValueRef::ContainIntrinsicHeight(&'a surgeist_css::CssContainIntrinsicSizeValue)
@@ -2328,6 +2339,7 @@ pub surgeist_css::CssLonghandValueRef::ContainerType(&'a surgeist_css::CssContai
 pub surgeist_css::CssLonghandValueRef::Direction(&'a surgeist_css::CssDirection)
 pub surgeist_css::CssLonghandValueRef::Display(&'a surgeist_css::CssDisplayValue)
 pub surgeist_css::CssLonghandValueRef::EmptyCells(&'a surgeist_css::CssEmptyCells)
+pub surgeist_css::CssLonghandValueRef::Float(&'a surgeist_css::CssFloat)
 pub surgeist_css::CssLonghandValueRef::FlowTolerance(&'a surgeist_css::CssFlowTolerance)
 pub surgeist_css::CssLonghandValueRef::FontFamily(&'a surgeist_css::CssFontFamilyList)
 pub surgeist_css::CssLonghandValueRef::Height(&'a surgeist_css::CssSizeValue)
@@ -4365,6 +4377,7 @@ pub const fn surgeist_css::CssCircleShape::radius(&self) -> &surgeist_css::CssCi
 pub struct surgeist_css::CssClearPropertyValue
 impl surgeist_css::CssClearPropertyValue
 pub fn surgeist_css::CssClearPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssClearPropertyValue::current(&self) -> &surgeist_css::CssClear
 pub const fn surgeist_css::CssClearPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssClear>
 pub struct surgeist_css::CssClipLength
 impl surgeist_css::CssClipLength
@@ -5244,6 +5257,7 @@ pub const fn surgeist_css::CssFlexWrapPropertyValue::i01_subset(&self) -> core::
 pub struct surgeist_css::CssFloatPropertyValue
 impl surgeist_css::CssFloatPropertyValue
 pub fn surgeist_css::CssFloatPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssFloatPropertyValue::current(&self) -> &surgeist_css::CssFloat
 pub const fn surgeist_css::CssFloatPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssFloat>
 pub struct surgeist_css::CssFlowTolerance
 impl surgeist_css::CssFlowTolerance

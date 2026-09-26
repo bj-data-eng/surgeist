@@ -36,11 +36,23 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
         assert_eq!(feature.id().as_str(), vector.id);
         assert_eq!(feature.kind(), CssFeatureKind::Property);
         assert_eq!(feature.spelling(), vector.canonical_name);
-        assert!(
-            feature.production().contains("#propdef-"),
-            "{} exact property production",
-            vector.id
-        );
+        if matches!(
+            vector.id,
+            "baseline.property.float" | "baseline.property.clear"
+        ) {
+            assert_eq!(
+                feature.production(),
+                "#float-clear",
+                "{} Logical 1 production",
+                vector.id
+            );
+        } else {
+            assert!(
+                feature.production().contains("#propdef-"),
+                "{} exact property production",
+                vector.id
+            );
+        }
         assert_eq!(feature.recognized_unsupported_code(), None);
         assert_ne!(
             feature.source().id().as_str(),

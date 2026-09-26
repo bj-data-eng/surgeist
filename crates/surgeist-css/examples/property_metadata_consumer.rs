@@ -10,6 +10,8 @@ use surgeist_css::*;
 const LONGHANDS: &[P] = &[
     P::ContainerName,
     P::ContainerType,
+    P::Float,
+    P::Clear,
     P::MarginTop,
     P::MarginRight,
     P::MarginBottom,
@@ -350,6 +352,8 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
             },
         ),
         CssLonghandValueRef::BoxSizing(v) => assert_eq!(*v, CssBoxSizing::ContentBox),
+        CssLonghandValueRef::Float(v) => assert_eq!(*v, CssFloat::None),
+        CssLonghandValueRef::Clear(v) => assert_eq!(*v, CssClear::None),
         CssLonghandValueRef::Width(v)
         | CssLonghandValueRef::Height(v)
         | CssLonghandValueRef::InlineSize(v)
@@ -419,7 +423,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 107);
+    assert_eq!(expected.len(), 109);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();

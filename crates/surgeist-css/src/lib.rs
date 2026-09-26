@@ -1161,6 +1161,7 @@ pub use scroll_snap::{
     CssScrollSnapAxis, CssScrollSnapStop, CssScrollSnapStrictness, CssScrollSnapType,
 };
 pub use sizing::{CssBoxSize, CssMaxSizeValue, CssSizeValue};
+mod float_clear;
 mod specified_length;
 mod specified_serialization;
 mod writing_modes;

@@ -2284,8 +2284,6 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::WordSpacing
         | CssKnownProperty::Position
         | CssKnownProperty::Overflow
-        | CssKnownProperty::Float
-        | CssKnownProperty::Clear
         | CssKnownProperty::Content
         | CssKnownProperty::ListStyleType
         | CssKnownProperty::ListStylePosition
@@ -2379,7 +2377,9 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::PaddingInlineStart
         | CssKnownProperty::PaddingInlineEnd
         | CssKnownProperty::PaddingBlock
-        | CssKnownProperty::PaddingInline => I_LOGICAL1_20251204,
+        | CssKnownProperty::PaddingInline
+        | CssKnownProperty::Float
+        | CssKnownProperty::Clear => I_LOGICAL1_20251204,
         CssKnownProperty::Color | CssKnownProperty::Opacity => O_COLOR4,
         CssKnownProperty::Border
         | CssKnownProperty::BorderTop
@@ -2545,6 +2545,7 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
 
 const fn property_production(property: CssKnownProperty, default: &'static str) -> &'static str {
     match property {
+        CssKnownProperty::Float | CssKnownProperty::Clear => "#float-clear",
         CssKnownProperty::BorderCollapse
         | CssKnownProperty::BorderSpacing
         | CssKnownProperty::CaptionSide
@@ -2573,16 +2574,12 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
         CssKnownProperty::Quotes => "generate.html#propdef-quotes",
         CssKnownProperty::WordSpacing => "text.html#propdef-word-spacing",
         CssKnownProperty::Position
-        | CssKnownProperty::Float
-        | CssKnownProperty::Clear
         | CssKnownProperty::Top
         | CssKnownProperty::Right
         | CssKnownProperty::Bottom
         | CssKnownProperty::Left
         | CssKnownProperty::ZIndex => match property {
             CssKnownProperty::Position => "visuren.html#propdef-position",
-            CssKnownProperty::Float => "visuren.html#propdef-float",
-            CssKnownProperty::Clear => "visuren.html#propdef-clear",
             CssKnownProperty::Top => "visuren.html#propdef-top",
             CssKnownProperty::Right => "visuren.html#propdef-right",
             CssKnownProperty::Bottom => "visuren.html#propdef-bottom",
@@ -4250,8 +4247,8 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 561] = [
         "container",
         "official.property.container"
     ),
-    property_feature!(CssKnownProperty::Float, "float", "baseline.property.float"),
-    property_feature!(CssKnownProperty::Clear, "clear", "baseline.property.clear"),
+    complete_property_feature!(CssKnownProperty::Float, "float", "baseline.property.float"),
+    complete_property_feature!(CssKnownProperty::Clear, "clear", "baseline.property.clear"),
     property_feature!(
         CssKnownProperty::AlignContent,
         "align-content",

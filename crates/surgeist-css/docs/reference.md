@@ -2670,3 +2670,17 @@ their property wrappers. `as_css()` retains original spelling;
 `serialize_specified()` gives bounded canonical output. Remembered sizes,
 containment state, writing-mode mapping, and used box dimensions belong to
 downstream style and layout.
+
+## Authored float and clear
+
+The selected [CSS2 float and clear definitions](https://www.w3.org/TR/2011/REC-CSS2-20110607/visuren.html#floats)
+and [Logical 1 §2.2](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#float-clear)
+define `float: none | left | right | inline-start | inline-end` and
+`clear: none | left | right | both | inline-start | inline-end`. Both are
+noninherited longhands with `none` initials. Their enum values serialize as
+canonical keywords under specified-value limits, and each expands to one typed
+contribution. The `float` and `clear` property wrappers expose `current()`;
+`i01_subset()` remains available for their older physical keywords and returns
+`None` for flow-relative keywords. `as_css()` retains the original spelling.
+Mapping `inline-start` and `inline-end` to physical sides needs the containing
+block's writing mode and belongs downstream.

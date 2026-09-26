@@ -5734,6 +5734,8 @@ pub enum CssFloat {
     Left,
     Right,
     None,
+    InlineStart,
+    InlineEnd,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -5743,6 +5745,8 @@ pub enum CssClear {
     Right,
     Both,
     None,
+    InlineStart,
+    InlineEnd,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

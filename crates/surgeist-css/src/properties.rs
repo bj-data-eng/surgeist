@@ -69,8 +69,8 @@ macro_rules! property_schema {
             FlexDirection, "flex-direction", [], "baseline.property.flex-direction", CssFlexDirection, CssFlexDirectionPropertyValue, CssFlexDirectionPropertyValueRepresentation, parse_flex_direction, { parse_flex_direction($input)? };
             FlexFlow, "flex-flow", [], "official.property.flex-flow", CssFlexFlow, CssFlexFlowPropertyValue, CssFlexFlowPropertyValueRepresentation, parse_flex_flow, { parse_flex_flow($input)? };
             FlexWrap, "flex-wrap", [], "baseline.property.flex-wrap", CssFlexWrap, CssFlexWrapPropertyValue, CssFlexWrapPropertyValueRepresentation, parse_flex_wrap, { parse_flex_wrap($input)? };
-            Float, "float", [], "baseline.property.float", CssFloat, CssFloatPropertyValue, CssFloatPropertyValueRepresentation, parse_float, { parse_float($input)? };
-            Clear, "clear", [], "baseline.property.clear", CssClear, CssClearPropertyValue, CssClearPropertyValueRepresentation, parse_clear, { parse_clear($input)? };
+            Float, "float", [], "baseline.property.float", CssFloat, CssFloatPropertyValue, CssFloatPropertyValueRepresentation, parse_float, { parse_float($input)? }, expansion = longhand { wrapper: existing, value: CssFloat, accessor: current, inherited: false, initial_kind: value, initial: CssFloat::None };
+            Clear, "clear", [], "baseline.property.clear", CssClear, CssClearPropertyValue, CssClearPropertyValueRepresentation, parse_clear, { parse_clear($input)? }, expansion = longhand { wrapper: existing, value: CssClear, accessor: current, inherited: false, initial_kind: value, initial: CssClear::None };
             AlignContent, "align-content", [], "baseline.property.align-content", CssAlignment, CssAlignContentPropertyValue, CssAlignContentPropertyValueRepresentation, parse_content_alignment, { parse_content_alignment($input)? };
             JustifyContent, "justify-content", [], "baseline.property.justify-content", CssAlignment, CssJustifyContentPropertyValue, CssJustifyContentPropertyValueRepresentation, parse_content_alignment, { parse_content_alignment($input)? };
             AlignItems, "align-items", [], "baseline.property.align-items", CssAlignItems, CssAlignItemsPropertyValue, CssAlignItemsPropertyValueRepresentation, parse_align_items, { parse_align_items($input)? };
@@ -901,6 +901,34 @@ macro_rules! define_grid_property_value {
 }
 
 macro_rules! define_property_value {
+    (Float, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssFloat,
+            CssFloat,
+            current,
+            |value: &CssFloat| match value {
+                CssFloat::None | CssFloat::Left | CssFloat::Right => Some(*value),
+                CssFloat::InlineStart | CssFloat::InlineEnd => None,
+            }
+        );
+    };
+    (Clear, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssClear,
+            CssClear,
+            current,
+            |value: &CssClear| match value {
+                CssClear::None | CssClear::Left | CssClear::Right | CssClear::Both => Some(*value),
+                CssClear::InlineStart | CssClear::InlineEnd => None,
+            }
+        );
+    };
     (ContainerName, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
         define_additive_current_property_value!(
             $canonical,
