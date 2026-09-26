@@ -2282,7 +2282,6 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::TableLayout
         | CssKnownProperty::Widows
         | CssKnownProperty::WordSpacing
-        | CssKnownProperty::Position
         | CssKnownProperty::Content
         | CssKnownProperty::ListStyleType
         | CssKnownProperty::ListStylePosition
@@ -2298,10 +2297,6 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::WhiteSpace
         | CssKnownProperty::TextDecoration
         | CssKnownProperty::TextTransform
-        | CssKnownProperty::Top
-        | CssKnownProperty::Right
-        | CssKnownProperty::Bottom
-        | CssKnownProperty::Left
         | CssKnownProperty::ZIndex => O_CSS2,
         CssKnownProperty::BoxSizing
         | CssKnownProperty::Width
@@ -2484,7 +2479,18 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::TextDecorationColor
         | CssKnownProperty::TextDecorationStyle => S_TEXTDECOR3,
         CssKnownProperty::TextDecorationThickness => X_TEXTDECOR4,
-        CssKnownProperty::Inset => I_POSITION3,
+        CssKnownProperty::Position
+        | CssKnownProperty::Inset
+        | CssKnownProperty::Top
+        | CssKnownProperty::Right
+        | CssKnownProperty::Bottom
+        | CssKnownProperty::Left
+        | CssKnownProperty::InsetBlockStart
+        | CssKnownProperty::InsetBlockEnd
+        | CssKnownProperty::InsetInlineStart
+        | CssKnownProperty::InsetInlineEnd
+        | CssKnownProperty::InsetBlock
+        | CssKnownProperty::InsetInline => I_POSITION3,
         CssKnownProperty::BoxDecorationBreak => S_BREAK3,
         CssKnownProperty::Order => S_DISPLAY3,
         CssKnownProperty::AspectRatio => X_SIZING4_20260904,
@@ -2579,20 +2585,7 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
         },
         CssKnownProperty::Quotes => "generate.html#propdef-quotes",
         CssKnownProperty::WordSpacing => "text.html#propdef-word-spacing",
-        CssKnownProperty::Position
-        | CssKnownProperty::Top
-        | CssKnownProperty::Right
-        | CssKnownProperty::Bottom
-        | CssKnownProperty::Left
-        | CssKnownProperty::ZIndex => match property {
-            CssKnownProperty::Position => "visuren.html#propdef-position",
-            CssKnownProperty::Top => "visuren.html#propdef-top",
-            CssKnownProperty::Right => "visuren.html#propdef-right",
-            CssKnownProperty::Bottom => "visuren.html#propdef-bottom",
-            CssKnownProperty::Left => "visuren.html#propdef-left",
-            CssKnownProperty::ZIndex => "visuren.html#propdef-z-index",
-            _ => default,
-        },
+        CssKnownProperty::ZIndex => "visuren.html#propdef-z-index",
         CssKnownProperty::Content
         | CssKnownProperty::CounterIncrement
         | CssKnownProperty::CounterReset
@@ -2698,7 +2691,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 566] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 572] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4197,7 +4190,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 566] = [
         "box-sizing",
         "baseline.property.box-sizing"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::Position,
         "position",
         "baseline.property.position"
@@ -4837,15 +4830,45 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 566] = [
         "text-transform",
         "baseline.property.text-transform"
     ),
-    property_feature!(CssKnownProperty::Inset, "inset", "baseline.property.inset"),
-    property_feature!(CssKnownProperty::Top, "top", "baseline.property.top"),
-    property_feature!(CssKnownProperty::Right, "right", "baseline.property.right"),
-    property_feature!(
+    complete_property_feature!(CssKnownProperty::Inset, "inset", "baseline.property.inset"),
+    complete_property_feature!(CssKnownProperty::Top, "top", "baseline.property.top"),
+    complete_property_feature!(CssKnownProperty::Right, "right", "baseline.property.right"),
+    complete_property_feature!(
         CssKnownProperty::Bottom,
         "bottom",
         "baseline.property.bottom"
     ),
-    property_feature!(CssKnownProperty::Left, "left", "baseline.property.left"),
+    complete_property_feature!(CssKnownProperty::Left, "left", "baseline.property.left"),
+    complete_property_feature!(
+        CssKnownProperty::InsetBlockStart,
+        "inset-block-start",
+        "official.property.inset-block-start"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::InsetBlockEnd,
+        "inset-block-end",
+        "official.property.inset-block-end"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::InsetInlineStart,
+        "inset-inline-start",
+        "official.property.inset-inline-start"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::InsetInlineEnd,
+        "inset-inline-end",
+        "official.property.inset-inline-end"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::InsetBlock,
+        "inset-block",
+        "official.property.inset-block"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::InsetInline,
+        "inset-inline",
+        "official.property.inset-inline"
+    ),
     property_feature!(
         CssKnownProperty::ZIndex,
         "z-index",

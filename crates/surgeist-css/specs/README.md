@@ -66,6 +66,13 @@ Overflow 3 imports only Box 4 §2.3's `<visual-box>` production for
 property-specific domain against the shared box-edge keywords. Clip geometry
 and painting remain downstream; this import does not select Box 4 in full.
 
+Position 3 §3.2 also refers directly to Box 4's four-side margin assignment
+rule. Its narrow import supplies the physical top/right/bottom/left repetition
+for `inset`; Logical 1 §4.7 adds a separate logical role order. The unresolved
+physical/logical reset membership remains explicit rather than inferred from
+that assignment rule. These two imported definitions do not select Box 4 in
+full.
+
 The host pseudo-class signatures and argument grammars come from published
 Scoping 1, and `::part()` grammar comes from published Shadow Parts 1. Their
 identities matter to Pseudo-Elements 4's distinction between valid syntax and

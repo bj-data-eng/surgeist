@@ -2620,6 +2620,40 @@ the values. Intrinsic keywords and `calc-size()`/`fit-content()` identities use
 their normalized checked kinds. Property wrappers still retain original
 `as_css()` spelling, so differently authored declarations remain distinct.
 
+## Authored positioning and insets
+
+The selected [Position 3 draft](https://www.w3.org/TR/2025/WD-css-position-3-20251007/#position-property)
+defines the five `position` keywords and the physical and flow-relative inset
+longhands. All nine longhands are noninherited; `position` starts at `static`
+and each inset starts at `auto`. Inset longhands accept `auto` or an exact
+signed length-percentage, including deferred math. The `inset-block` and
+`inset-inline` shorthands retain one or two authored values and contribute
+start then end, repeating the start when the end is omitted. Writing-mode
+mapping and used offsets belong to style and layout.
+
+Position 3's inset definitions supersede Logical 1 §4.3; Logical 1 §4.7's
+separate four-side `logical` switch remains an authored grammar extension.
+
+The four-side `inset` shorthand accepts one to four values. [Box 4's
+four-side assignment](https://www.w3.org/TR/2024/WD-css-box-4-20240804/#propdef-margin)
+supplies physical top/right/bottom/left repetition. [Logical 1
+§4.7](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#logical-shorthand-keyword)
+adds a leading `logical` switch and block-start, inline-start, block-end,
+inline-end order; three values repeat the second at both inline edges. Its
+[unsettled physical/logical reset membership](https://github.com/w3c/csswg-drafts/issues/3030)
+yields the typed `LogicalShorthandResetMembership` error for completed intrinsic expansion and
+metadata, including CSS-wide values. Pending substitution remains symbolic
+until valid replacement tokens reenter the grammar. The authored value and
+`assigned_values()` remain available without choosing a reset set.
+
+`CssInsetValue`, `CssInsetPair`, and `CssInsetShorthand` preserve exact checked
+numbers, authored arity and mode. Their typed equality compares retained
+structure without diagnostic origins; wrappers retain original `as_css()`
+spelling. Physical `inset`, `top`, `right`, `bottom`, and `left` wrappers expose
+`current()` plus an optional frozen I01 projection. Only exactly representable
+legacy numeric values project; large or tiny exact values remain in `current()`.
+`serialize_specified()` gives bounded canonical text, distinct from `as_css()`.
+
 ## Authored box spacing
 
 The selected [Box 3 margin and padding definitions](https://www.w3.org/TR/2024/REC-css-box-3-20240411/#margin-properties)

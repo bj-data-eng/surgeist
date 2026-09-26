@@ -75,13 +75,6 @@ pub(super) fn parse_box_size_value<'i, 't>(
     parse_length_with(input, numeric, LengthGrammar::BoxSize)
 }
 
-pub(super) fn parse_inset_component<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssLength, ParseError<'i, Error>> {
-    parse_length_with(input, numeric, LengthGrammar::Inset)
-}
-
 pub(super) fn parse_border_width_component<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
@@ -128,7 +121,6 @@ pub(super) fn parse_gap_value<'i, 't>(
 pub(super) enum LengthGrammar {
     BoxSize,
     FlowTolerance,
-    Inset,
     BorderWidth,
     Radius,
     ShadowOffset,
@@ -156,7 +148,6 @@ impl LengthGrammar {
             self,
             Self::BoxSize
                 | Self::FlowTolerance
-                | Self::Inset
                 | Self::Radius
                 | Self::Gap
                 | Self::FontSize
@@ -171,11 +162,11 @@ impl LengthGrammar {
     }
 
     const fn allows_auto(self) -> bool {
-        matches!(self, Self::BoxSize | Self::Inset)
+        matches!(self, Self::BoxSize)
     }
 
     const fn allows_intrinsic(self) -> bool {
-        matches!(self, Self::BoxSize | Self::Inset)
+        matches!(self, Self::BoxSize)
     }
 
     const fn allows_normal(self) -> bool {
@@ -191,7 +182,6 @@ impl LengthGrammar {
             self,
             Self::BoxSize
                 | Self::FlowTolerance
-                | Self::Inset
                 | Self::Radius
                 | Self::Gap
                 | Self::FontSize
@@ -224,7 +214,6 @@ impl LengthGrammar {
         match self {
             Self::BoxSize => "box size",
             Self::FlowTolerance => "flow-tolerance",
-            Self::Inset => "inset",
             Self::BorderWidth => "border-width",
             Self::Radius => "border-radius",
             Self::ShadowOffset => "box-shadow",

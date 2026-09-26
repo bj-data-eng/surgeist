@@ -28,6 +28,7 @@ mod container_scroll;
 mod container_style;
 mod generated_content;
 mod grid;
+mod inset;
 mod keyframes;
 mod layout;
 mod multicolumn;
@@ -57,6 +58,7 @@ use cssparser::{
 
 use crate::box_spacing::*;
 use crate::contain_intrinsic_size::{CssContainIntrinsicSize, CssContainIntrinsicSizeValue};
+use crate::inset::{CssInsetPair, CssInsetShorthand, CssInsetValue};
 use crate::overflow_controls::{CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter};
 use crate::{
     CssContainer, CssContainerNames, CssContainerType, CssFontPaletteDescriptorKind,
@@ -75,6 +77,7 @@ use effects::*;
 use font_face::parse_font_face_rule;
 use generated_content::*;
 use grid::*;
+use inset::*;
 use keyframes::{parse_keyframes_name, parse_keyframes_rule};
 use layout::*;
 use multicolumn::*;

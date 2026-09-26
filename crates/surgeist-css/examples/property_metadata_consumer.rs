@@ -10,6 +10,15 @@ use surgeist_css::*;
 const LONGHANDS: &[P] = &[
     P::ContainerName,
     P::ContainerType,
+    P::Position,
+    P::Top,
+    P::Right,
+    P::Bottom,
+    P::Left,
+    P::InsetBlockStart,
+    P::InsetBlockEnd,
+    P::InsetInlineStart,
+    P::InsetInlineEnd,
     P::Float,
     P::Clear,
     P::OverflowX,
@@ -108,6 +117,12 @@ const LONGHANDS: &[P] = &[
     P::TextCombineUpright,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
+    (P::InsetBlock, &[P::InsetBlockStart, P::InsetBlockEnd], &[]),
+    (
+        P::InsetInline,
+        &[P::InsetInlineStart, P::InsetInlineEnd],
+        &[],
+    ),
     (P::Overflow, &[P::OverflowX, P::OverflowY], &[]),
     (
         P::ContainIntrinsicSize,
@@ -279,6 +294,15 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
     match value.view() {
         CssLonghandValueRef::ContainerName(v) => assert_eq!(*v, CssContainerNames::None),
         CssLonghandValueRef::ContainerType(v) => assert_eq!(*v, CssContainerType::Normal),
+        CssLonghandValueRef::Position(v) => assert_eq!(*v, CssLayoutPosition::Static),
+        CssLonghandValueRef::Top(v)
+        | CssLonghandValueRef::Right(v)
+        | CssLonghandValueRef::Bottom(v)
+        | CssLonghandValueRef::Left(v)
+        | CssLonghandValueRef::InsetBlockStart(v)
+        | CssLonghandValueRef::InsetBlockEnd(v)
+        | CssLonghandValueRef::InsetInlineStart(v)
+        | CssLonghandValueRef::InsetInlineEnd(v) => assert_eq!(*v, CssInsetValue::Auto),
         CssLonghandValueRef::MarginTop(v)
         | CssLonghandValueRef::MarginRight(v)
         | CssLonghandValueRef::MarginBottom(v)
@@ -447,7 +471,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 118);
+    assert_eq!(expected.len(), 129);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();
@@ -474,7 +498,7 @@ fn metadata_and_initials() {
             Err(CssPropertyMetadataError::UnresolvedStandard { grammar, reason }) => {
                 assert!(matches!(
                     property,
-                    P::ScrollPadding | P::ScrollMargin | P::Margin | P::Padding
+                    P::ScrollPadding | P::ScrollMargin | P::Margin | P::Padding | P::Inset
                 ));
                 assert_eq!(grammar, handle);
                 assert_eq!(

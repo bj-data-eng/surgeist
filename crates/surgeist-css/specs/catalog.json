@@ -232,14 +232,14 @@
         "source_resolution": "The existing Values 5 publication-history evidence selects 2024-11-11 as the latest published edition before the cutoff. Selected Sizing 4 section 3.2 directly requires its calc-size() definition. Import only the function grammar, numeric typing and specified simplification, with interpolation and used-value requirements assigned downstream. This neither replaces the selected Values 4 edition nor selects Values 5 or interpolate-size in full."
       },
       {
-        "id": "css-box-4-visual-box-definition",
+        "id": "css-box-4-required-definitions",
         "kind": "w3c-dated-publication",
         "date": "2024-08-04",
         "url": "https://www.w3.org/TR/2024/WD-css-box-4-20240804/",
         "sha256": "78e1c76887f19b2f1a73a38fc12e7f36c1dec49bc77650cd10b59b9bca07b05c",
         "bytes": 198225,
         "latest_published_url": "https://www.w3.org/TR/css-box-4/",
-        "source_resolution": "Selected Overflow 3 section 3.2 imports only Box 4 section 2.3 <visual-box> for overflow-clip-margin. Its content-box, padding-box and border-box choices are checked at that property boundary; the rest of Box 4 is not selected."
+        "source_resolution": "Selected Overflow 3 section 3.2 imports Box 4 section 2.3 <visual-box> for overflow-clip-margin. Selected Position 3 section 3.2 directly refers to Box 4 section 3.2 four-side margin assignment, which establishes top/right/bottom/left repetition for inset. Only these two definitions are imported; Box 4 is not selected in full."
       }
     ],
     "definitions": [
@@ -794,7 +794,7 @@
       },
       {
         "id": "overflow-clip-margin-visual-box",
-        "source_id": "css-box-4-visual-box-definition",
+        "source_id": "css-box-4-required-definitions",
         "signatures": [
           "<visual-box> = content-box | padding-box | border-box"
         ],
@@ -821,6 +821,32 @@
           "render"
         ],
         "downstream_requirements": "Computed clip-edge geometry, layout and painting remain downstream. Importing visual-box does not select CSS Box 4 in full."
+      },
+      {
+        "id": "inset-four-side-assignment",
+        "source_id": "css-box-4-required-definitions",
+        "signatures": [
+          "Four-side value assignment: first top, second right, third bottom, fourth left; omitted values repeat by one-, two-, or three-value rules."
+        ],
+        "sections": [
+          {
+            "anchor": "propdef-margin",
+            "url": "https://www.w3.org/TR/2024/WD-css-box-4-20240804/#propdef-margin"
+          }
+        ],
+        "required_by": [
+          {
+            "module_id": "css-position-3",
+            "section_url": "https://www.w3.org/TR/2025/WD-css-position-3-20251007/#propdef-inset",
+            "requirement": "The inset shorthand directly refers to margin's four-side value assignment."
+          }
+        ],
+        "authored_owner": "css",
+        "authored_requirements": [
+          "Preserve one to four authored inset values and assign their physical roles by the Box 4 margin repetition rule; Logical 1 adds the logical role order without resolving reset membership."
+        ],
+        "downstream_owners": ["style", "layout"],
+        "downstream_requirements": "Computed positioned offsets, writing-mode mapping, and used-value layout remain downstream. This narrow import does not select CSS Box 4 in full."
       }
     ]
   },
@@ -1961,6 +1987,7 @@
         "kind": "w3c-dated-publication"
       },
       "authored_scope": "complete-applicable-grammar",
+      "source_resolution": "Position 3 sections 2 and 3.1-3.2 own position and all inset property definitions, superseding Logical 1 section 4.3. Logical 1 section 4.7 separately extends the four-side inset grammar with the logical switch; issue 3030 leaves its physical/logical reset membership unsettled. The complete authored grammar is retained while completed intrinsic expansion reports typed unresolved membership.",
       "downstream_owners": [
         "style",
         "layout"

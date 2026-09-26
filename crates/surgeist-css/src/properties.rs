@@ -8,12 +8,16 @@ use crate::box_spacing::*;
 use crate::box_values::{CssBorderColors, CssParsedBorderColors};
 use crate::contain_intrinsic_size::*;
 use crate::display::*;
+use crate::inset::*;
 use crate::overflow::CssOverflowValue;
 use crate::overflow_controls::{CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter};
 use crate::scroll_snap::*;
 use crate::sizing::*;
 use crate::syntax::*;
-use crate::{CssContainer, CssContainerNames, CssContainerType, CssSpecifiedLength};
+use crate::{
+    CssComponentValueRef, CssContainer, CssContainerNames, CssContainerType, CssSpecifiedLength,
+    CssValueTokenRef,
+};
 
 macro_rules! property_schema {
     ($callback:ident, $input:ident, $numeric:ident) => {
@@ -63,7 +67,7 @@ macro_rules! property_schema {
             ScrollMargin, "scroll-margin", [], "official.property.scroll-margin", CssScrollMarginShorthand, CssScrollMarginPropertyValue, CssScrollMarginPropertyValueRepresentation, parse_scroll_margin_shorthand, { parse_scroll_margin_shorthand($input, $numeric)? }, expansion = unresolved { wrapper: additive, reason: CssUnresolvedStandard::LogicalShorthandResetMembership };
             Widows, "widows", [], "official.property.widows", CssPageLineMinimum, CssWidowsPropertyValue, CssWidowsPropertyValueRepresentation, parse_page_line_minimum, { parse_page_line_minimum($input, $numeric, "widows")? };
             WordSpacing, "word-spacing", [], "official.property.word-spacing", CssWordSpacing, CssWordSpacingPropertyValue, CssWordSpacingPropertyValueRepresentation, parse_word_spacing, { parse_word_spacing($input, $numeric)? };
-            Position, "position", [], "baseline.property.position", CssLayoutPosition, CssPositionPropertyValue, CssPositionPropertyValueRepresentation, parse_position, { parse_position($input)? };
+            Position, "position", [], "baseline.property.position", CssLayoutPosition, CssPositionPropertyValue, CssPositionPropertyValueRepresentation, parse_position, { parse_position($input)? }, expansion = longhand { wrapper: fallback, value: CssLayoutPosition, accessor: current, inherited: false, initial_kind: value, initial: CssLayoutPosition::Static };
             Direction, "direction", [], "baseline.property.direction", CssDirection, CssDirectionPropertyValue, CssDirectionPropertyValueRepresentation, parse_direction, { parse_direction($input)? }, expansion = longhand { wrapper: fallback, value: CssDirection, accessor: current, inherited: true, initial_kind: value, initial: CssDirection::Ltr };
             Overflow, "overflow", [], "baseline.property.overflow", CssOverflowValue, CssOverflowPropertyValue, CssOverflowPropertyValueRepresentation, parse_overflow_value, { parse_overflow_value($input)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ OverflowX => |value: &CssOverflowValue| Some(value.x()), OverflowY => |value: &CssOverflowValue| Some(value.y()) ], reset_only: [] };
             OverflowX, "overflow-x", [], "baseline.property.overflow-x", CssOverflow, CssOverflowXPropertyValue, CssOverflowXPropertyValueRepresentation, parse_overflow, { parse_overflow($input)? }, expansion = longhand { wrapper: existing, value: CssOverflow, accessor: current, inherited: false, initial_kind: value, initial: CssOverflow::Visible };
@@ -180,11 +184,17 @@ macro_rules! property_schema {
             TextDecorationStyle, "text-decoration-style", [], "baseline.property.text-decoration-style", CssTextDecorationStyle, CssTextDecorationStylePropertyValue, CssTextDecorationStylePropertyValueRepresentation, parse_text_decoration_style, { parse_text_decoration_style($input)? };
             TextDecorationThickness, "text-decoration-thickness", [], "baseline.property.text-decoration-thickness", CssTextDecorationThickness, CssTextDecorationThicknessPropertyValue, CssTextDecorationThicknessPropertyValueRepresentation, parse_text_decoration_thickness, { parse_text_decoration_thickness($input, $numeric)? };
             TextTransform, "text-transform", [], "baseline.property.text-transform", CssTextTransform, CssTextTransformPropertyValue, CssTextTransformPropertyValueRepresentation, parse_text_transform, { parse_text_transform($input)? };
-            Inset, "inset", [], "baseline.property.inset", CssEdges, CssInsetPropertyValue, CssInsetPropertyValueRepresentation, parse_edges, { parse_edges($input, |input| parse_inset_component(input, $numeric))? };
-            Top, "top", [], "baseline.property.top", CssLength, CssTopPropertyValue, CssTopPropertyValueRepresentation, parse_inset_component, { parse_inset_component($input, $numeric)? };
-            Right, "right", [], "baseline.property.right", CssLength, CssRightPropertyValue, CssRightPropertyValueRepresentation, parse_inset_component, { parse_inset_component($input, $numeric)? };
-            Bottom, "bottom", [], "baseline.property.bottom", CssLength, CssBottomPropertyValue, CssBottomPropertyValueRepresentation, parse_inset_component, { parse_inset_component($input, $numeric)? };
-            Left, "left", [], "baseline.property.left", CssLength, CssLeftPropertyValue, CssLeftPropertyValueRepresentation, parse_inset_component, { parse_inset_component($input, $numeric)? };
+            Inset, "inset", [], "baseline.property.inset", CssInsetShorthand, CssInsetPropertyValue, CssInsetPropertyValueRepresentation, parse_inset_shorthand, { parse_inset_shorthand($input, $numeric)? }, expansion = unresolved { wrapper: existing, reason: CssUnresolvedStandard::LogicalShorthandResetMembership };
+            Top, "top", [], "baseline.property.top", CssInsetValue, CssTopPropertyValue, CssTopPropertyValueRepresentation, parse_inset_value, { parse_inset_value($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssInsetValue, accessor: current, inherited: false, initial_kind: value, initial: CssInsetValue::Auto };
+            Right, "right", [], "baseline.property.right", CssInsetValue, CssRightPropertyValue, CssRightPropertyValueRepresentation, parse_inset_value, { parse_inset_value($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssInsetValue, accessor: current, inherited: false, initial_kind: value, initial: CssInsetValue::Auto };
+            Bottom, "bottom", [], "baseline.property.bottom", CssInsetValue, CssBottomPropertyValue, CssBottomPropertyValueRepresentation, parse_inset_value, { parse_inset_value($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssInsetValue, accessor: current, inherited: false, initial_kind: value, initial: CssInsetValue::Auto };
+            Left, "left", [], "baseline.property.left", CssInsetValue, CssLeftPropertyValue, CssLeftPropertyValueRepresentation, parse_inset_value, { parse_inset_value($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssInsetValue, accessor: current, inherited: false, initial_kind: value, initial: CssInsetValue::Auto };
+            InsetBlockStart, "inset-block-start", [], "official.property.inset-block-start", CssInsetValue, CssInsetBlockStartPropertyValue, CssInsetBlockStartPropertyValueRepresentation, parse_inset_value, { parse_inset_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssInsetValue, accessor: current, inherited: false, initial_kind: value, initial: CssInsetValue::Auto };
+            InsetBlockEnd, "inset-block-end", [], "official.property.inset-block-end", CssInsetValue, CssInsetBlockEndPropertyValue, CssInsetBlockEndPropertyValueRepresentation, parse_inset_value, { parse_inset_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssInsetValue, accessor: current, inherited: false, initial_kind: value, initial: CssInsetValue::Auto };
+            InsetInlineStart, "inset-inline-start", [], "official.property.inset-inline-start", CssInsetValue, CssInsetInlineStartPropertyValue, CssInsetInlineStartPropertyValueRepresentation, parse_inset_value, { parse_inset_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssInsetValue, accessor: current, inherited: false, initial_kind: value, initial: CssInsetValue::Auto };
+            InsetInlineEnd, "inset-inline-end", [], "official.property.inset-inline-end", CssInsetValue, CssInsetInlineEndPropertyValue, CssInsetInlineEndPropertyValueRepresentation, parse_inset_value, { parse_inset_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssInsetValue, accessor: current, inherited: false, initial_kind: value, initial: CssInsetValue::Auto };
+            InsetBlock, "inset-block", [], "official.property.inset-block", CssInsetPair, CssInsetBlockPropertyValue, CssInsetBlockPropertyValueRepresentation, parse_inset_pair, { parse_inset_pair($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: current, members: [ InsetBlockStart => |value: &CssInsetPair| Some(value.start().clone()), InsetBlockEnd => |value: &CssInsetPair| Some(value.end().clone()) ], reset_only: [] };
+            InsetInline, "inset-inline", [], "official.property.inset-inline", CssInsetPair, CssInsetInlinePropertyValue, CssInsetInlinePropertyValueRepresentation, parse_inset_pair, { parse_inset_pair($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: current, members: [ InsetInlineStart => |value: &CssInsetPair| Some(value.start().clone()), InsetInlineEnd => |value: &CssInsetPair| Some(value.end().clone()) ], reset_only: [] };
             ZIndex, "z-index", [], "baseline.property.z-index", CssZIndex, CssZIndexPropertyValue, CssZIndexPropertyValueRepresentation, parse_z_index, { parse_z_index($input, $numeric)? };
             BoxDecorationBreak, "box-decoration-break", [], "baseline.property.box-decoration-break", CssBoxDecorationBreak, CssBoxDecorationBreakPropertyValue, CssBoxDecorationBreakPropertyValueRepresentation, parse_box_decoration_break, { parse_box_decoration_break($input)? };
             Margin, "margin", [], "baseline.property.margin", CssMarginShorthand, CssMarginPropertyValue, CssMarginPropertyValueRepresentation, parse_box_margin_shorthand, { parse_box_margin_shorthand($input, $numeric)? }, expansion = unresolved { wrapper: additive, reason: CssUnresolvedStandard::LogicalShorthandResetMembership };
@@ -311,6 +321,49 @@ macro_rules! property_schema {
 }
 
 pub(crate) use property_schema;
+
+fn inset_i01_projection(value: &CssInsetValue) -> Option<CssLength> {
+    match value {
+        CssInsetValue::Auto => Some(CssLength::Auto),
+        CssInsetValue::LengthPercentage(value) => {
+            if let Some(calculation) = value.calculation() {
+                return Some(CssLength::Calc(CssCalcLength::Typed(calculation.clone())));
+            }
+            let component = value.literal_component()?;
+            match component.view() {
+                CssComponentValueRef::Token(CssValueTokenRef::Number(number)) => {
+                    (crate::opacity_scalar::exact_legacy_value(number.representation())? == 0.0)
+                        .then_some(CssLength::Zero)
+                }
+                CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) => {
+                    CssLength::try_percent(crate::opacity_scalar::exact_legacy_value(
+                        number.representation(),
+                    )?)
+                }
+                CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) => {
+                    CssLength::try_dimension(
+                        crate::opacity_scalar::exact_legacy_value(number.representation())?,
+                        CssLengthUnit::from_css_unit(unit)?,
+                    )
+                }
+                _ => None,
+            }
+        }
+    }
+}
+
+fn inset_shorthand_i01_projection(value: &CssInsetShorthand) -> Option<CssEdges> {
+    if value.kind() != CssBoxSideKind::Physical {
+        return None;
+    }
+    let [top, right, bottom, left] = value.assigned_values();
+    Some(CssEdges::new(
+        inset_i01_projection(top)?,
+        inset_i01_projection(right)?,
+        inset_i01_projection(bottom)?,
+        inset_i01_projection(left)?,
+    ))
+}
 
 fn display_i01_projection(value: &CssDisplayValue) -> Option<CssDisplay> {
     match value {
@@ -660,6 +713,61 @@ macro_rules! define_current_property_value {
     };
 }
 
+// The old inset calc projection retains diagnostic origins. It is redundant
+// with `current`, so wrapper equality uses authored spelling and the checked
+// current value while still exposing the historical projection.
+macro_rules! define_inset_property_value {
+    ($canonical:literal, $wrapper:ident, $representation:ident,
+        $current:ty, $i01:ty, $projection:expr) => {
+        #[derive(Clone, Debug)]
+        pub(crate) struct $representation {
+            current: $current,
+            i01_subset: Option<$i01>,
+        }
+
+        #[doc = concat!("A grammar-checked authored ordinary value for `", $canonical, "`.")]
+        #[derive(Clone, Debug)]
+        pub struct $wrapper {
+            authored: CssAuthoredDeclarationValue,
+            representation: $representation,
+        }
+
+        impl PartialEq for $wrapper {
+            fn eq(&self, other: &Self) -> bool {
+                self.authored == other.authored
+                    && self.representation.current == other.representation.current
+            }
+        }
+
+        impl $wrapper {
+            #[must_use]
+            pub(crate) fn new(authored: CssAuthoredDeclarationValue, current: $current) -> Self {
+                let i01_subset = ($projection)(&current);
+                Self {
+                    authored,
+                    representation: $representation {
+                        current,
+                        i01_subset,
+                    },
+                }
+            }
+
+            #[must_use]
+            pub fn as_css(&self) -> &str {
+                self.authored.as_css()
+            }
+            #[must_use]
+            pub const fn current(&self) -> &$current {
+                &self.representation.current
+            }
+            #[must_use]
+            pub const fn i01_subset(&self) -> Option<&$i01> {
+                self.representation.i01_subset.as_ref()
+            }
+        }
+    };
+}
+
 macro_rules! define_additive_current_property_value {
     (
         $canonical:literal, $wrapper:ident, $representation:ident,
@@ -917,6 +1025,56 @@ fn overflow_i01_projection(value: CssOverflow) -> Option<CssOverflow> {
 }
 
 macro_rules! define_property_value {
+    (Inset, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_inset_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssInsetShorthand,
+            CssEdges,
+            inset_shorthand_i01_projection
+        );
+    };
+    (Top, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_inset_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssInsetValue,
+            CssLength,
+            inset_i01_projection
+        );
+    };
+    (Right, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_inset_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssInsetValue,
+            CssLength,
+            inset_i01_projection
+        );
+    };
+    (Bottom, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_inset_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssInsetValue,
+            CssLength,
+            inset_i01_projection
+        );
+    };
+    (Left, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_inset_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssInsetValue,
+            CssLength,
+            inset_i01_projection
+        );
+    };
     (Overflow, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
         define_current_property_value!(
             $canonical,

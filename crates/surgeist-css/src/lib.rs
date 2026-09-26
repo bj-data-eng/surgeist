@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![recursion_limit = "256"]
 //! Browser-recovering CSS ingestion for Surgeist.
 //!
 //! [`parse_sheet`] and [`parse_style_attribute`] parse UTF-8 input into CSS-owned
@@ -1132,6 +1133,7 @@ mod calc_size;
 mod color_scalar;
 mod contain_intrinsic_size;
 mod display;
+mod inset;
 mod integer_value;
 mod numeric;
 mod opacity_scalar;
@@ -1155,6 +1157,7 @@ pub use display::{
     CssDisplayBox, CssDisplayInside, CssDisplayInternal, CssDisplayLegacy,
     CssDisplayListItemInside, CssDisplayOutside, CssDisplayValue,
 };
+pub use inset::{CssInsetPair, CssInsetShorthand, CssInsetValue};
 pub use integer_value::CssIntegerLiteral;
 pub use overflow::CssOverflowValue;
 pub use overflow_controls::{CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter};
