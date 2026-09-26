@@ -105,7 +105,11 @@ impl Projection<'_> {
             .try_reserve(1)
             .map_err(|_| Error::new(ErrorKind::CapacityOverflow))?;
         let resolved_magnitude = match &kind {
-            Kind::Scalar(value) if value.unit.resolved() || value.value.is_nan() => {
+            Kind::Scalar(value)
+                if value.value.is_nan()
+                    || value.unit.resolved()
+                        && !(matches!(value.unit, Unit::Percentage) && ty.hint.is_some()) =>
+            {
                 Some(value.value)
             }
             Kind::Product(children) => self.resolved_terms(children, true),
@@ -304,7 +308,10 @@ impl Projection<'_> {
             })
             .collect();
         if let Some(values) = values {
-            let resolved = values.iter().flatten().all(|v| v.unit.resolved());
+            let resolved = args
+                .iter()
+                .flatten()
+                .all(|&id| self.arena[id].resolved_magnitude.is_some());
             let same_unit = values
                 .iter()
                 .flatten()
