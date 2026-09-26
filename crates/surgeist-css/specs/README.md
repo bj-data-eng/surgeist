@@ -61,6 +61,11 @@ fully selected modules. These records leave the 79 module entries and their
 counts unchanged. Each definition identifies its source, exact sections, the
 selected requirements that need it, and authored versus downstream ownership.
 
+Overflow 3 imports only Box 4 §2.3's `<visual-box>` production for
+`overflow-clip-margin`: `content-box | padding-box | border-box`. CSS checks this
+property-specific domain against the shared box-edge keywords. Clip geometry
+and painting remain downstream; this import does not select Box 4 in full.
+
 The host pseudo-class signatures and argument grammars come from published
 Scoping 1, and `::part()` grammar comes from published Shadow Parts 1. Their
 identities matter to Pseudo-Elements 4's distinction between valid syntax and

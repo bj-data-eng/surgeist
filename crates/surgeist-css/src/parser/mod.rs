@@ -32,6 +32,7 @@ mod keyframes;
 mod layout;
 mod multicolumn;
 mod nesting;
+mod overflow_controls;
 mod page;
 mod queries;
 mod query_components;
@@ -56,6 +57,7 @@ use cssparser::{
 
 use crate::box_spacing::*;
 use crate::contain_intrinsic_size::{CssContainIntrinsicSize, CssContainIntrinsicSizeValue};
+use crate::overflow_controls::{CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter};
 use crate::{
     CssContainer, CssContainerNames, CssContainerType, CssFontPaletteDescriptorKind,
     CssFontPaletteDescriptorValue, CssFontPaletteName, CssMaxSizeValue, CssOverflowValue,
@@ -77,6 +79,7 @@ use keyframes::{parse_keyframes_name, parse_keyframes_rule};
 use layout::*;
 use multicolumn::*;
 use nesting::{parse_style_contents, parse_style_rule_block};
+use overflow_controls::*;
 use page::{parse_page_rule, parse_page_selector};
 #[cfg(test)]
 pub(crate) use queries::parse_container_condition_for_test;

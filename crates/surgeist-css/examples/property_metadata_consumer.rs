@@ -16,6 +16,10 @@ const LONGHANDS: &[P] = &[
     P::OverflowY,
     P::OverflowBlock,
     P::OverflowInline,
+    P::OverflowClipMargin,
+    P::ScrollBehavior,
+    P::ScrollbarGutter,
+    P::TextOverflow,
     P::MarginTop,
     P::MarginRight,
     P::MarginBottom,
@@ -363,6 +367,17 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         | CssLonghandValueRef::OverflowY(v)
         | CssLonghandValueRef::OverflowBlock(v)
         | CssLonghandValueRef::OverflowInline(v) => assert_eq!(*v, CssOverflow::Visible),
+        CssLonghandValueRef::OverflowClipMargin(v) => {
+            assert_eq!(v.authored_box_edge(), None);
+            assert_eq!(v.box_edge(), CssBoxEdgeKeyword::PaddingBox);
+            assert_eq!(
+                v.authored_offset().unwrap().serialize_specified().unwrap(),
+                "0px"
+            );
+        }
+        CssLonghandValueRef::ScrollBehavior(v) => assert_eq!(*v, CssScrollBehavior::Auto),
+        CssLonghandValueRef::ScrollbarGutter(v) => assert_eq!(*v, CssScrollbarGutter::Auto),
+        CssLonghandValueRef::TextOverflow(v) => assert_eq!(*v, CssTextOverflow::Clip),
         CssLonghandValueRef::Width(v)
         | CssLonghandValueRef::Height(v)
         | CssLonghandValueRef::InlineSize(v)
@@ -432,7 +447,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 114);
+    assert_eq!(expected.len(), 118);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();

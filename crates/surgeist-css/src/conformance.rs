@@ -2324,7 +2324,6 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         CssKnownProperty::CaretColor
         | CssKnownProperty::OutlineOffset
         | CssKnownProperty::Resize
-        | CssKnownProperty::TextOverflow
         | CssKnownProperty::Cursor
         | CssKnownProperty::Outline
         | CssKnownProperty::OutlineColor
@@ -2444,7 +2443,11 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::OverflowX
         | CssKnownProperty::OverflowY
         | CssKnownProperty::OverflowBlock
-        | CssKnownProperty::OverflowInline => X_OVERFLOW3,
+        | CssKnownProperty::OverflowInline
+        | CssKnownProperty::OverflowClipMargin
+        | CssKnownProperty::ScrollBehavior
+        | CssKnownProperty::ScrollbarGutter
+        | CssKnownProperty::TextOverflow => X_OVERFLOW3,
         CssKnownProperty::JustifyItems
         | CssKnownProperty::JustifySelf
         | CssKnownProperty::PlaceContent
@@ -2695,7 +2698,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 563] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 566] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4229,6 +4232,21 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 563] = [
         "overflow-inline",
         "ext.property.overflow-inline"
     ),
+    complete_property_feature!(
+        CssKnownProperty::OverflowClipMargin,
+        "overflow-clip-margin",
+        "ext.property.overflow-clip-margin"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollBehavior,
+        "scroll-behavior",
+        "ext.property.scroll-behavior"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollbarGutter,
+        "scrollbar-gutter",
+        "ext.property.scrollbar-gutter"
+    ),
     property_feature!(
         CssKnownProperty::FlexDirection,
         "flex-direction",
@@ -4784,7 +4802,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 563] = [
         "overflow-wrap",
         "baseline.property.overflow-wrap"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::TextOverflow,
         "text-overflow",
         "baseline.property.text-overflow"

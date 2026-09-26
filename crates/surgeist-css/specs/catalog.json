@@ -230,6 +230,16 @@
         "latest_published_url": "https://www.w3.org/TR/css-values-5/",
         "publication_history_url": "https://www.w3.org/standards/history/css-values-5/",
         "source_resolution": "The existing Values 5 publication-history evidence selects 2024-11-11 as the latest published edition before the cutoff. Selected Sizing 4 section 3.2 directly requires its calc-size() definition. Import only the function grammar, numeric typing and specified simplification, with interpolation and used-value requirements assigned downstream. This neither replaces the selected Values 4 edition nor selects Values 5 or interpolate-size in full."
+      },
+      {
+        "id": "css-box-4-visual-box-definition",
+        "kind": "w3c-dated-publication",
+        "date": "2024-08-04",
+        "url": "https://www.w3.org/TR/2024/WD-css-box-4-20240804/",
+        "sha256": "78e1c76887f19b2f1a73a38fc12e7f36c1dec49bc77650cd10b59b9bca07b05c",
+        "bytes": 198225,
+        "latest_published_url": "https://www.w3.org/TR/css-box-4/",
+        "source_resolution": "Selected Overflow 3 section 3.2 imports only Box 4 section 2.3 <visual-box> for overflow-clip-margin. Its content-box, padding-box and border-box choices are checked at that property boundary; the rest of Box 4 is not selected."
       }
     ],
     "definitions": [
@@ -781,6 +791,36 @@
           "root"
         ],
         "downstream_requirements": "Style/layout supply intrinsic-size, containing-block, percentage and used-value context. Animation owns the separately defined canonicalize-for-interpolation operation, including basis substitution and de-percentification with bounded expansion. CSS authored serialization does not flatten nested bases or select layout values. This import does not select the adjacent interpolate-size property or unrelated Values 5 functions."
+      },
+      {
+        "id": "overflow-clip-margin-visual-box",
+        "source_id": "css-box-4-visual-box-definition",
+        "signatures": [
+          "<visual-box> = content-box | padding-box | border-box"
+        ],
+        "sections": [
+          {
+            "anchor": "typedef-visual-box",
+            "url": "https://www.w3.org/TR/2024/WD-css-box-4-20240804/#typedef-visual-box"
+          }
+        ],
+        "required_by": [
+          {
+            "module_id": "css-overflow-3",
+            "section_url": "https://www.w3.org/TR/2025/WD-css-overflow-3-20251007/#overflow-clip-margin",
+            "requirement": "The overflow-clip-margin grammar directly imports the visual-box production."
+          }
+        ],
+        "authored_owner": "css",
+        "authored_requirements": [
+          "Accept exactly content-box, padding-box or border-box as the optional visual-box component of overflow-clip-margin, in either order with an optional nonnegative length. Preserve omission and reject all other box-edge keywords at checked construction."
+        ],
+        "downstream_owners": [
+          "style",
+          "layout",
+          "render"
+        ],
+        "downstream_requirements": "Computed clip-edge geometry, layout and painting remain downstream. Importing visual-box does not select CSS Box 4 in full."
       }
     ]
   },
@@ -2124,7 +2164,7 @@
         "window",
         "root"
       ],
-      "scope_note": "Include authored grammar defined by this edition, including scroll-behavior; viewport geometry, scrolling APIs, and observations require runtime, layout, and host context."
+      "scope_note": "This edition's changes explicitly move scroll-behavior to CSS Overflow 3; CSSOM View consumes its computed value for scrolling APIs. Viewport geometry, scrolling APIs, and observations require runtime, layout, and host context. See https://www.w3.org/TR/2025/WD-cssom-view-1-20250916/#changes."
     },
     {
       "id": "geometry-1",

@@ -1157,6 +1157,7 @@ pub use display::{
 };
 pub use integer_value::CssIntegerLiteral;
 pub use overflow::CssOverflowValue;
+pub use overflow_controls::{CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter};
 pub use scroll_snap::{
     CssScrollMarginPair, CssScrollMarginShorthand, CssScrollPaddingPair, CssScrollPaddingShorthand,
     CssScrollPaddingValue, CssScrollSideKind, CssScrollSnapAlign, CssScrollSnapAlignment,
@@ -1165,6 +1166,7 @@ pub use scroll_snap::{
 pub use sizing::{CssBoxSize, CssMaxSizeValue, CssSizeValue};
 mod float_clear;
 mod overflow;
+mod overflow_controls;
 mod specified_length;
 mod specified_serialization;
 mod writing_modes;

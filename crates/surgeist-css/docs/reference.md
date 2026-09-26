@@ -2704,3 +2704,24 @@ available only when every authored keyword is one of the original four.
 The enum and shorthand have bounded canonical specified serialization.
 Cross-axis computed-value coupling and mapping flow-relative axes through the
 element's writing mode belong downstream.
+
+## Authored overflow controls
+
+The selected [Overflow 3 definitions](https://www.w3.org/TR/2025/WD-css-overflow-3-20251007/#overflow-clip-margin)
+make `overflow-clip-margin`, `scroll-behavior`, `scrollbar-gutter`, and
+`text-overflow` complete, noninherited authored longhands. Their initials are
+`0px`, `auto`, `auto`, and `clip`, respectively. The clip margin imports only
+[Box 4's `<visual-box>` production](https://www.w3.org/TR/2024/WD-css-box-4-20240804/#typedef-visual-box):
+`content-box | padding-box | border-box`. It accepts that edge and a
+nonnegative length in either order; either component may be omitted, but at
+least one is required. Its checked value preserves omitted components, exposes
+effective defaults of `padding-box` and exact `0px`, and serializes authored
+components in canonical box-first order under one resource budget. Length math
+remains symbolic until downstream resolution.
+
+`scroll-behavior` accepts `auto | smooth`; `scrollbar-gutter` accepts `auto`,
+`stable`, or `stable both-edges` in either authored keyword order. The existing
+`text-overflow` choices remain `clip | ellipsis`. These keyword values have
+bounded canonical serializers. Grammar and expansion preserve declaration
+identity and source order; scroll execution, gutter geometry, and text painting
+belong to their downstream owners.
