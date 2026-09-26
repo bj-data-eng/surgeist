@@ -145,7 +145,12 @@ does not grant that authority.
 
 ## Command Inventory
 
-Run applicable checks serially, with one Cargo build job and one test thread.
+Run one top-level Cargo check, build, or test command at a time, with one Cargo
+build job.
+Allow the test harness to use its default parallel test threads. Limit test
+threads only when `pisct host status` reports high resource pressure. Record
+the host reading and selected thread limit with the check result, and restore
+the default parallel harness when that pressure clears.
 Select the affected package, target, feature combination, and test suite before
 execution. Do not use blanket workspace test runs or assume `--all-features` is
 supported. Workspace membership alone does not select a verification matrix.
@@ -156,16 +161,17 @@ The small facade checks from the repository root are:
 
 ```sh
 cargo check --offline --locked -j 1 -p surgeist
-cargo test --offline --locked -j 1 -p surgeist --lib -- --test-threads=1
+cargo test --offline --locked -j 1 -p surgeist --lib
 cargo clippy --offline --locked -j 1 -p surgeist --all-targets -- -F unsafe-code -D warnings
 cargo fmt --all -- --check
 ```
 
 For an affected crate, use its supplement to select focused checks and keep the
-same serial limits. For example, task-library tests are:
+same Cargo execution limits and default parallel test harness. For example,
+task-library tests are:
 
 ```sh
-cargo test --offline --locked -j 1 -p surgeist-task --lib -- --test-threads=1
+cargo test --offline --locked -j 1 -p surgeist-task --lib
 ```
 
 Native GPU, window, browser, corpus, platform, and executor checks have distinct
@@ -178,7 +184,7 @@ API-generator tests and audit commands use its separate workspace. The
 environment setting also limits nested rustdoc Cargo builds to one job:
 
 ```sh
-CARGO_BUILD_JOBS=1 cargo test --offline -j 1 --manifest-path api/generator/Cargo.toml -- --test-threads=1
+CARGO_BUILD_JOBS=1 cargo test --offline -j 1 --manifest-path api/generator/Cargo.toml
 CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo run --offline -j 1 --manifest-path api/generator/Cargo.toml -- --list
 CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo run --offline -j 1 --manifest-path api/generator/Cargo.toml -- --check
 ```
@@ -189,7 +195,7 @@ separately when profile handling changes. Unset `CARGO_TARGET_DIR` so the fixtur
 owns and removes its nested build output:
 
 ```sh
-env -u CARGO_TARGET_DIR CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo test --offline -j 1 --manifest-path api/generator/Cargo.toml --lib tests::css_corpus_audit_uses_only_requested_features_and_reports_its_missing_artifact -- --ignored --exact --test-threads=1
+env -u CARGO_TARGET_DIR CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo test --offline -j 1 --manifest-path api/generator/Cargo.toml --lib tests::css_corpus_audit_uses_only_requested_features_and_reports_its_missing_artifact -- --ignored --exact
 ```
 
 For an authorized refresh, select `--root`, `--crate surgeist-task`, or `--all`
@@ -200,4 +206,5 @@ diff review. Stop on missing prerequisites or an unexplained generated delta.
 
 Discovery is complete when ownership, product boundaries, public entry points,
 dependencies, feature and platform constraints, artifact ownership, and the
-applicable serial verification commands are established from current source.
+applicable verification commands and concurrency constraints are established
+from current source.
