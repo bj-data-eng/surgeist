@@ -2684,6 +2684,29 @@ calculations through their checked length-percentage values. `as_css()` retains
 the authored spelling, while `serialize_specified()` renders a bounded
 canonical specified value.
 
+## Authored sizing controls
+
+[Sizing 4 §3.1](https://www.w3.org/TR/2026/WD-css-sizing-4-20260904/#sizing-properties)
+defines `size`, `min-size`, and `max-size` as one- or two-value physical
+shorthands. They set width then height, minimum width then height, or maximum
+width then height, copying the complete first value when the second is omitted.
+They accept the same exact checked values as their member longhands, including
+symbolic math. `CssSizePair` and `CssMaxSizePair` retain the optional authored
+height; their expansion contributes only the two physical members in order.
+The ordinary `size` property is rejected in `@page` context. The distinct
+page-size descriptor and CSSOM's preferred shorthand ordering remain outside
+this authored-property surface.
+
+[Sizing 4 §5.3](https://www.w3.org/TR/2026/WD-css-sizing-4-20260904/#responsive-iframes)
+defines the noninherited `frame-sizing` keywords, starting at `auto`.
+[§5.5](https://www.w3.org/TR/2026/WD-css-sizing-4-20260904/#intrinsic-contribution-override)
+defines noninherited `min-intrinsic-sizing`, starting at `legacy`; either
+`zero-if-scroll` or `zero-if-extrinsic`, or both, can be authored. The typed
+combined state serializes in scroll-then-extrinsic order. Internal layout size
+and min-content contribution effects remain downstream. These finite values
+and both pair types offer bounded `serialize_specified()` separately from the
+property wrappers' original `as_css()` spelling.
+
 ## Authored contained intrinsic sizes
 
 The selected [Sizing 4 §5.2 publication](https://www.w3.org/TR/2026/WD-css-sizing-4-20260904/#intrinsic-size-override)

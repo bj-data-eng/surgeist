@@ -1389,6 +1389,15 @@ pub surgeist_css::CssFontWeight::Number(surgeist_css::CssFontWeightNumber)
 #[non_exhaustive] pub enum surgeist_css::CssForcedColorsMode
 pub surgeist_css::CssForcedColorsMode::Active
 pub surgeist_css::CssForcedColorsMode::None
+#[non_exhaustive] pub enum surgeist_css::CssFrameSizing
+pub surgeist_css::CssFrameSizing::Auto
+pub surgeist_css::CssFrameSizing::ContentBlockSize
+pub surgeist_css::CssFrameSizing::ContentHeight
+pub surgeist_css::CssFrameSizing::ContentInlineSize
+pub surgeist_css::CssFrameSizing::ContentWidth
+impl surgeist_css::CssFrameSizing
+pub fn surgeist_css::CssFrameSizing::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFrameSizing::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFrequencyUnit
 pub surgeist_css::CssFrequencyUnit::Hertz
 pub surgeist_css::CssFrequencyUnit::Kilohertz
@@ -1761,6 +1770,7 @@ pub surgeist_css::CssKnownProperty::FontVariantLigatures
 pub surgeist_css::CssKnownProperty::FontVariantNumeric
 pub surgeist_css::CssKnownProperty::FontVariantPosition
 pub surgeist_css::CssKnownProperty::FontWeight
+pub surgeist_css::CssKnownProperty::FrameSizing
 pub surgeist_css::CssKnownProperty::Gap
 pub surgeist_css::CssKnownProperty::Grid
 pub surgeist_css::CssKnownProperty::GridArea
@@ -1819,10 +1829,13 @@ pub surgeist_css::CssKnownProperty::MaskSize
 pub surgeist_css::CssKnownProperty::MaxBlockSize
 pub surgeist_css::CssKnownProperty::MaxHeight
 pub surgeist_css::CssKnownProperty::MaxInlineSize
+pub surgeist_css::CssKnownProperty::MaxSize
 pub surgeist_css::CssKnownProperty::MaxWidth
 pub surgeist_css::CssKnownProperty::MinBlockSize
 pub surgeist_css::CssKnownProperty::MinHeight
 pub surgeist_css::CssKnownProperty::MinInlineSize
+pub surgeist_css::CssKnownProperty::MinIntrinsicSizing
+pub surgeist_css::CssKnownProperty::MinSize
 pub surgeist_css::CssKnownProperty::MinWidth
 pub surgeist_css::CssKnownProperty::MixBlendMode
 pub surgeist_css::CssKnownProperty::ObjectFit
@@ -1895,6 +1908,7 @@ pub surgeist_css::CssKnownProperty::ScrollSnapStop
 pub surgeist_css::CssKnownProperty::ScrollSnapType
 pub surgeist_css::CssKnownProperty::ScrollbarGutter
 pub surgeist_css::CssKnownProperty::ScrollbarWidth
+pub surgeist_css::CssKnownProperty::Size
 pub surgeist_css::CssKnownProperty::TableLayout
 pub surgeist_css::CssKnownProperty::TextAlign
 pub surgeist_css::CssKnownProperty::TextAlignLast
@@ -2065,6 +2079,7 @@ pub surgeist_css::CssKnownPropertyValueRef::FontVariantLigatures(&'a surgeist_cs
 pub surgeist_css::CssKnownPropertyValueRef::FontVariantNumeric(&'a surgeist_css::CssFontVariantNumericPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontVariantPosition(&'a surgeist_css::CssFontVariantPositionPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontWeight(&'a surgeist_css::CssFontWeightPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::FrameSizing(&'a surgeist_css::CssFrameSizingPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Gap(&'a surgeist_css::CssGapPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Grid(&'a surgeist_css::CssGridPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::GridArea(&'a surgeist_css::CssGridAreaPropertyValue)
@@ -2123,10 +2138,13 @@ pub surgeist_css::CssKnownPropertyValueRef::MaskSize(&'a surgeist_css::CssMaskSi
 pub surgeist_css::CssKnownPropertyValueRef::MaxBlockSize(&'a surgeist_css::CssMaxBlockSizePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MaxHeight(&'a surgeist_css::CssMaxHeightPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MaxInlineSize(&'a surgeist_css::CssMaxInlineSizePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MaxSize(&'a surgeist_css::CssMaxSizePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MaxWidth(&'a surgeist_css::CssMaxWidthPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MinBlockSize(&'a surgeist_css::CssMinBlockSizePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MinHeight(&'a surgeist_css::CssMinHeightPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MinInlineSize(&'a surgeist_css::CssMinInlineSizePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MinIntrinsicSizing(&'a surgeist_css::CssMinIntrinsicSizingPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MinSize(&'a surgeist_css::CssMinSizePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MinWidth(&'a surgeist_css::CssMinWidthPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MixBlendMode(&'a surgeist_css::CssMixBlendModePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ObjectFit(&'a surgeist_css::CssObjectFitPropertyValue)
@@ -2199,6 +2217,7 @@ pub surgeist_css::CssKnownPropertyValueRef::ScrollSnapStop(&'a surgeist_css::Css
 pub surgeist_css::CssKnownPropertyValueRef::ScrollSnapType(&'a surgeist_css::CssScrollSnapTypePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ScrollbarGutter(&'a surgeist_css::CssScrollbarGutterPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ScrollbarWidth(&'a surgeist_css::CssScrollbarWidthPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::Size(&'a surgeist_css::CssSizePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TableLayout(&'a surgeist_css::CssTableLayoutPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextAlign(&'a surgeist_css::CssTextAlignPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextAlignLast(&'a surgeist_css::CssTextAlignLastPropertyValue)
@@ -2379,6 +2398,7 @@ pub surgeist_css::CssLonghandValueRef::EmptyCells(&'a surgeist_css::CssEmptyCell
 pub surgeist_css::CssLonghandValueRef::Float(&'a surgeist_css::CssFloat)
 pub surgeist_css::CssLonghandValueRef::FlowTolerance(&'a surgeist_css::CssFlowTolerance)
 pub surgeist_css::CssLonghandValueRef::FontFamily(&'a surgeist_css::CssFontFamilyList)
+pub surgeist_css::CssLonghandValueRef::FrameSizing(&'a surgeist_css::CssFrameSizing)
 pub surgeist_css::CssLonghandValueRef::Height(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::InlineSize(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::InsetBlockEnd(&'a surgeist_css::CssInsetValue)
@@ -2401,6 +2421,7 @@ pub surgeist_css::CssLonghandValueRef::MaxWidth(&'a surgeist_css::CssMaxSizeValu
 pub surgeist_css::CssLonghandValueRef::MinBlockSize(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::MinHeight(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::MinInlineSize(&'a surgeist_css::CssSizeValue)
+pub surgeist_css::CssLonghandValueRef::MinIntrinsicSizing(&'a surgeist_css::CssMinIntrinsicSizing)
 pub surgeist_css::CssLonghandValueRef::MinWidth(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::Opacity(&'a surgeist_css::CssOpacityValue)
 pub surgeist_css::CssLonghandValueRef::Order(&'a surgeist_css::CssIntegerValue)
@@ -2704,6 +2725,14 @@ pub const fn surgeist_css::CssMediaType::name(self) -> &'static str
 pub surgeist_css::CssMediaUpdate::Fast
 pub surgeist_css::CssMediaUpdate::None
 pub surgeist_css::CssMediaUpdate::Slow
+#[non_exhaustive] pub enum surgeist_css::CssMinIntrinsicSizing
+pub surgeist_css::CssMinIntrinsicSizing::Legacy
+pub surgeist_css::CssMinIntrinsicSizing::ZeroIfExtrinsic
+pub surgeist_css::CssMinIntrinsicSizing::ZeroIfScroll
+pub surgeist_css::CssMinIntrinsicSizing::ZeroIfScrollAndExtrinsic
+impl surgeist_css::CssMinIntrinsicSizing
+pub fn surgeist_css::CssMinIntrinsicSizing::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMinIntrinsicSizing::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssNamespaceConstraint
 pub surgeist_css::CssNamespaceConstraint::Any
 pub surgeist_css::CssNamespaceConstraint::Default
@@ -5650,6 +5679,10 @@ pub struct surgeist_css::CssFontWeightPropertyValue
 impl surgeist_css::CssFontWeightPropertyValue
 pub fn surgeist_css::CssFontWeightPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssFontWeightPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssFontWeight>
+pub struct surgeist_css::CssFrameSizingPropertyValue
+impl surgeist_css::CssFrameSizingPropertyValue
+pub fn surgeist_css::CssFrameSizingPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssFrameSizingPropertyValue::current(&self) -> &surgeist_css::CssFrameSizing
 pub struct surgeist_css::CssFrequencyCalculation
 impl surgeist_css::CssFrequencyCalculation
 pub fn surgeist_css::CssFrequencyCalculation::components(&self) -> &surgeist_css::CssComponentValues
@@ -6296,6 +6329,18 @@ pub struct surgeist_css::CssMaxInlineSizePropertyValue
 impl surgeist_css::CssMaxInlineSizePropertyValue
 pub fn surgeist_css::CssMaxInlineSizePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssMaxInlineSizePropertyValue::current(&self) -> &surgeist_css::CssMaxSizeValue
+pub struct surgeist_css::CssMaxSizePair(_)
+impl surgeist_css::CssMaxSizePair
+pub fn surgeist_css::CssMaxSizePair::authored_height(&self) -> core::option::Option<&surgeist_css::CssMaxSizeValue>
+pub fn surgeist_css::CssMaxSizePair::height(&self) -> &surgeist_css::CssMaxSizeValue
+pub fn surgeist_css::CssMaxSizePair::new(width: surgeist_css::CssMaxSizeValue, authored_height: core::option::Option<surgeist_css::CssMaxSizeValue>) -> Self
+pub fn surgeist_css::CssMaxSizePair::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMaxSizePair::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMaxSizePair::width(&self) -> &surgeist_css::CssMaxSizeValue
+pub struct surgeist_css::CssMaxSizePropertyValue
+impl surgeist_css::CssMaxSizePropertyValue
+pub fn surgeist_css::CssMaxSizePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMaxSizePropertyValue::current(&self) -> &surgeist_css::CssMaxSizePair
 pub struct surgeist_css::CssMaxSizeValue(_)
 impl surgeist_css::CssMaxSizeValue
 pub const surgeist_css::CssMaxSizeValue::NONE: Self
@@ -6375,6 +6420,14 @@ pub struct surgeist_css::CssMinInlineSizePropertyValue
 impl surgeist_css::CssMinInlineSizePropertyValue
 pub fn surgeist_css::CssMinInlineSizePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssMinInlineSizePropertyValue::current(&self) -> &surgeist_css::CssSizeValue
+pub struct surgeist_css::CssMinIntrinsicSizingPropertyValue
+impl surgeist_css::CssMinIntrinsicSizingPropertyValue
+pub fn surgeist_css::CssMinIntrinsicSizingPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMinIntrinsicSizingPropertyValue::current(&self) -> &surgeist_css::CssMinIntrinsicSizing
+pub struct surgeist_css::CssMinSizePropertyValue
+impl surgeist_css::CssMinSizePropertyValue
+pub fn surgeist_css::CssMinSizePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMinSizePropertyValue::current(&self) -> &surgeist_css::CssSizePair
 pub struct surgeist_css::CssMinWidthPropertyValue
 impl surgeist_css::CssMinWidthPropertyValue
 pub fn surgeist_css::CssMinWidthPropertyValue::as_css(&self) -> &str
@@ -7334,6 +7387,18 @@ impl surgeist_css::CssSimpleBlock
 pub const fn surgeist_css::CssSimpleBlock::closing_origin(&self) -> &surgeist_css::CssValueOrigin
 pub const fn surgeist_css::CssSimpleBlock::kind(&self) -> surgeist_css::CssBlockKind
 pub const fn surgeist_css::CssSimpleBlock::values(&self) -> &surgeist_css::CssComponentValues
+pub struct surgeist_css::CssSizePair(_)
+impl surgeist_css::CssSizePair
+pub fn surgeist_css::CssSizePair::authored_height(&self) -> core::option::Option<&surgeist_css::CssSizeValue>
+pub fn surgeist_css::CssSizePair::height(&self) -> &surgeist_css::CssSizeValue
+pub fn surgeist_css::CssSizePair::new(width: surgeist_css::CssSizeValue, authored_height: core::option::Option<surgeist_css::CssSizeValue>) -> Self
+pub fn surgeist_css::CssSizePair::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSizePair::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSizePair::width(&self) -> &surgeist_css::CssSizeValue
+pub struct surgeist_css::CssSizePropertyValue
+impl surgeist_css::CssSizePropertyValue
+pub fn surgeist_css::CssSizePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssSizePropertyValue::current(&self) -> &surgeist_css::CssSizePair
 pub struct surgeist_css::CssSourcePosition
 impl surgeist_css::CssSourcePosition
 pub const fn surgeist_css::CssSourcePosition::byte_offset(self) -> surgeist_css::CssByteOffset

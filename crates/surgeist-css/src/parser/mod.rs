@@ -44,6 +44,7 @@ mod recovery;
 mod scroll_snap;
 mod selectors;
 mod sizing;
+mod sizing_controls;
 mod supports;
 mod timing;
 mod typography;
@@ -62,10 +63,11 @@ use crate::inset::{CssInsetPair, CssInsetShorthand, CssInsetValue};
 use crate::overflow_controls::{CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter};
 use crate::{
     CssContainer, CssContainerNames, CssContainerType, CssFontPaletteDescriptorKind,
-    CssFontPaletteDescriptorValue, CssFontPaletteName, CssMaxSizeValue, CssOverflowValue,
-    CssScrollMarginPair, CssScrollMarginShorthand, CssScrollPaddingPair, CssScrollPaddingShorthand,
-    CssScrollPaddingValue, CssScrollSnapAlign, CssScrollSnapStop, CssScrollSnapType, CssSizeValue,
-    CssSpecifiedLength,
+    CssFontPaletteDescriptorValue, CssFontPaletteName, CssFrameSizing, CssMaxSizePair,
+    CssMaxSizeValue, CssMinIntrinsicSizing, CssOverflowValue, CssScrollMarginPair,
+    CssScrollMarginShorthand, CssScrollPaddingPair, CssScrollPaddingShorthand,
+    CssScrollPaddingValue, CssScrollSnapAlign, CssScrollSnapStop, CssScrollSnapType, CssSizePair,
+    CssSizeValue, CssSpecifiedLength,
 };
 use background::*;
 use box_model::*;
@@ -103,6 +105,7 @@ use selectors::{
     parse_scoped_style_selector_list,
 };
 use sizing::{parse_max_size_value, parse_size_value};
+use sizing_controls::*;
 use supports::{
     parse_supports_condition, parse_supports_declaration, with_supports_prelude_context,
 };

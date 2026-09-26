@@ -2315,7 +2315,12 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::ContainIntrinsicHeight
         | CssKnownProperty::ContainIntrinsicInlineSize
         | CssKnownProperty::ContainIntrinsicBlockSize
-        | CssKnownProperty::ContainIntrinsicSize => X_SIZING4_20260904,
+        | CssKnownProperty::ContainIntrinsicSize
+        | CssKnownProperty::Size
+        | CssKnownProperty::MinSize
+        | CssKnownProperty::MaxSize
+        | CssKnownProperty::FrameSizing
+        | CssKnownProperty::MinIntrinsicSizing => X_SIZING4_20260904,
         CssKnownProperty::CaretColor
         | CssKnownProperty::OutlineOffset
         | CssKnownProperty::Resize
@@ -2691,7 +2696,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 572] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 577] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4422,6 +4427,27 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 572] = [
         CssKnownProperty::MaxBlockSize,
         "max-block-size",
         "official.property.max-block-size"
+    ),
+    complete_property_feature!(CssKnownProperty::Size, "size", "ext.property.size"),
+    complete_property_feature!(
+        CssKnownProperty::MinSize,
+        "min-size",
+        "ext.property.min-size"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MaxSize,
+        "max-size",
+        "ext.property.max-size"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::FrameSizing,
+        "frame-sizing",
+        "ext.property.frame-sizing"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MinIntrinsicSizing,
+        "min-intrinsic-sizing",
+        "ext.property.min-intrinsic-sizing"
     ),
     complete_property_feature!(
         CssKnownProperty::ContainIntrinsicWidth,

@@ -1140,6 +1140,7 @@ mod opacity_scalar;
 mod pending_serialization;
 mod scroll_snap;
 mod sizing;
+mod sizing_controls;
 pub use aspect_ratio::{CssRatioOperand, CssSpecifiedRatio};
 pub use box_spacing::{
     CssBoxSideKind, CssMarginPair, CssMarginShorthand, CssMarginValue, CssPaddingPair,
@@ -1167,6 +1168,7 @@ pub use scroll_snap::{
     CssScrollSnapAxis, CssScrollSnapStop, CssScrollSnapStrictness, CssScrollSnapType,
 };
 pub use sizing::{CssBoxSize, CssMaxSizeValue, CssSizeValue};
+pub use sizing_controls::{CssFrameSizing, CssMaxSizePair, CssMinIntrinsicSizing, CssSizePair};
 mod float_clear;
 mod overflow;
 mod overflow_controls;

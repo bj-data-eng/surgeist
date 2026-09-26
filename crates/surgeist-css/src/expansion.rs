@@ -19,6 +19,7 @@ use crate::parser::contains_substitution;
 use crate::properties::{CssKnownDeclaration, CssKnownDeclaredValueRef, CssKnownPropertyValueRef};
 use crate::scroll_snap::*;
 use crate::sizing::{CssMaxSizeValue, CssSizeValue};
+use crate::sizing_controls::*;
 use crate::syntax::*;
 use crate::{
     CssBorderColors, CssComponentValues, CssContainer, CssContainerNames, CssContainerType,

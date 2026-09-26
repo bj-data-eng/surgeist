@@ -129,14 +129,20 @@ impl CssSizeValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let mut output = String::new();
+        self.serialize_specified_into(&mut context, &mut output)?;
+        Ok(output)
+    }
+
+    pub(crate) fn serialize_specified_into(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> SerializationResult<()> {
         match self {
-            Self::Auto => {
-                let mut context = SpecifiedSerializationContext::new(limits);
-                let mut output = String::new();
-                append_keyword(&mut context, &mut output, "auto")?;
-                Ok(output)
-            }
-            Self::BoxSize(value) => value.serialize_specified_with_limits(limits),
+            Self::Auto => append_keyword(context, output, "auto"),
+            Self::BoxSize(value) => value.serialize_specified_into(context, output),
         }
     }
 }
@@ -180,14 +186,20 @@ impl CssMaxSizeValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let mut output = String::new();
+        self.serialize_specified_into(&mut context, &mut output)?;
+        Ok(output)
+    }
+
+    pub(crate) fn serialize_specified_into(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> SerializationResult<()> {
         match &self.0 {
-            CssMaxSizeKind::None => {
-                let mut context = SpecifiedSerializationContext::new(limits);
-                let mut output = String::new();
-                append_keyword(&mut context, &mut output, "none")?;
-                Ok(output)
-            }
-            CssMaxSizeKind::BoxSize(value) => value.serialize_specified_with_limits(limits),
+            CssMaxSizeKind::None => append_keyword(context, output, "none"),
+            CssMaxSizeKind::BoxSize(value) => value.serialize_specified_into(context, output),
         }
     }
 }

@@ -81,6 +81,8 @@ const LONGHANDS: &[P] = &[
     P::MaxHeight,
     P::MaxInlineSize,
     P::MaxBlockSize,
+    P::FrameSizing,
+    P::MinIntrinsicSizing,
     P::ContainIntrinsicWidth,
     P::ContainIntrinsicHeight,
     P::ContainIntrinsicInlineSize,
@@ -117,6 +119,9 @@ const LONGHANDS: &[P] = &[
     P::TextCombineUpright,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
+    (P::Size, &[P::Width, P::Height], &[]),
+    (P::MinSize, &[P::MinWidth, P::MinHeight], &[]),
+    (P::MaxSize, &[P::MaxWidth, P::MaxHeight], &[]),
     (P::InsetBlock, &[P::InsetBlockStart, P::InsetBlockEnd], &[]),
     (
         P::InsetInline,
@@ -295,6 +300,8 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::ContainerName(v) => assert_eq!(*v, CssContainerNames::None),
         CssLonghandValueRef::ContainerType(v) => assert_eq!(*v, CssContainerType::Normal),
         CssLonghandValueRef::Position(v) => assert_eq!(*v, CssLayoutPosition::Static),
+        CssLonghandValueRef::FrameSizing(v) => assert_eq!(*v, CssFrameSizing::Auto),
+        CssLonghandValueRef::MinIntrinsicSizing(v) => assert_eq!(*v, CssMinIntrinsicSizing::Legacy),
         CssLonghandValueRef::Top(v)
         | CssLonghandValueRef::Right(v)
         | CssLonghandValueRef::Bottom(v)
@@ -471,7 +478,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 129);
+    assert_eq!(expected.len(), 134);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();
