@@ -26,26 +26,35 @@ fn parse_positive_integer_value<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
     context: &str,
 ) -> Result<CssPositiveIntegerValue, ParseError<'i, Error>> {
+    input.skip_whitespace();
     let numeric_start = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
-        Token::Number {
-            int_value: Some(value),
-            ..
-        } => CssPositiveInteger::try_new(*value)
-            .map(CssPositiveIntegerValue::Literal)
-            .ok_or_else(|| {
+        Token::Number { .. } => {
+            input.reset(&numeric_start);
+            let component = numeric.collect(input).map_err(|_| {
+                unsupported_value_at(location, None, format!("invalid {context} integer"))
+            })?;
+            let literal =
+                crate::CssIntegerLiteral::try_from_component(component).map_err(|_| {
+                    unsupported_value_at(location, None, format!("{context} must be an integer"))
+                })?;
+            let positive = CssPositiveIntegerLiteral::try_new(literal).ok_or_else(|| {
                 unsupported_value_at(
                     location,
                     None,
                     format!("{context} must be a positive integer"),
                 )
-            }),
-        Token::Number { .. } => Err(unsupported_value_at(
-            location,
-            None,
-            format!("{context} must be an integer"),
-        )),
+            })?;
+            Ok(
+                match crate::integer_value::exact_i32(positive.integer().numeric().representation())
+                    .and_then(CssPositiveInteger::try_new)
+                {
+                    Some(value) => CssPositiveIntegerValue::Literal(value),
+                    None => CssPositiveIntegerValue::ExactLiteral(positive),
+                },
+            )
+        }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Integer)
                 .map(CssIntegerCalculation::from_expression)
@@ -193,21 +202,14 @@ pub(super) fn parse_column_width<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssColumnWidth, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("auto"))
-        .is_ok()
-    {
-        Ok(CssColumnWidth::Auto)
-    } else {
-        parse_non_negative_length(input, numeric, "column-width").map(CssColumnWidth::Length)
-    }
+    super::sizing::parse_size_value(input, numeric)
 }
 
 pub(super) fn parse_columns<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssColumns, ParseError<'i, Error>> {
-    let mut width = None;
+    let mut width: Option<CssColumnWidth> = None;
     let mut count = None;
     let mut autos = 0_u8;
 

@@ -87,6 +87,8 @@ const LONGHANDS: &[P] = &[
     P::ContainIntrinsicHeight,
     P::ContainIntrinsicInlineSize,
     P::ContainIntrinsicBlockSize,
+    P::ColumnWidth,
+    P::ColumnCount,
     P::BorderCollapse,
     P::CaptionSide,
     P::EmptyCells,
@@ -119,6 +121,7 @@ const LONGHANDS: &[P] = &[
     P::TextCombineUpright,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
+    (P::Columns, &[P::ColumnWidth, P::ColumnCount], &[]),
     (P::Size, &[P::Width, P::Height], &[]),
     (P::MinSize, &[P::MinWidth, P::MinHeight], &[]),
     (P::MaxSize, &[P::MaxWidth, P::MaxHeight], &[]),
@@ -435,6 +438,8 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
                 CssContainIntrinsicSizeFallback::None
             ));
         }
+        CssLonghandValueRef::ColumnWidth(v) => assert_eq!(*v, CssSizeValue::Auto),
+        CssLonghandValueRef::ColumnCount(v) => assert_eq!(*v, CssColumnCount::Auto),
         CssLonghandValueRef::BorderCollapse(v) => assert_eq!(*v, CssBorderCollapse::Separate),
         CssLonghandValueRef::CaptionSide(v) => assert_eq!(*v, CssCaptionSide::Top),
         CssLonghandValueRef::EmptyCells(v) => assert_eq!(*v, CssEmptyCells::Show),
@@ -478,7 +483,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 134);
+    assert_eq!(expected.len(), 137);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();

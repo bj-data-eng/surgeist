@@ -928,8 +928,11 @@
 //! # Flexbox, multicolumn, and official grammar closure
 //!
 //! Flexbox 1 `flex-flow` and all nine Multicolumn 1 properties expose typed
-//! authored values without performing layout, pagination, or painting. The
-//! generic Syntax 3 authored shells and the remaining selected Values 3 records
+//! authored values without performing layout, pagination, or painting.
+//! The Sizing 4 `column-width` extension uses the shared `CssSizeValue` box-size
+//! grammar; `CssColumns` exposes both effective values and exact positive counts
+//! retain ordinary digits beyond `i32`. The generic Syntax 3 authored shells
+//! and the remaining selected Values 3 records
 //! are public Complete atomic metadata.
 //!
 //! ```
@@ -1131,6 +1134,7 @@ mod aspect_ratio;
 mod box_spacing;
 mod calc_size;
 mod color_scalar;
+mod column_sizing;
 mod contain_intrinsic_size;
 mod display;
 mod inset;

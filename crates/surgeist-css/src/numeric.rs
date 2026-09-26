@@ -2311,6 +2311,20 @@ impl CssLengthPercentageCalculation {
     }
 }
 
+impl CssIntegerCalculation {
+    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
+        self.expression.structural_eq(&other.expression)
+    }
+
+    pub(crate) fn serialize_specified_into(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        project_specified_into(&self.expression, context, output).map(|_| ())
+    }
+}
+
 /// Rechecks a mixed-context tree at a pure-length consumer boundary without
 /// serialization or loss of original component provenance.
 pub(crate) fn admit_pure_length(mut value: crate::CssLength) -> Option<crate::CssLength> {

@@ -2696,7 +2696,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 577] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 578] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -3282,6 +3282,13 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 577] = [
         "grid-lanes | inline-grid-lanes",
         X_GRID3_20260121,
         "#grid-lanes-containers",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.value.column-width.box-size",
+        CssFeatureKind::Value,
+        "<box-size> for column-width",
+        X_SIZING4_20260904,
+        "#column-sizing",
     ),
     CssFeatureMetadata::partial(
         "ext.value.grid-repeat",

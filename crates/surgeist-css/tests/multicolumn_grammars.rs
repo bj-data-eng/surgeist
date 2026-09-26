@@ -1,8 +1,8 @@
 use surgeist_css::{
-    CssColumnCount, CssColumnFill, CssColumnSpan, CssColumnWidth, CssErrorCode, CssGlobalKeyword,
-    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssLengthUnit,
-    CssLineStyle, CssLineWidth, CssPositiveIntegerValue, CssRecoveryAction, ErrorKind,
-    parse_style_attribute,
+    CssBoxSize, CssColumnCount, CssColumnFill, CssColumnSpan, CssColumnWidth, CssErrorCode,
+    CssGlobalKeyword, CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLength, CssLengthUnit, CssLineStyle, CssLineWidth, CssPositiveIntegerValue,
+    CssRecoveryAction, ErrorKind, parse_style_attribute,
 };
 
 #[test]
@@ -77,9 +77,8 @@ fn c14_multicolumn_properties_retain_typed_structure() {
     };
     assert!(matches!(
         width.width(),
-        CssColumnWidth::Length(value)
-            if matches!(value.value(), CssLength::Dimension(value)
-                if value.value() == 12.0 && value.unit() == CssLengthUnit::Em)
+        CssColumnWidth::BoxSize(CssBoxSize::LengthPercentage(value))
+            if value.serialize_specified().unwrap() == "12em"
     ));
 
     let CssKnownPropertyValueRef::Columns(columns) = ordinary(&report.syntax()[8]) else {
@@ -91,9 +90,8 @@ fn c14_multicolumn_properties_retain_typed_structure() {
     ));
     assert!(matches!(
         columns.columns().width(),
-        CssColumnWidth::Length(value)
-            if matches!(value.value(), CssLength::Dimension(value)
-                if value.value() == 10.0 && value.unit() == CssLengthUnit::Rem)
+        CssColumnWidth::BoxSize(CssBoxSize::LengthPercentage(value))
+            if value.serialize_specified().unwrap() == "10rem"
     ));
 }
 
@@ -175,7 +173,8 @@ fn multicolumn_calculations_remain_symbolic_and_checked_constructors_reject_lite
     };
     assert!(matches!(
         width.width(),
-        CssColumnWidth::Length(value) if matches!(value.value(), CssLength::Calc(_))
+        CssColumnWidth::BoxSize(CssBoxSize::LengthPercentage(value))
+            if value.calculation().is_some()
     ));
     let CssKnownPropertyValueRef::ColumnRuleWidth(width) = ordinary(&report.syntax()[2]) else {
         panic!("expected column-rule-width");
@@ -243,7 +242,6 @@ fn multicolumn_mutations_drop_exact_declaration_and_retain_siblings() {
         ("column-rule-width", "10%", "10%"),
         ("column-span", "auto", "auto"),
         ("column-width", "-1px", "-1px"),
-        ("column-width", "10%", "10%"),
         ("column-width", "thin", "thin"),
         ("columns", "2 3", "3"),
         ("columns", "10px 20px", "20px"),

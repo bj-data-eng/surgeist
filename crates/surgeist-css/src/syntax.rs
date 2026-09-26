@@ -5534,11 +5534,54 @@ impl CssPositiveInteger {
 }
 
 /// A positive integer whose calculated range remains authored and symbolic.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssPositiveIntegerValue {
     Literal(CssPositiveInteger),
     Calculation(CssIntegerCalculation),
+    ExactLiteral(CssPositiveIntegerLiteral),
+}
+
+/// A positive integer whose ordinary authored magnitude is not machine-bounded.
+#[derive(Clone, Debug)]
+pub struct CssPositiveIntegerLiteral {
+    integer: crate::CssIntegerLiteral,
+}
+
+impl CssPositiveIntegerLiteral {
+    /// Accepts an exact integer token only when its authored sign and digits are positive.
+    #[must_use]
+    pub fn try_new(integer: crate::CssIntegerLiteral) -> Option<Self> {
+        let text = integer.numeric().representation();
+        let digits = text.strip_prefix(['+', '-']).unwrap_or(text);
+        (!text.starts_with('-') && digits.bytes().any(|digit| digit != b'0'))
+            .then_some(Self { integer })
+    }
+
+    /// Borrows the checked exact integer token and its source origin.
+    #[must_use]
+    pub const fn integer(&self) -> &crate::CssIntegerLiteral {
+        &self.integer
+    }
+}
+
+impl PartialEq for CssPositiveIntegerLiteral {
+    fn eq(&self, other: &Self) -> bool {
+        self.integer
+            .component()
+            .structural_eq_ignoring_origin(other.integer.component())
+    }
+}
+
+impl PartialEq for CssPositiveIntegerValue {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Literal(left), Self::Literal(right)) => left == right,
+            (Self::ExactLiteral(left), Self::ExactLiteral(right)) => left == right,
+            (Self::Calculation(left), Self::Calculation(right)) => left.structural_eq(right),
+            _ => false,
+        }
+    }
 }
 
 /// The authored `column-count` value.
@@ -5685,13 +5728,8 @@ pub enum CssColumnSpan {
     All,
 }
 
-/// The authored `column-width` value.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssColumnWidth {
-    Auto,
-    Length(CssNonNegativeLength),
-}
+/// The authored `column-width` value, including Sizing 4 box sizes.
+pub type CssColumnWidth = crate::CssSizeValue;
 
 /// The authored component values of the `columns` shorthand.
 ///
@@ -5704,7 +5742,8 @@ pub struct CssColumns {
 }
 
 impl CssColumns {
-    pub(crate) const fn new(width: CssColumnWidth, count: CssColumnCount) -> Self {
+    /// Constructs both effective values; omitted shorthand components are supplied as `auto`.
+    pub const fn new(width: CssColumnWidth, count: CssColumnCount) -> Self {
         Self { width, count }
     }
 

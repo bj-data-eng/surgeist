@@ -56,6 +56,18 @@ impl CssIntegerLiteral {
     pub const fn origin(&self) -> &CssValueOrigin {
         self.component.origin()
     }
+
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<(), CssSpecifiedValueSerializationError> {
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        let text =
+            serialize_integer_digits(self.numeric().representation(), context.remaining_bytes())?;
+        context.append(output, &text)
+    }
 }
 
 pub(crate) fn admit_integer_literal(
@@ -119,6 +131,9 @@ impl CssIntegerValue {
             crate::numeric::project_specified_into(&calculation.expression, context, output)?;
             return Ok(());
         }
+        if let Self::ExactLiteral(literal) = self {
+            return literal.append_specified(context, output);
+        }
         context.charge_input(1)?;
         context.charge_projection(1)?;
         match self {
@@ -145,13 +160,7 @@ impl CssIntegerValue {
                 )?;
                 context.append(output, &text)
             }
-            Self::ExactLiteral(literal) => {
-                let text = serialize_integer_digits(
-                    literal.numeric().representation(),
-                    context.remaining_bytes(),
-                )?;
-                context.append(output, &text)
-            }
+            Self::ExactLiteral(_) => unreachable!("exact literal handled above"),
             Self::Calculation(_) => unreachable!("calculation handled above"),
         }
     }

@@ -515,6 +515,9 @@ pub surgeist_css::CssColorStopListItem::Stop(alloc::boxed::Box<surgeist_css::Css
 #[non_exhaustive] pub enum surgeist_css::CssColumnCount
 pub surgeist_css::CssColumnCount::Auto
 pub surgeist_css::CssColumnCount::Count(surgeist_css::CssPositiveIntegerValue)
+impl surgeist_css::CssColumnCount
+pub fn surgeist_css::CssColumnCount::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssColumnCount::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssColumnFill
 pub surgeist_css::CssColumnFill::Auto
 pub surgeist_css::CssColumnFill::Balance
@@ -522,9 +525,6 @@ pub surgeist_css::CssColumnFill::BalanceAll
 #[non_exhaustive] pub enum surgeist_css::CssColumnSpan
 pub surgeist_css::CssColumnSpan::All
 pub surgeist_css::CssColumnSpan::None
-#[non_exhaustive] pub enum surgeist_css::CssColumnWidth
-pub surgeist_css::CssColumnWidth::Auto
-pub surgeist_css::CssColumnWidth::Length(surgeist_css::CssNonNegativeLength)
 #[non_exhaustive] pub enum surgeist_css::CssComponentValueErrorKind
 pub surgeist_css::CssComponentValueErrorKind::BadString
 pub surgeist_css::CssComponentValueErrorKind::BadUrl
@@ -2386,6 +2386,8 @@ pub surgeist_css::CssLonghandValueRef::BoxSizing(&'a surgeist_css::CssBoxSizing)
 pub surgeist_css::CssLonghandValueRef::CaptionSide(&'a surgeist_css::CssCaptionSide)
 pub surgeist_css::CssLonghandValueRef::Clear(&'a surgeist_css::CssClear)
 pub surgeist_css::CssLonghandValueRef::Color(&'a surgeist_css::CssAuthoredColor)
+pub surgeist_css::CssLonghandValueRef::ColumnCount(&'a surgeist_css::CssColumnCount)
+pub surgeist_css::CssLonghandValueRef::ColumnWidth(&'a surgeist_css::CssColumnWidth)
 pub surgeist_css::CssLonghandValueRef::ContainIntrinsicBlockSize(&'a surgeist_css::CssContainIntrinsicSizeValue)
 pub surgeist_css::CssLonghandValueRef::ContainIntrinsicHeight(&'a surgeist_css::CssContainIntrinsicSizeValue)
 pub surgeist_css::CssLonghandValueRef::ContainIntrinsicInlineSize(&'a surgeist_css::CssContainIntrinsicSizeValue)
@@ -2882,7 +2884,13 @@ pub surgeist_css::CssPositionComponent::Length(surgeist_css::CssLength)
 pub surgeist_css::CssPositionComponent::Vertical(surgeist_css::CssVerticalPositionKeyword)
 #[non_exhaustive] pub enum surgeist_css::CssPositiveIntegerValue
 pub surgeist_css::CssPositiveIntegerValue::Calculation(surgeist_css::CssIntegerCalculation)
+pub surgeist_css::CssPositiveIntegerValue::ExactLiteral(surgeist_css::CssPositiveIntegerLiteral)
 pub surgeist_css::CssPositiveIntegerValue::Literal(surgeist_css::CssPositiveInteger)
+impl surgeist_css::CssPositiveIntegerValue
+pub fn surgeist_css::CssPositiveIntegerValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPositiveIntegerValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::cmp::PartialEq for surgeist_css::CssPositiveIntegerValue
+pub fn surgeist_css::CssPositiveIntegerValue::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssPositiveNumberValue
 pub surgeist_css::CssPositiveNumberValue::Calculation(surgeist_css::CssNumberCalculation)
 pub surgeist_css::CssPositiveNumberValue::Literal(surgeist_css::CssPositiveNumber)
@@ -4635,7 +4643,11 @@ pub const fn surgeist_css::CssColumnWidthPropertyValue::width(&self) -> &surgeis
 pub struct surgeist_css::CssColumns
 impl surgeist_css::CssColumns
 pub const fn surgeist_css::CssColumns::count(&self) -> &surgeist_css::CssColumnCount
+pub const fn surgeist_css::CssColumns::new(width: surgeist_css::CssColumnWidth, count: surgeist_css::CssColumnCount) -> Self
 pub const fn surgeist_css::CssColumns::width(&self) -> &surgeist_css::CssColumnWidth
+impl surgeist_css::CssColumns
+pub fn surgeist_css::CssColumns::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssColumns::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssColumnsPropertyValue
 impl surgeist_css::CssColumnsPropertyValue
 pub fn surgeist_css::CssColumnsPropertyValue::as_css(&self) -> &str
@@ -6910,6 +6922,12 @@ pub struct surgeist_css::CssPositiveInteger
 impl surgeist_css::CssPositiveInteger
 pub const fn surgeist_css::CssPositiveInteger::try_new(value: i32) -> core::option::Option<Self>
 pub const fn surgeist_css::CssPositiveInteger::value(self) -> i32
+pub struct surgeist_css::CssPositiveIntegerLiteral
+impl surgeist_css::CssPositiveIntegerLiteral
+pub const fn surgeist_css::CssPositiveIntegerLiteral::integer(&self) -> &surgeist_css::CssIntegerLiteral
+pub fn surgeist_css::CssPositiveIntegerLiteral::try_new(integer: surgeist_css::CssIntegerLiteral) -> core::option::Option<Self>
+impl core::cmp::PartialEq for surgeist_css::CssPositiveIntegerLiteral
+pub fn surgeist_css::CssPositiveIntegerLiteral::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssPositiveNumber
 impl surgeist_css::CssPositiveNumber
 pub fn surgeist_css::CssPositiveNumber::try_new(value: f32) -> core::option::Option<Self>
@@ -8041,4 +8059,5 @@ pub fn surgeist_css::specification_source(id: &str) -> core::option::Option<&'st
 pub const fn surgeist_css::specification_sources() -> &'static [surgeist_css::CssSpecificationSource]
 pub fn surgeist_css::validate_sheet(input: &str) -> core::result::Result<surgeist_css::CssSheet, surgeist_css::CssValidationFailure>
 pub fn surgeist_css::validate_style_attribute(input: &str) -> core::result::Result<surgeist_css::CssDeclarationList, surgeist_css::CssValidationFailure>
+pub type surgeist_css::CssColumnWidth = surgeist_css::CssSizeValue
 pub type surgeist_css::CssLineStyle = surgeist_css::CssBorderStyle

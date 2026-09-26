@@ -1960,11 +1960,24 @@ lower values into another Surgeist crate.
 
 ## Flexbox, multicolumn, and catalog coverage
 
-Flexbox 1 `flex-flow` and all nine Multicolumn 1 properties now expose complete
-authored grammars and typed current values. `flex-flow` preserves the authored
-direction/wrap combination; `columns` preserves its independently optional
-width and count; and `column-rule` preserves width, style, and color without
-performing layout, pagination, or painting.
+Flexbox 1 `flex-flow` and all nine Multicolumn 1 properties expose typed authored
+values. `flex-flow` preserves the direction/wrap combination; `columns` retains
+the effective width and count, with omitted components set to `auto`, while its
+wrapper preserves the original spelling and order. `column-rule` preserves
+width, style, and color without performing layout, pagination, or painting.
+
+Multicolumn 1 defines `column-width` as `auto | <length [0,∞]>`, `column-count`
+as `auto | <integer [1,∞]>`, and the unordered `columns` shorthand. The selected
+[Sizing 4 §5.6](https://www.w3.org/TR/2026/WD-css-sizing-4-20260904/#column-sizing)
+adds `<box-size>` to `column-width`; `columns` consumes that expanded width
+grammar. `CssColumnWidth` is now an alias of `CssSizeValue`, so callers migrate
+`CssColumnWidth::Length` to `CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(...))`.
+The `width()` and `count()` accessors remain; `CssColumns::serialize_specified()`
+emits both effective values in width-then-count order. Exact ordinary positive
+column counts beyond `i32` use `CssPositiveIntegerValue::ExactLiteral`, preserving
+their digits without clamping. Integer calculations and box-size math stay
+symbolic until their computed-value owners resolve them. Shorthand expansion
+sets only `column-width` and `column-count`, with no reset-only members.
 
 ```rust
 use surgeist_css::{
