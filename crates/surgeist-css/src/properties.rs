@@ -203,7 +203,7 @@ macro_rules! property_schema {
             Flex, "flex", [], "baseline.property.flex", CssFlex, CssFlexPropertyValue, CssFlexPropertyValueRepresentation, parse_flex, { parse_flex($input, $numeric)? };
             JustifyTracks, "justify-tracks", [], "baseline.property.justify-tracks", CssAlignment, CssJustifyTracksPropertyValue, CssJustifyTracksPropertyValueRepresentation, parse_content_alignment, { parse_content_alignment($input)? };
             AlignTracks, "align-tracks", [], "baseline.property.align-tracks", CssAlignment, CssAlignTracksPropertyValue, CssAlignTracksPropertyValueRepresentation, parse_content_alignment, { parse_content_alignment($input)? };
-            AspectRatio, "aspect-ratio", [], "baseline.property.aspect-ratio", CssAspectRatio, CssAspectRatioPropertyValue, CssAspectRatioPropertyValueRepresentation, parse_aspect_ratio, { parse_aspect_ratio($input, $numeric)? };
+            AspectRatio, "aspect-ratio", [], "baseline.property.aspect-ratio", CssAspectRatio, CssAspectRatioPropertyValue, CssAspectRatioPropertyValueRepresentation, parse_aspect_ratio, { parse_aspect_ratio($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssAspectRatioValue, accessor: ratio, inherited: false, initial_kind: value, initial: CssAspectRatioValue::Auto };
             ScrollbarWidth, "scrollbar-width", [], "baseline.property.scrollbar-width", CssScrollbarWidth, CssScrollbarWidthPropertyValue, CssScrollbarWidthPropertyValueRepresentation, parse_scrollbar_width, { parse_scrollbar_width($input)? };
             Cursor, "cursor", [], "baseline.property.cursor", CssCursor, CssCursorPropertyValue, CssCursorPropertyValueRepresentation, parse_cursor, { parse_cursor($input)? };
             CaretColor, "caret-color", [], "official.property.caret-color", CssCaretColor, CssCaretColorPropertyValue, CssCaretColorPropertyValueRepresentation, parse_caret_color, { parse_caret_color($input, $numeric)? };
@@ -306,8 +306,10 @@ fn integer_i01_projection(value: &CssIntegerValue) -> Option<i32> {
 
 fn aspect_ratio_i01_projection(value: &CssAspectRatioValue) -> Option<CssAspectRatio> {
     match value {
-        CssAspectRatioValue::Literal(value) => Some(*value),
-        CssAspectRatioValue::Calculation(_) => None,
+        CssAspectRatioValue::Ratio(ratio) if ratio.denominator().is_none() => {
+            CssAspectRatio::try_new(ratio.numerator().exact_positive_f32()?)
+        }
+        _ => None,
     }
 }
 

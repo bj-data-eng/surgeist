@@ -364,6 +364,7 @@ pub enum CssNumericConstructionErrorKind {
     InvalidArgumentType,
     IncompatibleTypes,
     RootDomainMismatch,
+    OutOfRange,
     ResourceLimit,
     Component(CssComponentValueErrorKind),
 }
@@ -384,7 +385,7 @@ impl CssNumericConstructionError {
     pub(crate) fn component_error(&self) -> Option<&CssComponentValueError> {
         self.source.as_deref()
     }
-    fn at(kind: CssNumericConstructionErrorKind, c: Option<&CssComponentValue>) -> Self {
+    pub(crate) fn at(kind: CssNumericConstructionErrorKind, c: Option<&CssComponentValue>) -> Self {
         Self {
             kind,
             origin: c.map(|c| c.origin().clone()),

@@ -959,6 +959,14 @@ profile_source!(
     "https://www.w3.org/TR/2021/WD-css-sizing-3-20211217/"
 );
 profile_source!(
+    I_SIZING3_20260904,
+    "I-SIZING3-20260904",
+    "CSS Box Sizing",
+    "3",
+    CssSpecificationTier::Snapshot2026Interop,
+    "https://www.w3.org/TR/2026/WD-css-sizing-3-20260904/"
+);
+profile_source!(
     I_TRANSFORMS2,
     "I-TRANSFORMS2",
     "CSS Transforms",
@@ -1093,6 +1101,14 @@ profile_source!(
     "https://www.w3.org/TR/2021/WD-css-sizing-4-20210520/"
 );
 profile_source!(
+    X_SIZING4_20260904,
+    "X-SIZING4-20260904",
+    "CSS Box Sizing",
+    "4",
+    CssSpecificationTier::SurgeistExtension,
+    "https://www.w3.org/TR/2026/WD-css-sizing-4-20260904/"
+);
+profile_source!(
     X_TEXT4,
     "X-TEXT4",
     "CSS Text",
@@ -1221,6 +1237,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     I_ANIMATIONS1,
     I_FILTER1,
     I_SIZING3,
+    I_SIZING3_20260904,
     I_TRANSFORMS2,
     I_LISTS3,
     I_POSITION3,
@@ -1238,6 +1255,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     X_MEDIA5,
     X_OVERFLOW3,
     X_SIZING4,
+    X_SIZING4_20260904,
     X_TEXT4,
     X_TEXTDECOR4,
     X_UI4,
@@ -2270,8 +2288,8 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::Bottom
         | CssKnownProperty::Left
         | CssKnownProperty::ZIndex => O_CSS2,
-        CssKnownProperty::BoxSizing
-        | CssKnownProperty::CaretColor
+        CssKnownProperty::BoxSizing => I_SIZING3_20260904,
+        CssKnownProperty::CaretColor
         | CssKnownProperty::OutlineOffset
         | CssKnownProperty::Resize
         | CssKnownProperty::TextOverflow
@@ -2416,7 +2434,7 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         CssKnownProperty::Inset => I_POSITION3,
         CssKnownProperty::BoxDecorationBreak => S_BREAK3,
         CssKnownProperty::Order => S_DISPLAY3,
-        CssKnownProperty::AspectRatio => I_SIZING3,
+        CssKnownProperty::AspectRatio => X_SIZING4_20260904,
         CssKnownProperty::ScrollbarWidth => R_SCROLLBARS1,
         CssKnownProperty::PointerEvents | CssKnownProperty::UserSelect => X_UI4,
         CssKnownProperty::Transform
@@ -4113,7 +4131,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 513] = [
         "display",
         "baseline.property.display"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::BoxSizing,
         "box-sizing",
         "baseline.property.box-sizing"
@@ -5014,7 +5032,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 513] = [
         "align-tracks",
         "baseline.property.align-tracks"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::AspectRatio,
         "aspect-ratio",
         "baseline.property.aspect-ratio"

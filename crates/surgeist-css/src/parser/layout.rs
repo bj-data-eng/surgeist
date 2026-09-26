@@ -846,22 +846,54 @@ pub(super) fn parse_aspect_ratio<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssAspectRatioValue, ParseError<'i, Error>> {
-    let numeric_start = input.state();
+    let auto_first = input
+        .try_parse(|input| input.expect_ident_matching("auto"))
+        .is_ok();
+    if auto_first && input.is_exhausted() {
+        return Ok(CssAspectRatioValue::Auto);
+    }
+    let numerator = parse_ratio_operand(input, numeric)?;
+    let denominator = if input.try_parse(|input| input.expect_delim('/')).is_ok() {
+        Some(parse_ratio_operand(input, numeric)?)
+    } else {
+        None
+    };
+    let ratio = crate::CssSpecifiedRatio::new(numerator, denominator);
+    if auto_first
+        || input
+            .try_parse(|input| input.expect_ident_matching("auto"))
+            .is_ok()
+    {
+        Ok(CssAspectRatioValue::AutoRatio(ratio))
+    } else {
+        Ok(CssAspectRatioValue::Ratio(ratio))
+    }
+}
+
+fn parse_ratio_operand<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<crate::CssRatioOperand, ParseError<'i, Error>> {
+    let start = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
-        Token::Number { value, .. } => CssAspectRatio::try_new(*value)
-            .map(CssAspectRatioValue::Literal)
-            .ok_or_else(|| {
-                unsupported_value_at(
-                    location,
-                    None,
-                    "aspect-ratio must be a finite positive number",
-                )
-            }),
+        Token::Number { .. } => {
+            input.reset(&start);
+            let component = numeric.collect(input).map_err(|_| {
+                unsupported_value_at(location, None, "invalid ratio number component")
+            })?;
+            crate::CssRatioOperand::try_from_component(component).map_err(|_| {
+                unsupported_value_at(location, None, "ratio number must be nonnegative")
+            })
+        }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
-            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)
+            parse_numeric_function(input, &start, numeric, CalculationRoot::Number)
                 .map(CssNumberCalculation::from_expression)
-                .map(CssAspectRatioValue::Calculation)
+                .and_then(|calculation| {
+                    crate::CssRatioOperand::try_from_calculation(calculation).map_err(|_| {
+                        unsupported_value_at(location, None, "invalid ratio number math")
+                    })
+                })
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }

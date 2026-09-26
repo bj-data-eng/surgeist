@@ -540,9 +540,10 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
     else {
         panic!("expected aspect-ratio wrapper");
     };
-    let CssAspectRatioValue::Calculation(calculation) = value.ratio() else {
-        panic!("expected deferred aspect-ratio calculation");
+    let CssAspectRatioValue::Ratio(ratio) = value.ratio() else {
+        panic!("expected deferred aspect-ratio ratio");
     };
+    let calculation = ratio.numerator().calculation().expect("math numerator");
     assert!(matches!(
         calculation_body(calculation.expression()),
         CssCalculationExpressionRef::Product(_)
@@ -717,7 +718,9 @@ fn scalar_property_accessors_preserve_literal_compatibility_projections() {
     else {
         panic!("expected aspect-ratio wrapper");
     };
-    assert!(matches!(value.ratio(), CssAspectRatioValue::Literal(value) if value.value() == 1.5));
+    assert!(
+        matches!(value.ratio(), CssAspectRatioValue::Ratio(ratio) if ratio.denominator().is_none() && ratio.numerator().literal_component().is_some())
+    );
     assert_eq!(value.i01_subset().unwrap().value(), 1.5);
 
     let CssKnownPropertyValueRef::Flex(value) = report.syntax()[6]
@@ -764,8 +767,8 @@ fn positive_number_model_checks_literals_while_calculation_range_stays_authored(
     ));
 
     let literal_report = parse_style_attribute("aspect-ratio: 0; color: red");
-    assert_eq!(literal_report.syntax().len(), 1);
-    assert_eq!(literal_report.diagnostics().len(), 1);
+    assert_eq!(literal_report.syntax().len(), 2);
+    assert!(literal_report.is_clean());
     let calculation_report = parse_style_attribute("aspect-ratio: calc(-1 * 2); color: red");
     assert!(calculation_report.is_clean());
     assert_eq!(calculation_report.syntax().len(), 2);

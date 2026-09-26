@@ -81,8 +81,12 @@ pub surgeist_css::CssAnimationName::String(surgeist_css::CssKeyframesString)
 pub surgeist_css::CssAnimationPlayState::Paused
 pub surgeist_css::CssAnimationPlayState::Running
 #[non_exhaustive] pub enum surgeist_css::CssAspectRatioValue
-pub surgeist_css::CssAspectRatioValue::Calculation(surgeist_css::CssNumberCalculation)
-pub surgeist_css::CssAspectRatioValue::Literal(surgeist_css::CssAspectRatio)
+pub surgeist_css::CssAspectRatioValue::Auto
+pub surgeist_css::CssAspectRatioValue::AutoRatio(surgeist_css::CssSpecifiedRatio)
+pub surgeist_css::CssAspectRatioValue::Ratio(surgeist_css::CssSpecifiedRatio)
+impl surgeist_css::CssAspectRatioValue
+pub fn surgeist_css::CssAspectRatioValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAspectRatioValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssAttributeCaseSensitivity
 pub surgeist_css::CssAttributeCaseSensitivity::AsciiCaseInsensitive
 pub surgeist_css::CssAttributeCaseSensitivity::DocumentDefault
@@ -2148,6 +2152,7 @@ pub surgeist_css::CssListStyleType::CounterStyle(surgeist_css::CssCounterStyle)
 pub surgeist_css::CssListStyleType::None
 pub surgeist_css::CssListStyleType::String(surgeist_css::CssContentString)
 #[non_exhaustive] pub enum surgeist_css::CssLonghandValueRef<'a>
+pub surgeist_css::CssLonghandValueRef::AspectRatio(&'a surgeist_css::CssAspectRatioValue)
 pub surgeist_css::CssLonghandValueRef::BorderBottomColor(&'a surgeist_css::CssAuthoredColor)
 pub surgeist_css::CssLonghandValueRef::BorderBottomStyle(&'a surgeist_css::CssBorderStyle)
 pub surgeist_css::CssLonghandValueRef::BorderBottomWidth(&'a surgeist_css::CssLength)
@@ -2472,6 +2477,7 @@ pub surgeist_css::CssNumericConstructionErrorKind::IncompatibleTypes
 pub surgeist_css::CssNumericConstructionErrorKind::InvalidArgumentType
 pub surgeist_css::CssNumericConstructionErrorKind::MalformedExpression
 pub surgeist_css::CssNumericConstructionErrorKind::MultipleValues
+pub surgeist_css::CssNumericConstructionErrorKind::OutOfRange
 pub surgeist_css::CssNumericConstructionErrorKind::RecoveredComponent
 pub surgeist_css::CssNumericConstructionErrorKind::ResourceLimit
 pub surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch
@@ -6383,6 +6389,13 @@ impl surgeist_css::CssRatio
 pub const fn surgeist_css::CssRatio::denominator(self) -> surgeist_css::CssFiniteNumber
 pub const fn surgeist_css::CssRatio::numerator(self) -> surgeist_css::CssFiniteNumber
 pub fn surgeist_css::CssRatio::try_new(numerator: f32, denominator: f32) -> core::option::Option<Self>
+pub struct surgeist_css::CssRatioOperand
+impl surgeist_css::CssRatioOperand
+pub fn surgeist_css::CssRatioOperand::calculation(&self) -> core::option::Option<&surgeist_css::CssNumberCalculation>
+pub fn surgeist_css::CssRatioOperand::literal_component(&self) -> core::option::Option<&surgeist_css::CssComponentValue>
+pub fn surgeist_css::CssRatioOperand::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssRatioOperand::try_from_calculation(calculation: surgeist_css::CssNumberCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssRatioOperand::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub struct surgeist_css::CssRecoveryDiagnostic
 impl surgeist_css::CssRecoveryDiagnostic
 pub const fn surgeist_css::CssRecoveryDiagnostic::action(&self) -> surgeist_css::CssRecoveryAction
@@ -6617,6 +6630,13 @@ pub const fn surgeist_css::CssSpecificationSource::url(self) -> core::option::Op
 pub struct surgeist_css::CssSpecificationSourceId(_)
 impl surgeist_css::CssSpecificationSourceId
 pub const fn surgeist_css::CssSpecificationSourceId::as_str(self) -> &'static str
+pub struct surgeist_css::CssSpecifiedRatio
+impl surgeist_css::CssSpecifiedRatio
+pub const fn surgeist_css::CssSpecifiedRatio::denominator(&self) -> core::option::Option<&surgeist_css::CssRatioOperand>
+pub const fn surgeist_css::CssSpecifiedRatio::new(numerator: surgeist_css::CssRatioOperand, denominator: core::option::Option<surgeist_css::CssRatioOperand>) -> Self
+pub const fn surgeist_css::CssSpecifiedRatio::numerator(&self) -> &surgeist_css::CssRatioOperand
+pub fn surgeist_css::CssSpecifiedRatio::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSpecifiedRatio::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssSpecifiedRuleSerializationError
 impl surgeist_css::CssSpecifiedRuleSerializationError
 pub const fn surgeist_css::CssSpecifiedRuleSerializationError::kind(&self) -> surgeist_css::CssSpecifiedRuleSerializationErrorKind

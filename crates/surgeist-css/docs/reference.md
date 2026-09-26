@@ -416,6 +416,31 @@ projections, including `circle(50% at center)`, remain available. This does not
 retire unrelated generic wrapper accessors that already expose typed calculations.
 Grid and position compatibility checks exclude every `CssLength::Calc` variant.
 
+## Authored preferred aspect ratios
+
+The selected [CSS Sizing 4 (2026-09-04)](https://www.w3.org/TR/2026/WD-css-sizing-4-20260904/#aspect-ratio)
+and [CSS Values 4 (2024-03-12)](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#ratios)
+grammar accepts `auto`, a nonnegative
+ratio, or both in either order. The ratio has one or two nonnegative number
+operands; an omitted denominator means `1`. Zero numerators and denominators
+remain authored values. Number tokens retain their exact decimal spelling and
+origin, including magnitudes outside `f32`; typed number math stays symbolic.
+`CssAspectRatioValue::Ratio` and `AutoRatio` hold a `CssSpecifiedRatio`, whose
+private fields are composed from checked `CssRatioOperand` values. The property
+is a non-inherited longhand with `Auto` initial value.
+
+`serialize_specified()` canonically places `auto` first and emits both ratio
+components, with one cumulative input, projection, and output budget. It does
+not divide the components or resolve whether a zero ratio is useful. The frozen
+I01 projection remains available only for an ordinary, exactly representable,
+positive `f32` numerator with omitted denominator. Migration: the former
+`CssAspectRatioValue::Literal` and `Calculation` variants are replaced by
+`Auto`, `Ratio`, and `AutoRatio`. Callers should inspect ratio operands through
+`numerator()`, `denominator()`, `literal_component()`, and `calculation()`.
+The effective source revisions for `aspect-ratio` and `box-sizing` now name
+their selected Sizing publications; historical provenance records and stable
+feature IDs retain their original identities.
+
 ## Authored flow tolerance
 
 The selected [Grid3 publication](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#placement-tolerance)
@@ -446,8 +471,8 @@ unfinished. This property migration does not complete the other Grid3 families.
 `expand_declaration` currently covers custom declarations, physical margin and
 padding, border width, style and color, the four side-border shorthands, `border`,
 the five border-image longhands, `flow-tolerance`, `color`, `font-family`,
-`text-orientation`, its legacy `glyph-orientation-vertical` grammar, `opacity`, `display`,
-`order`, `visibility`, `direction`, `unicode-bidi`, `writing-mode`, `text-combine-upright`,
+`text-orientation`, its legacy `glyph-orientation-vertical` grammar, `opacity`, `display`, `box-sizing`,
+`order`, `aspect-ratio`, `visibility`, `direction`, `unicode-bidi`, `writing-mode`, `text-combine-upright`,
 the `container` shorthand and its two longhands, and `all`.
 The shared property schema owns their
 member lists, initial values and reset-only components. Other known properties

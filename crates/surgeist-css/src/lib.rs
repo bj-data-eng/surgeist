@@ -1122,12 +1122,14 @@ pub use media::*;
 mod media_features;
 mod normalization;
 pub use media_features::*;
+mod aspect_ratio;
 mod color_scalar;
 mod display;
 mod integer_value;
 mod numeric;
 mod opacity_scalar;
 mod pending_serialization;
+pub use aspect_ratio::{CssRatioOperand, CssSpecifiedRatio};
 pub use color_scalar::{
     CssColorAngleLiteral, CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError,
     CssColorScalarErrorKind,

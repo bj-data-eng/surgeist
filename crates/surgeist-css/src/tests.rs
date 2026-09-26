@@ -4727,9 +4727,9 @@ fn numeric_property_models_reject_invalid_authored_values() {
             property_name_should_be_recognized: true,
         },
         RejectedDeclarationCase {
-            label: "aspect-ratio rejects zero",
+            label: "aspect-ratio rejects a negative operand",
             property_name: "aspect-ratio",
-            authored_value: "0",
+            authored_value: "-1e-999",
             expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
                 property: "aspect-ratio",
             },

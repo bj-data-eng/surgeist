@@ -5403,8 +5403,9 @@ impl CssAspectRatio {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssAspectRatioValue {
-    Literal(CssAspectRatio),
-    Calculation(CssNumberCalculation),
+    Auto,
+    Ratio(crate::CssSpecifiedRatio),
+    AutoRatio(crate::CssSpecifiedRatio),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
