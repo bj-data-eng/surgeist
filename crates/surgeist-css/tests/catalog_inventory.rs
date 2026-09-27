@@ -307,7 +307,7 @@ fn authored_property_cases_exercise_public_parser_behavior() {
 }
 
 #[test]
-fn added_fonts3_property_rows_expose_complete_authored_metadata() {
+fn added_fonts_property_rows_expose_complete_authored_metadata() {
     for (id, name, production, authored) in [
         (
             "official.property.font-kerning",
@@ -386,10 +386,11 @@ fn added_fonts3_property_rows_expose_complete_authored_metadata() {
 
         let metadata = property_support_metadata(name).unwrap_or_else(|| panic!("missing {id}"));
         assert_eq!(metadata.feature().id().as_str(), id);
-        let source = if name.starts_with("font-variant") {
-            "I-FONTS4-20260907"
-        } else {
-            "O-FONTS3"
+        let source = match name {
+            "font-synthesis" => "O-FONTS3",
+            "font-kerning" | "font-size-adjust" => "I-FONTS4-20260907",
+            name if name.starts_with("font-variant-") => "I-FONTS4-20260907",
+            _ => unreachable!("the source inventory lists every property in this test"),
         };
         assert_eq!(metadata.feature().source().id().as_str(), source);
         assert_eq!(metadata.feature().status(), CssSupportStatus::Complete);
