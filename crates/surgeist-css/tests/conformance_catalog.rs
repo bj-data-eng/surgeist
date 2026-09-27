@@ -103,8 +103,8 @@ const KEYFRAMES_REMAINDER: &str = "Calculation selectors, string names, and decl
 const FONT_SHORTHAND_SUBSET: &str = "Explicit fonts support the selected Fonts 4 family, style, size, and weight components, Fonts 3 variant and width components, and an optional line height. All six system-font alternatives are supported.";
 const FONT_SHORTHAND_REMAINDER: &str =
     "Intrinsic shorthand expansion/reset semantics remain unfinished.";
-const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range and feature-settings descriptors have typed ordinary representations and admit pending whole values for valid env(); invalid descriptors recover independently.";
-const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-variation-settings, font-named-instance and metric overrides remain unsupported.";
+const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range, feature-settings and variation-settings descriptors have typed ordinary representations and admit pending whole values for valid env(); invalid descriptors recover independently.";
+const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-named-instance and metric overrides remain unsupported.";
 const FONT_SOURCE_SUBSET: &str = "url() and local() sources preserve authored order, including empty URL strings, the selected literal family-name grammar, a single format hint and technology hints. Invalid source members recover independently, while invalid descriptor annotations or all-invalid lists discard the descriptor. The four legacy variation strings project to base formats and required variations without changing authored hints; TrueType and OpenType have explicit format equivalence.";
 const FONT_SOURCE_REMAINDER: &str =
     "The src() function from the referenced Values 4 <url> production remains unsupported.";
@@ -118,7 +118,15 @@ fn assert_complete_fonts3_feature(
     let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing metadata for {id}"));
     assert_eq!(metadata.kind(), kind, "{id}");
     assert_eq!(metadata.spelling(), spelling, "{id}");
-    let source = if spelling.starts_with("font-variant") {
+    let source = if spelling.starts_with("font-variant")
+        || matches!(
+            id,
+            "baseline.property.font-feature-settings"
+                | "official.property.font-kerning"
+                | "official.property.font-size-adjust"
+                | "official.descriptor.font-feature-settings"
+                | "official.value.opentype-tag"
+        ) {
         "I-FONTS4-20260907"
     } else {
         "O-FONTS3"

@@ -1926,8 +1926,11 @@ static OFFICIAL_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
     active_coverage!("baseline.property.font-family"),
     active_coverage!("baseline.property.font-feature-settings"),
     active_coverage!("official.property.font-kerning"),
+    active_coverage!("official.property.font-language-override"),
+    active_coverage!("official.property.font-optical-sizing"),
     active_coverage!("baseline.property.font-size"),
     active_coverage!("official.property.font-size-adjust"),
+    active_coverage!("official.property.font-variation-settings"),
     active_coverage!("baseline.property.font-stretch"),
     active_coverage!("baseline.property.font-style"),
     active_coverage!("official.property.font-synthesis"),
@@ -2120,6 +2123,7 @@ static OFFICIAL_NON_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
     active_coverage!("baseline.descriptor.font-stretch"),
     active_coverage!("baseline.descriptor.unicode-range"),
     active_coverage!("official.descriptor.font-feature-settings"),
+    active_coverage!("official.descriptor.font-variation-settings"),
     active_coverage!("official.value.font-source"),
     active_coverage!("official.value.opentype-tag"),
     active_coverage!("official.value.transform-list"),
@@ -2252,8 +2256,8 @@ const KEYFRAMES_REMAINDER: &str = "Calculation selectors, string names, and decl
 const FONT_SHORTHAND_SUBSET: &str = "Explicit fonts support the selected Fonts 4 family, style, size, and weight components, Fonts 3 variant and width components, and an optional line height. All six system-font alternatives are supported.";
 const FONT_SHORTHAND_REMAINDER: &str =
     "Intrinsic shorthand expansion/reset semantics remain unfinished.";
-const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range and feature-settings descriptors have typed ordinary representations and admit pending whole values for valid env(); invalid descriptors recover independently.";
-const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-variation-settings, font-named-instance and metric overrides remain unsupported.";
+const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range, feature-settings and variation-settings descriptors have typed ordinary representations and admit pending whole values for valid env(); invalid descriptors recover independently.";
+const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-named-instance and metric overrides remain unsupported.";
 const FONT_SOURCE_SUBSET: &str = "url() and local() sources preserve authored order, including empty URL strings, the selected literal family-name grammar, a single format hint and technology hints. Invalid source members recover independently, while invalid descriptor annotations or all-invalid lists discard the descriptor. The four legacy variation strings project to base formats and required variations without changing authored hints; TrueType and OpenType have explicit format equivalence.";
 const FONT_SOURCE_REMAINDER: &str =
     "The src() function from the referenced Values 4 <url> production remains unsupported.";
@@ -2461,10 +2465,13 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::FontVariantLigatures
         | CssKnownProperty::FontVariantNumeric
         | CssKnownProperty::FontVariantPosition => I_FONTS4_20260907,
+        CssKnownProperty::FontSynthesis => O_FONTS3,
         CssKnownProperty::FontFeatureSettings
         | CssKnownProperty::FontKerning
         | CssKnownProperty::FontSizeAdjust
-        | CssKnownProperty::FontSynthesis => O_FONTS3,
+        | CssKnownProperty::FontLanguageOverride
+        | CssKnownProperty::FontOpticalSizing
+        | CssKnownProperty::FontVariationSettings => I_FONTS4_20260907,
         CssKnownProperty::Overflow
         | CssKnownProperty::OverflowX
         | CssKnownProperty::OverflowY
@@ -2717,7 +2724,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 618] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 622] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4030,8 +4037,15 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 618] = [
         "official.descriptor.font-feature-settings",
         CssFeatureKind::Descriptor,
         "font-feature-settings in @font-face",
-        O_FONTS3,
+        I_FONTS4_20260907,
         "#font-rend-desc",
+    ),
+    CssFeatureMetadata::complete(
+        "official.descriptor.font-variation-settings",
+        CssFeatureKind::Descriptor,
+        "font-variation-settings in @font-face",
+        I_FONTS4_20260907,
+        "#descdef-font-face-font-variation-settings",
     ),
     CssFeatureMetadata::partial(
         "official.value.font-source",
@@ -4046,7 +4060,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 618] = [
         "official.value.opentype-tag",
         CssFeatureKind::Value,
         "OpenType feature tag",
-        O_FONTS3,
+        I_FONTS4_20260907,
         "#font-rend-desc",
     ),
     CssFeatureMetadata::complete(
@@ -4829,10 +4843,31 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 618] = [
         &[],
     ),
     CssFeatureMetadata::complete_property(
+        "official.property.font-language-override",
+        CssKnownProperty::FontLanguageOverride,
+        "font-language-override",
+        "#propdef-font-language-override",
+        &[],
+    ),
+    CssFeatureMetadata::complete_property(
+        "official.property.font-optical-sizing",
+        CssKnownProperty::FontOpticalSizing,
+        "font-optical-sizing",
+        "#propdef-font-optical-sizing",
+        &[],
+    ),
+    CssFeatureMetadata::complete_property(
         "official.property.font-size-adjust",
         CssKnownProperty::FontSizeAdjust,
         "font-size-adjust",
         "#propdef-font-size-adjust",
+        &[],
+    ),
+    CssFeatureMetadata::complete_property(
+        "official.property.font-variation-settings",
+        CssKnownProperty::FontVariationSettings,
+        "font-variation-settings",
+        "#propdef-font-variation-settings",
         &[],
     ),
     CssFeatureMetadata::complete_property(

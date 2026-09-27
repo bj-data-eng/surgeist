@@ -91,8 +91,10 @@ fn core_font_wrappers_keep_current_global_and_substitution_branches_distinct() {
                 assert_eq!(font.families().families()[0].as_str(), "Arial");
             }
             CssKnownPropertyValueRef::FontFeatureSettings(value) => {
-                assert!(value.i01_subset().is_some());
-                let _ = value.settings();
+                assert!(matches!(
+                    value.settings(),
+                    surgeist_css::CssAuthoredFontFeatureSettings::Features(_)
+                ));
             }
             _ => panic!("expected core font wrapper"),
         }

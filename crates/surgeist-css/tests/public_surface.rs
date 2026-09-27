@@ -5,13 +5,13 @@ use surgeist_css::{
     CssAuthoredSystemColor, CssCalculationSumOperator, CssColorInterpolationMethod,
     CssColorInterpolationSpace, CssComponentValue, CssCounterStyleRange, CssCounterStyleSpeakAs,
     CssCounterSymbol, CssDefinedFalseMediaReason, CssErrorCode, CssExclusionReason, CssFeatureKind,
-    CssFontFamilyNameKind, CssFontFeature, CssFontFeatureIndex, CssFontFeatureValue, CssFontSize,
-    CssFontSizeAdjust, CssFontSynthesis, CssFontSynthesisValues, CssFontVariantCaps,
-    CssFontVariantEastAsianValues, CssFontVariantLigatureState, CssFontVariantLigatureValues,
-    CssFontVariantNumericFigure, CssFontVariantNumericValues, CssFontVariantPosition,
-    CssFontVariantValues, CssGenericFontFamily, CssGridAutoFlowAxis, CssHueInterpolationMethod,
-    CssImportance, CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
-    CssLanguageRange, CssMediaConditionKind, CssMediaQuery, CssMediaQueryModifier, CssMediaType,
+    CssFontFamilyNameKind, CssFontFeatureIndex, CssFontSize, CssFontSizeAdjust, CssFontSynthesis,
+    CssFontSynthesisValues, CssFontVariantCaps, CssFontVariantEastAsianValues,
+    CssFontVariantLigatureState, CssFontVariantLigatureValues, CssFontVariantNumericFigure,
+    CssFontVariantNumericValues, CssFontVariantPosition, CssFontVariantValues,
+    CssGenericFontFamily, CssGridAutoFlowAxis, CssHueInterpolationMethod, CssImportance,
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLanguageRange,
+    CssMediaConditionKind, CssMediaQuery, CssMediaQueryModifier, CssMediaType,
     CssNamespaceConstraint, CssNamespaceName, CssNamespacePrefix, CssOpenTypeTag,
     CssPredefinedColorSpace, CssPropertyNameRef, CssPseudoClass, CssPseudoElement,
     CssPseudoElementSegment, CssRecoveryAction, CssRelativeColorChannel,
@@ -259,7 +259,7 @@ fn public_surface_exposes_checked_core_font_models() {
 }
 
 #[test]
-fn public_surface_checks_current_opentype_construction_and_preserves_i01_construction() {
+fn public_surface_checks_current_opentype_construction() {
     let tag = CssOpenTypeTag::try_new("kern").expect("four ASCII characters");
     assert_eq!(tag.as_str(), "kern");
     assert!(CssOpenTypeTag::try_new("abc").is_none());
@@ -269,8 +269,8 @@ fn public_surface_checks_current_opentype_construction_and_preserves_i01_constru
 
     let zero = CssFontFeatureIndex::try_new(0).expect("zero index");
     let positive = CssFontFeatureIndex::try_new(7).expect("positive index");
-    assert_eq!(zero.value(), 0);
-    assert_eq!(positive.value(), 7);
+    assert_eq!(zero.i32_value(), Some(0));
+    assert_eq!(positive.i32_value(), Some(7));
     assert!(CssFontFeatureIndex::try_new(-1).is_none());
 
     let feature = CssAuthoredFontFeature::new(tag, CssAuthoredFontFeatureValue::Index(positive));
@@ -281,11 +281,6 @@ fn public_surface_checks_current_opentype_construction_and_preserves_i01_constru
         settings,
         CssAuthoredFontFeatureSettings::Features(_)
     ));
-
-    let legacy = CssFontFeature::try_new("éabc", Some(CssFontFeatureValue::Integer(-1)))
-        .expect("frozen I01 construction remains source-compatible");
-    assert_eq!(legacy.tag(), "éabc");
-    assert_eq!(legacy.value(), Some(CssFontFeatureValue::Integer(-1)));
 }
 
 #[test]

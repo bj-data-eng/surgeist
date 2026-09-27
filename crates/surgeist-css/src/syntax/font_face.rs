@@ -1,5 +1,8 @@
-use super::{CssAuthoredFontFeatureSettings, CssSourcePosition};
-use crate::{CssComponentValues, CssFontFaceStyle, CssFontFaceWeight, CssFontFaceWidth};
+use super::CssSourcePosition;
+use crate::{
+    CssAuthoredFontFeatureSettings, CssComponentValues, CssFontFaceStyle, CssFontFaceWeight,
+    CssFontFaceWidth, CssFontVariationSettings,
+};
 
 mod pending;
 pub use pending::{CssFontFaceValueError, CssFontFaceValueErrorKind};
@@ -47,6 +50,7 @@ pub enum CssFontFaceDescriptorKind {
     FontDisplay,
     UnicodeRange,
     FontFeatureSettings,
+    FontVariationSettings,
 }
 
 impl CssFontFaceDescriptorKind {
@@ -62,6 +66,7 @@ impl CssFontFaceDescriptorKind {
             Self::FontDisplay => "font-display",
             Self::UnicodeRange => "unicode-range",
             Self::FontFeatureSettings => "font-feature-settings",
+            Self::FontVariationSettings => "font-variation-settings",
         }
     }
 
@@ -75,6 +80,7 @@ impl CssFontFaceDescriptorKind {
             Self::FontDisplay,
             Self::UnicodeRange,
             Self::FontFeatureSettings,
+            Self::FontVariationSettings,
         ]
         .into_iter()
         .find(|kind| {
@@ -101,6 +107,7 @@ pub enum CssFontFaceDescriptorValue {
     FontDisplay(CssFontDisplay),
     UnicodeRange(CssUnicodeRangeList),
     FontFeatureSettings(CssAuthoredFontFeatureSettings),
+    FontVariationSettings(CssFontVariationSettings),
 }
 
 impl CssFontFaceDescriptorValue {
@@ -116,6 +123,7 @@ impl CssFontFaceDescriptorValue {
             Self::FontDisplay(_) => CssFontFaceDescriptorKind::FontDisplay,
             Self::UnicodeRange(_) => CssFontFaceDescriptorKind::UnicodeRange,
             Self::FontFeatureSettings(_) => CssFontFaceDescriptorKind::FontFeatureSettings,
+            Self::FontVariationSettings(_) => CssFontFaceDescriptorKind::FontVariationSettings,
         }
     }
 }

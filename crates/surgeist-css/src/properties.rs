@@ -13,6 +13,8 @@ use crate::border_width::*;
 use crate::box_spacing::*;
 use crate::contain_intrinsic_size::*;
 use crate::display::*;
+use crate::font_controls::*;
+use crate::font_settings::*;
 use crate::font_variant::*;
 use crate::gap::*;
 use crate::inset::*;
@@ -186,9 +188,12 @@ macro_rules! property_schema {
             FontVariantPosition, "font-variant-position", [], "official.property.font-variant-position", CssFontVariantPosition, CssFontVariantPositionPropertyValue, CssFontVariantPositionPropertyValueRepresentation, parse_font_variant_position, { parse_font_variant_position($input)? }, expansion = longhand { wrapper: existing, value: CssFontVariantPosition, accessor: position, inherited: true, initial_kind: value, initial: CssFontVariantPosition::Normal };
             FontVariantAlternates, "font-variant-alternates", [], "official.property.font-variant-alternates", CssFontVariantAlternates, CssFontVariantAlternatesPropertyValue, CssFontVariantAlternatesPropertyValueRepresentation, parse_font_variant_alternates, { parse_font_variant_alternates($input)? }, expansion = longhand { wrapper: existing, value: CssFontVariantAlternates, accessor: alternates, inherited: true, initial_kind: value, initial: CssFontVariantAlternates::Normal };
             FontVariantEmoji, "font-variant-emoji", [], "official.property.font-variant-emoji", CssFontVariantEmoji, CssFontVariantEmojiPropertyValue, CssFontVariantEmojiPropertyValueRepresentation, parse_font_variant_emoji, { parse_font_variant_emoji($input)? }, expansion = longhand { wrapper: existing, value: CssFontVariantEmoji, accessor: emoji, inherited: true, initial_kind: value, initial: CssFontVariantEmoji::Normal };
-            FontFeatureSettings, "font-feature-settings", [], "baseline.property.font-feature-settings", CssFontFeatureSettings, CssFontFeatureSettingsPropertyValue, CssFontFeatureSettingsPropertyValueRepresentation, parse_font_feature_settings, { parse_font_feature_settings($input)? };
-            FontKerning, "font-kerning", [], "official.property.font-kerning", CssFontKerning, CssFontKerningPropertyValue, CssFontKerningPropertyValueRepresentation, parse_font_kerning, { parse_font_kerning($input)? };
-            FontSizeAdjust, "font-size-adjust", [], "official.property.font-size-adjust", CssFontSizeAdjust, CssFontSizeAdjustPropertyValue, CssFontSizeAdjustPropertyValueRepresentation, parse_font_size_adjust, { parse_font_size_adjust($input)? };
+            FontFeatureSettings, "font-feature-settings", [], "baseline.property.font-feature-settings", CssAuthoredFontFeatureSettings, CssFontFeatureSettingsPropertyValue, CssFontFeatureSettingsPropertyValueRepresentation, parse_font_feature_settings, { parse_font_feature_settings($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssAuthoredFontFeatureSettings, accessor: settings, inherited: true, initial_kind: value, initial: CssAuthoredFontFeatureSettings::Normal };
+            FontKerning, "font-kerning", [], "official.property.font-kerning", CssFontKerning, CssFontKerningPropertyValue, CssFontKerningPropertyValueRepresentation, parse_font_kerning, { parse_font_kerning($input)? }, expansion = longhand { wrapper: existing, value: CssFontKerning, accessor: kerning, inherited: true, initial_kind: value, initial: CssFontKerning::Auto };
+            FontSizeAdjust, "font-size-adjust", [], "official.property.font-size-adjust", CssFontSizeAdjust, CssFontSizeAdjustPropertyValue, CssFontSizeAdjustPropertyValueRepresentation, parse_font_size_adjust, { parse_font_size_adjust($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssFontSizeAdjust, accessor: size_adjust, inherited: true, initial_kind: value, initial: CssFontSizeAdjust::None };
+            FontLanguageOverride, "font-language-override", [], "official.property.font-language-override", CssFontLanguageOverride, CssFontLanguageOverridePropertyValue, CssFontLanguageOverridePropertyValueRepresentation, parse_font_language_override, { parse_font_language_override($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssFontLanguageOverride, accessor: language_override, inherited: true, initial_kind: value, initial: CssFontLanguageOverride::Normal };
+            FontOpticalSizing, "font-optical-sizing", [], "official.property.font-optical-sizing", CssFontOpticalSizing, CssFontOpticalSizingPropertyValue, CssFontOpticalSizingPropertyValueRepresentation, parse_font_optical_sizing, { parse_font_optical_sizing($input)? }, expansion = longhand { wrapper: additive, value: CssFontOpticalSizing, accessor: optical_sizing, inherited: true, initial_kind: value, initial: CssFontOpticalSizing::Auto };
+            FontVariationSettings, "font-variation-settings", [], "official.property.font-variation-settings", CssFontVariationSettings, CssFontVariationSettingsPropertyValue, CssFontVariationSettingsPropertyValueRepresentation, parse_font_variation_settings, { parse_font_variation_settings($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssFontVariationSettings, accessor: variations, inherited: true, initial_kind: value, initial: CssFontVariationSettings::Normal };
             FontSynthesis, "font-synthesis", [], "official.property.font-synthesis", CssFontSynthesis, CssFontSynthesisPropertyValue, CssFontSynthesisPropertyValueRepresentation, parse_font_synthesis, { parse_font_synthesis($input)? };
             LetterSpacing, "letter-spacing", [], "baseline.property.letter-spacing", CssLetterSpacing, CssLetterSpacingPropertyValue, CssLetterSpacingPropertyValueRepresentation, parse_letter_spacing, { parse_letter_spacing($input, $numeric)? };
             TextWrap, "text-wrap", [], "baseline.property.text-wrap", CssTextWrap, CssTextWrapPropertyValue, CssTextWrapPropertyValueRepresentation, parse_text_wrap, { parse_text_wrap($input)? };
@@ -638,32 +643,6 @@ fn background_box_list_i01_projection(value: &CssBackgroundBoxList) -> Option<Cs
 
 fn exact_i01_projection<T: Clone>(value: &T) -> Option<T> {
     Some(value.clone())
-}
-
-fn font_feature_settings_i01_projection(
-    value: &CssAuthoredFontFeatureSettings,
-) -> CssFontFeatureSettings {
-    match value {
-        CssAuthoredFontFeatureSettings::Normal => CssFontFeatureSettings::Normal,
-        CssAuthoredFontFeatureSettings::Features(features) => {
-            let features = features
-                .features()
-                .iter()
-                .map(|feature| {
-                    let value = match feature.value() {
-                        CssAuthoredFontFeatureValue::Omitted => None,
-                        CssAuthoredFontFeatureValue::On => Some(CssFontFeatureValue::On),
-                        CssAuthoredFontFeatureValue::Off => Some(CssFontFeatureValue::Off),
-                        CssAuthoredFontFeatureValue::Index(value) => {
-                            Some(CssFontFeatureValue::Integer(value.value()))
-                        }
-                    };
-                    CssFontFeature::new(feature.tag().as_str(), value)
-                })
-                .collect();
-            CssFontFeatureSettings::Features(CssFontFeatureList::new(features))
-        }
-    }
 }
 
 macro_rules! define_current_property_value {
@@ -1930,14 +1909,12 @@ macro_rules! define_property_value {
         FontFeatureSettings, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_additive_current_property_value!(
             $canonical,
             $wrapper,
             $representation,
             CssAuthoredFontFeatureSettings,
-            CssFontFeatureSettings,
-            settings,
-            |value| Some(font_feature_settings_i01_projection(value))
+            settings
         );
     };
     (
@@ -3155,6 +3132,36 @@ macro_rules! define_expansion_current_accessor {
 // The schema annotation selects a current-only wrapper for newly authored
 // families without maintaining a second list of their property names.
 macro_rules! define_property_value_from_schema {
+    (FontLanguageOverride, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
+        longhand { wrapper: additive, $($metadata:tt)* }) => {
+        define_additive_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssFontLanguageOverride,
+            language_override
+        );
+    };
+    (FontOpticalSizing, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
+        longhand { wrapper: additive, $($metadata:tt)* }) => {
+        define_additive_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssFontOpticalSizing,
+            optical_sizing
+        );
+    };
+    (FontVariationSettings, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
+        longhand { wrapper: additive, $($metadata:tt)* }) => {
+        define_additive_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssFontVariationSettings,
+            variations
+        );
+    };
     (LineHeight, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
         longhand { wrapper: additive, $($metadata:tt)* }) => {
         define_additive_current_property_value!(

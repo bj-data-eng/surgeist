@@ -1188,6 +1188,17 @@ pub use display::{
 pub use gap::{CssGapShorthand, CssGapValue};
 mod font_width;
 pub use font_width::{CssFontFaceWidth, CssFontStretch, CssFontWidth, CssFontWidthKeyword};
+mod font_controls;
+pub use font_controls::{
+    CssFontKerning, CssFontLanguageOverride, CssFontLanguageString, CssFontOpticalSizing,
+    CssFontSizeAdjust,
+};
+mod font_settings;
+pub use font_settings::{
+    CssAuthoredFontFeature, CssAuthoredFontFeatureList, CssAuthoredFontFeatureSettings,
+    CssAuthoredFontFeatureValue, CssFontFeatureIndex, CssFontVariation, CssFontVariationList,
+    CssFontVariationSettings, CssOpenTypeTag,
+};
 mod font_size;
 pub use font_size::CssFontSize;
 mod line_height;
@@ -1226,7 +1237,7 @@ pub use opacity_scalar::{CssOpacityScalar, CssOpacityScalarKind};
 pub use specified_numeric::{
     CssSpecifiedLength, CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeLength,
     CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
-    CssSpecifiedNonNegativePercentage,
+    CssSpecifiedNonNegativePercentage, CssSpecifiedNumber,
 };
 pub use specified_serialization::{
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,

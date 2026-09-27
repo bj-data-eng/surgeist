@@ -768,6 +768,7 @@ fn authored_css_cases_match_selected_public_report_observables() {
     let mut migrated_display_cases = 0;
     let mut migrated_overflow_auto_cases = 0;
     let mut migrated_alignment_cases = 0;
+    let mut migrated_feature_tag_cases = 0;
     for row in rows {
         // Fixture feature labels record the original capture profile. Validation is
         // now unconditional, so every historical profile runs through the same API.
@@ -783,6 +784,11 @@ fn authored_css_cases_match_selected_public_report_observables() {
         }
         if assert_archived_alignment_match_parent_rejection(&row) {
             migrated_alignment_cases += 1;
+            assert_strict_parity(&row);
+            continue;
+        }
+        if assert_archived_feature_tag_rejection(&row) {
+            migrated_feature_tag_cases += 1;
             assert_strict_parity(&row);
             continue;
         }
@@ -824,6 +830,7 @@ fn authored_css_cases_match_selected_public_report_observables() {
         migrated_container_cases, 3,
         "all three archived unknown-container rejections have explicit current witnesses"
     );
+    assert_eq!(migrated_feature_tag_cases, 1);
     assert_eq!(
         migrated_tolerance_cases, 4,
         "all four archived old-name cases require current rejection witnesses"
@@ -836,6 +843,29 @@ fn authored_css_cases_match_selected_public_report_observables() {
     assert_eq!(migrated_display_cases, 1);
     assert_eq!(migrated_overflow_auto_cases, 3);
     assert_eq!(migrated_alignment_cases, 1);
+}
+
+// The checked current tag grammar rejects the malformed quoted tag itself.
+// The frozen capture diagnosed the following `on` token instead; keep those
+// historical bytes and assert the current diagnostic at the same declaration.
+fn assert_archived_feature_tag_rejection(row: &Row) -> bool {
+    if row.case_id != "catalog.property.baseline.property.font-feature-settings.boundary" {
+        return false;
+    }
+    assert_eq!(row.input, "font-feature-settings: \"abc\" on");
+    assert_eq!(row.clean, "false");
+    assert_eq!(row.retained, "-");
+    assert_eq!(row.values, "-");
+    assert_eq!(row.authored_declarations, "-");
+    assert!(row.diagnostics.contains(":Ident:on/DropDeclaration@29"));
+    let current = observe(row);
+    assert_eq!(current.clean, "false");
+    assert_eq!(current.retained, "-");
+    assert_eq!(
+        current.diagnostics,
+        "InvalidPropertyValue/InvalidPropertyValue:baseline.property.font-feature-settings:a value accepted by the property's grammar:String:\"abc\"/DropDeclaration@23:0:23>0:0:0-31:0:31:31"
+    );
+    true
 }
 
 // Text 4 §7.4 admits match-parent on the last-line longhand. The immutable I01
@@ -3232,6 +3262,35 @@ fn assert_known_property_value(
             );
             return;
         }
+        (
+            surgeist_css::CssKnownProperty::FontFeatureSettings,
+            surgeist_css::CssKnownPropertyValueRef::FontFeatureSettings(value),
+        ) => {
+            let surgeist_css::CssAuthoredFontFeatureSettings::Features(list) = value.settings()
+            else {
+                panic!("{}: expected captured feature list", frozen.case_id);
+            };
+            let [kern, liga] = list.features() else {
+                panic!("{}: expected two captured features", frozen.case_id);
+            };
+            assert_eq!(kern.tag().as_str(), "kern");
+            assert!(matches!(
+                kern.value(),
+                surgeist_css::CssAuthoredFontFeatureValue::On
+            ));
+            assert_eq!(liga.tag().as_str(), "liga");
+            assert!(
+                matches!(liga.value(), surgeist_css::CssAuthoredFontFeatureValue::Index(index) if index.i32_value() == Some(0))
+            );
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                "Features(CssFontFeatureList { features: [CssFontFeature { tag: \"kern\", value: Some(On) }, CssFontFeature { tag: \"liga\", value: Some(Integer(0)) }] })",
+                semantic,
+                authored,
+            );
+            return;
+        }
         _ => {}
     }
     assert_property_specific_value!(
@@ -3292,7 +3351,6 @@ fn assert_known_property_value(
             TextAlignLast,
             TextIndent,
             VerticalAlign,
-            FontFeatureSettings,
             LetterSpacing,
             TextWrap,
             WhiteSpace,

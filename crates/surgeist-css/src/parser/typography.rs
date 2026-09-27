@@ -2,8 +2,7 @@ use super::color::parse_color;
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::values::{
-    CalculationRoot, LengthGrammar, next_is_comma, parse_integer, parse_length_with,
-    parse_numeric_function,
+    CalculationRoot, LengthGrammar, next_is_comma, parse_length_with, parse_numeric_function,
 };
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
 use crate::font_variant::CssFontVariant;
@@ -796,34 +795,6 @@ fn parse_css2_font_variant<'i, 't>(
     }
 }
 
-pub(super) fn parse_font_kerning<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontKerning, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Ident(ident) => match_ignore_ascii_case! { ident,
-            "auto" => Ok(CssFontKerning::Auto),
-            "normal" => Ok(CssFontKerning::Normal),
-            "none" => Ok(CssFontKerning::None),
-            _ => Err(location.new_unexpected_token_error::<Error>(Token::Ident(ident.clone()))),
-        },
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
-}
-
-pub(super) fn parse_font_size_adjust<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontSizeAdjust, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Ident(ident) if ident.eq_ignore_ascii_case("none") => Ok(CssFontSizeAdjust::None),
-        token @ Token::Number { value, .. } => CssNonNegativeNumber::try_new(*value)
-            .map(CssFontSizeAdjust::Number)
-            .ok_or_else(|| location.new_unexpected_token_error::<Error>(token.clone())),
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
-}
-
 pub(super) fn parse_font_synthesis<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontSynthesis, ParseError<'i, Error>> {
@@ -857,88 +828,6 @@ pub(super) fn parse_font_synthesis<'i, 't>(
     CssFontSynthesisValues::try_new(weight, style)
         .map(CssFontSynthesis::Values)
         .ok_or_else(|| unsupported_value(input, None, "font-synthesis requires a value"))
-}
-
-pub(super) fn parse_font_feature_settings<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssAuthoredFontFeatureSettings, ParseError<'i, Error>> {
-    let state = input.state();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        if ident.eq_ignore_ascii_case("normal") && input.is_exhausted() {
-            return Ok(CssAuthoredFontFeatureSettings::Normal);
-        }
-        input.reset(&state);
-    }
-
-    let mut features = Vec::new();
-    loop {
-        features.push(parse_font_feature(input)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "font-feature-settings list has an empty item",
-            ));
-        }
-    }
-
-    CssAuthoredFontFeatureList::try_new(features)
-        .map(CssAuthoredFontFeatureSettings::Features)
-        .ok_or_else(|| unsupported_value(input, None, "font-feature-settings list is empty"))
-}
-
-pub(super) fn parse_font_feature<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssAuthoredFontFeature, ParseError<'i, Error>> {
-    let tag_location = input.current_source_location();
-    let tag = input.expect_string_cloned().map_err(basic)?.to_string();
-    if tag.is_empty() {
-        return Err(unsupported_value(input, None, "font feature tag is empty"));
-    }
-    if tag.chars().count() == 4 && !tag.is_ascii() {
-        return Err(unsupported_value_at(
-            tag_location,
-            None,
-            "font feature tag must be four ASCII characters",
-        ));
-    }
-
-    let value = if input.is_exhausted() || next_is_comma(input) {
-        CssAuthoredFontFeatureValue::Omitted
-    } else if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        match_ignore_ascii_case! { &ident,
-            "on" => CssAuthoredFontFeatureValue::On,
-            "off" => CssAuthoredFontFeatureValue::Off,
-            _ => return Err(unsupported_value(
-                input,
-                None,
-                unsupported_keyword_reason("font feature value", ident.as_ref()),
-            )),
-        }
-    } else {
-        let index_location = input.current_source_location();
-        let value = parse_integer(input, "font feature value")?;
-        let value = CssFontFeatureIndex::try_new(value).ok_or_else(|| {
-            unsupported_value_at(
-                index_location,
-                None,
-                "font feature index must be non-negative",
-            )
-        })?;
-        CssAuthoredFontFeatureValue::Index(value)
-    };
-
-    let tag = CssOpenTypeTag::try_new(tag).ok_or_else(|| {
-        unsupported_value(
-            input,
-            None,
-            "font feature tag must be four ASCII characters",
-        )
-    })?;
-    Ok(CssAuthoredFontFeature::new(tag, value))
 }
 
 pub(super) fn parse_letter_spacing<'i, 't>(

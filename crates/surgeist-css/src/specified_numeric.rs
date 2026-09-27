@@ -119,6 +119,112 @@ enum SpecifiedNumericValue<C> {
     Calculation(C),
 }
 
+/// A signed CSS `<number>` retaining its exact token or symbolic math.
+/// Equality includes source provenance; semantic owners compare structure.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssSpecifiedNumber {
+    value: SpecifiedNumericValue<CssNumberCalculation>,
+}
+
+impl CssSpecifiedNumber {
+    /// Accepts an ordinary number token without narrowing to a machine float.
+    pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
+        if !matches!(
+            component.view(),
+            CssComponentValueRef::Token(CssValueTokenRef::Number(_))
+        ) {
+            return Err(CssNumericConstructionError::at(
+                CssNumericConstructionErrorKind::RootDomainMismatch,
+                Some(&component),
+            ));
+        }
+        Ok(Self {
+            value: SpecifiedNumericValue::Literal(Box::new(component)),
+        })
+    }
+
+    /// Retains checked number math; a bare root reenters literal admission.
+    pub fn try_from_calculation(calculation: CssNumberCalculation) -> ConstructionResult<Self> {
+        let root = significant_root(calculation.components())?;
+        if matches!(root.view(), CssComponentValueRef::Token(_)) {
+            return Self::try_from_component(root.clone());
+        }
+        if !matches!(root.view(), CssComponentValueRef::Function(_)) {
+            return Err(CssNumericConstructionError::at(
+                CssNumericConstructionErrorKind::RootDomainMismatch,
+                Some(root),
+            ));
+        }
+        Ok(Self {
+            value: SpecifiedNumericValue::Calculation(calculation),
+        })
+    }
+
+    #[must_use]
+    pub fn literal_component(&self) -> Option<&CssComponentValue> {
+        match &self.value {
+            SpecifiedNumericValue::Literal(value) => Some(value),
+            SpecifiedNumericValue::Calculation(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub fn calculation(&self) -> Option<&CssNumberCalculation> {
+        match &self.value {
+            SpecifiedNumericValue::Literal(_) => None,
+            SpecifiedNumericValue::Calculation(value) => Some(value),
+        }
+    }
+
+    #[must_use]
+    pub fn origin(&self) -> &CssValueOrigin {
+        match &self.value {
+            SpecifiedNumericValue::Literal(value) => value.origin(),
+            SpecifiedNumericValue::Calculation(value) => value.origin(),
+        }
+    }
+
+    pub fn serialize_specified(&self) -> SerializationResult<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult<String> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let captured = self.capture_specified(&mut context)?;
+        let mut output = String::new();
+        context.append(&mut output, &captured)?;
+        Ok(output)
+    }
+
+    pub(crate) fn capture_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> SerializationResult<String> {
+        match &self.value {
+            SpecifiedNumericValue::Literal(value) => capture_literal(value, context),
+            SpecifiedNumericValue::Calculation(value) => {
+                crate::numeric::capture_specified(&value.expression, context).map(|(text, _)| text)
+            }
+        }
+    }
+
+    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
+        match (&self.value, &other.value) {
+            (SpecifiedNumericValue::Literal(left), SpecifiedNumericValue::Literal(right)) => {
+                left.structural_eq_ignoring_origin(right)
+            }
+            (
+                SpecifiedNumericValue::Calculation(left),
+                SpecifiedNumericValue::Calculation(right),
+            ) => left.expression.structural_eq(&right.expression),
+            _ => false,
+        }
+    }
+}
+
 /// A nonnegative CSS `<number>` retaining its exact token or symbolic math.
 /// Equality includes source provenance; semantic owners can compare structure separately.
 #[derive(Clone, Debug, Eq, PartialEq)]

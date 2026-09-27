@@ -1,0 +1,213 @@
+//! Authored font controls independent of font matching or rendering.
+
+use crate::specified_rule_serialization::SpecifiedRuleWriter;
+use crate::{
+    CssComponentValue, CssComponentValueError, CssComponentValueErrorKind, CssComponentValueRef,
+    CssSpecifiedNonNegativeNumber, CssSpecifiedValueSerializationError,
+    CssSpecifiedValueSerializationLimits, CssValueOrigin, CssValueTokenRef,
+};
+
+type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+
+/// The authored `font-kerning` choice.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssFontKerning {
+    Auto,
+    Normal,
+    None,
+}
+
+/// The authored `font-size-adjust` choice.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum CssFontSizeAdjust {
+    None,
+    Number(CssSpecifiedNonNegativeNumber),
+}
+
+impl PartialEq for CssFontSizeAdjust {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::None, Self::None) => true,
+            (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
+            _ => false,
+        }
+    }
+}
+impl Eq for CssFontSizeAdjust {}
+
+/// A decoded string from the authored `font-language-override` value.
+#[derive(Clone, Debug)]
+pub struct CssFontLanguageString {
+    component: Box<CssComponentValue>,
+}
+
+impl CssFontLanguageString {
+    pub fn try_new(decoded: impl Into<String>) -> Result<Self, CssComponentValueError> {
+        Self::try_from_component(CssComponentValue::try_string(decoded)?)
+    }
+
+    pub fn try_from_component(
+        component: CssComponentValue,
+    ) -> Result<Self, CssComponentValueError> {
+        if !matches!(
+            component.view(),
+            CssComponentValueRef::Token(CssValueTokenRef::String(_))
+        ) {
+            return Err(CssComponentValueError::new(
+                CssComponentValueErrorKind::InvalidString,
+                component.origin().clone(),
+            ));
+        }
+        Ok(Self {
+            component: Box::new(component),
+        })
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        let CssComponentValueRef::Token(CssValueTokenRef::String(value)) = self.component.view()
+        else {
+            unreachable!("checked string component")
+        };
+        value
+    }
+
+    #[must_use]
+    pub const fn component(&self) -> &CssComponentValue {
+        &self.component
+    }
+
+    #[must_use]
+    pub const fn origin(&self) -> &CssValueOrigin {
+        self.component.origin()
+    }
+}
+
+impl PartialEq for CssFontLanguageString {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+impl Eq for CssFontLanguageString {}
+
+/// The authored `font-language-override` value.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssFontLanguageOverride {
+    Normal,
+    String(CssFontLanguageString),
+}
+
+/// The authored `font-optical-sizing` choice.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssFontOpticalSizing {
+    Auto,
+    None,
+}
+
+fn keyword(writer: &mut SpecifiedRuleWriter, value: &str) -> SerializationResult<()> {
+    writer.context.charge_input(1)?;
+    writer.context.charge_projection(1)?;
+    writer.append(value)
+}
+
+impl CssFontKerning {
+    pub fn serialize_specified(&self) -> SerializationResult<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        keyword(
+            &mut writer,
+            match self {
+                Self::Auto => "auto",
+                Self::Normal => "normal",
+                Self::None => "none",
+            },
+        )?;
+        Ok(writer.css)
+    }
+}
+
+impl CssFontSizeAdjust {
+    pub fn serialize_specified(&self) -> SerializationResult<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        match self {
+            Self::None => keyword(&mut writer, "none")?,
+            Self::Number(value) => {
+                let captured = value.capture_specified(&mut writer.context)?;
+                writer.append(&captured)?;
+            }
+        }
+        Ok(writer.css)
+    }
+}
+
+impl CssFontLanguageString {
+    pub fn serialize_specified(&self) -> SerializationResult<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        writer.context.charge_input(1)?;
+        writer.context.charge_projection(1)?;
+        writer.append_string(self.as_str())?;
+        Ok(writer.css)
+    }
+}
+
+impl CssFontLanguageOverride {
+    pub fn serialize_specified(&self) -> SerializationResult<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        match self {
+            Self::Normal => keyword(&mut writer, "normal")?,
+            Self::String(value) => {
+                writer.context.charge_input(1)?;
+                writer.context.charge_projection(1)?;
+                writer.append_string(value.as_str())?;
+            }
+        }
+        Ok(writer.css)
+    }
+}
+
+impl CssFontOpticalSizing {
+    pub fn serialize_specified(&self) -> SerializationResult<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        keyword(
+            &mut writer,
+            match self {
+                Self::Auto => "auto",
+                Self::None => "none",
+            },
+        )?;
+        Ok(writer.css)
+    }
+}

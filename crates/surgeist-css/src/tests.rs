@@ -8455,15 +8455,27 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
         panic!("expected small-caps subgroup");
     };
     assert_eq!(values.caps(), Some(CssFontVariantCaps::SmallCaps));
-    assert_eq!(
-        declaration_value!(
-            ".panel { font-feature-settings: \"kern\" on, \"liga\" 0; }",
-            FontFeatureSettings
-        ),
-        CssFontFeatureSettings::Features(CssFontFeatureList::new(vec![
-            CssFontFeature::new("kern", Some(CssFontFeatureValue::On)),
-            CssFontFeature::new("liga", Some(CssFontFeatureValue::Integer(0))),
-        ]))
+    let feature_declaration = declaration(
+        ".panel { font-feature-settings: \"kern\" on, \"liga\" 0; }",
+        CssProperty::FontFeatureSettings,
+    );
+    let Some(CssKnownPropertyValueRef::FontFeatureSettings(features)) = feature_declaration
+        .known()
+        .and_then(|known| known.property_value())
+    else {
+        panic!("expected current font-feature-settings");
+    };
+    let CssAuthoredFontFeatureSettings::Features(list) = features.settings() else {
+        panic!("expected feature list");
+    };
+    assert_eq!(list.features()[0].tag().as_str(), "kern");
+    assert!(matches!(
+        list.features()[0].value(),
+        CssAuthoredFontFeatureValue::On
+    ));
+    assert_eq!(list.features()[1].tag().as_str(), "liga");
+    assert!(
+        matches!(list.features()[1].value(), CssAuthoredFontFeatureValue::Index(index) if index.i32_value() == Some(0))
     );
 
     let font_declaration = declaration(
@@ -8570,7 +8582,7 @@ fn checked_typography_constructors_reject_invalid_states() {
         CssFontWeightNumber::try_from_component(CssComponentValue::try_number("500").unwrap()),
         Ok(weight_number("500"))
     );
-    assert_eq!(CssFontFeatureList::try_new(Vec::new()), None);
+    assert_eq!(CssAuthoredFontFeatureList::try_new(Vec::new()), None);
     assert_eq!(CssTextDecorationLine::try_new(Vec::new()), None);
     assert!(
         CssExplicitFont::try_new(
@@ -8606,12 +8618,13 @@ fn checked_typography_constructors_reject_invalid_states() {
         CssFontFamilyName::try_ident_sequence(vec![String::new()]),
         None
     );
-    assert_eq!(CssFontFeature::try_new("abc", None), None);
-    assert_eq!(CssFontFeature::try_new("abcde", None), None);
-    assert_eq!(
-        CssFontFeature::try_new("kern", Some(CssFontFeatureValue::On)),
-        Some(CssFontFeature::new("kern", Some(CssFontFeatureValue::On)))
+    assert!(CssOpenTypeTag::try_new("abc").is_none());
+    assert!(CssOpenTypeTag::try_new("abcde").is_none());
+    let feature = CssAuthoredFontFeature::new(
+        CssOpenTypeTag::try_new("kern").unwrap(),
+        CssAuthoredFontFeatureValue::On,
     );
+    assert_eq!(feature.tag().as_str(), "kern");
     assert_eq!(CssVerticalAlignLength::try_new(CssLength::Auto), None);
     assert_eq!(
         CssLetterSpacingLength::try_new(CssLength::percent(10.0)),

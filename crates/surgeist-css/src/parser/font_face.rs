@@ -6,13 +6,14 @@ use cssparser::{
 
 mod unicode_range;
 
+use super::font_settings::{parse_font_feature_settings, parse_font_variation_settings};
 use super::recovery::{
     RecoveryLoopOutcome, RecoveryProgress, RecoveryState, comma_member_span,
     recovery_action_for_error,
 };
 use super::typography::{
-    common_font_style_keyword, parse_absolute_font_weight, parse_font_feature_settings,
-    parse_font_oblique_angle, parse_font_width, parse_non_generic_font_family_name,
+    common_font_style_keyword, parse_absolute_font_weight, parse_font_oblique_angle,
+    parse_font_width, parse_non_generic_font_family_name,
 };
 use super::{block_item_diagnostic, is_declaration_recovery_unit, parse_descriptor_boundary};
 use crate::error::{
@@ -35,6 +36,7 @@ pub(super) static IMPLEMENTED_DESCRIPTORS: &[CssFeatureId] = &[
     CssFeatureId::new("baseline.descriptor.font-display"),
     CssFeatureId::new("baseline.descriptor.unicode-range"),
     CssFeatureId::new("official.descriptor.font-feature-settings"),
+    CssFeatureId::new("official.descriptor.font-variation-settings"),
     CssFeatureId::new("ext.descriptor.font-weight-range"),
     CssFeatureId::new("ext.descriptor.font-style-oblique-range"),
     CssFeatureId::new("ext.descriptor.font-stretch-range"),
@@ -395,7 +397,14 @@ pub(super) fn parse_font_face_value<'i, 't>(
                 CssFontFaceDescriptorValue::UnicodeRange(parse_unicode_range_list(input)?)
             }
             CssFontFaceDescriptorKind::FontFeatureSettings => {
-                CssFontFaceDescriptorValue::FontFeatureSettings(parse_font_feature_settings(input)?)
+                CssFontFaceDescriptorValue::FontFeatureSettings(parse_font_feature_settings(
+                    input, numeric,
+                )?)
+            }
+            CssFontFaceDescriptorKind::FontVariationSettings => {
+                CssFontFaceDescriptorValue::FontVariationSettings(parse_font_variation_settings(
+                    input, numeric,
+                )?)
             }
         })
     })

@@ -1,12 +1,12 @@
 use surgeist_css::{
     CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue, CssErrorCode,
-    CssFontFamilyNameKind, CssFontFeatureSettings, CssFontFeatureValue, CssFontSize, CssFontStyle,
-    CssFontSynthesis, CssFontValue, CssFontVariantCaps, CssFontVariantEastAsian,
-    CssFontVariantEastAsianVariant, CssFontVariantEastAsianWidth, CssFontVariantLigatureState,
-    CssFontVariantLigatures, CssFontVariantNumeric, CssFontVariantNumericFigure,
-    CssFontVariantNumericFraction, CssFontVariantNumericSpacing, CssFontVariantPosition,
-    CssFontVariantValue, CssGenericFontFamily, CssKnownDeclaredValueRef, CssKnownProperty,
-    CssKnownPropertyValueRef, CssLineHeight, CssSystemFont, parse_style_attribute,
+    CssFontFamilyNameKind, CssFontSize, CssFontStyle, CssFontSynthesis, CssFontValue,
+    CssFontVariantCaps, CssFontVariantEastAsian, CssFontVariantEastAsianVariant,
+    CssFontVariantEastAsianWidth, CssFontVariantLigatureState, CssFontVariantLigatures,
+    CssFontVariantNumeric, CssFontVariantNumericFigure, CssFontVariantNumericFraction,
+    CssFontVariantNumericSpacing, CssFontVariantPosition, CssFontVariantValue,
+    CssGenericFontFamily, CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLineHeight, CssSystemFont, parse_style_attribute,
 };
 
 #[test]
@@ -475,7 +475,7 @@ fn kerning_size_adjust_and_synthesis_follow_fonts3() {
     };
     assert!(matches!(
         size_adjust.size_adjust(),
-        surgeist_css::CssFontSizeAdjust::Number(value) if value.value() == 0.5
+        surgeist_css::CssFontSizeAdjust::Number(value) if value.serialize_specified().unwrap() == "0.5"
     ));
 
     let CssKnownPropertyValueRef::FontSynthesis(synthesis) = report.syntax()[2]
@@ -520,9 +520,7 @@ fn font_control_branches_globals_substitution_and_mutations_are_exact() {
         "font-kerning: optimizeSpeed",
         "font-kerning: normal none",
         "font-size-adjust: -0.01",
-        "font-size-adjust: 1e999",
         "font-size-adjust: 1px",
-        "font-size-adjust: calc(1)",
         "font-size-adjust: none 1",
         "font-synthesis: weight weight",
         "font-synthesis: style style",
@@ -870,7 +868,7 @@ fn opentype_tags_and_indices_enforce_ascii_and_nonnegative_domains() {
 }
 
 #[test]
-fn font_feature_settings_preserve_authored_values_and_i01_projection() {
+fn font_feature_settings_preserve_authored_values() {
     let report = parse_style_attribute(
         r#"font-feature-settings: "kern", "\6c iga" on, "zero" off, "ss01" 0, "cv01" 12"#,
     );
@@ -909,27 +907,14 @@ fn font_feature_settings_preserve_authored_values_and_i01_projection() {
     ));
     assert!(matches!(
         features.features()[3].value(),
-        CssAuthoredFontFeatureValue::Index(index) if index.value() == 0
+        CssAuthoredFontFeatureValue::Index(index) if index.i32_value() == Some(0)
     ));
     assert!(matches!(
         features.features()[4].value(),
-        CssAuthoredFontFeatureValue::Index(index) if index.value() == 12
+        CssAuthoredFontFeatureValue::Index(index) if index.i32_value() == Some(12)
     ));
 
-    let Some(CssFontFeatureSettings::Features(legacy)) = value.i01_subset() else {
-        panic!("expected exact I01 projection");
-    };
-    assert_eq!(legacy.features()[0].value(), None);
-    assert_eq!(legacy.features()[1].value(), Some(CssFontFeatureValue::On));
-    assert_eq!(legacy.features()[2].value(), Some(CssFontFeatureValue::Off));
-    assert_eq!(
-        legacy.features()[3].value(),
-        Some(CssFontFeatureValue::Integer(0))
-    );
-    assert_eq!(
-        legacy.features()[4].value(),
-        Some(CssFontFeatureValue::Integer(12))
-    );
+    assert_eq!(features.features().len(), 5);
 }
 
 #[test]

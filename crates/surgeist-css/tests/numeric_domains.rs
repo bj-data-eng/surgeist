@@ -5,8 +5,8 @@ use surgeist_css::{
     CssGridTrackBreadth, CssKeyframePercent, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
     CssLengthDimension, CssLengthUnit, CssNonNegativeNumber, CssOpacity, CssOpacityScalarKind,
     CssOpacityValue, CssRatio, CssRecoveryAction, CssResolution, CssResolutionUnit, CssRule,
-    CssScaleValues, CssTime, CssTimeUnit, CssTokenKind, ErrorKind, parse_sheet,
-    parse_style_attribute,
+    CssScaleValues, CssSpecifiedNonNegativeNumber, CssTime, CssTimeUnit, CssTokenKind, ErrorKind,
+    parse_sheet, parse_style_attribute,
 };
 
 #[test]
@@ -47,9 +47,16 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         f32::MAX
     );
     assert_eq!(CssNonNegativeNumber::try_new(-0.0).unwrap().value(), -0.0);
+    let max_spelling = f32::MAX.to_string();
+    let adjust = CssFontSizeAdjust::Number(
+        CssSpecifiedNonNegativeNumber::try_from_component(
+            CssComponentValue::try_number(&max_spelling).unwrap(),
+        )
+        .unwrap(),
+    );
     assert!(matches!(
-        CssFontSizeAdjust::Number(CssNonNegativeNumber::try_new(f32::MAX).unwrap()),
-        CssFontSizeAdjust::Number(value) if value.value() == f32::MAX
+        adjust,
+        CssFontSizeAdjust::Number(value) if value.serialize_specified().unwrap() == max_spelling
     ));
     assert_eq!(CssOpacity::try_new(1.0).unwrap().value(), 1.0);
     assert_eq!(CssFlexFactor::try_new(f32::MAX).unwrap().value(), f32::MAX);

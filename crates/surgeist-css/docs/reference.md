@@ -1569,6 +1569,32 @@ Its inherited initial is `normal`, and intrinsic longhand expansion produces one
 contribution with the declaration's importance and provenance. Font metrics,
 percentage resolution, and actual line box computation remain downstream.
 
+The six selected font reset longhands now have current typed values and intrinsic
+longhand contributions: `font-feature-settings`, `font-kerning`,
+`font-size-adjust`, `font-language-override`, `font-optical-sizing`, and
+`font-variation-settings`. The two settings lists retain ordered and repeated
+four-character printable ASCII OpenType tags. Feature indices use exact
+nonnegative integer tokens or symbolic integer math; variation axis values use
+exact signed numbers or symbolic number math. `font-size-adjust` keeps an exact
+nonnegative number. `font-language-override` accepts any decoded CSS string,
+including the empty string, while `normal` remains distinct. The selected
+`font-feature-settings` and `font-variation-settings` `@font-face` descriptors
+share these settings grammars and retain ordered occurrences.
+
+Migration from the former feature API: `CssFontFeatureSettings`,
+`CssFontFeatureList`, `CssFontFeature`, and `CssFontFeatureValue` are removed.
+Use `CssAuthoredFontFeatureSettings`, `CssAuthoredFontFeatureList`,
+`CssAuthoredFontFeature`, and `CssAuthoredFontFeatureValue`; the property wrapper
+exposes `settings()` instead of `i01_subset()`. Feature values and indices are
+no longer `Copy`; borrow through `value()` and inspect exact indices with
+`literal_component()`, `calculation()`, or `i32_value()` when representable.
+`CssFontSizeAdjust::Number` now holds `CssSpecifiedNonNegativeNumber`; inspect
+its exact component or calculation instead of a float. The new signed
+`CssSpecifiedNumber` serves variation values. All these scalars and settings
+offer bounded specified serialization. Full `font` shorthand expansion and
+reset semantics remain unfinished in CSS. Font matching and computed value
+resolution remain downstream.
+
 The `@font-face` weight descriptor now uses
 `CssFontFaceWeight::Auto` or `Range { start, end }`, where each endpoint is a
 checked `CssAbsoluteFontWeight` and `end: None` preserves a single authored
@@ -1824,7 +1850,7 @@ replace the old f32-backed `CssFontFaceStretch`, `CssFontFaceStretchValue`, and
 keyword mapping; style and text own contextual font use, and the root facade
 owns cross-crate lowering. Raw descriptor-value parsing now returns
 `CssAuthoredFontFaceDescriptorValue::Ordinary` or `Pending`; the existing
-`CssFontFaceDescriptorValue` remains the eight-variant ordinary type.
+`CssFontFaceDescriptorValue` now includes the variation-settings ordinary variant.
 `CssAuthoredFontFaceDescriptorValue::try_from_components` checks a whole value
 while preserving supplied parsed, programmatic or mixed origins. Only a pending
 value exposes `reparse_after_substitution`, which checks caller-supplied
@@ -1832,8 +1858,7 @@ replacement components and returns an ordinary value; residual `var()` or
 `env()`, recovered components and invalid ordinary grammar are typed failures.
 This API never executes substitution. Intrinsic `font` shorthand expansion/reset
 semantics remain unfinished.
-Selected descriptors including `font-variation-settings`, `font-named-instance`
-and metric overrides remain unfinished.
+Selected descriptors including `font-named-instance` and metric overrides remain unfinished.
 The source-list URL branch accepts `url()` but does not yet implement `src()`
 from the referenced Values 4 `<url>` production. These are CSS implementation
 gaps. Other historical Fonts 3 and Fonts 4 support records
