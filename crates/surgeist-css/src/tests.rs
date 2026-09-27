@@ -4151,7 +4151,7 @@ fn assert_font_style_value(value: CssKnownPropertyValueRef<'_>) {
 }
 
 fn assert_font_stretch_value(value: CssKnownPropertyValueRef<'_>) {
-    assert!(matches!(value, CssKnownPropertyValueRef::FontStretch(_)));
+    assert!(matches!(value, CssKnownPropertyValueRef::FontWidth(_)));
 }
 
 fn assert_font_variant_value(value: CssKnownPropertyValueRef<'_>) {
@@ -5216,9 +5216,20 @@ fn font_face_descriptor_collection_preserves_optional_matching_fields() {
         Some(descriptor_occurrence(CssFontFaceStyle::Oblique(Some(
             CssFontFaceObliqueRange::try_new(-10.0, Some(20.0)).unwrap(),
         )))),
-        Some(descriptor_occurrence(
-            CssFontFaceStretch::try_range_percent(75.0, 125.0).unwrap(),
-        )),
+        Some(descriptor_occurrence(CssFontFaceWidth::Range {
+            start: CssFontWidth::Percentage(
+                CssSpecifiedNonNegativePercentage::try_from_component(
+                    CssComponentValue::try_token("75%").unwrap(),
+                )
+                .unwrap(),
+            ),
+            end: Some(CssFontWidth::Percentage(
+                CssSpecifiedNonNegativePercentage::try_from_component(
+                    CssComponentValue::try_token("125%").unwrap(),
+                )
+                .unwrap(),
+            )),
+        })),
         Some(descriptor_occurrence(CssFontDisplay::Swap)),
         Some(descriptor_occurrence(
             CssUnicodeRangeList::try_new(vec![CssUnicodeRange::try_new(0, 0x7f).unwrap()]).unwrap(),
@@ -5238,13 +5249,14 @@ fn font_face_descriptor_collection_preserves_optional_matching_fields() {
     ));
     assert_eq!(
         descriptors
-            .font_stretch()
+            .font_width()
             .unwrap()
+            .value()
             .end()
             .unwrap()
-            .percent()
-            .value(),
-        125.0
+            .serialize_specified()
+            .unwrap(),
+        "125%"
     );
     assert_eq!(
         descriptors
@@ -5343,26 +5355,25 @@ fn font_face_numeric_descriptors_enforce_invariants() {
         400.0
     );
 
-    assert_eq!(
-        CssFontFaceStretchValue::try_new_percent(0.0)
-            .unwrap()
-            .percent()
-            .value(),
-        0.0
+    assert!(
+        CssSpecifiedNonNegativePercentage::try_from_component(
+            CssComponentValue::try_token("0%").unwrap()
+        )
+        .is_ok()
     );
-    assert_eq!(CssFontFaceStretchValue::try_new_percent(-0.1), None);
-    assert_eq!(
-        CssFontFaceStretchValue::try_new_percent(f32::INFINITY),
-        None
+    assert!(
+        CssSpecifiedNonNegativePercentage::try_from_component(
+            CssComponentValue::try_token("-0.1%").unwrap()
+        )
+        .is_err()
     );
-    assert_eq!(CssFontFaceStretch::try_range_percent(125.0, 75.0), None);
+    let descending_width = CssFontFaceWidth::Range {
+        start: CssFontWidth::Keyword(CssFontWidthKeyword::Expanded),
+        end: Some(CssFontWidth::Keyword(CssFontWidthKeyword::Condensed)),
+    };
     assert_eq!(
-        CssFontFaceStretch::try_single_percent(100.0)
-            .unwrap()
-            .start()
-            .percent()
-            .value(),
-        100.0
+        descending_width.serialize_specified().unwrap(),
+        "expanded condensed"
     );
 
     assert_eq!(
@@ -5527,22 +5538,25 @@ fn font_face_rule_parser_accepts_strict_numeric_ranges() {
     assert_eq!(oblique.end_degrees().unwrap().value(), 20.0);
     assert_eq!(
         descriptors
-            .font_stretch()
+            .font_width()
             .unwrap()
+            .value()
             .start()
-            .percent()
-            .value(),
-        75.0
+            .unwrap()
+            .serialize_specified()
+            .unwrap(),
+        "75%"
     );
     assert_eq!(
         descriptors
-            .font_stretch()
+            .font_width()
             .unwrap()
+            .value()
             .end()
             .unwrap()
-            .percent()
-            .value(),
-        125.0
+            .serialize_specified()
+            .unwrap(),
+        "125%"
     );
 }
 
@@ -7286,7 +7300,7 @@ fn acceptance_typography_and_text_family_matrix_accepts_supported_values() {
             "font-stretch semi-condensed",
             "font-stretch",
             "semi-condensed",
-            CssProperty::FontStretch,
+            CssProperty::FontWidth,
             assert_font_stretch_value
         ),
         value_case!(
@@ -8382,9 +8396,19 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
         declaration_value!(".panel { font-style: italic; }", FontStyle),
         CssFontStyle::Italic
     );
+    let width_declaration = declaration(
+        ".panel { font-stretch: semi-condensed; }",
+        CssProperty::FontWidth,
+    );
+    let Some(CssKnownPropertyValueRef::FontWidth(width)) = width_declaration
+        .known()
+        .and_then(|known| known.property_value())
+    else {
+        panic!("expected current font-width");
+    };
     assert_eq!(
-        declaration_value!(".panel { font-stretch: semi-condensed; }", FontStretch),
-        CssFontStretch::SemiCondensed
+        width.current(),
+        &CssFontWidth::Keyword(CssFontWidthKeyword::SemiCondensed)
     );
     assert_eq!(
         declaration_value!(".panel { font-variant: small-caps; }", FontVariant),
@@ -8586,7 +8610,7 @@ fn typography_and_text_property_families_accept_supported_values() {
         CssProperty::Font,
         CssProperty::FontWeight,
         CssProperty::FontStyle,
-        CssProperty::FontStretch,
+        CssProperty::FontWidth,
         CssProperty::FontVariant,
         CssProperty::FontFeatureSettings,
         CssProperty::LetterSpacing,

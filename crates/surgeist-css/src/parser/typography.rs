@@ -8,6 +8,7 @@ use super::values::{
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
+use crate::{CssFontStretch, CssFontWidth};
 
 pub(super) static IMPLEMENTED_PROPERTY_EXTENSIONS: &[CssFeatureId] =
     &[CssFeatureId::new("ext.property.font-weight-range")];
@@ -578,6 +579,44 @@ pub(super) fn parse_font_stretch<'i, 't>(
             unsupported_keyword_reason("font-stretch", ident.as_ref()),
         )),
     }
+}
+
+pub(super) fn parse_font_width<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<CssFontWidth, ParseError<'i, Error>> {
+    if let Ok(keyword) = input.try_parse(parse_font_stretch) {
+        return Ok(CssFontWidth::Keyword(keyword));
+    }
+    input.skip_whitespace();
+    let state = input.state();
+    let location = input.current_source_location();
+    let root_offset = input.position().byte_index();
+    let percentage = match input.next().map_err(basic)? {
+        Token::Percentage { .. } | Token::Number { .. } | Token::Dimension { .. } => {
+            input.reset(&state);
+            let component = numeric.collect(input).map_err(|_| {
+                unsupported_value_at(location, None, "invalid font-width percentage")
+            })?;
+            crate::CssSpecifiedNonNegativePercentage::try_from_component(component)
+        }
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            let expression =
+                parse_numeric_function(input, &state, numeric, CalculationRoot::Percentage)?;
+            crate::CssSpecifiedNonNegativePercentage::try_from_calculation(
+                CssPercentageCalculation::from_expression(expression),
+            )
+        }
+        token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
+    }
+    .map_err(|error| {
+        unsupported_value_at(
+            numeric.error_location(&error, location, root_offset),
+            None,
+            "font-width requires a nonnegative percentage or width keyword",
+        )
+    })?;
+    Ok(CssFontWidth::Percentage(percentage))
 }
 
 fn parse_css2_font_variant<'i, 't>(

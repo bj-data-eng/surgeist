@@ -1,6 +1,7 @@
 use super::{
     CssAuthoredFontFeatureSettings, CssDescriptorOccurrence, CssFiniteNumber, CssSourcePosition,
 };
+use crate::CssFontFaceWidth;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFaceRule {
@@ -41,7 +42,7 @@ pub enum CssFontFaceDescriptorKind {
     Src,
     FontWeight,
     FontStyle,
-    FontStretch,
+    FontWidth,
     FontDisplay,
     UnicodeRange,
     FontFeatureSettings,
@@ -56,7 +57,7 @@ impl CssFontFaceDescriptorKind {
             Self::Src => "src",
             Self::FontWeight => "font-weight",
             Self::FontStyle => "font-style",
-            Self::FontStretch => "font-stretch",
+            Self::FontWidth => "font-width",
             Self::FontDisplay => "font-display",
             Self::UnicodeRange => "unicode-range",
             Self::FontFeatureSettings => "font-feature-settings",
@@ -69,13 +70,16 @@ impl CssFontFaceDescriptorKind {
             Self::Src,
             Self::FontWeight,
             Self::FontStyle,
-            Self::FontStretch,
+            Self::FontWidth,
             Self::FontDisplay,
             Self::UnicodeRange,
             Self::FontFeatureSettings,
         ]
         .into_iter()
-        .find(|kind| kind.css_name().eq_ignore_ascii_case(name))
+        .find(|kind| {
+            kind.css_name().eq_ignore_ascii_case(name)
+                || (*kind == Self::FontWidth && name.eq_ignore_ascii_case("font-stretch"))
+        })
     }
 }
 
@@ -92,7 +96,7 @@ pub enum CssFontFaceDescriptorValue {
     Src(CssFontFaceSourceList),
     FontWeight(CssFontFaceWeight),
     FontStyle(CssFontFaceStyle),
-    FontStretch(CssFontFaceStretch),
+    FontWidth(CssFontFaceWidth),
     FontDisplay(CssFontDisplay),
     UnicodeRange(CssUnicodeRangeList),
     FontFeatureSettings(CssAuthoredFontFeatureSettings),
@@ -107,7 +111,7 @@ impl CssFontFaceDescriptorValue {
             Self::Src(_) => CssFontFaceDescriptorKind::Src,
             Self::FontWeight(_) => CssFontFaceDescriptorKind::FontWeight,
             Self::FontStyle(_) => CssFontFaceDescriptorKind::FontStyle,
-            Self::FontStretch(_) => CssFontFaceDescriptorKind::FontStretch,
+            Self::FontWidth(_) => CssFontFaceDescriptorKind::FontWidth,
             Self::FontDisplay(_) => CssFontFaceDescriptorKind::FontDisplay,
             Self::UnicodeRange(_) => CssFontFaceDescriptorKind::UnicodeRange,
             Self::FontFeatureSettings(_) => CssFontFaceDescriptorKind::FontFeatureSettings,
@@ -128,8 +132,8 @@ impl CssFontFaceDescriptorValue {
             Self::FontStyle(value) => {
                 CssFontFaceDescriptor::FontStyle(CssDescriptorOccurrence::new(value, position))
             }
-            Self::FontStretch(value) => {
-                CssFontFaceDescriptor::FontStretch(CssDescriptorOccurrence::new(value, position))
+            Self::FontWidth(value) => {
+                CssFontFaceDescriptor::FontWidth(CssDescriptorOccurrence::new(value, position))
             }
             Self::FontDisplay(value) => {
                 CssFontFaceDescriptor::FontDisplay(CssDescriptorOccurrence::new(value, position))
@@ -157,7 +161,7 @@ pub struct CssFontFaceDescriptors {
     src: Option<CssDescriptorOccurrence<CssFontFaceSourceList>>,
     font_weight: Option<CssDescriptorOccurrence<CssFontFaceWeight>>,
     font_style: Option<CssDescriptorOccurrence<CssFontFaceStyle>>,
-    font_stretch: Option<CssDescriptorOccurrence<CssFontFaceStretch>>,
+    font_width: Option<CssDescriptorOccurrence<CssFontFaceWidth>>,
     font_display: Option<CssDescriptorOccurrence<CssFontDisplay>>,
     unicode_range: Option<CssDescriptorOccurrence<CssUnicodeRangeList>>,
     font_feature_settings: Option<CssDescriptorOccurrence<CssAuthoredFontFeatureSettings>>,
@@ -172,7 +176,7 @@ impl CssFontFaceDescriptors {
         src: Option<CssDescriptorOccurrence<CssFontFaceSourceList>>,
         font_weight: Option<CssDescriptorOccurrence<CssFontFaceWeight>>,
         font_style: Option<CssDescriptorOccurrence<CssFontFaceStyle>>,
-        font_stretch: Option<CssDescriptorOccurrence<CssFontFaceStretch>>,
+        font_width: Option<CssDescriptorOccurrence<CssFontFaceWidth>>,
         font_display: Option<CssDescriptorOccurrence<CssFontDisplay>>,
         unicode_range: Option<CssDescriptorOccurrence<CssUnicodeRangeList>>,
     ) -> Self {
@@ -189,8 +193,8 @@ impl CssFontFaceDescriptors {
         if let Some(value) = font_style {
             occurrences.push(CssFontFaceDescriptor::FontStyle(value));
         }
-        if let Some(value) = font_stretch {
-            occurrences.push(CssFontFaceDescriptor::FontStretch(value));
+        if let Some(value) = font_width {
+            occurrences.push(CssFontFaceDescriptor::FontWidth(value));
         }
         if let Some(value) = font_display {
             occurrences.push(CssFontFaceDescriptor::FontDisplay(value));
@@ -207,7 +211,7 @@ impl CssFontFaceDescriptors {
         let mut src = None;
         let mut font_weight = None;
         let mut font_style = None;
-        let mut font_stretch = None;
+        let mut font_width = None;
         let mut font_display = None;
         let mut unicode_range = None;
         let mut font_feature_settings = None;
@@ -218,7 +222,7 @@ impl CssFontFaceDescriptors {
                 CssFontFaceDescriptor::Src(value) => src = Some(value.clone()),
                 CssFontFaceDescriptor::FontWeight(value) => font_weight = Some(value.clone()),
                 CssFontFaceDescriptor::FontStyle(value) => font_style = Some(value.clone()),
-                CssFontFaceDescriptor::FontStretch(value) => font_stretch = Some(value.clone()),
+                CssFontFaceDescriptor::FontWidth(value) => font_width = Some(value.clone()),
                 CssFontFaceDescriptor::FontDisplay(value) => font_display = Some(value.clone()),
                 CssFontFaceDescriptor::UnicodeRange(value) => unicode_range = Some(value.clone()),
                 CssFontFaceDescriptor::FontFeatureSettings(value) => {
@@ -232,7 +236,7 @@ impl CssFontFaceDescriptors {
             src,
             font_weight,
             font_style,
-            font_stretch,
+            font_width,
             font_display,
             unicode_range,
             font_feature_settings,
@@ -265,9 +269,9 @@ impl CssFontFaceDescriptors {
     }
 
     #[must_use]
-    /// Returns the effective last valid authored `font-stretch` occurrence.
-    pub const fn font_stretch(&self) -> Option<&CssDescriptorOccurrence<CssFontFaceStretch>> {
-        self.font_stretch.as_ref()
+    /// Returns the effective last valid authored `font-width` occurrence.
+    pub const fn font_width(&self) -> Option<&CssDescriptorOccurrence<CssFontFaceWidth>> {
+        self.font_width.as_ref()
     }
 
     #[must_use]
@@ -302,7 +306,7 @@ pub(crate) enum CssFontFaceDescriptor {
     Src(CssDescriptorOccurrence<CssFontFaceSourceList>),
     FontWeight(CssDescriptorOccurrence<CssFontFaceWeight>),
     FontStyle(CssDescriptorOccurrence<CssFontFaceStyle>),
-    FontStretch(CssDescriptorOccurrence<CssFontFaceStretch>),
+    FontWidth(CssDescriptorOccurrence<CssFontFaceWidth>),
     FontDisplay(CssDescriptorOccurrence<CssFontDisplay>),
     UnicodeRange(CssDescriptorOccurrence<CssUnicodeRangeList>),
     FontFeatureSettings(CssDescriptorOccurrence<CssAuthoredFontFeatureSettings>),
@@ -315,7 +319,7 @@ impl CssFontFaceDescriptor {
             Self::Src(value) => CssFontFaceDescriptorRef::Src(value),
             Self::FontWeight(value) => CssFontFaceDescriptorRef::FontWeight(value),
             Self::FontStyle(value) => CssFontFaceDescriptorRef::FontStyle(value),
-            Self::FontStretch(value) => CssFontFaceDescriptorRef::FontStretch(value),
+            Self::FontWidth(value) => CssFontFaceDescriptorRef::FontWidth(value),
             Self::FontDisplay(value) => CssFontFaceDescriptorRef::FontDisplay(value),
             Self::UnicodeRange(value) => CssFontFaceDescriptorRef::UnicodeRange(value),
             Self::FontFeatureSettings(value) => {
@@ -333,7 +337,7 @@ pub enum CssFontFaceDescriptorRef<'a> {
     Src(&'a CssDescriptorOccurrence<CssFontFaceSourceList>),
     FontWeight(&'a CssDescriptorOccurrence<CssFontFaceWeight>),
     FontStyle(&'a CssDescriptorOccurrence<CssFontFaceStyle>),
-    FontStretch(&'a CssDescriptorOccurrence<CssFontFaceStretch>),
+    FontWidth(&'a CssDescriptorOccurrence<CssFontFaceWidth>),
     FontDisplay(&'a CssDescriptorOccurrence<CssFontDisplay>),
     UnicodeRange(&'a CssDescriptorOccurrence<CssUnicodeRangeList>),
     FontFeatureSettings(&'a CssDescriptorOccurrence<CssAuthoredFontFeatureSettings>),
@@ -758,116 +762,6 @@ impl CssFontFaceObliqueRange {
     #[must_use]
     pub const fn end_degrees(self) -> Option<CssFiniteNumber> {
         self.end_degrees
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssFontFaceStretch {
-    start: CssFontFaceStretchValue,
-    end: Option<CssFontFaceStretchValue>,
-    keyword: Option<CssFontFaceStretchKeyword>,
-}
-
-impl CssFontFaceStretch {
-    #[must_use]
-    pub fn from_keyword(keyword: CssFontFaceStretchKeyword) -> Self {
-        Self {
-            start: CssFontFaceStretchValue {
-                percent: CssFiniteNumber::new_unchecked(keyword.percent()),
-            },
-            end: None,
-            keyword: Some(keyword),
-        }
-    }
-
-    #[must_use]
-    pub fn try_single_percent(percent: f32) -> Option<Self> {
-        Some(Self {
-            start: CssFontFaceStretchValue::try_new_percent(percent)?,
-            end: None,
-            keyword: None,
-        })
-    }
-
-    #[must_use]
-    pub fn try_range_percent(start: f32, end: f32) -> Option<Self> {
-        let start = CssFontFaceStretchValue::try_new_percent(start)?;
-        let end = CssFontFaceStretchValue::try_new_percent(end)?;
-        if start.percent().value() <= end.percent().value() {
-            Some(Self {
-                start,
-                end: Some(end),
-                keyword: None,
-            })
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub const fn start(self) -> CssFontFaceStretchValue {
-        self.start
-    }
-
-    #[must_use]
-    pub const fn end(self) -> Option<CssFontFaceStretchValue> {
-        self.end
-    }
-
-    #[must_use]
-    pub const fn keyword(self) -> Option<CssFontFaceStretchKeyword> {
-        self.keyword
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssFontFaceStretchKeyword {
-    UltraCondensed,
-    ExtraCondensed,
-    Condensed,
-    SemiCondensed,
-    Normal,
-    SemiExpanded,
-    Expanded,
-    ExtraExpanded,
-    UltraExpanded,
-}
-
-impl CssFontFaceStretchKeyword {
-    const fn percent(self) -> f32 {
-        match self {
-            Self::UltraCondensed => 50.0,
-            Self::ExtraCondensed => 62.5,
-            Self::Condensed => 75.0,
-            Self::SemiCondensed => 87.5,
-            Self::Normal => 100.0,
-            Self::SemiExpanded => 112.5,
-            Self::Expanded => 125.0,
-            Self::ExtraExpanded => 150.0,
-            Self::UltraExpanded => 200.0,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssFontFaceStretchValue {
-    percent: CssFiniteNumber,
-}
-
-impl CssFontFaceStretchValue {
-    #[must_use]
-    pub fn try_new_percent(percent: f32) -> Option<Self> {
-        if percent >= 0.0 {
-            CssFiniteNumber::try_new(percent).map(|percent| Self { percent })
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub const fn percent(self) -> CssFiniteNumber {
-        self.percent
     }
 }
 

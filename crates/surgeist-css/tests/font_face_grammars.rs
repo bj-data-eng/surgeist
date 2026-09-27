@@ -1,8 +1,8 @@
 use surgeist_css::{
     CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue, CssErrorCode,
-    CssFontFaceDescriptorRef, CssFontFaceSource, CssFontFaceStretchKeyword,
-    CssFontFaceWeightKeyword, CssFontFormatHint, CssFontTechHint, CssRecoveryAction, CssRule,
-    parse_sheet,
+    CssFontFaceDescriptorRef, CssFontFaceSource, CssFontFaceWeightKeyword, CssFontFaceWidth,
+    CssFontFormatHint, CssFontTechHint, CssFontWidth, CssFontWidthKeyword, CssRecoveryAction,
+    CssRule, parse_sheet,
 };
 
 fn assert_strict_parity(source: &str) {
@@ -258,10 +258,13 @@ fn font_face_preserves_occurrences_and_uses_last_valid_descriptor() {
         rule.descriptors().font_weight().unwrap().keyword(),
         Some(CssFontFaceWeightKeyword::Bold)
     );
-    assert_eq!(
-        rule.descriptors().font_stretch().unwrap().keyword(),
-        Some(CssFontFaceStretchKeyword::Expanded)
-    );
+    assert!(matches!(
+        rule.descriptors().font_width().unwrap().value(),
+        CssFontFaceWidth::Range {
+            start: CssFontWidth::Keyword(CssFontWidthKeyword::Expanded),
+            end: None
+        }
+    ));
     assert!(matches!(
         rule.descriptors().font_feature_settings().unwrap().value(),
         CssAuthoredFontFeatureSettings::Features(_)
@@ -279,7 +282,7 @@ fn font_face_preserves_occurrences_and_uses_last_valid_descriptor() {
     ));
     assert!(matches!(
         occurrences[3],
-        CssFontFaceDescriptorRef::FontStretch(_)
+        CssFontFaceDescriptorRef::FontWidth(_)
     ));
     assert!(matches!(
         occurrences[4],
@@ -337,15 +340,15 @@ fn fonts3_descriptor_values_and_selected_fonts4_ranges_are_typed() {
     }
 
     for (authored, expected) in [
-        ("ultra-condensed", CssFontFaceStretchKeyword::UltraCondensed),
-        ("extra-condensed", CssFontFaceStretchKeyword::ExtraCondensed),
-        ("condensed", CssFontFaceStretchKeyword::Condensed),
-        ("semi-condensed", CssFontFaceStretchKeyword::SemiCondensed),
-        ("normal", CssFontFaceStretchKeyword::Normal),
-        ("semi-expanded", CssFontFaceStretchKeyword::SemiExpanded),
-        ("expanded", CssFontFaceStretchKeyword::Expanded),
-        ("extra-expanded", CssFontFaceStretchKeyword::ExtraExpanded),
-        ("ultra-expanded", CssFontFaceStretchKeyword::UltraExpanded),
+        ("ultra-condensed", CssFontWidthKeyword::UltraCondensed),
+        ("extra-condensed", CssFontWidthKeyword::ExtraCondensed),
+        ("condensed", CssFontWidthKeyword::Condensed),
+        ("semi-condensed", CssFontWidthKeyword::SemiCondensed),
+        ("normal", CssFontWidthKeyword::Normal),
+        ("semi-expanded", CssFontWidthKeyword::SemiExpanded),
+        ("expanded", CssFontWidthKeyword::Expanded),
+        ("extra-expanded", CssFontWidthKeyword::ExtraExpanded),
+        ("ultra-expanded", CssFontWidthKeyword::UltraExpanded),
     ] {
         let source =
             format!("@font-face{{font-family:Demo;src:url(face);font-stretch:{authored}}}");
@@ -355,8 +358,11 @@ fn fonts3_descriptor_values_and_selected_fonts4_ranges_are_typed() {
             panic!("expected font-face for {authored}");
         };
         assert_eq!(
-            rule.descriptors().font_stretch().unwrap().keyword(),
-            Some(expected)
+            rule.descriptors().font_width().unwrap().value(),
+            &CssFontFaceWidth::Range {
+                start: CssFontWidth::Keyword(expected),
+                end: None
+            }
         );
         assert_strict_parity(&source);
     }

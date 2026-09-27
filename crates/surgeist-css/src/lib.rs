@@ -1184,6 +1184,8 @@ pub use display::{
     CssDisplayListItemInside, CssDisplayOutside, CssDisplayValue,
 };
 pub use gap::{CssGapShorthand, CssGapValue};
+mod font_width;
+pub use font_width::{CssFontFaceWidth, CssFontStretch, CssFontWidth, CssFontWidthKeyword};
 pub use inset::{CssInsetPair, CssInsetShorthand, CssInsetValue};
 pub use integer_value::CssIntegerLiteral;
 pub use overflow::CssOverflowValue;
@@ -1202,13 +1204,13 @@ pub use text_alignment::{
 mod float_clear;
 mod overflow;
 mod overflow_controls;
-mod specified_length;
+mod specified_numeric;
 mod specified_serialization;
 mod writing_modes;
 pub use opacity_scalar::{CssOpacityScalar, CssOpacityScalarKind};
-pub use specified_length::{
+pub use specified_numeric::{
     CssSpecifiedLength, CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeLength,
-    CssSpecifiedNonNegativeLengthPercentage,
+    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativePercentage,
 };
 pub use specified_serialization::{
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,

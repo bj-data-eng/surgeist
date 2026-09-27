@@ -4,6 +4,7 @@
 //! frozen property set. Public identity values describe authored property names;
 //! they do not apply cascade, substitute variables, or resolve authored values.
 
+use crate::CssFontWidth;
 use crate::border_color::{
     CssBorderColorPair, CssBorderColorShorthand, CssParsedBorderColorShorthand,
 };
@@ -175,7 +176,7 @@ macro_rules! property_schema {
             Font, "font", [], "baseline.property.font", CssFontValue, CssFontPropertyValue, CssFontPropertyValueRepresentation, parse_font, { parse_font($input, $numeric)? };
             FontWeight, "font-weight", [], "baseline.property.font-weight", CssFontWeight, CssFontWeightPropertyValue, CssFontWeightPropertyValueRepresentation, parse_font_weight, { parse_font_weight($input)? };
             FontStyle, "font-style", [], "baseline.property.font-style", CssFontStyle, CssFontStylePropertyValue, CssFontStylePropertyValueRepresentation, parse_font_style, { parse_font_style($input)? };
-            FontStretch, "font-stretch", [], "baseline.property.font-stretch", CssFontStretch, CssFontStretchPropertyValue, CssFontStretchPropertyValueRepresentation, parse_font_stretch, { parse_font_stretch($input)? };
+            FontWidth, "font-width", ["font-stretch"], "baseline.property.font-stretch", CssFontWidth, CssFontWidthPropertyValue, CssFontWidthPropertyValueRepresentation, parse_font_width, { parse_font_width($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssFontWidth, accessor: current, inherited: true, initial_kind: value, initial: CssFontWidth::Keyword(CssFontWidthKeyword::Normal) };
             FontVariant, "font-variant", [], "baseline.property.font-variant", CssFontVariantValue, CssFontVariantPropertyValue, CssFontVariantPropertyValueRepresentation, parse_font_variant, { parse_font_variant($input)? };
             FontVariantCaps, "font-variant-caps", [], "official.property.font-variant-caps", CssFontVariantCaps, CssFontVariantCapsPropertyValue, CssFontVariantCapsPropertyValueRepresentation, parse_font_variant_caps, { parse_font_variant_caps($input)? };
             FontVariantEastAsian, "font-variant-east-asian", [], "official.property.font-variant-east-asian", CssFontVariantEastAsian, CssFontVariantEastAsianPropertyValue, CssFontVariantEastAsianPropertyValueRepresentation, parse_font_variant_east_asian, { parse_font_variant_east_asian($input)? };

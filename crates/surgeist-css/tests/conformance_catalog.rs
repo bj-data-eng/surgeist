@@ -2,12 +2,12 @@ use surgeist_css::{
     CssAngleCalculation, CssAngleUnit, CssBasicShapeValue, CssBlendMode, CssBoxEdgeKeyword,
     CssBoxShadow, CssCalculationType, CssClipPathValue, CssDelayLiteral, CssEasingValue,
     CssErrorCode, CssExclusionReason, CssFeatureKind, CssFilterFunctionValue, CssFilterValue,
-    CssFrequencyCalculation, CssFrequencyUnit, CssHorizontalPosition, CssIntegerCalculation,
-    CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssLengthCalculation,
-    CssLengthDimension, CssLengthUnit, CssNumberCalculation, CssPercentageCalculation,
-    CssRecoveryAction, CssResolution, CssResolutionUnit, CssRule, CssSpecificationTier,
-    CssSupportStatus, CssSupportsConditionKind, CssTimeCalculation, CssTimeUnit,
-    CssTransformFunctionValue, CssTransformPerspective, CssTransformScaleComponent,
+    CssFontFaceDescriptorRef, CssFrequencyCalculation, CssFrequencyUnit, CssHorizontalPosition,
+    CssIntegerCalculation, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
+    CssLengthCalculation, CssLengthDimension, CssLengthUnit, CssNumberCalculation,
+    CssPercentageCalculation, CssRecoveryAction, CssResolution, CssResolutionUnit, CssRule,
+    CssSpecificationTier, CssSupportStatus, CssSupportsConditionKind, CssTimeCalculation,
+    CssTimeUnit, CssTransformFunctionValue, CssTransformPerspective, CssTransformScaleComponent,
     CssTransformValue, CssVerticalPosition, ErrorKind, conformance_exclusion,
     conformance_exclusions, feature_metadata, parse_sheet, parse_style_attribute,
     property_support_metadata, specification_source, specification_sources,
@@ -110,13 +110,13 @@ const FONT_FACE_STYLE_RANGE_SUBSET: &str =
     "Font-face oblique style with one or two increasing -90deg through 90deg angles is supported.";
 const FONT_FACE_STYLE_RANGE_REMAINDER: &str =
     "Other unselected Fonts 4 font-style descriptor grammar remains unsupported.";
-const FONT_FACE_STRETCH_RANGE_SUBSET: &str = "Font-face non-negative percentage stretch values and increasing two-value ranges are supported.";
-const FONT_FACE_STRETCH_RANGE_REMAINDER: &str =
-    "Other unselected Fonts 4 font-stretch descriptor grammar remains unsupported.";
+const FONT_FACE_WIDTH_SUBSET: &str = "Ordinary auto and one or two authored font-width values are supported under both font-width and font-stretch descriptor names.";
+const FONT_FACE_WIDTH_REMAINDER: &str =
+    "Valid whole-descriptor env() substitution is not yet retained as a pending descriptor value.";
 const FONT_SHORTHAND_SUBSET: &str = "Explicit fonts support the selected Fonts 4 family grammar, Fonts 3 style, variant, width and size components, integer weights from 1 through 1000, and optional line height. All six system-font alternatives are supported.";
 const FONT_SHORTHAND_REMAINDER: &str = "Oblique angles, non-integer font weights, xxx-large and math font sizes, and other Fonts 4 shorthand component forms remain unsupported.";
-const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, stretch, display, unicode-range and feature-settings descriptors have typed representations; invalid descriptors recover independently.";
-const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-width, font-variation-settings, font-named-instance and metric overrides remain unsupported.";
+const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range and feature-settings descriptors have typed representations; invalid descriptors recover independently.";
+const FONT_FACE_RULE_REMAINDER: &str = "Pending whole-descriptor env() substitution is unsupported; selected Fonts 4 descriptors including font-variation-settings, font-named-instance and metric overrides also remain unsupported.";
 const FONT_SOURCE_SUBSET: &str = "url() and local() sources preserve authored order, including empty URL strings, the selected literal family-name grammar, a single format hint and technology hints. Invalid source members recover independently, while invalid descriptor annotations or all-invalid lists discard the descriptor. The four legacy variation strings project to base formats and required variations without changing authored hints; TrueType and OpenType have explicit format equivalence.";
 const FONT_SOURCE_REMAINDER: &str =
     "The src() function from the referenced Values 4 <url> production remains unsupported.";
@@ -243,12 +243,6 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
             "0.5",
         ),
         (
-            "baseline.property.font-stretch",
-            "font-stretch",
-            "#propdef-font-stretch",
-            "condensed",
-        ),
-        (
             "baseline.property.font-style",
             "font-style",
             "#propdef-font-style",
@@ -313,7 +307,7 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
     let font_face = parse_sheet(concat!(
         "@font-face { font-family: Demo Sans; ",
         "src: local(\"Demo Sans\"), url(demo.woff2) format(\"woff2\"); ",
-        "font-style: oblique; font-weight: 700; font-stretch: condensed; ",
+        "font-style: oblique; font-weight: 700; font-width: condensed; ",
         "unicode-range: U+0-7F; font-feature-settings: \"kern\" on; }"
     ));
     assert!(font_face.is_clean(), "{:?}", font_face.diagnostics());
@@ -330,12 +324,6 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
             "baseline.descriptor.font-weight",
             CssFeatureKind::Descriptor,
             "font-weight in @font-face",
-            "#font-prop-desc",
-        ),
-        (
-            "baseline.descriptor.font-stretch",
-            CssFeatureKind::Descriptor,
-            "font-stretch in @font-face",
             "#font-prop-desc",
         ),
         (
@@ -430,15 +418,6 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
             "font-style: oblique -10deg 20deg",
             "font-style: oblique 91deg",
         ),
-        (
-            "ext.descriptor.font-stretch-range",
-            "font-stretch percentage ranges in @font-face",
-            "#font-stretch-desc",
-            FONT_FACE_STRETCH_RANGE_SUBSET,
-            FONT_FACE_STRETCH_RANGE_REMAINDER,
-            "font-stretch: 75% 125%",
-            "font-stretch: -1%",
-        ),
     ] {
         let report = parse_sheet(&format!(
             "@font-face {{ font-family: Demo; src: url(demo.woff2); {authored}; }}"
@@ -499,6 +478,58 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
         unknown_hint.diagnostics()[0].action(),
         CssRecoveryAction::DropDescriptor
     );
+}
+
+#[test]
+fn selected_font_width_records_keep_historical_ids_and_canonical_names() {
+    let property = feature_metadata("baseline.property.font-stretch").unwrap();
+    assert_eq!(property.kind(), CssFeatureKind::Property);
+    assert_eq!(property.spelling(), "font-width");
+    assert_eq!(property.source().id().as_str(), "I-FONTS4-20260907");
+    assert_eq!(property.production(), "#propdef-font-width");
+    assert_eq!(property.status(), CssSupportStatus::Complete);
+    assert_eq!(property.supported_subset(), None);
+    assert_eq!(property.unsupported_remainder(), None);
+    let support = property_support_metadata("font-stretch").expect("legacy property name");
+    assert_eq!(support.property(), CssKnownProperty::FontWidth);
+    assert_eq!(support.canonical_name(), "font-width");
+    assert_eq!(support.aliases(), &["font-stretch"]);
+
+    let descriptor = feature_metadata("baseline.descriptor.font-stretch").unwrap();
+    assert_eq!(descriptor.kind(), CssFeatureKind::Descriptor);
+    assert_eq!(descriptor.spelling(), "font-width in @font-face");
+    assert_eq!(descriptor.source().id().as_str(), "I-FONTS4-20260907");
+    assert_eq!(descriptor.production(), "#font-prop-desc");
+    assert_eq!(descriptor.status(), CssSupportStatus::Partial);
+    assert_eq!(descriptor.supported_subset(), Some(FONT_FACE_WIDTH_SUBSET));
+    assert_eq!(
+        descriptor.unsupported_remainder(),
+        Some(FONT_FACE_WIDTH_REMAINDER)
+    );
+
+    let range = feature_metadata("ext.descriptor.font-stretch-range").unwrap();
+    assert_eq!(range.kind(), CssFeatureKind::Descriptor);
+    assert_eq!(range.spelling(), "ordinary font-width ranges in @font-face");
+    assert_eq!(range.source().id().as_str(), "I-FONTS4-20260907");
+    assert_eq!(range.production(), "#font-prop-desc");
+    assert_eq!(range.status(), CssSupportStatus::Complete);
+    assert_eq!(range.supported_subset(), None);
+    assert_eq!(range.unsupported_remainder(), None);
+
+    for name in ["font-width", "font-stretch"] {
+        let report = parse_sheet(&format!(
+            "@font-face {{ font-family: Demo; src: url(demo.woff2); {name}: 125% 75%; }}"
+        ));
+        assert!(report.is_clean(), "{name}: {:?}", report.diagnostics());
+        let [CssRule::FontFace(face)] = report.syntax().rules() else {
+            panic!("one font face with {name}")
+        };
+        assert!(face.descriptors().font_width().is_some(), "{name}");
+        assert!(matches!(
+            face.descriptors().occurrences().last(),
+            Some(CssFontFaceDescriptorRef::FontWidth(_))
+        ));
+    }
 }
 
 fn assert_clean_color(authored: &str) {
@@ -1055,8 +1086,8 @@ const EXPECTED: &[ExpectedFeature] = &[
             "@font-face { font-family: Inter; src: url(inter.woff2); }",
         )),
         negative: Some((
-            Input::Sheet("@font-face { font-width: 100%; }"),
-            CssErrorCode::UnknownDescriptor,
+            Input::Sheet("@font-face { font-width: 75% 100% 125%; }"),
+            CssErrorCode::InvalidDescriptorValue,
         )),
     },
     ExpectedFeature {
@@ -1439,17 +1470,20 @@ const EXPECTED: &[ExpectedFeature] = &[
     ExpectedFeature {
         id: "baseline.descriptor.font-stretch",
         kind: CssFeatureKind::Descriptor,
-        spelling: "font-stretch in @font-face",
-        source: ExpectedSource::Id("O-FONTS3"),
+        spelling: "font-width in @font-face",
+        source: ExpectedSource::Id("I-FONTS4-20260907"),
         production: "#font-prop-desc",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
+        status: CssSupportStatus::Partial,
+        supported_subset: Some(FONT_FACE_WIDTH_SUBSET),
+        unsupported_remainder: Some(FONT_FACE_WIDTH_REMAINDER),
         recognized_code: None,
         positive: Some(Input::Sheet(
-            "@font-face { font-family: Inter; src: url(inter.woff2); font-stretch: condensed; }",
+            "@font-face { font-family: Inter; src: url(inter.woff2); font-width: condensed; }",
         )),
-        negative: None,
+        negative: Some((
+            Input::Sheet("@font-face { font-width: env(width); }"),
+            CssErrorCode::InvalidDescriptorValue,
+        )),
     },
     ExpectedFeature {
         id: "baseline.descriptor.font-display",
@@ -1832,7 +1866,6 @@ fn c14_amended_ledger_public_metadata_is_reconciled() {
         "ext.value.basic-shape",
         "ext.descriptor.font-weight-range",
         "ext.descriptor.font-style-oblique-range",
-        "ext.descriptor.font-stretch-range",
         "ext.property.font-weight-range",
         "ext.supports.selector",
     ] {
@@ -2262,13 +2295,6 @@ fn c14_retained_partial_extensions_have_direct_public_evidence() {
             CssFeatureKind::Descriptor,
             Input::Sheet(
                 "@font-face { font-family: Demo; src: url(demo.woff2); font-style: oblique -10deg 20deg; }",
-            ),
-        ),
-        (
-            "ext.descriptor.font-stretch-range",
-            CssFeatureKind::Descriptor,
-            Input::Sheet(
-                "@font-face { font-family: Demo; src: url(demo.woff2); font-stretch: 75% 125%; }",
             ),
         ),
         (

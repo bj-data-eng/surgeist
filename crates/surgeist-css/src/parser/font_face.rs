@@ -10,8 +10,11 @@ use super::recovery::{
     RecoveryLoopOutcome, RecoveryProgress, RecoveryState, comma_member_span,
     recovery_action_for_error,
 };
-use super::typography::{parse_font_feature_settings, parse_non_generic_font_family_name};
+use super::typography::{
+    parse_font_feature_settings, parse_font_width, parse_non_generic_font_family_name,
+};
 use super::{block_item_diagnostic, is_declaration_recovery_unit, parse_descriptor_boundary};
+use crate::CssFontFaceWidth;
 use crate::error::{
     CssFeatureId, Error, basic, descriptor_name_error, from_parse_error, incomplete_descriptor_at,
     unsupported_value, unsupported_value_at, with_descriptor_context,
@@ -148,10 +151,12 @@ impl<'i> DeclarationParser<'i> for FontFaceDescriptorParser<'i> {
             )
         })?;
         let mut member_diagnostics = Vec::new();
+        let numeric = crate::numeric::NumericInputContext::parsed(self.recovery.source_snapshot());
         let value = parse_font_face_value(
             self.source,
             input,
             kind,
+            &numeric,
             &mut member_diagnostics,
             &mut implicit_closures,
         )
@@ -168,6 +173,7 @@ pub(super) fn parse_font_face_value<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     kind: CssFontFaceDescriptorKind,
+    numeric: &crate::numeric::NumericInputContext<'_>,
     member_diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     implicit_closures: &mut Vec<usize>,
 ) -> Result<CssFontFaceDescriptorValue, ParseError<'i, Error>> {
@@ -185,8 +191,8 @@ pub(super) fn parse_font_face_value<'i, 't>(
             CssFontFaceDescriptorKind::FontStyle => {
                 CssFontFaceDescriptorValue::FontStyle(parse_font_face_style(input)?)
             }
-            CssFontFaceDescriptorKind::FontStretch => {
-                CssFontFaceDescriptorValue::FontStretch(parse_font_face_stretch(input)?)
+            CssFontFaceDescriptorKind::FontWidth => {
+                CssFontFaceDescriptorValue::FontWidth(parse_font_face_width(input, numeric)?)
             }
             CssFontFaceDescriptorKind::FontDisplay => {
                 CssFontFaceDescriptorValue::FontDisplay(parse_font_display(input)?)
@@ -524,49 +530,23 @@ fn parse_angle_degrees<'i, 't>(
     }
 }
 
-fn parse_font_face_stretch<'i, 't>(
+fn parse_font_face_width<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontFaceStretch, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        let keyword = match_ignore_ascii_case! { &ident,
-            "ultra-condensed" => CssFontFaceStretchKeyword::UltraCondensed,
-            "extra-condensed" => CssFontFaceStretchKeyword::ExtraCondensed,
-            "condensed" => CssFontFaceStretchKeyword::Condensed,
-            "semi-condensed" => CssFontFaceStretchKeyword::SemiCondensed,
-            "normal" => CssFontFaceStretchKeyword::Normal,
-            "semi-expanded" => CssFontFaceStretchKeyword::SemiExpanded,
-            "expanded" => CssFontFaceStretchKeyword::Expanded,
-            "extra-expanded" => CssFontFaceStretchKeyword::ExtraExpanded,
-            "ultra-expanded" => CssFontFaceStretchKeyword::UltraExpanded,
-            _ => return Err(unsupported_value_at(
-                location,
-                None,
-                unsupported_keyword_reason("font-stretch descriptor", ident.as_ref()),
-            )),
-        };
-        return Ok(CssFontFaceStretch::from_keyword(keyword));
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<CssFontFaceWidth, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("auto"))
+        .is_ok()
+    {
+        return Ok(CssFontFaceWidth::Auto);
     }
-
-    let first = parse_font_stretch_percent(input)?;
-    if input.is_exhausted() {
-        CssFontFaceStretch::try_single_percent(first)
-            .ok_or_else(|| unsupported_value(input, None, "invalid font-stretch descriptor"))
+    let start = parse_font_width(input, numeric)?;
+    let end = if input.is_exhausted() {
+        None
     } else {
-        let second = parse_font_stretch_percent(input)?;
-        CssFontFaceStretch::try_range_percent(first, second)
-            .ok_or_else(|| unsupported_value(input, None, "invalid font-stretch descriptor range"))
-    }
-}
-
-fn parse_font_stretch_percent<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<f32, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Percentage { unit_value, .. } => Ok(*unit_value * 100.0),
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
+        Some(parse_font_width(input, numeric)?)
+    };
+    Ok(CssFontFaceWidth::Range { start, end })
 }
 
 pub(super) fn parse_font_display<'i, 't>(

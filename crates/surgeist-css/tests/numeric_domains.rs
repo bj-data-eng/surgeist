@@ -1,12 +1,12 @@
 use surgeist_css::{
     CssAnimationIterationCount, CssAnimationIterationNumber, CssAspectRatio, CssErrorCode,
     CssFiniteNumber, CssFlexFactor, CssFlowTolerance, CssFlowToleranceRef, CssFontFaceObliqueRange,
-    CssFontFaceStretchValue, CssFontFaceWeightValue, CssFontSizeAdjust, CssFontWeightNumber,
-    CssGridRepeatInteger, CssGridTrackBreadth, CssKeyframePercent, CssKnownProperty,
-    CssKnownPropertyValueRef, CssLength, CssLengthDimension, CssLengthUnit, CssNonNegativeNumber,
-    CssOpacity, CssOpacityScalarKind, CssOpacityValue, CssRatio, CssRecoveryAction, CssResolution,
-    CssResolutionUnit, CssRule, CssScaleValues, CssTime, CssTimeUnit, CssTokenKind, ErrorKind,
-    parse_sheet, parse_style_attribute,
+    CssFontFaceWeightValue, CssFontSizeAdjust, CssFontWeightNumber, CssGridRepeatInteger,
+    CssGridTrackBreadth, CssKeyframePercent, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
+    CssLengthDimension, CssLengthUnit, CssNonNegativeNumber, CssOpacity, CssOpacityScalarKind,
+    CssOpacityValue, CssRatio, CssRecoveryAction, CssResolution, CssResolutionUnit, CssRule,
+    CssScaleValues, CssTime, CssTimeUnit, CssTokenKind, ErrorKind, parse_sheet,
+    parse_style_attribute,
 };
 
 #[test]
@@ -27,7 +27,6 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         assert_eq!(CssScaleValues::try_new(vec![value]), None);
         assert_eq!(CssFontFaceWeightValue::try_new(value), None);
         assert_eq!(CssFontFaceObliqueRange::try_new(value, None), None);
-        assert_eq!(CssFontFaceStretchValue::try_new_percent(value), None);
         assert_eq!(CssResolution::try_new(value, CssResolutionUnit::Dppx), None);
         assert_eq!(CssTime::try_new(value, CssTimeUnit::Seconds), None);
         assert_eq!(CssAnimationIterationNumber::try_new(value), None);

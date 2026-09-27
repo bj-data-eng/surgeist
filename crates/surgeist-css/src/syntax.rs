@@ -15,7 +15,7 @@ pub(crate) use crate::media_features::*;
 pub(crate) use crate::numeric::*;
 use crate::{
     CssColorAngleLiteral, CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError,
-    CssValueOrigin,
+    CssFontStretch, CssValueOrigin,
 };
 use crate::{
     CssContainerScrollQuery, CssContainerStyleQuery, CssFontFeatureValuesRule,
@@ -6544,20 +6544,6 @@ pub enum CssFontStyle {
     Normal,
     Italic,
     Oblique,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssFontStretch {
-    Normal,
-    UltraCondensed,
-    ExtraCondensed,
-    Condensed,
-    SemiCondensed,
-    SemiExpanded,
-    Expanded,
-    ExtraExpanded,
-    UltraExpanded,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

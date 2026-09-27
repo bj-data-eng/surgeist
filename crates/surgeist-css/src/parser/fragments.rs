@@ -366,6 +366,7 @@ pub fn parse_font_face_descriptor_value(
                 source,
                 &mut input,
                 descriptor,
+                &crate::numeric::NumericInputContext::parsed(state.source_snapshot()),
                 &mut diagnostics,
                 &mut openings,
             )?;

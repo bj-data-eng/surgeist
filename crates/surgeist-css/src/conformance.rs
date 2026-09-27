@@ -2258,13 +2258,13 @@ const FONT_FACE_STYLE_RANGE_SUBSET: &str =
     "Font-face oblique style with one or two increasing -90deg through 90deg angles is supported.";
 const FONT_FACE_STYLE_RANGE_REMAINDER: &str =
     "Other unselected Fonts 4 font-style descriptor grammar remains unsupported.";
-const FONT_FACE_STRETCH_RANGE_SUBSET: &str = "Font-face non-negative percentage stretch values and increasing two-value ranges are supported.";
-const FONT_FACE_STRETCH_RANGE_REMAINDER: &str =
-    "Other unselected Fonts 4 font-stretch descriptor grammar remains unsupported.";
+const FONT_FACE_WIDTH_SUBSET: &str = "Ordinary auto and one or two authored font-width values are supported under both font-width and font-stretch descriptor names.";
+const FONT_FACE_WIDTH_REMAINDER: &str =
+    "Valid whole-descriptor env() substitution is not yet retained as a pending descriptor value.";
 const FONT_SHORTHAND_SUBSET: &str = "Explicit fonts support the selected Fonts 4 family grammar, Fonts 3 style, variant, width and size components, integer weights from 1 through 1000, and optional line height. All six system-font alternatives are supported.";
 const FONT_SHORTHAND_REMAINDER: &str = "Oblique angles, non-integer font weights, xxx-large and math font sizes, and other Fonts 4 shorthand component forms remain unsupported.";
-const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, stretch, display, unicode-range and feature-settings descriptors have typed representations; invalid descriptors recover independently.";
-const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-width, font-variation-settings, font-named-instance and metric overrides remain unsupported.";
+const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range and feature-settings descriptors have typed representations; invalid descriptors recover independently.";
+const FONT_FACE_RULE_REMAINDER: &str = "Pending whole-descriptor env() substitution is unsupported; selected Fonts 4 descriptors including font-variation-settings, font-named-instance and metric overrides also remain unsupported.";
 const FONT_SOURCE_SUBSET: &str = "url() and local() sources preserve authored order, including empty URL strings, the selected literal family-name grammar, a single format hint and technology hints. Invalid source members recover independently, while invalid descriptor annotations or all-invalid lists discard the descriptor. The four legacy variation strings project to base formats and required variations without changing authored hints; TrueType and OpenType have explicit format equivalence.";
 const FONT_SOURCE_REMAINDER: &str =
     "The src() function from the referenced Values 4 <url> production remains unsupported.";
@@ -2458,11 +2458,12 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::ImageRendering
         | CssKnownProperty::ObjectFit
         | CssKnownProperty::ObjectPosition => O_IMAGES3,
-        CssKnownProperty::FontFamily | CssKnownProperty::Font => I_FONTS4_20260907,
+        CssKnownProperty::FontFamily | CssKnownProperty::Font | CssKnownProperty::FontWidth => {
+            I_FONTS4_20260907
+        }
         CssKnownProperty::FontSize
         | CssKnownProperty::FontWeight
         | CssKnownProperty::FontStyle
-        | CssKnownProperty::FontStretch
         | CssKnownProperty::FontVariant
         | CssKnownProperty::FontVariantCaps
         | CssKnownProperty::FontVariantEastAsian
@@ -4013,12 +4014,14 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 616] = [
         O_FONTS3,
         "#font-prop-desc",
     ),
-    CssFeatureMetadata::complete(
+    CssFeatureMetadata::partial(
         "baseline.descriptor.font-stretch",
         CssFeatureKind::Descriptor,
-        "font-stretch in @font-face",
-        O_FONTS3,
+        "font-width in @font-face",
+        I_FONTS4_20260907,
         "#font-prop-desc",
+        FONT_FACE_WIDTH_SUBSET,
+        FONT_FACE_WIDTH_REMAINDER,
     ),
     CssFeatureMetadata::complete(
         "baseline.descriptor.font-display",
@@ -4075,14 +4078,12 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 616] = [
         FONT_FACE_STYLE_RANGE_SUBSET,
         FONT_FACE_STYLE_RANGE_REMAINDER,
     ),
-    CssFeatureMetadata::partial(
+    CssFeatureMetadata::complete(
         "ext.descriptor.font-stretch-range",
         CssFeatureKind::Descriptor,
-        "font-stretch percentage ranges in @font-face",
-        I_FONTS4,
-        "#font-stretch-desc",
-        FONT_FACE_STRETCH_RANGE_SUBSET,
-        FONT_FACE_STRETCH_RANGE_REMAINDER,
+        "ordinary font-width ranges in @font-face",
+        I_FONTS4_20260907,
+        "#font-prop-desc",
     ),
     CssFeatureMetadata::complete(
         "ext.value.font-source-modern-hints",
@@ -4767,10 +4768,10 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 616] = [
     ),
     CssFeatureMetadata::complete_property(
         "baseline.property.font-stretch",
-        CssKnownProperty::FontStretch,
-        "font-stretch",
-        "#propdef-font-stretch",
-        &[],
+        CssKnownProperty::FontWidth,
+        "font-width",
+        "#propdef-font-width",
+        CssKnownProperty::FontWidth.aliases(),
     ),
     CssFeatureMetadata::complete_property(
         "baseline.property.font-variant",

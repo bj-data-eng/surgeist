@@ -1009,7 +1009,8 @@ fn public_surface_font_format_models_enforce_fonts4_cardinality() {
 #[test]
 fn public_surface_font_face_descriptor_current_models_are_checked() {
     use surgeist_css::{
-        CssFontFaceStretch, CssFontFaceStretchKeyword, CssFontFaceWeight, CssFontFaceWeightKeyword,
+        CssFontFaceWeight, CssFontFaceWeightKeyword, CssFontFaceWidth, CssFontWidth,
+        CssFontWidthKeyword,
     };
 
     assert_eq!(
@@ -1021,11 +1022,14 @@ fn public_surface_font_face_descriptor_current_models_are_checked() {
         Some(CssFontFaceWeightKeyword::Bold)
     );
     assert_eq!(CssFontFaceWeight::try_range(700.0, 400.0), None);
+    let descending = CssFontFaceWidth::Range {
+        start: CssFontWidth::Keyword(CssFontWidthKeyword::UltraExpanded),
+        end: Some(CssFontWidth::Keyword(CssFontWidthKeyword::Condensed)),
+    };
     assert_eq!(
-        CssFontFaceStretch::from_keyword(CssFontFaceStretchKeyword::UltraExpanded).keyword(),
-        Some(CssFontFaceStretchKeyword::UltraExpanded)
+        descending.serialize_specified().unwrap(),
+        "ultra-expanded condensed"
     );
-    assert_eq!(CssFontFaceStretch::try_range_percent(125.0, 75.0), None);
 }
 
 #[test]

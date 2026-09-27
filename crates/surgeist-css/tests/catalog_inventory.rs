@@ -73,6 +73,7 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
             "column-gap" => &["grid-column-gap"],
             "gap" => &["grid-gap"],
             "overflow-wrap" => &["word-wrap"],
+            "font-width" => &["font-stretch"],
             _ => &[],
         };
         assert_eq!(metadata.aliases(), expected_aliases);
@@ -80,10 +81,10 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
         if !expected_aliases.is_empty() {
             assert_eq!(
                 feature.source().id().as_str(),
-                if vector.canonical_name == "overflow-wrap" {
-                    "S-TEXT3"
-                } else {
-                    "S-ALIGN3"
+                match vector.canonical_name {
+                    "overflow-wrap" => "S-TEXT3",
+                    "font-width" => "I-FONTS4-20260907",
+                    _ => "S-ALIGN3",
                 }
             );
             assert_eq!(feature.status(), CssSupportStatus::Complete);
@@ -135,6 +136,7 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
         ("color", "O-COLOR4"),
         ("background", "O-BACKGROUNDS3"),
         ("font", "I-FONTS4-20260907"),
+        ("font-width", "I-FONTS4-20260907"),
         ("direction", "O-WRITING3"),
         ("box-sizing", "I-SIZING3-20260904"),
         ("writing-mode", "S-WRITING4"),

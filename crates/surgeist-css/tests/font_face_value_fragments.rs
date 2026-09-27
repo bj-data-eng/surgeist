@@ -3,11 +3,12 @@
 //! Raw values use font-face grammar without inventing a descriptor-name occurrence.
 //! Unicode-range expectations follow CSS Syntax 3 section 7.1.
 use surgeist_css::{
-    CssAuthoredFontFeatureSettings, CssErrorCode, CssFontDisplay,
+    CssAuthoredFontFeatureSettings, CssComponentValue, CssErrorCode, CssFontDisplay,
     CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value, CssFontFaceFamily,
-    CssFontFaceSource, CssFontFaceSourceList, CssFontFaceStretch, CssFontFaceStyle,
-    CssFontFaceWeight, CssFontLocalName, CssRecoveryAction, CssRule, CssUnicodeRange,
-    CssUnicodeRangeList, ErrorKind, parse_font_face_descriptor_value, parse_sheet,
+    CssFontFaceSource, CssFontFaceSourceList, CssFontFaceStyle, CssFontFaceWeight,
+    CssFontFaceWidth, CssFontLocalName, CssFontWidth, CssRecoveryAction, CssRule,
+    CssSpecifiedNonNegativePercentage, CssUnicodeRange, CssUnicodeRangeList, ErrorKind,
+    parse_font_face_descriptor_value, parse_sheet,
 };
 
 fn local_x() -> CssFontFaceSourceList {
@@ -63,9 +64,22 @@ fn every_descriptor_kind_returns_its_source_neutral_typed_value() {
             Value::FontStyle(CssFontFaceStyle::Italic),
         ),
         (
-            Kind::FontStretch,
+            Kind::FontWidth,
             "75% 125%",
-            Value::FontStretch(CssFontFaceStretch::try_range_percent(75.0, 125.0).unwrap()),
+            Value::FontWidth(CssFontFaceWidth::Range {
+                start: CssFontWidth::Percentage(
+                    CssSpecifiedNonNegativePercentage::try_from_component(
+                        CssComponentValue::try_token("75%").unwrap(),
+                    )
+                    .unwrap(),
+                ),
+                end: Some(CssFontWidth::Percentage(
+                    CssSpecifiedNonNegativePercentage::try_from_component(
+                        CssComponentValue::try_token("125%").unwrap(),
+                    )
+                    .unwrap(),
+                )),
+            }),
         ),
         (
             Kind::FontDisplay,

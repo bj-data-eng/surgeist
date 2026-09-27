@@ -216,7 +216,10 @@ impl FontFaceDescriptorKind {
     }
 
     const fn css_name(self) -> &'static str {
-        self.css_kind().css_name()
+        match self {
+            Self::FontStretch => "font-stretch",
+            _ => self.css_kind().css_name(),
+        }
     }
 
     pub const fn css_kind(self) -> CssFontFaceDescriptorKind {
@@ -225,7 +228,7 @@ impl FontFaceDescriptorKind {
             Self::Src => CssFontFaceDescriptorKind::Src,
             Self::FontWeight => CssFontFaceDescriptorKind::FontWeight,
             Self::FontStyle => CssFontFaceDescriptorKind::FontStyle,
-            Self::FontStretch => CssFontFaceDescriptorKind::FontStretch,
+            Self::FontStretch => CssFontFaceDescriptorKind::FontWidth,
             Self::FontDisplay => CssFontFaceDescriptorKind::FontDisplay,
             Self::UnicodeRange => CssFontFaceDescriptorKind::UnicodeRange,
             Self::FontFeatureSettings => CssFontFaceDescriptorKind::FontFeatureSettings,
@@ -239,7 +242,7 @@ impl FontFaceDescriptorKind {
                 | (Self::Src, CssFontFaceDescriptorRef::Src(_))
                 | (Self::FontWeight, CssFontFaceDescriptorRef::FontWeight(_))
                 | (Self::FontStyle, CssFontFaceDescriptorRef::FontStyle(_))
-                | (Self::FontStretch, CssFontFaceDescriptorRef::FontStretch(_))
+                | (Self::FontStretch, CssFontFaceDescriptorRef::FontWidth(_))
                 | (Self::FontDisplay, CssFontFaceDescriptorRef::FontDisplay(_))
                 | (
                     Self::UnicodeRange,

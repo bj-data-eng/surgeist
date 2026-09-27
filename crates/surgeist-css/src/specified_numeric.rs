@@ -1,10 +1,11 @@
-//! Exact, checked authored length domains for CSS properties.
+//! Exact, checked authored length and percentage domains for CSS properties.
 
 use crate::{
     CssComponentValue, CssComponentValueRef, CssLengthCalculation, CssLengthPercentageCalculation,
     CssLengthUnit, CssNumericConstructionError, CssNumericConstructionErrorKind,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, CssValueOrigin, CssValueTokenRef,
+    CssPercentageCalculation, CssSpecifiedValueSerializationError,
+    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
+    CssValueTokenRef,
     specified_serialization::{SpecifiedSerializationContext, format_lexical_shift},
 };
 
@@ -33,12 +34,15 @@ fn checked_literal(
     component: &CssComponentValue,
     allow_percentage: bool,
     nonnegative: bool,
+    percentage_only: bool,
 ) -> ConstructionResult<()> {
     let (number, unit) = match component.view() {
-        CssComponentValueRef::Token(CssValueTokenRef::Number(number)) => {
+        CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if !percentage_only => {
             (number, LiteralUnit::Unitless)
         }
-        CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) => {
+        CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
+            if !percentage_only =>
+        {
             CssLengthUnit::from_css_unit(unit).ok_or_else(|| {
                 CssNumericConstructionError::at(
                     CssNumericConstructionErrorKind::RootDomainMismatch,
@@ -124,7 +128,7 @@ enum SpecifiedLengthValue<C> {
 impl CssSpecifiedLength {
     /// Checks a literal length or exact unitless zero without floating-point conversion.
     pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
-        checked_literal(&component, false, false)?;
+        checked_literal(&component, false, false, false)?;
         Ok(Self {
             value: SpecifiedLengthValue::Literal(Box::new(component)),
         })
@@ -218,7 +222,7 @@ pub struct CssSpecifiedNonNegativeLength {
 impl CssSpecifiedNonNegativeLength {
     /// Checks a literal length or exact unitless zero without floating-point conversion.
     pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
-        checked_literal(&component, false, true)?;
+        checked_literal(&component, false, true, false)?;
         Ok(Self {
             value: SpecifiedLengthValue::Literal(Box::new(component)),
         })
@@ -324,7 +328,7 @@ pub struct CssSpecifiedLengthPercentage {
 impl CssSpecifiedLengthPercentage {
     /// Checks a literal length, percentage, or exact unitless zero without floating-point conversion.
     pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
-        checked_literal(&component, true, false)?;
+        checked_literal(&component, true, false, false)?;
         Ok(Self {
             value: SpecifiedLengthValue::Literal(Box::new(component)),
         })
@@ -432,7 +436,7 @@ pub struct CssSpecifiedNonNegativeLengthPercentage {
 impl CssSpecifiedNonNegativeLengthPercentage {
     /// Checks an ordinary value exactly, including negative values too small for `f32`.
     pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
-        checked_literal(&component, true, true)?;
+        checked_literal(&component, true, true, false)?;
         Ok(Self {
             value: SpecifiedLengthValue::Literal(Box::new(component)),
         })
@@ -527,6 +531,109 @@ impl CssSpecifiedNonNegativeLengthPercentage {
                 left.structural_eq(right)
             }
             _ => false,
+        }
+    }
+}
+
+/// A nonnegative CSS `<percentage>` retaining exact literal spelling or checked math.
+#[derive(Clone, Debug)]
+pub struct CssSpecifiedNonNegativePercentage {
+    value: SpecifiedLengthValue<CssPercentageCalculation>,
+}
+
+impl PartialEq for CssSpecifiedNonNegativePercentage {
+    fn eq(&self, other: &Self) -> bool {
+        match (&self.value, &other.value) {
+            (SpecifiedLengthValue::Literal(left), SpecifiedLengthValue::Literal(right)) => {
+                left.structural_eq_ignoring_origin(right)
+            }
+            (SpecifiedLengthValue::Calculation(left), SpecifiedLengthValue::Calculation(right)) => {
+                left.expression.structural_eq(&right.expression)
+            }
+            _ => false,
+        }
+    }
+}
+
+impl Eq for CssSpecifiedNonNegativePercentage {}
+
+impl CssSpecifiedNonNegativePercentage {
+    /// Checks a percentage token exactly, including negative zero and tiny negatives.
+    pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
+        checked_literal(&component, true, true, true)?;
+        Ok(Self {
+            value: SpecifiedLengthValue::Literal(Box::new(component)),
+        })
+    }
+
+    /// Retains checked percentage math; a bare token re-enters literal validation.
+    pub fn try_from_calculation(calculation: CssPercentageCalculation) -> ConstructionResult<Self> {
+        let root = significant_root(calculation.components())?;
+        if matches!(root.view(), CssComponentValueRef::Token(_)) {
+            return Self::try_from_component(root.clone());
+        }
+        if !matches!(root.view(), CssComponentValueRef::Function(_)) {
+            return Err(CssNumericConstructionError::at(
+                CssNumericConstructionErrorKind::RootDomainMismatch,
+                Some(root),
+            ));
+        }
+        Ok(Self {
+            value: SpecifiedLengthValue::Calculation(calculation),
+        })
+    }
+
+    /// Borrows the exact literal token, if this is an ordinary percentage.
+    pub fn literal_component(&self) -> Option<&CssComponentValue> {
+        match &self.value {
+            SpecifiedLengthValue::Literal(component) => Some(component),
+            SpecifiedLengthValue::Calculation(_) => None,
+        }
+    }
+
+    /// Borrows checked symbolic percentage math, when present.
+    pub fn calculation(&self) -> Option<&CssPercentageCalculation> {
+        match &self.value {
+            SpecifiedLengthValue::Literal(_) => None,
+            SpecifiedLengthValue::Calculation(calculation) => Some(calculation),
+        }
+    }
+
+    /// Returns the root's parsed or programmatic origin.
+    pub fn origin(&self) -> &CssValueOrigin {
+        match &self.value {
+            SpecifiedLengthValue::Literal(component) => component.origin(),
+            SpecifiedLengthValue::Calculation(calculation) => calculation.origin(),
+        }
+    }
+
+    /// Serializes the canonical specified percentage with default limits.
+    pub fn serialize_specified(&self) -> SerializationResult<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Serializes atomically under shared input, projection, and byte budgets.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult<String> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let captured = self.capture_specified(&mut context)?;
+        let mut output = String::new();
+        context.append(&mut output, &captured)?;
+        Ok(output)
+    }
+
+    pub(crate) fn capture_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> SerializationResult<String> {
+        match &self.value {
+            SpecifiedLengthValue::Literal(component) => capture_literal(component, context),
+            SpecifiedLengthValue::Calculation(calculation) => {
+                crate::numeric::capture_specified(&calculation.expression, context)
+                    .map(|(text, _)| text)
+            }
         }
     }
 }

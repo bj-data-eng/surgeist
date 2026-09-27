@@ -9,7 +9,6 @@
 use std::fmt;
 use std::sync::Arc;
 
-use crate::CssSpecifiedLength;
 use crate::border_color::*;
 use crate::border_radius::*;
 use crate::border_style::*;
@@ -32,6 +31,7 @@ use crate::{
     CssPropertyValueParseError, CssSpecifiedLengthPercentage,
     CssSpecifiedNonNegativeLengthPercentage,
 };
+use crate::{CssFontWidth, CssFontWidthKeyword, CssSpecifiedLength};
 
 /// Why intrinsic expansion could not produce completed contributions.
 #[non_exhaustive]

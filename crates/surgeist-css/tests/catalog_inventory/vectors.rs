@@ -280,7 +280,7 @@ pub const PROPERTY_POSITIVE_VECTORS: &[PropertyVector] = &[
     vector!("baseline.property.font-style", "font-style", "italic"),
     vector!(
         "baseline.property.font-stretch",
-        "font-stretch",
+        "font-width",
         "semi-condensed"
     ),
     vector!(
@@ -916,7 +916,7 @@ pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
     vector!("baseline.property.font", "font", "bold sans-serif"),
     vector!("baseline.property.font-weight", "font-weight", "1001"),
     vector!("baseline.property.font-style", "font-style", "bold"),
-    vector!("baseline.property.font-stretch", "font-stretch", "wide"),
+    vector!("baseline.property.font-stretch", "font-width", "wide"),
     vector!("baseline.property.font-variant", "font-variant", "italic"),
     vector!(
         "baseline.property.font-feature-settings",

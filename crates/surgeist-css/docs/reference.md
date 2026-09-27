@@ -1642,29 +1642,56 @@ technology is required together. `tech()` retains its exact authored order and
 repetitions. `CssFontFormatHint::is_equivalent_to` recognizes TrueType/OpenType
 compatibility while ordinary equality keeps their identities distinct.
 
-The `font-family` property and descriptor, `font`, `@font-face`, `src`,
+The `font-family` and `font-width` properties and descriptors, `font`, `@font-face`, `src`,
 font-source and modern-source-hint records cite the September 7, 2026 edition as
 `I-FONTS4-20260907`. The family property and descriptor and the narrowly named
-modern-source-hint record are `Complete`; the shorthand, rule and source-list
+modern-source-hint record are `Complete`; the width property is also `Complete`
+for its authored grammar. The width descriptor, shorthand, rule and source-list
 records remain `Partial`.
 The older `I-FONTS4` identity keeps its April 22 edition; `O-FONTS3` also
 remains available for historical source records. These immutable identities
 must not be repointed when adopting a newer production.
 
-Selected descriptors including `font-width`, `font-variation-settings`,
-`font-named-instance` and metric overrides remain unfinished. The `font-width`
-property and its full percentage grammar remain outside this family slice;
-the shorthand accepts the Fonts 3 width keywords, represented by the existing
-stretch model. Fonts 4 shorthand components including oblique angles,
-non-integer weights, and `xxx-large` or `math` sizes also remain unsupported.
+The historical `baseline.property.font-stretch` and
+`baseline.descriptor.font-stretch` IDs now identify canonical `font-width`;
+`font-stretch` is a name-equivalent legacy alias in each separate namespace.
+The historical `ext.descriptor.font-stretch-range` ID is `Complete` for its
+ordinary width-range subproduction. The property accepts all nine width keywords and
+nonnegative percentages, preserves authored numeric and math values, and has an
+inherited `normal` initial value. CSS provides the exact keyword-to-percentage
+mapping without resolving a font face. The `@font-face` descriptor accepts `auto` or
+one or two ordinary width values under either descriptor name and retains the
+authored endpoint order. Its initial is `auto`. The descriptor remains `Partial`
+because valid whole-descriptor `env()` substitution is not yet retained as a
+pending value; this is also a remaining gap in the `@font-face` rule. Computed
+endpoint ordering and face selection remain downstream. Direct
+specified-value serializers cover these width values, without providing a
+complete font-face rule serializer. The `font` shorthand continues to accept
+only the Fonts 3 width keywords. The breaking public property migration replaces
+`CssKnownProperty::FontStretch` and `CssKnownPropertyValueRef::FontStretch` with
+their `FontWidth` variants; the wrapper's `current()` returns `CssFontWidth`.
+`CssFontStretch` remains a type alias for the nine-keyword `CssFontWidthKeyword`.
+The descriptor migration replaces `CssFontFaceDescriptorKind::FontStretch`,
+`CssFontFaceDescriptorValue::FontStretch`, and
+`CssFontFaceDescriptorRef::FontStretch` with their `FontWidth` variants and
+replaces the aggregate `font_stretch()` accessor with `font_width()`.
+`CssFontFaceWidth::Auto` and `CssFontFaceWidth::Range` with exact checked values
+replace the old f32-backed `CssFontFaceStretch`, `CssFontFaceStretchValue`, and
+`CssFontFaceStretchKeyword` models. CSS owns authored width values and intrinsic
+keyword mapping; style and text own contextual font use, and the root facade
+owns cross-crate lowering. Fonts 4 shorthand
+components including oblique angles, non-integer weights, and `xxx-large` or
+`math` sizes also remain unsupported.
+Selected descriptors including `font-variation-settings`, `font-named-instance`
+and metric overrides remain unfinished.
 The source-list URL branch accepts `url()` but does not yet implement `src()`
 from the referenced Values 4 `<url>` production. These are CSS implementation
 gaps. Other historical Fonts 3 and Fonts 4 support records
 retain their existing classifications pending reconciliation with the complete
 selected profile; their dates bound those claims. These authored models do
 not load or match fonts, resolve fallback or feature application, shape glyphs,
-apply cascade or substitution, evaluate computed values, expose CSSOM, serialize,
-or lower into another Surgeist crate.
+apply cascade or substitution, evaluate computed values, expose CSSOM, serialize
+composed font rules, or lower into another Surgeist crate.
 
 ## Conformance sources and atomic records
 
@@ -2160,7 +2187,6 @@ records for `dimension`, `angle`, `angle-percentage`, `time-percentage`,
 The preserved extension records `ext.value.relative-color`,
 `ext.value.color-mix`, `ext.value.grid-repeat`, `ext.value.basic-shape`,
 `ext.descriptor.font-weight-range`, `ext.descriptor.font-style-oblique-range`,
-`ext.descriptor.font-stretch-range`,
 `ext.property.font-weight-range`, and `ext.supports.selector` remain `Partial`,
 with both subset and remainder metadata. The five `ext.media.range.*` records
 for width, height, resolution, color and monochrome are now `Complete`, covering

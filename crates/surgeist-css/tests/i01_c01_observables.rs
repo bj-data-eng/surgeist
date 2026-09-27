@@ -3104,6 +3104,25 @@ fn assert_known_property_value(
             );
             return;
         }
+        (
+            surgeist_css::CssKnownProperty::FontWidth,
+            surgeist_css::CssKnownPropertyValueRef::FontWidth(value),
+        ) => {
+            assert_eq!(
+                value.current(),
+                &surgeist_css::CssFontWidth::Keyword(
+                    surgeist_css::CssFontWidthKeyword::SemiCondensed
+                )
+            );
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                "SemiCondensed",
+                semantic,
+                authored,
+            );
+            return;
+        }
         _ => {}
     }
     assert_property_specific_value!(
@@ -3168,7 +3187,6 @@ fn assert_known_property_value(
             VerticalAlign,
             FontWeight,
             FontStyle,
-            FontStretch,
             FontVariant,
             FontFeatureSettings,
             LetterSpacing,
