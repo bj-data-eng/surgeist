@@ -638,7 +638,7 @@ pub fn normalize_sheet_with_limits(
         declarations: 0,
         contributions: 0,
     };
-    builder.ordinary_rules(sheet.rules(), TraversalContext::default(), 0)?;
+    builder.rules(sheet.rules())?;
     Ok(CssNormalizedSheet {
         encoding: sheet.encoding().cloned(),
         items: builder.items,
@@ -669,6 +669,84 @@ struct TraversalContext<'a> {
     rule: Option<&'a CssRuleContext>,
     selectors: Option<&'a CssSelectorContext>,
     scope: Option<&'a CssRuleContext>,
+}
+
+#[derive(Default)]
+struct OwnedTraversalContext {
+    rule: Option<CssRuleContext>,
+    selectors: Option<CssSelectorContext>,
+    scope: Option<CssRuleContext>,
+}
+
+impl OwnedTraversalContext {
+    fn borrowed(&self) -> TraversalContext<'_> {
+        TraversalContext {
+            rule: self.rule.as_ref(),
+            selectors: self.selectors.as_ref(),
+            scope: self.scope.as_ref(),
+        }
+    }
+
+    fn within_rule(context: TraversalContext<'_>, rule: CssRuleContext) -> Self {
+        Self {
+            rule: Some(rule),
+            selectors: context.selectors.cloned(),
+            scope: context.scope.cloned(),
+        }
+    }
+
+    fn within_style(
+        context: TraversalContext<'_>,
+        rule: CssRuleContext,
+        selectors: CssSelectorContext,
+    ) -> Self {
+        Self {
+            rule: Some(rule),
+            selectors: Some(selectors),
+            scope: context.scope.cloned(),
+        }
+    }
+
+    fn within_scope(context: TraversalContext<'_>, rule: CssRuleContext) -> Self {
+        Self {
+            rule: Some(rule.clone()),
+            selectors: context.selectors.cloned(),
+            scope: Some(rule),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum RuleList<'a> {
+    Ordinary(&'a [CssRule]),
+    Scoped(&'a [CssScopedRule]),
+}
+
+impl RuleList<'_> {
+    fn len(self) -> usize {
+        match self {
+            Self::Ordinary(rules) => rules.len(),
+            Self::Scoped(rules) => rules.len(),
+        }
+    }
+}
+
+struct RuleFrame<'a> {
+    rules: RuleList<'a>,
+    next: usize,
+    context: OwnedTraversalContext,
+    depth: u32,
+}
+
+impl<'a> RuleFrame<'a> {
+    fn new(rules: RuleList<'a>, context: OwnedTraversalContext, depth: u32) -> Self {
+        Self {
+            rules,
+            next: 0,
+            context,
+            depth,
+        }
+    }
 }
 
 struct Normalizer {
@@ -770,186 +848,198 @@ impl Normalizer {
         Ok(())
     }
 
-    fn ordinary_rules(
-        &mut self,
-        rules: &[CssRule],
-        context: TraversalContext<'_>,
-        depth: u32,
-    ) -> Result<(), CssNormalizationError> {
-        for rule in rules {
-            let position = ordinary_position(rule);
-            self.admit_rule(position, context, depth)?;
-            match rule {
-                CssRule::Style(style) => {
-                    let selectors = CssSelectorContext::ordinary(style.selectors(), context);
-                    let rule = self.record_rule(
-                        RuleContextKind::Style(selectors.clone()),
-                        position,
-                        context.rule,
-                    );
-                    self.declarations(style.declarations(), &rule, &selectors)?;
-                    self.ordinary_rules(
-                        style.rules(),
-                        TraversalContext {
-                            rule: Some(&rule),
-                            selectors: Some(&selectors),
-                            scope: context.scope,
-                        },
-                        depth + 1,
-                    )?;
-                }
-                CssRule::NestedDeclarations(run) => {
-                    let selectors = context.selectors.expect(
-                        "the authored parser only creates declaration runs inside a style context",
-                    );
-                    let rule = self.record_rule(
-                        RuleContextKind::NestedDeclarations(selectors.clone()),
-                        position,
-                        context.rule,
-                    );
-                    self.declarations(run.declarations(), &rule, selectors)?;
-                }
-                CssRule::Media(media) => {
-                    let rule = self.record_rule(
-                        RuleContextKind::Media(media.query().clone()),
-                        position,
-                        context.rule,
-                    );
-                    self.ordinary_rules(
-                        media.rules(),
-                        TraversalContext {
-                            rule: Some(&rule),
-                            ..context
-                        },
-                        depth + 1,
-                    )?;
-                }
-                CssRule::Supports(supports) => {
-                    let rule = self.record_rule(
-                        RuleContextKind::Supports(supports.condition().clone()),
-                        position,
-                        context.rule,
-                    );
-                    self.ordinary_rules(
-                        supports.rules(),
-                        TraversalContext {
-                            rule: Some(&rule),
-                            ..context
-                        },
-                        depth + 1,
-                    )?;
-                }
-                CssRule::Container(container) => {
-                    let rule = self.record_rule(
-                        RuleContextKind::Container {
-                            prelude: container.prelude().clone(),
-                        },
-                        position,
-                        context.rule,
-                    );
-                    self.ordinary_rules(
-                        container.rules(),
-                        TraversalContext {
-                            rule: Some(&rule),
-                            ..context
-                        },
-                        depth + 1,
-                    )?;
-                }
-                CssRule::LayerBlock(layer) => {
-                    let rule = self.record_rule(
-                        RuleContextKind::LayerBlock(layer.name().cloned()),
-                        position,
-                        context.rule,
-                    );
-                    self.ordinary_rules(
-                        layer.rules(),
-                        TraversalContext {
-                            rule: Some(&rule),
-                            ..context
-                        },
-                        depth + 1,
-                    )?;
-                }
-                CssRule::Scope(scope) => self.scope(scope, context, position, depth)?,
-                CssRule::Import(value) => {
-                    self.record_rule(
-                        RuleContextKind::Import(value.clone()),
-                        position,
-                        context.rule,
-                    );
-                }
-                CssRule::Namespace(value) => {
-                    self.record_rule(
-                        RuleContextKind::Namespace(value.clone()),
-                        position,
-                        context.rule,
-                    );
-                }
-                CssRule::LayerStatement(value) => {
-                    self.record_rule(
-                        RuleContextKind::LayerStatement(value.names().clone()),
-                        position,
-                        context.rule,
-                    );
-                }
-                CssRule::CustomMedia(value) => {
-                    self.record_rule(
-                        RuleContextKind::CustomMedia(value.clone()),
-                        position,
-                        context.rule,
-                    );
-                }
-                CssRule::FontFeatureValues(value) => {
-                    self.record_rule(
-                        RuleContextKind::FontFeatureValues(value.clone()),
-                        position,
-                        context.rule,
-                    );
-                }
-                CssRule::FontPaletteValues(value) => {
-                    self.record_rule(
-                        RuleContextKind::FontPaletteValues(value.clone()),
-                        position,
-                        context.rule,
-                    );
-                }
-                CssRule::FontFace(value) => {
-                    self.record_rule(
-                        RuleContextKind::FontFace(value.clone()),
-                        position,
-                        context.rule,
-                    );
-                }
-                CssRule::Keyframes(value) => {
-                    self.record_rule(
-                        RuleContextKind::Keyframes(value.clone()),
-                        position,
-                        context.rule,
-                    );
-                }
-                CssRule::CounterStyle(value) => {
-                    self.record_rule(
-                        RuleContextKind::CounterStyle(value.clone()),
-                        position,
-                        context.rule,
-                    );
-                }
-                CssRule::Page(value) => {
-                    self.record_rule(RuleContextKind::Page(value.clone()), position, context.rule);
-                }
+    fn rules(&mut self, rules: &[CssRule]) -> Result<(), CssNormalizationError> {
+        // Each frame retains its next sibling while a child list is visited.
+        let mut frames = vec![RuleFrame::new(
+            RuleList::Ordinary(rules),
+            OwnedTraversalContext::default(),
+            0,
+        )];
+        while let Some(frame) = frames.last_mut() {
+            if frame.next == frame.rules.len() {
+                frames.pop();
+                continue;
+            }
+            let rules = frame.rules;
+            let index = frame.next;
+            let depth = frame.depth;
+            let context = frame.context.borrowed();
+            frame.next += 1;
+            let child = match rules {
+                RuleList::Ordinary(rules) => self.ordinary_rule(&rules[index], context, depth)?,
+                RuleList::Scoped(rules) => self.scoped_rule(&rules[index], context, depth)?,
+            };
+            if let Some(child) = child {
+                frames.push(child);
             }
         }
         Ok(())
     }
 
-    fn scope(
+    fn ordinary_rule<'a>(
         &mut self,
-        scope: &CssScopeRule,
+        rule: &'a CssRule,
+        context: TraversalContext<'_>,
+        depth: u32,
+    ) -> Result<Option<RuleFrame<'a>>, CssNormalizationError> {
+        let position = ordinary_position(rule);
+        self.admit_rule(position, context, depth)?;
+        match rule {
+            CssRule::Style(style) => {
+                let selectors = CssSelectorContext::ordinary(style.selectors(), context);
+                let rule = self.record_rule(
+                    RuleContextKind::Style(selectors.clone()),
+                    position,
+                    context.rule,
+                );
+                self.declarations(style.declarations(), &rule, &selectors)?;
+                return Ok(Some(RuleFrame::new(
+                    RuleList::Ordinary(style.rules()),
+                    OwnedTraversalContext::within_style(context, rule, selectors),
+                    depth + 1,
+                )));
+            }
+            CssRule::NestedDeclarations(run) => {
+                let selectors = context.selectors.expect(
+                    "the authored parser only creates declaration runs inside a style context",
+                );
+                let rule = self.record_rule(
+                    RuleContextKind::NestedDeclarations(selectors.clone()),
+                    position,
+                    context.rule,
+                );
+                self.declarations(run.declarations(), &rule, selectors)?;
+            }
+            CssRule::Media(media) => {
+                let rule = self.record_rule(
+                    RuleContextKind::Media(media.query().clone()),
+                    position,
+                    context.rule,
+                );
+                return Ok(Some(RuleFrame::new(
+                    RuleList::Ordinary(media.rules()),
+                    OwnedTraversalContext::within_rule(context, rule),
+                    depth + 1,
+                )));
+            }
+            CssRule::Supports(supports) => {
+                let rule = self.record_rule(
+                    RuleContextKind::Supports(supports.condition().clone()),
+                    position,
+                    context.rule,
+                );
+                return Ok(Some(RuleFrame::new(
+                    RuleList::Ordinary(supports.rules()),
+                    OwnedTraversalContext::within_rule(context, rule),
+                    depth + 1,
+                )));
+            }
+            CssRule::Container(container) => {
+                let rule = self.record_rule(
+                    RuleContextKind::Container {
+                        prelude: container.prelude().clone(),
+                    },
+                    position,
+                    context.rule,
+                );
+                return Ok(Some(RuleFrame::new(
+                    RuleList::Ordinary(container.rules()),
+                    OwnedTraversalContext::within_rule(context, rule),
+                    depth + 1,
+                )));
+            }
+            CssRule::LayerBlock(layer) => {
+                let rule = self.record_rule(
+                    RuleContextKind::LayerBlock(layer.name().cloned()),
+                    position,
+                    context.rule,
+                );
+                return Ok(Some(RuleFrame::new(
+                    RuleList::Ordinary(layer.rules()),
+                    OwnedTraversalContext::within_rule(context, rule),
+                    depth + 1,
+                )));
+            }
+            CssRule::Scope(scope) => {
+                return Ok(Some(self.scope(scope, context, position, depth)));
+            }
+            CssRule::Import(value) => {
+                self.record_rule(
+                    RuleContextKind::Import(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssRule::Namespace(value) => {
+                self.record_rule(
+                    RuleContextKind::Namespace(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssRule::LayerStatement(value) => {
+                self.record_rule(
+                    RuleContextKind::LayerStatement(value.names().clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssRule::CustomMedia(value) => {
+                self.record_rule(
+                    RuleContextKind::CustomMedia(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssRule::FontFeatureValues(value) => {
+                self.record_rule(
+                    RuleContextKind::FontFeatureValues(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssRule::FontPaletteValues(value) => {
+                self.record_rule(
+                    RuleContextKind::FontPaletteValues(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssRule::FontFace(value) => {
+                self.record_rule(
+                    RuleContextKind::FontFace(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssRule::Keyframes(value) => {
+                self.record_rule(
+                    RuleContextKind::Keyframes(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssRule::CounterStyle(value) => {
+                self.record_rule(
+                    RuleContextKind::CounterStyle(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssRule::Page(value) => {
+                self.record_rule(RuleContextKind::Page(value.clone()), position, context.rule);
+            }
+        }
+        Ok(None)
+    }
+
+    fn scope<'a>(
+        &mut self,
+        scope: &'a CssScopeRule,
         context: TraversalContext<'_>,
         position: Option<CssSourcePosition>,
         depth: u32,
-    ) -> Result<(), CssNormalizationError> {
+    ) -> RuleFrame<'a> {
         let rule = self.record_rule(
             RuleContextKind::Scope {
                 root: scope.root().cloned(),
@@ -958,174 +1048,154 @@ impl Normalizer {
             position,
             context.rule,
         );
-        self.scoped_rules(
-            scope.rules().rules(),
-            TraversalContext {
-                rule: Some(&rule),
-                selectors: context.selectors,
-                scope: Some(&rule),
-            },
+        RuleFrame::new(
+            RuleList::Scoped(scope.rules().rules()),
+            OwnedTraversalContext::within_scope(context, rule),
             depth + 1,
         )
     }
 
-    fn scoped_rules(
+    fn scoped_rule<'a>(
         &mut self,
-        rules: &[CssScopedRule],
+        rule: &'a CssScopedRule,
         context: TraversalContext<'_>,
         depth: u32,
-    ) -> Result<(), CssNormalizationError> {
-        for rule in rules {
-            let position = scoped_position(rule);
-            self.admit_rule(position, context, depth)?;
-            match rule {
-                CssScopedRule::NestedDeclarations(run) => {
-                    let selectors = context.selectors.expect(
-                        "the parser only admits scoped declaration runs with style ancestry",
-                    );
-                    let rule = self.record_rule(
-                        RuleContextKind::NestedDeclarations(selectors.clone()),
-                        position,
-                        context.rule,
-                    );
-                    self.declarations(run.declarations(), &rule, selectors)?;
-                }
-                CssScopedRule::Style(style) => {
-                    let selectors = CssSelectorContext::scoped(style.selectors(), context);
-                    let rule = self.record_rule(
-                        RuleContextKind::ScopedStyle(selectors.clone()),
-                        position,
-                        context.rule,
-                    );
-                    self.declarations(style.declarations(), &rule, &selectors)?;
-                    self.ordinary_rules(
-                        style.rules(),
-                        TraversalContext {
-                            rule: Some(&rule),
-                            selectors: Some(&selectors),
-                            scope: context.scope,
-                        },
-                        depth + 1,
-                    )?;
-                }
-                CssScopedRule::Media(media) => {
-                    let rule = self.record_rule(
-                        RuleContextKind::Media(media.query().clone()),
-                        position,
-                        context.rule,
-                    );
-                    self.scoped_rules(
-                        media.rules().rules(),
-                        TraversalContext {
-                            rule: Some(&rule),
-                            ..context
-                        },
-                        depth + 1,
-                    )?;
-                }
-                CssScopedRule::Supports(supports) => {
-                    let rule = self.record_rule(
-                        RuleContextKind::Supports(supports.condition().clone()),
-                        position,
-                        context.rule,
-                    );
-                    self.scoped_rules(
-                        supports.rules().rules(),
-                        TraversalContext {
-                            rule: Some(&rule),
-                            ..context
-                        },
-                        depth + 1,
-                    )?;
-                }
-                CssScopedRule::Container(container) => {
-                    let rule = self.record_rule(
-                        RuleContextKind::Container {
-                            prelude: container.prelude().clone(),
-                        },
-                        position,
-                        context.rule,
-                    );
-                    self.scoped_rules(
-                        container.rules().rules(),
-                        TraversalContext {
-                            rule: Some(&rule),
-                            ..context
-                        },
-                        depth + 1,
-                    )?;
-                }
-                CssScopedRule::LayerBlock(layer) => {
-                    let rule = self.record_rule(
-                        RuleContextKind::LayerBlock(layer.name().cloned()),
-                        position,
-                        context.rule,
-                    );
-                    self.scoped_rules(
-                        layer.rules().rules(),
-                        TraversalContext {
-                            rule: Some(&rule),
-                            ..context
-                        },
-                        depth + 1,
-                    )?;
-                }
-                CssScopedRule::LayerStatement(value) => {
-                    self.record_rule(
-                        RuleContextKind::LayerStatement(value.names().clone()),
-                        position,
-                        context.rule,
-                    );
-                }
-                CssScopedRule::CustomMedia(value) => {
-                    self.record_rule(
-                        RuleContextKind::CustomMedia(value.clone()),
-                        position,
-                        context.rule,
-                    );
-                }
-                CssScopedRule::CounterStyle(value) => {
-                    self.record_rule(
-                        RuleContextKind::CounterStyle(value.clone()),
-                        position,
-                        context.rule,
-                    );
-                }
-                CssScopedRule::FontFace(value) => {
-                    self.record_rule(
-                        RuleContextKind::FontFace(value.clone()),
-                        position,
-                        context.rule,
-                    );
-                }
-                CssScopedRule::Page(value) => {
-                    self.record_rule(RuleContextKind::Page(value.clone()), position, context.rule);
-                }
-                CssScopedRule::Keyframes(value) => {
-                    self.record_rule(
-                        RuleContextKind::Keyframes(value.clone()),
-                        position,
-                        context.rule,
-                    );
-                }
-                CssScopedRule::FontFeatureValues(value) => {
-                    self.record_rule(
-                        RuleContextKind::FontFeatureValues(value.clone()),
-                        position,
-                        context.rule,
-                    );
-                }
-                CssScopedRule::FontPaletteValues(value) => {
-                    self.record_rule(
-                        RuleContextKind::FontPaletteValues(value.clone()),
-                        position,
-                        context.rule,
-                    );
-                }
-                CssScopedRule::Scope(scope) => self.scope(scope, context, position, depth)?,
+    ) -> Result<Option<RuleFrame<'a>>, CssNormalizationError> {
+        let position = scoped_position(rule);
+        self.admit_rule(position, context, depth)?;
+        match rule {
+            CssScopedRule::NestedDeclarations(run) => {
+                let selectors = context
+                    .selectors
+                    .expect("the parser only admits scoped declaration runs with style ancestry");
+                let rule = self.record_rule(
+                    RuleContextKind::NestedDeclarations(selectors.clone()),
+                    position,
+                    context.rule,
+                );
+                self.declarations(run.declarations(), &rule, selectors)?;
+            }
+            CssScopedRule::Style(style) => {
+                let selectors = CssSelectorContext::scoped(style.selectors(), context);
+                let rule = self.record_rule(
+                    RuleContextKind::ScopedStyle(selectors.clone()),
+                    position,
+                    context.rule,
+                );
+                self.declarations(style.declarations(), &rule, &selectors)?;
+                return Ok(Some(RuleFrame::new(
+                    RuleList::Ordinary(style.rules()),
+                    OwnedTraversalContext::within_style(context, rule, selectors),
+                    depth + 1,
+                )));
+            }
+            CssScopedRule::Media(media) => {
+                let rule = self.record_rule(
+                    RuleContextKind::Media(media.query().clone()),
+                    position,
+                    context.rule,
+                );
+                return Ok(Some(RuleFrame::new(
+                    RuleList::Scoped(media.rules().rules()),
+                    OwnedTraversalContext::within_rule(context, rule),
+                    depth + 1,
+                )));
+            }
+            CssScopedRule::Supports(supports) => {
+                let rule = self.record_rule(
+                    RuleContextKind::Supports(supports.condition().clone()),
+                    position,
+                    context.rule,
+                );
+                return Ok(Some(RuleFrame::new(
+                    RuleList::Scoped(supports.rules().rules()),
+                    OwnedTraversalContext::within_rule(context, rule),
+                    depth + 1,
+                )));
+            }
+            CssScopedRule::Container(container) => {
+                let rule = self.record_rule(
+                    RuleContextKind::Container {
+                        prelude: container.prelude().clone(),
+                    },
+                    position,
+                    context.rule,
+                );
+                return Ok(Some(RuleFrame::new(
+                    RuleList::Scoped(container.rules().rules()),
+                    OwnedTraversalContext::within_rule(context, rule),
+                    depth + 1,
+                )));
+            }
+            CssScopedRule::LayerBlock(layer) => {
+                let rule = self.record_rule(
+                    RuleContextKind::LayerBlock(layer.name().cloned()),
+                    position,
+                    context.rule,
+                );
+                return Ok(Some(RuleFrame::new(
+                    RuleList::Scoped(layer.rules().rules()),
+                    OwnedTraversalContext::within_rule(context, rule),
+                    depth + 1,
+                )));
+            }
+            CssScopedRule::LayerStatement(value) => {
+                self.record_rule(
+                    RuleContextKind::LayerStatement(value.names().clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssScopedRule::CustomMedia(value) => {
+                self.record_rule(
+                    RuleContextKind::CustomMedia(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssScopedRule::CounterStyle(value) => {
+                self.record_rule(
+                    RuleContextKind::CounterStyle(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssScopedRule::FontFace(value) => {
+                self.record_rule(
+                    RuleContextKind::FontFace(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssScopedRule::Page(value) => {
+                self.record_rule(RuleContextKind::Page(value.clone()), position, context.rule);
+            }
+            CssScopedRule::Keyframes(value) => {
+                self.record_rule(
+                    RuleContextKind::Keyframes(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssScopedRule::FontFeatureValues(value) => {
+                self.record_rule(
+                    RuleContextKind::FontFeatureValues(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssScopedRule::FontPaletteValues(value) => {
+                self.record_rule(
+                    RuleContextKind::FontPaletteValues(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssScopedRule::Scope(scope) => {
+                return Ok(Some(self.scope(scope, context, position, depth)));
             }
         }
-        Ok(())
+        Ok(None)
     }
 }
 
