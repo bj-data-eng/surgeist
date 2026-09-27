@@ -2274,10 +2274,8 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::CaptionSide
         | CssKnownProperty::Clip
         | CssKnownProperty::EmptyCells
-        | CssKnownProperty::Orphans
         | CssKnownProperty::Quotes
         | CssKnownProperty::TableLayout
-        | CssKnownProperty::Widows
         | CssKnownProperty::WordSpacing
         | CssKnownProperty::Content
         | CssKnownProperty::ListStyleType
@@ -2296,7 +2294,9 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::ZIndex => O_CSS2,
         CssKnownProperty::BreakBefore
         | CssKnownProperty::BreakAfter
-        | CssKnownProperty::BreakInside => S_BREAK3,
+        | CssKnownProperty::BreakInside
+        | CssKnownProperty::Orphans
+        | CssKnownProperty::Widows => S_BREAK3,
         CssKnownProperty::BoxSizing
         | CssKnownProperty::Width
         | CssKnownProperty::Height
@@ -2611,8 +2611,8 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
         },
         CssKnownProperty::Clip => "visufx.html#propdef-clip",
         CssKnownProperty::Orphans | CssKnownProperty::Widows => match property {
-            CssKnownProperty::Orphans => "page.html#propdef-orphans",
-            CssKnownProperty::Widows => "page.html#propdef-widows",
+            CssKnownProperty::Orphans => "#propdef-orphans",
+            CssKnownProperty::Widows => "#propdef-widows",
             _ => default,
         },
         CssKnownProperty::Quotes => "generate.html#propdef-quotes",
@@ -5781,7 +5781,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 622] = [
         "official.property.orphans",
         CssKnownProperty::Orphans,
         "orphans",
-        "page.html#propdef-orphans",
+        "#propdef-orphans",
         &[],
     ),
     CssFeatureMetadata::complete_property(
@@ -5948,7 +5948,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 622] = [
         "official.property.widows",
         CssKnownProperty::Widows,
         "widows",
-        "page.html#propdef-widows",
+        "#propdef-widows",
         &[],
     ),
     CssFeatureMetadata::complete_property(

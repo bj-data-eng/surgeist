@@ -146,25 +146,31 @@ pub(super) fn parse_page_line_minimum<'i, 't>(
     let numeric_start = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
-        Token::Number {
-            int_value: Some(value),
-            ..
-        } => CssPageLineMinimum::try_literal(*value).ok_or_else(|| {
-            unsupported_value_at(
-                location,
-                None,
-                format!("{property} must be a positive integer"),
-            )
-        }),
-        Token::Number { .. } => Err(unsupported_value_at(
-            location,
-            None,
-            format!("{property} must be an integer"),
-        )),
+        Token::Number { .. } => {
+            input.reset(&numeric_start);
+            let component = numeric.collect(input).map_err(|_| {
+                unsupported_value_at(location, None, format!("invalid {property} integer"))
+            })?;
+            CssPageLineMinimum::try_from_component(component).map_err(|_| {
+                unsupported_value_at(
+                    location,
+                    None,
+                    format!("{property} must be a positive integer"),
+                )
+            })
+        }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Integer)
                 .map(CssIntegerCalculation::from_expression)
-                .map(CssPageLineMinimum::from_calculation)
+                .and_then(|value| {
+                    CssPageLineMinimum::try_from_calculation(value).map_err(|_| {
+                        unsupported_value_at(
+                            location,
+                            None,
+                            format!("invalid {property} integer calculation"),
+                        )
+                    })
+                })
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }

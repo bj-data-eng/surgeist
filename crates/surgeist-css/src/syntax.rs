@@ -14,6 +14,7 @@ use crate::font_variant::CssFontVariant;
 pub(crate) use crate::media::*;
 pub(crate) use crate::media_features::*;
 pub(crate) use crate::numeric::*;
+pub use crate::page_line_minimum::CssPageLineMinimum;
 use crate::{
     CssColorAngleLiteral, CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError,
     CssFontSize, CssFontStretch, CssFontStyle, CssFontWeight, CssLineHeight, CssValueOrigin,
@@ -5908,54 +5909,6 @@ pub enum CssClip {
 pub enum CssEmptyCells {
     Show,
     Hide,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum CssPageLineMinimumValue {
-    Literal(i32),
-    Calculation(CssIntegerCalculation),
-}
-
-/// A positive authored `orphans` or `widows` count, or a symbolic integer calculation.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssPageLineMinimum {
-    value: CssPageLineMinimumValue,
-}
-
-impl CssPageLineMinimum {
-    #[must_use]
-    pub const fn try_literal(value: i32) -> Option<Self> {
-        if value > 0 {
-            Some(Self {
-                value: CssPageLineMinimumValue::Literal(value),
-            })
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub const fn from_calculation(value: CssIntegerCalculation) -> Self {
-        Self {
-            value: CssPageLineMinimumValue::Calculation(value),
-        }
-    }
-
-    #[must_use]
-    pub const fn literal(&self) -> Option<i32> {
-        match self.value {
-            CssPageLineMinimumValue::Literal(value) => Some(value),
-            CssPageLineMinimumValue::Calculation(_) => None,
-        }
-    }
-
-    #[must_use]
-    pub const fn calculation(&self) -> Option<&CssIntegerCalculation> {
-        match &self.value {
-            CssPageLineMinimumValue::Literal(_) => None,
-            CssPageLineMinimumValue::Calculation(value) => Some(value),
-        }
-    }
 }
 
 /// The authored `break-before` or `break-after` keyword.

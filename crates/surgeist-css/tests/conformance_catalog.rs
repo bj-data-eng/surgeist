@@ -3637,8 +3637,8 @@ fn c12_property_metadata_is_truthful() {
         (
             "official.property.orphans",
             "orphans",
-            "O-CSS2",
-            "page.html#propdef-orphans",
+            "S-BREAK3",
+            "#propdef-orphans",
             "3",
         ),
         (
@@ -3679,8 +3679,8 @@ fn c12_property_metadata_is_truthful() {
         (
             "official.property.widows",
             "widows",
-            "O-CSS2",
-            "page.html#propdef-widows",
+            "S-BREAK3",
+            "#propdef-widows",
             "4",
         ),
         (

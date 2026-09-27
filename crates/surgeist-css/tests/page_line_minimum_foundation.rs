@@ -241,3 +241,180 @@ fn pending_substitution_reenters_original_grammar_and_occurrence() {
         }
     }
 }
+
+#[test]
+fn checked_construction_preserves_exact_tokens_and_origins() {
+    for text in ["1", "+0002", "2147483648", "9999999999999999999999"] {
+        let programmatic =
+            CssPageLineMinimum::try_from_component(CssComponentValue::try_number(text).unwrap())
+                .unwrap();
+        assert_eq!(programmatic.origin(), &CssValueOrigin::Programmatic);
+        assert_eq!(
+            programmatic
+                .exact_literal()
+                .unwrap()
+                .integer()
+                .numeric()
+                .representation(),
+            text
+        );
+        let parsed = declaration("orphans", text);
+        assert!(matches!(
+            minimum(&parsed).origin(),
+            CssValueOrigin::Parsed(_)
+        ));
+        assert_eq!(
+            minimum(&parsed)
+                .exact_literal()
+                .unwrap()
+                .integer()
+                .numeric()
+                .representation(),
+            text
+        );
+    }
+    for text in ["0", "-1", "1.0", "1e0"] {
+        let error =
+            CssPageLineMinimum::try_from_component(CssComponentValue::try_number(text).unwrap())
+                .unwrap_err();
+        assert_eq!(error.origin(), Some(&CssValueOrigin::Programmatic));
+        let expected = if text == "0" || text == "-1" {
+            CssNumericConstructionErrorKind::OutOfRange
+        } else {
+            CssNumericConstructionErrorKind::RootDomainMismatch
+        };
+        assert_eq!(error.kind(), &expected);
+    }
+}
+
+#[test]
+fn calculation_constructor_checks_bare_roots_and_retains_math() {
+    for text in ["0", "-1"] {
+        let calculation =
+            CssIntegerCalculation::try_from_components(parse_component_values(text).unwrap())
+                .unwrap();
+        let error = CssPageLineMinimum::try_from_calculation(calculation).unwrap_err();
+        assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+        assert!(matches!(error.origin(), Some(CssValueOrigin::Parsed(_))));
+    }
+    let error =
+        CssPageLineMinimum::try_from_calculation(CssIntegerCalculation::literal(-1)).unwrap_err();
+    assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+    assert_eq!(error.origin(), Some(&CssValueOrigin::Programmatic));
+    let bare =
+        CssIntegerCalculation::try_from_components(parse_component_values("2147483648").unwrap())
+            .unwrap();
+    let admitted = CssPageLineMinimum::try_from_calculation(bare).unwrap();
+    assert!(admitted.exact_literal().is_some());
+    assert_eq!(admitted.literal(), None);
+    for (text, expected) in [("calc(-1)", "calc(-1)"), ("calc(2 + 1)", "calc(3)")] {
+        let calculation =
+            CssIntegerCalculation::try_from_components(parse_component_values(text).unwrap())
+                .unwrap();
+        let value = CssPageLineMinimum::try_from_calculation(calculation).unwrap();
+        assert!(value.calculation().is_some());
+        assert!(matches!(value.origin(), CssValueOrigin::Parsed(_)));
+        assert_eq!(value.serialize_specified().unwrap(), expected);
+    }
+}
+
+#[test]
+fn specified_serialization_is_exact_and_resource_bounded() {
+    for (authored, expected) in [
+        ("+0002", "2"),
+        ("2147483648", "2147483648"),
+        ("9999999999999999999999", "9999999999999999999999"),
+    ] {
+        let value = minimum(&declaration("widows", authored)).clone();
+        assert_eq!(value.serialize_specified().unwrap(), expected);
+    }
+    let value = minimum(&declaration("orphans", "2147483648")).clone();
+    for (limits, kind) in [
+        (
+            CssSpecifiedValueSerializationLimits::new(0, 8, 20),
+            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+        ),
+        (
+            CssSpecifiedValueSerializationLimits::new(8, 0, 20),
+            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+        ),
+        (
+            CssSpecifiedValueSerializationLimits::new(8, 8, 3),
+            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+        ),
+    ] {
+        let error = value.serialize_specified_with_limits(limits).unwrap_err();
+        assert_eq!(error.kind(), kind);
+        assert_eq!(value.serialize_specified().unwrap(), "2147483648");
+    }
+}
+
+#[test]
+fn normalization_keeps_valid_line_minima_in_source_order_after_recovery() {
+    let report =
+        parse_sheet(".a{orphans:2!important;widows:3;orphans:0;widows:2147483648!important}");
+    let [diagnostic] = report.diagnostics() else {
+        panic!("one invalid line minimum: {:?}", report.diagnostics())
+    };
+    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
+    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let declarations = normalized
+        .items()
+        .iter()
+        .filter_map(|item| match item {
+            CssNormalizedItem::Declaration(value) => Some(value),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(declarations.len(), 3);
+    for (index, (name, importance)) in [
+        ("orphans", CssImportance::Important),
+        ("widows", CssImportance::Normal),
+        ("widows", CssImportance::Important),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert_eq!(declarations[index].order(), index);
+        assert_eq!(declarations[index].source().importance(), importance);
+        assert_eq!(
+            declarations[index].source().known().unwrap().property(),
+            grammar(name).target_property()
+        );
+        assert!(matches!(
+            declarations[index].expansion(),
+            CssExpansion::Contributions(CssContributions::Longhands(_))
+        ));
+    }
+}
+
+#[test]
+fn line_minimum_normalization_reports_cumulative_contribution_limit() {
+    let report = parse_sheet(".a{orphans:2;widows:3}");
+    assert!(report.is_clean());
+    let error = normalize_sheet_with_limits(
+        report.syntax(),
+        CssNormalizationLimits::try_new(0, 1, 2, 1).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.kind(),
+        &CssNormalizationErrorKind::LimitExceeded {
+            resource: CssNormalizationResource::Contributions,
+            limit: 1,
+        }
+    );
+    let normalized = normalize_sheet_with_limits(
+        report.syntax(),
+        CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        normalized
+            .items()
+            .iter()
+            .filter(|item| matches!(item, CssNormalizedItem::Declaration(_)))
+            .count(),
+        2
+    );
+}

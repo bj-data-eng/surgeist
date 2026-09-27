@@ -3166,6 +3166,22 @@ old `CssPageBreak*` types or `.page_break()` accessors should use the
 `.current()` accessors. Fragmentation and flow-relative page mapping remain
 downstream behavior.
 
+The [Fragmentation 3 line-minimum definitions](https://www.w3.org/TR/2018/CR-css-break-3-20181204/#widows-orphans)
+make `orphans` and `widows` inherited longhands with initial value `2`.
+`CssPageLineMinimum` retains an exact positive integer token without a machine
+integer magnitude limit, or deferred integer math. `literal()` returns an `i32`
+only when the exact count fits; `exact_literal()` and `origin()` preserve the
+authored token and its provenance. Checked construction rejects zero, negative,
+and noninteger literals, including bare calculation roots, while math functions
+remain symbolic. `serialize_specified_with_limits()` applies the shared bounded
+specified-value projection. Line counting and fragmentation decisions belong to
+layout and text.
+Callers constructing a count from `CssIntegerCalculation` now use
+`try_from_calculation()` and handle its typed error; the former infallible
+`from_calculation()` could admit invalid bare roots. `try_literal()`, `literal()`,
+and `calculation()` now inspect or construct exact token-backed values and are
+no longer `const fn`.
+
 ## Authored overflow controls
 
 The selected [Overflow 3 definitions](https://www.w3.org/TR/2025/WD-css-overflow-3-20251007/#overflow-clip-margin)

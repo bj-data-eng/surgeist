@@ -2704,6 +2704,7 @@ pub surgeist_css::CssLonghandValueRef::MinIntrinsicSizing(&'a surgeist_css::CssM
 pub surgeist_css::CssLonghandValueRef::MinWidth(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::Opacity(&'a surgeist_css::CssOpacityValue)
 pub surgeist_css::CssLonghandValueRef::Order(&'a surgeist_css::CssIntegerValue)
+pub surgeist_css::CssLonghandValueRef::Orphans(&'a surgeist_css::CssPageLineMinimum)
 pub surgeist_css::CssLonghandValueRef::OverflowBlock(&'a surgeist_css::CssOverflow)
 pub surgeist_css::CssLonghandValueRef::OverflowClipMargin(&'a surgeist_css::CssOverflowClipMargin)
 pub surgeist_css::CssLonghandValueRef::OverflowInline(&'a surgeist_css::CssOverflow)
@@ -2751,6 +2752,7 @@ pub surgeist_css::CssLonghandValueRef::TextOverflow(&'a surgeist_css::CssTextOve
 pub surgeist_css::CssLonghandValueRef::Top(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::UnicodeBidi(&'a surgeist_css::CssUnicodeBidi)
 pub surgeist_css::CssLonghandValueRef::Visibility(&'a surgeist_css::CssVisibility)
+pub surgeist_css::CssLonghandValueRef::Widows(&'a surgeist_css::CssPageLineMinimum)
 pub surgeist_css::CssLonghandValueRef::Width(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::WritingMode(&'a surgeist_css::CssWritingMode)
 #[non_exhaustive] pub enum surgeist_css::CssMarginValue
@@ -7442,10 +7444,18 @@ impl core::cmp::PartialEq for surgeist_css::CssPaddingValue
 pub fn surgeist_css::CssPaddingValue::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssPageLineMinimum
 impl surgeist_css::CssPageLineMinimum
-pub const fn surgeist_css::CssPageLineMinimum::calculation(&self) -> core::option::Option<&surgeist_css::CssIntegerCalculation>
-pub const fn surgeist_css::CssPageLineMinimum::from_calculation(value: surgeist_css::CssIntegerCalculation) -> Self
-pub const fn surgeist_css::CssPageLineMinimum::literal(&self) -> core::option::Option<i32>
-pub const fn surgeist_css::CssPageLineMinimum::try_literal(value: i32) -> core::option::Option<Self>
+pub fn surgeist_css::CssPageLineMinimum::calculation(&self) -> core::option::Option<&surgeist_css::CssIntegerCalculation>
+pub fn surgeist_css::CssPageLineMinimum::exact_literal(&self) -> core::option::Option<&surgeist_css::CssPositiveIntegerLiteral>
+pub fn surgeist_css::CssPageLineMinimum::initial() -> Self
+pub fn surgeist_css::CssPageLineMinimum::literal(&self) -> core::option::Option<i32>
+pub fn surgeist_css::CssPageLineMinimum::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssPageLineMinimum::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPageLineMinimum::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPageLineMinimum::try_from_calculation(calculation: surgeist_css::CssIntegerCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssPageLineMinimum::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssPageLineMinimum::try_literal(value: i32) -> core::option::Option<Self>
+impl core::cmp::PartialEq for surgeist_css::CssPageLineMinimum
+pub fn surgeist_css::CssPageLineMinimum::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssPageRule
 impl surgeist_css::CssPageRule
 pub const fn surgeist_css::CssPageRule::declarations(&self) -> &surgeist_css::CssDeclarationList

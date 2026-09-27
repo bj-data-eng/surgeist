@@ -5,13 +5,12 @@
 use surgeist_css::{
     CssAbsoluteFontWeight as Absolute, CssComponentValue, CssComponentValues, CssContributions,
     CssExpansion, CssExpansionErrorKind, CssFontStyle, CssFontValue, CssFontWeight,
-    CssFontWeightNumber,
-    CssImportance, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
-    CssLonghandValueRef, CssNumberCalculation, CssNumericConstructionErrorKind, CssPropertyGrammar,
-    CssPropertyKindRef, CssPropertyValueErrorKind, CssSerializedOrigin,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
-    expand_declaration, parse_component_values, parse_property_value_for_grammar,
-    parse_style_attribute,
+    CssFontWeightNumber, CssImportance, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssNumberCalculation,
+    CssNumericConstructionErrorKind, CssPropertyGrammar, CssPropertyKindRef,
+    CssPropertyValueErrorKind, CssSerializedOrigin, CssSpecifiedValueSerializationErrorKind,
+    CssSpecifiedValueSerializationLimits, CssValueOrigin, expand_declaration,
+    parse_component_values, parse_property_value_for_grammar, parse_style_attribute,
 };
 
 fn number(text: &str) -> CssFontWeightNumber {

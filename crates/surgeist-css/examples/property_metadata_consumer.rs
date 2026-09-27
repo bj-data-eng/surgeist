@@ -24,6 +24,10 @@ const LONGHANDS: &[P] = &[
     P::BreakBefore,
     P::BreakAfter,
     P::BreakInside,
+    P::Orphans,
+    P::Widows,
+    P::RowGap,
+    P::ColumnGap,
     P::OverflowX,
     P::OverflowY,
     P::OverflowBlock,
@@ -88,6 +92,24 @@ const LONGHANDS: &[P] = &[
     P::FlowTolerance,
     P::Color,
     P::FontFamily,
+    P::FontSize,
+    P::LineHeight,
+    P::FontWeight,
+    P::FontStyle,
+    P::FontWidth,
+    P::FontVariantCaps,
+    P::FontVariantEastAsian,
+    P::FontVariantLigatures,
+    P::FontVariantNumeric,
+    P::FontVariantPosition,
+    P::FontVariantAlternates,
+    P::FontVariantEmoji,
+    P::FontFeatureSettings,
+    P::FontKerning,
+    P::FontSizeAdjust,
+    P::FontLanguageOverride,
+    P::FontOpticalSizing,
+    P::FontVariationSettings,
     P::TextOrientation,
     P::TextAlignAll,
     P::TextAlignLast,
@@ -140,12 +162,27 @@ const LONGHANDS: &[P] = &[
     P::Order,
     P::AspectRatio,
     P::Visibility,
+    P::OverflowWrap,
     P::Direction,
     P::UnicodeBidi,
     P::WritingMode,
     P::TextCombineUpright,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
+    (P::Gap, &[P::RowGap, P::ColumnGap], &[]),
+    (
+        P::FontVariant,
+        &[
+            P::FontVariantLigatures,
+            P::FontVariantCaps,
+            P::FontVariantAlternates,
+            P::FontVariantNumeric,
+            P::FontVariantEastAsian,
+            P::FontVariantPosition,
+            P::FontVariantEmoji,
+        ],
+        &[],
+    ),
     (P::TextAlign, &[P::TextAlignAll, P::TextAlignLast], &[]),
     (P::Columns, &[P::ColumnWidth, P::ColumnCount], &[]),
     (P::Size, &[P::Width, P::Height], &[]),
@@ -524,6 +561,12 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
             assert_eq!(*v, CssBreakBetween::Auto)
         }
         CssLonghandValueRef::BreakInside(v) => assert_eq!(*v, CssBreakInside::Auto),
+        CssLonghandValueRef::Orphans(v) | CssLonghandValueRef::Widows(v) => {
+            assert_eq!(v.literal(), Some(2))
+        }
+        CssLonghandValueRef::RowGap(v) | CssLonghandValueRef::ColumnGap(v) => {
+            assert_eq!(v, &CssGapValue::Normal)
+        }
         CssLonghandValueRef::OverflowX(v)
         | CssLonghandValueRef::OverflowY(v)
         | CssLonghandValueRef::OverflowBlock(v)
@@ -570,6 +613,53 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::BorderCollapse(v) => assert_eq!(*v, CssBorderCollapse::Separate),
         CssLonghandValueRef::CaptionSide(v) => assert_eq!(*v, CssCaptionSide::Top),
         CssLonghandValueRef::EmptyCells(v) => assert_eq!(*v, CssEmptyCells::Show),
+        CssLonghandValueRef::FontSize(v) => assert_eq!(v, &CssFontSize::Medium),
+        CssLonghandValueRef::LineHeight(v) => assert_eq!(v, &CssLineHeight::Normal),
+        CssLonghandValueRef::FontWeight(v) => {
+            assert_eq!(v, &CssFontWeight::Absolute(CssAbsoluteFontWeight::Normal))
+        }
+        CssLonghandValueRef::FontStyle(v) => {
+            assert_eq!(v, &CssFontStyle::Keyword(CssFontStyleKeyword::Normal))
+        }
+        CssLonghandValueRef::FontWidth(v) => {
+            assert_eq!(v, &CssFontWidth::Keyword(CssFontWidthKeyword::Normal))
+        }
+        CssLonghandValueRef::FontVariantCaps(v) => {
+            assert_eq!(v, &CssFontVariantCaps::Normal)
+        }
+        CssLonghandValueRef::FontVariantEastAsian(v) => {
+            assert_eq!(v, &CssFontVariantEastAsian::Normal)
+        }
+        CssLonghandValueRef::FontVariantLigatures(v) => {
+            assert_eq!(v, &CssFontVariantLigatures::Normal)
+        }
+        CssLonghandValueRef::FontVariantNumeric(v) => {
+            assert_eq!(v, &CssFontVariantNumeric::Normal)
+        }
+        CssLonghandValueRef::FontVariantPosition(v) => {
+            assert_eq!(v, &CssFontVariantPosition::Normal)
+        }
+        CssLonghandValueRef::FontVariantAlternates(v) => {
+            assert_eq!(v, &CssFontVariantAlternates::Normal)
+        }
+        CssLonghandValueRef::FontVariantEmoji(v) => {
+            assert_eq!(v, &CssFontVariantEmoji::Normal)
+        }
+        CssLonghandValueRef::FontFeatureSettings(v) => {
+            assert_eq!(v, &CssAuthoredFontFeatureSettings::Normal)
+        }
+        CssLonghandValueRef::FontKerning(v) => assert_eq!(v, &CssFontKerning::Auto),
+        CssLonghandValueRef::FontSizeAdjust(v) => assert_eq!(v, &CssFontSizeAdjust::None),
+        CssLonghandValueRef::FontLanguageOverride(v) => {
+            assert_eq!(v, &CssFontLanguageOverride::Normal)
+        }
+        CssLonghandValueRef::FontOpticalSizing(v) => {
+            assert_eq!(v, &CssFontOpticalSizing::Auto)
+        }
+        CssLonghandValueRef::FontVariationSettings(v) => {
+            assert_eq!(v, &CssFontVariationSettings::Normal)
+        }
+        CssLonghandValueRef::OverflowWrap(v) => assert_eq!(v, &CssOverflowWrap::Normal),
         CssLonghandValueRef::TableLayout(v) => assert_eq!(*v, CssTableLayout::Auto),
         CssLonghandValueRef::TextAlignAll(v) => {
             assert_eq!(*v, CssTextAlignAllValue::Keyword(CssTextAlign::Start))
@@ -614,8 +704,9 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 173);
+    assert_eq!(expected.len(), 198);
     let mut observed = Vec::new();
+    let mut unexpected = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();
         assert_eq!(handle.target_property(), property);
@@ -630,7 +721,9 @@ fn metadata_and_initials() {
         }
         match property.metadata() {
             Ok(metadata) => {
-                assert!(expected.contains(&property));
+                if !expected.contains(&property) {
+                    unexpected.push(property);
+                }
                 assert_eq!(metadata.grammar(), handle);
                 observed.push(property);
             }
@@ -659,6 +752,7 @@ fn metadata_and_initials() {
             other => panic!("unexpected capability result: {other:?}"),
         }
     }
+    assert!(unexpected.is_empty(), "unexpected metadata: {unexpected:?}");
     assert_eq!(observed.len(), expected.len());
     for &property in LONGHANDS {
         let metadata = longhand(property);
@@ -671,11 +765,32 @@ fn metadata_and_initials() {
                     | P::BorderCollapse
                     | P::CaptionSide
                     | P::EmptyCells
+                    | P::Orphans
+                    | P::Widows
                     | P::FontFamily
+                    | P::FontSize
+                    | P::LineHeight
+                    | P::FontWeight
+                    | P::FontStyle
+                    | P::FontWidth
+                    | P::FontVariantCaps
+                    | P::FontVariantEastAsian
+                    | P::FontVariantLigatures
+                    | P::FontVariantNumeric
+                    | P::FontVariantPosition
+                    | P::FontVariantAlternates
+                    | P::FontVariantEmoji
+                    | P::FontFeatureSettings
+                    | P::FontKerning
+                    | P::FontSizeAdjust
+                    | P::FontLanguageOverride
+                    | P::FontOpticalSizing
+                    | P::FontVariationSettings
                     | P::TextOrientation
                     | P::TextAlignAll
                     | P::TextAlignLast
                     | P::Visibility
+                    | P::OverflowWrap
                     | P::Direction
                     | P::WritingMode
                     | P::TextCombineUpright
