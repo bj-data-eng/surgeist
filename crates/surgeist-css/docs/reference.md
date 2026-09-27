@@ -1155,14 +1155,27 @@ silently rounded I01 value. Consumers must handle the current `value()` enum;
 downstream numeric lowering must explicitly select its precision policy. A
 missing I01 projection does not make the current value invalid.
 
-`border-color` accepts one through four colors and exposes the expanded sides
-through `CssBorderColors`. Its wrapper's `current()` now returns this aggregate;
-migrate single-color consumers to the required `top()`, `right()`, `bottom()`,
-or `left()` accessor. Each side retains its complete specified color, including
-symbolic values. `CssBorderColors::try_new` checks the same component count for
-Rust construction. The frozen `i01_subset()` remains available only for a
-single authored component representable by the old color model; multiple
-components have no frozen projection even when their colors are equal.
+`border-color` accepts one through four colors and an optional leading `logical`
+marker. Its wrapper's `current()` now returns `CssBorderColorShorthand`, replacing
+the former expanded `CssBorderColors` return type. Use `authored_values()` to
+retain the original count and `assigned_values()` with `kind()` to interpret the
+four physical or flow-relative roles. `CssBorderColors` remains a checked utility
+for physical top/right/bottom/left assignments, but is no longer the parsed
+shorthand's current model. `border-block-color` and `border-inline-color` expose
+`CssBorderColorPair`: `authored_end()` distinguishes omission from an explicitly
+repeated color, and `end()` repeats `start()` when omitted. All of these retain
+the complete specified color graph, including symbolic `currentcolor` and nested
+source origins. A color graph is not resolved against an element here.
+
+The selected [Logical 1 issue 3030](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#issue-3d880eb1)
+leaves `border-color`'s complete physical/logical target and reset membership
+unsettled. The authored grammar is accepted, but metadata and completed
+expansion return `UnresolvedStandard` in either mode, for CSS-wide values, and
+after valid substitution reentry. Pending substitutions remain symbolic. The
+logical axis pairs expand to their defined two longhands. The frozen
+`i01_subset()` remains available only for one compatible authored physical
+color; multiple components and logical mode have no projection. One physical
+`currentcolor` remains symbolic and projects exactly to `CssColor::CurrentColor`.
 
 ```rust
 use surgeist_css::{

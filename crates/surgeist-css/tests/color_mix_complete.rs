@@ -114,10 +114,13 @@ fn one_component_border_color_uses_complete_shared_mix_grammar() {
             panic!("border color")
         };
         let colors = value.current();
-        assert!(colors.top().color_mix_value().is_some());
-        assert_eq!(colors.top(), colors.right());
-        assert_eq!(colors.top(), colors.bottom());
-        assert_eq!(colors.top(), colors.left());
+        assert_eq!(colors.kind(), CssBoxSideKind::Physical);
+        assert_eq!(colors.authored_values().len(), 1);
+        let [top, right, bottom, left] = colors.assigned_values();
+        assert!(top.color_mix_value().is_some());
+        assert_eq!(top, right);
+        assert_eq!(top, bottom);
+        assert_eq!(top, left);
         assert!(value.i01_subset().is_none());
     }
 }

@@ -2,7 +2,6 @@ use super::color::parse_color;
 use cssparser::{ParseError, Parser, match_ignore_ascii_case};
 
 use super::values::{parse_shadow_blur_length, parse_shadow_length};
-use crate::box_values::CssParsedBorderColors;
 use crate::error::{CssFeatureId, Error, basic, unsupported_value};
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
@@ -23,23 +22,6 @@ pub(super) fn parse_box_decoration_break<'i, 't>(
             unsupported_keyword_reason("box-decoration-break", ident.as_ref()),
         )),
     }
-}
-
-pub(super) fn parse_border_colors<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssParsedBorderColors, ParseError<'i, Error>> {
-    let mut colors = Vec::new();
-    while !input.is_exhausted() {
-        colors.push(parse_color(input, numeric)?);
-        if colors.len() == 4 {
-            input.expect_exhausted().map_err(basic)?;
-            break;
-        }
-    }
-    CssParsedBorderColors::try_new(colors).ok_or_else(|| {
-        unsupported_value(input, None, "border-color requires one through four colors")
-    })
 }
 
 pub(super) fn expand_radius_components(

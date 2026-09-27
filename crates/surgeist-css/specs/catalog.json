@@ -2618,7 +2618,7 @@
       "id": "css-logical-1-four-side-reset-footprint",
       "source": "https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#issue-3d880eb1",
       "source_sha256": "4c0f9fbefd2c66a86f220d5daa1514facca3ad7dbae68a4c1a82b569de370edc",
-      "decision": "Preserve the defined physical and prefixed-logical authored grammars of margin, padding, border-width, border-style, scroll-margin and scroll-padding, but report unresolved complete target/reset membership instead of publishing only four assignments as completed expansion. Logical-axis pairs and longhands retain their defined intrinsic metadata and expansion.",
+      "decision": "Preserve the defined physical and prefixed-logical authored grammars of margin, padding, border-width, border-style, border-color, scroll-margin and scroll-padding, but report unresolved complete target/reset membership instead of publishing only four assignments as completed expansion. Logical-axis pairs and longhands retain their defined intrinsic metadata and expansion.",
       "justification": "Logical 1 section 4.7 defines logical? followed by one to four values and their role order despite warning that the marker may change. Its separate express issue 3030 leaves whether these shorthands expand to both physical and logical sets unresolved. The physical Box 3 and Backgrounds 3 definitions and the logical assignment example do not decide complementary resets. This is a source-defined limit on complete expansion, including CSS-wide values and valid substitution reentry; it does not excuse incomplete parsing or serialization. Writing-mode mapping and cascade remain separate downstream requirements."
     }
   ]

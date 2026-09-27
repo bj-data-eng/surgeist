@@ -10,6 +10,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::CssSpecifiedLength;
+use crate::border_color::*;
 use crate::border_radius::*;
 use crate::border_style::*;
 use crate::border_width::*;
@@ -25,8 +26,8 @@ use crate::sizing::{CssMaxSizeValue, CssSizeValue};
 use crate::sizing_controls::*;
 use crate::syntax::*;
 use crate::{
-    CssBorderColors, CssComponentValues, CssContainer, CssContainerNames, CssContainerType,
-    CssKnownProperty, CssPropertyValueParseError, CssSpecifiedLengthPercentage,
+    CssComponentValues, CssContainer, CssContainerNames, CssContainerType, CssKnownProperty,
+    CssPropertyValueParseError, CssSpecifiedLengthPercentage,
     CssSpecifiedNonNegativeLengthPercentage,
 };
 

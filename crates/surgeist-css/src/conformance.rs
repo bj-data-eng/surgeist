@@ -2390,6 +2390,12 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::BorderInlineEndStyle
         | CssKnownProperty::BorderBlockStyle
         | CssKnownProperty::BorderInlineStyle => I_LOGICAL1_20251204,
+        CssKnownProperty::BorderBlockStartColor
+        | CssKnownProperty::BorderBlockEndColor
+        | CssKnownProperty::BorderInlineStartColor
+        | CssKnownProperty::BorderInlineEndColor
+        | CssKnownProperty::BorderBlockColor
+        | CssKnownProperty::BorderInlineColor => I_LOGICAL1_20251204,
         CssKnownProperty::BorderStartStartRadius
         | CssKnownProperty::BorderStartEndRadius
         | CssKnownProperty::BorderEndStartRadius
@@ -2705,7 +2711,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 600] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 607] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -5191,6 +5197,36 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 600] = [
         "baseline.property.border-left-color"
     ),
     complete_property_feature!(
+        CssKnownProperty::BorderBlockStartColor,
+        "border-block-start-color",
+        "official.property.border-block-start-color"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderBlockEndColor,
+        "border-block-end-color",
+        "official.property.border-block-end-color"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderInlineStartColor,
+        "border-inline-start-color",
+        "official.property.border-inline-start-color"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderInlineEndColor,
+        "border-inline-end-color",
+        "official.property.border-inline-end-color"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderBlockColor,
+        "border-block-color",
+        "official.property.border-block-color"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderInlineColor,
+        "border-inline-color",
+        "official.property.border-inline-color"
+    ),
+    complete_property_feature!(
         CssKnownProperty::BackgroundImage,
         "background-image",
         "baseline.property.background-image"
@@ -5308,6 +5344,13 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 600] = [
         "official.value.border-style-logical-values",
         CssFeatureKind::Value,
         "border-style logical switch",
+        I_LOGICAL1_20251204,
+        "#logical-shorthand-keyword",
+    ),
+    CssFeatureMetadata::complete(
+        "official.value.border-color-logical-values",
+        CssFeatureKind::Value,
+        "border-color logical switch",
         I_LOGICAL1_20251204,
         "#logical-shorthand-keyword",
     ),

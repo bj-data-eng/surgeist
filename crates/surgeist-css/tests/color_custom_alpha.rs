@@ -179,9 +179,12 @@ fn aggregate_border_color_transports_custom_and_alpha_colors_without_frozen_proj
                 panic!("border color")
             };
             let colors = value.current();
-            assert_eq!(colors.top(), colors.right());
-            assert_eq!(colors.top(), colors.bottom());
-            assert_eq!(colors.top(), colors.left());
+            assert_eq!(colors.kind(), CssBoxSideKind::Physical);
+            assert_eq!(colors.authored_values().len(), 1);
+            let [top, right, bottom, left] = colors.assigned_values();
+            assert_eq!(top, right);
+            assert_eq!(top, bottom);
+            assert_eq!(top, left);
             assert!(value.i01_subset().is_none());
         }
     }
@@ -414,9 +417,12 @@ fn checked_border_current_only(text: &str) {
         panic!("border color")
     };
     let colors = value.current();
-    assert_eq!(colors.top(), colors.right());
-    assert_eq!(colors.top(), colors.bottom());
-    assert_eq!(colors.top(), colors.left());
+    assert_eq!(colors.kind(), CssBoxSideKind::Physical);
+    assert_eq!(colors.authored_values().len(), 1);
+    let [top, right, bottom, left] = colors.assigned_values();
+    assert_eq!(top, right);
+    assert_eq!(top, bottom);
+    assert_eq!(top, left);
     assert!(value.i01_subset().is_none());
 }
 

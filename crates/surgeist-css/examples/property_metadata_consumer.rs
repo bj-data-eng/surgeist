@@ -76,6 +76,10 @@ const LONGHANDS: &[P] = &[
     P::BorderRightColor,
     P::BorderBottomColor,
     P::BorderLeftColor,
+    P::BorderBlockStartColor,
+    P::BorderBlockEndColor,
+    P::BorderInlineStartColor,
+    P::BorderInlineEndColor,
     P::BorderImageSource,
     P::BorderImageSlice,
     P::BorderImageWidth,
@@ -228,13 +232,13 @@ const SHORTHANDS: &[(P, &[P], &[P])] = &[
         &[],
     ),
     (
-        P::BorderColor,
-        &[
-            P::BorderTopColor,
-            P::BorderRightColor,
-            P::BorderBottomColor,
-            P::BorderLeftColor,
-        ],
+        P::BorderBlockColor,
+        &[P::BorderBlockStartColor, P::BorderBlockEndColor],
+        &[],
+    ),
+    (
+        P::BorderInlineColor,
+        &[P::BorderInlineStartColor, P::BorderInlineEndColor],
         &[],
     ),
     (
@@ -398,7 +402,11 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::BorderTopColor(v)
         | CssLonghandValueRef::BorderRightColor(v)
         | CssLonghandValueRef::BorderBottomColor(v)
-        | CssLonghandValueRef::BorderLeftColor(v) => assert!(v.is_current_color()),
+        | CssLonghandValueRef::BorderLeftColor(v)
+        | CssLonghandValueRef::BorderBlockStartColor(v)
+        | CssLonghandValueRef::BorderBlockEndColor(v)
+        | CssLonghandValueRef::BorderInlineStartColor(v)
+        | CssLonghandValueRef::BorderInlineEndColor(v) => assert!(v.is_current_color()),
         CssLonghandValueRef::BorderImageSource(v) => assert!(matches!(v, CssImageValue::None)),
         CssLonghandValueRef::BorderImageSlice(v) => {
             assert!(!v.fill());
@@ -539,7 +547,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 159);
+    assert_eq!(expected.len(), 164);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();
@@ -573,6 +581,7 @@ fn metadata_and_initials() {
                         | P::Inset
                         | P::BorderWidth
                         | P::BorderStyle
+                        | P::BorderColor
                 ));
                 assert_eq!(grammar, handle);
                 assert_eq!(

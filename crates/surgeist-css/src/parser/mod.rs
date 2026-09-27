@@ -8,6 +8,7 @@
 //! information so callers do not need to parse display strings.
 
 mod background;
+mod border_color;
 mod border_radius;
 mod border_style;
 mod border_width;
@@ -63,6 +64,7 @@ use cssparser::{
     match_ignore_ascii_case,
 };
 
+use crate::border_color::*;
 use crate::border_radius::*;
 use crate::border_style::*;
 use crate::border_width::*;
@@ -79,6 +81,7 @@ use crate::{
     CssSizeValue, CssSpecifiedLength,
 };
 use background::*;
+use border_color::*;
 use border_radius::*;
 use border_style::*;
 use border_width::*;

@@ -140,7 +140,7 @@ the mapping between physical and flow-relative properties.
 Logical 1 §4.7 defines the authored `logical` marker and four-side role order,
 even though the marker is unstable. Its separate issue 3030 leaves the complete
 physical/logical reset footprint unresolved. The catalog records that limit for
-`margin`, `padding`, `border-width`, `border-style`, `scroll-margin`, and `scroll-padding`: accept and retain the
+`margin`, `padding`, `border-width`, `border-style`, `border-color`, `scroll-margin`, and `scroll-padding`: accept and retain the
 defined grammar, but do not present four explicit assignments as a complete
 expansion with known resets. Logical-axis pairs and longhands have defined
 intrinsic expansion. This distinction changes prior physical-only shorthand

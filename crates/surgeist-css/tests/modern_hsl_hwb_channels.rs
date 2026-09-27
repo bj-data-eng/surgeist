@@ -175,10 +175,13 @@ fn border_color_aggregate_uses_the_same_modern_color_grammar() {
         panic!("border colors")
     };
     let values = value.current();
-    number(values.top().hsl_value().unwrap().saturation(), 25.0);
-    number(values.right().hwb_value().unwrap().whiteness(), 10.0);
-    assert_eq!(values.top(), values.bottom());
-    assert_eq!(values.right(), values.left());
+    assert_eq!(values.kind(), CssBoxSideKind::Physical);
+    assert_eq!(values.authored_values().len(), 2);
+    let [top, right, bottom, left] = values.assigned_values();
+    number(top.hsl_value().unwrap().saturation(), 25.0);
+    number(right.hwb_value().unwrap().whiteness(), 10.0);
+    assert_eq!(top, bottom);
+    assert_eq!(right, left);
     assert_eq!(
         report.syntax()[1].known().unwrap().property(),
         CssKnownProperty::Opacity

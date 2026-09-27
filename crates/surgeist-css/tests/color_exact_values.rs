@@ -386,15 +386,18 @@ fn aggregate_projection_cannot_reparse_an_unrepresentable_child() {
         };
         assert!(value.i01_subset().is_none(), "{text}");
         let colors = value.current();
-        assert_eq!(colors.top(), colors.right());
-        assert_eq!(colors.top(), colors.bottom());
-        assert_eq!(colors.top(), colors.left());
-        if let Some(hsl) = colors.top().hsl_value() {
+        assert_eq!(colors.kind(), CssBoxSideKind::Physical);
+        assert_eq!(colors.authored_values().len(), 1);
+        let [top, right, bottom, left] = colors.assigned_values();
+        assert_eq!(top, right);
+        assert_eq!(top, bottom);
+        assert_eq!(top, left);
+        if let Some(hsl) = top.hsl_value() {
             assert!(
                 matches!(hsl.saturation(), CssAuthoredColorComponent::Percentage(value) if value.value() == 30.0)
             );
         } else {
-            let weight = colors.top().color_mix_value().unwrap().components()[0]
+            let weight = top.color_mix_value().unwrap().components()[0]
                 .weight()
                 .unwrap()
                 .literal_value()
@@ -417,7 +420,7 @@ fn aggregate_projection_cannot_reparse_an_unrepresentable_child() {
     };
     assert!(value.i01_subset().is_some());
     assert!(
-        matches!(value.current().top().hsl_value().unwrap().saturation(), CssAuthoredColorComponent::Percentage(value) if value.value() == 25.0)
+        matches!(value.current().assigned_values()[0].hsl_value().unwrap().saturation(), CssAuthoredColorComponent::Percentage(value) if value.value() == 25.0)
     );
 }
 

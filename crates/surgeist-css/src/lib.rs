@@ -1102,7 +1102,7 @@
 //! resources, units, or colors; perform layout, painting, or animation; expose a
 //! mutable CSSOM; or lower CSS into sibling Surgeist types.
 
-mod box_values;
+mod border_color;
 mod component_values;
 mod conformance;
 mod error;
@@ -1151,6 +1151,7 @@ mod scroll_snap;
 mod sizing;
 mod sizing_controls;
 pub use aspect_ratio::{CssRatioOperand, CssSpecifiedRatio};
+pub use border_color::{CssBorderColorPair, CssBorderColorShorthand, CssBorderColors};
 pub use border_radius::{CssBorderRadiusShorthand, CssCornerRadiusValue};
 pub use border_style::{CssBorderStylePair, CssBorderStyleShorthand};
 pub use border_width::{
@@ -1222,7 +1223,6 @@ pub use numeric::{
 mod test_support;
 mod validation;
 
-pub use box_values::CssBorderColors;
 pub use component_values::{
     CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
     CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssFunctionValue,

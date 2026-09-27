@@ -425,18 +425,31 @@ fn four_sided_styles_and_current_colors() {
         ("red blue green", ["red", "blue", "green", "blue"]),
         ("red blue green black", ["red", "blue", "green", "black"]),
     ] {
-        let values = expanded(&declaration(
-            Property::BorderColor,
-            css,
-            CssImportance::Normal,
-        ));
-        assert_members(&values, &COLORS);
-        for (side, expected) in COLORS.into_iter().zip(expected) {
-            assert_eq!(
-                color(member(&values, side)).named().unwrap().name(),
-                expected
-            );
+        let source = declaration(Property::BorderColor, css, CssImportance::Normal);
+        let Some(CssKnownPropertyValueRef::BorderColor(authored)) =
+            source.known().unwrap().property_value()
+        else {
+            panic!("authored border-color")
+        };
+        assert_eq!(
+            authored.current().kind(),
+            surgeist_css::CssBoxSideKind::Physical
+        );
+        for (side, expected) in authored
+            .current()
+            .assigned_values()
+            .into_iter()
+            .zip(expected)
+        {
+            assert_eq!(side.named().unwrap().name(), expected);
         }
+        assert_eq!(
+            expand_declaration(&source).unwrap_err().kind(),
+            &CssExpansionErrorKind::UnresolvedStandard {
+                property: Property::BorderColor,
+                reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
+            }
+        );
     }
     let source = declaration(
         Property::BorderColor,
@@ -449,11 +462,11 @@ fn four_sided_styles_and_current_colors() {
         panic!("authored current border-color");
     };
     assert!(authored.i01_subset().is_none());
-    let values = expanded(&source);
-    assert_modern_color(color(member(&values, Property::BorderTopColor)));
-    assert_modern_color(color(member(&values, Property::BorderBottomColor)));
-    assert!(color(member(&values, Property::BorderRightColor)).is_current_color());
-    assert!(color(member(&values, Property::BorderLeftColor)).is_current_color());
+    let [top, right, bottom, left] = authored.current().assigned_values();
+    assert_modern_color(top);
+    assert_modern_color(bottom);
+    assert!(right.is_current_color());
+    assert!(left.is_current_color());
     println!("four-sided styles and current colors: ok");
 }
 
@@ -657,7 +670,13 @@ fn globals_include_reset_only_members_and_all_stays_symbolic() {
         for (property, expected) in [
             (Property::MarginBlock, MARGIN_BLOCK.to_vec()),
             (Property::PaddingBlock, PADDING_BLOCK.to_vec()),
-            (Property::BorderColor, COLORS.to_vec()),
+            (
+                Property::BorderBlockColor,
+                vec![
+                    Property::BorderBlockStartColor,
+                    Property::BorderBlockEndColor,
+                ],
+            ),
             (Property::Border, border_members()),
             (
                 Property::BorderLeft,
@@ -693,6 +712,14 @@ fn globals_include_reset_only_members_and_all_stays_symbolic() {
             expand_declaration(&border_style).unwrap_err().kind(),
             &CssExpansionErrorKind::UnresolvedStandard {
                 property: Property::BorderStyle,
+                reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
+            }
+        );
+        let border_color = declaration(Property::BorderColor, css, CssImportance::Important);
+        assert_eq!(
+            expand_declaration(&border_color).unwrap_err().kind(),
+            &CssExpansionErrorKind::UnresolvedStandard {
+                property: Property::BorderColor,
                 reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
             }
         );
