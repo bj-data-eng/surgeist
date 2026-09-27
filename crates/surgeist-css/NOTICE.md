@@ -53,7 +53,7 @@ distributed by David Tolnay:
 * License: [MIT](licenses/itoa/LICENSE-MIT) OR [Apache-2.0](licenses/itoa/LICENSE-APACHE)
 * Homepage: [itoa](https://github.com/dtolnay/itoa)
 
-This product depends on `memchr` 2.8.3 through its JSON test support, distributed
+This product depends on `memchr` 2.8.2 through its JSON test support, distributed
 by Andrew Gallant and bluss:
 
 * License: [Unlicense](licenses/memchr/UNLICENSE) OR [MIT](licenses/memchr/LICENSE-MIT); [upstream declaration](licenses/memchr/COPYING)
@@ -73,7 +73,7 @@ distributed by David Tolnay and Alex Crichton:
 * License: [MIT](licenses/proc-macro2/LICENSE-MIT) OR [Apache-2.0](licenses/proc-macro2/LICENSE-APACHE)
 * Homepage: [proc-macro2](https://github.com/dtolnay/proc-macro2)
 
-This product depends on `quote` 1.0.46 for procedural macro compilation,
+This product depends on `quote` 1.0.45 for procedural macro compilation,
 distributed by David Tolnay:
 
 * License: [MIT](licenses/quote/LICENSE-MIT) OR [Apache-2.0](licenses/quote/LICENSE-APACHE)
