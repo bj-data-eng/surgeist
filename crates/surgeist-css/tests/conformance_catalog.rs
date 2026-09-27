@@ -100,8 +100,8 @@ const GRID_PROPERTY_SUBSET: &str = "The structural grammar supports non-recursiv
 const GRID_PROPERTY_REMAINDER: &str = "Subgrid name-repeat, wider Values math functions, and other unselected Grid property grammar remain unsupported.";
 const KEYFRAMES_SUBSET: &str = "Keyframe names, literal selectors, empty rules and blocks, duplicate selectors and blocks in authored order, and supported declarations with recovery are supported.";
 const KEYFRAMES_REMAINDER: &str = "Calculation selectors, string names, and declaration-processing grammar not selected by C07 remain unsupported.";
-const FONT_SHORTHAND_SUBSET: &str = "Explicit fonts support the selected Fonts 4 family and style grammars, Fonts 3 variant, width and size components, all Fonts 4 absolute and relative weight forms including fractional numbers and symbolic number math, and optional line height. All six system-font alternatives are supported.";
-const FONT_SHORTHAND_REMAINDER: &str = "xxx-large and math font sizes, and other Fonts 4 shorthand component forms remain unsupported.";
+const FONT_SHORTHAND_SUBSET: &str = "Explicit fonts support the selected Fonts 4 family, style, size, and weight components, Fonts 3 variant and width components, and an optional line height. All six system-font alternatives are supported.";
+const FONT_SHORTHAND_REMAINDER: &str = "Ordinary line-height numeric fidelity and intrinsic shorthand expansion/reset semantics remain unfinished.";
 const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range and feature-settings descriptors have typed ordinary representations and admit pending whole values for valid env(); invalid descriptors recover independently.";
 const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-variation-settings, font-named-instance and metric overrides remain unsupported.";
 const FONT_SOURCE_SUBSET: &str = "url() and local() sources preserve authored order, including empty URL strings, the selected literal family-name grammar, a single format hint and technology hints. Invalid source members recover independently, while invalid descriptor annotations or all-invalid lists discard the descriptor. The four legacy variation strings project to base formats and required variations without changing authored hints; TrueType and OpenType have explicit format equivalence.";
@@ -163,18 +163,10 @@ fn selected_font_family_and_shorthand_metadata_match_their_grammar_boundaries() 
         assert_eq!(report.syntax().len(), 1, "{authored}");
     }
 
-    // Fonts4 #propdef-font imports size forms that remain outside this subset.
-    // These are valid selected-source forms outside the implemented subset.
     for authored in ["font: xxx-large serif", "font: math serif"] {
         let report = parse_style_attribute(authored);
-        assert!(!report.is_clean(), "{authored}");
-        assert!(report.syntax().is_empty(), "{authored}");
-        assert_eq!(report.diagnostics().len(), 1, "{authored}");
-        assert_eq!(
-            report.diagnostics()[0].action(),
-            CssRecoveryAction::DropDeclaration,
-            "{authored}",
-        );
+        assert!(report.is_clean(), "{authored}: {:?}", report.diagnostics());
+        assert_eq!(report.syntax().len(), 1, "{authored}");
     }
 }
 
@@ -192,12 +184,6 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
             "font-kerning",
             "#propdef-font-kerning",
             "normal",
-        ),
-        (
-            "baseline.property.font-size",
-            "font-size",
-            "#propdef-font-size",
-            "medium",
         ),
         (
             "official.property.font-size-adjust",
@@ -546,6 +532,30 @@ fn selected_font_style_records_keep_historical_ids_and_complete_authored_grammar
     assert!(parse_style_attribute("font-style: oblique 10deg").is_clean());
     assert!(parse_sheet("@font-face { font-style: oblique 20deg -10deg; }").is_clean());
     assert!(parse_style_attribute("font: oblique calc(10deg) 16px serif").is_clean());
+}
+
+#[test]
+fn selected_font_size_record_keeps_historical_id_with_current_fonts_source() {
+    let record = feature_metadata("baseline.property.font-size").expect("font-size metadata");
+    assert_eq!(record.kind(), CssFeatureKind::Property);
+    assert_eq!(record.spelling(), "font-size");
+    assert_eq!(record.source().id().as_str(), "I-FONTS4-20260907");
+    assert_eq!(record.production(), "#propdef-font-size");
+    assert_eq!(record.status(), CssSupportStatus::Complete);
+    assert_eq!(record.supported_subset(), None);
+    assert_eq!(record.unsupported_remainder(), None);
+    for input in [
+        "font-size: xxx-large",
+        "font-size: math",
+        "font-size: 1e-999px",
+        "font-size: calc(-1px)",
+    ] {
+        let report = parse_style_attribute(input);
+        assert!(report.is_clean(), "{input}: {:?}", report.diagnostics());
+    }
+    let rejected = parse_style_attribute("font-size: -1e-999px");
+    assert!(rejected.syntax().is_empty());
+    assert_eq!(rejected.diagnostics().len(), 1);
 }
 
 #[test]

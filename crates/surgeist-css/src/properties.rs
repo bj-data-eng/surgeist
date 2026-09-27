@@ -26,7 +26,7 @@ use crate::{
     CssComponentValueRef, CssContainer, CssContainerNames, CssContainerType, CssSpecifiedLength,
     CssValueTokenRef,
 };
-use crate::{CssFontStyle, CssFontWeight, CssFontWidth};
+use crate::{CssFontSize, CssFontStyle, CssFontWeight, CssFontWidth};
 
 macro_rules! property_schema {
     ($callback:ident, $input:ident, $numeric:ident) => {
@@ -161,7 +161,7 @@ macro_rules! property_schema {
             GridColumn, "grid-column", [], "baseline.property.grid-column", CssGridLineRange, CssGridColumnPropertyValue, CssGridColumnPropertyValueRepresentation, parse_grid_line_range, { parse_grid_line_range($input)? };
             GridArea, "grid-area", [], "baseline.property.grid-area", CssGridArea, CssGridAreaPropertyValue, CssGridAreaPropertyValueRepresentation, parse_grid_area, { parse_grid_area($input)? };
             Grid, "grid", [], "baseline.property.grid", CssGrid, CssGridPropertyValue, CssGridPropertyValueRepresentation, parse_grid, { parse_grid($input, $numeric)? };
-            FontSize, "font-size", [], "baseline.property.font-size", CssFontSize, CssFontSizePropertyValue, CssFontSizePropertyValueRepresentation, parse_font_size, { parse_font_size($input, $numeric)? };
+            FontSize, "font-size", [], "baseline.property.font-size", CssFontSize, CssFontSizePropertyValue, CssFontSizePropertyValueRepresentation, parse_font_size, { parse_font_size($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssFontSize, accessor: size, inherited: true, initial_kind: value, initial: CssFontSize::Medium };
             LineHeight, "line-height", [], "baseline.property.line-height", CssLineHeight, CssLineHeightPropertyValue, CssLineHeightPropertyValueRepresentation, parse_line_height, { parse_line_height($input, $numeric)? };
             TextCombineUpright, "text-combine-upright", [], "official.property.text-combine-upright", CssTextCombineUpright, CssTextCombineUprightPropertyValue, CssTextCombineUprightPropertyValueRepresentation, parse_text_combine_upright, { parse_text_combine_upright($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssTextCombineUpright, accessor: combine, inherited: true, initial_kind: value, initial: CssTextCombineUpright::None };
             TextOrientation, "text-orientation", [], "official.property.text-orientation", CssTextOrientation, CssTextOrientationPropertyValue, CssTextOrientationPropertyValueRepresentation, parse_text_orientation, { parse_text_orientation($input)? }, expansion = longhand { wrapper: existing, value: CssTextOrientation, accessor: orientation, inherited: true, initial_kind: value, initial: CssTextOrientation::Mixed };
@@ -635,21 +635,6 @@ fn background_box_list_i01_projection(value: &CssBackgroundBoxList) -> Option<Cs
 
 fn exact_i01_projection<T: Clone>(value: &T) -> Option<T> {
     Some(value.clone())
-}
-
-fn font_size_i01_projection(value: &CssFontSize) -> Option<CssLength> {
-    match value {
-        CssFontSize::LengthPercentage(value) => Some(value.value().clone()),
-        CssFontSize::XxSmall
-        | CssFontSize::XSmall
-        | CssFontSize::Small
-        | CssFontSize::Medium
-        | CssFontSize::Large
-        | CssFontSize::XLarge
-        | CssFontSize::XxLarge
-        | CssFontSize::Larger
-        | CssFontSize::Smaller => None,
-    }
 }
 
 fn line_height_i01_projection(value: &CssLineHeight) -> Option<CssLength> {
@@ -1845,20 +1830,6 @@ macro_rules! define_property_value {
             $representation,
             $value,
             mode
-        );
-    };
-    (
-        FontSize, $canonical:literal, $value:ty, $wrapper:ident,
-        $representation:ident
-    ) => {
-        define_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            CssFontSize,
-            CssLength,
-            size,
-            font_size_i01_projection
         );
     };
     (
@@ -3202,6 +3173,16 @@ macro_rules! define_expansion_current_accessor {
 // The schema annotation selects a current-only wrapper for newly authored
 // families without maintaining a second list of their property names.
 macro_rules! define_property_value_from_schema {
+    (FontSize, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
+        longhand { wrapper: additive, $($metadata:tt)* }) => {
+        define_additive_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssFontSize,
+            size
+        );
+    };
     (BorderBlockStartColor, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
         longhand { wrapper: additive, $($metadata:tt)* }) => {
         define_color_property_value!($canonical, $wrapper, $representation);

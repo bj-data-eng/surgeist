@@ -1429,8 +1429,9 @@ individual dated sources.
 `CssFontFamilyPropertyValue::families()` and `CssFontPropertyValue::font()` expose
 the current models, with exact authored text available through `as_css()`.
 These two wrappers no longer expose `i01_subset()`, and the obsolete `CssFont`
-payload has been removed; use `CssFontValue` and `CssExplicitFont`. Other font
-wrappers retain their separate compatibility projections where available.
+payload has been removed; use `CssFontValue` and `CssExplicitFont`. Font weight,
+style, and size wrappers are also current-only; other font wrappers retain their
+separate compatibility projections where available.
 
 ```rust
 use surgeist_css::{
@@ -1495,6 +1496,34 @@ optional oblique angle math, while retaining its other documented component
 limits. Property, descriptor, scalar, and range values have bounded canonical
 specified serializers; no font matching, computed-style resolution, or complete
 font-face rule serialization is implied.
+
+The selected Fonts 4 `font-size` property accepts the eight absolute keywords
+from `xx-small` through `xxx-large`, the relative `larger` and `smaller`
+keywords, dedicated `math`, and nonnegative lengths or percentages. `math` is
+a keyword with MathML-related downstream behavior, distinct from a numeric
+calculation. `CssFontSize::LengthPercentage` now contains
+`CssSpecifiedNonNegativeLengthPercentage` directly. The old float-backed
+`CssFontSizeLengthPercentage` type and its `try_new(CssLength)` and `value()`
+projection are removed. Use the shared checked value's
+`try_from_component`, `try_from_calculation`, `literal_component`,
+`calculation`, and `origin` methods to preserve exact authored tokens and
+symbolic math. Exact negative nonzero literals fail even when their magnitude
+underflows a floating-point field; unitless zero and signed zero remain valid.
+`CssFontSize` equality compares authored structure without comparing origins;
+the shared scalar's own equality continues to include provenance.
+Huge positive exponents remain authored without expansion during admission,
+while bounded serialization can reject output that exceeds its byte budget.
+
+`CssFontSizePropertyValue::size()` continues to borrow `&CssFontSize` and is
+current-only; `i01_subset()` and the old I01 size projection are removed.
+`CssExplicitFont::size()` also continues to borrow. The shorthand accepts the
+same size grammar, including `xxx-large`, `math`, and typed size math, while
+preserving the following font-family boundary and optional slash line height.
+The inherited size initial is `medium`, and intrinsic longhand contributions
+preserve importance and declaration provenance. Ordinary line-height values
+still use their earlier floating-point path, which can admit tiny negative
+literals after rounding and cannot retain exact ordinary values. Full `font`
+shorthand expansion and reset semantics also remain unfinished.
 
 The `@font-face` weight descriptor now uses
 `CssFontFaceWeight::Auto` or `Range { start, end }`, where each endpoint is a
@@ -1703,11 +1732,12 @@ repetitions. `CssFontFormatHint::is_equivalent_to` recognizes TrueType/OpenType
 compatibility while ordinary equality keeps their identities distinct.
 
 The `font-family`, `font-weight`, `font-style` and `font-width` properties and
-descriptors, `font`, `@font-face`, `src`, font-source and modern-source-hint
-records cite the September 7, 2026 edition as
+descriptors, the `font-size` property, `font`, `@font-face`, `src`, font-source
+and modern-source-hint records cite the September 7, 2026 edition as
 `I-FONTS4-20260907`. The family property and descriptor and the narrowly named
 modern-source-hint record are `Complete`; the weight, style and width properties
-and descriptors are also `Complete` for their authored grammars. The shorthand,
+and descriptors and the size property are also `Complete` for their authored
+grammars. The shorthand,
 rule and source-list records remain `Partial`.
 The older `I-FONTS4` identity keeps its April 22 edition; `O-FONTS3` also
 remains available for historical source records. These immutable identities
@@ -1756,8 +1786,8 @@ while preserving supplied parsed, programmatic or mixed origins. Only a pending
 value exposes `reparse_after_substitution`, which checks caller-supplied
 replacement components and returns an ordinary value; residual `var()` or
 `env()`, recovered components and invalid ordinary grammar are typed failures.
-This API never executes substitution. Fonts 4 shorthand components including
-`xxx-large` or `math` sizes remain unsupported.
+This API never executes substitution. Ordinary line-height numeric fidelity and
+intrinsic `font` shorthand expansion/reset semantics remain unfinished.
 Selected descriptors including `font-variation-settings`, `font-named-instance`
 and metric overrides remain unfinished.
 The source-list URL branch accepts `url()` but does not yet implement `src()`

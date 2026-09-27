@@ -1186,6 +1186,8 @@ pub use display::{
 pub use gap::{CssGapShorthand, CssGapValue};
 mod font_width;
 pub use font_width::{CssFontFaceWidth, CssFontStretch, CssFontWidth, CssFontWidthKeyword};
+mod font_size;
+pub use font_size::CssFontSize;
 mod font_style;
 pub use font_style::{
     CssFontFaceObliqueRange, CssFontFaceStyle, CssFontObliqueAngle, CssFontStyle,

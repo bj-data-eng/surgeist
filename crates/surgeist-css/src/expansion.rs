@@ -27,8 +27,8 @@ use crate::sizing_controls::*;
 use crate::syntax::*;
 use crate::text_alignment::{CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignValue};
 use crate::{
-    CssAbsoluteFontWeight, CssFontStyle, CssFontStyleKeyword, CssFontWeight, CssFontWidth,
-    CssFontWidthKeyword, CssSpecifiedLength,
+    CssAbsoluteFontWeight, CssFontSize, CssFontStyle, CssFontStyleKeyword, CssFontWeight,
+    CssFontWidth, CssFontWidthKeyword, CssSpecifiedLength,
 };
 use crate::{
     CssComponentValues, CssContainer, CssContainerNames, CssContainerType, CssKnownProperty,

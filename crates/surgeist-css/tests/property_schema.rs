@@ -72,7 +72,6 @@ fn core_font_wrappers_keep_current_global_and_substitution_branches_distinct() {
             .unwrap();
         match value {
             CssKnownPropertyValueRef::FontSize(value) => {
-                assert!(value.i01_subset().is_some());
                 let _ = value.size();
             }
             CssKnownPropertyValueRef::LineHeight(value) => {

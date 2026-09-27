@@ -9,8 +9,8 @@ use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_va
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
 use crate::{
-    CssAbsoluteFontWeight, CssFontObliqueAngle, CssFontStretch, CssFontStyle, CssFontStyleKeyword,
-    CssFontWeight, CssFontWeightNumber, CssFontWidth,
+    CssAbsoluteFontWeight, CssFontObliqueAngle, CssFontSize, CssFontStretch, CssFontStyle,
+    CssFontStyleKeyword, CssFontWeight, CssFontWeightNumber, CssFontWidth,
 };
 
 pub(super) static IMPLEMENTED_PROPERTY_EXTENSIONS: &[CssFeatureId] =
@@ -46,8 +46,10 @@ pub(super) fn parse_font_size<'i, 't>(
             "large" => Ok(CssFontSize::Large),
             "x-large" => Ok(CssFontSize::XLarge),
             "xx-large" => Ok(CssFontSize::XxLarge),
+            "xxx-large" => Ok(CssFontSize::XxxLarge),
             "larger" => Ok(CssFontSize::Larger),
             "smaller" => Ok(CssFontSize::Smaller),
+            "math" => Ok(CssFontSize::Math),
             _ => Err(unsupported_value(
                 input,
                 None,
@@ -56,10 +58,34 @@ pub(super) fn parse_font_size<'i, 't>(
         };
     }
 
-    let value = parse_length_with(input, numeric, LengthGrammar::FontSize)?;
-    CssFontSizeLengthPercentage::try_new(value)
-        .map(CssFontSize::LengthPercentage)
-        .ok_or_else(|| unsupported_value(input, None, "font-size must be non-negative"))
+    input.skip_whitespace();
+    let state = input.state();
+    let location = input.current_source_location();
+    let root_offset = input.position().byte_index();
+    let checked = match input.next().map_err(basic)? {
+        Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
+            input.reset(&state);
+            let component = numeric
+                .collect(input)
+                .map_err(|_| unsupported_value_at(location, None, "invalid font-size component"))?;
+            crate::CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
+        }
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            let expression =
+                parse_numeric_function(input, &state, numeric, CalculationRoot::LengthPercentage)?;
+            crate::CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
+                CssLengthPercentageCalculation::from_expression(expression),
+            )
+        }
+        token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
+    };
+    checked.map(CssFontSize::LengthPercentage).map_err(|error| {
+        unsupported_value_at(
+            numeric.error_location(&error, location, root_offset),
+            None,
+            "font-size requires a nonnegative length-percentage or size keyword",
+        )
+    })
 }
 
 pub(super) fn parse_line_height<'i, 't>(

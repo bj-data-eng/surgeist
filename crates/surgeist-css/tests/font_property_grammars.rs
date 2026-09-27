@@ -570,7 +570,6 @@ fn font_size_family_line_height_and_shorthand_follow_fonts3() {
         panic!("expected font-size");
     };
     assert!(matches!(size.size(), CssFontSize::Medium));
-    assert!(size.i01_subset().is_none());
 
     let CssKnownPropertyValueRef::LineHeight(line_height) = report.syntax()[1]
         .known()
@@ -680,7 +679,6 @@ fn font_keywords_generics_globals_and_signed_boundaries_are_exact() {
             panic!("expected font-size keyword");
         };
         assert_eq!(value.size(), expected);
-        assert!(value.i01_subset().is_none());
     }
     let CssKnownPropertyValueRef::FontFamily(generics) = report.syntax()[12]
         .known()

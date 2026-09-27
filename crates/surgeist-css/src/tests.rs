@@ -8483,7 +8483,10 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
     assert_eq!(
         font.size(),
         &CssFontSize::LengthPercentage(
-            CssFontSizeLengthPercentage::try_new(CssLength::px(16.0)).unwrap()
+            CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+                CssComponentValue::try_token("16px").unwrap()
+            )
+            .unwrap()
         )
     );
     assert_eq!(font.line_height(), Some(&CssLineHeight::Normal));
@@ -8566,7 +8569,10 @@ fn checked_typography_constructors_reject_invalid_states() {
             None,
             None,
             CssFontSize::LengthPercentage(
-                CssFontSizeLengthPercentage::try_new(CssLength::px(12.0)).unwrap()
+                CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+                    CssComponentValue::try_token("12px").unwrap()
+                )
+                .unwrap()
             ),
             None,
             CssFontFamilyList::try_new(vec![CssFontFamilyName::generic(
@@ -8576,7 +8582,12 @@ fn checked_typography_constructors_reject_invalid_states() {
         )
         .is_some(),
     );
-    assert_eq!(CssFontSizeLengthPercentage::try_new(CssLength::Auto), None);
+    assert!(
+        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+            CssComponentValue::try_token("auto").unwrap()
+        )
+        .is_err()
+    );
     let empty_quoted = CssFontFamilyName::try_quoted("").unwrap();
     assert_eq!(empty_quoted.as_str(), "");
     assert!(CssFontFamilyList::try_new(vec![empty_quoted]).is_some());

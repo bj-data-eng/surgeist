@@ -138,9 +138,6 @@ fn checked_owners() -> Vec<CheckedOwner> {
         ("vertical align", |v| {
             CssVerticalAlignLength::try_new(v).is_some()
         }),
-        ("font size", |v| {
-            CssFontSizeLengthPercentage::try_new(v).is_some()
-        }),
         ("line height", |v| {
             CssLineHeightLengthPercentage::try_new(v).is_some()
         }),

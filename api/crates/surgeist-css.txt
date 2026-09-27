@@ -1356,7 +1356,8 @@ pub surgeist_css::CssFontPaletteValueErrorKind::ResidualSubstitution
 #[non_exhaustive] pub enum surgeist_css::CssFontSize
 pub surgeist_css::CssFontSize::Large
 pub surgeist_css::CssFontSize::Larger
-pub surgeist_css::CssFontSize::LengthPercentage(surgeist_css::CssFontSizeLengthPercentage)
+pub surgeist_css::CssFontSize::LengthPercentage(surgeist_css::CssSpecifiedNonNegativeLengthPercentage)
+pub surgeist_css::CssFontSize::Math
 pub surgeist_css::CssFontSize::Medium
 pub surgeist_css::CssFontSize::Small
 pub surgeist_css::CssFontSize::Smaller
@@ -1364,6 +1365,13 @@ pub surgeist_css::CssFontSize::XLarge
 pub surgeist_css::CssFontSize::XSmall
 pub surgeist_css::CssFontSize::XxLarge
 pub surgeist_css::CssFontSize::XxSmall
+pub surgeist_css::CssFontSize::XxxLarge
+impl surgeist_css::CssFontSize
+pub fn surgeist_css::CssFontSize::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontSize::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::cmp::Eq for surgeist_css::CssFontSize
+impl core::cmp::PartialEq for surgeist_css::CssFontSize
+pub fn surgeist_css::CssFontSize::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssFontSizeAdjust
 pub surgeist_css::CssFontSizeAdjust::None
 pub surgeist_css::CssFontSizeAdjust::Number(surgeist_css::CssNonNegativeNumber)
@@ -2578,6 +2586,7 @@ pub surgeist_css::CssLonghandValueRef::EmptyCells(&'a surgeist_css::CssEmptyCell
 pub surgeist_css::CssLonghandValueRef::Float(&'a surgeist_css::CssFloat)
 pub surgeist_css::CssLonghandValueRef::FlowTolerance(&'a surgeist_css::CssFlowTolerance)
 pub surgeist_css::CssLonghandValueRef::FontFamily(&'a surgeist_css::CssFontFamilyList)
+pub surgeist_css::CssLonghandValueRef::FontSize(&'a surgeist_css::CssFontSize)
 pub surgeist_css::CssLonghandValueRef::FontStyle(&'a surgeist_css::CssFontStyle)
 pub surgeist_css::CssLonghandValueRef::FontWeight(&'a surgeist_css::CssFontWeight)
 pub surgeist_css::CssLonghandValueRef::FontWidth(&'a surgeist_css::CssFontWidth)
@@ -6088,14 +6097,9 @@ pub struct surgeist_css::CssFontSizeAdjustPropertyValue
 impl surgeist_css::CssFontSizeAdjustPropertyValue
 pub fn surgeist_css::CssFontSizeAdjustPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssFontSizeAdjustPropertyValue::size_adjust(&self) -> &surgeist_css::CssFontSizeAdjust
-pub struct surgeist_css::CssFontSizeLengthPercentage
-impl surgeist_css::CssFontSizeLengthPercentage
-pub fn surgeist_css::CssFontSizeLengthPercentage::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssFontSizeLengthPercentage::value(&self) -> &surgeist_css::CssLength
 pub struct surgeist_css::CssFontSizePropertyValue
 impl surgeist_css::CssFontSizePropertyValue
 pub fn surgeist_css::CssFontSizePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssFontSizePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
 pub const fn surgeist_css::CssFontSizePropertyValue::size(&self) -> &surgeist_css::CssFontSize
 pub struct surgeist_css::CssFontStylePropertyValue
 impl surgeist_css::CssFontStylePropertyValue

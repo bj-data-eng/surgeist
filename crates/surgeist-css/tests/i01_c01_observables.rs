@@ -3044,6 +3044,28 @@ fn assert_known_property_value(
             return;
         }
         (
+            surgeist_css::CssKnownProperty::FontSize,
+            surgeist_css::CssKnownPropertyValueRef::FontSize(value),
+        ) => {
+            assert_eq!(
+                value.size(),
+                &surgeist_css::CssFontSize::LengthPercentage(
+                    surgeist_css::CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+                        surgeist_css::CssComponentValue::try_token("16px").unwrap()
+                    )
+                    .unwrap()
+                )
+            );
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                "Px(CssFiniteNumber { value: 16.0 })",
+                semantic,
+                authored,
+            );
+            return;
+        }
+        (
             surgeist_css::CssKnownProperty::FontFamily,
             surgeist_css::CssKnownPropertyValueRef::FontFamily(value),
         ) => {
@@ -3130,8 +3152,8 @@ fn assert_known_property_value(
             assert_eq!(
                 font.size(),
                 &surgeist_css::CssFontSize::LengthPercentage(
-                    surgeist_css::CssFontSizeLengthPercentage::try_new(
-                        surgeist_css::CssLength::try_px(16.0).unwrap()
+                    surgeist_css::CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+                        surgeist_css::CssComponentValue::try_token("16px").unwrap()
                     )
                     .unwrap()
                 )
@@ -3225,7 +3247,6 @@ fn assert_known_property_value(
             GridColumn,
             GridArea,
             Grid,
-            FontSize,
             LineHeight,
             WritingMode,
             TextAlign,

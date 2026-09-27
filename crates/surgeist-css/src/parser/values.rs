@@ -93,7 +93,6 @@ pub(super) enum LengthGrammar {
     BorderSpacing,
     Clip,
     OutlineOffset,
-    FontSize,
     LineHeight,
     TextIndent,
     VerticalAlign,
@@ -112,7 +111,6 @@ impl LengthGrammar {
             self,
             Self::BoxSize
                 | Self::FlowTolerance
-                | Self::FontSize
                 | Self::LineHeight
                 | Self::TextIndent
                 | Self::VerticalAlign
@@ -144,7 +142,6 @@ impl LengthGrammar {
             self,
             Self::BoxSize
                 | Self::FlowTolerance
-                | Self::FontSize
                 | Self::LineHeight
                 | Self::TextIndent
                 | Self::VerticalAlign
@@ -179,7 +176,6 @@ impl LengthGrammar {
             Self::BorderSpacing => "border-spacing",
             Self::Clip => "clip",
             Self::OutlineOffset => "outline-offset",
-            Self::FontSize => "font-size",
             Self::LineHeight => "line-height",
             Self::TextIndent => "text-indent",
             Self::VerticalAlign => "vertical-align",

@@ -15,7 +15,7 @@ pub(crate) use crate::media_features::*;
 pub(crate) use crate::numeric::*;
 use crate::{
     CssColorAngleLiteral, CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError,
-    CssFontStretch, CssFontStyle, CssFontWeight, CssValueOrigin,
+    CssFontSize, CssFontStretch, CssFontStyle, CssFontWeight, CssValueOrigin,
 };
 use crate::{
     CssContainerScrollQuery, CssContainerStyleQuery, CssFontFeatureValuesRule,
@@ -7073,38 +7073,6 @@ impl CssAuthoredFontFeatureList {
 pub enum CssAuthoredFontFeatureSettings {
     Normal,
     Features(CssAuthoredFontFeatureList),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssFontSizeLengthPercentage {
-    value: CssLength,
-}
-
-impl CssFontSizeLengthPercentage {
-    #[must_use]
-    pub fn try_new(value: CssLength) -> Option<Self> {
-        is_non_negative_length_percentage(&value).then_some(Self { value })
-    }
-
-    #[must_use]
-    pub const fn value(&self) -> &CssLength {
-        &self.value
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssFontSize {
-    XxSmall,
-    XSmall,
-    Small,
-    Medium,
-    Large,
-    XLarge,
-    XxLarge,
-    Larger,
-    Smaller,
-    LengthPercentage(CssFontSizeLengthPercentage),
 }
 
 #[derive(Clone, Debug, PartialEq)]

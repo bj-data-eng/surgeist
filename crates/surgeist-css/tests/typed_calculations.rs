@@ -32,10 +32,8 @@ fn core_font_calculations_preserve_number_and_length_percentage_domains() {
     assert!(matches!(
         size.size(),
         CssFontSize::LengthPercentage(value)
-            if matches!(
-                value.value(),
-                CssLength::Calc(CssCalcLength::Typed(calculation))
-                    if calculation.result_type() == CssCalculationType::LengthPercentage
+            if value.calculation().is_some_and(|calculation|
+                calculation.result_type() == CssCalculationType::LengthPercentage
             )
     ));
 
