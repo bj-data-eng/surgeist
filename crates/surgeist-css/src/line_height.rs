@@ -1,0 +1,65 @@
+//! Exact authored CSS 2.1 line heights, before font metrics and inheritance resolution.
+
+use crate::specified_serialization::SpecifiedSerializationContext;
+use crate::{
+    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
+    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
+};
+
+type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+
+/// An authored `line-height`. Numbers, lengths, and percentages remain distinct.
+/// Equality compares authored structure while ignoring source origin.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum CssLineHeight {
+    Normal,
+    Number(CssSpecifiedNonNegativeNumber),
+    LengthPercentage(CssSpecifiedNonNegativeLengthPercentage),
+}
+
+impl PartialEq for CssLineHeight {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Normal, Self::Normal) => true,
+            (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
+            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => {
+                left.structural_eq(right)
+            }
+            _ => false,
+        }
+    }
+}
+impl Eq for CssLineHeight {}
+
+impl CssLineHeight {
+    /// Serializes the specified value without resolving font metrics.
+    pub fn serialize_specified(&self) -> SerializationResult<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Serializes atomically under explicit resource limits.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult<String> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let mut output = String::new();
+        match self {
+            Self::Normal => {
+                context.charge_input(1)?;
+                context.charge_projection(1)?;
+                context.append(&mut output, "normal")?;
+            }
+            Self::Number(value) => {
+                let captured = value.capture_specified(&mut context)?;
+                context.append(&mut output, &captured)?;
+            }
+            Self::LengthPercentage(value) => {
+                let captured = value.capture_specified(&mut context)?;
+                context.append(&mut output, &captured)?;
+            }
+        }
+        Ok(output)
+    }
+}

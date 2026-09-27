@@ -3066,6 +3066,20 @@ fn assert_known_property_value(
             return;
         }
         (
+            surgeist_css::CssKnownProperty::LineHeight,
+            surgeist_css::CssKnownPropertyValueRef::LineHeight(value),
+        ) => {
+            assert_eq!(value.line_height(), &surgeist_css::CssLineHeight::Normal);
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                "Normal",
+                semantic,
+                authored,
+            );
+            return;
+        }
+        (
             surgeist_css::CssKnownProperty::FontFamily,
             surgeist_css::CssKnownPropertyValueRef::FontFamily(value),
         ) => {
@@ -3247,7 +3261,6 @@ fn assert_known_property_value(
             GridColumn,
             GridArea,
             Grid,
-            LineHeight,
             WritingMode,
             TextAlign,
             TextAlignLast,

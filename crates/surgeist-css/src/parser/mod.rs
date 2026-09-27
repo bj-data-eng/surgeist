@@ -80,10 +80,11 @@ use crate::text_alignment::{CssTextAlignAllValue, CssTextAlignLastValue, CssText
 use crate::{
     CssContainer, CssContainerNames, CssContainerType, CssFontPaletteDescriptorKind,
     CssFontPaletteDescriptorValue, CssFontPaletteName, CssFontSize, CssFontStyle, CssFontWeight,
-    CssFontWidth, CssFrameSizing, CssGapShorthand, CssGapValue, CssMaxSizePair, CssMaxSizeValue,
-    CssMinIntrinsicSizing, CssOverflowValue, CssScrollMarginPair, CssScrollMarginShorthand,
-    CssScrollPaddingPair, CssScrollPaddingShorthand, CssScrollPaddingValue, CssScrollSnapAlign,
-    CssScrollSnapStop, CssScrollSnapType, CssSizePair, CssSizeValue, CssSpecifiedLength,
+    CssFontWidth, CssFrameSizing, CssGapShorthand, CssGapValue, CssLineHeight, CssMaxSizePair,
+    CssMaxSizeValue, CssMinIntrinsicSizing, CssOverflowValue, CssScrollMarginPair,
+    CssScrollMarginShorthand, CssScrollPaddingPair, CssScrollPaddingShorthand,
+    CssScrollPaddingValue, CssScrollSnapAlign, CssScrollSnapStop, CssScrollSnapType, CssSizePair,
+    CssSizeValue, CssSpecifiedLength,
 };
 use background::*;
 use border_color::*;

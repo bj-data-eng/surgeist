@@ -2501,9 +2501,15 @@ pub const fn surgeist_css::CssLengthUnit::as_css_str(self) -> &'static str
 pub surgeist_css::CssLetterSpacing::Length(surgeist_css::CssLetterSpacingLength)
 pub surgeist_css::CssLetterSpacing::Normal
 #[non_exhaustive] pub enum surgeist_css::CssLineHeight
-pub surgeist_css::CssLineHeight::LengthPercentage(surgeist_css::CssLineHeightLengthPercentage)
+pub surgeist_css::CssLineHeight::LengthPercentage(surgeist_css::CssSpecifiedNonNegativeLengthPercentage)
 pub surgeist_css::CssLineHeight::Normal
-pub surgeist_css::CssLineHeight::Number(surgeist_css::CssNonNegativeNumberValue)
+pub surgeist_css::CssLineHeight::Number(surgeist_css::CssSpecifiedNonNegativeNumber)
+impl surgeist_css::CssLineHeight
+pub fn surgeist_css::CssLineHeight::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssLineHeight::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::cmp::Eq for surgeist_css::CssLineHeight
+impl core::cmp::PartialEq for surgeist_css::CssLineHeight
+pub fn surgeist_css::CssLineHeight::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssLineWidth
 pub surgeist_css::CssLineWidth::Length(surgeist_css::CssNonNegativeLength)
 pub surgeist_css::CssLineWidth::Medium
@@ -2598,6 +2604,7 @@ pub surgeist_css::CssLonghandValueRef::InsetBlockStart(&'a surgeist_css::CssInse
 pub surgeist_css::CssLonghandValueRef::InsetInlineEnd(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::InsetInlineStart(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::Left(&'a surgeist_css::CssInsetValue)
+pub surgeist_css::CssLonghandValueRef::LineHeight(&'a surgeist_css::CssLineHeight)
 pub surgeist_css::CssLonghandValueRef::MarginBlockEnd(&'a surgeist_css::CssMarginValue)
 pub surgeist_css::CssLonghandValueRef::MarginBlockStart(&'a surgeist_css::CssMarginValue)
 pub surgeist_css::CssLonghandValueRef::MarginBottom(&'a surgeist_css::CssMarginValue)
@@ -6674,14 +6681,9 @@ pub struct surgeist_css::CssLetterSpacingPropertyValue
 impl surgeist_css::CssLetterSpacingPropertyValue
 pub fn surgeist_css::CssLetterSpacingPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssLetterSpacingPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLetterSpacing>
-pub struct surgeist_css::CssLineHeightLengthPercentage
-impl surgeist_css::CssLineHeightLengthPercentage
-pub fn surgeist_css::CssLineHeightLengthPercentage::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssLineHeightLengthPercentage::value(&self) -> &surgeist_css::CssLength
 pub struct surgeist_css::CssLineHeightPropertyValue
 impl surgeist_css::CssLineHeightPropertyValue
 pub fn surgeist_css::CssLineHeightPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssLineHeightPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
 pub const fn surgeist_css::CssLineHeightPropertyValue::line_height(&self) -> &surgeist_css::CssLineHeight
 pub struct surgeist_css::CssLineIndex(_)
 impl surgeist_css::CssLineIndex
@@ -7990,6 +7992,15 @@ pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::serialize_specifie
 pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(calculation: surgeist_css::CssLengthPercentageCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::zero() -> Self
+pub struct surgeist_css::CssSpecifiedNonNegativeNumber
+impl surgeist_css::CssSpecifiedNonNegativeNumber
+pub fn surgeist_css::CssSpecifiedNonNegativeNumber::calculation(&self) -> core::option::Option<&surgeist_css::CssNumberCalculation>
+pub fn surgeist_css::CssSpecifiedNonNegativeNumber::literal_component(&self) -> core::option::Option<&surgeist_css::CssComponentValue>
+pub fn surgeist_css::CssSpecifiedNonNegativeNumber::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssSpecifiedNonNegativeNumber::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSpecifiedNonNegativeNumber::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSpecifiedNonNegativeNumber::try_from_calculation(calculation: surgeist_css::CssNumberCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssSpecifiedNonNegativeNumber::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub struct surgeist_css::CssSpecifiedNonNegativePercentage
 impl surgeist_css::CssSpecifiedNonNegativePercentage
 pub fn surgeist_css::CssSpecifiedNonNegativePercentage::calculation(&self) -> core::option::Option<&surgeist_css::CssPercentageCalculation>

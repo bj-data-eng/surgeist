@@ -1,9 +1,9 @@
-//! Exact, checked authored length and percentage domains with shared numeric helpers.
+//! Exact, checked authored number, length, and percentage domains with shared numeric helpers.
 
 use crate::{
     CssComponentValue, CssComponentValueRef, CssLengthCalculation, CssLengthPercentageCalculation,
-    CssLengthUnit, CssNumericConstructionError, CssNumericConstructionErrorKind,
-    CssPercentageCalculation, CssSpecifiedValueSerializationError,
+    CssLengthUnit, CssNumberCalculation, CssNumericConstructionError,
+    CssNumericConstructionErrorKind, CssPercentageCalculation, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
     CssValueTokenRef,
     specified_serialization::{SpecifiedSerializationContext, format_lexical_shift},
@@ -113,16 +113,127 @@ pub(crate) fn capture_literal(
     Ok(output)
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum SpecifiedNumericValue<C> {
+    Literal(Box<CssComponentValue>),
+    Calculation(C),
+}
+
+/// A nonnegative CSS `<number>` retaining its exact token or symbolic math.
+/// Equality includes source provenance; semantic owners can compare structure separately.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssSpecifiedNonNegativeNumber {
+    value: SpecifiedNumericValue<CssNumberCalculation>,
+}
+
+impl CssSpecifiedNonNegativeNumber {
+    /// Checks an ordinary number exactly, including signed zero and tiny negatives.
+    pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
+        let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = component.view() else {
+            return Err(CssNumericConstructionError::at(
+                CssNumericConstructionErrorKind::RootDomainMismatch,
+                Some(&component),
+            ));
+        };
+        if crate::exact_decimal::LexicalDecimal::new(number.representation()).negative {
+            return Err(CssNumericConstructionError::at(
+                CssNumericConstructionErrorKind::OutOfRange,
+                Some(&component),
+            ));
+        }
+        Ok(Self {
+            value: SpecifiedNumericValue::Literal(Box::new(component)),
+        })
+    }
+
+    /// Retains admitted number math; a bare root re-enters exact literal checks.
+    pub fn try_from_calculation(calculation: CssNumberCalculation) -> ConstructionResult<Self> {
+        let root = significant_root(calculation.components())?;
+        if matches!(root.view(), CssComponentValueRef::Token(_)) {
+            return Self::try_from_component(root.clone());
+        }
+        if !matches!(root.view(), CssComponentValueRef::Function(_)) {
+            return Err(CssNumericConstructionError::at(
+                CssNumericConstructionErrorKind::RootDomainMismatch,
+                Some(root),
+            ));
+        }
+        Ok(Self {
+            value: SpecifiedNumericValue::Calculation(calculation),
+        })
+    }
+
+    /// Borrows the original ordinary number token, if present.
+    pub fn literal_component(&self) -> Option<&CssComponentValue> {
+        match &self.value {
+            SpecifiedNumericValue::Literal(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    /// Borrows the symbolic checked number calculation, if present.
+    pub fn calculation(&self) -> Option<&CssNumberCalculation> {
+        match &self.value {
+            SpecifiedNumericValue::Calculation(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    /// Returns the parsed or programmatic root origin.
+    pub fn origin(&self) -> &CssValueOrigin {
+        match &self.value {
+            SpecifiedNumericValue::Literal(value) => value.origin(),
+            SpecifiedNumericValue::Calculation(value) => value.origin(),
+        }
+    }
+
+    /// Serializes the specified number with default resource limits.
+    pub fn serialize_specified(&self) -> SerializationResult<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Serializes the specified number atomically under explicit resource limits.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult<String> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let captured = self.capture_specified(&mut context)?;
+        let mut output = String::new();
+        context.append(&mut output, &captured)?;
+        Ok(output)
+    }
+
+    pub(crate) fn capture_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> SerializationResult<String> {
+        match &self.value {
+            SpecifiedNumericValue::Literal(value) => capture_literal(value, context),
+            SpecifiedNumericValue::Calculation(value) => {
+                crate::numeric::capture_specified(&value.expression, context).map(|(text, _)| text)
+            }
+        }
+    }
+
+    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
+        match (&self.value, &other.value) {
+            (SpecifiedNumericValue::Literal(left), SpecifiedNumericValue::Literal(right)) => {
+                left.structural_eq_ignoring_origin(right)
+            }
+            (
+                SpecifiedNumericValue::Calculation(left),
+                SpecifiedNumericValue::Calculation(right),
+            ) => left.expression.structural_eq(&right.expression),
+            _ => false,
+        }
+    }
+}
+
 /// A signed CSS `<length>` that retains exact ordinary spelling or deferred math.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSpecifiedLength {
-    value: SpecifiedLengthValue<CssLengthCalculation>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum SpecifiedLengthValue<C> {
-    Literal(Box<CssComponentValue>),
-    Calculation(C),
+    value: SpecifiedNumericValue<CssLengthCalculation>,
 }
 
 impl CssSpecifiedLength {
@@ -130,7 +241,7 @@ impl CssSpecifiedLength {
     pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
         checked_literal(&component, false, false, false)?;
         Ok(Self {
-            value: SpecifiedLengthValue::Literal(Box::new(component)),
+            value: SpecifiedNumericValue::Literal(Box::new(component)),
         })
     }
 
@@ -147,7 +258,7 @@ impl CssSpecifiedLength {
             ));
         }
         Ok(Self {
-            value: SpecifiedLengthValue::Calculation(calculation),
+            value: SpecifiedNumericValue::Calculation(calculation),
         })
     }
 
@@ -161,24 +272,24 @@ impl CssSpecifiedLength {
     /// Borrows the original ordinary token, when this is a literal.
     pub fn literal_component(&self) -> Option<&CssComponentValue> {
         match &self.value {
-            SpecifiedLengthValue::Literal(component) => Some(component),
-            SpecifiedLengthValue::Calculation(_) => None,
+            SpecifiedNumericValue::Literal(component) => Some(component),
+            SpecifiedNumericValue::Calculation(_) => None,
         }
     }
 
     /// Borrows the symbolic checked math root, when present.
     pub fn calculation(&self) -> Option<&CssLengthCalculation> {
         match &self.value {
-            SpecifiedLengthValue::Literal(_) => None,
-            SpecifiedLengthValue::Calculation(calculation) => Some(calculation),
+            SpecifiedNumericValue::Literal(_) => None,
+            SpecifiedNumericValue::Calculation(calculation) => Some(calculation),
         }
     }
 
     /// Returns the original parsed or programmatic root origin.
     pub fn origin(&self) -> &CssValueOrigin {
         match &self.value {
-            SpecifiedLengthValue::Literal(component) => component.origin(),
-            SpecifiedLengthValue::Calculation(calculation) => calculation.origin(),
+            SpecifiedNumericValue::Literal(component) => component.origin(),
+            SpecifiedNumericValue::Calculation(calculation) => calculation.origin(),
         }
     }
 
@@ -204,8 +315,8 @@ impl CssSpecifiedLength {
         context: &mut SpecifiedSerializationContext,
     ) -> SerializationResult<String> {
         match &self.value {
-            SpecifiedLengthValue::Literal(component) => capture_literal(component, context),
-            SpecifiedLengthValue::Calculation(calculation) => {
+            SpecifiedNumericValue::Literal(component) => capture_literal(component, context),
+            SpecifiedNumericValue::Calculation(calculation) => {
                 crate::numeric::capture_specified(&calculation.expression, context)
                     .map(|(text, _)| text)
             }
@@ -216,7 +327,7 @@ impl CssSpecifiedLength {
 /// A nonnegative CSS `<length>` retaining exact ordinary spelling or deferred math.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSpecifiedNonNegativeLength {
-    value: SpecifiedLengthValue<CssLengthCalculation>,
+    value: SpecifiedNumericValue<CssLengthCalculation>,
 }
 
 impl CssSpecifiedNonNegativeLength {
@@ -224,7 +335,7 @@ impl CssSpecifiedNonNegativeLength {
     pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
         checked_literal(&component, false, true, false)?;
         Ok(Self {
-            value: SpecifiedLengthValue::Literal(Box::new(component)),
+            value: SpecifiedNumericValue::Literal(Box::new(component)),
         })
     }
 
@@ -241,7 +352,7 @@ impl CssSpecifiedNonNegativeLength {
             ));
         }
         Ok(Self {
-            value: SpecifiedLengthValue::Calculation(calculation),
+            value: SpecifiedNumericValue::Calculation(calculation),
         })
     }
 
@@ -255,24 +366,24 @@ impl CssSpecifiedNonNegativeLength {
     /// Borrows the original ordinary token, when this is a literal.
     pub fn literal_component(&self) -> Option<&CssComponentValue> {
         match &self.value {
-            SpecifiedLengthValue::Literal(component) => Some(component),
-            SpecifiedLengthValue::Calculation(_) => None,
+            SpecifiedNumericValue::Literal(component) => Some(component),
+            SpecifiedNumericValue::Calculation(_) => None,
         }
     }
 
     /// Borrows the symbolic checked math root, when present.
     pub fn calculation(&self) -> Option<&CssLengthCalculation> {
         match &self.value {
-            SpecifiedLengthValue::Literal(_) => None,
-            SpecifiedLengthValue::Calculation(calculation) => Some(calculation),
+            SpecifiedNumericValue::Literal(_) => None,
+            SpecifiedNumericValue::Calculation(calculation) => Some(calculation),
         }
     }
 
     /// Returns the original parsed or programmatic root origin.
     pub fn origin(&self) -> &CssValueOrigin {
         match &self.value {
-            SpecifiedLengthValue::Literal(component) => component.origin(),
-            SpecifiedLengthValue::Calculation(calculation) => calculation.origin(),
+            SpecifiedNumericValue::Literal(component) => component.origin(),
+            SpecifiedNumericValue::Calculation(calculation) => calculation.origin(),
         }
     }
 
@@ -298,8 +409,8 @@ impl CssSpecifiedNonNegativeLength {
         context: &mut SpecifiedSerializationContext,
     ) -> SerializationResult<String> {
         match &self.value {
-            SpecifiedLengthValue::Literal(component) => capture_literal(component, context),
-            SpecifiedLengthValue::Calculation(calculation) => {
+            SpecifiedNumericValue::Literal(component) => capture_literal(component, context),
+            SpecifiedNumericValue::Calculation(calculation) => {
                 crate::numeric::capture_specified(&calculation.expression, context)
                     .map(|(text, _)| text)
             }
@@ -308,12 +419,13 @@ impl CssSpecifiedNonNegativeLength {
 
     pub(crate) fn structural_eq(&self, other: &Self) -> bool {
         match (&self.value, &other.value) {
-            (SpecifiedLengthValue::Literal(left), SpecifiedLengthValue::Literal(right)) => {
+            (SpecifiedNumericValue::Literal(left), SpecifiedNumericValue::Literal(right)) => {
                 left.structural_eq_ignoring_origin(right)
             }
-            (SpecifiedLengthValue::Calculation(left), SpecifiedLengthValue::Calculation(right)) => {
-                left.structural_eq(right)
-            }
+            (
+                SpecifiedNumericValue::Calculation(left),
+                SpecifiedNumericValue::Calculation(right),
+            ) => left.structural_eq(right),
             _ => false,
         }
     }
@@ -322,7 +434,7 @@ impl CssSpecifiedNonNegativeLength {
 /// A signed CSS `<length-percentage>` retaining exact ordinary spelling or deferred math.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSpecifiedLengthPercentage {
-    value: SpecifiedLengthValue<CssLengthPercentageCalculation>,
+    value: SpecifiedNumericValue<CssLengthPercentageCalculation>,
 }
 
 impl CssSpecifiedLengthPercentage {
@@ -330,7 +442,7 @@ impl CssSpecifiedLengthPercentage {
     pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
         checked_literal(&component, true, false, false)?;
         Ok(Self {
-            value: SpecifiedLengthValue::Literal(Box::new(component)),
+            value: SpecifiedNumericValue::Literal(Box::new(component)),
         })
     }
 
@@ -349,7 +461,7 @@ impl CssSpecifiedLengthPercentage {
             ));
         }
         Ok(Self {
-            value: SpecifiedLengthValue::Calculation(calculation),
+            value: SpecifiedNumericValue::Calculation(calculation),
         })
     }
 
@@ -363,24 +475,24 @@ impl CssSpecifiedLengthPercentage {
     /// Borrows the ordinary token, when this is a literal.
     pub fn literal_component(&self) -> Option<&CssComponentValue> {
         match &self.value {
-            SpecifiedLengthValue::Literal(component) => Some(component),
-            SpecifiedLengthValue::Calculation(_) => None,
+            SpecifiedNumericValue::Literal(component) => Some(component),
+            SpecifiedNumericValue::Calculation(_) => None,
         }
     }
 
     /// Borrows the symbolic checked math root, when present.
     pub fn calculation(&self) -> Option<&CssLengthPercentageCalculation> {
         match &self.value {
-            SpecifiedLengthValue::Literal(_) => None,
-            SpecifiedLengthValue::Calculation(calculation) => Some(calculation),
+            SpecifiedNumericValue::Literal(_) => None,
+            SpecifiedNumericValue::Calculation(calculation) => Some(calculation),
         }
     }
 
     /// Returns the original parsed or programmatic root origin.
     pub fn origin(&self) -> &CssValueOrigin {
         match &self.value {
-            SpecifiedLengthValue::Literal(component) => component.origin(),
-            SpecifiedLengthValue::Calculation(calculation) => calculation.origin(),
+            SpecifiedNumericValue::Literal(component) => component.origin(),
+            SpecifiedNumericValue::Calculation(calculation) => calculation.origin(),
         }
     }
 
@@ -406,8 +518,8 @@ impl CssSpecifiedLengthPercentage {
         context: &mut SpecifiedSerializationContext,
     ) -> SerializationResult<String> {
         match &self.value {
-            SpecifiedLengthValue::Literal(component) => capture_literal(component, context),
-            SpecifiedLengthValue::Calculation(calculation) => {
+            SpecifiedNumericValue::Literal(component) => capture_literal(component, context),
+            SpecifiedNumericValue::Calculation(calculation) => {
                 crate::numeric::capture_specified(&calculation.expression, context)
                     .map(|(text, _)| text)
             }
@@ -416,12 +528,13 @@ impl CssSpecifiedLengthPercentage {
 
     pub(crate) fn structural_eq(&self, other: &Self) -> bool {
         match (&self.value, &other.value) {
-            (SpecifiedLengthValue::Literal(left), SpecifiedLengthValue::Literal(right)) => {
+            (SpecifiedNumericValue::Literal(left), SpecifiedNumericValue::Literal(right)) => {
                 left.structural_eq_ignoring_origin(right)
             }
-            (SpecifiedLengthValue::Calculation(left), SpecifiedLengthValue::Calculation(right)) => {
-                left.structural_eq(right)
-            }
+            (
+                SpecifiedNumericValue::Calculation(left),
+                SpecifiedNumericValue::Calculation(right),
+            ) => left.structural_eq(right),
             _ => false,
         }
     }
@@ -430,7 +543,7 @@ impl CssSpecifiedLengthPercentage {
 /// A nonnegative ordinary `<length-percentage>` or deferred checked math.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSpecifiedNonNegativeLengthPercentage {
-    value: SpecifiedLengthValue<CssLengthPercentageCalculation>,
+    value: SpecifiedNumericValue<CssLengthPercentageCalculation>,
 }
 
 impl CssSpecifiedNonNegativeLengthPercentage {
@@ -438,7 +551,7 @@ impl CssSpecifiedNonNegativeLengthPercentage {
     pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
         checked_literal(&component, true, true, false)?;
         Ok(Self {
-            value: SpecifiedLengthValue::Literal(Box::new(component)),
+            value: SpecifiedNumericValue::Literal(Box::new(component)),
         })
     }
 
@@ -457,7 +570,7 @@ impl CssSpecifiedNonNegativeLengthPercentage {
             ));
         }
         Ok(Self {
-            value: SpecifiedLengthValue::Calculation(calculation),
+            value: SpecifiedNumericValue::Calculation(calculation),
         })
     }
 
@@ -471,24 +584,24 @@ impl CssSpecifiedNonNegativeLengthPercentage {
     /// Borrows the original ordinary token, when this is a literal.
     pub fn literal_component(&self) -> Option<&CssComponentValue> {
         match &self.value {
-            SpecifiedLengthValue::Literal(component) => Some(component),
-            SpecifiedLengthValue::Calculation(_) => None,
+            SpecifiedNumericValue::Literal(component) => Some(component),
+            SpecifiedNumericValue::Calculation(_) => None,
         }
     }
 
     /// Borrows the symbolic checked math root, when present.
     pub fn calculation(&self) -> Option<&CssLengthPercentageCalculation> {
         match &self.value {
-            SpecifiedLengthValue::Literal(_) => None,
-            SpecifiedLengthValue::Calculation(calculation) => Some(calculation),
+            SpecifiedNumericValue::Literal(_) => None,
+            SpecifiedNumericValue::Calculation(calculation) => Some(calculation),
         }
     }
 
     /// Returns the original parsed or programmatic root origin.
     pub fn origin(&self) -> &CssValueOrigin {
         match &self.value {
-            SpecifiedLengthValue::Literal(component) => component.origin(),
-            SpecifiedLengthValue::Calculation(calculation) => calculation.origin(),
+            SpecifiedNumericValue::Literal(component) => component.origin(),
+            SpecifiedNumericValue::Calculation(calculation) => calculation.origin(),
         }
     }
 
@@ -514,8 +627,8 @@ impl CssSpecifiedNonNegativeLengthPercentage {
         context: &mut SpecifiedSerializationContext,
     ) -> SerializationResult<String> {
         match &self.value {
-            SpecifiedLengthValue::Literal(component) => capture_literal(component, context),
-            SpecifiedLengthValue::Calculation(calculation) => {
+            SpecifiedNumericValue::Literal(component) => capture_literal(component, context),
+            SpecifiedNumericValue::Calculation(calculation) => {
                 crate::numeric::capture_specified(&calculation.expression, context)
                     .map(|(text, _)| text)
             }
@@ -524,12 +637,13 @@ impl CssSpecifiedNonNegativeLengthPercentage {
 
     pub(crate) fn structural_eq(&self, other: &Self) -> bool {
         match (&self.value, &other.value) {
-            (SpecifiedLengthValue::Literal(left), SpecifiedLengthValue::Literal(right)) => {
+            (SpecifiedNumericValue::Literal(left), SpecifiedNumericValue::Literal(right)) => {
                 left.structural_eq_ignoring_origin(right)
             }
-            (SpecifiedLengthValue::Calculation(left), SpecifiedLengthValue::Calculation(right)) => {
-                left.structural_eq(right)
-            }
+            (
+                SpecifiedNumericValue::Calculation(left),
+                SpecifiedNumericValue::Calculation(right),
+            ) => left.structural_eq(right),
             _ => false,
         }
     }
@@ -538,18 +652,19 @@ impl CssSpecifiedNonNegativeLengthPercentage {
 /// A nonnegative CSS `<percentage>` retaining exact literal spelling or checked math.
 #[derive(Clone, Debug)]
 pub struct CssSpecifiedNonNegativePercentage {
-    value: SpecifiedLengthValue<CssPercentageCalculation>,
+    value: SpecifiedNumericValue<CssPercentageCalculation>,
 }
 
 impl PartialEq for CssSpecifiedNonNegativePercentage {
     fn eq(&self, other: &Self) -> bool {
         match (&self.value, &other.value) {
-            (SpecifiedLengthValue::Literal(left), SpecifiedLengthValue::Literal(right)) => {
+            (SpecifiedNumericValue::Literal(left), SpecifiedNumericValue::Literal(right)) => {
                 left.structural_eq_ignoring_origin(right)
             }
-            (SpecifiedLengthValue::Calculation(left), SpecifiedLengthValue::Calculation(right)) => {
-                left.expression.structural_eq(&right.expression)
-            }
+            (
+                SpecifiedNumericValue::Calculation(left),
+                SpecifiedNumericValue::Calculation(right),
+            ) => left.expression.structural_eq(&right.expression),
             _ => false,
         }
     }
@@ -562,7 +677,7 @@ impl CssSpecifiedNonNegativePercentage {
     pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
         checked_literal(&component, true, true, true)?;
         Ok(Self {
-            value: SpecifiedLengthValue::Literal(Box::new(component)),
+            value: SpecifiedNumericValue::Literal(Box::new(component)),
         })
     }
 
@@ -579,31 +694,31 @@ impl CssSpecifiedNonNegativePercentage {
             ));
         }
         Ok(Self {
-            value: SpecifiedLengthValue::Calculation(calculation),
+            value: SpecifiedNumericValue::Calculation(calculation),
         })
     }
 
     /// Borrows the exact literal token, if this is an ordinary percentage.
     pub fn literal_component(&self) -> Option<&CssComponentValue> {
         match &self.value {
-            SpecifiedLengthValue::Literal(component) => Some(component),
-            SpecifiedLengthValue::Calculation(_) => None,
+            SpecifiedNumericValue::Literal(component) => Some(component),
+            SpecifiedNumericValue::Calculation(_) => None,
         }
     }
 
     /// Borrows checked symbolic percentage math, when present.
     pub fn calculation(&self) -> Option<&CssPercentageCalculation> {
         match &self.value {
-            SpecifiedLengthValue::Literal(_) => None,
-            SpecifiedLengthValue::Calculation(calculation) => Some(calculation),
+            SpecifiedNumericValue::Literal(_) => None,
+            SpecifiedNumericValue::Calculation(calculation) => Some(calculation),
         }
     }
 
     /// Returns the root's parsed or programmatic origin.
     pub fn origin(&self) -> &CssValueOrigin {
         match &self.value {
-            SpecifiedLengthValue::Literal(component) => component.origin(),
-            SpecifiedLengthValue::Calculation(calculation) => calculation.origin(),
+            SpecifiedNumericValue::Literal(component) => component.origin(),
+            SpecifiedNumericValue::Calculation(calculation) => calculation.origin(),
         }
     }
 
@@ -629,8 +744,8 @@ impl CssSpecifiedNonNegativePercentage {
         context: &mut SpecifiedSerializationContext,
     ) -> SerializationResult<String> {
         match &self.value {
-            SpecifiedLengthValue::Literal(component) => capture_literal(component, context),
-            SpecifiedLengthValue::Calculation(calculation) => {
+            SpecifiedNumericValue::Literal(component) => capture_literal(component, context),
+            SpecifiedNumericValue::Calculation(calculation) => {
                 crate::numeric::capture_specified(&calculation.expression, context)
                     .map(|(text, _)| text)
             }

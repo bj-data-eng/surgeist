@@ -1520,10 +1520,28 @@ current-only; `i01_subset()` and the old I01 size projection are removed.
 same size grammar, including `xxx-large`, `math`, and typed size math, while
 preserving the following font-family boundary and optional slash line height.
 The inherited size initial is `medium`, and intrinsic longhand contributions
-preserve importance and declaration provenance. Ordinary line-height values
-still use their earlier floating-point path, which can admit tiny negative
-literals after rounding and cannot retain exact ordinary values. Full `font`
-shorthand expansion and reset semantics also remain unfinished.
+preserve importance and declaration provenance. Full `font` shorthand expansion
+and reset semantics remain unfinished.
+
+`line-height` and the optional `font` slash component share one exact authored
+grammar: `normal`, a nonnegative number, or a nonnegative length-percentage.
+`CssLineHeight::Number` retains a checked `CssSpecifiedNonNegativeNumber`;
+`CssLineHeight::LengthPercentage` retains the corresponding checked scalar.
+Unitless zero stays a number, while `0px` and `0%` retain their own domain.
+Ordinary negative nonzero values are rejected before floating-point narrowing;
+bare checked calculation roots reenter literal admission, while actual math
+functions remain symbolic. Line-height equality ignores source origin
+while preserving authored structure, whereas the shared number scalar's own
+equality retains provenance. Both support bounded specified serialization.
+`CssLineHeightPropertyValue::line_height()` remains borrowed and current-only;
+the historical `i01_subset()`, `CssLineHeightLengthPercentage`, and
+`CssLineHeight::Number(CssNonNegativeNumberValue)` payload are removed. Construct
+new numeric payloads with `CssSpecifiedNonNegativeNumber::try_from_component`
+or `try_from_calculation`, then inspect them with `literal_component()`,
+`calculation()`, and `origin()`.
+Its inherited initial is `normal`, and intrinsic longhand expansion produces one
+contribution with the declaration's importance and provenance. Font metrics,
+percentage resolution, and actual line box computation remain downstream.
 
 The `@font-face` weight descriptor now uses
 `CssFontFaceWeight::Auto` or `Range { start, end }`, where each endpoint is a
@@ -1786,8 +1804,8 @@ while preserving supplied parsed, programmatic or mixed origins. Only a pending
 value exposes `reparse_after_substitution`, which checks caller-supplied
 replacement components and returns an ordinary value; residual `var()` or
 `env()`, recovered components and invalid ordinary grammar are typed failures.
-This API never executes substitution. Ordinary line-height numeric fidelity and
-intrinsic `font` shorthand expansion/reset semantics remain unfinished.
+This API never executes substitution. Intrinsic `font` shorthand expansion/reset
+semantics remain unfinished.
 Selected descriptors including `font-variation-settings`, `font-named-instance`
 and metric overrides remain unfinished.
 The source-list URL branch accepts `url()` but does not yet implement `src()`

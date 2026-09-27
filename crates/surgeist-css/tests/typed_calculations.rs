@@ -47,8 +47,8 @@ fn core_font_calculations_preserve_number_and_length_percentage_domains() {
     };
     assert!(matches!(
         number.line_height(),
-        CssLineHeight::Number(CssNonNegativeNumberValue::Calculation(calculation))
-            if calculation.result_type() == CssCalculationType::Number
+        CssLineHeight::Number(value)
+            if value.calculation().is_some_and(|calculation| calculation.result_type() == CssCalculationType::Number)
     ));
 
     let CssKnownPropertyValueRef::LineHeight(length) = report.syntax()[2]
@@ -63,8 +63,8 @@ fn core_font_calculations_preserve_number_and_length_percentage_domains() {
         length.line_height(),
         CssLineHeight::LengthPercentage(value)
             if matches!(
-                value.value(),
-                CssLength::Calc(CssCalcLength::Typed(calculation))
+                value.calculation(),
+                Some(calculation)
                     if calculation.result_type() == CssCalculationType::LengthPercentage
             )
     ));

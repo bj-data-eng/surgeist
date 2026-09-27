@@ -6,8 +6,7 @@ use surgeist_css::{
     CssFontVariantLigatures, CssFontVariantNumeric, CssFontVariantNumericFigure,
     CssFontVariantNumericFraction, CssFontVariantNumericSpacing, CssFontVariantPosition,
     CssFontVariantValue, CssGenericFontFamily, CssKnownDeclaredValueRef, CssKnownProperty,
-    CssKnownPropertyValueRef, CssLineHeight, CssNonNegativeNumberValue, CssSystemFont,
-    parse_style_attribute,
+    CssKnownPropertyValueRef, CssLineHeight, CssSystemFont, parse_style_attribute,
 };
 
 #[test]
@@ -581,10 +580,9 @@ fn font_size_family_line_height_and_shorthand_follow_fonts3() {
     };
     assert!(matches!(
         line_height.line_height(),
-        CssLineHeight::Number(CssNonNegativeNumberValue::Literal(value))
-            if value.value() == 1.25
+        CssLineHeight::Number(value)
+            if value.serialize_specified().unwrap() == "1.25"
     ));
-    assert!(line_height.i01_subset().is_none());
 
     let CssKnownPropertyValueRef::FontFamily(family) = report.syntax()[2]
         .known()

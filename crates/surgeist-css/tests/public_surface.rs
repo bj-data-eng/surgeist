@@ -11,16 +11,16 @@ use surgeist_css::{
     CssFontVariantNumericFigure, CssFontVariantNumericValues, CssFontVariantPosition,
     CssFontVariantValues, CssGenericFontFamily, CssGridAutoFlowAxis, CssHueInterpolationMethod,
     CssImportance, CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
-    CssLanguageRange, CssLength, CssLineHeightLengthPercentage, CssMediaConditionKind,
-    CssMediaQuery, CssMediaQueryModifier, CssMediaType, CssNamespaceConstraint, CssNamespaceName,
-    CssNamespacePrefix, CssOpenTypeTag, CssPredefinedColorSpace, CssPropertyNameRef,
-    CssPseudoClass, CssPseudoElement, CssPseudoElementSegment, CssRecoveryAction,
-    CssRelativeColorChannel, CssRelativeColorEnvironment, CssRelativeColorExpressionValue,
-    CssRelativeColorFunction, CssRelativeColorResultDomain, CssRule, CssSelector,
-    CssSelectorCombinator, CssSpecificationTier, CssSpecifiedNonNegativeLengthPercentage,
-    CssSupportStatus, CssSupportsConditionKind, CssSupportsConditionList, ErrorKind,
-    conformance_exclusion, feature_metadata, parse_sheet, parse_style_attribute,
-    property_support_metadata, specification_source,
+    CssLanguageRange, CssMediaConditionKind, CssMediaQuery, CssMediaQueryModifier, CssMediaType,
+    CssNamespaceConstraint, CssNamespaceName, CssNamespacePrefix, CssOpenTypeTag,
+    CssPredefinedColorSpace, CssPropertyNameRef, CssPseudoClass, CssPseudoElement,
+    CssPseudoElementSegment, CssRecoveryAction, CssRelativeColorChannel,
+    CssRelativeColorEnvironment, CssRelativeColorExpressionValue, CssRelativeColorFunction,
+    CssRelativeColorResultDomain, CssRule, CssSelector, CssSelectorCombinator,
+    CssSpecificationTier, CssSpecifiedNonNegativeLengthPercentage, CssSupportStatus,
+    CssSupportsConditionKind, CssSupportsConditionList, ErrorKind, conformance_exclusion,
+    feature_metadata, parse_sheet, parse_style_attribute, property_support_metadata,
+    specification_source,
 };
 
 #[test]
@@ -251,7 +251,10 @@ fn public_surface_exposes_checked_core_font_models() {
         .is_err()
     );
     assert!(
-        CssLineHeightLengthPercentage::try_new(CssLength::try_percent(-1.0).unwrap()).is_none()
+        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+            CssComponentValue::try_token("-1%").unwrap()
+        )
+        .is_err()
     );
 }
 

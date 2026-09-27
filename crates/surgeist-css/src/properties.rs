@@ -26,7 +26,7 @@ use crate::{
     CssComponentValueRef, CssContainer, CssContainerNames, CssContainerType, CssSpecifiedLength,
     CssValueTokenRef,
 };
-use crate::{CssFontSize, CssFontStyle, CssFontWeight, CssFontWidth};
+use crate::{CssFontSize, CssFontStyle, CssFontWeight, CssFontWidth, CssLineHeight};
 
 macro_rules! property_schema {
     ($callback:ident, $input:ident, $numeric:ident) => {
@@ -162,7 +162,7 @@ macro_rules! property_schema {
             GridArea, "grid-area", [], "baseline.property.grid-area", CssGridArea, CssGridAreaPropertyValue, CssGridAreaPropertyValueRepresentation, parse_grid_area, { parse_grid_area($input)? };
             Grid, "grid", [], "baseline.property.grid", CssGrid, CssGridPropertyValue, CssGridPropertyValueRepresentation, parse_grid, { parse_grid($input, $numeric)? };
             FontSize, "font-size", [], "baseline.property.font-size", CssFontSize, CssFontSizePropertyValue, CssFontSizePropertyValueRepresentation, parse_font_size, { parse_font_size($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssFontSize, accessor: size, inherited: true, initial_kind: value, initial: CssFontSize::Medium };
-            LineHeight, "line-height", [], "baseline.property.line-height", CssLineHeight, CssLineHeightPropertyValue, CssLineHeightPropertyValueRepresentation, parse_line_height, { parse_line_height($input, $numeric)? };
+            LineHeight, "line-height", [], "baseline.property.line-height", CssLineHeight, CssLineHeightPropertyValue, CssLineHeightPropertyValueRepresentation, parse_line_height, { parse_line_height($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssLineHeight, accessor: line_height, inherited: true, initial_kind: value, initial: CssLineHeight::Normal };
             TextCombineUpright, "text-combine-upright", [], "official.property.text-combine-upright", CssTextCombineUpright, CssTextCombineUprightPropertyValue, CssTextCombineUprightPropertyValueRepresentation, parse_text_combine_upright, { parse_text_combine_upright($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssTextCombineUpright, accessor: combine, inherited: true, initial_kind: value, initial: CssTextCombineUpright::None };
             TextOrientation, "text-orientation", [], "official.property.text-orientation", CssTextOrientation, CssTextOrientationPropertyValue, CssTextOrientationPropertyValueRepresentation, parse_text_orientation, { parse_text_orientation($input)? }, expansion = longhand { wrapper: existing, value: CssTextOrientation, accessor: orientation, inherited: true, initial_kind: value, initial: CssTextOrientation::Mixed };
             UnicodeBidi, "unicode-bidi", [], "official.property.unicode-bidi", CssUnicodeBidi, CssUnicodeBidiPropertyValue, CssUnicodeBidiPropertyValueRepresentation, parse_unicode_bidi, { parse_unicode_bidi($input)? }, expansion = longhand { wrapper: existing, value: CssUnicodeBidi, accessor: bidi, inherited: false, initial_kind: value, initial: CssUnicodeBidi::Normal };
@@ -635,19 +635,6 @@ fn background_box_list_i01_projection(value: &CssBackgroundBoxList) -> Option<Cs
 
 fn exact_i01_projection<T: Clone>(value: &T) -> Option<T> {
     Some(value.clone())
-}
-
-fn line_height_i01_projection(value: &CssLineHeight) -> Option<CssLength> {
-    match value {
-        CssLineHeight::Normal => Some(CssLength::Normal),
-        CssLineHeight::Number(CssNonNegativeNumberValue::Literal(value))
-            if value.value() == 0.0 =>
-        {
-            Some(CssLength::Zero)
-        }
-        CssLineHeight::Number(_) => None,
-        CssLineHeight::LengthPercentage(value) => Some(value.value().clone()),
-    }
 }
 
 fn font_variant_i01_projection(value: &CssFontVariantValue) -> Option<CssFontVariant> {
@@ -1830,20 +1817,6 @@ macro_rules! define_property_value {
             $representation,
             $value,
             mode
-        );
-    };
-    (
-        LineHeight, $canonical:literal, $value:ty, $wrapper:ident,
-        $representation:ident
-    ) => {
-        define_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            CssLineHeight,
-            CssLength,
-            line_height,
-            line_height_i01_projection
         );
     };
     (
@@ -3173,6 +3146,16 @@ macro_rules! define_expansion_current_accessor {
 // The schema annotation selects a current-only wrapper for newly authored
 // families without maintaining a second list of their property names.
 macro_rules! define_property_value_from_schema {
+    (LineHeight, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
+        longhand { wrapper: additive, $($metadata:tt)* }) => {
+        define_additive_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssLineHeight,
+            line_height
+        );
+    };
     (FontSize, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
         longhand { wrapper: additive, $($metadata:tt)* }) => {
         define_additive_current_property_value!(

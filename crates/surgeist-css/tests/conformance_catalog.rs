@@ -101,7 +101,8 @@ const GRID_PROPERTY_REMAINDER: &str = "Subgrid name-repeat, wider Values math fu
 const KEYFRAMES_SUBSET: &str = "Keyframe names, literal selectors, empty rules and blocks, duplicate selectors and blocks in authored order, and supported declarations with recovery are supported.";
 const KEYFRAMES_REMAINDER: &str = "Calculation selectors, string names, and declaration-processing grammar not selected by C07 remain unsupported.";
 const FONT_SHORTHAND_SUBSET: &str = "Explicit fonts support the selected Fonts 4 family, style, size, and weight components, Fonts 3 variant and width components, and an optional line height. All six system-font alternatives are supported.";
-const FONT_SHORTHAND_REMAINDER: &str = "Ordinary line-height numeric fidelity and intrinsic shorthand expansion/reset semantics remain unfinished.";
+const FONT_SHORTHAND_REMAINDER: &str =
+    "Intrinsic shorthand expansion/reset semantics remain unfinished.";
 const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range and feature-settings descriptors have typed ordinary representations and admit pending whole values for valid env(); invalid descriptors recover independently.";
 const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-variation-settings, font-named-instance and metric overrides remain unsupported.";
 const FONT_SOURCE_SUBSET: &str = "url() and local() sources preserve authored order, including empty URL strings, the selected literal family-name grammar, a single format hint and technology hints. Invalid source members recover independently, while invalid descriptor annotations or all-invalid lists discard the descriptor. The four legacy variation strings project to base formats and required variations without changing authored hints; TrueType and OpenType have explicit format equivalence.";
@@ -556,6 +557,36 @@ fn selected_font_size_record_keeps_historical_id_with_current_fonts_source() {
     let rejected = parse_style_attribute("font-size: -1e-999px");
     assert!(rejected.syntax().is_empty());
     assert_eq!(rejected.diagnostics().len(), 1);
+}
+
+#[test]
+fn selected_line_height_record_keeps_css2_identity_and_complete_authored_grammar() {
+    let record = feature_metadata("baseline.property.line-height").expect("line-height metadata");
+    assert_eq!(record.kind(), CssFeatureKind::Property);
+    assert_eq!(record.spelling(), "line-height");
+    assert_eq!(record.source().id().as_str(), "O-CSS2");
+    assert_eq!(record.production(), "visudet.html#propdef-line-height");
+    assert_eq!(record.status(), CssSupportStatus::Complete);
+    assert_eq!(record.supported_subset(), None);
+    assert_eq!(record.unsupported_remainder(), None);
+    for input in [
+        "line-height: normal",
+        "line-height: 1e999",
+        "line-height: 120%",
+        "line-height: calc(-1)",
+    ] {
+        let report = parse_style_attribute(input);
+        assert!(report.is_clean(), "{input}: {:?}", report.diagnostics());
+    }
+    for input in [
+        "line-height: -1e-999",
+        "line-height: -1e-999px",
+        "line-height: -1e-999%",
+    ] {
+        let report = parse_style_attribute(input);
+        assert!(report.syntax().is_empty(), "{input}");
+        assert_eq!(report.diagnostics().len(), 1, "{input}");
+    }
 }
 
 #[test]

@@ -93,7 +93,6 @@ pub(super) enum LengthGrammar {
     BorderSpacing,
     Clip,
     OutlineOffset,
-    LineHeight,
     TextIndent,
     VerticalAlign,
     LetterSpacing,
@@ -111,7 +110,6 @@ impl LengthGrammar {
             self,
             Self::BoxSize
                 | Self::FlowTolerance
-                | Self::LineHeight
                 | Self::TextIndent
                 | Self::VerticalAlign
                 | Self::TextDecorationThickness
@@ -129,10 +127,6 @@ impl LengthGrammar {
         matches!(self, Self::BoxSize)
     }
 
-    const fn allows_normal(self) -> bool {
-        matches!(self, Self::LineHeight)
-    }
-
     const fn allows_line_width_keyword(self) -> bool {
         matches!(self, Self::BorderWidth)
     }
@@ -142,7 +136,6 @@ impl LengthGrammar {
             self,
             Self::BoxSize
                 | Self::FlowTolerance
-                | Self::LineHeight
                 | Self::TextIndent
                 | Self::VerticalAlign
                 | Self::TextDecorationThickness
@@ -176,7 +169,6 @@ impl LengthGrammar {
             Self::BorderSpacing => "border-spacing",
             Self::Clip => "clip",
             Self::OutlineOffset => "outline-offset",
-            Self::LineHeight => "line-height",
             Self::TextIndent => "text-indent",
             Self::VerticalAlign => "vertical-align",
             Self::LetterSpacing => "letter-spacing",
@@ -286,7 +278,6 @@ pub(super) fn parse_literal_length_with_context<'i, 't>(
         Token::Number { value, .. } if *value == 0.0 => Ok(CssLength::Zero),
         Token::Ident(ident) => match_ignore_ascii_case! { ident,
             "auto" if grammar.allows_auto() => Ok(CssLength::Auto),
-            "normal" if grammar.allows_normal() => Ok(CssLength::Normal),
             "thin" if grammar.allows_line_width_keyword() => Ok(CssLength::Thin),
             "medium" if grammar.allows_line_width_keyword() => Ok(CssLength::Medium),
             "thick" if grammar.allows_line_width_keyword() => Ok(CssLength::Thick),

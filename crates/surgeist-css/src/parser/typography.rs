@@ -10,7 +10,8 @@ use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
 use crate::{
     CssAbsoluteFontWeight, CssFontObliqueAngle, CssFontSize, CssFontStretch, CssFontStyle,
-    CssFontStyleKeyword, CssFontWeight, CssFontWeightNumber, CssFontWidth,
+    CssFontStyleKeyword, CssFontWeight, CssFontWeightNumber, CssFontWidth, CssLineHeight,
+    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
 };
 
 pub(super) static IMPLEMENTED_PROPERTY_EXTENSIONS: &[CssFeatureId] =
@@ -99,32 +100,79 @@ pub(super) fn parse_line_height<'i, 't>(
         return Ok(CssLineHeight::Normal);
     }
 
+    input.skip_whitespace();
+
     if let Ok(number) = input.try_parse(|input| parse_line_height_number(input, numeric)) {
         return Ok(CssLineHeight::Number(number));
     }
 
-    let value = parse_length_with(input, numeric, LengthGrammar::LineHeight)?;
-    CssLineHeightLengthPercentage::try_new(value)
+    let state = input.state();
+    let location = input.current_source_location();
+    let root_offset = input.position().byte_index();
+    let checked = match input.next().map_err(basic)? {
+        Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
+            input.reset(&state);
+            let component = numeric.collect(input).map_err(|_| {
+                unsupported_value_at(location, None, "invalid line-height component")
+            })?;
+            CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
+        }
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            let expression =
+                parse_numeric_function(input, &state, numeric, CalculationRoot::LengthPercentage)?;
+            CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
+                CssLengthPercentageCalculation::from_expression(expression),
+            )
+        }
+        token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
+    };
+    checked
         .map(CssLineHeight::LengthPercentage)
-        .ok_or_else(|| unsupported_value(input, None, "line-height must be non-negative"))
+        .map_err(|error| {
+            unsupported_value_at(
+                numeric.error_location(&error, location, root_offset),
+                None,
+                "line-height requires a nonnegative number or length-percentage",
+            )
+        })
 }
 
 fn parse_line_height_number<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssNonNegativeNumberValue, ParseError<'i, Error>> {
+) -> std::result::Result<CssSpecifiedNonNegativeNumber, ParseError<'i, Error>> {
+    input.skip_whitespace();
     let numeric_start = input.state();
     let location = input.current_source_location();
+    let root_offset = input.position().byte_index();
     match input.next().map_err(basic)? {
-        Token::Number { value, .. } => CssNonNegativeNumber::try_new(*value)
-            .map(CssNonNegativeNumberValue::Literal)
-            .ok_or_else(|| {
-                unsupported_value_at(location, None, "line-height must be non-negative")
-            }),
+        Token::Number { .. } => {
+            input.reset(&numeric_start);
+            let component = numeric
+                .collect(input)
+                .map_err(|_| unsupported_value_at(location, None, "invalid line-height number"))?;
+            CssSpecifiedNonNegativeNumber::try_from_component(component).map_err(|error| {
+                unsupported_value_at(
+                    numeric.error_location(&error, location, root_offset),
+                    None,
+                    "line-height must be non-negative",
+                )
+            })
+        }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)
                 .map(CssNumberCalculation::from_expression)
-                .map(CssNonNegativeNumberValue::Calculation)
+                .and_then(|calculation| {
+                    CssSpecifiedNonNegativeNumber::try_from_calculation(calculation).map_err(
+                        |error| {
+                            unsupported_value_at(
+                                numeric.error_location(&error, location, root_offset),
+                                None,
+                                "line-height must be non-negative",
+                            )
+                        },
+                    )
+                })
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
