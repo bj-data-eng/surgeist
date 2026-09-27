@@ -14,6 +14,7 @@
 //! Surgeist contracts. The consumer does not load or select a font resource.
 
 use surgeist_css::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
     CssFontFaceSource, CssFontFaceUrlSource, CssFontFormatHint, CssFontFormatList,
     CssFontFormatString, CssFontTechHint, CssRule, parse_sheet,
 };
@@ -25,12 +26,21 @@ fn parsed_source(hints: &str) -> CssFontFaceUrlSource {
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("expected one font face");
     };
-    let occurrence = face.descriptors().src().unwrap();
+    let occurrence = face
+        .descriptors()
+        .effective(CssFontFaceDescriptorKind::Src)
+        .unwrap();
     assert_eq!(
-        occurrence.position().byte_offset().value(),
+        occurrence.position().unwrap().byte_offset().value(),
         source.find("src:").unwrap()
     );
-    let [CssFontFaceSource::Url(url)] = occurrence.sources() else {
+    // A clean literal src resolves immediately; env() would retain a Pending value.
+    let CssAuthoredFontFaceDescriptorValue::Ordinary(CssFontFaceDescriptorValue::Src(sources)) =
+        occurrence.value()
+    else {
+        panic!("expected an ordinary src descriptor");
+    };
+    let [CssFontFaceSource::Url(url)] = sources.sources() else {
         panic!("expected one URL source");
     };
     url.clone()

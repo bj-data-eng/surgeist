@@ -1,6 +1,10 @@
 mod common;
 
 use common::CssParseReportTestExt;
+#[macro_use]
+#[path = "support/font_face.rs"]
+mod font_face_support;
+
 use surgeist_css::{
     CssDeclarationContextRef, CssErrorCode, CssImportance, CssPropertyNameRef, CssRule,
     CssTokenKind, ErrorKind, parse_sheet,
@@ -169,25 +173,36 @@ fn declaration_importance_font_face_occurrences_retain_positions_and_reject_anno
         panic!("expected font-face");
     };
     let descriptors = rule.descriptors();
-    assert_eq!(descriptors.font_family().unwrap().value().as_str(), "Inter");
+    assert_eq!(
+        ordinary_face!(descriptors, FontFamily).unwrap().as_str(),
+        "Inter"
+    );
     assert_eq!(
         descriptors
-            .font_family()
+            .effective(surgeist_css::CssFontFaceDescriptorKind::FontFamily)
             .unwrap()
             .position()
+            .unwrap()
             .byte_offset()
             .value(),
         13
     );
     assert_eq!(
-        descriptors.src().unwrap().position().byte_offset().value(),
+        descriptors
+            .effective(surgeist_css::CssFontFaceDescriptorKind::Src)
+            .unwrap()
+            .position()
+            .unwrap()
+            .byte_offset()
+            .value(),
         33
     );
     assert_eq!(
         descriptors
-            .font_display()
+            .effective(surgeist_css::CssFontFaceDescriptorKind::FontDisplay)
             .expect("font-display")
             .position()
+            .unwrap()
             .byte_offset()
             .value(),
         56
@@ -199,6 +214,7 @@ fn declaration_importance_font_face_occurrences_retain_positions_and_reject_anno
         "font-weight: 400 !important",
         "font-style: normal !important",
         "font-stretch: 100% !important",
+        "font-stretch: env(width) !important",
         "font-display: swap !important",
         "unicode-range: U+0-7F !important",
     ] {

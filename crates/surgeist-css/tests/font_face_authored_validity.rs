@@ -3,6 +3,10 @@
 //! authored rule. Unknown or invalid descriptors use declaration recovery.
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-rule
 
+#[macro_use]
+#[path = "support/font_face.rs"]
+mod font_face_support;
+
 use surgeist_css::{CssRecoveryAction, CssRule, parse_sheet};
 
 #[test]
@@ -20,10 +24,13 @@ fn missing_matching_descriptors_preserves_clean_authored_font_face() {
         };
         assert_eq!(rule.descriptors().occurrences().len(), occurrences);
         assert_eq!(
-            rule.descriptors().font_family().is_some(),
+            ordinary_face!(rule.descriptors(), FontFamily).is_some(),
             source.contains("font-family")
         );
-        assert_eq!(rule.descriptors().src().is_some(), source.contains("src:"));
+        assert_eq!(
+            ordinary_face!(rule.descriptors(), Src).is_some(),
+            source.contains("src:")
+        );
         assert_eq!(rule.position().byte_offset().value(), 0);
     }
 }
@@ -36,8 +43,13 @@ fn invalid_descriptor_does_not_discard_accepted_font_face() {
         panic!("descriptor recovery must retain the accepted outer rule");
     };
     assert_eq!(rule.descriptors().occurrences().len(), 2);
-    assert_eq!(rule.descriptors().font_family().unwrap().as_str(), "Demo");
-    assert!(rule.descriptors().src().is_none());
+    assert_eq!(
+        ordinary_face!(rule.descriptors(), FontFamily)
+            .unwrap()
+            .as_str(),
+        "Demo"
+    );
+    assert!(ordinary_face!(rule.descriptors(), Src).is_none());
     let [diagnostic] = report.diagnostics() else {
         panic!("expected exactly the invalid src descriptor diagnostic");
     };

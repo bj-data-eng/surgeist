@@ -1,6 +1,10 @@
 mod common;
 
 use common::CssParseReportTestExt;
+#[macro_use]
+#[path = "support/font_face.rs"]
+mod font_face_support;
+
 use surgeist_css::{
     CssDeclarationContextRef, CssErrorCode, CssKnownProperty, CssPseudoClass, CssPseudoElement,
     CssPseudoElementSegment, CssRecoveryAction, CssRule, CssSelector, CssTokenKind, ErrorKind,
@@ -864,8 +868,8 @@ fn empty_font_face_body_retains_the_authored_rule_without_a_missing_descriptor_e
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("expected a retained empty font-face");
     };
-    assert!(face.descriptors().font_family().is_none());
-    assert!(face.descriptors().src().is_none());
+    assert!(ordinary_face!(face.descriptors(), FontFamily).is_none());
+    assert!(ordinary_face!(face.descriptors(), Src).is_none());
     assert_eq!(face.descriptors().occurrences().len(), 0);
 }
 
@@ -1015,8 +1019,8 @@ fn error_invalid_font_source_format_reports_descriptor_context_and_recovers_sibl
     let [CssRule::FontFace(face), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("expected the accepted font-face and later style rule");
     };
-    assert!(face.descriptors().font_family().is_some());
-    assert!(face.descriptors().src().is_none());
+    assert!(ordinary_face!(face.descriptors(), FontFamily).is_some());
+    assert!(ordinary_face!(face.descriptors(), Src).is_none());
     assert_eq!(report.diagnostics().len(), 1);
     let diagnostic = &report.diagnostics()[0];
     assert_eq!(

@@ -5,6 +5,10 @@
 //! The quoted-string URL syntax also permits whitespace as authored content:
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#urls
 
+#[macro_use]
+#[path = "support/font_face.rs"]
+mod font_face_support;
+
 use surgeist_css::{
     CssFontDisplay, CssFontFaceRule, CssFontFaceSource, CssFontFaceUrlSource, CssFontFormatHint,
     CssFontTechHint, CssParseReport, CssRule, CssSheet, parse_sheet, validate_sheet,
@@ -14,9 +18,14 @@ fn font_face(report: &CssParseReport<CssSheet>) -> &CssFontFaceRule {
     let [CssRule::FontFace(rule), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("expected retained font-face and following style rule");
     };
-    assert_eq!(rule.descriptors().font_family().unwrap().as_str(), "Demo");
     assert_eq!(
-        rule.descriptors().font_display().unwrap().value(),
+        ordinary_face!(rule.descriptors(), FontFamily)
+            .unwrap()
+            .as_str(),
+        "Demo"
+    );
+    assert_eq!(
+        ordinary_face!(rule.descriptors(), FontDisplay).unwrap(),
         &CssFontDisplay::Swap
     );
     rule
@@ -31,9 +40,7 @@ fn assert_clean_urls(value: &str, expected: &[&str]) -> CssParseReport<CssSheet>
         "valid authored URL sources must not need recovery: {value:?}: {:?}",
         report.diagnostics()
     );
-    let actual = font_face(&report)
-        .descriptors()
-        .src()
+    let actual = ordinary_face!(font_face(&report).descriptors(), Src)
         .expect("grammar-valid URL sources must retain the src descriptor")
         .sources()
         .iter()
@@ -89,8 +96,9 @@ fn empty_and_whitespace_font_urls_cross_the_typed_constructor_boundary() {
 #[test]
 fn empty_font_urls_preserve_valid_format_and_technology_hints() {
     let report = assert_clean_urls("url() format(woff2) tech(variations)", &[""]);
-    let [CssFontFaceSource::Url(parsed)] =
-        font_face(&report).descriptors().src().unwrap().sources()
+    let [CssFontFaceSource::Url(parsed)] = ordinary_face!(font_face(&report).descriptors(), Src)
+        .unwrap()
+        .sources()
     else {
         panic!("expected exactly one URL source");
     };

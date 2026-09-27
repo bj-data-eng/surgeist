@@ -12,6 +12,10 @@
 //! names; the broader informative quoting note in section 2.1.1 cannot override them.
 //! Recovery, exact authored text, and importance are Surgeist contracts.
 
+#[macro_use]
+#[path = "support/font_face.rs"]
+mod font_face_support;
+
 use surgeist_css::{
     CssDeclaration, CssErrorCode, CssFontFaceSource, CssFontFamilyList, CssFontFamilyNameKind,
     CssFontValue, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction,
@@ -94,8 +98,15 @@ fn assert_literal_in_all_contexts(authored: &str, decoded: &str, kind: CssFontFa
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("expected one font face: {source}");
     };
-    assert_eq!(face.descriptors().font_family().unwrap().as_str(), decoded);
-    let [CssFontFaceSource::Local(name)] = face.descriptors().src().unwrap().sources() else {
+    assert_eq!(
+        ordinary_face!(face.descriptors(), FontFamily)
+            .unwrap()
+            .as_str(),
+        decoded
+    );
+    let [CssFontFaceSource::Local(name)] =
+        ordinary_face!(face.descriptors(), Src).unwrap().sources()
+    else {
         panic!("expected one local source: {source}");
     };
     assert_eq!(name.as_str(), decoded, "{source}");
@@ -384,11 +395,14 @@ fn font_face_and_local_names_reject_generics_and_reserved_tokens_with_local_reco
         let [CssRule::FontFace(face), CssRule::Style(_)] = report.syntax().rules() else {
             panic!("expected retained rules: {source}: {report:?}");
         };
-        assert!(face.descriptors().font_family().is_none(), "{source}");
+        assert!(
+            ordinary_face!(face.descriptors(), FontFamily).is_none(),
+            "{source}"
+        );
         let [
             CssFontFaceSource::Url(before),
             CssFontFaceSource::Local(after),
-        ] = face.descriptors().src().unwrap().sources()
+        ] = ordinary_face!(face.descriptors(), Src).unwrap().sources()
         else {
             panic!("expected both valid source fallbacks: {source}: {report:?}");
         };

@@ -8,6 +8,10 @@
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nesting-other-at-rules
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule
 //! Exercises authored placement without query evaluation or definition lookup.
+#[macro_use]
+#[path = "support/font_face.rs"]
+mod font_face_support;
+
 use surgeist_css::*;
 
 const COUNTER: &str = "@counter-style Tick { system: cyclic; symbols: \"x\"; }";
@@ -74,12 +78,20 @@ fn assert_payload(context: &CssRuleContext, source: &str, expected: &str) {
             ("@counter-style", rule.position())
         }
         CssRuleContextKindRef::FontFace(rule) => {
-            let family = rule.descriptors().font_family().unwrap();
-            assert_eq!(family.value().as_str(), "Audit");
+            let family = ordinary_face!(rule.descriptors(), FontFamily).unwrap();
+            assert_eq!(family.as_str(), "Audit");
             assert!(
-                matches!(rule.descriptors().src().unwrap().value().sources(), [CssFontFaceSource::Local(name)] if name.as_str() == "Audit")
+                matches!(ordinary_face!(rule.descriptors(), Src).unwrap().sources(), [CssFontFaceSource::Local(name)] if name.as_str() == "Audit")
             );
-            assert_position(source, "font-family:", family.position());
+            assert_position(
+                source,
+                "font-family:",
+                rule.descriptors()
+                    .effective(surgeist_css::CssFontFaceDescriptorKind::FontFamily)
+                    .unwrap()
+                    .position()
+                    .unwrap(),
+            );
             ("@font-face", rule.position())
         }
         CssRuleContextKindRef::Keyframes(rule) => {

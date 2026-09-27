@@ -1,3 +1,7 @@
+#[macro_use]
+#[path = "support/font_face.rs"]
+mod font_face_support;
+
 use surgeist_css::{
     CssDeclarationContextRef, CssErrorCode, CssPropertyNameRef, CssRecoveryAction, CssRule,
     CssScopedRule, CssSelector, CssSelectorCombinator, CssStyleSelector, CssTokenKind, ErrorKind,
@@ -407,16 +411,25 @@ fn block_item_recovery_font_face_drops_bad_and_retains_duplicate_optional_descri
         panic!("expected retained font face");
     };
     let descriptors = rule.descriptors();
-    assert_eq!(descriptors.font_family().unwrap().value().as_str(), "Inter");
     assert_eq!(
-        descriptors.src().unwrap().position().byte_offset().value(),
+        ordinary_face!(descriptors, FontFamily).unwrap().as_str(),
+        "Inter"
+    );
+    assert_eq!(
+        descriptors
+            .effective(surgeist_css::CssFontFaceDescriptorKind::Src)
+            .unwrap()
+            .position()
+            .unwrap()
+            .byte_offset()
+            .value(),
         source.find("src").unwrap()
     );
     assert_eq!(
-        descriptors.font_display().unwrap().value(),
+        ordinary_face!(descriptors, FontDisplay).unwrap(),
         &surgeist_css::CssFontDisplay::Block
     );
-    assert!(descriptors.unicode_range().is_some());
+    assert!(ordinary_face!(descriptors, UnicodeRange).is_some());
     assert_eq!(report.diagnostics().len(), 1);
     assert_drop(
         source,
@@ -429,10 +442,9 @@ fn block_item_recovery_font_face_drops_bad_and_retains_duplicate_optional_descri
     assert_eq!(
         descriptors
             .occurrences()
-            .filter(|descriptor| matches!(
-                descriptor,
-                surgeist_css::CssFontFaceDescriptorRef::FontDisplay(_)
-            ))
+            .filter(|descriptor| {
+                descriptor.value().kind() == surgeist_css::CssFontFaceDescriptorKind::FontDisplay
+            })
             .count(),
         2
     );
@@ -446,9 +458,14 @@ fn block_item_recovery_font_face_source_loss_preserves_authored_rule() {
     let [CssRule::FontFace(face), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("descriptor recovery must retain the font face and later rule");
     };
-    assert!(face.descriptors().src().is_none());
-    assert_eq!(face.descriptors().font_family().unwrap().as_str(), "Inter");
-    assert!(face.descriptors().font_display().is_some());
+    assert!(ordinary_face!(face.descriptors(), Src).is_none());
+    assert_eq!(
+        ordinary_face!(face.descriptors(), FontFamily)
+            .unwrap()
+            .as_str(),
+        "Inter"
+    );
+    assert!(ordinary_face!(face.descriptors(), FontDisplay).is_some());
     assert_eq!(property_names(after.declarations()), ["color"]);
     assert_eq!(report.diagnostics().len(), 1);
     assert_drop(
@@ -515,7 +532,7 @@ fn block_item_recovery_descriptor_annotation_and_block_end_retain_parent() {
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("optional descriptor loss must retain font face");
     };
-    assert!(rule.descriptors().font_display().is_none());
+    assert!(ordinary_face!(rule.descriptors(), FontDisplay).is_none());
     let [diagnostic] = report.diagnostics() else {
         panic!("one descriptor annotation diagnostic");
     };
@@ -538,7 +555,9 @@ fn block_item_recovery_repeated_descriptor_failures_progress_to_required_sibling
         panic!("later required descriptors must retain font face");
     };
     assert_eq!(
-        rule.descriptors().font_family().unwrap().value().as_str(),
+        ordinary_face!(rule.descriptors(), FontFamily)
+            .unwrap()
+            .as_str(),
         "Inter"
     );
     assert_eq!(report.diagnostics().len(), 3);

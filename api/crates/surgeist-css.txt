@@ -118,6 +118,16 @@ pub fn surgeist_css::CssAuthoredColorConstructionError::fmt(&self, f: &mut core:
 #[non_exhaustive] pub enum surgeist_css::CssAuthoredColorSyntax
 pub surgeist_css::CssAuthoredColorSyntax::Legacy
 pub surgeist_css::CssAuthoredColorSyntax::Modern
+#[non_exhaustive] pub enum surgeist_css::CssAuthoredFontFaceDescriptorValue
+pub surgeist_css::CssAuthoredFontFaceDescriptorValue::Ordinary(surgeist_css::CssFontFaceDescriptorValue)
+pub surgeist_css::CssAuthoredFontFaceDescriptorValue::Pending(surgeist_css::CssPendingFontFaceDescriptorValue)
+impl surgeist_css::CssAuthoredFontFaceDescriptorValue
+pub const fn surgeist_css::CssAuthoredFontFaceDescriptorValue::kind(&self) -> surgeist_css::CssFontFaceDescriptorKind
+impl surgeist_css::CssAuthoredFontFaceDescriptorValue
+pub fn surgeist_css::CssAuthoredFontFaceDescriptorValue::try_from_components(kind: surgeist_css::CssFontFaceDescriptorKind, values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssFontFaceValueError>
+pub fn surgeist_css::CssAuthoredFontFaceDescriptorValue::try_from_components_with_limits(kind: surgeist_css::CssFontFaceDescriptorKind, values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssFontFaceValueError>
+impl core::convert::From<surgeist_css::CssFontFaceDescriptorValue> for surgeist_css::CssAuthoredFontFaceDescriptorValue
+pub fn surgeist_css::CssAuthoredFontFaceDescriptorValue::from(value: surgeist_css::CssFontFaceDescriptorValue) -> Self
 #[non_exhaustive] pub enum surgeist_css::CssAuthoredFontFeatureSettings
 pub surgeist_css::CssAuthoredFontFeatureSettings::Features(surgeist_css::CssAuthoredFontFeatureList)
 pub surgeist_css::CssAuthoredFontFeatureSettings::Normal
@@ -1213,15 +1223,6 @@ pub surgeist_css::CssFontFaceDescriptorKind::Src
 pub surgeist_css::CssFontFaceDescriptorKind::UnicodeRange
 impl surgeist_css::CssFontFaceDescriptorKind
 pub const fn surgeist_css::CssFontFaceDescriptorKind::css_name(self) -> &'static str
-#[non_exhaustive] pub enum surgeist_css::CssFontFaceDescriptorRef<'a>
-pub surgeist_css::CssFontFaceDescriptorRef::FontDisplay(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontDisplay>)
-pub surgeist_css::CssFontFaceDescriptorRef::FontFamily(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontFaceFamily>)
-pub surgeist_css::CssFontFaceDescriptorRef::FontFeatureSettings(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssAuthoredFontFeatureSettings>)
-pub surgeist_css::CssFontFaceDescriptorRef::FontStyle(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontFaceStyle>)
-pub surgeist_css::CssFontFaceDescriptorRef::FontWeight(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontFaceWeight>)
-pub surgeist_css::CssFontFaceDescriptorRef::FontWidth(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontFaceWidth>)
-pub surgeist_css::CssFontFaceDescriptorRef::Src(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontFaceSourceList>)
-pub surgeist_css::CssFontFaceDescriptorRef::UnicodeRange(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssUnicodeRangeList>)
 #[non_exhaustive] pub enum surgeist_css::CssFontFaceDescriptorValue
 pub surgeist_css::CssFontFaceDescriptorValue::FontDisplay(surgeist_css::CssFontDisplay)
 pub surgeist_css::CssFontFaceDescriptorValue::FontFamily(surgeist_css::CssFontFaceFamily)
@@ -1233,6 +1234,8 @@ pub surgeist_css::CssFontFaceDescriptorValue::Src(surgeist_css::CssFontFaceSourc
 pub surgeist_css::CssFontFaceDescriptorValue::UnicodeRange(surgeist_css::CssUnicodeRangeList)
 impl surgeist_css::CssFontFaceDescriptorValue
 pub const fn surgeist_css::CssFontFaceDescriptorValue::kind(&self) -> surgeist_css::CssFontFaceDescriptorKind
+impl core::convert::From<surgeist_css::CssFontFaceDescriptorValue> for surgeist_css::CssAuthoredFontFaceDescriptorValue
+pub fn surgeist_css::CssAuthoredFontFaceDescriptorValue::from(value: surgeist_css::CssFontFaceDescriptorValue) -> Self
 #[non_exhaustive] pub enum surgeist_css::CssFontFaceSource
 pub surgeist_css::CssFontFaceSource::Local(surgeist_css::CssFontLocalName)
 pub surgeist_css::CssFontFaceSource::Url(surgeist_css::CssFontFaceUrlSource)
@@ -1240,6 +1243,11 @@ pub surgeist_css::CssFontFaceSource::Url(surgeist_css::CssFontFaceUrlSource)
 pub surgeist_css::CssFontFaceStyle::Italic
 pub surgeist_css::CssFontFaceStyle::Normal
 pub surgeist_css::CssFontFaceStyle::Oblique(core::option::Option<surgeist_css::CssFontFaceObliqueRange>)
+#[non_exhaustive] pub enum surgeist_css::CssFontFaceValueErrorKind
+pub surgeist_css::CssFontFaceValueErrorKind::Component(surgeist_css::CssComponentValueErrorKind)
+pub surgeist_css::CssFontFaceValueErrorKind::Grammar(surgeist_css::ErrorKind)
+pub surgeist_css::CssFontFaceValueErrorKind::RecoveredComponent
+pub surgeist_css::CssFontFaceValueErrorKind::ResidualSubstitution
 #[non_exhaustive] pub enum surgeist_css::CssFontFaceWeightKeyword
 pub surgeist_css::CssFontFaceWeightKeyword::Bold
 pub surgeist_css::CssFontFaceWeightKeyword::Normal
@@ -5842,17 +5850,16 @@ pub struct surgeist_css::CssFlowTolerancePropertyValue
 impl surgeist_css::CssFlowTolerancePropertyValue
 pub fn surgeist_css::CssFlowTolerancePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssFlowTolerancePropertyValue::value(&self) -> &surgeist_css::CssFlowTolerance
+pub struct surgeist_css::CssFontFaceDescriptor
+impl surgeist_css::CssFontFaceDescriptor
+pub const fn surgeist_css::CssFontFaceDescriptor::new(value: surgeist_css::CssAuthoredFontFaceDescriptorValue) -> Self
+pub const fn surgeist_css::CssFontFaceDescriptor::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub const fn surgeist_css::CssFontFaceDescriptor::value(&self) -> &surgeist_css::CssAuthoredFontFaceDescriptorValue
 pub struct surgeist_css::CssFontFaceDescriptors
 impl surgeist_css::CssFontFaceDescriptors
-pub const fn surgeist_css::CssFontFaceDescriptors::font_display(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontDisplay>>
-pub const fn surgeist_css::CssFontFaceDescriptors::font_family(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontFaceFamily>>
-pub const fn surgeist_css::CssFontFaceDescriptors::font_feature_settings(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssAuthoredFontFeatureSettings>>
-pub const fn surgeist_css::CssFontFaceDescriptors::font_style(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontFaceStyle>>
-pub const fn surgeist_css::CssFontFaceDescriptors::font_weight(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontFaceWeight>>
-pub const fn surgeist_css::CssFontFaceDescriptors::font_width(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontFaceWidth>>
-pub fn surgeist_css::CssFontFaceDescriptors::occurrences(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_css::CssFontFaceDescriptorRef<'_>>
-pub const fn surgeist_css::CssFontFaceDescriptors::src(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssFontFaceSourceList>>
-pub const fn surgeist_css::CssFontFaceDescriptors::unicode_range(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssUnicodeRangeList>>
+pub fn surgeist_css::CssFontFaceDescriptors::effective(&self, kind: surgeist_css::CssFontFaceDescriptorKind) -> core::option::Option<&surgeist_css::CssFontFaceDescriptor>
+pub fn surgeist_css::CssFontFaceDescriptors::new(occurrences: alloc::vec::Vec<surgeist_css::CssFontFaceDescriptor>) -> Self
+pub fn surgeist_css::CssFontFaceDescriptors::occurrences(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = &surgeist_css::CssFontFaceDescriptor>
 pub struct surgeist_css::CssFontFaceFamily
 impl surgeist_css::CssFontFaceFamily
 pub fn surgeist_css::CssFontFaceFamily::as_str(&self) -> &str
@@ -5879,6 +5886,14 @@ pub fn surgeist_css::CssFontFaceUrlSource::required_technologies(&self) -> impl 
 pub fn surgeist_css::CssFontFaceUrlSource::tech(&self) -> &[surgeist_css::CssFontTechHint]
 pub fn surgeist_css::CssFontFaceUrlSource::try_new(url: impl core::convert::Into<alloc::string::String>, format: core::option::Option<surgeist_css::CssFontFormatHint>, tech: alloc::vec::Vec<surgeist_css::CssFontTechHint>) -> core::option::Option<Self>
 pub fn surgeist_css::CssFontFaceUrlSource::url(&self) -> &str
+pub struct surgeist_css::CssFontFaceValueError
+impl surgeist_css::CssFontFaceValueError
+pub fn surgeist_css::CssFontFaceValueError::kind(&self) -> &surgeist_css::CssFontFaceValueErrorKind
+pub fn surgeist_css::CssFontFaceValueError::origin(&self) -> &surgeist_css::CssSerializedOrigin
+impl core::error::Error for surgeist_css::CssFontFaceValueError
+pub fn surgeist_css::CssFontFaceValueError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssFontFaceValueError
+pub fn surgeist_css::CssFontFaceValueError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssFontFaceWeight
 impl surgeist_css::CssFontFaceWeight
 pub fn surgeist_css::CssFontFaceWeight::bold() -> Self
@@ -7276,6 +7291,13 @@ impl surgeist_css::CssPartNameList
 pub fn surgeist_css::CssPartNameList::names(&self) -> &[surgeist_css::CssPartName]
 pub fn surgeist_css::CssPartNameList::to_css_string(&self) -> alloc::string::String
 pub fn surgeist_css::CssPartNameList::try_new(names: alloc::vec::Vec<surgeist_css::CssPartName>) -> core::option::Option<Self>
+pub struct surgeist_css::CssPendingFontFaceDescriptorValue
+impl surgeist_css::CssPendingFontFaceDescriptorValue
+pub const fn surgeist_css::CssPendingFontFaceDescriptorValue::components(&self) -> &surgeist_css::CssComponentValues
+pub const fn surgeist_css::CssPendingFontFaceDescriptorValue::kind(&self) -> surgeist_css::CssFontFaceDescriptorKind
+impl surgeist_css::CssPendingFontFaceDescriptorValue
+pub fn surgeist_css::CssPendingFontFaceDescriptorValue::reparse_after_substitution(&self, replacement: surgeist_css::CssComponentValues) -> core::result::Result<surgeist_css::CssFontFaceDescriptorValue, surgeist_css::CssFontFaceValueError>
+pub fn surgeist_css::CssPendingFontFaceDescriptorValue::reparse_after_substitution_with_limits(&self, replacement: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssFontFaceDescriptorValue, surgeist_css::CssFontFaceValueError>
 pub struct surgeist_css::CssPendingSubstitution
 impl surgeist_css::CssPendingSubstitution
 pub fn surgeist_css::CssPendingSubstitution::reenter(&self, replacement: surgeist_css::CssComponentValues) -> core::result::Result<surgeist_css::CssContributions, surgeist_css::CssExpansionError>
@@ -8555,7 +8577,7 @@ pub fn surgeist_css::normalize_sheet_with_limits(sheet: &surgeist_css::CssSheet,
 pub fn surgeist_css::parse_component_values(source: &str) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::parse_component_values_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::parse_declaration(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssDeclaration>>
-pub fn surgeist_css::parse_font_face_descriptor_value(source: &str, descriptor: surgeist_css::CssFontFaceDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontFaceDescriptorValue>>
+pub fn surgeist_css::parse_font_face_descriptor_value(source: &str, descriptor: surgeist_css::CssFontFaceDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssAuthoredFontFaceDescriptorValue>>
 pub fn surgeist_css::parse_font_palette_descriptor_value(source: &str, descriptor: surgeist_css::CssFontPaletteDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontPaletteDescriptorValue>>
 pub fn surgeist_css::parse_media_query(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssMediaQuery>
 pub fn surgeist_css::parse_media_query_list(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssMediaQueryList>

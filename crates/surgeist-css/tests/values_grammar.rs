@@ -1,3 +1,7 @@
+#[macro_use]
+#[path = "support/font_face.rs"]
+mod font_face_support;
+
 use surgeist_css::{
     CssAnimationName, CssContent, CssContentItem, CssErrorCode, CssFontFamilyNameKind,
     CssGlobalKeyword, CssImageValue, CssKnownDeclaredValueRef, CssKnownPropertyValueRef,
@@ -102,11 +106,8 @@ fn c14_remaining_shared_values_are_typed() {
     let [CssRule::FontFace(font_face)] = unicode.syntax().rules() else {
         panic!("expected font-face rule");
     };
-    let ranges = font_face
-        .descriptors()
-        .unicode_range()
+    let ranges = ordinary_face!(font_face.descriptors(), UnicodeRange)
         .expect("unicode-range descriptor")
-        .value()
         .ranges();
     assert_eq!((ranges[0].start(), ranges[0].end()), (0x400, 0x4ff));
     assert_eq!((ranges[1].start(), ranges[1].end()), (0x10ffff, 0x10ffff));

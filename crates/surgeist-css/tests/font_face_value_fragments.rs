@@ -2,6 +2,10 @@
 
 //! Raw values use font-face grammar without inventing a descriptor-name occurrence.
 //! Unicode-range expectations follow CSS Syntax 3 section 7.1.
+#[macro_use]
+#[path = "support/font_face.rs"]
+mod font_face_support;
+
 use surgeist_css::{
     CssAuthoredFontFeatureSettings, CssComponentValue, CssErrorCode, CssFontDisplay,
     CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value, CssFontFaceFamily,
@@ -103,7 +107,7 @@ fn every_descriptor_kind_returns_its_source_neutral_typed_value() {
     for (kind, source, expected) in cases {
         let report = parse_font_face_descriptor_value(source, kind);
         assert!(report.is_clean(), "{}: {report:?}", kind.css_name());
-        assert_eq!(report.syntax(), &Some(expected));
+        assert_eq!(report.syntax(), &Some(expected.into()));
         assert_eq!(report.syntax().as_ref().unwrap().kind(), kind);
         let empty = parse_font_face_descriptor_value("", kind);
         assert!(empty.syntax().is_none(), "{}: {empty:?}", kind.css_name());
@@ -155,7 +159,10 @@ fn unicode_range_values_need_no_surrounding_font_face_and_keep_original_token_po
     let source = " /*x*/ U+41-5A, u+? ";
     let report = parse_font_face_descriptor_value(source, Kind::UnicodeRange);
     assert!(report.is_clean(), "{report:?}");
-    let Some(Value::UnicodeRange(ranges)) = report.syntax() else {
+    let Some(surgeist_css::CssAuthoredFontFaceDescriptorValue::Ordinary(Value::UnicodeRange(
+        ranges,
+    ))) = report.syntax()
+    else {
         panic!("typed ranges");
     };
     assert_eq!(
@@ -213,7 +220,7 @@ fn src_member_recovery_and_implicit_closures_commit_only_retained_components() {
         let report = parse_font_face_descriptor_value(source, Kind::Src);
         assert_eq!(
             report.syntax(),
-            &Some(Value::Src(local_x())),
+            &Some(Value::Src(local_x()).into()),
             "{source}: {report:?}"
         );
         assert!(
@@ -247,7 +254,7 @@ fn src_member_recovery_and_implicit_closures_commit_only_retained_components() {
     }
     let source = "local(X";
     let report = parse_font_face_descriptor_value(source, Kind::Src);
-    assert_eq!(report.syntax(), &Some(Value::Src(local_x())));
+    assert_eq!(report.syntax(), &Some(Value::Src(local_x()).into()));
     let closure = report
         .diagnostics()
         .iter()
@@ -289,21 +296,28 @@ fn stylesheet_occurrences_keep_real_names_and_last_valid_values() {
         panic!("font face");
     };
     assert_eq!(face.descriptors().occurrences().len(), 3);
-    let display = face.descriptors().font_display().unwrap();
-    assert_eq!(display.value(), &CssFontDisplay::Block);
+    let display = face.descriptors().effective(Kind::FontDisplay).unwrap();
+    assert!(matches!(
+        display.value(),
+        surgeist_css::CssAuthoredFontFaceDescriptorValue::Ordinary(Value::FontDisplay(
+            CssFontDisplay::Block
+        ))
+    ));
     assert_eq!(
-        display.position().byte_offset().value(),
+        display.position().unwrap().byte_offset().value(),
         source.find("font-display:block").unwrap()
     );
-    let range = face.descriptors().unicode_range().unwrap();
+    let range = face.descriptors().effective(Kind::UnicodeRange).unwrap();
     assert_eq!(
-        range.position().byte_offset().value(),
+        range.position().unwrap().byte_offset().value(),
         source.find("unicode-range").unwrap()
     );
     assert_eq!(
-        range.value().ranges(),
+        ordinary_face!(face.descriptors(), UnicodeRange)
+            .unwrap()
+            .ranges(),
         [CssUnicodeRange::try_new(0, 15).unwrap()]
     );
-    assert!(face.descriptors().font_family().is_none());
-    assert!(face.descriptors().src().is_none());
+    assert!(ordinary_face!(face.descriptors(), FontFamily).is_none());
+    assert!(ordinary_face!(face.descriptors(), Src).is_none());
 }

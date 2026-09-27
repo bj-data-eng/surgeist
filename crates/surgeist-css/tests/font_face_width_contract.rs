@@ -2,6 +2,10 @@
 
 //! Authored @font-face font-width contracts from CSS Fonts 4 WD 2026-09-07 §4.4.
 
+#[macro_use]
+#[path = "support/font_face.rs"]
+mod font_face_support;
+
 use surgeist_css::*;
 
 fn percent(text: &str) -> CssFontWidth {
@@ -17,7 +21,10 @@ fn percent(text: &str) -> CssFontWidth {
 fn raw(text: &str) -> CssFontFaceWidth {
     let report = parse_font_face_descriptor_value(text, CssFontFaceDescriptorKind::FontWidth);
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    let Some(CssFontFaceDescriptorValue::FontWidth(value)) = report.syntax() else {
+    let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(CssFontFaceDescriptorValue::FontWidth(
+        value,
+    ))) = report.syntax()
+    else {
         panic!("typed font-width descriptor: {text}")
     };
     value.clone()
@@ -30,12 +37,20 @@ fn sheet(name: &str, text: &str) -> (CssFontFaceWidth, CssSourcePosition) {
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("font-face rule")
     };
-    let occurrence = rule.descriptors().font_width().expect("width occurrence");
+    let occurrence = rule
+        .descriptors()
+        .effective(CssFontFaceDescriptorKind::FontWidth)
+        .expect("width occurrence");
     assert_eq!(
-        occurrence.position().byte_offset().value(),
+        occurrence.position().unwrap().byte_offset().value(),
         source.find(name).unwrap()
     );
-    (occurrence.value().clone(), occurrence.position())
+    let CssAuthoredFontFaceDescriptorValue::Ordinary(CssFontFaceDescriptorValue::FontWidth(value)) =
+        occurrence.value()
+    else {
+        panic!("ordinary width occurrence")
+    };
+    (value.clone(), occurrence.position().unwrap())
 }
 
 #[test]
@@ -55,7 +70,7 @@ fn explicit_auto_and_omission_have_distinct_authored_states() {
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("font-face rule")
     };
-    assert!(rule.descriptors().font_width().is_none());
+    assert!(ordinary_face!(rule.descriptors(), FontWidth).is_none());
 }
 
 #[test]
@@ -225,12 +240,15 @@ fn aliases_share_ordered_occurrences_and_last_valid_projection() {
         .descriptors()
         .occurrences()
         .filter_map(|item| {
-            let CssFontFaceDescriptorRef::FontWidth(value) = item else {
+            let CssAuthoredFontFaceDescriptorValue::Ordinary(
+                CssFontFaceDescriptorValue::FontWidth(value),
+            ) = item.value()
+            else {
                 return None;
             };
             Some((
-                value.position().byte_offset().value(),
-                value.value().serialize_specified().unwrap(),
+                item.position().unwrap().byte_offset().value(),
+                value.serialize_specified().unwrap(),
             ))
         })
         .collect::<Vec<_>>();
@@ -253,10 +271,8 @@ fn aliases_share_ordered_occurrences_and_last_valid_projection() {
         ]
     );
     assert_eq!(
-        rule.descriptors()
-            .font_width()
+        ordinary_face!(rule.descriptors(), FontWidth)
             .unwrap()
-            .value()
             .serialize_specified()
             .unwrap(),
         "expanded condensed"

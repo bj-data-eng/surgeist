@@ -7,6 +7,10 @@
 //! Decoded strings, authored technology order, descriptor positions, and recovery
 //! diagnostics are Surgeist contracts. This suite uses the existing public API.
 
+#[macro_use]
+#[path = "support/font_face.rs"]
+mod font_face_support;
+
 use surgeist_css::{
     CssErrorCode, CssFontFaceSource, CssFontFaceUrlSource, CssFontFormatHint, CssFontTechHint,
     CssParseReport, CssRecoveryAction, CssRule, CssSheet, parse_sheet, validate_sheet,
@@ -16,9 +20,13 @@ fn url_sources(report: &CssParseReport<CssSheet>) -> Vec<&CssFontFaceUrlSource> 
     let [CssRule::FontFace(face), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("expected the font face and following style rule");
     };
-    assert_eq!(face.descriptors().font_family().unwrap().as_str(), "Demo");
-    face.descriptors()
-        .src()
+    assert_eq!(
+        ordinary_face!(face.descriptors(), FontFamily)
+            .unwrap()
+            .as_str(),
+        "Demo"
+    );
+    ordinary_face!(face.descriptors(), Src)
         .expect("expected a retained src descriptor")
         .sources()
         .iter()
@@ -39,9 +47,10 @@ fn clean_sources(value: &str) -> CssParseReport<CssSheet> {
     };
     assert_eq!(
         face.descriptors()
-            .src()
+            .effective(surgeist_css::CssFontFaceDescriptorKind::Src)
             .unwrap()
             .position()
+            .unwrap()
             .byte_offset()
             .value(),
         source.find("src:").unwrap()

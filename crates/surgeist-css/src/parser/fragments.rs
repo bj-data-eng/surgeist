@@ -325,7 +325,7 @@ pub fn parse_media_query_list(source: &str) -> crate::CssParseReport<CssMediaQue
 pub fn parse_font_face_descriptor_value(
     source: &str,
     descriptor: CssFontFaceDescriptorKind,
-) -> crate::CssParseReport<Option<CssFontFaceDescriptorValue>> {
+) -> crate::CssParseReport<Option<crate::CssAuthoredFontFaceDescriptorValue>> {
     bounded(source, || {
         let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
         let mut parser_input = ParserInput::new(source);
@@ -336,36 +336,11 @@ pub fn parse_font_face_descriptor_value(
             // A stylesheet parser bounds descriptor values before semicolons. A raw
             // value has no such enclosing parser; reject its own delimiters before
             // src member recovery could discard them as part of an invalid member.
-            let start = input.state();
-            loop {
-                let token_start = input.position();
-                let location = input.current_source_location();
-                let Ok(token) = input.next_including_whitespace_and_comments().cloned() else {
-                    break;
-                };
-                if matches!(
-                    token,
-                    Token::Semicolon
-                        | Token::CurlyBracketBlock
-                        | Token::CloseCurlyBracket
-                        | Token::CloseParenthesis
-                        | Token::CloseSquareBracket
-                ) {
-                    return Err(crate::error::invalid_descriptor_token_at(
-                        location,
-                        "font-face",
-                        descriptor.css_name(),
-                        &token,
-                        input.slice_from(token_start),
-                    ));
-                }
-                finish_nested_component(&mut input, &token)?;
-            }
-            input.reset(&start);
-            let value = font_face::parse_font_face_value(
+            let value = font_face::parse_authored_font_face_value(
                 source,
                 &mut input,
                 descriptor,
+                state.source_snapshot(),
                 &crate::numeric::NumericInputContext::parsed(state.source_snapshot()),
                 &mut diagnostics,
                 &mut openings,

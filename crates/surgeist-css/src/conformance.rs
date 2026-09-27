@@ -2258,13 +2258,10 @@ const FONT_FACE_STYLE_RANGE_SUBSET: &str =
     "Font-face oblique style with one or two increasing -90deg through 90deg angles is supported.";
 const FONT_FACE_STYLE_RANGE_REMAINDER: &str =
     "Other unselected Fonts 4 font-style descriptor grammar remains unsupported.";
-const FONT_FACE_WIDTH_SUBSET: &str = "Ordinary auto and one or two authored font-width values are supported under both font-width and font-stretch descriptor names.";
-const FONT_FACE_WIDTH_REMAINDER: &str =
-    "Valid whole-descriptor env() substitution is not yet retained as a pending descriptor value.";
 const FONT_SHORTHAND_SUBSET: &str = "Explicit fonts support the selected Fonts 4 family grammar, Fonts 3 style, variant, width and size components, integer weights from 1 through 1000, and optional line height. All six system-font alternatives are supported.";
 const FONT_SHORTHAND_REMAINDER: &str = "Oblique angles, non-integer font weights, xxx-large and math font sizes, and other Fonts 4 shorthand component forms remain unsupported.";
-const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range and feature-settings descriptors have typed representations; invalid descriptors recover independently.";
-const FONT_FACE_RULE_REMAINDER: &str = "Pending whole-descriptor env() substitution is unsupported; selected Fonts 4 descriptors including font-variation-settings, font-named-instance and metric overrides also remain unsupported.";
+const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range and feature-settings descriptors have typed ordinary representations and admit pending whole values for valid env(); invalid descriptors recover independently.";
+const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-variation-settings, font-named-instance and metric overrides remain unsupported.";
 const FONT_SOURCE_SUBSET: &str = "url() and local() sources preserve authored order, including empty URL strings, the selected literal family-name grammar, a single format hint and technology hints. Invalid source members recover independently, while invalid descriptor annotations or all-invalid lists discard the descriptor. The four legacy variation strings project to base formats and required variations without changing authored hints; TrueType and OpenType have explicit format equivalence.";
 const FONT_SOURCE_REMAINDER: &str =
     "The src() function from the referenced Values 4 <url> production remains unsupported.";
@@ -2972,10 +2969,10 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 616] = [
     CssFeatureMetadata::partial(
         "required.value.environment-substitution",
         CssFeatureKind::Value,
-        "env() in authored property and font-palette descriptor values",
+        "env() in authored property, font-palette and font-face descriptor values",
         D_ENV1,
         "#funcdef-env,#env-function,#env-in-shorthands",
-        "Known-property and font-palette descriptor values qualify for pending substitution through valid env() functions, including exact integer indices, symbolic integer calculations and token-preserving fallbacks. Strict replacement reentry rejects residual env().",
+        "Known-property, font-palette and recognized font-face descriptor values qualify for pending substitution through valid env() functions, including exact integer indices, symbolic integer calculations and token-preserving fallbacks. Strict replacement reentry rejects residual env().",
         "Other Env1 contexts and environment lookup/substitution execution remain outside this authored subset; this record does not select the complete Env1 module.",
     ),
     CssFeatureMetadata::complete(
@@ -4014,14 +4011,12 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 616] = [
         O_FONTS3,
         "#font-prop-desc",
     ),
-    CssFeatureMetadata::partial(
+    CssFeatureMetadata::complete(
         "baseline.descriptor.font-stretch",
         CssFeatureKind::Descriptor,
         "font-width in @font-face",
         I_FONTS4_20260907,
         "#font-prop-desc",
-        FONT_FACE_WIDTH_SUBSET,
-        FONT_FACE_WIDTH_REMAINDER,
     ),
     CssFeatureMetadata::complete(
         "baseline.descriptor.font-display",

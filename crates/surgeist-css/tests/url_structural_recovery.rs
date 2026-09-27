@@ -4,6 +4,10 @@
 //! retained enclosing blocks (§5.4.8), not delimiters within its payload.
 //! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-url-token
 
+#[macro_use]
+#[path = "support/font_face.rs"]
+mod font_face_support;
+
 use surgeist_css::{
     CssErrorCode, CssFontFaceSource, CssParseReport, CssRecoveryAction, CssRule, CssSheet,
     parse_sheet, validate_sheet,
@@ -14,7 +18,8 @@ fn assert_url(source: &str, expected: &str) -> CssParseReport<CssSheet> {
     let Some(CssRule::FontFace(face)) = report.syntax().rules().last() else {
         panic!("expected retained font face: {source}: {report:?}");
     };
-    let [CssFontFaceSource::Url(url)] = face.descriptors().src().unwrap().sources() else {
+    let [CssFontFaceSource::Url(url)] = ordinary_face!(face.descriptors(), Src).unwrap().sources()
+    else {
         panic!("expected one retained URL source: {source}: {face:?}");
     };
     assert_eq!(url.url(), expected, "decoded URL: {source}");

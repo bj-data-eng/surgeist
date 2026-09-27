@@ -35,6 +35,20 @@ fn declaration(input: &str, property: CssProperty) -> CssDeclaration {
         .clone()
 }
 
+macro_rules! face_value {
+    ($descriptors:expr, $kind:ident) => {{
+        let descriptor = $descriptors
+            .effective(CssFontFaceDescriptorKind::$kind)
+            .expect("effective font-face descriptor");
+        let CssAuthoredFontFaceDescriptorValue::Ordinary(CssFontFaceDescriptorValue::$kind(value)) =
+            descriptor.value()
+        else {
+            panic!("expected ordinary font-face descriptor");
+        };
+        value
+    }};
+}
+
 macro_rules! declaration_value {
     ($input:expr, $variant:ident) => {{
         let declaration = declaration($input, CssProperty::$variant);
@@ -431,10 +445,6 @@ fn keyframes_rule(rule: &CssRule) -> &CssKeyframesRule {
         CssRule::Keyframes(rule) => rule,
         unexpected => panic!("expected keyframes rule, got {unexpected:?}"),
     }
-}
-
-fn descriptor_occurrence<T>(value: T) -> CssDescriptorOccurrence<T> {
-    CssDescriptorOccurrence::new(value, source_position(0, 0))
 }
 
 #[test]
@@ -1465,12 +1475,9 @@ fn scope_rule_parser_retains_global_font_definition() {
     let [CssScopedRule::FontFace(font)] = scope.rules().rules() else {
         panic!("font definition")
     };
-    assert_eq!(
-        font.descriptors().font_family().unwrap().value().as_str(),
-        "Test"
-    );
+    assert_eq!(face_value!(font.descriptors(), FontFamily).as_str(), "Test");
     assert!(
-        matches!(font.descriptors().src().unwrap().value().sources(), [CssFontFaceSource::Local(name)] if name.as_str() == "Test")
+        matches!(face_value!(font.descriptors(), Src).sources(), [CssFontFaceSource::Local(name)] if name.as_str() == "Test")
     );
     let with_neighbors = parse_sheet("@scope (.card) { .ok { color: black; } @font-face { font-family: Test; src: local(Test); } } .after { color: blue; }").unwrap();
     let [CssRule::Scope(scope), CssRule::Style(after)] = with_neighbors.rules() else {
@@ -1486,12 +1493,9 @@ fn scope_rule_parser_retains_global_font_definition() {
     assert!(
         matches!(after.selectors().selectors()[0].selector(), CssSelector::Class(name) if name == "after")
     );
-    assert_eq!(
-        font.descriptors().font_family().unwrap().value().as_str(),
-        "Test"
-    );
+    assert_eq!(face_value!(font.descriptors(), FontFamily).as_str(), "Test");
     assert!(
-        matches!(font.descriptors().src().unwrap().value().sources(), [CssFontFaceSource::Local(name)] if name.as_str() == "Test")
+        matches!(face_value!(font.descriptors(), Src).sources(), [CssFontFaceSource::Local(name)] if name.as_str() == "Test")
     );
 }
 
@@ -5159,9 +5163,13 @@ fn container_condition_list_constructor_requires_at_least_two_conditions() {
 
 #[test]
 fn font_face_descriptor_collection_preserves_optional_matching_fields() {
-    let empty = CssFontFaceDescriptors::new(None, None, None, None, None, None, None);
-    assert!(empty.font_family().is_none());
-    assert!(empty.src().is_none());
+    let empty = CssFontFaceDescriptors::new(Vec::new());
+    assert!(
+        empty
+            .effective(CssFontFaceDescriptorKind::FontFamily)
+            .is_none()
+    );
+    assert!(empty.effective(CssFontFaceDescriptorKind::Src).is_none());
     assert_eq!(empty.occurrences().len(), 0);
     assert_eq!(
         CssFontFaceUrlSource::try_new("", None, Vec::new())
@@ -5181,91 +5189,91 @@ fn font_face_descriptor_collection_preserves_optional_matching_fields() {
         CssFontLocalName::try_new("Avenir Next").unwrap(),
     )])
     .unwrap();
-
-    let family_only = CssFontFaceDescriptors::new(
-        Some(descriptor_occurrence(family.clone())),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
+    let family_record =
+        CssFontFaceDescriptor::new(CssFontFaceDescriptorValue::FontFamily(family.clone()).into());
+    assert_eq!(family_record.position(), None);
+    let source_record =
+        CssFontFaceDescriptor::new(CssFontFaceDescriptorValue::Src(src.clone()).into());
+    let family_only = CssFontFaceDescriptors::new(vec![family_record.clone()]);
+    assert_eq!(face_value!(family_only, FontFamily), &family);
+    assert!(
+        family_only
+            .effective(CssFontFaceDescriptorKind::Src)
+            .is_none()
     );
-    assert_eq!(family_only.font_family().unwrap().value(), &family);
-    assert!(family_only.src().is_none());
-    assert_eq!(family_only.occurrences().len(), 1);
-    let source_only = CssFontFaceDescriptors::new(
-        None,
-        Some(descriptor_occurrence(src.clone())),
-        None,
-        None,
-        None,
-        None,
-        None,
+    let source_only = CssFontFaceDescriptors::new(vec![source_record.clone()]);
+    assert!(
+        source_only
+            .effective(CssFontFaceDescriptorKind::FontFamily)
+            .is_none()
     );
-    assert!(source_only.font_family().is_none());
-    assert_eq!(source_only.src().unwrap().value(), &src);
-    assert_eq!(source_only.occurrences().len(), 1);
+    assert_eq!(face_value!(source_only, Src), &src);
 
-    let descriptors = CssFontFaceDescriptors::new(
-        Some(descriptor_occurrence(family.clone())),
-        Some(descriptor_occurrence(src.clone())),
-        Some(descriptor_occurrence(
-            CssFontFaceWeight::try_range(400.0, 700.0).unwrap(),
-        )),
-        Some(descriptor_occurrence(CssFontFaceStyle::Oblique(Some(
-            CssFontFaceObliqueRange::try_new(-10.0, Some(20.0)).unwrap(),
-        )))),
-        Some(descriptor_occurrence(CssFontFaceWidth::Range {
-            start: CssFontWidth::Percentage(
-                CssSpecifiedNonNegativePercentage::try_from_component(
-                    CssComponentValue::try_token("75%").unwrap(),
-                )
-                .unwrap(),
-            ),
-            end: Some(CssFontWidth::Percentage(
-                CssSpecifiedNonNegativePercentage::try_from_component(
-                    CssComponentValue::try_token("125%").unwrap(),
-                )
-                .unwrap(),
-            )),
-        })),
-        Some(descriptor_occurrence(CssFontDisplay::Swap)),
-        Some(descriptor_occurrence(
-            CssUnicodeRangeList::try_new(vec![CssUnicodeRange::try_new(0, 0x7f).unwrap()]).unwrap(),
-        )),
-    );
-
-    assert_eq!(descriptors.font_family().unwrap().value(), &family);
-    assert_eq!(descriptors.src().unwrap().value(), &src);
+    let descriptors = CssFontFaceDescriptors::new(vec![
+        family_record,
+        source_record,
+        CssFontFaceDescriptor::new(
+            CssFontFaceDescriptorValue::FontWeight(
+                CssFontFaceWeight::try_range(400.0, 700.0).unwrap(),
+            )
+            .into(),
+        ),
+        CssFontFaceDescriptor::new(
+            CssFontFaceDescriptorValue::FontStyle(CssFontFaceStyle::Oblique(Some(
+                CssFontFaceObliqueRange::try_new(-10.0, Some(20.0)).unwrap(),
+            )))
+            .into(),
+        ),
+        CssFontFaceDescriptor::new(
+            CssFontFaceDescriptorValue::FontWidth(CssFontFaceWidth::Range {
+                start: CssFontWidth::Percentage(
+                    CssSpecifiedNonNegativePercentage::try_from_component(
+                        CssComponentValue::try_token("75%").unwrap(),
+                    )
+                    .unwrap(),
+                ),
+                end: Some(CssFontWidth::Percentage(
+                    CssSpecifiedNonNegativePercentage::try_from_component(
+                        CssComponentValue::try_token("125%").unwrap(),
+                    )
+                    .unwrap(),
+                )),
+            })
+            .into(),
+        ),
+        CssFontFaceDescriptor::new(
+            CssFontFaceDescriptorValue::FontDisplay(CssFontDisplay::Swap).into(),
+        ),
+        CssFontFaceDescriptor::new(
+            CssFontFaceDescriptorValue::UnicodeRange(
+                CssUnicodeRangeList::try_new(vec![CssUnicodeRange::try_new(0, 0x7f).unwrap()])
+                    .unwrap(),
+            )
+            .into(),
+        ),
+    ]);
+    assert_eq!(descriptors.occurrences().len(), 7);
+    assert_eq!(face_value!(descriptors, FontFamily), &family);
+    assert_eq!(face_value!(descriptors, Src), &src);
     assert_eq!(
-        descriptors.font_weight().unwrap().start().value().value(),
+        face_value!(descriptors, FontWeight).start().value().value(),
         400.0
     );
     assert!(matches!(
-        descriptors.font_style(),
-        Some(occurrence)
-            if matches!(occurrence.value(), CssFontFaceStyle::Oblique(Some(_)))
+        face_value!(descriptors, FontStyle),
+        CssFontFaceStyle::Oblique(Some(_))
     ));
     assert_eq!(
-        descriptors
-            .font_width()
-            .unwrap()
-            .value()
+        face_value!(descriptors, FontWidth)
             .end()
             .unwrap()
             .serialize_specified()
             .unwrap(),
         "125%"
     );
+    assert_eq!(face_value!(descriptors, FontDisplay), &CssFontDisplay::Swap);
     assert_eq!(
-        descriptors
-            .font_display()
-            .map(CssDescriptorOccurrence::value),
-        Some(&CssFontDisplay::Swap)
-    );
-    assert_eq!(
-        descriptors.unicode_range().unwrap().ranges(),
+        face_value!(descriptors, UnicodeRange).ranges(),
         &[CssUnicodeRange::try_new(0, 0x7f).unwrap()]
     );
 }
@@ -5399,22 +5407,29 @@ fn font_face_numeric_descriptors_enforce_invariants() {
 
 #[test]
 fn font_face_rule_accessors_expose_authored_structure() {
-    let descriptors = CssFontFaceDescriptors::new(
-        Some(descriptor_occurrence(
-            CssFontFaceFamily::try_new("Avenir Next").unwrap(),
-        )),
-        Some(descriptor_occurrence(
-            CssFontFaceSourceList::try_new(vec![CssFontFaceSource::Url(
-                CssFontFaceUrlSource::try_new("fonts/avenir.woff2", None, Vec::new()).unwrap(),
-            )])
-            .unwrap(),
-        )),
-        None,
-        Some(descriptor_occurrence(CssFontFaceStyle::Normal)),
-        None,
-        Some(descriptor_occurrence(CssFontDisplay::Auto)),
-        None,
-    );
+    let descriptors = CssFontFaceDescriptors::new(vec![
+        CssFontFaceDescriptor::new(
+            CssFontFaceDescriptorValue::FontFamily(
+                CssFontFaceFamily::try_new("Avenir Next").unwrap(),
+            )
+            .into(),
+        ),
+        CssFontFaceDescriptor::new(
+            CssFontFaceDescriptorValue::Src(
+                CssFontFaceSourceList::try_new(vec![CssFontFaceSource::Url(
+                    CssFontFaceUrlSource::try_new("fonts/avenir.woff2", None, Vec::new()).unwrap(),
+                )])
+                .unwrap(),
+            )
+            .into(),
+        ),
+        CssFontFaceDescriptor::new(
+            CssFontFaceDescriptorValue::FontStyle(CssFontFaceStyle::Normal).into(),
+        ),
+        CssFontFaceDescriptor::new(
+            CssFontFaceDescriptorValue::FontDisplay(CssFontDisplay::Auto).into(),
+        ),
+    ]);
     let location = source_position(9, 5);
     let rule = CssFontFaceRule::new(descriptors.clone(), location);
 
@@ -5441,21 +5456,19 @@ fn font_face_rule_parser_accepts_descriptor_block() {
     };
 
     let descriptors = font_face_rule(rule).descriptors();
-    assert_eq!(descriptors.font_family().unwrap().as_str(), "Inter");
-    let [CssFontFaceSource::Url(source)] = descriptors.src().unwrap().sources() else {
+    assert_eq!(face_value!(descriptors, FontFamily).as_str(), "Inter");
+    let [CssFontFaceSource::Url(source)] = face_value!(descriptors, Src).sources() else {
         panic!("expected one URL font source");
     };
     assert_eq!(source.url(), "inter.woff2");
     assert_eq!(source.format(), Some(&CssFontFormatHint::Woff2));
     assert!(source.tech().is_empty());
     assert_eq!(
-        descriptors.font_weight().unwrap().start().value().value(),
+        face_value!(descriptors, FontWeight).start().value().value(),
         400.0
     );
     assert_eq!(
-        descriptors
-            .font_weight()
-            .unwrap()
+        face_value!(descriptors, FontWeight)
             .end()
             .unwrap()
             .value()
@@ -5463,17 +5476,15 @@ fn font_face_rule_parser_accepts_descriptor_block() {
         700.0
     );
     assert_eq!(
-        descriptors.font_style().map(CssDescriptorOccurrence::value),
+        Some(face_value!(descriptors, FontStyle)),
         Some(&CssFontFaceStyle::Normal)
     );
     assert_eq!(
-        descriptors
-            .font_display()
-            .map(CssDescriptorOccurrence::value),
+        Some(face_value!(descriptors, FontDisplay)),
         Some(&CssFontDisplay::Swap)
     );
     assert_eq!(
-        descriptors.unicode_range().unwrap().ranges(),
+        face_value!(descriptors, UnicodeRange).ranges(),
         &[
             CssUnicodeRange::try_new(0x0000, 0x00ff).unwrap(),
             CssUnicodeRange::try_new(0x0100, 0x017f).unwrap()
@@ -5495,12 +5506,12 @@ fn font_face_rule_parser_accepts_source_list_forms() {
     };
 
     let descriptors = font_face_rule(rule).descriptors();
-    assert_eq!(descriptors.font_family().unwrap().as_str(), "Avenir Next");
+    assert_eq!(face_value!(descriptors, FontFamily).as_str(), "Avenir Next");
     let [
         CssFontFaceSource::Local(local),
         CssFontFaceSource::Url(woff2),
         CssFontFaceSource::Url(variable),
-    ] = descriptors.src().unwrap().sources()
+    ] = face_value!(descriptors, Src).sources()
     else {
         panic!("expected local source and two URL sources");
     };
@@ -5529,18 +5540,14 @@ fn font_face_rule_parser_accepts_strict_numeric_ranges() {
     };
 
     let descriptors = font_face_rule(rule).descriptors();
-    let Some(CssFontFaceStyle::Oblique(Some(oblique))) =
-        descriptors.font_style().map(CssDescriptorOccurrence::value)
+    let Some(CssFontFaceStyle::Oblique(Some(oblique))) = Some(face_value!(descriptors, FontStyle))
     else {
         panic!("expected oblique range");
     };
     assert_eq!(oblique.start_degrees().value(), -10.0);
     assert_eq!(oblique.end_degrees().unwrap().value(), 20.0);
     assert_eq!(
-        descriptors
-            .font_width()
-            .unwrap()
-            .value()
+        face_value!(descriptors, FontWidth)
             .start()
             .unwrap()
             .serialize_specified()
@@ -5548,10 +5555,7 @@ fn font_face_rule_parser_accepts_strict_numeric_ranges() {
         "75%"
     );
     assert_eq!(
-        descriptors
-            .font_width()
-            .unwrap()
-            .value()
+        face_value!(descriptors, FontWidth)
             .end()
             .unwrap()
             .serialize_specified()
@@ -6037,8 +6041,8 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
     assert_media_length_literal(value, "600", "px");
 
     let descriptors = font_face.descriptors();
-    assert_eq!(descriptors.font_family().unwrap().as_str(), "Inter");
-    let [CssFontFaceSource::Url(source)] = descriptors.src().unwrap().sources() else {
+    assert_eq!(face_value!(descriptors, FontFamily).as_str(), "Inter");
+    let [CssFontFaceSource::Url(source)] = face_value!(descriptors, Src).sources() else {
         panic!("expected one font-face URL source");
     };
     assert_eq!(source.url(), "inter.woff2");

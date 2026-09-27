@@ -1,6 +1,10 @@
 //! Retention diagnostics belong to the accepted grammar unit that opened them.
 //! CSS Syntax closes blocks at EOF; Surgeist only reports retained closures.
 
+#[macro_use]
+#[path = "support/font_face.rs"]
+mod font_face_support;
+
 use surgeist_css::{CssErrorCode, CssRecoveryAction, CssRule, parse_sheet, validate_sheet};
 
 fn assert_actions(source: &str, discarded: usize, retained_closures: usize) {
@@ -53,7 +57,13 @@ fn completed_declarations_cannot_retain_later_discarded_components() {
         let Some(CssRule::FontFace(face)) = report.syntax().rules().last() else {
             panic!("expected the retained font face: {source}");
         };
-        assert_eq!(face.descriptors().src().unwrap().sources().len(), 1);
+        assert_eq!(
+            ordinary_face!(face.descriptors(), Src)
+                .unwrap()
+                .sources()
+                .len(),
+            1
+        );
         assert_actions(source, 1, 1);
     }
 }
@@ -109,7 +119,7 @@ fn escaped_retained_function_names_keep_their_eof_closures() {
             panic!("expected retained font face: {source}");
         };
         let [surgeist_css::CssFontFaceSource::Local(local)] =
-            face.descriptors().src().unwrap().sources()
+            ordinary_face!(face.descriptors(), Src).unwrap().sources()
         else {
             panic!("expected retained local source: {source}");
         };
@@ -129,7 +139,7 @@ fn unquoted_url_tokens_keep_their_eof_closures() {
             panic!("expected retained font face: {source}");
         };
         let [surgeist_css::CssFontFaceSource::Url(url)] =
-            face.descriptors().src().unwrap().sources()
+            ordinary_face!(face.descriptors(), Src).unwrap().sources()
         else {
             panic!("expected retained URL token: {source}");
         };

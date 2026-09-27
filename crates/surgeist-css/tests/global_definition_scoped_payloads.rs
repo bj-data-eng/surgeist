@@ -2,6 +2,10 @@
 //! Global definitions retain the same payload inside ordinary scope (Cascade6
 //! §2.5.5); surrounding selectors and authored parents retain their scope context.
 //! https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-nesting
+#[macro_use]
+#[path = "support/font_face.rs"]
+mod font_face_support;
+
 use surgeist_css::*;
 
 const DEFINITIONS: &str = concat!(
@@ -28,11 +32,13 @@ fn assert_leaves(rules: &[CssScopedRule]) {
         matches!(counter.descriptors().symbols().unwrap().symbols(), [CssCounterSymbol::String(value)] if value.as_str() == "x")
     );
     assert_eq!(
-        font.descriptors().font_family().unwrap().value().as_str(),
+        ordinary_face!(font.descriptors(), FontFamily)
+            .unwrap()
+            .as_str(),
         "Audit"
     );
     assert!(
-        matches!(font.descriptors().src().unwrap().value().sources(), [CssFontFaceSource::Local(value)] if value.as_str() == "Audit")
+        matches!(ordinary_face!(font.descriptors(), Src).unwrap().sources(), [CssFontFaceSource::Local(value)] if value.as_str() == "Audit")
     );
     assert!(
         matches!(keyframes.name(), CssKeyframesName::Ident(value) if value.as_str() == "audit")
@@ -147,7 +153,7 @@ fn bounded_scoped_chunks_keep_definition_positions_order_and_parentage() {
                 matches!(chunk[0].kind(), CssRuleContextKindRef::CounterStyle(value) if value.name().as_str() == "Tick")
             );
             assert!(
-                matches!(chunk[1].kind(), CssRuleContextKindRef::FontFace(value) if value.descriptors().font_family().unwrap().value().as_str() == "Audit")
+                matches!(chunk[1].kind(), CssRuleContextKindRef::FontFace(value) if ordinary_face!(value.descriptors(), FontFamily).unwrap().as_str() == "Audit")
             );
             assert!(
                 matches!(chunk[2].kind(), CssRuleContextKindRef::Keyframes(value) if value.blocks().len() == 2)

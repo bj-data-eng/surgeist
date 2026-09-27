@@ -5,9 +5,9 @@ use std::fmt;
 use crate::{
     CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssAuthoredColor, CssComponentValue,
     CssComponentValueError, CssComponentValueErrorKind, CssComponentValueLimits,
-    CssComponentValueRef, CssComponentValues, CssFontFaceFamily, CssIntegerValue,
-    CssSerializedOrigin, CssSerializedValue, CssSourcePosition, CssSubstitutionDependentValue,
-    CssValueOrigin, Error, ErrorKind,
+    CssComponentValues, CssFontFaceFamily, CssIntegerValue, CssSerializedOrigin,
+    CssSerializedValue, CssSourcePosition, CssSubstitutionDependentValue, CssValueOrigin, Error,
+    ErrorKind,
 };
 
 /// A rejected semantic palette component or rule.
@@ -314,7 +314,7 @@ impl CssFontPaletteDescriptorValue {
         replacement
             .validate_with_limits(limits)
             .map_err(CssFontPaletteValueError::from_component)?;
-        if let Some(origin) = first_substitution_origin(&replacement) {
+        if let Some(origin) = crate::parser::first_substitution_origin(&replacement) {
             return Err(CssFontPaletteValueError::residual(origin));
         }
         Self::try_new_with_limits(self.kind, replacement, limits)
@@ -372,29 +372,6 @@ impl CssFontPaletteDescriptorValue {
             }
         }
     }
-}
-
-fn first_substitution_origin(values: &CssComponentValues) -> Option<CssValueOrigin> {
-    let mut stack = vec![values.items().iter()];
-    while let Some(items) = stack.last_mut() {
-        if let Some(item) = items.next() {
-            match item.view() {
-                CssComponentValueRef::Function(function) => {
-                    if function.name().eq_ignore_ascii_case("var")
-                        || function.name().eq_ignore_ascii_case("env")
-                    {
-                        return Some(item.origin().clone());
-                    }
-                    stack.push(function.values().items().iter());
-                }
-                CssComponentValueRef::Block(block) => stack.push(block.values().items().iter()),
-                _ => {}
-            }
-        } else {
-            stack.pop();
-        }
-    }
-    None
 }
 
 /// One ordered descriptor occurrence; checked construction invents no source position.

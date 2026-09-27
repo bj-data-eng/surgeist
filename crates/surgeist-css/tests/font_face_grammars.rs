@@ -1,6 +1,10 @@
+#[macro_use]
+#[path = "support/font_face.rs"]
+mod font_face_support;
+
 use surgeist_css::{
     CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue, CssErrorCode,
-    CssFontFaceDescriptorRef, CssFontFaceSource, CssFontFaceWeightKeyword, CssFontFaceWidth,
+    CssFontFaceDescriptorKind, CssFontFaceSource, CssFontFaceWeightKeyword, CssFontFaceWidth,
     CssFontFormatHint, CssFontTechHint, CssFontWidth, CssFontWidthKeyword, CssRecoveryAction,
     CssRule, parse_sheet,
 };
@@ -39,7 +43,7 @@ fn font_sources_drop_obsolete_multiple_formats_and_preserve_selected_hints() {
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("expected one retained font-face rule");
     };
-    let sources = rule.descriptors().src().unwrap().sources();
+    let sources = ordinary_face!(rule.descriptors(), Src).unwrap().sources();
     assert_eq!(sources.len(), 3);
     let CssFontFaceSource::Local(local) = &sources[0] else {
         panic!("expected local source");
@@ -77,12 +81,17 @@ fn font_face_family_and_local_names_distinguish_quoted_reserved_names() {
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("expected font-face");
     };
-    assert_eq!(rule.descriptors().font_family().unwrap().as_str(), "serif");
+    assert_eq!(
+        ordinary_face!(rule.descriptors(), FontFamily)
+            .unwrap()
+            .as_str(),
+        "serif"
+    );
     let [
         CssFontFaceSource::Local(global),
         CssFontFaceSource::Local(sequence),
         _,
-    ] = rule.descriptors().src().unwrap().sources()
+    ] = ordinary_face!(rule.descriptors(), Src).unwrap().sources()
     else {
         panic!("expected two local names and a URL");
     };
@@ -123,11 +132,18 @@ fn font_source_lists_retain_fallbacks_beside_empty_members() {
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("expected retained font-face: {source}");
         };
-        let [CssFontFaceSource::Url(url)] = rule.descriptors().src().unwrap().sources() else {
+        let [CssFontFaceSource::Url(url)] =
+            ordinary_face!(rule.descriptors(), Src).unwrap().sources()
+        else {
             panic!("expected retained URL fallback: {source}");
         };
         assert_eq!(url.url(), "a");
-        assert_eq!(rule.descriptors().font_family().unwrap().as_str(), "Demo");
+        assert_eq!(
+            ordinary_face!(rule.descriptors(), FontFamily)
+                .unwrap()
+                .as_str(),
+            "Demo"
+        );
         let [diagnostic] = report.diagnostics() else {
             panic!("expected one discarded empty member: {source}");
         };
@@ -160,8 +176,13 @@ fn font_source_lists_reject_all_invalid_items_and_invalid_hint_order() {
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("invalid src must not discard its accepted outer rule: {source}");
         };
-        assert!(rule.descriptors().src().is_none());
-        assert_eq!(rule.descriptors().font_family().unwrap().as_str(), "Demo");
+        assert!(ordinary_face!(rule.descriptors(), Src).is_none());
+        assert_eq!(
+            ordinary_face!(rule.descriptors(), FontFamily)
+                .unwrap()
+                .as_str(),
+            "Demo"
+        );
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
             report.diagnostics()[0].error().code(),
@@ -201,7 +222,7 @@ fn selected_fonts4_format_and_technology_keywords_remain_ordered() {
         CssFontFormatHint::EmbeddedOpenType,
         CssFontFormatHint::Svg,
     ];
-    for (source, expected) in rule.descriptors().src().unwrap().sources()[..7]
+    for (source, expected) in ordinary_face!(rule.descriptors(), Src).unwrap().sources()[..7]
         .iter()
         .zip(expected_formats)
     {
@@ -210,7 +231,9 @@ fn selected_fonts4_format_and_technology_keywords_remain_ordered() {
         };
         assert_eq!(source.format(), Some(&expected));
     }
-    let CssFontFaceSource::Url(technology) = &rule.descriptors().src().unwrap().sources()[7] else {
+    let CssFontFaceSource::Url(technology) =
+        &ordinary_face!(rule.descriptors(), Src).unwrap().sources()[7]
+    else {
         panic!("expected technology URL source");
     };
     assert_eq!(
@@ -247,67 +270,61 @@ fn font_face_preserves_occurrences_and_uses_last_valid_descriptor() {
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("expected one retained font-face rule");
     };
-    assert_eq!(rule.descriptors().font_family().unwrap().as_str(), "Two");
     assert_eq!(
-        rule.descriptors().src().unwrap().sources()[0],
+        ordinary_face!(rule.descriptors(), FontFamily)
+            .unwrap()
+            .as_str(),
+        "Two"
+    );
+    assert_eq!(
+        ordinary_face!(rule.descriptors(), Src).unwrap().sources()[0],
         CssFontFaceSource::Url(
             surgeist_css::CssFontFaceUrlSource::try_new("two.woff2", None, Vec::new()).unwrap(),
         )
     );
     assert_eq!(
-        rule.descriptors().font_weight().unwrap().keyword(),
+        ordinary_face!(rule.descriptors(), FontWeight)
+            .unwrap()
+            .keyword(),
         Some(CssFontFaceWeightKeyword::Bold)
     );
     assert!(matches!(
-        rule.descriptors().font_width().unwrap().value(),
+        ordinary_face!(rule.descriptors(), FontWidth).unwrap(),
         CssFontFaceWidth::Range {
             start: CssFontWidth::Keyword(CssFontWidthKeyword::Expanded),
             end: None
         }
     ));
     assert!(matches!(
-        rule.descriptors().font_feature_settings().unwrap().value(),
+        ordinary_face!(rule.descriptors(), FontFeatureSettings).unwrap(),
         CssAuthoredFontFeatureSettings::Features(_)
     ));
     let occurrences = rule.descriptors().occurrences().collect::<Vec<_>>();
     assert_eq!(occurrences.len(), 16);
-    assert!(matches!(
-        occurrences[0],
-        CssFontFaceDescriptorRef::FontFamily(_)
-    ));
-    assert!(matches!(occurrences[1], CssFontFaceDescriptorRef::Src(_)));
-    assert!(matches!(
-        occurrences[2],
-        CssFontFaceDescriptorRef::FontWeight(_)
-    ));
-    assert!(matches!(
-        occurrences[3],
-        CssFontFaceDescriptorRef::FontWidth(_)
-    ));
-    assert!(matches!(
-        occurrences[4],
-        CssFontFaceDescriptorRef::FontStyle(_)
-    ));
-    assert!(matches!(
-        occurrences[5],
-        CssFontFaceDescriptorRef::UnicodeRange(_)
-    ));
-    assert!(matches!(
-        occurrences[6],
-        CssFontFaceDescriptorRef::FontFeatureSettings(_)
-    ));
-    assert!(matches!(
-        occurrences[7],
-        CssFontFaceDescriptorRef::FontDisplay(_)
-    ));
-    assert!(matches!(
-        occurrences[8],
-        CssFontFaceDescriptorRef::FontFamily(_)
-    ));
-    assert!(matches!(
-        occurrences[15],
-        CssFontFaceDescriptorRef::FontDisplay(_)
-    ));
+    assert_eq!(
+        occurrences[..8]
+            .iter()
+            .map(|item| item.value().kind())
+            .collect::<Vec<_>>(),
+        [
+            CssFontFaceDescriptorKind::FontFamily,
+            CssFontFaceDescriptorKind::Src,
+            CssFontFaceDescriptorKind::FontWeight,
+            CssFontFaceDescriptorKind::FontWidth,
+            CssFontFaceDescriptorKind::FontStyle,
+            CssFontFaceDescriptorKind::UnicodeRange,
+            CssFontFaceDescriptorKind::FontFeatureSettings,
+            CssFontFaceDescriptorKind::FontDisplay,
+        ]
+    );
+    assert_eq!(
+        occurrences[8].value().kind(),
+        CssFontFaceDescriptorKind::FontFamily
+    );
+    assert_eq!(
+        occurrences[15].value().kind(),
+        CssFontFaceDescriptorKind::FontDisplay
+    );
     assert_strict_parity(source);
 }
 
@@ -333,7 +350,9 @@ fn fonts3_descriptor_values_and_selected_fonts4_ranges_are_typed() {
             panic!("expected font-face for {authored}");
         };
         assert_eq!(
-            rule.descriptors().font_weight().unwrap().keyword(),
+            ordinary_face!(rule.descriptors(), FontWeight)
+                .unwrap()
+                .keyword(),
             expected
         );
         assert_strict_parity(&source);
@@ -358,7 +377,7 @@ fn fonts3_descriptor_values_and_selected_fonts4_ranges_are_typed() {
             panic!("expected font-face for {authored}");
         };
         assert_eq!(
-            rule.descriptors().font_width().unwrap().value(),
+            ordinary_face!(rule.descriptors(), FontWidth).unwrap(),
             &CssFontFaceWidth::Range {
                 start: CssFontWidth::Keyword(expected),
                 end: None
@@ -379,7 +398,7 @@ fn fonts3_descriptor_values_and_selected_fonts4_ranges_are_typed() {
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("expected font-face");
     };
-    let features = match rule.descriptors().font_feature_settings().unwrap().value() {
+    let features = match ordinary_face!(rule.descriptors(), FontFeatureSettings).unwrap() {
         CssAuthoredFontFeatureSettings::Features(features) => features.features(),
         _ => panic!("expected feature list"),
     };
@@ -392,7 +411,10 @@ fn fonts3_descriptor_values_and_selected_fonts4_ranges_are_typed() {
         CssAuthoredFontFeatureValue::Index(index) if index.value() == 0
     ));
     assert_eq!(
-        rule.descriptors().unicode_range().unwrap().ranges().len(),
+        ordinary_face!(rule.descriptors(), UnicodeRange)
+            .unwrap()
+            .ranges()
+            .len(),
         2
     );
     assert_strict_parity(source);
@@ -417,15 +439,21 @@ fn invalid_descriptor_occurrences_do_not_erase_valid_neighbors() {
     let CssRule::FontFace(rule) = &report.syntax().rules()[0] else {
         panic!("expected font-face");
     };
-    assert_eq!(rule.descriptors().font_family().unwrap().as_str(), "Two");
-    let CssFontFaceSource::Url(effective_source) = &rule.descriptors().src().unwrap().sources()[0]
+    assert_eq!(
+        ordinary_face!(rule.descriptors(), FontFamily)
+            .unwrap()
+            .as_str(),
+        "Two"
+    );
+    let CssFontFaceSource::Url(effective_source) =
+        &ordinary_face!(rule.descriptors(), Src).unwrap().sources()[0]
     else {
         panic!("expected URL source");
     };
     assert_eq!(effective_source.url(), "two");
-    let features = rule.descriptors().font_feature_settings().unwrap();
+    let features = ordinary_face!(rule.descriptors(), FontFeatureSettings).unwrap();
     assert!(matches!(
-        features.value(),
+        features,
         CssAuthoredFontFeatureSettings::Features(list)
             if list.features()[0].tag().as_str() == "liga"
     ));

@@ -9,6 +9,10 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use serde::Deserialize;
+#[macro_use]
+#[path = "support/font_face.rs"]
+mod font_face_support;
+
 use surgeist_css::{CssDeclarationList, CssPropertyNameRef, CssRule, parse_sheet};
 
 #[path = "support/digest.rs"]
@@ -346,7 +350,7 @@ fn assert_src_presence(suffix: &str, expected_count: usize) {
             ));
             continue;
         };
-        let present = rule.descriptors().src().is_some();
+        let present = ordinary_face!(rule.descriptors(), Src).is_some();
         let expected = expected_src_presence(case, &profile);
         if present != expected {
             failures.push(format!(

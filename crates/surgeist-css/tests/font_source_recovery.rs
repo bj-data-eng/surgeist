@@ -3,6 +3,10 @@
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-src-parsing
 //! Diagnostic and validation expectations are Surgeist's recovery contract.
 
+#[macro_use]
+#[path = "support/font_face.rs"]
+mod font_face_support;
+
 use surgeist_css::{
     CssErrorCode, CssFontDisplay, CssFontFaceRule, CssFontFaceSource, CssParseReport,
     CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSheet, parse_sheet, validate_sheet,
@@ -12,18 +16,21 @@ fn font_face(report: &CssParseReport<CssSheet>) -> &CssFontFaceRule {
     let [CssRule::FontFace(rule), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("expected retained font-face and following style rule");
     };
-    assert_eq!(rule.descriptors().font_family().unwrap().as_str(), "Demo");
     assert_eq!(
-        rule.descriptors().font_display().unwrap().value(),
+        ordinary_face!(rule.descriptors(), FontFamily)
+            .unwrap()
+            .as_str(),
+        "Demo"
+    );
+    assert_eq!(
+        ordinary_face!(rule.descriptors(), FontDisplay).unwrap(),
         &CssFontDisplay::Swap
     );
     rule
 }
 
 fn assert_sources(rule: &CssFontFaceRule, expected: &[(&str, &str)]) {
-    let actual = rule
-        .descriptors()
-        .src()
+    let actual = ordinary_face!(rule.descriptors(), Src)
         .expect("valid fallback sources must survive")
         .sources()
         .iter()
@@ -163,6 +170,26 @@ fn source_member_boundaries_handle_bad_urls_suffixes_and_nested_commas() {
         ],
     );
     assert_validation_parity(source, &report);
+}
+
+#[test]
+fn bad_url_cannot_use_later_env_to_bypass_source_recovery() {
+    let source = "@font-face{src:url(not a valid url),env(source);font-display:swap}";
+    let report = parse_sheet(source);
+    let [CssRule::FontFace(rule)] = report.syntax().rules() else {
+        panic!("font-face rule should survive a dropped src descriptor");
+    };
+    assert!(
+        rule.descriptors()
+            .effective(surgeist_css::CssFontFaceDescriptorKind::Src)
+            .is_none()
+    );
+    assert!(
+        rule.descriptors()
+            .effective(surgeist_css::CssFontFaceDescriptorKind::FontDisplay)
+            .is_some()
+    );
+    assert!(!report.is_clean());
 }
 
 #[test]

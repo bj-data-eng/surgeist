@@ -17,16 +17,17 @@
 //! source positions; programmatic syntax must not invent authored coordinates.
 
 use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssContributionValueRef, CssContributions,
-    CssCustomPropertyDeclaredValue, CssCustomPropertyName, CssDeclaration, CssExpansion,
-    CssExpansionErrorKind, CssGlobalKeyword, CssImportance, CssKnownProperty as Property,
-    CssLonghandContributions, CssLonghandValueRef, CssMediaConditionKind, CssMediaQuery,
-    CssNormalizationErrorKind, CssNormalizationLimits, CssNormalizationResource,
-    CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedSheet, CssPropertyNameRef,
-    CssRecoveryAction, CssRule, CssRuleContext, CssRuleContextKindRef, CssScopedRule, CssSelector,
-    CssSelectorBinding, CssSelectorCombinator, CssStyleRule, CssValueOrigin, expand_declaration,
-    normalize_report, normalize_sheet, normalize_sheet_with_limits, parse_component_values,
-    parse_property_value, parse_sheet,
+    CssAuthoredFontFaceDescriptorValue, CssComponentValue, CssComponentValues,
+    CssContributionValueRef, CssContributions, CssCustomPropertyDeclaredValue,
+    CssCustomPropertyName, CssDeclaration, CssExpansion, CssExpansionErrorKind,
+    CssFontFaceDescriptorKind, CssFontFaceDescriptorValue, CssGlobalKeyword, CssImportance,
+    CssKnownProperty as Property, CssLonghandContributions, CssLonghandValueRef,
+    CssMediaConditionKind, CssMediaQuery, CssNormalizationErrorKind, CssNormalizationLimits,
+    CssNormalizationResource, CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedSheet,
+    CssPropertyNameRef, CssRecoveryAction, CssRule, CssRuleContext, CssRuleContextKindRef,
+    CssScopedRule, CssSelector, CssSelectorBinding, CssSelectorCombinator, CssStyleRule,
+    CssValueOrigin, expand_declaration, normalize_report, normalize_sheet,
+    normalize_sheet_with_limits, parse_component_values, parse_property_value, parse_sheet,
 };
 
 fn declaration_items(sheet: &CssNormalizedSheet) -> Vec<&CssNormalizedDeclaration> {
@@ -701,7 +702,16 @@ fn ordered_terminal_payloads() {
     let CssRuleContextKindRef::FontFace(face) = contexts[6].kind() else {
         unreachable!()
     };
-    assert_eq!(face.descriptors().src().unwrap().sources().len(), 2);
+    let descriptor = face
+        .descriptors()
+        .effective(CssFontFaceDescriptorKind::Src)
+        .unwrap();
+    let CssAuthoredFontFaceDescriptorValue::Ordinary(CssFontFaceDescriptorValue::Src(sources)) =
+        descriptor.value()
+    else {
+        panic!("expected ordinary font-face sources");
+    };
+    assert_eq!(sources.sources().len(), 2);
     println!("ordered terminal payloads: ok");
 }
 

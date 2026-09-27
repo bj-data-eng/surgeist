@@ -17,7 +17,7 @@ mod box_spacing;
 mod contain_intrinsic_size;
 mod counter_style;
 mod effects;
-mod font_face;
+pub(crate) mod font_face;
 mod font_feature_values;
 pub(crate) mod font_palette_values;
 mod fragments;
@@ -59,6 +59,7 @@ mod timing;
 mod typography;
 mod values;
 mod variables;
+pub(crate) use variables::first_substitution_origin;
 
 use cssparser::{
     AtRuleParser, CowRcStr, DeclarationParser, Delimiter, ParseError, Parser, ParserInput,

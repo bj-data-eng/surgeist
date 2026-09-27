@@ -110,7 +110,10 @@ fn raw_unicode_range_corpus_preserves_values_and_original_diagnostics() {
             }
         });
         if clean {
-            let Some(CssFontFaceDescriptorValue::UnicodeRange(value)) = report.syntax() else {
+            let Some(surgeist_css::CssAuthoredFontFaceDescriptorValue::Ordinary(
+                CssFontFaceDescriptorValue::UnicodeRange(value),
+            )) = report.syntax()
+            else {
                 panic!("retained typed range for {id}: {report:?}");
             };
             let actual: Vec<_> = value

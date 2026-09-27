@@ -7,6 +7,10 @@
 
 #![forbid(unsafe_code)]
 
+#[macro_use]
+#[path = "support/font_face.rs"]
+mod font_face_support;
+
 use surgeist_css::{
     CssErrorCode, CssFontFaceFamily, CssFontFaceSource, CssFontFamilyName, CssFontFamilyNameKind,
     CssFontLocalName, CssFontValue, CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction,
@@ -70,10 +74,12 @@ fn font_face_family_descriptor_rejects_reserved_default_tokens() {
             panic!("family rejection must retain its outer rule: {source}; {report:?}");
         };
         assert!(
-            rule.descriptors().font_family().is_none(),
+            ordinary_face!(rule.descriptors(), FontFamily).is_none(),
             "reserved family must be absent: {source}; {report:?}"
         );
-        let [CssFontFaceSource::Url(url)] = rule.descriptors().src().unwrap().sources() else {
+        let [CssFontFaceSource::Url(url)] =
+            ordinary_face!(rule.descriptors(), Src).unwrap().sources()
+        else {
             panic!("unrelated source descriptor must survive: {source}; {report:?}");
         };
         assert_eq!(url.url(), "fallback.woff2");
@@ -102,9 +108,14 @@ fn local_font_source_rejects_reserved_default_tokens() {
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("source rejection must retain its outer rule: {source}; {report:?}");
         };
-        assert_eq!(rule.descriptors().font_family().unwrap().as_str(), "Demo");
+        assert_eq!(
+            ordinary_face!(rule.descriptors(), FontFamily)
+                .unwrap()
+                .as_str(),
+            "Demo"
+        );
         assert!(
-            rule.descriptors().src().is_none(),
+            ordinary_face!(rule.descriptors(), Src).is_none(),
             "an invalid sole local source must leave no src: {source}; {report:?}"
         );
         let [diagnostic] = report.diagnostics() else {
@@ -168,8 +179,15 @@ fn quoted_reserved_names_and_nonreserved_identifiers_preserve_decoded_names() {
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("expected font-face: {sheet}");
         };
-        assert_eq!(rule.descriptors().font_family().unwrap().as_str(), decoded);
-        let [CssFontFaceSource::Local(local)] = rule.descriptors().src().unwrap().sources() else {
+        assert_eq!(
+            ordinary_face!(rule.descriptors(), FontFamily)
+                .unwrap()
+                .as_str(),
+            decoded
+        );
+        let [CssFontFaceSource::Local(local)] =
+            ordinary_face!(rule.descriptors(), Src).unwrap().sources()
+        else {
             panic!("expected one local source: {sheet}");
         };
         assert_eq!(local.as_str(), decoded);

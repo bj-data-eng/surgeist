@@ -1,7 +1,7 @@
 use cssparser::{
-    AtRuleParser, BasicParseErrorKind, CowRcStr, DeclarationParser, Delimiter, ParseError, Parser,
-    ParserState, QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, Token,
-    match_ignore_ascii_case,
+    AtRuleParser, BasicParseErrorKind, CowRcStr, DeclarationParser, Delimiter, ParseError,
+    ParseErrorKind, Parser, ParserState, QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser,
+    Token, match_ignore_ascii_case,
 };
 
 mod unicode_range;
@@ -90,7 +90,7 @@ pub(super) fn parse_font_face_rule<'i, 't>(
     }
 
     diagnostics.extend(descriptor_parser.diagnostics);
-    let descriptors = CssFontFaceDescriptors::from_occurrences(descriptors);
+    let descriptors = CssFontFaceDescriptors::new(descriptors);
 
     Ok(CssFontFaceRule::new(
         descriptors,
@@ -152,20 +152,213 @@ impl<'i> DeclarationParser<'i> for FontFaceDescriptorParser<'i> {
         })?;
         let mut member_diagnostics = Vec::new();
         let numeric = crate::numeric::NumericInputContext::parsed(self.recovery.source_snapshot());
-        let value = parse_font_face_value(
+        let value = parse_authored_font_face_value(
             self.source,
             input,
             kind,
+            self.recovery.source_snapshot(),
             &numeric,
             &mut member_diagnostics,
             &mut implicit_closures,
         )
-        .map_err(|error| with_descriptor_context(error, "font-face", name.as_ref()))?;
+        .map_err(|error| {
+            if name.eq_ignore_ascii_case("font-stretch")
+                && matches!(
+                    &error.kind,
+                    ParseErrorKind::Custom(error)
+                        if matches!(error.kind(), crate::ErrorKind::InvalidDeclarationAnnotation(_))
+                )
+            {
+                // The legacy spelling is the actual authored descriptor name.
+                crate::error::invalid_descriptor_annotation(
+                    error.location,
+                    "font-face",
+                    name.as_ref(),
+                )
+            } else {
+                with_descriptor_context(error, "font-face", name.as_ref())
+            }
+        })?;
         // Only an enclosing value that passed its complete boundary retains members.
         self.diagnostics.extend(member_diagnostics);
         self.recovery.retain_component_closures(implicit_closures);
-        Ok(value.into_occurrence(position))
+        Ok(CssFontFaceDescriptor::new(value).with_position(position))
     }
+}
+
+/// Applies the shared descriptor root and Env1 admission before ordinary grammar.
+pub(super) fn parse_authored_font_face_value<'i, 't>(
+    source: &str,
+    input: &mut Parser<'i, 't>,
+    kind: CssFontFaceDescriptorKind,
+    snapshot: &crate::CssSourceSnapshot,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+    member_diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    implicit_closures: &mut Vec<usize>,
+) -> Result<CssAuthoredFontFaceDescriptorValue, ParseError<'i, Error>> {
+    validate_font_face_descriptor_root(input, kind)?;
+    let start = input.state();
+    let components = match crate::CssComponentValues::collect_from_parser(input, snapshot) {
+        Ok(components) => components,
+        Err(error)
+            if kind == CssFontFaceDescriptorKind::Src
+                && matches!(
+                    error.kind(),
+                    crate::CssComponentValueErrorKind::BadString
+                        | crate::CssComponentValueErrorKind::BadUrl
+                ) =>
+        {
+            // The ordinary src parser can discard a bad member and retain later
+            // sources. A bad token cannot qualify a value for Env1 deferral.
+            input.reset(&start);
+            return parse_font_face_value(
+                source,
+                input,
+                kind,
+                numeric,
+                member_diagnostics,
+                implicit_closures,
+            )
+            .map(CssAuthoredFontFaceDescriptorValue::Ordinary);
+        }
+        Err(error) => {
+            return Err(crate::error::invalid_component_value(
+                input.current_source_location(),
+                error,
+            ));
+        }
+    };
+    input.reset(&start);
+    parse_font_face_value_with_components(
+        source,
+        input,
+        kind,
+        components,
+        numeric,
+        member_diagnostics,
+        implicit_closures,
+    )
+}
+
+fn parse_font_face_value_with_components<'i, 't>(
+    source: &str,
+    input: &mut Parser<'i, 't>,
+    kind: CssFontFaceDescriptorKind,
+    components: crate::CssComponentValues,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+    member_diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    implicit_closures: &mut Vec<usize>,
+) -> Result<CssAuthoredFontFaceDescriptorValue, ParseError<'i, Error>> {
+    let pending = super::variables::font_face_env_qualifies(components.items(), numeric).map_err(
+        |error| crate::error::invalid_component_value(input.current_source_location(), error),
+    )?;
+    if pending {
+        return parse_descriptor_boundary(input, "font-face", kind.css_name(), |input| {
+            consume_remaining_components(input)?;
+            Ok(CssAuthoredFontFaceDescriptorValue::pending(
+                kind, components,
+            ))
+        });
+    }
+    parse_font_face_value(
+        source,
+        input,
+        kind,
+        numeric,
+        member_diagnostics,
+        implicit_closures,
+    )
+    .map(CssAuthoredFontFaceDescriptorValue::Ordinary)
+}
+
+/// Strict component bridge returns the first recovered src diagnostic separately.
+pub(crate) fn construct_font_face_descriptor_value(
+    kind: CssFontFaceDescriptorKind,
+    components: &crate::CssComponentValues,
+    serialized: &crate::CssSerializedValue,
+) -> Result<(CssAuthoredFontFaceDescriptorValue, Option<Error>), Error> {
+    let source = serialized.as_css();
+    let mut parser_input = cssparser::ParserInput::new(source);
+    let mut input = Parser::new(&mut parser_input);
+    validate_font_face_descriptor_root(&mut input, kind)
+        .map_err(|error| crate::error::from_parse_error(source, error))?;
+    let numeric = crate::numeric::NumericInputContext::components(components, serialized);
+    let mut member_diagnostics = Vec::new();
+    let mut implicit_closures = Vec::new();
+    let value = parse_font_face_value_with_components(
+        source,
+        &mut input,
+        kind,
+        components.clone(),
+        &numeric,
+        &mut member_diagnostics,
+        &mut implicit_closures,
+    )
+    .map_err(|error| crate::error::from_parse_error(source, error))?;
+    input
+        .expect_exhausted()
+        .map_err(|error| crate::error::from_parse_error(source, basic(error)))?;
+    let recovered = member_diagnostics
+        .first()
+        .map(|diagnostic| diagnostic.error().clone());
+    Ok((value, recovered))
+}
+
+pub(super) fn validate_font_face_descriptor_root<'i>(
+    input: &mut Parser<'i, '_>,
+    kind: CssFontFaceDescriptorKind,
+) -> Result<(), ParseError<'i, Error>> {
+    let start = input.state();
+    loop {
+        let token_start = input.position();
+        let location = input.current_source_location();
+        let token = match input.next_including_whitespace_and_comments() {
+            Ok(token) => token.clone(),
+            Err(error) if matches!(error.kind, cssparser::BasicParseErrorKind::EndOfInput) => break,
+            Err(error) => return Err(basic(error)),
+        };
+        if matches!(
+            token,
+            Token::Semicolon
+                | Token::CurlyBracketBlock
+                | Token::CloseCurlyBracket
+                | Token::CloseParenthesis
+                | Token::CloseSquareBracket
+        ) {
+            return Err(crate::error::invalid_descriptor_token_at(
+                location,
+                "font-face",
+                kind.css_name(),
+                &token,
+                input.slice_from(token_start),
+            ));
+        }
+        super::fragments::finish_nested_component(input, &token)?;
+    }
+    input.reset(&start);
+    Ok(())
+}
+
+fn consume_remaining_components<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<(), ParseError<'i, Error>> {
+    loop {
+        let token = match input.next_including_whitespace_and_comments() {
+            Ok(token) => token.clone(),
+            Err(error) if matches!(error.kind, cssparser::BasicParseErrorKind::EndOfInput) => break,
+            Err(error) => return Err(basic(error)),
+        };
+        if matches!(
+            token,
+            Token::Function(_)
+                | Token::ParenthesisBlock
+                | Token::SquareBracketBlock
+                | Token::CurlyBracketBlock
+        ) {
+            input.parse_nested_block(consume_remaining_components)?;
+        }
+    }
+    Ok(())
 }
 
 /// Shared value grammar; callers commit recovery only after their complete boundary succeeds.

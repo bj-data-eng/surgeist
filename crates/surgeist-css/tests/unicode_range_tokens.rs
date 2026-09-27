@@ -1,3 +1,7 @@
+#[macro_use]
+#[path = "support/font_face.rs"]
+mod font_face_support;
+
 use surgeist_css::{CssErrorCode, CssRecoveryAction, CssRule, parse_sheet};
 
 // Admission and numeric expectations: pinned CSS Syntax 3 (2021-12-24), §7.1.
@@ -24,11 +28,8 @@ fn unicode_ranges_preserve_token_representations_across_comments() {
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("font-face");
         };
-        let actual: Vec<_> = rule
-            .descriptors()
-            .unicode_range()
+        let actual: Vec<_> = ordinary_face!(rule.descriptors(), UnicodeRange)
             .unwrap()
-            .value()
             .ranges()
             .iter()
             .map(|range| (range.start(), range.end()))
@@ -96,8 +97,8 @@ fn invalid_unicode_ranges_point_to_the_responsible_original_token() {
         let [CssRule::FontFace(rule), CssRule::Style(_)] = report.syntax().rules() else {
             panic!("sibling recovery");
         };
-        assert!(rule.descriptors().unicode_range().is_none());
-        assert!(rule.descriptors().font_display().is_some());
+        assert!(ordinary_face!(rule.descriptors(), UnicodeRange).is_none());
+        assert!(ordinary_face!(rule.descriptors(), FontDisplay).is_some());
         assert_eq!(
             surgeist_css::validate_sheet(&source)
                 .unwrap_err()
@@ -120,8 +121,8 @@ fn incomplete_unicode_range_lists_drop_the_whole_descriptor() {
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("font-face");
         };
-        assert!(rule.descriptors().unicode_range().is_none());
-        assert!(rule.descriptors().font_display().is_some());
+        assert!(ordinary_face!(rule.descriptors(), UnicodeRange).is_none());
+        assert!(ordinary_face!(rule.descriptors(), FontDisplay).is_some());
     }
 }
 
@@ -161,15 +162,20 @@ fn rejected_unicode_range_occurrences_preserve_ordered_valid_occurrences() {
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("font-face");
     };
-    let ranges = rule.descriptors().unicode_range().unwrap().value().ranges();
+    let ranges = ordinary_face!(rule.descriptors(), UnicodeRange)
+        .unwrap()
+        .ranges();
     assert_eq!(ranges.len(), 1);
     assert_eq!((ranges[0].start(), ranges[0].end()), (2, 2));
     let occurrences: Vec<_> = rule
         .descriptors()
         .occurrences()
         .filter_map(|descriptor| {
-            if let surgeist_css::CssFontFaceDescriptorRef::UnicodeRange(range) = descriptor {
-                Some(range.value().ranges()[0].start())
+            if let surgeist_css::CssAuthoredFontFaceDescriptorValue::Ordinary(
+                surgeist_css::CssFontFaceDescriptorValue::UnicodeRange(range),
+            ) = descriptor.value()
+            {
+                Some(range.ranges()[0].start())
             } else {
                 None
             }

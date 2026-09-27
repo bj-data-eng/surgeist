@@ -1077,7 +1077,6 @@ impl CssImportSupports {
 }
 
 mod font_face;
-pub(crate) use font_face::CssFontFaceDescriptor;
 pub use font_face::*;
 
 #[derive(Clone, Debug, PartialEq)]

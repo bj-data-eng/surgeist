@@ -486,6 +486,14 @@ pub(crate) fn descriptor_substitution_qualifies(
     Ok(summary.var.qualifies() || summary.env.qualifies())
 }
 
+/// Font-face descriptors defer only for a syntactically valid env() family.
+pub(crate) fn font_face_env_qualifies(
+    items: &[CssComponentValue],
+    numeric: &NumericInputContext<'_>,
+) -> Result<bool, CssComponentValueError> {
+    Ok(summarize(items, Some(numeric), true)?.env.qualifies())
+}
+
 #[derive(Clone, Copy)]
 enum SubstitutionKind {
     Var,
@@ -518,4 +526,27 @@ pub(crate) fn contains_substitution(values: &CssComponentValues) -> bool {
         }
     }
     false
+}
+
+pub(crate) fn first_substitution_origin(values: &CssComponentValues) -> Option<CssValueOrigin> {
+    let mut stack = vec![values.items().iter()];
+    while let Some(items) = stack.last_mut() {
+        if let Some(item) = items.next() {
+            match item.view() {
+                Component::Function(function) => {
+                    if function.name().eq_ignore_ascii_case("var")
+                        || function.name().eq_ignore_ascii_case("env")
+                    {
+                        return Some(item.origin().clone());
+                    }
+                    stack.push(function.values().items().iter());
+                }
+                Component::Block(block) => stack.push(block.values().items().iter()),
+                _ => {}
+            }
+        } else {
+            stack.pop();
+        }
+    }
+    None
 }

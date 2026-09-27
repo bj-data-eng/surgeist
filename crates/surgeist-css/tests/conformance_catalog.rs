@@ -1,13 +1,14 @@
 use surgeist_css::{
-    CssAngleCalculation, CssAngleUnit, CssBasicShapeValue, CssBlendMode, CssBoxEdgeKeyword,
-    CssBoxShadow, CssCalculationType, CssClipPathValue, CssDelayLiteral, CssEasingValue,
-    CssErrorCode, CssExclusionReason, CssFeatureKind, CssFilterFunctionValue, CssFilterValue,
-    CssFontFaceDescriptorRef, CssFrequencyCalculation, CssFrequencyUnit, CssHorizontalPosition,
-    CssIntegerCalculation, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
-    CssLengthCalculation, CssLengthDimension, CssLengthUnit, CssNumberCalculation,
-    CssPercentageCalculation, CssRecoveryAction, CssResolution, CssResolutionUnit, CssRule,
-    CssSpecificationTier, CssSupportStatus, CssSupportsConditionKind, CssTimeCalculation,
-    CssTimeUnit, CssTransformFunctionValue, CssTransformPerspective, CssTransformScaleComponent,
+    CssAngleCalculation, CssAngleUnit, CssAuthoredFontFaceDescriptorValue, CssBasicShapeValue,
+    CssBlendMode, CssBoxEdgeKeyword, CssBoxShadow, CssCalculationType, CssClipPathValue,
+    CssDelayLiteral, CssEasingValue, CssErrorCode, CssExclusionReason, CssFeatureKind,
+    CssFilterFunctionValue, CssFilterValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+    CssFrequencyCalculation, CssFrequencyUnit, CssHorizontalPosition, CssIntegerCalculation,
+    CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssLengthCalculation,
+    CssLengthDimension, CssLengthUnit, CssNumberCalculation, CssPercentageCalculation,
+    CssRecoveryAction, CssResolution, CssResolutionUnit, CssRule, CssSpecificationTier,
+    CssSupportStatus, CssSupportsConditionKind, CssTimeCalculation, CssTimeUnit,
+    CssTransformFunctionValue, CssTransformPerspective, CssTransformScaleComponent,
     CssTransformValue, CssVerticalPosition, ErrorKind, conformance_exclusion,
     conformance_exclusions, feature_metadata, parse_sheet, parse_style_attribute,
     property_support_metadata, specification_source, specification_sources,
@@ -110,13 +111,10 @@ const FONT_FACE_STYLE_RANGE_SUBSET: &str =
     "Font-face oblique style with one or two increasing -90deg through 90deg angles is supported.";
 const FONT_FACE_STYLE_RANGE_REMAINDER: &str =
     "Other unselected Fonts 4 font-style descriptor grammar remains unsupported.";
-const FONT_FACE_WIDTH_SUBSET: &str = "Ordinary auto and one or two authored font-width values are supported under both font-width and font-stretch descriptor names.";
-const FONT_FACE_WIDTH_REMAINDER: &str =
-    "Valid whole-descriptor env() substitution is not yet retained as a pending descriptor value.";
 const FONT_SHORTHAND_SUBSET: &str = "Explicit fonts support the selected Fonts 4 family grammar, Fonts 3 style, variant, width and size components, integer weights from 1 through 1000, and optional line height. All six system-font alternatives are supported.";
 const FONT_SHORTHAND_REMAINDER: &str = "Oblique angles, non-integer font weights, xxx-large and math font sizes, and other Fonts 4 shorthand component forms remain unsupported.";
-const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range and feature-settings descriptors have typed representations; invalid descriptors recover independently.";
-const FONT_FACE_RULE_REMAINDER: &str = "Pending whole-descriptor env() substitution is unsupported; selected Fonts 4 descriptors including font-variation-settings, font-named-instance and metric overrides also remain unsupported.";
+const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range and feature-settings descriptors have typed ordinary representations and admit pending whole values for valid env(); invalid descriptors recover independently.";
+const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-variation-settings, font-named-instance and metric overrides remain unsupported.";
 const FONT_SOURCE_SUBSET: &str = "url() and local() sources preserve authored order, including empty URL strings, the selected literal family-name grammar, a single format hint and technology hints. Invalid source members recover independently, while invalid descriptor annotations or all-invalid lists discard the descriptor. The four legacy variation strings project to base formats and required variations without changing authored hints; TrueType and OpenType have explicit format equivalence.";
 const FONT_SOURCE_REMAINDER: &str =
     "The src() function from the referenced Values 4 <url> production remains unsupported.";
@@ -467,8 +465,21 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
     let [CssRule::FontFace(face)] = unknown_hint.syntax().rules() else {
         panic!("invalid source hints must preserve the authored font face");
     };
-    assert_eq!(face.descriptors().font_family().unwrap().as_str(), "Demo");
-    assert!(face.descriptors().src().is_none());
+    let family = face
+        .descriptors()
+        .effective(CssFontFaceDescriptorKind::FontFamily)
+        .expect("retained family");
+    assert!(matches!(
+        family.value(),
+        CssAuthoredFontFaceDescriptorValue::Ordinary(
+            CssFontFaceDescriptorValue::FontFamily(value)
+        ) if value.as_str() == "Demo"
+    ));
+    assert!(
+        face.descriptors()
+            .effective(CssFontFaceDescriptorKind::Src)
+            .is_none()
+    );
     assert_eq!(unknown_hint.diagnostics().len(), 1);
     assert_eq!(
         unknown_hint.diagnostics()[0].error().code(),
@@ -500,12 +511,9 @@ fn selected_font_width_records_keep_historical_ids_and_canonical_names() {
     assert_eq!(descriptor.spelling(), "font-width in @font-face");
     assert_eq!(descriptor.source().id().as_str(), "I-FONTS4-20260907");
     assert_eq!(descriptor.production(), "#font-prop-desc");
-    assert_eq!(descriptor.status(), CssSupportStatus::Partial);
-    assert_eq!(descriptor.supported_subset(), Some(FONT_FACE_WIDTH_SUBSET));
-    assert_eq!(
-        descriptor.unsupported_remainder(),
-        Some(FONT_FACE_WIDTH_REMAINDER)
-    );
+    assert_eq!(descriptor.status(), CssSupportStatus::Complete);
+    assert_eq!(descriptor.supported_subset(), None);
+    assert_eq!(descriptor.unsupported_remainder(), None);
 
     let range = feature_metadata("ext.descriptor.font-stretch-range").unwrap();
     assert_eq!(range.kind(), CssFeatureKind::Descriptor);
@@ -524,12 +532,45 @@ fn selected_font_width_records_keep_historical_ids_and_canonical_names() {
         let [CssRule::FontFace(face)] = report.syntax().rules() else {
             panic!("one font face with {name}")
         };
-        assert!(face.descriptors().font_width().is_some(), "{name}");
+        assert!(
+            face.descriptors()
+                .effective(CssFontFaceDescriptorKind::FontWidth)
+                .is_some(),
+            "{name}"
+        );
         assert!(matches!(
-            face.descriptors().occurrences().last(),
-            Some(CssFontFaceDescriptorRef::FontWidth(_))
+            face.descriptors()
+                .occurrences()
+                .last()
+                .map(|item| item.value()),
+            Some(CssAuthoredFontFaceDescriptorValue::Ordinary(
+                CssFontFaceDescriptorValue::FontWidth(_)
+            ))
         ));
     }
+}
+
+#[test]
+fn environment_metadata_includes_font_face_without_claiming_execution() {
+    let record = feature_metadata("required.value.environment-substitution").unwrap();
+    assert_eq!(record.source().id().as_str(), "D-ENV1");
+    assert_eq!(record.status(), CssSupportStatus::Partial);
+    assert_eq!(
+        record.spelling(),
+        "env() in authored property, font-palette and font-face descriptor values"
+    );
+    assert_eq!(
+        record.supported_subset(),
+        Some(
+            "Known-property, font-palette and recognized font-face descriptor values qualify for pending substitution through valid env() functions, including exact integer indices, symbolic integer calculations and token-preserving fallbacks. Strict replacement reentry rejects residual env()."
+        )
+    );
+    assert_eq!(
+        record.unsupported_remainder(),
+        Some(
+            "Other Env1 contexts and environment lookup/substitution execution remain outside this authored subset; this record does not select the complete Env1 module."
+        )
+    );
 }
 
 fn assert_clean_color(authored: &str) {
@@ -1473,17 +1514,14 @@ const EXPECTED: &[ExpectedFeature] = &[
         spelling: "font-width in @font-face",
         source: ExpectedSource::Id("I-FONTS4-20260907"),
         production: "#font-prop-desc",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(FONT_FACE_WIDTH_SUBSET),
-        unsupported_remainder: Some(FONT_FACE_WIDTH_REMAINDER),
+        status: CssSupportStatus::Complete,
+        supported_subset: None,
+        unsupported_remainder: None,
         recognized_code: None,
         positive: Some(Input::Sheet(
             "@font-face { font-family: Inter; src: url(inter.woff2); font-width: condensed; }",
         )),
-        negative: Some((
-            Input::Sheet("@font-face { font-width: env(width); }"),
-            CssErrorCode::InvalidDescriptorValue,
-        )),
+        negative: None,
     },
     ExpectedFeature {
         id: "baseline.descriptor.font-display",
@@ -3942,7 +3980,11 @@ fn conformance_catalog_vectors_cover_each_supported_and_unsupported_boundary() {
                 let [CssRule::FontFace(face)] = report.syntax().rules() else {
                     panic!("expected the retained font face");
                 };
-                assert!(face.descriptors().src().is_none());
+                assert!(
+                    face.descriptors()
+                        .effective(CssFontFaceDescriptorKind::Src)
+                        .is_none()
+                );
 
                 for (name, decoded) in [("\"system-ui\"", "system-ui"), ("menu", "menu")] {
                     let report = parse_sheet(&format!("@font-face {{ src: local({name}); }}"));
@@ -3950,9 +3992,16 @@ fn conformance_catalog_vectors_cover_each_supported_and_unsupported_boundary() {
                     let [CssRule::FontFace(face)] = report.syntax().rules() else {
                         panic!("expected a retained font face");
                     };
-                    let [surgeist_css::CssFontFaceSource::Local(local)] =
-                        face.descriptors().src().unwrap().sources()
+                    let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(
+                        CssFontFaceDescriptorValue::Src(source),
+                    )) = face
+                        .descriptors()
+                        .effective(CssFontFaceDescriptorKind::Src)
+                        .map(|record| record.value())
                     else {
+                        panic!("expected ordinary source descriptor");
+                    };
+                    let [surgeist_css::CssFontFaceSource::Local(local)] = source.sources() else {
                         panic!("expected the local name");
                     };
                     assert_eq!(local.as_str(), decoded);
@@ -3964,9 +4013,16 @@ fn conformance_catalog_vectors_cover_each_supported_and_unsupported_boundary() {
                 let [CssRule::FontFace(face)] = report.syntax().rules() else {
                     panic!("expected a retained font face");
                 };
-                let [surgeist_css::CssFontFaceSource::Url(source)] =
-                    face.descriptors().src().unwrap().sources()
+                let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(
+                    CssFontFaceDescriptorValue::Src(value),
+                )) = face
+                    .descriptors()
+                    .effective(CssFontFaceDescriptorKind::Src)
+                    .map(|record| record.value())
                 else {
+                    panic!("expected ordinary source descriptor");
+                };
+                let [surgeist_css::CssFontFaceSource::Url(source)] = value.sources() else {
                     panic!("expected a retained URL source");
                 };
                 assert_eq!(

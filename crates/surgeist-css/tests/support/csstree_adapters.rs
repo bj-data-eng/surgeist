@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use serde::{Deserialize, Serialize};
 use surgeist_css::{
-    CssDeclarationList, CssFontFaceDescriptorKind, CssFontFaceDescriptorRef, CssKnownProperty,
+    CssDeclarationList, CssFontFaceDescriptor, CssFontFaceDescriptorKind, CssKnownProperty,
     CssPropertyNameRef, CssRule, CssSheet,
 };
 
@@ -235,24 +235,8 @@ impl FontFaceDescriptorKind {
         }
     }
 
-    fn matches(self, occurrence: CssFontFaceDescriptorRef<'_>) -> bool {
-        matches!(
-            (self, occurrence),
-            (Self::FontFamily, CssFontFaceDescriptorRef::FontFamily(_))
-                | (Self::Src, CssFontFaceDescriptorRef::Src(_))
-                | (Self::FontWeight, CssFontFaceDescriptorRef::FontWeight(_))
-                | (Self::FontStyle, CssFontFaceDescriptorRef::FontStyle(_))
-                | (Self::FontStretch, CssFontFaceDescriptorRef::FontWidth(_))
-                | (Self::FontDisplay, CssFontFaceDescriptorRef::FontDisplay(_))
-                | (
-                    Self::UnicodeRange,
-                    CssFontFaceDescriptorRef::UnicodeRange(_)
-                )
-                | (
-                    Self::FontFeatureSettings,
-                    CssFontFaceDescriptorRef::FontFeatureSettings(_)
-                )
-        )
+    fn matches(self, occurrence: &CssFontFaceDescriptor) -> bool {
+        self.css_kind() == occurrence.value().kind()
     }
 }
 
@@ -377,7 +361,7 @@ impl Extractor {
                     CssRule::FontFace(rule) => Some(
                         rule.descriptors()
                             .occurrences()
-                            .filter(|occurrence| descriptor.matches(*occurrence))
+                            .filter(|occurrence| descriptor.matches(occurrence))
                             .count(),
                     ),
                     _ => None,

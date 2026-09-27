@@ -3,6 +3,10 @@
 //! Its optional format() takes one string or keyword; tech() takes a nonempty
 //! comma-separated list that includes palettes. Font loading is a later phase.
 
+#[macro_use]
+#[path = "support/font_face.rs"]
+mod font_face_support;
+
 use surgeist_css::{
     CssErrorCode, CssFontFaceRule, CssFontFaceSource, CssFontFaceUrlSource, CssFontFormatHint,
     CssFontFormatList, CssFontFormatString, CssParseReport, CssRecoveryAction, CssRule, CssSheet,
@@ -13,14 +17,17 @@ fn font_face(report: &CssParseReport<CssSheet>) -> &CssFontFaceRule {
     let [CssRule::FontFace(rule), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("expected retained font-face and following style rule");
     };
-    assert_eq!(rule.descriptors().font_family().unwrap().as_str(), "Demo");
+    assert_eq!(
+        ordinary_face!(rule.descriptors(), FontFamily)
+            .unwrap()
+            .as_str(),
+        "Demo"
+    );
     rule
 }
 
 fn url_sources(report: &CssParseReport<CssSheet>) -> Vec<&CssFontFaceUrlSource> {
-    font_face(report)
-        .descriptors()
-        .src()
+    ordinary_face!(font_face(report).descriptors(), Src)
         .expect("expected retained URL sources")
         .sources()
         .iter()

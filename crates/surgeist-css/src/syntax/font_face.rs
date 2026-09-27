@@ -1,7 +1,8 @@
-use super::{
-    CssAuthoredFontFeatureSettings, CssDescriptorOccurrence, CssFiniteNumber, CssSourcePosition,
-};
-use crate::CssFontFaceWidth;
+use super::{CssAuthoredFontFeatureSettings, CssFiniteNumber, CssSourcePosition};
+use crate::{CssComponentValues, CssFontFaceWidth};
+
+mod pending;
+pub use pending::{CssFontFaceValueError, CssFontFaceValueErrorKind};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFaceRule {
@@ -87,7 +88,7 @@ impl CssFontFaceDescriptorKind {
 ///
 /// These values contain no descriptor-name position. Raw parsing reports source
 /// positions separately in diagnostics; stylesheet occurrences retain their real
-/// authored name positions in [`CssDescriptorOccurrence`]. Values remain authored:
+/// authored name positions in [`CssFontFaceDescriptor`]. Values remain authored:
 /// they do not perform font matching, loading, or contextual usability checks.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
@@ -117,230 +118,116 @@ impl CssFontFaceDescriptorValue {
             Self::FontFeatureSettings(_) => CssFontFaceDescriptorKind::FontFeatureSettings,
         }
     }
+}
 
-    pub(crate) fn into_occurrence(self, position: CssSourcePosition) -> CssFontFaceDescriptor {
+/// An authored font-face value: checked ordinary grammar or deferred whole-descriptor grammar.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum CssAuthoredFontFaceDescriptorValue {
+    Ordinary(CssFontFaceDescriptorValue),
+    Pending(CssPendingFontFaceDescriptorValue),
+}
+
+impl CssAuthoredFontFaceDescriptorValue {
+    #[must_use]
+    pub const fn kind(&self) -> CssFontFaceDescriptorKind {
         match self {
-            Self::FontFamily(value) => {
-                CssFontFaceDescriptor::FontFamily(CssDescriptorOccurrence::new(value, position))
-            }
-            Self::Src(value) => {
-                CssFontFaceDescriptor::Src(CssDescriptorOccurrence::new(value, position))
-            }
-            Self::FontWeight(value) => {
-                CssFontFaceDescriptor::FontWeight(CssDescriptorOccurrence::new(value, position))
-            }
-            Self::FontStyle(value) => {
-                CssFontFaceDescriptor::FontStyle(CssDescriptorOccurrence::new(value, position))
-            }
-            Self::FontWidth(value) => {
-                CssFontFaceDescriptor::FontWidth(CssDescriptorOccurrence::new(value, position))
-            }
-            Self::FontDisplay(value) => {
-                CssFontFaceDescriptor::FontDisplay(CssDescriptorOccurrence::new(value, position))
-            }
-            Self::UnicodeRange(value) => {
-                CssFontFaceDescriptor::UnicodeRange(CssDescriptorOccurrence::new(value, position))
-            }
-            Self::FontFeatureSettings(value) => CssFontFaceDescriptor::FontFeatureSettings(
-                CssDescriptorOccurrence::new(value, position),
-            ),
+            Self::Ordinary(value) => value.kind(),
+            Self::Pending(value) => value.kind(),
         }
+    }
+
+    pub(crate) fn pending(kind: CssFontFaceDescriptorKind, components: CssComponentValues) -> Self {
+        Self::Pending(CssPendingFontFaceDescriptorValue { kind, components })
     }
 }
 
-/// The validated semantic aggregate of authored `@font-face` descriptor occurrences.
-///
-/// Every valid occurrence retains its authored order, typed value, and descriptor-name position.
-/// Typed accessors expose the effective last valid occurrence of each descriptor. Construction is
-/// crate-private, so callers cannot forge descriptor provenance. Every descriptor is optional
-/// in authored syntax. Font matching later requires effective `font-family` and `src` values;
-/// this aggregate does not match or load fonts.
+impl From<CssFontFaceDescriptorValue> for CssAuthoredFontFaceDescriptorValue {
+    fn from(value: CssFontFaceDescriptorValue) -> Self {
+        Self::Ordinary(value)
+    }
+}
+
+/// A complete descriptor token stream awaiting environment substitution.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssPendingFontFaceDescriptorValue {
+    kind: CssFontFaceDescriptorKind,
+    components: CssComponentValues,
+}
+
+impl CssPendingFontFaceDescriptorValue {
+    #[must_use]
+    pub const fn kind(&self) -> CssFontFaceDescriptorKind {
+        self.kind
+    }
+
+    #[must_use]
+    pub const fn components(&self) -> &CssComponentValues {
+        &self.components
+    }
+}
+
+/// One ordered descriptor occurrence, retaining a parsed name position when present.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssFontFaceDescriptor {
+    value: CssAuthoredFontFaceDescriptorValue,
+    position: Option<CssSourcePosition>,
+}
+
+impl CssFontFaceDescriptor {
+    /// Constructs a descriptor without parsed source position.
+    #[must_use]
+    pub const fn new(value: CssAuthoredFontFaceDescriptorValue) -> Self {
+        Self {
+            value,
+            position: None,
+        }
+    }
+
+    pub(crate) const fn with_position(mut self, position: CssSourcePosition) -> Self {
+        self.position = Some(position);
+        self
+    }
+
+    /// Returns the authored ordinary or pending value.
+    #[must_use]
+    pub const fn value(&self) -> &CssAuthoredFontFaceDescriptorValue {
+        &self.value
+    }
+
+    /// Returns the parsed descriptor name position, if this came from source.
+    #[must_use]
+    pub const fn position(&self) -> Option<CssSourcePosition> {
+        self.position
+    }
+}
+
+/// All admitted font-face descriptors, in authored order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFaceDescriptors {
-    font_family: Option<CssDescriptorOccurrence<CssFontFaceFamily>>,
-    src: Option<CssDescriptorOccurrence<CssFontFaceSourceList>>,
-    font_weight: Option<CssDescriptorOccurrence<CssFontFaceWeight>>,
-    font_style: Option<CssDescriptorOccurrence<CssFontFaceStyle>>,
-    font_width: Option<CssDescriptorOccurrence<CssFontFaceWidth>>,
-    font_display: Option<CssDescriptorOccurrence<CssFontDisplay>>,
-    unicode_range: Option<CssDescriptorOccurrence<CssUnicodeRangeList>>,
-    font_feature_settings: Option<CssDescriptorOccurrence<CssAuthoredFontFeatureSettings>>,
     occurrences: Vec<CssFontFaceDescriptor>,
 }
 
 impl CssFontFaceDescriptors {
+    /// Retains descriptor occurrences in authored order, including repetitions.
     #[must_use]
-    #[cfg(test)]
-    pub(crate) fn new(
-        font_family: Option<CssDescriptorOccurrence<CssFontFaceFamily>>,
-        src: Option<CssDescriptorOccurrence<CssFontFaceSourceList>>,
-        font_weight: Option<CssDescriptorOccurrence<CssFontFaceWeight>>,
-        font_style: Option<CssDescriptorOccurrence<CssFontFaceStyle>>,
-        font_width: Option<CssDescriptorOccurrence<CssFontFaceWidth>>,
-        font_display: Option<CssDescriptorOccurrence<CssFontDisplay>>,
-        unicode_range: Option<CssDescriptorOccurrence<CssUnicodeRangeList>>,
-    ) -> Self {
-        let mut occurrences = Vec::new();
-        if let Some(value) = font_family {
-            occurrences.push(CssFontFaceDescriptor::FontFamily(value));
-        }
-        if let Some(value) = src {
-            occurrences.push(CssFontFaceDescriptor::Src(value));
-        }
-        if let Some(value) = font_weight {
-            occurrences.push(CssFontFaceDescriptor::FontWeight(value));
-        }
-        if let Some(value) = font_style {
-            occurrences.push(CssFontFaceDescriptor::FontStyle(value));
-        }
-        if let Some(value) = font_width {
-            occurrences.push(CssFontFaceDescriptor::FontWidth(value));
-        }
-        if let Some(value) = font_display {
-            occurrences.push(CssFontFaceDescriptor::FontDisplay(value));
-        }
-        if let Some(value) = unicode_range {
-            occurrences.push(CssFontFaceDescriptor::UnicodeRange(value));
-        }
-        Self::from_occurrences(occurrences)
+    pub fn new(occurrences: Vec<CssFontFaceDescriptor>) -> Self {
+        Self { occurrences }
     }
 
+    /// Iterates all admitted occurrences in authored order.
+    pub fn occurrences(&self) -> impl ExactSizeIterator<Item = &CssFontFaceDescriptor> {
+        self.occurrences.iter()
+    }
+
+    /// Finds the last occurrence of a kind; a pending value supersedes an earlier ordinary one.
     #[must_use]
-    pub(crate) fn from_occurrences(occurrences: Vec<CssFontFaceDescriptor>) -> Self {
-        let mut font_family = None;
-        let mut src = None;
-        let mut font_weight = None;
-        let mut font_style = None;
-        let mut font_width = None;
-        let mut font_display = None;
-        let mut unicode_range = None;
-        let mut font_feature_settings = None;
-
-        for descriptor in &occurrences {
-            match descriptor {
-                CssFontFaceDescriptor::FontFamily(value) => font_family = Some(value.clone()),
-                CssFontFaceDescriptor::Src(value) => src = Some(value.clone()),
-                CssFontFaceDescriptor::FontWeight(value) => font_weight = Some(value.clone()),
-                CssFontFaceDescriptor::FontStyle(value) => font_style = Some(value.clone()),
-                CssFontFaceDescriptor::FontWidth(value) => font_width = Some(value.clone()),
-                CssFontFaceDescriptor::FontDisplay(value) => font_display = Some(value.clone()),
-                CssFontFaceDescriptor::UnicodeRange(value) => unicode_range = Some(value.clone()),
-                CssFontFaceDescriptor::FontFeatureSettings(value) => {
-                    font_feature_settings = Some(value.clone());
-                }
-            }
-        }
-
-        Self {
-            font_family,
-            src,
-            font_weight,
-            font_style,
-            font_width,
-            font_display,
-            unicode_range,
-            font_feature_settings,
-            occurrences,
-        }
+    pub fn effective(&self, kind: CssFontFaceDescriptorKind) -> Option<&CssFontFaceDescriptor> {
+        self.occurrences
+            .iter()
+            .rev()
+            .find(|record| record.value.kind() == kind)
     }
-
-    #[must_use]
-    /// Returns the effective last valid authored `font-family` occurrence, if present.
-    pub const fn font_family(&self) -> Option<&CssDescriptorOccurrence<CssFontFaceFamily>> {
-        self.font_family.as_ref()
-    }
-
-    #[must_use]
-    /// Returns the effective last valid authored `src` occurrence, if present.
-    pub const fn src(&self) -> Option<&CssDescriptorOccurrence<CssFontFaceSourceList>> {
-        self.src.as_ref()
-    }
-
-    #[must_use]
-    /// Returns the effective last valid authored `font-weight` occurrence.
-    pub const fn font_weight(&self) -> Option<&CssDescriptorOccurrence<CssFontFaceWeight>> {
-        self.font_weight.as_ref()
-    }
-
-    #[must_use]
-    /// Returns the effective last valid authored `font-style` occurrence.
-    pub const fn font_style(&self) -> Option<&CssDescriptorOccurrence<CssFontFaceStyle>> {
-        self.font_style.as_ref()
-    }
-
-    #[must_use]
-    /// Returns the effective last valid authored `font-width` occurrence.
-    pub const fn font_width(&self) -> Option<&CssDescriptorOccurrence<CssFontFaceWidth>> {
-        self.font_width.as_ref()
-    }
-
-    #[must_use]
-    /// Returns the effective last valid authored `font-display` occurrence.
-    pub const fn font_display(&self) -> Option<&CssDescriptorOccurrence<CssFontDisplay>> {
-        self.font_display.as_ref()
-    }
-
-    #[must_use]
-    /// Returns the effective last valid authored `unicode-range` occurrence.
-    pub const fn unicode_range(&self) -> Option<&CssDescriptorOccurrence<CssUnicodeRangeList>> {
-        self.unicode_range.as_ref()
-    }
-
-    #[must_use]
-    /// Returns the effective last valid authored `font-feature-settings` occurrence.
-    pub const fn font_feature_settings(
-        &self,
-    ) -> Option<&CssDescriptorOccurrence<CssAuthoredFontFeatureSettings>> {
-        self.font_feature_settings.as_ref()
-    }
-
-    /// Returns every valid authored descriptor occurrence in source order.
-    pub fn occurrences(&self) -> impl ExactSizeIterator<Item = CssFontFaceDescriptorRef<'_>> {
-        self.occurrences.iter().map(CssFontFaceDescriptor::as_ref)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) enum CssFontFaceDescriptor {
-    FontFamily(CssDescriptorOccurrence<CssFontFaceFamily>),
-    Src(CssDescriptorOccurrence<CssFontFaceSourceList>),
-    FontWeight(CssDescriptorOccurrence<CssFontFaceWeight>),
-    FontStyle(CssDescriptorOccurrence<CssFontFaceStyle>),
-    FontWidth(CssDescriptorOccurrence<CssFontFaceWidth>),
-    FontDisplay(CssDescriptorOccurrence<CssFontDisplay>),
-    UnicodeRange(CssDescriptorOccurrence<CssUnicodeRangeList>),
-    FontFeatureSettings(CssDescriptorOccurrence<CssAuthoredFontFeatureSettings>),
-}
-
-impl CssFontFaceDescriptor {
-    fn as_ref(&self) -> CssFontFaceDescriptorRef<'_> {
-        match self {
-            Self::FontFamily(value) => CssFontFaceDescriptorRef::FontFamily(value),
-            Self::Src(value) => CssFontFaceDescriptorRef::Src(value),
-            Self::FontWeight(value) => CssFontFaceDescriptorRef::FontWeight(value),
-            Self::FontStyle(value) => CssFontFaceDescriptorRef::FontStyle(value),
-            Self::FontWidth(value) => CssFontFaceDescriptorRef::FontWidth(value),
-            Self::FontDisplay(value) => CssFontFaceDescriptorRef::FontDisplay(value),
-            Self::UnicodeRange(value) => CssFontFaceDescriptorRef::UnicodeRange(value),
-            Self::FontFeatureSettings(value) => {
-                CssFontFaceDescriptorRef::FontFeatureSettings(value)
-            }
-        }
-    }
-}
-
-/// A borrowed valid authored `@font-face` descriptor occurrence.
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssFontFaceDescriptorRef<'a> {
-    FontFamily(&'a CssDescriptorOccurrence<CssFontFaceFamily>),
-    Src(&'a CssDescriptorOccurrence<CssFontFaceSourceList>),
-    FontWeight(&'a CssDescriptorOccurrence<CssFontFaceWeight>),
-    FontStyle(&'a CssDescriptorOccurrence<CssFontFaceStyle>),
-    FontWidth(&'a CssDescriptorOccurrence<CssFontFaceWidth>),
-    FontDisplay(&'a CssDescriptorOccurrence<CssFontDisplay>),
-    UnicodeRange(&'a CssDescriptorOccurrence<CssUnicodeRangeList>),
-    FontFeatureSettings(&'a CssDescriptorOccurrence<CssAuthoredFontFeatureSettings>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
