@@ -5,8 +5,10 @@ use crate::supports::{SupportsLexical, trivia};
 use crate::*;
 use cssparser::{ParseError, Parser};
 
-pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::CssFeatureId] =
-    &[crate::CssFeatureId::new("ext.supports.general-enclosed")];
+pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::CssFeatureId] = &[
+    crate::CssFeatureId::new("ext.supports.general-enclosed"),
+    crate::CssFeatureId::new("ext.supports.named"),
+];
 
 pub(super) static IMPLEMENTED_SELECTORS: &[crate::CssFeatureId] =
     &[crate::CssFeatureId::new("ext.supports.selector")];
@@ -189,7 +191,7 @@ fn condition(
         return Ok(CssSupportsCondition::new(
             CssSupportsConditionKind::Not(Box::new(operand)),
             lexical,
-            false,
+            SupportsAuthoredForm::Condition,
         ));
     }
     if significant.len() == 1 {
@@ -197,7 +199,7 @@ fn condition(
         return Ok(CssSupportsCondition::new(
             parsed.into_kind(),
             lexical,
-            false,
+            SupportsAuthoredForm::Condition,
         ));
     }
     if significant.len() % 2 == 0 {
@@ -233,7 +235,7 @@ fn condition(
             CssSupportsConditionKind::Or(list)
         },
         lexical,
-        false,
+        SupportsAuthoredForm::Condition,
     ))
 }
 fn operand(
@@ -246,7 +248,18 @@ fn operand(
     let kind = match value.view() {
         CssComponentValueRef::Block(block) if block.kind() == CssBlockKind::Parenthesis => {
             let children = lexical.children(0);
-            if let Some(declaration) = grammar(declaration(children.clone(), authored, limits))? {
+            let named = children
+                .items()
+                .iter()
+                .filter(|value| !trivia(value))
+                .collect::<Vec<_>>();
+            if let [component] = named.as_slice()
+                && let Ok(name) = CssSupportsConditionName::try_from_component((*component).clone())
+            {
+                CssSupportsConditionKind::Named(name)
+            } else if let Some(declaration) =
+                grammar(declaration(children.clone(), authored, limits))?
+            {
                 CssSupportsConditionKind::Declaration(Box::new(declaration))
             } else if let Some(group) = grammar(condition(children, recovery, authored, limits))? {
                 group.into_kind()
@@ -296,7 +309,11 @@ fn operand(
         }
         _ => return Err(invalid_condition(value.origin())),
     };
-    Ok(CssSupportsCondition::new(kind, lexical, false))
+    Ok(CssSupportsCondition::new(
+        kind,
+        lexical,
+        SupportsAuthoredForm::Condition,
+    ))
 }
 fn enclosed(
     value: &CssComponentValue,

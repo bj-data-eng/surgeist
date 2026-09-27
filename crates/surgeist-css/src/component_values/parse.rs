@@ -69,6 +69,128 @@ pub(super) fn collect_one(
     })
 }
 
+/// The named supports test grammar needs local browser recovery within a valid
+/// enclosing block. Keep the ordinary public collector strict; this private
+/// path retains only valid component nodes and returns every malformed token as
+/// an explicit error marker for the owning test candidate.
+pub(super) fn collect_recovering_named_test(
+    parser: &mut Parser<'_, '_>,
+    source: &CssSourceSnapshot,
+    base_depth: u32,
+) -> Result<(CssComponentValues, Vec<CssComponentValueError>), CssComponentValueError> {
+    let start = parser.position().byte_index();
+    while parser.next_including_whitespace_and_comments().is_ok() {}
+    let end = parser.position().byte_index();
+    let mut errors = Vec::new();
+    let mut count = 0;
+    let items = consume_range_recovering(
+        source,
+        start..end,
+        CssComponentValueLimits::default(),
+        base_depth,
+        &mut count,
+        &mut errors,
+    )?;
+    let values = CssComponentValues::from_items(items, CssComponentValueLimits::default())?;
+    serialize::validate(&values, usize::MAX)?;
+    Ok((values, errors))
+}
+
+fn consume_range_recovering(
+    source: &CssSourceSnapshot,
+    range: std::ops::Range<usize>,
+    limits: CssComponentValueLimits,
+    base_depth: u32,
+    count: &mut usize,
+    errors: &mut Vec<CssComponentValueError>,
+) -> Result<Vec<CssComponentValue>, CssComponentValueError> {
+    let mut items = Vec::new();
+    let mut frames: Vec<OpenFrame> = Vec::new();
+    let mut offset = range.start;
+    while offset < range.end {
+        let mut parser_input = ParserInput::new(&source.as_str()[offset..range.end]);
+        let mut parser = Parser::new(&mut parser_input);
+        let token = parser
+            .next_including_whitespace_and_comments()
+            .expect("nonempty token-boundary suffix")
+            .clone();
+        let end = offset + parser.position().byte_index();
+        let closing = match token {
+            Token::CloseParenthesis => Some(CssBlockKind::Parenthesis),
+            Token::CloseSquareBracket => Some(CssBlockKind::SquareBracket),
+            Token::CloseCurlyBracket => Some(CssBlockKind::CurlyBracket),
+            _ => None,
+        };
+        if let Some(frame) = frames.pop_if(|frame| Some(frame.kind) == closing) {
+            let value = frame.finish(source, offset..end, limits)?;
+            push_value(&mut items, &mut frames, value);
+            offset = end;
+            continue;
+        }
+        let origin = range_origin(source, offset..end);
+        let error_at_token =
+            |kind| CssComponentValueError::new(kind, CssValueOrigin::Parsed(origin.clone()));
+        *count = count
+            .checked_add(1)
+            .ok_or_else(|| error_at_token(CssComponentValueErrorKind::CapacityOverflow))?;
+        if *count > limits.max_components {
+            return Err(error_at_token(CssComponentValueErrorKind::ComponentLimit));
+        }
+        let spelling = Lexeme {
+            text: source.as_str()[offset..end].into(),
+            origin: CssValueOrigin::Parsed(origin.clone()),
+        };
+        let kind = match token {
+            Token::Function(_) | Token::ParenthesisBlock => Some(CssBlockKind::Parenthesis),
+            Token::SquareBracketBlock => Some(CssBlockKind::SquareBracket),
+            Token::CurlyBracketBlock => Some(CssBlockKind::CurlyBracket),
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            let remaining = limits
+                .max_depth
+                .checked_sub(base_depth)
+                .ok_or_else(|| error_at_token(CssComponentValueErrorKind::NestingLimit))?;
+            if frames.len() >= remaining as usize {
+                return Err(error_at_token(CssComponentValueErrorKind::NestingLimit));
+            }
+            let name = if let Token::Function(name) = token {
+                Some(name.as_ref().into())
+            } else {
+                None
+            };
+            frames.push(OpenFrame {
+                kind,
+                name,
+                opening: spelling,
+                origin,
+                children: Vec::new(),
+            });
+        } else {
+            match leaf(source, token, spelling, origin, end) {
+                Ok(value) => push_value(&mut items, &mut frames, value),
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        CssComponentValueErrorKind::BadString
+                            | CssComponentValueErrorKind::BadUrl
+                            | CssComponentValueErrorKind::UnmatchedClosingDelimiter
+                    ) =>
+                {
+                    errors.push(error)
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        offset = end;
+    }
+    while let Some(frame) = frames.pop() {
+        let value = frame.finish(source, range.end..range.end, limits)?;
+        push_value(&mut items, &mut frames, value);
+    }
+    Ok(items)
+}
+
 fn consume_values<'i, 't>(
     input: &mut Parser<'i, 't>,
     source: &CssSourceSnapshot,

@@ -2722,7 +2722,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 614] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 616] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -3809,6 +3809,13 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 614] = [
         "@supports",
         O_CONDITIONAL3,
         "#at-supports",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.rule.supports-condition",
+        CssFeatureKind::Rule,
+        "@supports-condition",
+        X_CONDITIONAL5,
+        "#at-ruledef-supports-condition",
     ),
     CssFeatureMetadata::complete(
         "later.rule.counter-style",
@@ -6335,6 +6342,13 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 614] = [
         "general-enclosed supports condition",
         X_VALUES4,
         "css-values-4/Overview.bs#general-enclosed",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.supports.named",
+        CssFeatureKind::Value,
+        "named supports condition reference",
+        X_CONDITIONAL5,
+        "#typedef-supports-decl,#typedef-supports-condition-name",
     ),
     CssFeatureMetadata::partial(
         "ext.supports.selector",

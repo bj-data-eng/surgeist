@@ -7,7 +7,7 @@ use crate::syntax::*;
 use crate::{
     CssCustomMediaRule, CssExpansion, CssExpansionError, CssFontFeatureValuesRule,
     CssFontPaletteValuesRule, CssParseReport, CssRecoveryDiagnostic, CssSourcePosition,
-    expand_declaration,
+    CssSupportsConditionRule, expand_declaration,
 };
 
 /// Traversal and output budgets for one atomic stylesheet normalization.
@@ -372,6 +372,7 @@ pub enum CssRuleContextKindRef<'a> {
     NestedDeclarations(&'a CssSelectorContext),
     Media(&'a CssMediaQueryList),
     Supports(&'a CssSupportsCondition),
+    SupportsCondition(&'a CssSupportsConditionRule),
     Container {
         prelude: &'a CssContainerPrelude,
     },
@@ -399,6 +400,7 @@ enum RuleContextKind {
     NestedDeclarations(CssSelectorContext),
     Media(CssMediaQueryList),
     Supports(CssSupportsCondition),
+    SupportsCondition(CssSupportsConditionRule),
     Container {
         prelude: CssContainerPrelude,
     },
@@ -449,6 +451,9 @@ impl CssRuleContext {
             }
             RuleContextKind::Media(value) => CssRuleContextKindRef::Media(value),
             RuleContextKind::Supports(value) => CssRuleContextKindRef::Supports(value),
+            RuleContextKind::SupportsCondition(value) => {
+                CssRuleContextKindRef::SupportsCondition(value)
+            }
             RuleContextKind::Container { prelude } => CssRuleContextKindRef::Container { prelude },
             RuleContextKind::LayerBlock(value) => CssRuleContextKindRef::LayerBlock(value.as_ref()),
             RuleContextKind::Scope { root, limit } => CssRuleContextKindRef::Scope {
@@ -934,6 +939,13 @@ impl Normalizer {
                     depth + 1,
                 )));
             }
+            CssRule::SupportsCondition(value) => {
+                self.record_rule(
+                    RuleContextKind::SupportsCondition(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
             CssRule::Container(container) => {
                 let rule = self.record_rule(
                     RuleContextKind::Container {
@@ -1113,6 +1125,13 @@ impl Normalizer {
                     depth + 1,
                 )));
             }
+            CssScopedRule::SupportsCondition(value) => {
+                self.record_rule(
+                    RuleContextKind::SupportsCondition(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
             CssScopedRule::Container(container) => {
                 let rule = self.record_rule(
                     RuleContextKind::Container {
@@ -1221,6 +1240,7 @@ fn ordinary_position(rule: &CssRule) -> Option<CssSourcePosition> {
         CssRule::Keyframes(value) => value.position(),
         CssRule::Media(value) => value.position(),
         CssRule::Supports(value) => value.position(),
+        CssRule::SupportsCondition(value) => return value.position(),
         CssRule::Container(value) => value.position(),
         CssRule::Scope(value) => value.position(),
     })
@@ -1239,6 +1259,7 @@ fn scoped_position(rule: &CssScopedRule) -> Option<CssSourcePosition> {
         CssScopedRule::Style(value) => value.position(),
         CssScopedRule::Media(value) => value.position(),
         CssScopedRule::Supports(value) => value.position(),
+        CssScopedRule::SupportsCondition(value) => return value.position(),
         CssScopedRule::Container(value) => value.position(),
         CssScopedRule::LayerStatement(value) => value.position(),
         CssScopedRule::LayerBlock(value) => value.position(),

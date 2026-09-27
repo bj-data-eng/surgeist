@@ -777,8 +777,11 @@ their conditions, layer blocks retain names or anonymous occurrences, and scope
 headers retain roots and limits. Imports, namespaces, layer statements, font
 faces, keyframes, counter styles, and pages remain ordered typed payloads.
 Keyframe, page, and font declarations are not emitted as element-style
-declarations. Imports are neither loaded nor merged, and conditions are not
-evaluated. Both the ordinary and separate scoped authored rule trees are walked.
+declarations. A named supports definition is one terminal rule payload: its
+test-body declarations and nested candidates emit no style declarations or
+selector contexts, even under a style rule. Imports are neither loaded nor
+merged, and conditions are not evaluated. Both the ordinary and separate scoped
+authored rule trees are walked.
 
 Each selector context contains one complete authored selector list, its earlier
 parent-selector reference when nested, and its nearest scope context when
@@ -807,8 +810,10 @@ contribution member. Declarations inside terminal payloads are not individually
 counted. The defaults retain the depth ceiling and impose no additional count
 policy; zero budgets admit only output consuming zero corresponding units.
 These limits bound traversal/output counters, not payload bytes, allocator
-usage, or total process memory. Pending reentry is an independent immutable
-expansion operation and does not change these counters or the normalized sheet.
+usage, or total process memory. The named supports parser and checked
+constructors own the component budget for their retained test-body payload.
+Pending reentry is an independent immutable expansion operation and does not
+change these counters or the normalized sheet.
 
 Rule depth and rule count are checked before copying the rule header. Declaration
 count, expansion capability, and contribution count are checked before expansion
@@ -1839,7 +1844,7 @@ through nested scope, media, supports, container and layer groups. These
 placement contracts follow the selected
 [Conditional Rules 3](https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/),
 [Cascade 6 scope nesting](https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-nesting)
-and [Nesting 1](https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nesting-other-at-rules)
+and [Nesting 1](https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#conditionals)
 editions.
 
 `CssRule::Page` retains the default page form or one of the finite
@@ -2502,6 +2507,54 @@ can instead select the complete media alternative with no supports clause.
 Bad string and URL tokens cannot enter either branch. These distinctions follow
 the selected [Conditional Rules 3 grammar](https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#at-supports);
 they do not evaluate whether the renderer supports a declaration.
+
+Conditional Rules 5 adds named conditions to the authored surface. A
+`@supports-condition --name { ... }` rule retains a checked
+`CssSupportsConditionName` and a `CssSupportsTestBody`; decoded names are
+case-sensitive, start with two hyphens, and may be the bare `--` or an
+all-hyphen identifier. The definition may appear where ordinary style rules
+are admitted, including supported groups, scopes, and style-nested conditional
+groups. At top level it can precede or appear between imports and namespaces
+without closing their admission phase. It does not reopen a phase closed by
+another rule. Invalid names, extra prelude input, a missing block, and statement
+syntax reject the outer definition.
+
+The test body is an ordered sequence of nonempty declaration runs, qualified
+rule tests, and at-rule tests. `CssSupportsTestDeclaration` is a separate
+structural candidate from the narrower `CssSupportsDeclaration` operand: it
+retains unknown properties, values, functions, and unsupported feature grammar
+without treating them as style declarations. It exposes the original property
+component, semantic value components, terminal importance flag, full lexical
+components, origin, and optional parsed position. Earlier `!` tokens remain in
+the semantic value; only a terminal `!important` pair becomes the importance
+flag. A qualified rule test retains its prelude and nested test body; an at-rule
+test distinguishes a statement from an empty block. Declaration runs flush
+around child rules, including a final run at the closing brace or EOF.
+
+The body parser tries declaration structure before qualified-rule fallback and
+keeps the generic top-level curly-block and custom-property-lookalike guards.
+Missing-colon text with no block yields a local diagnostic and no candidate;
+lexical errors such as bad strings, bad URLs, and unmatched closing tokens
+recover the affected item while preserving structurally valid siblings and the
+definition. Parseable implicit EOF closures remain retained with diagnostics.
+`CssSupportsTestBody::recovery_origin()` identifies recovered input, distinct
+from whether a feature is supported. Strict body and rule construction reject
+recovered input and enforce aggregate component limits. The typed
+`CssNamedSupportsConstructionError` separates invalid names, invalid body
+grammar, recovered input, and component failures. This authored recovery policy
+reconciles the selected generic Syntax block consumer with Conditional 5's
+feature-test purpose; the specification does not specify each malformed-item
+result.
+
+An ordinary `@supports (--name)` operand retains
+`CssSupportsConditionKind::Named` with its checked name, even when no definition
+exists. `@import url(theme.css) supports(--name)` and its parenthesized
+alternative also retain the named reference; import serialization preserves the
+valid bare function-body spelling, while a standalone condition adds the
+required parentheses. CSS does not activate definitions, choose a duplicate,
+evaluate support, or produce live CSSOM. The selected source is
+[Conditional Rules 5](https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#supports-condition-rule),
+with the narrow [extension-name and block-contents imports](../specs/catalog.json).
 
 Supports conditions and declarations can also be constructed from checked
 component values. `CssSupportsCondition::try_from_components` takes an explicit

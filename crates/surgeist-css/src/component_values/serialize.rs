@@ -12,6 +12,8 @@ pub(crate) enum CssCanonicalToken<'a> {
     Delim(char),
     OpenParen,
     CloseParen,
+    OpenBrace,
+    CloseBrace,
 }
 
 pub(crate) struct CssCanonicalBuilder {
@@ -99,6 +101,8 @@ impl CssCanonicalBuilder {
             }
             CssCanonicalToken::OpenParen => ("(".into(), TokenSerializationType::OpenParen, false),
             CssCanonicalToken::CloseParen => (")".into(), TokenSerializationType::Other, false),
+            CssCanonicalToken::OpenBrace => ("{".into(), TokenSerializationType::Other, false),
+            CssCanonicalToken::CloseBrace => ("}".into(), TokenSerializationType::Other, false),
             other => {
                 let component = match other {
                     CssCanonicalToken::Ident(value) => CssComponentValue::try_ident(value),
@@ -120,7 +124,11 @@ impl CssCanonicalBuilder {
                         }
                         Ok(component)
                     }
-                    CssCanonicalToken::Function(_) | CssCanonicalToken::OpenParen | CssCanonicalToken::CloseParen => unreachable!(),
+                    CssCanonicalToken::Function(_)
+                    | CssCanonicalToken::OpenParen
+                    | CssCanonicalToken::CloseParen
+                    | CssCanonicalToken::OpenBrace
+                    | CssCanonicalToken::CloseBrace => unreachable!(),
                 }.map_err(|error| CssComponentValueError::new(error.kind(), origin.clone()))?;
                 let ComponentData::Token(value) = component.data else {
                     unreachable!("checked grammar token")

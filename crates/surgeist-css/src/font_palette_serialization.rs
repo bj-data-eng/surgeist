@@ -1,109 +1,14 @@
-//! Canonical specified palette values and fail-closed rule composition.
-
-use std::fmt;
+//! Canonical specified palette values.
 
 use crate::{
     CssFontFamilyName, CssFontPaletteBase, CssFontPaletteDescriptorValue,
-    CssFontPaletteDescriptorValueRef, CssFontPaletteValuesRule, CssRule, CssSheet,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, specified_serialization::SpecifiedSerializationContext,
+    CssFontPaletteDescriptorValueRef, CssFontPaletteValuesRule,
+    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
+    specified_rule_serialization::SpecifiedRuleWriter,
 };
 
-/// Why generic rule or sheet serialization could not return complete CSS.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssSpecifiedRuleSerializationErrorKind {
-    UnsupportedRule,
-    UnsupportedEncoding,
-    Resource(CssSpecifiedValueSerializationErrorKind),
-}
-
-/// An unsupported rule is never omitted or silently serialized as raw syntax.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssSpecifiedRuleSerializationError {
-    kind: CssSpecifiedRuleSerializationErrorKind,
-    rule_index: Option<usize>,
-    source: Option<CssSpecifiedValueSerializationError>,
-}
-
-impl CssSpecifiedRuleSerializationError {
-    #[must_use]
-    pub const fn kind(&self) -> CssSpecifiedRuleSerializationErrorKind {
-        self.kind
-    }
-
-    /// Zero-based stylesheet rule index when a rule caused the failure.
-    #[must_use]
-    pub const fn rule_index(&self) -> Option<usize> {
-        self.rule_index
-    }
-
-    fn unsupported_rule(rule_index: Option<usize>) -> Self {
-        Self {
-            kind: CssSpecifiedRuleSerializationErrorKind::UnsupportedRule,
-            rule_index,
-            source: None,
-        }
-    }
-
-    fn unsupported_encoding() -> Self {
-        Self {
-            kind: CssSpecifiedRuleSerializationErrorKind::UnsupportedEncoding,
-            rule_index: None,
-            source: None,
-        }
-    }
-
-    fn resource(error: CssSpecifiedValueSerializationError, rule_index: Option<usize>) -> Self {
-        Self {
-            kind: CssSpecifiedRuleSerializationErrorKind::Resource(error.kind()),
-            rule_index,
-            source: Some(error),
-        }
-    }
-}
-
-impl fmt::Display for CssSpecifiedRuleSerializationError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.kind {
-            CssSpecifiedRuleSerializationErrorKind::UnsupportedRule => {
-                formatter.write_str("canonical serialization is not available for this CSS rule")
-            }
-            CssSpecifiedRuleSerializationErrorKind::UnsupportedEncoding => formatter
-                .write_str("canonical serialization is not available for encoding metadata"),
-            CssSpecifiedRuleSerializationErrorKind::Resource(_) => {
-                formatter.write_str("canonical CSS rule serialization exceeded a resource limit")
-            }
-        }
-    }
-}
-
-impl std::error::Error for CssSpecifiedRuleSerializationError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.source
-            .as_ref()
-            .map(|error| error as &(dyn std::error::Error + 'static))
-    }
-}
-
-struct SpecifiedRuleWriter {
-    context: SpecifiedSerializationContext,
-    css: String,
-}
-
 impl SpecifiedRuleWriter {
-    fn new(limits: CssSpecifiedValueSerializationLimits) -> Self {
-        Self {
-            context: SpecifiedSerializationContext::new(limits),
-            css: String::new(),
-        }
-    }
-
-    fn append(&mut self, text: &str) -> Result<(), CssSpecifiedValueSerializationError> {
-        self.context.append(&mut self.css, text)
-    }
-
-    fn palette(
+    pub(crate) fn palette(
         &mut self,
         rule: &CssFontPaletteValuesRule,
     ) -> Result<(), CssSpecifiedValueSerializationError> {
@@ -179,42 +84,6 @@ impl SpecifiedRuleWriter {
         self.append(keyword)
     }
 
-    fn append_identifier(
-        &mut self,
-        value: &str,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
-        self.append_escaped(value, EscapedKind::Identifier)
-    }
-
-    fn append_string(&mut self, value: &str) -> Result<(), CssSpecifiedValueSerializationError> {
-        self.append_escaped(value, EscapedKind::String)
-    }
-
-    fn append_escaped(
-        &mut self,
-        value: &str,
-        kind: EscapedKind,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
-        let mut scratch = String::new();
-        let mut bounded = BoundedEscaped {
-            context: &self.context,
-            css: &mut scratch,
-            error: None,
-        };
-        let result = match kind {
-            EscapedKind::Identifier => cssparser::serialize_identifier(value, &mut bounded),
-            EscapedKind::String => cssparser::serialize_string(value, &mut bounded),
-        };
-        if result.is_err() {
-            return Err(bounded.error.unwrap_or_else(|| {
-                CssSpecifiedValueSerializationError::new(
-                    CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-                )
-            }));
-        }
-        self.append(&scratch)
-    }
-
     fn append_family(&mut self, name: &str) -> Result<(), CssSpecifiedValueSerializationError> {
         if can_serialize_family_unquoted(name) {
             for (index, word) in name.split(' ').enumerate() {
@@ -227,28 +96,6 @@ impl SpecifiedRuleWriter {
         } else {
             self.append_string(name)
         }
-    }
-}
-
-enum EscapedKind {
-    Identifier,
-    String,
-}
-
-struct BoundedEscaped<'a> {
-    context: &'a SpecifiedSerializationContext,
-    css: &'a mut String,
-    error: Option<CssSpecifiedValueSerializationError>,
-}
-
-impl fmt::Write for BoundedEscaped<'_> {
-    fn write_str(&mut self, text: &str) -> fmt::Result {
-        self.context
-            .append_temporary(self.css, text)
-            .map_err(|error| {
-                self.error = Some(error);
-                fmt::Error
-            })
     }
 }
 
@@ -307,69 +154,5 @@ impl CssFontPaletteValuesRule {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer.palette(self)?;
         Ok(writer.css)
-    }
-}
-
-impl CssRule {
-    /// Serializes only rule kinds with a complete canonical specified writer.
-    pub fn to_specified_css(&self) -> Result<String, CssSpecifiedRuleSerializationError> {
-        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn to_specified_css_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedRuleSerializationError> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        append_rule(&mut writer, self, None)?;
-        Ok(writer.css)
-    }
-}
-
-impl CssSheet {
-    /// Serializes a complete supported stylesheet atomically in source order.
-    /// Unsupported rules or legacy encoding metadata fail closed.
-    pub fn to_specified_css(&self) -> Result<String, CssSpecifiedRuleSerializationError> {
-        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn to_specified_css_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedRuleSerializationError> {
-        if self.encoding().is_some() {
-            return Err(CssSpecifiedRuleSerializationError::unsupported_encoding());
-        }
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        writer
-            .context
-            .charge_input(1)
-            .map_err(|error| CssSpecifiedRuleSerializationError::resource(error, None))?;
-        writer
-            .context
-            .charge_projection(1)
-            .map_err(|error| CssSpecifiedRuleSerializationError::resource(error, None))?;
-        for (index, rule) in self.rules().iter().enumerate() {
-            if index != 0 {
-                writer.append("\n").map_err(|error| {
-                    CssSpecifiedRuleSerializationError::resource(error, Some(index))
-                })?;
-            }
-            append_rule(&mut writer, rule, Some(index))?;
-        }
-        Ok(writer.css)
-    }
-}
-
-fn append_rule(
-    writer: &mut SpecifiedRuleWriter,
-    rule: &CssRule,
-    index: Option<usize>,
-) -> Result<(), CssSpecifiedRuleSerializationError> {
-    match rule {
-        CssRule::FontPaletteValues(rule) => writer
-            .palette(rule)
-            .map_err(|error| CssSpecifiedRuleSerializationError::resource(error, index)),
-        _ => Err(CssSpecifiedRuleSerializationError::unsupported_rule(index)),
     }
 }

@@ -1125,6 +1125,21 @@ const EXPECTED: &[ExpectedFeature] = &[
         )),
     },
     ExpectedFeature {
+        id: "ext.rule.supports-condition",
+        kind: CssFeatureKind::Rule,
+        spelling: "@supports-condition",
+        source: ExpectedSource::Id("X-CONDITIONAL5"),
+        production: "#at-ruledef-supports-condition",
+        status: CssSupportStatus::Complete,
+        supported_subset: None,
+        unsupported_remainder: None,
+        recognized_code: None,
+        positive: Some(Input::Sheet(
+            "@supports-condition --feature { future: value; }",
+        )),
+        negative: None,
+    },
+    ExpectedFeature {
         id: "baseline.rule.scope",
         kind: CssFeatureKind::Rule,
         spelling: "@scope",
@@ -1726,6 +1741,19 @@ const EXPECTED: &[ExpectedFeature] = &[
             Input::Sheet("@container (unknown-size > 1px) or { .x { color: red; } }"),
             CssErrorCode::InvalidAtRulePrelude,
         )),
+    },
+    ExpectedFeature {
+        id: "ext.supports.named",
+        kind: CssFeatureKind::Value,
+        spelling: "named supports condition reference",
+        source: ExpectedSource::Id("X-CONDITIONAL5"),
+        production: "#typedef-supports-decl,#typedef-supports-condition-name",
+        status: CssSupportStatus::Complete,
+        supported_subset: None,
+        unsupported_remainder: None,
+        recognized_code: None,
+        positive: Some(Input::Sheet("@supports (--feature) { .x { color: red; } }")),
+        negative: None,
     },
 ];
 

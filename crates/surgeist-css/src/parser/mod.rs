@@ -72,6 +72,7 @@ use crate::border_width::*;
 use crate::box_spacing::*;
 use crate::contain_intrinsic_size::{CssContainIntrinsicSize, CssContainIntrinsicSizeValue};
 use crate::inset::{CssInsetPair, CssInsetShorthand, CssInsetValue};
+use crate::named_supports::CssSupportsConditionName;
 use crate::overflow_controls::{CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter};
 use crate::text_alignment::{CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignValue};
 use crate::{
@@ -130,6 +131,7 @@ use sizing_controls::*;
 use supports::{
     parse_supports_condition, parse_supports_declaration, with_supports_prelude_context,
 };
+pub(crate) mod named_supports;
 use text_alignment::*;
 use timing::*;
 use typography::*;
@@ -181,6 +183,7 @@ pub(crate) struct CssAtomicImplementationInventory {
 }
 
 static IMPLEMENTED_RULES: &[CssFeatureId] = &[
+    CssFeatureId::new("ext.rule.supports-condition"),
     CssFeatureId::new("baseline.rule.import"),
     CssFeatureId::new("ext.import.layer"),
     CssFeatureId::new("ext.stylesheet.prelude-order"),
@@ -933,6 +936,7 @@ fn scoped_rule_into_chunk_rule(rule: CssScopedRule) -> CssRule {
                 .collect(),
             rule.position(),
         )),
+        CssScopedRule::SupportsCondition(rule) => CssRule::SupportsCondition(rule),
         CssScopedRule::Container(rule) => CssRule::Container(CssContainerRule::new(
             rule.prelude().clone(),
             rule.rules()
@@ -1306,6 +1310,7 @@ fn into_scoped_rule(rule: CssRule) -> Option<CssScopedRule> {
             ),
             rule.position(),
         ))),
+        CssRule::SupportsCondition(rule) => Some(CssScopedRule::SupportsCondition(rule)),
         CssRule::Container(rule) => Some(CssScopedRule::Container(CssScopedContainerRule::new(
             rule.prelude().clone(),
             CssScopedRuleList::from_rules(
@@ -1360,6 +1365,13 @@ fn scoped_rule_start(rule: &CssScopedRule) -> usize {
         CssScopedRule::Style(rule) => rule.position(),
         CssScopedRule::Media(rule) => rule.position(),
         CssScopedRule::Supports(rule) => rule.position(),
+        CssScopedRule::SupportsCondition(rule) => {
+            return rule
+                .position()
+                .expect("parsed named supports rule")
+                .byte_offset()
+                .value();
+        }
         CssScopedRule::Container(rule) => rule.position(),
         CssScopedRule::LayerStatement(rule) => rule.position(),
         CssScopedRule::LayerBlock(rule) => rule.position(),
@@ -1440,6 +1452,13 @@ fn rule_start(rule: &CssRule) -> usize {
         CssRule::NestedDeclarations(rule) => rule.position(),
         CssRule::Media(rule) => rule.position(),
         CssRule::Supports(rule) => rule.position(),
+        CssRule::SupportsCondition(rule) => {
+            return rule
+                .position()
+                .expect("parsed named supports rule")
+                .byte_offset()
+                .value();
+        }
         CssRule::Container(rule) => rule.position(),
         CssRule::Scope(rule) => rule.position(),
     }
@@ -1979,6 +1998,7 @@ enum StrictAtRulePrelude {
     Keyframes(CssKeyframesName),
     Media(CssMediaQueryList),
     Supports(CssSupportsCondition),
+    SupportsCondition(named_supports::NamedSupportsPrelude),
     Container(CssContainerPrelude),
     Scope(CssScopePrelude),
 }
@@ -1999,6 +2019,7 @@ impl StrictAtRulePrelude {
             Self::Keyframes(_) => "baseline.rule.keyframes",
             Self::Media(_) => "baseline.rule.media",
             Self::Supports(_) => "baseline.rule.supports",
+            Self::SupportsCondition(_) => "ext.rule.supports-condition",
             Self::Container(_) => "baseline.rule.container",
             Self::Scope(_) => "baseline.rule.scope",
         }
@@ -2179,6 +2200,9 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                 ).map_err(with_supports_prelude_context)?;
                 Ok(StrictAtRulePrelude::Supports(condition))
             },
+            "supports-condition" => Ok(StrictAtRulePrelude::SupportsCondition(
+                named_supports::parse_prelude(input, &self.recovery)?,
+            )),
             "container" => {
                 let prelude = parse_container_prelude(self.source, input, &self.recovery)
                     .map_err(with_container_prelude_context)?;
@@ -2293,6 +2317,7 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
             StrictAtRulePrelude::Keyframes(_) => Err(()),
             StrictAtRulePrelude::Media(_) => Err(()),
             StrictAtRulePrelude::Supports(_) => Err(()),
+            StrictAtRulePrelude::SupportsCondition(_) => Err(()),
             StrictAtRulePrelude::Container(_) => Err(()),
             StrictAtRulePrelude::Scope(_) => Err(()),
         }
@@ -2454,6 +2479,17 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                     ),
                 ))])
             }
+            StrictAtRulePrelude::SupportsCondition(prelude) => {
+                let rule = named_supports::parse_rule(
+                    self.source,
+                    prelude,
+                    start,
+                    input,
+                    &mut self.diagnostics,
+                    &self.recovery,
+                )?;
+                Ok(vec![CssRule::SupportsCondition(rule)])
+            }
             StrictAtRulePrelude::Container(prelude) => {
                 let recovered =
                     parse_nested_group_rules(self.source, input, self.recovery.clone())?;
@@ -2600,17 +2636,37 @@ pub(crate) fn construct_import(
             unreachable!("selected supports function")
         };
         let body = function.values().clone();
-        let condition = if selected.bare_supports_declaration {
-            let declaration =
-                CssSupportsDeclaration::try_from_components_with_limits(body, limits)?;
-            let lexical = declaration.lexical().clone();
-            CssSupportsCondition::new(
-                CssSupportsConditionKind::Declaration(Box::new(declaration)),
-                lexical,
-                true,
-            )
-        } else {
-            CssSupportsCondition::try_from_components_with_limits(body, context, limits)?
+        let condition = match selected.supports_form {
+            SupportsAuthoredForm::BareDeclaration => {
+                let declaration =
+                    CssSupportsDeclaration::try_from_components_with_limits(body, limits)?;
+                let lexical = declaration.lexical().clone();
+                CssSupportsCondition::new(
+                    CssSupportsConditionKind::Declaration(Box::new(declaration)),
+                    lexical,
+                    SupportsAuthoredForm::BareDeclaration,
+                )
+            }
+            SupportsAuthoredForm::BareName => {
+                let meaningful = body
+                    .items()
+                    .iter()
+                    .filter(|value| !crate::supports::trivia(value))
+                    .collect::<Vec<_>>();
+                let [component] = meaningful.as_slice() else {
+                    return Err(import_construction_grammar(items[index].origin()));
+                };
+                let name = CssSupportsConditionName::try_from_component((*component).clone())
+                    .map_err(|_| import_construction_grammar(items[index].origin()))?;
+                CssSupportsCondition::new(
+                    CssSupportsConditionKind::Named(name),
+                    crate::supports::SupportsLexical::root(body),
+                    SupportsAuthoredForm::BareName,
+                )
+            }
+            SupportsAuthoredForm::Condition => {
+                CssSupportsCondition::try_from_components_with_limits(body, context, limits)?
+            }
         };
         Some(CssImportSupports::new(condition))
     } else {
@@ -2652,7 +2708,7 @@ struct ConstructedImportSelection {
     target_index: usize,
     layer_index: Option<usize>,
     supports_index: Option<usize>,
-    bare_supports_declaration: bool,
+    supports_form: SupportsAuthoredForm,
 }
 fn classify_constructed_import(
     serialized: &crate::CssSerializedValue,
@@ -2697,10 +2753,12 @@ fn classify_constructed_import(
             };
             let layer_index = index(selected.layer_component.as_ref());
             let supports_index = index(selected.supports_component.as_ref());
-            let bare_supports_declaration = selected
+            let supports_form = selected
                 .supports
                 .as_ref()
-                .is_some_and(|supports| supports.condition().bare_declaration());
+                .map_or(SupportsAuthoredForm::Condition, |supports| {
+                    supports.condition().authored_form()
+                });
             // parse_until_before requires complete consumption; media is checked
             // strictly against its original components after classification.
             while input.next_including_whitespace_and_comments().is_ok() {}
@@ -2710,7 +2768,7 @@ fn classify_constructed_import(
                 target_index: index_at(target_start),
                 layer_index,
                 supports_index,
-                bare_supports_declaration,
+                supports_form,
             })
         })
     })();
@@ -3060,8 +3118,32 @@ fn parse_import_supports<'i, 't>(
             return Ok(CssSupportsCondition::new(
                 CssSupportsConditionKind::Declaration(Box::new(declaration)),
                 lexical,
-                true,
+                SupportsAuthoredForm::BareDeclaration,
             ));
+        }
+
+        if let Some(named) = supports::grammar_probe(nested.try_parse(|nested| {
+            let at = nested.current_source_location();
+            let values =
+                CssComponentValues::collect_from_parser(nested, recovery.source_snapshot())
+                    .map_err(|error| crate::error::invalid_component_value(at, error))?;
+            let meaningful = values
+                .items()
+                .iter()
+                .filter(|value| !crate::supports::trivia(value))
+                .collect::<Vec<_>>();
+            let [component] = meaningful.as_slice() else {
+                return Err(invalid_syntax(at, "one named supports reference"));
+            };
+            let name = CssSupportsConditionName::try_from_component((*component).clone())
+                .map_err(|_| invalid_syntax(at, "one named supports reference"))?;
+            Ok::<_, ParseError<'i, Error>>(CssSupportsCondition::new(
+                CssSupportsConditionKind::Named(name),
+                crate::supports::SupportsLexical::root(values),
+                SupportsAuthoredForm::BareName,
+            ))
+        }))? {
+            return Ok(named);
         }
 
         parse_supports_condition(source, nested, diagnostics, recovery)
@@ -3621,6 +3703,7 @@ enum ScopedAtRulePrelude {
     FontPaletteValues(CssFontPaletteName),
     Media(CssMediaQueryList),
     Supports(CssSupportsCondition),
+    SupportsCondition(named_supports::NamedSupportsPrelude),
     Container(CssContainerPrelude),
     Layer(Vec<CssLayerName>),
     Scope(CssScopePrelude),
@@ -3638,6 +3721,7 @@ impl ScopedAtRulePrelude {
             Self::FontPaletteValues(_) => "later.rule.font-palette-values",
             Self::Media(_) => "baseline.rule.media",
             Self::Supports(_) => "baseline.rule.supports",
+            Self::SupportsCondition(_) => "ext.rule.supports-condition",
             Self::Container(_) => "baseline.rule.container",
             Self::Layer(_) => "baseline.rule.layer-block",
             Self::Scope(_) => "baseline.rule.scope",
@@ -3684,6 +3768,9 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                 ).map_err(with_supports_prelude_context)?;
                 Ok(ScopedAtRulePrelude::Supports(condition))
             },
+            "supports-condition" => Ok(ScopedAtRulePrelude::SupportsCondition(
+                named_supports::parse_prelude(input, &self.recovery)?,
+            )),
             "container" => {
                 let prelude = parse_container_prelude(self.source, input, &self.recovery)
                     .map_err(with_container_prelude_context)?;
@@ -3816,6 +3903,7 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
             | ScopedAtRulePrelude::FontPaletteValues(_)
             | ScopedAtRulePrelude::Media(_)
             | ScopedAtRulePrelude::Supports(_)
+            | ScopedAtRulePrelude::SupportsCondition(_)
             | ScopedAtRulePrelude::Container(_)
             | ScopedAtRulePrelude::Scope(_) => Err(()),
         };
@@ -3927,6 +4015,17 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                 Ok(vec![CssScopedRule::Supports(CssScopedSupportsRule::new(
                     condition, rules, position,
                 ))])
+            }
+            ScopedAtRulePrelude::SupportsCondition(prelude) => {
+                let rule = named_supports::parse_rule(
+                    self.source,
+                    prelude,
+                    start,
+                    input,
+                    &mut self.diagnostics,
+                    &self.recovery,
+                )?;
+                Ok(vec![CssScopedRule::SupportsCondition(rule)])
             }
             ScopedAtRulePrelude::Container(prelude) => {
                 let recovered = parse_scoped_rule_list(

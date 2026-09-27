@@ -140,6 +140,7 @@ pub enum CssRule {
     NestedDeclarations(CssNestedDeclarationsRule),
     Media(CssMediaRule),
     Supports(CssSupportsRule),
+    SupportsCondition(crate::CssSupportsConditionRule),
     Container(CssContainerRule),
     Scope(CssScopeRule),
 }
@@ -1541,20 +1542,26 @@ pub struct CssSupportsCondition {
     kind: Box<CssSupportsConditionKind>,
     lexical: crate::supports::SupportsLexical,
     origin: CssValueOrigin,
-    bare_declaration: bool,
+    authored_form: SupportsAuthoredForm,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SupportsAuthoredForm {
+    Condition,
+    BareDeclaration,
+    BareName,
 }
 impl CssSupportsCondition {
     pub(crate) fn new(
         kind: CssSupportsConditionKind,
         lexical: crate::supports::SupportsLexical,
-        bare_declaration: bool,
+        authored_form: SupportsAuthoredForm,
     ) -> Self {
         let origin = lexical.first_origin().clone();
         Self {
             kind: Box::new(kind),
             lexical,
             origin,
-            bare_declaration,
+            authored_form,
         }
     }
     #[must_use]
@@ -1576,8 +1583,8 @@ impl CssSupportsCondition {
     pub(crate) fn into_kind(self) -> CssSupportsConditionKind {
         *self.kind
     }
-    pub(crate) const fn bare_declaration(&self) -> bool {
-        self.bare_declaration
+    pub(crate) const fn authored_form(&self) -> SupportsAuthoredForm {
+        self.authored_form
     }
 }
 
@@ -1586,6 +1593,7 @@ impl CssSupportsCondition {
 #[derive(Clone, Debug, PartialEq)]
 pub enum CssSupportsConditionKind {
     Declaration(Box<CssSupportsDeclaration>),
+    Named(crate::CssSupportsConditionName),
     Selector(CssSelector),
     GeneralEnclosed(CssGeneralEnclosed),
     Not(Box<CssSupportsCondition>),
@@ -1993,6 +2001,7 @@ pub enum CssScopedRule {
     Style(CssScopedStyleRule),
     Media(CssScopedMediaRule),
     Supports(CssScopedSupportsRule),
+    SupportsCondition(crate::CssSupportsConditionRule),
     Container(CssScopedContainerRule),
     LayerStatement(CssScopedLayerStatementRule),
     LayerBlock(CssScopedLayerBlockRule),

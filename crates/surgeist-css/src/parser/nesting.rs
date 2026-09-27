@@ -214,6 +214,7 @@ enum StyleBlockItem {
 enum NestedStyleAtRulePrelude {
     Media(CssMediaQueryList),
     Supports(CssSupportsCondition),
+    SupportsCondition(super::named_supports::NamedSupportsPrelude),
     Container(CssContainerPrelude),
     Layer(Vec<CssLayerName>),
     Scope(CssScopePrelude),
@@ -224,6 +225,7 @@ impl NestedStyleAtRulePrelude {
         match self {
             Self::Media(_) => "baseline.rule.media",
             Self::Supports(_) => "baseline.rule.supports",
+            Self::SupportsCondition(_) => "ext.rule.supports-condition",
             Self::Container(_) => "baseline.rule.container",
             Self::Layer(_) => "baseline.rule.layer-block",
             Self::Scope(_) => "baseline.rule.scope",
@@ -270,6 +272,9 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
                 ).map_err(with_supports_prelude_context)?;
                 Ok(NestedStyleAtRulePrelude::Supports(condition))
             },
+            "supports-condition" => Ok(NestedStyleAtRulePrelude::SupportsCondition(
+                super::named_supports::parse_prelude(input, &self.recovery)?,
+            )),
             "container" => {
                 let prelude = parse_container_prelude(self.source, input, &self.recovery)
                     .map_err(with_container_prelude_context)?;
@@ -383,6 +388,17 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
                 self.diagnostics.extend(recovered.diagnostics);
                 let rules = recovered.syntax.into_nested_rules();
                 CssRule::Supports(CssSupportsRule::new(condition, rules, position))
+            }
+            NestedStyleAtRulePrelude::SupportsCondition(prelude) => {
+                let rule = super::named_supports::parse_rule(
+                    self.source,
+                    prelude,
+                    start,
+                    input,
+                    &mut self.diagnostics,
+                    &self.recovery,
+                )?;
+                CssRule::SupportsCondition(rule)
             }
             NestedStyleAtRulePrelude::Container(prelude) => {
                 let recovered = parse_style_contents(self.source, input, self.recovery.clone())?;

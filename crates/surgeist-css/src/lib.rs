@@ -1118,6 +1118,8 @@ mod imports;
 pub use imports::*;
 mod custom_media;
 pub use custom_media::*;
+mod named_supports;
+pub use named_supports::*;
 mod container;
 mod container_features;
 mod container_properties;
@@ -1130,6 +1132,8 @@ pub use container_style::*;
 mod supports;
 pub use supports::CssSupportsConstructionError;
 mod media;
+mod named_supports_serialization;
+mod specified_rule_serialization;
 pub use media::*;
 mod media_features;
 mod normalization;
@@ -1250,9 +1254,6 @@ pub use expansion::{
     CssUniversalResetMetadata, CssUnresolvedStandard, CssUserAgentInitial, expand_declaration,
 };
 pub use font_feature_values::*;
-pub use font_palette_serialization::{
-    CssSpecifiedRuleSerializationError, CssSpecifiedRuleSerializationErrorKind,
-};
 pub use font_palette_values::*;
 pub use normalization::{
     CssNormalizationError, CssNormalizationErrorKind, CssNormalizationLimits,
@@ -1274,6 +1275,9 @@ pub use property_value::{
 };
 pub use report::*;
 pub use source::*;
+pub use specified_rule_serialization::{
+    CssSpecifiedRuleSerializationError, CssSpecifiedRuleSerializationErrorKind,
+};
 pub use syntax::*;
 
 /// Shared ceiling for authored rules and owned component-value trees.

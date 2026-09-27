@@ -156,30 +156,39 @@ and leftover-alpha rule; this source import does not claim that execution or
 complete color serialization is implemented. Other Values 5 functions are not
 selected by this dependency.
 
-Media Queries 5 custom-media names require the extension-name production from
-CSS Extensions 1. The catalog pins an immutable pre-cutoff source revision for
-that definition because no published edition was found. It accepts identifiers
-starting with two hyphens, including the bare `--` name; custom-property name
-validation is a different grammar. Only this name definition is imported.
-Definition environments, cycle handling, evaluation and live APIs remain with
-style and root integration.
+Media Queries 5 custom-media and Conditional Rules 5 named-supports names require
+the extension-name production from CSS Extensions 1. The catalog pins an
+immutable pre-cutoff source revision for that definition because no published
+edition was found. It accepts decoded identifiers starting with two hyphens,
+including the bare `--` name; custom-property name validation is a different
+grammar. Only this name definition is imported. The two public name types remain
+distinct. Definition environments, duplicate selection, cycle handling,
+evaluation and live APIs remain with style and root integration.
 
 Selected Conditional Rules 5 and Nesting 1 reference `block-contents`, absent
 from the selected published Syntax 3 edition. A separate immutable pre-cutoff
 Syntax source pins this production and its scoped block-parsing dependencies.
 The production is category-neutral: each consuming rule still defines valid
 children and declarations. It does not itself imply style ancestry or admit
-page rules. Both `@container` and `@supports-condition` are recorded consumers;
-recording a dependency is not an implementation claim.
+page rules. `@container` and `@supports-condition` are recorded consumers. The
+named-supports definition retains an ordered tree of generic test candidates;
+its declarations and child rules inspect authored feature syntax and do not
+render or become style declarations.
 
 The pinned block consumer omits transferring its final accepted declaration run
 before returning at a closing brace or EOF. The definition's
 `localized_reconciliation` records this exact source conflict and the selected
 Nesting retention requirements that control style and style-nested group bodies:
 retain the nonempty final run exactly once, preserving authored order and
-parent-specific materialization. Other contexts retain their own admission
-requirements. This explicit reconciliation neither makes general CSS syntax
-undefined nor replaces the selected 2021 tokenizer and unrelated parser entry
+parent-specific materialization. Conditional Rules 5 supplies a separate,
+independent declaration-only example, so its named-supports test body also
+retains a nonempty final candidate run once. Its declaration validity permits
+unknown property and feature grammar, and malformed items recover locally while
+the enclosing definition remains structurally valid. The catalog records that
+test-body interpretation explicitly; Conditional Rules 5 does not spell out each
+malformed-candidate outcome. Other contexts retain their own admission
+requirements. These reconciliations neither make general CSS syntax
+undefined nor replace the selected 2021 tokenizer and unrelated parser entry
 points. The catalog keeps the original hash and identifies the affected source
 lines; it does not silently substitute a corrected draft.
 

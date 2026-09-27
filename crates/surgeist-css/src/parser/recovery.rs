@@ -329,6 +329,11 @@ impl RecoveryState {
         self.enter(source, opening_offset, enclosing_production)
     }
 
+    /// Current entered structural block depth, including the active rule body.
+    pub(super) fn structural_depth(&self) -> u32 {
+        self.depth.get()
+    }
+
     pub(super) fn enter_component_block<'i>(
         &self,
         source: &str,

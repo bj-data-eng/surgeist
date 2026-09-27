@@ -183,11 +183,19 @@ impl CssSupportsCondition {
         max_css_bytes: usize,
     ) -> Result<CssSerializedValue, CssComponentValueError> {
         let mut out = CssCanonicalBuilder::new(max_css_bytes);
-        if self.bare_declaration() {
+        if matches!(
+            self.authored_form(),
+            crate::syntax::SupportsAuthoredForm::BareDeclaration
+                | crate::syntax::SupportsAuthoredForm::BareName
+        ) {
             out.push_grammar(CssCanonicalToken::OpenParen, &CssValueOrigin::Programmatic)?;
         }
         out.push_components(self.components())?;
-        if self.bare_declaration() {
+        if matches!(
+            self.authored_form(),
+            crate::syntax::SupportsAuthoredForm::BareDeclaration
+                | crate::syntax::SupportsAuthoredForm::BareName
+        ) {
             out.push_grammar(CssCanonicalToken::CloseParen, &CssValueOrigin::Programmatic)?;
         }
         out.finish()

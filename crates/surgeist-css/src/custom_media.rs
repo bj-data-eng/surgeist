@@ -17,7 +17,7 @@ impl CssCustomMediaName {
     pub fn try_from_component(
         component: CssComponentValue,
     ) -> Result<Self, CssCustomMediaConstructionError> {
-        let Some(name) = ident(&component).filter(|name| name.starts_with("--")) else {
+        let Some(name) = extension_name(&component) else {
             return Err(CssCustomMediaConstructionError::InvalidName {
                 origin: component.origin().clone(),
             });
@@ -179,6 +179,9 @@ pub(crate) fn ident(value: &CssComponentValue) -> Option<&str> {
         CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) => Some(name),
         _ => None,
     }
+}
+pub(crate) fn extension_name(value: &CssComponentValue) -> Option<&str> {
+    ident(value).filter(|name| name.starts_with("--"))
 }
 pub(crate) fn trivia(value: &CssComponentValue) -> bool {
     matches!(

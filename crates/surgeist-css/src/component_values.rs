@@ -692,6 +692,14 @@ impl CssComponentValue {
         parse::collect_one(input, source)
     }
 
+    pub(crate) fn collect_recovering_named_test(
+        input: &mut cssparser::Parser<'_, '_>,
+        source: &CssSourceSnapshot,
+        base_depth: u32,
+    ) -> Result<(CssComponentValues, Vec<CssComponentValueError>), CssComponentValueError> {
+        parse::collect_recovering_named_test(input, source, base_depth)
+    }
+
     pub(crate) const fn parsed_origin(&self) -> Option<&CssParsedOrigin> {
         self.parsed.as_ref()
     }
@@ -1058,6 +1066,30 @@ impl CssComponentValues {
             }
         }
         None
+    }
+
+    pub(crate) fn implicit_opening_offsets(&self) -> Vec<usize> {
+        let mut openings = Vec::new();
+        let mut pending: Vec<_> = self.items.iter().rev().collect();
+        while let Some(component) = pending.pop() {
+            let closure = match &component.data {
+                ComponentData::Token(token) => {
+                    token.implicit_end.as_ref().map(|lexeme| &lexeme.origin)
+                }
+                ComponentData::Comment { implicit_end, .. } => {
+                    implicit_end.as_ref().map(|lexeme| &lexeme.origin)
+                }
+                ComponentData::Function(function) => Some(&function.closing.origin),
+                ComponentData::Block(block) => Some(&block.closing.origin),
+            };
+            if let Some(CssValueOrigin::ImplicitClosure { opening, .. }) = closure {
+                openings.push(opening.span().start().byte_offset().value());
+            }
+            if let Some(children) = component.child_values() {
+                pending.extend(children.items.iter().rev());
+            }
+        }
+        openings
     }
 
     /// Returns the total component count including descendants and trivia.

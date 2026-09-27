@@ -154,7 +154,7 @@
         "repository": "https://github.com/w3c/csswg-drafts",
         "revision": "22ffbbc3fb252a43a6ba991942b05c478f71a6fd",
         "path": "css-extensions-1/Overview.bs",
-        "source_resolution": "The selected MQ5 custom-media grammar imports extension-name from CSS Extensions 1. No published edition was found in the W3C publication inventory or the linked editor document metadata inspected on 2026-09-12. The source identifies itself as an Exploring editor draft and has no TR publication metadata. Pin the latest source-file commit before the cutoff, using its committer timestamp, only for the required extension-name production. This does not select the module or its other extension APIs.",
+        "source_resolution": "The selected MQ5 custom-media and Conditional Rules 5 named-supports grammars import extension-name from CSS Extensions 1. No published edition was found in the W3C publication inventory or the linked editor document metadata inspected on 2026-09-12. The source identifies itself as an Exploring editor draft and has no TR publication metadata. Pin the latest source-file commit before the cutoff, using its committer timestamp, only for the required extension-name production. This does not select the module or its other extension APIs.",
         "publication_discovery_url": "https://www.w3.org/Style/CSS/current-work",
         "revision_discovery_url": "https://api.github.com/repos/w3c/csswg-drafts/commits?path=css-extensions-1%2FOverview.bs&until=2026-09-10T02%3A16%3A24Z&per_page=1"
       },
@@ -503,18 +503,23 @@
             "module_id": "mediaqueries-5",
             "section_url": "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#custom-mq",
             "requirement": "Custom-media definition names use the extension-name production, and boolean media features reference those authored names."
+          },
+          {
+            "module_id": "css-conditional-5",
+            "section_url": "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#typedef-supports-condition-name",
+            "requirement": "Named supports definitions and references use the extension-name production for decoded, case-sensitive identifiers beginning with two hyphens, including the bare two-hyphen name."
           }
         ],
         "authored_owner": "css",
         "authored_requirements": [
           "Accept an identifier whose decoded value starts with two U+002D HYPHEN-MINUS characters, including the bare two-hyphen identifier and identifiers consisting only of additional hyphens.",
-          "Preserve the authored identifier and source origin without borrowing the distinct custom-property-name exclusion of the bare two-hyphen identifier."
+          "Preserve the authored identifier and source origin without borrowing the distinct custom-property-name exclusion of the bare two-hyphen identifier; custom-media and named-supports public name types remain distinct."
         ],
         "downstream_owners": [
           "style",
           "root"
         ],
-        "downstream_requirements": "Definition environments, last-definition selection, cycle handling, logical query evaluation, script-defined extensions and live CSSOM behavior remain downstream. Custom selectors, custom properties and functions from CSS Extensions 1 are not imported."
+        "downstream_requirements": "Custom-media and named-supports definition environments, last-definition selection, cycle handling, logical query evaluation, script-defined extensions and live CSSOM behavior remain downstream. Custom selectors, custom properties and functions from CSS Extensions 1 are not imported."
       },
       {
         "id": "backdrop-pseudo-element",
@@ -682,18 +687,18 @@
           {
             "module_id": "css-conditional-5",
             "section_url": "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#at-ruledef-supports-condition",
-            "requirement": "The supports-condition rule body also uses block-contents; retaining this dependency does not claim that rule is implemented."
+            "requirement": "The supports-condition rule body uses block-contents to retain an ordered, generic feature-test candidate tree. Its validity predicate and non-style role are defined separately from ordinary style and rule-list consumers."
           },
           {
             "module_id": "css-nesting-1",
-            "section_url": "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nesting-other-at-rules",
+            "section_url": "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#conditionals",
             "requirement": "Nested group bodies use block-contents; sections 3.3, 3.4 and 5 require ordered declaration runs and preservation of declarations after child rules."
           }
         ],
         "authored_owner": "css",
         "authored_requirements": [
           "Use the category-neutral block-contents production only where selected rules reference it; the owning rule defines valid declarations and child rules. Its spelling alone neither permits every at-rule nor establishes style ancestry.",
-          "Retain accepted declarations and child rules in authored order, including declaration-only bodies and final declaration runs at a closing brace or EOF. Apply the explicit terminal-retention reconciliation below.",
+          "Retain accepted declarations and child rules in authored order, including declaration-only bodies and final declaration runs at a closing brace or EOF. Apply the explicit terminal-retention and named-supports test-body reconciliations below.",
           "Use the listed block parser, rule/declaration consumers, component consumers, result records and token-stream operations only as dependencies of those selected block-contents contexts. Preserve contextual validation, recovery boundaries and parent-specific declaration materialization.",
           "This import does not replace the selected 2021 stylesheet/declaration-list entry points or tokenizer, import unrelated unicode-range tokenization, or establish page placement, selector matching or live CSSOM behavior. Other selected contexts retain their own defining requirements."
         ],
@@ -702,12 +707,24 @@
           "source_url": "https://github.com/w3c/csswg-drafts/blob/f971255463f01fb740e2a3a7ecfe83e319cddab9/css-syntax-3/Overview.bs#L2823",
           "conflict": "The consumer accumulates accepted declarations in decls but returns only rules at lines 2837-2840. No surrounding entry, block, rule or token-stream operation transfers that pending list. Literal execution loses declaration-only bodies and trailing runs, contrary to selected Nesting retention requirements.",
           "controlling_sources": [
-            "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nesting-other-at-rules",
+            "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#conditionals",
             "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/",
-            "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nested-declarations-rule"
+            "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nested-declarations-rule",
+            "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#at-ruledef-supports-condition"
           ],
-          "adopted_behavior": "For selected style and style-nested group contexts, append the current nonempty accepted declaration list exactly once before returning at EOF or a closing brace. Preserve prior flush/reset order and the parent distinction between leading declarations and nested declaration rules. Other contexts must independently admit declarations and define their role; this reconciliation does not make rejected declarations valid.",
+          "adopted_behavior": "For selected style and style-nested group contexts, append the current nonempty accepted declaration list exactly once before returning at EOF or a closing brace. Preserve prior flush/reset order and the parent distinction between leading declarations and nested declaration rules. The independently admitted Conditional 5 named-supports test body also retains its nonempty final declaration run exactly once as test candidates; it does not materialize those candidates as styles. Other contexts must independently admit declarations and define their role; this reconciliation does not make rejected declarations valid.",
           "scope": "A localized source reconciliation with explicit selected retention requirements, not a claim that the pinned algorithm contains the missing step, not a replacement source revision, and not an undefined-CSS or general later-source-precedence exemption."
+        },
+        "named_supports_test_body_reconciliation": {
+          "id": "named-supports-generic-test-body",
+          "controlling_sources": [
+            "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#at-ruledef-supports-condition",
+            "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#supports-condition-rule",
+            "https://github.com/w3c/csswg-drafts/blob/f971255463f01fb740e2a3a7ecfe83e319cddab9/css-syntax-3/Overview.bs#L2823"
+          ],
+          "conflict": "Conditional 5's mixed block-contents and declaration-only example require retained feature-test candidates. Ordinary rule-list or style-block validity filters discard unknown feature grammar or turn declarations into rendered styles; the pinned generic block algorithm leaves candidate validity to its consumer.",
+          "adopted_behavior": "Treat the body as ordered non-style test candidates: structurally formed declarations, qualified rules and at-rules survive without requiring known property, selector, descriptor or rule grammar. Try declaration structure before qualified-rule fallback, retaining the generic curly-block and custom-property-lookalike guards. Remove only a terminal !important annotation from a declaration candidate's semantic value; earlier ! tokens remain authored content. Flush nonempty declaration runs around rules and retain the final run once. Missing-colon items without a block and malformed lexical items recover locally, preserving valid siblings and the enclosing definition; implicit EOF closures retain diagnostics. Typed resource failures invalidate the definition, and strict construction rejects recovered bodies. The definition and all nested tests normalize as one terminal non-style payload without style declarations or selector contexts.",
+          "scope": "An authored retention and recovery reconciliation for named supports conditions only. Conditional 5 does not specify each malformed-candidate result here; this record neither changes ordinary supports declaration operands nor supplies condition evaluation, definition activation or live CSSOM behavior."
         },
         "downstream_owners": [
           "style",
