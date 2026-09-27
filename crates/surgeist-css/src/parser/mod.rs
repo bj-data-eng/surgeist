@@ -21,6 +21,7 @@ mod font_face;
 mod font_feature_values;
 pub(crate) mod font_palette_values;
 mod fragments;
+mod gap;
 pub use fragments::{
     parse_declaration, parse_font_face_descriptor_value, parse_font_palette_descriptor_value,
     parse_media_query, parse_media_query_list, parse_property_value_text,
@@ -77,9 +78,9 @@ use crate::overflow_controls::{CssOverflowClipMargin, CssScrollBehavior, CssScro
 use crate::text_alignment::{CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignValue};
 use crate::{
     CssContainer, CssContainerNames, CssContainerType, CssFontPaletteDescriptorKind,
-    CssFontPaletteDescriptorValue, CssFontPaletteName, CssFrameSizing, CssMaxSizePair,
-    CssMaxSizeValue, CssMinIntrinsicSizing, CssOverflowValue, CssScrollMarginPair,
-    CssScrollMarginShorthand, CssScrollPaddingPair, CssScrollPaddingShorthand,
+    CssFontPaletteDescriptorValue, CssFontPaletteName, CssFrameSizing, CssGapShorthand,
+    CssGapValue, CssMaxSizePair, CssMaxSizeValue, CssMinIntrinsicSizing, CssOverflowValue,
+    CssScrollMarginPair, CssScrollMarginShorthand, CssScrollPaddingPair, CssScrollPaddingShorthand,
     CssScrollPaddingValue, CssScrollSnapAlign, CssScrollSnapStop, CssScrollSnapType, CssSizePair,
     CssSizeValue, CssSpecifiedLength,
 };
@@ -103,6 +104,7 @@ pub(crate) use container_query::{
 use counter_style::{parse_counter_style_name, parse_counter_style_rule};
 use effects::*;
 use font_face::parse_font_face_rule;
+use gap::*;
 use generated_content::*;
 use grid::*;
 use inset::*;

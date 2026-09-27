@@ -68,11 +68,35 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
         );
         assert_eq!(metadata.property().canonical_name(), vector.canonical_name);
         assert_eq!(metadata.canonical_name(), vector.canonical_name);
-        assert!(metadata.aliases().is_empty());
+        let expected_aliases: &[&str] = match vector.canonical_name {
+            "row-gap" => &["grid-row-gap"],
+            "column-gap" => &["grid-column-gap"],
+            "gap" => &["grid-gap"],
+            _ => &[],
+        };
+        assert_eq!(metadata.aliases(), expected_aliases);
+        assert_eq!(metadata.property().aliases(), expected_aliases);
+        if !expected_aliases.is_empty() {
+            assert_eq!(feature.source().id().as_str(), "S-ALIGN3");
+            assert_eq!(feature.status(), CssSupportStatus::Complete);
+            assert_eq!(feature.supported_subset(), None);
+            assert_eq!(feature.unsupported_remainder(), None);
+        }
         assert!(std::ptr::eq(
             feature,
             feature_metadata(vector.id).expect("exact feature lookup")
         ));
+
+        for alias in expected_aliases {
+            let alias_metadata = property_support_metadata(alias)
+                .unwrap_or_else(|| panic!("missing alias metadata for `{alias}`"));
+            assert!(std::ptr::eq(alias_metadata.feature(), feature));
+            let folded = alias.to_ascii_uppercase();
+            assert_eq!(
+                property_support_metadata(&folded).map(|entry| entry.property()),
+                Some(metadata.property())
+            );
+        }
 
         let folded = vector.canonical_name.to_ascii_uppercase();
         assert_eq!(

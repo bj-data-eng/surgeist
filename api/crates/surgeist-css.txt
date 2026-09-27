@@ -1445,6 +1445,15 @@ pub fn surgeist_css::CssFrameSizing::serialize_specified_with_limits(&self, limi
 #[non_exhaustive] pub enum surgeist_css::CssFrequencyUnit
 pub surgeist_css::CssFrequencyUnit::Hertz
 pub surgeist_css::CssFrequencyUnit::Kilohertz
+#[non_exhaustive] pub enum surgeist_css::CssGapValue
+pub surgeist_css::CssGapValue::LengthPercentage(surgeist_css::CssSpecifiedNonNegativeLengthPercentage)
+pub surgeist_css::CssGapValue::Normal
+impl surgeist_css::CssGapValue
+pub fn surgeist_css::CssGapValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssGapValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::cmp::Eq for surgeist_css::CssGapValue
+impl core::cmp::PartialEq for surgeist_css::CssGapValue
+pub fn surgeist_css::CssGapValue::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssGeneralEnclosedError
 pub surgeist_css::CssGeneralEnclosedError::Component(surgeist_css::CssComponentValueError)
 pub surgeist_css::CssGeneralEnclosedError::WrongOuterComponent
@@ -2512,6 +2521,7 @@ pub surgeist_css::CssLonghandValueRef::CaptionSide(&'a surgeist_css::CssCaptionS
 pub surgeist_css::CssLonghandValueRef::Clear(&'a surgeist_css::CssClear)
 pub surgeist_css::CssLonghandValueRef::Color(&'a surgeist_css::CssAuthoredColor)
 pub surgeist_css::CssLonghandValueRef::ColumnCount(&'a surgeist_css::CssColumnCount)
+pub surgeist_css::CssLonghandValueRef::ColumnGap(&'a surgeist_css::CssGapValue)
 pub surgeist_css::CssLonghandValueRef::ColumnWidth(&'a surgeist_css::CssColumnWidth)
 pub surgeist_css::CssLonghandValueRef::ContainIntrinsicBlockSize(&'a surgeist_css::CssContainIntrinsicSizeValue)
 pub surgeist_css::CssLonghandValueRef::ContainIntrinsicHeight(&'a surgeist_css::CssContainIntrinsicSizeValue)
@@ -2567,6 +2577,7 @@ pub surgeist_css::CssLonghandValueRef::PaddingRight(&'a surgeist_css::CssPadding
 pub surgeist_css::CssLonghandValueRef::PaddingTop(&'a surgeist_css::CssPaddingValue)
 pub surgeist_css::CssLonghandValueRef::Position(&'a surgeist_css::CssLayoutPosition)
 pub surgeist_css::CssLonghandValueRef::Right(&'a surgeist_css::CssInsetValue)
+pub surgeist_css::CssLonghandValueRef::RowGap(&'a surgeist_css::CssGapValue)
 pub surgeist_css::CssLonghandValueRef::ScrollBehavior(&'a surgeist_css::CssScrollBehavior)
 pub surgeist_css::CssLonghandValueRef::ScrollMarginBlockEnd(&'a surgeist_css::CssSpecifiedLength)
 pub surgeist_css::CssLonghandValueRef::ScrollMarginBlockStart(&'a surgeist_css::CssSpecifiedLength)
@@ -5019,7 +5030,7 @@ pub const fn surgeist_css::CssColumnFillPropertyValue::fill(&self) -> &surgeist_
 pub struct surgeist_css::CssColumnGapPropertyValue
 impl surgeist_css::CssColumnGapPropertyValue
 pub fn surgeist_css::CssColumnGapPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssColumnGapPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
+pub const fn surgeist_css::CssColumnGapPropertyValue::current(&self) -> &surgeist_css::CssGapValue
 pub struct surgeist_css::CssColumnRule
 impl surgeist_css::CssColumnRule
 pub const fn surgeist_css::CssColumnRule::color(&self) -> core::option::Option<&surgeist_css::CssColor>
@@ -6149,7 +6160,15 @@ pub const fn surgeist_css::CssFunctionValue::values(&self) -> &surgeist_css::Css
 pub struct surgeist_css::CssGapPropertyValue
 impl surgeist_css::CssGapPropertyValue
 pub fn surgeist_css::CssGapPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssGapPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
+pub const fn surgeist_css::CssGapPropertyValue::current(&self) -> &surgeist_css::CssGapShorthand
+pub struct surgeist_css::CssGapShorthand
+impl surgeist_css::CssGapShorthand
+pub const fn surgeist_css::CssGapShorthand::authored_column(&self) -> core::option::Option<&surgeist_css::CssGapValue>
+pub fn surgeist_css::CssGapShorthand::column(&self) -> &surgeist_css::CssGapValue
+pub fn surgeist_css::CssGapShorthand::new(row: surgeist_css::CssGapValue, authored_column: core::option::Option<surgeist_css::CssGapValue>) -> Self
+pub const fn surgeist_css::CssGapShorthand::row(&self) -> &surgeist_css::CssGapValue
+pub fn surgeist_css::CssGapShorthand::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssGapShorthand::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssGeneralEnclosed
 impl surgeist_css::CssGeneralEnclosed
 pub fn surgeist_css::CssGeneralEnclosed::authored(&self) -> core::option::Option<&str>
@@ -7536,7 +7555,7 @@ pub const fn surgeist_css::CssRotatePropertyValue::i01_subset(&self) -> core::op
 pub struct surgeist_css::CssRowGapPropertyValue
 impl surgeist_css::CssRowGapPropertyValue
 pub fn surgeist_css::CssRowGapPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssRowGapPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
+pub const fn surgeist_css::CssRowGapPropertyValue::current(&self) -> &surgeist_css::CssGapValue
 pub struct surgeist_css::CssRuleContext
 impl surgeist_css::CssRuleContext
 pub fn surgeist_css::CssRuleContext::kind(&self) -> surgeist_css::CssRuleContextKindRef<'_>

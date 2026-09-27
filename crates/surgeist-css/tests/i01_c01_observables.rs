@@ -2577,6 +2577,68 @@ fn assert_known_property_value(
     frozen: &mut FrozenDeclarationCursor<'_>,
 ) {
     match (property, &value) {
+        // The archived gap witnesses carried a single CssLength Debug payload.
+        // Keep that historical observation in this fixture adapter while the
+        // current property API exposes exact one/two-value gap models.
+        (
+            surgeist_css::CssKnownProperty::Gap,
+            surgeist_css::CssKnownPropertyValueRef::Gap(value),
+        ) => {
+            let gap = value.current();
+            assert!(gap.authored_column().is_none());
+            assert_eq!(gap.row(), gap.column());
+            let surgeist_css::CssGapValue::LengthPercentage(length) = gap.row() else {
+                panic!("captured gap is an exact numeric value")
+            };
+            let old = assert_frozen_spacing_literal(
+                length.literal_component().expect("captured gap literal"),
+                "12px",
+            );
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                old,
+                semantic,
+                authored,
+            );
+            return;
+        }
+        (
+            surgeist_css::CssKnownProperty::RowGap,
+            surgeist_css::CssKnownPropertyValueRef::RowGap(value),
+        ) => {
+            assert_eq!(value.current(), &surgeist_css::CssGapValue::Normal);
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                "Normal",
+                semantic,
+                authored,
+            );
+            return;
+        }
+        (
+            surgeist_css::CssKnownProperty::ColumnGap,
+            surgeist_css::CssKnownPropertyValueRef::ColumnGap(value),
+        ) => {
+            let surgeist_css::CssGapValue::LengthPercentage(length) = value.current() else {
+                panic!("captured column gap is an exact numeric value")
+            };
+            let old = assert_frozen_spacing_literal(
+                length
+                    .literal_component()
+                    .expect("captured column-gap literal"),
+                "5%",
+            );
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                old,
+                semantic,
+                authored,
+            );
+            return;
+        }
         (
             surgeist_css::CssKnownProperty::Width,
             surgeist_css::CssKnownPropertyValueRef::Width(value),
@@ -3082,9 +3144,6 @@ fn assert_known_property_value(
             CounterIncrement,
             CounterSet,
             FlexBasis,
-            Gap,
-            RowGap,
-            ColumnGap,
             GridTemplateRows,
             GridTemplateColumns,
             GridTemplateAreas,

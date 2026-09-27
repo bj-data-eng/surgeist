@@ -2670,12 +2670,15 @@ macro_rules! property_feature {
 
 macro_rules! complete_property_feature {
     ($property:path, $canonical_name:literal, $stable_id:literal) => {
+        complete_property_feature!($property, $canonical_name, $stable_id, &[])
+    };
+    ($property:path, $canonical_name:literal, $stable_id:literal, $aliases:expr) => {
         CssFeatureMetadata::complete_property(
             $stable_id,
             $property,
             $canonical_name,
             concat!("#propdef-", $canonical_name),
-            &[],
+            $aliases,
         )
     };
 }
@@ -4519,16 +4522,23 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 616] = [
         "flex-basis",
         "baseline.property.flex-basis"
     ),
-    property_feature!(CssKnownProperty::Gap, "gap", "baseline.property.gap"),
-    property_feature!(
+    complete_property_feature!(
+        CssKnownProperty::Gap,
+        "gap",
+        "baseline.property.gap",
+        CssKnownProperty::Gap.aliases()
+    ),
+    complete_property_feature!(
         CssKnownProperty::RowGap,
         "row-gap",
-        "baseline.property.row-gap"
+        "baseline.property.row-gap",
+        CssKnownProperty::RowGap.aliases()
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::ColumnGap,
         "column-gap",
-        "baseline.property.column-gap"
+        "baseline.property.column-gap",
+        CssKnownProperty::ColumnGap.aliases()
     ),
     complete_property_feature!(
         CssKnownProperty::ColumnCount,

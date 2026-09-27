@@ -1150,6 +1150,7 @@ mod column_sizing;
 mod contain_intrinsic_size;
 mod display;
 mod exact_decimal;
+mod gap;
 mod inset;
 mod integer_value;
 mod numeric;
@@ -1182,6 +1183,7 @@ pub use display::{
     CssDisplayBox, CssDisplayInside, CssDisplayInternal, CssDisplayLegacy,
     CssDisplayListItemInside, CssDisplayOutside, CssDisplayValue,
 };
+pub use gap::{CssGapShorthand, CssGapValue};
 pub use inset::{CssInsetPair, CssInsetShorthand, CssInsetValue};
 pub use integer_value::CssIntegerLiteral;
 pub use overflow::CssOverflowValue;

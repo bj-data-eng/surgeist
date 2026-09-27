@@ -734,7 +734,7 @@ CSS-wide and pending values. Migration: structural declaration equality now
 includes grammar identity. Occurrence identity and clone behavior are unchanged.
 
 `grammar.metadata()` and `CssKnownProperty::metadata()` return intrinsic metadata
-for the selected 29 longhands, ten canonical shorthands, `all`, and the legacy
+for schema-annotated longhands and canonical shorthands, `all`, and the legacy
 glyph shorthand. An unannotated recognized property returns
 `CssPropertyMetadataError::Unavailable`; the support catalog remains independently
 available through `property_support_metadata`. Metadata kind is always meaningful:
@@ -752,6 +752,41 @@ members. An authored CSS-wide `initial` remains a global keyword contribution.
 Private fields couple every owned ordinary or initial value to its terminal
 property; metadata availability does not claim complete grammar or shorthand
 coverage beyond the selected slice.
+
+## Authored gap values and legacy names
+
+[Alignment 3 §8.1](https://www.w3.org/TR/2026/WD-css-align-3-20260130/#column-row-gap)
+defines `row-gap` and `column-gap` as `normal` or a nonnegative
+length-percentage. `CssGapValue::Normal` and
+`CssGapValue::LengthPercentage(CssSpecifiedNonNegativeLengthPercentage)` keep
+those alternatives typed. Negative literal lengths and percentages are invalid;
+symbolic percentages and math retain their authored meaning for later contextual
+resolution. Both longhands start at `normal` and are not inherited.
+
+[Alignment 3 §8.2](https://www.w3.org/TR/2026/WD-css-align-3-20260130/#gap-shorthand)
+defines `gap` as one row value and an optional column value. `CssGapShorthand`
+preserves that authored arity: `row()` returns the first value,
+`authored_column()` reports whether a second was supplied, and `column()`
+returns the effective second value, repeating the row value when omitted.
+Intrinsic expansion emits `row-gap` then `column-gap`, with no reset-only
+members. CSS-wide keywords apply to both; a substitution-dependent value
+stays pending until strict reentry checks the same grammar and emits complete
+contributions or a typed error.
+
+[Alignment 3 §8.4](https://www.w3.org/TR/2026/WD-css-align-3-20260130/#gap-legacy)
+requires `grid-row-gap`, `grid-column-gap`, and `grid-gap` as name-equivalent
+aliases of those three canonical properties. The `grid-` spelling does not
+restrict the grammar to grid containers. Lookup, support metadata, and parsed
+values use the canonical property identity while `parsed_name()` retains the
+original spelling and source origin. The value serializers are bounded and
+preserve one- versus two-value specified form; they do not serialize an entire
+stylesheet or resolve used gaps in grid, flex, or multicolumn layout.
+
+Migration: `CssGapPropertyValue`, `CssRowGapPropertyValue`, and
+`CssColumnGapPropertyValue` now expose typed `current()` values. Replace former
+`CssLength` and `i01_subset()` consumers with `CssGapShorthand` for `gap` and
+`CssGapValue` for the longhands. The old lossy compatibility projection is
+removed in this coordinated API change.
 
 ## Immutable stylesheet normalization
 

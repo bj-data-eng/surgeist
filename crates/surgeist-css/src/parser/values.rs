@@ -83,20 +83,6 @@ pub(super) fn parse_shadow_blur_length<'i, 't>(
     parse_length_with(input, numeric, LengthGrammar::ShadowBlur)
 }
 
-pub(super) fn parse_gap_value<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssLength, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("normal"))
-        .is_ok()
-    {
-        Ok(CssLength::Normal)
-    } else {
-        parse_length_with(input, numeric, LengthGrammar::Gap)
-    }
-}
-
 #[derive(Clone, Copy)]
 pub(super) enum LengthGrammar {
     BoxSize,
@@ -107,7 +93,6 @@ pub(super) enum LengthGrammar {
     BorderSpacing,
     Clip,
     OutlineOffset,
-    Gap,
     FontSize,
     LineHeight,
     TextIndent,
@@ -127,7 +112,6 @@ impl LengthGrammar {
             self,
             Self::BoxSize
                 | Self::FlowTolerance
-                | Self::Gap
                 | Self::FontSize
                 | Self::LineHeight
                 | Self::TextIndent
@@ -148,7 +132,7 @@ impl LengthGrammar {
     }
 
     const fn allows_normal(self) -> bool {
-        matches!(self, Self::Gap | Self::LineHeight)
+        matches!(self, Self::LineHeight)
     }
 
     const fn allows_line_width_keyword(self) -> bool {
@@ -160,7 +144,6 @@ impl LengthGrammar {
             self,
             Self::BoxSize
                 | Self::FlowTolerance
-                | Self::Gap
                 | Self::FontSize
                 | Self::LineHeight
                 | Self::TextIndent
@@ -196,7 +179,6 @@ impl LengthGrammar {
             Self::BorderSpacing => "border-spacing",
             Self::Clip => "clip",
             Self::OutlineOffset => "outline-offset",
-            Self::Gap => "gap",
             Self::FontSize => "font-size",
             Self::LineHeight => "line-height",
             Self::TextIndent => "text-indent",

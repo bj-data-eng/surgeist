@@ -8225,17 +8225,29 @@ fn parses_calc_in_edge_shorthands() {
 
 #[test]
 fn parses_authored_normal_gap_without_canonicalizing_it() {
-    let value = declaration_value!(".panel { gap: normal; }", Gap);
-    assert_eq!(value, CssLength::Normal);
+    let declaration = declaration(".panel { gap: normal; }", CssProperty::Gap);
+    let CssKnownPropertyValueRef::Gap(value) =
+        declaration.known().unwrap().property_value().unwrap()
+    else {
+        panic!("gap wrapper")
+    };
+    assert_eq!(value.current().row(), &CssGapValue::Normal);
+    assert!(value.current().authored_column().is_none());
+    assert_eq!(value.as_css(), "normal");
 }
 
 #[test]
 fn parses_authored_calc_gap_without_canonicalizing_it() {
-    let value = declaration_value!(".panel { gap: calc(8px + 2%); }", Gap);
-    match value {
-        CssLength::Calc(calc) => {
-            assert!(calc.uses_percentage());
-            assert_eq!(calc.to_css_string(), "calc(8px + 2%)");
+    let declaration = declaration(".panel { gap: calc(8px + 2%); }", CssProperty::Gap);
+    let CssKnownPropertyValueRef::Gap(value) =
+        declaration.known().unwrap().property_value().unwrap()
+    else {
+        panic!("gap wrapper")
+    };
+    match value.current().row() {
+        CssGapValue::LengthPercentage(length) => {
+            assert!(length.calculation().is_some());
+            assert_eq!(value.as_css(), "calc(8px + 2%)");
         }
         other => panic!("expected calc gap, got {other:?}"),
     }

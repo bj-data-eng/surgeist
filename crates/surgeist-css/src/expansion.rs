@@ -16,6 +16,7 @@ use crate::border_style::*;
 use crate::border_width::*;
 use crate::box_spacing::*;
 use crate::contain_intrinsic_size::*;
+use crate::gap::{CssGapShorthand, CssGapValue};
 use crate::inset::*;
 use crate::overflow::CssOverflowValue;
 use crate::overflow_controls::{CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter};
