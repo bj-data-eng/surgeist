@@ -2621,5 +2621,32 @@
       "decision": "Preserve the defined physical and prefixed-logical authored grammars of margin, padding, border-width, border-style, border-color, scroll-margin and scroll-padding, but report unresolved complete target/reset membership instead of publishing only four assignments as completed expansion. Logical-axis pairs and longhands retain their defined intrinsic metadata and expansion.",
       "justification": "Logical 1 section 4.7 defines logical? followed by one to four values and their role order despite warning that the marker may change. Its separate express issue 3030 leaves whether these shorthands expand to both physical and logical sets unresolved. The physical Box 3 and Backgrounds 3 definitions and the logical assignment example do not decide complementary resets. This is a source-defined limit on complete expansion, including CSS-wide values and valid substitution reentry; it does not excuse incomplete parsing or serialization. Writing-mode mapping and cascade remain separate downstream requirements."
     }
+  ],
+  "unresolved_requirements": [
+    {
+      "id": "glyph-orientation-vertical-numeric-terminal-spelling",
+      "owner": "css",
+      "phase": "authored grammar",
+      "selected_sources": [
+        "https://www.w3.org/TR/2019/REC-css-writing-modes-3-20191210/#glyph-orientation",
+        "https://www.w3.org/TR/2019/CR-css-writing-modes-4-20190730/#glyph-orientation",
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#component-types"
+      ],
+      "explanatory_issue": "https://github.com/w3c/csswg-drafts/issues/8032",
+      "unresolved": "The five terminals and their keyword mapping are explicit, but the selected Writing Modes sections supply no numeric data-type production for the 0 and 90 terminals. The unitless integer/number distinction and alternate equivalent lexical spellings are not settled. Preserve the documented literal compatibility subset without classifying every other spelling as valid or invalid."
+    },
+    {
+      "id": "glyph-orientation-vertical-math-applicability",
+      "owner": "css",
+      "phase": "authored grammar and finite keyword mapping",
+      "selected_sources": [
+        "https://www.w3.org/TR/2019/REC-css-writing-modes-3-20191210/#glyph-orientation",
+        "https://www.w3.org/TR/2019/CR-css-writing-modes-4-20190730/#glyph-orientation",
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#math",
+        "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-range"
+      ],
+      "explanatory_issue": "https://github.com/w3c/csswg-drafts/issues/8032",
+      "unresolved": "The selected sources do not define whether math functions apply to the finite legacy terminals or how units, nonlisted and nonfinite results, and contextual evaluation connect to its keyword-only text-orientation target. Do not admit or reject math normatively or add a deferred numeric target without that bridge."
+    }
   ]
 }

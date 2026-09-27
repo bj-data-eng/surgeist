@@ -51,12 +51,16 @@ pub enum CssFeatureKind {
 ///
 /// The three states are closed for I01: callers can distinguish a complete
 /// production, a documented supported subset, and a recognized spelling that
-/// is never retained as that production.
+/// is never retained as that production. A partial remainder describes scope
+/// not claimed as supported; it does not establish that every remainder form
+/// is valid CSS. Consult the cited standard for normative validity.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum CssSupportStatus {
     /// The complete identified production is implemented.
     Complete,
-    /// Only the record's documented supported subset is implemented.
+    /// Only the record's documented supported subset is implemented. The
+    /// remainder may be known-valid unimplemented syntax or unresolved standard
+    /// applicability; this status alone does not classify its validity.
     Partial,
     /// The spelling is recognized but the production is not implemented.
     RecognizedUnsupported,
@@ -561,7 +565,10 @@ impl CssFeatureMetadata {
         self.supported_subset
     }
 
-    /// Returns the non-empty valid-but-unsupported description exactly for partial records.
+    /// Returns the non-empty scope not claimed as supported exactly for partial
+    /// records. The description may identify known-valid unimplemented syntax
+    /// or explicitly unresolved standard applicability; neither this accessor
+    /// nor [`CssSupportStatus::Partial`] proves that every remainder form is valid.
     #[must_use]
     pub const fn unsupported_remainder(&self) -> Option<&'static str> {
         self.unsupported_remainder
@@ -5974,12 +5981,14 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 613] = [
         "#propdef-mix-blend-mode",
         &[],
     ),
-    CssFeatureMetadata::complete(
+    CssFeatureMetadata::partial(
         "official.property-alias.glyph-orientation-vertical",
         CssFeatureKind::PropertyAlias,
         "glyph-orientation-vertical",
         O_WRITING3,
         "#propdef-glyph-orientation-vertical",
+        "Decoded auto, integer-flag unitless 0 and 90, and exact degree-valued 0deg and 90deg (including equivalent authored degree spellings) map to text-orientation mixed, upright, and sideways.",
+        "Unresolved by the selected standard: numeric-terminal spelling, including unitless integer/number distinctions and alternate lexical forms, and math applicability to finite keyword mapping (CSSWG issue 8032).",
     ),
     CssFeatureMetadata::complete(
         "official.property.page-break-before",

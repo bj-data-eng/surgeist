@@ -136,7 +136,7 @@ fn five_explicit_alias_mappings_retain_authored_tokens_and_one_target() {
                 declaration.value_components().serialize().unwrap().as_css(),
                 authored
             );
-            mapped(declaration, orientation.clone(), authored);
+            mapped(declaration, orientation, authored);
             let item = contribution(declaration);
             assert!(matches!(
                 item.value(),

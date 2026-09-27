@@ -3676,9 +3676,9 @@ fn c12_property_metadata_is_truthful() {
     assert_eq!(alias.spelling(), "glyph-orientation-vertical");
     assert_eq!(alias.source().id().as_str(), "O-WRITING3");
     assert_eq!(alias.production(), "#propdef-glyph-orientation-vertical");
-    assert_eq!(alias.status(), CssSupportStatus::Complete);
-    assert_eq!(alias.supported_subset(), None);
-    assert_eq!(alias.unsupported_remainder(), None);
+    assert_eq!(alias.status(), CssSupportStatus::Partial);
+    assert!(alias.supported_subset().is_some());
+    assert!(alias.unsupported_remainder().is_some());
     assert_eq!(alias.recognized_unsupported_code(), None);
     assert!(alias.baseline_alias_targets().is_empty());
     let alias_report = parse_style_attribute("glyph-orientation-vertical: 90");

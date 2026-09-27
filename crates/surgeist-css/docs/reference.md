@@ -1629,6 +1629,15 @@ aliases, reserved slots, exclusions, or implementation inventories does not
 change accepted CSS, retained syntax, diagnostics, positions, spans, or
 recovery actions.
 
+`Partial` means only the record's documented subset is implemented.
+`supported_subset()` and `unsupported_remainder()` are present exactly for
+partial records. The latter names scope not claimed as supported: it can be a
+known-valid implementation gap or explicitly unresolved applicability in the
+selected standard. Consumers must not infer validity from `Partial` or a
+nonempty remainder. Use parsing for implemented acceptance and the cited
+standard for normative validity. This is a semantic migration for consumers
+that previously treated every remainder as valid-but-unimplemented syntax.
+
 ## Namespaces and complete Selectors 3 syntax
 
 `CssRule::Namespace` retains a top-level `@namespace` declaration with its
@@ -1865,13 +1874,21 @@ performing cascade, layout, pagination, painting, hit testing, containment
 semantics, blending, or writing-mode resolution.
 
 `glyph-orientation-vertical` is the selected Writing Modes legacy shorthand,
-not a name-equivalent schema alias. Its restricted `auto`, `0`, `0deg`, `90`,
-and `90deg` grammar maps to a parser-produced `text-orientation` declaration.
+not a name-equivalent schema alias. Its implemented compatibility subset admits
+decoded `auto`, unitless integer-flag `0` and `90`, and exact degree-valued
+`0deg` and `90deg`, mapping to a parser-produced `text-orientation` declaration.
 Degree dimensions must equal zero or ninety in their exact authored numeric
 spelling: `9e1deg` is accepted, while `90.000001deg` and `1e-100deg` are rejected.
 The schema therefore keeps `CssKnownProperty::TextOrientation.aliases()` empty,
 while the conformance catalog exposes the explicit
-`official.property-alias.glyph-orientation-vertical` record.
+`official.property-alias.glyph-orientation-vertical` record. That record is
+`Partial`: the selected [Writing Modes 3 §5.1.3](https://www.w3.org/TR/2019/REC-css-writing-modes-3-20191210/#glyph-orientation)
+and [Writing Modes 4 §5.1.3](https://www.w3.org/TR/2019/CR-css-writing-modes-4-20190730/#glyph-orientation)
+specify the five terminals and mapping but leave numeric-terminal spelling and
+math applicability without a defined bridge to the finite keyword target
+([CSSWG issue 8032](https://github.com/w3c/csswg-drafts/issues/8032)). The parser
+continues to enforce its documented compatibility subset; this metadata does
+not declare every other spelling or math expression invalid CSS.
 
 ```rust
 use surgeist_css::{
@@ -1900,15 +1917,16 @@ assert_eq!(
 let alias = feature_metadata("official.property-alias.glyph-orientation-vertical")
     .expect("legacy alias metadata");
 assert_eq!(alias.kind(), CssFeatureKind::PropertyAlias);
-assert_eq!(alias.status(), CssSupportStatus::Complete);
+assert_eq!(alias.status(), CssSupportStatus::Partial);
 ```
 
-These 27 official rows are public `Complete` atomic records: 24 canonical
-properties, the explicit legacy shorthand, and the independent
-`official.value.box-edge-keywords` and `official.value.blend-mode` shared-value
-records. This activation does not inflate the immutable ledger or promote later
-work: it remains 162 property units (161 canonical properties plus the custom
-property family), one normative legacy shorthand, and 167 non-property units.
+These 27 official rows are public atomic records: 24 canonical properties and
+the independent `official.value.box-edge-keywords` and
+`official.value.blend-mode` shared-value records are `Complete`; the explicit
+legacy shorthand is `Partial`. This activation does not inflate the immutable
+ledger or promote later work: it remains 162 property units (161 canonical
+properties plus the custom property family), one normative legacy shorthand,
+and 167 non-property units.
 The unchanged 131-row exclusion registry still includes exactly 50 superseded
 CSS2 property definitions, 20 informative CSS2 Appendix A properties, and the
 two current-production-less `glyph-orientation-horizontal` and `ime-mode`

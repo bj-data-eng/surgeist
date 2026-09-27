@@ -39,7 +39,15 @@ shows the distinction.
 
 ## Support metadata describes a selected surface
 
-The independent support catalog reports an exact support status for each declared conformance production: `Complete`, `Partial`, or `RecognizedUnsupported`. Partial records document both the accepted subset and valid-but-unsupported remainder. A clean use of a partial production's supported subset is accepted; status is metadata about the whole named production, not a parse-result validity flag.
+The independent support catalog reports an exact support status for each
+declared conformance production: `Complete`, `Partial`, or
+`RecognizedUnsupported`. Partial records document both the accepted subset and
+scope not claimed as supported. That remainder may be known-valid unimplemented
+syntax or explicitly unresolved standard applicability; its presence does not
+establish that every form it describes is valid CSS. A clean use of a partial
+production's supported subset is accepted; status is metadata about the whole
+named production, not a parse-result validity flag. Use the parser for
+implemented acceptance and the cited standard for normative validity.
 
 The catalog records named productions and their source provenance. It is not a
 claim that all CSS, every module at a given stability tier, or every valid future

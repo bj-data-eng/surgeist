@@ -192,6 +192,16 @@ factor and generated mix-share precision are implementation selections folded
 into those decisions; ordinary alpha omission follows the selected normative
 order rather than creating another source conflict.
 
+The top-level `unresolved_requirements` names two separate Writing Modes legacy
+`glyph-orientation-vertical` questions: alternate numeric-terminal spelling,
+including the unitless integer/number distinction, and math applicability with
+finite keyword mapping. Each record cites the selected Writing Modes and Values
+sections and identifies CSSWG issue 8032 as explanatory discussion, not a
+normative resolution. The five explicit terminals and their mapping remain
+implemented; these records do not select another module or expand parser
+admission. The public alias feature is `Partial` because its remainder is scope
+not claimed as supported, rather than a claim that all other forms are valid.
+
 ## Applying the catalog
 
 Read `selection_policy`, `authored_scope_definitions`, and `owners` before using

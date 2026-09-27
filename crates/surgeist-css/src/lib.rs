@@ -676,8 +676,10 @@
 //! `glyph-orientation-vertical` is an explicit restricted legacy shorthand that maps to a
 //! parser-produced [`CssKnownProperty::TextOrientation`] value. It is not a name-equivalent
 //! schema alias: [`CssKnownProperty::aliases`] remains empty for `TextOrientation`, while
-//! [`feature_metadata`] exposes its distinct [`CssFeatureKind::PropertyAlias`] record. The
-//! shared box-edge and blend-mode productions likewise have independent complete records.
+//! [`feature_metadata`] exposes its distinct [`CssFeatureKind::PropertyAlias`] record. That
+//! record is partial: the admitted literal mapping is supported, while numeric-terminal
+//! spelling and math applicability remain unresolved by the selected standards. The shared
+//! box-edge and blend-mode productions have independent complete records.
 //!
 //! ```
 //! use surgeist_css::{
@@ -706,7 +708,7 @@
 //! let alias = feature_metadata("official.property-alias.glyph-orientation-vertical")
 //!     .expect("legacy alias metadata");
 //! assert_eq!(alias.kind(), CssFeatureKind::PropertyAlias);
-//! assert_eq!(alias.status(), CssSupportStatus::Complete);
+//! assert_eq!(alias.status(), CssSupportStatus::Partial);
 //! ```
 //!
 //! # Media, supports, imports, and prelude recovery
@@ -1011,8 +1013,10 @@
 //! [`feature_catalog`] describes each declared conformance production as
 //! [`CssSupportStatus::Complete`], [`CssSupportStatus::Partial`], or
 //! [`CssSupportStatus::RecognizedUnsupported`]. Partial records state both their
-//! accepted subset and valid-but-unsupported remainder. A diagnostic-free use of
-//! a partial production's accepted subset is still a clean parse.
+//! accepted subset and scope not claimed as supported. A remainder may describe
+//! known-valid unimplemented syntax or unresolved standard applicability; it does
+//! not establish that every other form is valid CSS. A diagnostic-free use of a
+//! partial production's accepted subset is still a clean parse.
 //!
 //! The source registry assigns every selected dated specification or preserved
 //! repository baseline a stable [`CssSpecificationSourceId`], module, level, and
