@@ -30,7 +30,7 @@ impl CssRatioOperand {
                 Some(&component),
             ));
         };
-        let lexical = crate::opacity_scalar::LexicalDecimal::new(number.representation());
+        let lexical = crate::exact_decimal::LexicalDecimal::new(number.representation());
         if lexical.negative {
             return Err(CssNumericConstructionError::at(
                 CssNumericConstructionErrorKind::OutOfRange,
@@ -104,7 +104,7 @@ impl CssRatioOperand {
         else {
             unreachable!("checked ratio number")
         };
-        crate::opacity_scalar::exact_legacy_value(number.representation()).filter(|n| *n > 0.0)
+        crate::exact_decimal::exact_legacy_value(number.representation()).filter(|n| *n > 0.0)
     }
 
     fn append_specified(

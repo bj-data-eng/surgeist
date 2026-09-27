@@ -102,12 +102,12 @@ pub(crate) fn legacy_width(value: &CssBorderWidth) -> Option<CssLength> {
             }
             match length.literal_component()?.view() {
                 CssComponentValueRef::Token(CssValueTokenRef::Number(number)) => {
-                    (crate::opacity_scalar::exact_legacy_value(number.representation())? == 0.0)
+                    (crate::exact_decimal::exact_legacy_value(number.representation())? == 0.0)
                         .then_some(CssLength::Zero)
                 }
                 CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) => {
                     CssLength::try_dimension(
-                        crate::opacity_scalar::exact_legacy_value(number.representation())?,
+                        crate::exact_decimal::exact_legacy_value(number.representation())?,
                         CssLengthUnit::from_css_unit(unit)?,
                     )
                 }

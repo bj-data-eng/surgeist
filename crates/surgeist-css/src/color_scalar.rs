@@ -165,7 +165,7 @@ pub(crate) fn component(
         CssComponentValueRef::Token(CssValueTokenRef::Number(_)) => {
             let value = CssColorNumberLiteral::try_from_component(value)?;
             Ok(
-                match crate::opacity_scalar::exact_legacy_value(value.numeric().representation()) {
+                match crate::exact_decimal::exact_legacy_value(value.numeric().representation()) {
                     Some(n) => CssAuthoredColorComponent::Number(
                         CssFiniteNumber::try_new(n).expect("proved finite"),
                     ),
@@ -176,7 +176,7 @@ pub(crate) fn component(
         CssComponentValueRef::Token(CssValueTokenRef::Percentage(_)) => {
             let value = CssColorPercentageLiteral::try_from_component(value)?;
             Ok(
-                match crate::opacity_scalar::exact_legacy_value(value.numeric().representation()) {
+                match crate::exact_decimal::exact_legacy_value(value.numeric().representation()) {
                     Some(n) => CssAuthoredColorComponent::Percentage(
                         CssFiniteNumber::try_new(n).expect("proved finite"),
                     ),
@@ -200,7 +200,7 @@ pub(crate) fn hue(value: CssComponentValue) -> Result<CssAuthoredHue, CssCompone
     }
     let value = CssColorAngleLiteral::try_from_component(value)?;
     Ok(
-        match crate::opacity_scalar::exact_legacy_value(value.numeric().representation()) {
+        match crate::exact_decimal::exact_legacy_value(value.numeric().representation()) {
             Some(n) => CssAuthoredHue::Angle(
                 CssAngleLiteral::try_new(n, value.unit()).expect("proved finite angle"),
             ),
@@ -238,7 +238,7 @@ pub(crate) fn channel_matches(
         CssAuthoredColorComponent::None => candidate.is_none(),
         CssAuthoredColorComponent::Number(value) => candidate == Some(value.value()),
         CssAuthoredColorComponent::Percentage(value) => candidate.is_some_and(|candidate| {
-            crate::opacity_scalar::binary32_scaled_eq(
+            crate::exact_decimal::binary32_scaled_eq(
                 value.value(),
                 percentage_numerator,
                 percentage_denominator,
@@ -266,10 +266,10 @@ pub(crate) fn hue_matches(current: &CssAuthoredHue, candidate: Option<f32>) -> b
         CssAuthoredHue::Angle(value) => candidate.is_some_and(|candidate| match value.unit() {
             CssAngleUnit::Degrees => candidate == value.value(),
             CssAngleUnit::Gradians => {
-                crate::opacity_scalar::binary32_scaled_eq(value.value(), 9, 10, candidate)
+                crate::exact_decimal::binary32_scaled_eq(value.value(), 9, 10, candidate)
             }
             CssAngleUnit::Turns => {
-                crate::opacity_scalar::binary32_scaled_eq(value.value(), 360, 1, candidate)
+                crate::exact_decimal::binary32_scaled_eq(value.value(), 360, 1, candidate)
             }
             CssAngleUnit::Radians => value.value() == 0.0 && candidate == 0.0,
         }),
@@ -299,8 +299,7 @@ pub(crate) fn relative_matches(
             Value::Percentage(value),
             CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)),
         ) => {
-            crate::opacity_scalar::exact_legacy_value(number.representation())
-                == Some(value.value())
+            crate::exact_decimal::exact_legacy_value(number.representation()) == Some(value.value())
         }
         (
             Value::Angle(value),
@@ -313,7 +312,7 @@ pub(crate) fn relative_matches(
                 CssAngleUnit::Turns => "turn",
             };
             unit.eq_ignore_ascii_case(expected)
-                && crate::opacity_scalar::exact_legacy_value(number.representation())
+                && crate::exact_decimal::exact_legacy_value(number.representation())
                     == Some(value.value())
         }
         (Value::Channel(channel), CssComponentValueRef::Token(CssValueTokenRef::Ident(name))) => {
@@ -351,7 +350,7 @@ mod tests {
             "1e-99999999999999999999999999999999999999",
         ] {
             assert!(
-                crate::opacity_scalar::LexicalDecimal::new(text).in_percentage_range(),
+                crate::exact_decimal::LexicalDecimal::new(text).in_percentage_range(),
                 "{text}"
             );
         }
@@ -361,14 +360,14 @@ mod tests {
             "100.0000000000000000000001",
         ] {
             assert!(
-                !crate::opacity_scalar::LexicalDecimal::new(text).in_percentage_range(),
+                !crate::exact_decimal::LexicalDecimal::new(text).in_percentage_range(),
                 "{text}"
             );
         }
         let equal = format!("1{}e-{}", "0".repeat(4096), 4094);
-        assert!(crate::opacity_scalar::LexicalDecimal::new(&equal).in_percentage_range());
+        assert!(crate::exact_decimal::LexicalDecimal::new(&equal).in_percentage_range());
         let above = format!("100.{}1", "0".repeat(4096));
-        assert!(!crate::opacity_scalar::LexicalDecimal::new(&above).in_percentage_range());
+        assert!(!crate::exact_decimal::LexicalDecimal::new(&above).in_percentage_range());
     }
     #[test]
     fn coefficient_formatting_has_explicit_scale_and_suffix_budget() {
@@ -387,7 +386,7 @@ mod tests {
     }
     #[test]
     fn frozen_ratio_proofs_do_not_round_or_underflow() {
-        use crate::opacity_scalar::binary32_scaled_eq as equal;
+        use crate::exact_decimal::binary32_scaled_eq as equal;
         assert!(equal(25.0, 1, 100, 0.25));
         assert!(equal(100.0, 1, 1, 100.0));
         assert!(equal(20.0, 5, 4, 25.0));

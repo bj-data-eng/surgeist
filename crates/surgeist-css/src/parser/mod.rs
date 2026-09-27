@@ -25,7 +25,9 @@ pub use fragments::{
     parse_property_value_text_for_grammar, parse_rule, parse_selector, parse_selector_list,
     parse_style_block,
 };
+mod color;
 mod container_properties;
+mod container_query;
 mod container_scroll;
 mod container_style;
 mod generated_content;
@@ -37,6 +39,7 @@ mod multicolumn;
 mod nesting;
 mod overflow_controls;
 mod page;
+mod position;
 mod queries;
 mod query_components;
 // Shared checked media construction uses the same private admission engine.
@@ -78,8 +81,16 @@ use border_radius::*;
 use border_width::*;
 use box_model::*;
 use box_spacing::*;
+use color::parse_color;
+pub(crate) use color::{adapt_legacy_relative_expression, numeric_relative_channel};
 use contain_intrinsic_size::*;
 use container_properties::*;
+#[cfg(test)]
+pub(crate) use container_query::parse_container_condition_for_test;
+use container_query::{collect_container_components, container_prelude_from_components};
+pub(crate) use container_query::{
+    construct_container_condition, construct_container_prelude, container_condition_from_enclosed,
+};
 use counter_style::{parse_counter_style_name, parse_counter_style_rule};
 use effects::*;
 use font_face::parse_font_face_rule;
@@ -92,14 +103,10 @@ use multicolumn::*;
 use nesting::{parse_style_contents, parse_style_rule_block};
 use overflow_controls::*;
 use page::{parse_page_rule, parse_page_selector};
-#[cfg(test)]
-pub(crate) use queries::parse_container_condition_for_test;
+use position::*;
 use queries::parse_media_query_list as parse_media_query_list_inner;
 #[cfg(test)]
 pub(crate) use queries::parse_media_query_list_for_test;
-pub(crate) use queries::{
-    construct_container_condition, construct_container_prelude, container_condition_from_enclosed,
-};
 use recovery::{
     GroupKind, RecoveryLoopOutcome, RecoveryProgress, RecoveryState, StructuralParent,
     StructuralPreflightOutcome, StyleContextCaptures, preflight_specialized_eof_limit,
@@ -118,7 +125,6 @@ use supports::{
 use timing::*;
 use typography::*;
 use values::*;
-pub(crate) use values::{adapt_legacy_relative_expression, numeric_relative_channel};
 pub(crate) use variables::contains_substitution;
 use variables::{
     collect_authored_declaration_value, parse_custom_property_name, parse_custom_property_value,
@@ -3060,9 +3066,8 @@ fn parse_container_prelude<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &RecoveryState,
 ) -> std::result::Result<CssContainerPrelude, ParseError<'i, Error>> {
-    let (values, implicit) = queries::collect_container_components(source, input, recovery)?;
-    let prelude =
-        queries::container_prelude_from_components(values, input.current_source_location())?;
+    let (values, implicit) = collect_container_components(source, input, recovery)?;
+    let prelude = container_prelude_from_components(values, input.current_source_location())?;
     recovery.retain_component_closures(implicit);
     Ok(prelude)
 }

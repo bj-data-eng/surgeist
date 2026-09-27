@@ -1140,6 +1140,7 @@ mod color_scalar;
 mod column_sizing;
 mod contain_intrinsic_size;
 mod display;
+mod exact_decimal;
 mod inset;
 mod integer_value;
 mod numeric;

@@ -350,17 +350,17 @@ fn inset_i01_projection(value: &CssInsetValue) -> Option<CssLength> {
             let component = value.literal_component()?;
             match component.view() {
                 CssComponentValueRef::Token(CssValueTokenRef::Number(number)) => {
-                    (crate::opacity_scalar::exact_legacy_value(number.representation())? == 0.0)
+                    (crate::exact_decimal::exact_legacy_value(number.representation())? == 0.0)
                         .then_some(CssLength::Zero)
                 }
                 CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) => {
-                    CssLength::try_percent(crate::opacity_scalar::exact_legacy_value(
+                    CssLength::try_percent(crate::exact_decimal::exact_legacy_value(
                         number.representation(),
                     )?)
                 }
                 CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) => {
                     CssLength::try_dimension(
-                        crate::opacity_scalar::exact_legacy_value(number.representation())?,
+                        crate::exact_decimal::exact_legacy_value(number.representation())?,
                         CssLengthUnit::from_css_unit(unit)?,
                     )
                 }

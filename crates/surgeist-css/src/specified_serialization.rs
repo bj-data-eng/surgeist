@@ -340,17 +340,17 @@ impl CssOpacityValue {
             ));
         }
         match self {
-            Self::Literal(value) => crate::opacity_scalar::serialize_binary32(
+            Self::Literal(value) => crate::exact_decimal::serialize_binary32(
                 value.value(),
                 false,
                 limits.max_css_bytes(),
             ),
-            Self::Number(value) => crate::opacity_scalar::serialize_binary32(
+            Self::Number(value) => crate::exact_decimal::serialize_binary32(
                 value.value(),
                 false,
                 limits.max_css_bytes(),
             ),
-            Self::Percentage(value) => crate::opacity_scalar::serialize_binary32(
+            Self::Percentage(value) => crate::exact_decimal::serialize_binary32(
                 value.value(),
                 true,
                 limits.max_css_bytes(),
@@ -453,7 +453,7 @@ mod composed_value_tests {
 }
 
 pub(crate) fn format_lexical_shift(text: &str, shift: i128, limit: usize) -> Result<String> {
-    let value = crate::opacity_scalar::LexicalDecimal::new(text);
+    let value = crate::exact_decimal::LexicalDecimal::new(text);
     let exponent = value
         .exponent
         .and_then(|e| e.checked_add(shift))

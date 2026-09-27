@@ -1,7 +1,8 @@
+use super::color::parse_color;
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::values::{
-    CalculationRoot, LengthGrammar, next_is_comma, parse_color, parse_integer, parse_length_with,
+    CalculationRoot, LengthGrammar, next_is_comma, parse_integer, parse_length_with,
     parse_numeric_function,
 };
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
@@ -225,7 +226,7 @@ pub(super) fn parse_glyph_orientation_vertical<'i, 't>(
                 crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension {
                     number,
                     ..
-                }) => match crate::opacity_scalar::exact_legacy_value(number.representation()) {
+                }) => match crate::exact_decimal::exact_legacy_value(number.representation()) {
                     Some(0.0) => Some(CssTextOrientation::Upright),
                     Some(90.0) => Some(CssTextOrientation::Sideways),
                     _ => None,

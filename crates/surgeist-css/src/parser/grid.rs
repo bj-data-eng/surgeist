@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::values::{
@@ -635,72 +633,24 @@ pub(super) fn parse_grid_template_area_row<'i>(
     }
 }
 
-#[derive(Clone, Copy)]
-pub(super) struct GridAreaBounds {
-    min_row: usize,
-    max_row: usize,
-    min_col: usize,
-    max_col: usize,
-    count: usize,
-}
-
 pub(super) fn validate_grid_template_area_rectangles<'i, 't>(
     rows: &[CssGridTemplateAreaRow],
     input: &Parser<'i, 't>,
 ) -> std::result::Result<(), ParseError<'i, Error>> {
-    if rows.is_empty() {
-        return Err(unsupported_value(
-            input,
-            None,
-            "grid-template-areas is missing rows",
-        ));
-    }
-
-    let width = rows[0].cells().len();
-    let mut bounds = HashMap::<String, GridAreaBounds>::new();
-    for (row_index, row) in rows.iter().enumerate() {
-        if row.cells().len() != width {
-            return Err(unsupported_value(
-                input,
-                None,
-                "grid-template-areas rows have inconsistent widths",
-            ));
-        }
-        for (col_index, cell) in row.cells().iter().enumerate() {
-            let CssGridTemplateAreaCell::Named(name) = cell else {
-                continue;
-            };
-            bounds
-                .entry(name.as_str().to_owned())
-                .and_modify(|bounds| {
-                    bounds.min_row = bounds.min_row.min(row_index);
-                    bounds.max_row = bounds.max_row.max(row_index);
-                    bounds.min_col = bounds.min_col.min(col_index);
-                    bounds.max_col = bounds.max_col.max(col_index);
-                    bounds.count += 1;
-                })
-                .or_insert(GridAreaBounds {
-                    min_row: row_index,
-                    max_row: row_index,
-                    min_col: col_index,
-                    max_col: col_index,
-                    count: 1,
-                });
-        }
-    }
-
-    for (name, bounds) in bounds {
-        let rectangle_area =
-            (bounds.max_row - bounds.min_row + 1) * (bounds.max_col - bounds.min_col + 1);
-        if rectangle_area != bounds.count {
-            return Err(unsupported_value(
-                input,
-                None,
-                format!("grid template area `{name}` is not rectangular"),
-            ));
-        }
-    }
-    Ok(())
+    validate_grid_template_area_rows(rows).map_err(|issue| {
+        let message = match issue {
+            GridAreaValidationError::MissingRows => {
+                "grid-template-areas is missing rows".to_owned()
+            }
+            GridAreaValidationError::EmptyRow | GridAreaValidationError::InconsistentWidths => {
+                "grid-template-areas rows have inconsistent widths".to_owned()
+            }
+            GridAreaValidationError::NonRectangular(name) => {
+                format!("grid template area `{name}` is not rectangular")
+            }
+        };
+        unsupported_value(input, None, message)
+    })
 }
 
 pub(super) fn parse_grid_template<'i, 't>(

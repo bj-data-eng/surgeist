@@ -1,10 +1,10 @@
 use cssparser::{ParseError, Parser, ParserInput, ToCss, Token, match_ignore_ascii_case};
 
 use super::background::{
-    parse_background_repeat, parse_background_size, parse_css_position, parse_css_position_legacy,
-    parse_css_position_value, parse_image_layer, parse_url,
+    parse_background_repeat, parse_background_size, parse_image_layer, parse_url,
 };
 use super::box_model::{expand_radius_components, parse_drop_shadow};
+use super::position::{parse_css_position, parse_css_position_legacy, parse_css_position_value};
 use super::values::{
     CalculationRoot, LengthGrammar, checked_percentage_value, next_is_comma, next_is_delim,
     next_is_ident, parse_length_with, parse_length_with_context, parse_literal_length_with_context,

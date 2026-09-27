@@ -1,7 +1,8 @@
+use super::color::parse_color;
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::values::{
-    CalculationRoot, LengthGrammar, parse_color, parse_length_with_context, parse_numeric_function,
+    CalculationRoot, LengthGrammar, parse_length_with_context, parse_numeric_function,
 };
 use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;

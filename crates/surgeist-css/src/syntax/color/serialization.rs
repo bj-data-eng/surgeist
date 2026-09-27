@@ -1,6 +1,7 @@
 //! Canonical specified-color serialization over checked authored graphs.
 
 use super::*;
+use crate::CssAngleUnit;
 use crate::{
     CssSpecifiedValueSerializationError as Error, CssSpecifiedValueSerializationLimits as Limits,
     specified_serialization::SpecifiedSerializationContext,
@@ -327,14 +328,14 @@ fn frozen_mix_weight_texts(
     for (index, percentage) in percentages.into_iter().enumerate() {
         context.charge_input(usize::from(percentage.is_some()))?;
         let exact = if let Some(percentage) = percentage {
-            crate::opacity_scalar::ExactRational::from_binary32_factor(
+            crate::exact_decimal::ExactRational::from_binary32_factor(
                 percentage,
                 exact_factor(Factor::ONE),
                 context,
             )?
         } else {
             let explicit = percentages[explicit_index].expect("selected weight is explicit");
-            crate::opacity_scalar::ExactRational::from_binary32_factor(
+            crate::exact_decimal::ExactRational::from_binary32_factor(
                 explicit,
                 exact_factor(Factor::ONE),
                 context,
@@ -621,7 +622,7 @@ impl Factor {
 struct ProjectedScalar {
     text: String,
     number: Option<ScaledNumber>,
-    exact: Option<crate::opacity_scalar::ExactRational>,
+    exact: Option<crate::exact_decimal::ExactRational>,
     contextual: bool,
     missing: bool,
     percentage: bool,
@@ -661,7 +662,7 @@ impl ScaledNumber {
         Self::new(value, 0)
     }
 
-    fn from_exact(value: &crate::opacity_scalar::ExactRational) -> Result<Self> {
+    fn from_exact(value: &crate::exact_decimal::ExactRational) -> Result<Self> {
         let (coefficient, exponent) = value.scaled_binary64()?;
         Ok(Self::new(coefficient, exponent))
     }
@@ -791,8 +792,8 @@ enum ComponentTarget {
     Percentage,
 }
 
-fn exact_factor(value: Factor) -> crate::opacity_scalar::ExactFactor {
-    crate::opacity_scalar::ExactFactor {
+fn exact_factor(value: Factor) -> crate::exact_decimal::ExactFactor {
+    crate::exact_decimal::ExactFactor {
         numerator: value.numerator,
         denominator: value.denominator,
     }
@@ -804,7 +805,7 @@ fn exact_text(
     rounded_places: Option<usize>,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<String> {
-    let value = crate::opacity_scalar::ExactRational::from_lexical_factor(
+    let value = crate::exact_decimal::ExactRational::from_lexical_factor(
         representation,
         exact_factor(factor),
         context,
@@ -821,7 +822,7 @@ fn finite_text(
     rounded_places: Option<usize>,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<String> {
-    let exact = crate::opacity_scalar::ExactRational::from_binary32_factor(
+    let exact = crate::exact_decimal::ExactRational::from_binary32_factor(
         value,
         exact_factor(factor),
         context,
@@ -879,7 +880,7 @@ fn component_projection_with_text(
         C::ExactNumber(value) => {
             context.charge_input(1)?;
             let representation = value.numeric().representation();
-            let exact = crate::opacity_scalar::ExactRational::from_lexical_factor(
+            let exact = crate::exact_decimal::ExactRational::from_lexical_factor(
                 representation,
                 exact_factor(number_factor),
                 context,
@@ -905,7 +906,7 @@ fn component_projection_with_text(
         C::ExactPercentage(value) => {
             context.charge_input(1)?;
             let representation = value.numeric().representation();
-            let exact = crate::opacity_scalar::ExactRational::from_lexical_factor(
+            let exact = crate::exact_decimal::ExactRational::from_lexical_factor(
                 representation,
                 exact_factor(percentage_factor),
                 context,
@@ -930,7 +931,7 @@ fn component_projection_with_text(
         }
         C::Number(value) => {
             context.charge_input(1)?;
-            let exact = crate::opacity_scalar::ExactRational::from_binary32_factor(
+            let exact = crate::exact_decimal::ExactRational::from_binary32_factor(
                 value.value(),
                 exact_factor(number_factor),
                 context,
@@ -953,7 +954,7 @@ fn component_projection_with_text(
         }
         C::Percentage(value) => {
             context.charge_input(1)?;
-            let exact = crate::opacity_scalar::ExactRational::from_binary32_factor(
+            let exact = crate::exact_decimal::ExactRational::from_binary32_factor(
                 value.value(),
                 exact_factor(percentage_factor),
                 context,
@@ -1122,7 +1123,7 @@ fn alpha_literal(
     } else {
         Factor::ONE
     };
-    let value = crate::opacity_scalar::ExactRational::from_lexical_factor_clamped_unit(
+    let value = crate::exact_decimal::ExactRational::from_lexical_factor_clamped_unit(
         representation,
         exact_factor(factor),
         context,
@@ -1151,7 +1152,7 @@ fn alpha_finite(
     } else {
         Factor::ONE
     };
-    let value = crate::opacity_scalar::ExactRational::from_binary32_factor(
+    let value = crate::exact_decimal::ExactRational::from_binary32_factor(
         value,
         exact_factor(factor),
         context,
@@ -1502,12 +1503,12 @@ fn serialize_hsl(
 }
 
 fn exact_hsl_text(
-    hue: &crate::opacity_scalar::ExactRational,
-    saturation: &crate::opacity_scalar::ExactRational,
-    lightness: &crate::opacity_scalar::ExactRational,
+    hue: &crate::exact_decimal::ExactRational,
+    saturation: &crate::exact_decimal::ExactRational,
+    lightness: &crate::exact_decimal::ExactRational,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<[String; 3]> {
-    use crate::opacity_scalar::ExactRational as Exact;
+    use crate::exact_decimal::ExactRational as Exact;
 
     // At half lightness, hue vertices have channels (1 ± saturation) / 2.
     // Saturation at least one therefore clips each vertex to an exact endpoint,
@@ -1573,13 +1574,13 @@ fn exact_hsl_text(
 }
 
 fn exact_hue_channel(
-    m1: &crate::opacity_scalar::ExactRational,
-    m2: &crate::opacity_scalar::ExactRational,
-    hue: &crate::opacity_scalar::ExactRational,
+    m1: &crate::exact_decimal::ExactRational,
+    m2: &crate::exact_decimal::ExactRational,
+    hue: &crate::exact_decimal::ExactRational,
     offset: i64,
     context: &mut SpecifiedSerializationContext,
-) -> Result<crate::opacity_scalar::ExactRational> {
-    use crate::opacity_scalar::ExactRational as Exact;
+) -> Result<crate::exact_decimal::ExactRational> {
+    use crate::exact_decimal::ExactRational as Exact;
 
     let offset_value = Exact::integer(offset.unsigned_abs(), context)?;
     let adjusted = if offset.is_negative() {
@@ -1672,12 +1673,12 @@ fn serialize_hwb(
 }
 
 fn exact_hwb_text(
-    hue: &crate::opacity_scalar::ExactRational,
-    white: &crate::opacity_scalar::ExactRational,
-    black: &crate::opacity_scalar::ExactRational,
+    hue: &crate::exact_decimal::ExactRational,
+    white: &crate::exact_decimal::ExactRational,
+    black: &crate::exact_decimal::ExactRational,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<[String; 3]> {
-    use crate::opacity_scalar::ExactRational as Exact;
+    use crate::exact_decimal::ExactRational as Exact;
 
     let white = white
         .clone_with_budget(context)?
@@ -1778,13 +1779,13 @@ fn hue_projection(
             context.charge_input(1)?;
             let source = value.numeric().representation();
             let exact = if origin {
-                crate::opacity_scalar::ExactRational::from_lexical_factor(
+                crate::exact_decimal::ExactRational::from_lexical_factor(
                     source,
                     exact_factor(Factor::ONE),
                     context,
                 )?
             } else {
-                crate::opacity_scalar::ExactRational::from_lexical_factor_modulo(
+                crate::exact_decimal::ExactRational::from_lexical_factor_modulo(
                     source,
                     exact_factor(Factor::ONE),
                     360,
@@ -1802,13 +1803,13 @@ fn hue_projection(
             let factor = angle_factor(value.unit());
             let source = value.numeric().representation();
             let exact = if origin {
-                crate::opacity_scalar::ExactRational::from_lexical_factor(
+                crate::exact_decimal::ExactRational::from_lexical_factor(
                     source,
                     exact_factor(factor),
                     context,
                 )?
             } else {
-                crate::opacity_scalar::ExactRational::from_lexical_factor_modulo(
+                crate::exact_decimal::ExactRational::from_lexical_factor_modulo(
                     source,
                     exact_factor(factor),
                     360,
@@ -1823,7 +1824,7 @@ fn hue_projection(
         }
         H::Number(value) => {
             context.charge_input(1)?;
-            let exact = crate::opacity_scalar::ExactRational::from_binary32_factor(
+            let exact = crate::exact_decimal::ExactRational::from_binary32_factor(
                 value.value(),
                 exact_factor(Factor::ONE),
                 context,
@@ -1842,7 +1843,7 @@ fn hue_projection(
         H::Angle(value) => {
             context.charge_input(1)?;
             let factor = angle_factor(value.unit());
-            let exact = crate::opacity_scalar::ExactRational::from_binary32_factor(
+            let exact = crate::exact_decimal::ExactRational::from_binary32_factor(
                 value.value(),
                 exact_factor(factor),
                 context,
@@ -2242,7 +2243,7 @@ fn serialize_relative_expression(
         }
         V::ExactAngle(value) => {
             context.charge_input(1)?;
-            let exact = crate::opacity_scalar::ExactRational::from_lexical_factor(
+            let exact = crate::exact_decimal::ExactRational::from_lexical_factor(
                 value.numeric().representation(),
                 exact_factor(angle_factor(value.unit())),
                 context,
@@ -2271,7 +2272,7 @@ fn serialize_relative_expression(
         }
         V::Angle(value) => {
             context.charge_input(1)?;
-            let exact = crate::opacity_scalar::ExactRational::from_binary32_factor(
+            let exact = crate::exact_decimal::ExactRational::from_binary32_factor(
                 value.value(),
                 exact_factor(angle_factor(value.unit())),
                 context,
@@ -2437,7 +2438,7 @@ fn mix_weight_texts(
     exact.try_reserve(components.len()).map_err(|_| {
         Error::new(crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow)
     })?;
-    let mut sum: Option<crate::opacity_scalar::ExactRational> = None;
+    let mut sum: Option<crate::exact_decimal::ExactRational> = None;
     let mut omitted = 0usize;
     for component in components {
         let value = component
@@ -2455,7 +2456,7 @@ fn mix_weight_texts(
         }
         exact.push(value);
     }
-    let sum = sum.unwrap_or(crate::opacity_scalar::ExactRational::from_lexical_factor(
+    let sum = sum.unwrap_or(crate::exact_decimal::ExactRational::from_lexical_factor(
         "0",
         exact_factor(Factor::ONE),
         context,
@@ -2510,16 +2511,16 @@ fn mix_weight_texts(
 fn exact_weight(
     value: &CssAuthoredColorMixPercentage,
     context: &mut SpecifiedSerializationContext,
-) -> Result<crate::opacity_scalar::ExactRational> {
+) -> Result<crate::exact_decimal::ExactRational> {
     context.charge_input(1)?;
     if let Some(value) = value.exact_literal() {
-        crate::opacity_scalar::ExactRational::from_lexical_factor(
+        crate::exact_decimal::ExactRational::from_lexical_factor(
             value.numeric().representation(),
             exact_factor(Factor::ONE),
             context,
         )
     } else {
-        crate::opacity_scalar::ExactRational::from_binary32_factor(
+        crate::exact_decimal::ExactRational::from_binary32_factor(
             value.value().expect("finite mix weight"),
             exact_factor(Factor::ONE),
             context,
@@ -2581,7 +2582,7 @@ fn frozen_slot_scaled(
     context.charge_projection(1)?;
     match value {
         Some(value) => {
-            let exact = crate::opacity_scalar::ExactRational::from_binary32_factor(
+            let exact = crate::exact_decimal::ExactRational::from_binary32_factor(
                 value,
                 exact_factor(factor),
                 context,

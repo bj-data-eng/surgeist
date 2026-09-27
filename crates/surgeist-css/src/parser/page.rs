@@ -267,7 +267,7 @@ fn is_css2_page_length_percentage(value: &CssSpecifiedLengthPercentage) -> bool 
     };
     match component.view() {
         CssComponentValueRef::Token(CssValueTokenRef::Number(number)) => {
-            crate::opacity_scalar::LexicalDecimal::new(number.representation()).len == 0
+            crate::exact_decimal::LexicalDecimal::new(number.representation()).len == 0
         }
         CssComponentValueRef::Token(CssValueTokenRef::Percentage(_)) => true,
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit, .. }) => matches!(

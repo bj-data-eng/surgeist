@@ -1,6 +1,7 @@
+use super::color::parse_color;
 use cssparser::{ParseError, Parser, match_ignore_ascii_case};
 
-use super::values::{parse_color, parse_shadow_blur_length, parse_shadow_length};
+use super::values::{parse_shadow_blur_length, parse_shadow_length};
 use crate::box_values::CssParsedBorderColors;
 use crate::error::{CssFeatureId, Error, basic, unsupported_value};
 use crate::syntax::*;

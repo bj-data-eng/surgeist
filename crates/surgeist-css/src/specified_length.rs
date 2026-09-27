@@ -57,7 +57,7 @@ fn checked_literal(
             ));
         }
     };
-    let decimal = crate::opacity_scalar::LexicalDecimal::new(number.representation());
+    let decimal = crate::exact_decimal::LexicalDecimal::new(number.representation());
     if matches!(unit, LiteralUnit::Unitless) && decimal.len != 0 {
         return Err(CssNumericConstructionError::at(
             CssNumericConstructionErrorKind::RootDomainMismatch,

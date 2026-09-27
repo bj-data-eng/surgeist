@@ -209,7 +209,7 @@ fn feature(items: &[CssComponentValue]) -> Option<StyleNodeKind> {
         }
     }
     // Only sibling comparators split a range; nested comparisons fail operand admission.
-    let separators = super::queries::component_query_comparisons(items)?;
+    let separators = super::query_components::component_query_comparisons(items)?;
     let mut comparisons = Vec::new();
     let mut ranges = Vec::new();
     let mut start = 0;
