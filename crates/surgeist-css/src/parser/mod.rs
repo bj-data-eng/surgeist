@@ -53,6 +53,7 @@ mod selectors;
 mod sizing;
 mod sizing_controls;
 mod supports;
+mod text_alignment;
 mod timing;
 mod typography;
 mod values;
@@ -72,6 +73,7 @@ use crate::box_spacing::*;
 use crate::contain_intrinsic_size::{CssContainIntrinsicSize, CssContainIntrinsicSizeValue};
 use crate::inset::{CssInsetPair, CssInsetShorthand, CssInsetValue};
 use crate::overflow_controls::{CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter};
+use crate::text_alignment::{CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignValue};
 use crate::{
     CssContainer, CssContainerNames, CssContainerType, CssFontPaletteDescriptorKind,
     CssFontPaletteDescriptorValue, CssFontPaletteName, CssFrameSizing, CssMaxSizePair,
@@ -128,6 +130,7 @@ use sizing_controls::*;
 use supports::{
     parse_supports_condition, parse_supports_declaration, with_supports_prelude_context,
 };
+use text_alignment::*;
 use timing::*;
 use typography::*;
 use values::*;

@@ -1154,6 +1154,7 @@ mod pending_serialization;
 mod scroll_snap;
 mod sizing;
 mod sizing_controls;
+mod text_alignment;
 pub use aspect_ratio::{CssRatioOperand, CssSpecifiedRatio};
 pub use border_color::{CssBorderColorPair, CssBorderColorShorthand, CssBorderColors};
 pub use border_radius::{CssBorderRadiusShorthand, CssCornerRadiusValue};
@@ -1188,6 +1189,10 @@ pub use scroll_snap::{
 };
 pub use sizing::{CssBoxSize, CssMaxSizeValue, CssSizeValue};
 pub use sizing_controls::{CssFrameSizing, CssMaxSizePair, CssMinIntrinsicSizing, CssSizePair};
+pub use text_alignment::{
+    CssCharacterAlignment, CssCharacterAlignmentError, CssCharacterAlignmentErrorKind,
+    CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignPosition, CssTextAlignValue,
+};
 mod float_clear;
 mod overflow;
 mod overflow_controls;

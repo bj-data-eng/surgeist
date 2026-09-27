@@ -904,7 +904,7 @@ pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
     vector!(
         "baseline.property.text-align-last",
         "text-align-last",
-        "match-parent"
+        "justify-all"
     ),
     vector!("baseline.property.text-indent", "text-indent", "auto"),
     vector!("baseline.property.vertical-align", "vertical-align", "auto"),

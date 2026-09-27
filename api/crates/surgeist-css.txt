@@ -479,6 +479,9 @@ pub fn surgeist_css::CssCaptionSide::serialize_specified_with_limits(&self, limi
 #[non_exhaustive] pub enum surgeist_css::CssCaretColor
 pub surgeist_css::CssCaretColor::Auto
 pub surgeist_css::CssCaretColor::Color(alloc::boxed::Box<surgeist_css::CssAuthoredColor>)
+#[non_exhaustive] pub enum surgeist_css::CssCharacterAlignmentErrorKind
+pub surgeist_css::CssCharacterAlignmentErrorKind::Component(surgeist_css::CssComponentValueErrorKind)
+pub surgeist_css::CssCharacterAlignmentErrorKind::InvalidCharacter
 #[non_exhaustive] pub enum surgeist_css::CssCircleRadius
 pub surgeist_css::CssCircleRadius::Default
 pub surgeist_css::CssCircleRadius::Extent(surgeist_css::CssRadialExtent)
@@ -1980,6 +1983,7 @@ pub surgeist_css::CssKnownProperty::ScrollbarWidth
 pub surgeist_css::CssKnownProperty::Size
 pub surgeist_css::CssKnownProperty::TableLayout
 pub surgeist_css::CssKnownProperty::TextAlign
+pub surgeist_css::CssKnownProperty::TextAlignAll
 pub surgeist_css::CssKnownProperty::TextAlignLast
 pub surgeist_css::CssKnownProperty::TextCombineUpright
 pub surgeist_css::CssKnownProperty::TextDecoration
@@ -2317,6 +2321,7 @@ pub surgeist_css::CssKnownPropertyValueRef::ScrollbarWidth(&'a surgeist_css::Css
 pub surgeist_css::CssKnownPropertyValueRef::Size(&'a surgeist_css::CssSizePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TableLayout(&'a surgeist_css::CssTableLayoutPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextAlign(&'a surgeist_css::CssTextAlignPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextAlignAll(&'a surgeist_css::CssTextAlignAllPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextAlignLast(&'a surgeist_css::CssTextAlignLastPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextCombineUpright(&'a surgeist_css::CssTextCombineUprightPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextDecoration(&'a surgeist_css::CssTextDecorationPropertyValue)
@@ -2584,6 +2589,8 @@ pub surgeist_css::CssLonghandValueRef::ScrollSnapStop(&'a surgeist_css::CssScrol
 pub surgeist_css::CssLonghandValueRef::ScrollSnapType(&'a surgeist_css::CssScrollSnapType)
 pub surgeist_css::CssLonghandValueRef::ScrollbarGutter(&'a surgeist_css::CssScrollbarGutter)
 pub surgeist_css::CssLonghandValueRef::TableLayout(&'a surgeist_css::CssTableLayout)
+pub surgeist_css::CssLonghandValueRef::TextAlignAll(&'a surgeist_css::CssTextAlignAllValue)
+pub surgeist_css::CssLonghandValueRef::TextAlignLast(&'a surgeist_css::CssTextAlignLastValue)
 pub surgeist_css::CssLonghandValueRef::TextCombineUpright(&'a surgeist_css::CssTextCombineUpright)
 pub surgeist_css::CssLonghandValueRef::TextOrientation(&'a surgeist_css::CssTextOrientation)
 pub surgeist_css::CssLonghandValueRef::TextOverflow(&'a surgeist_css::CssTextOverflow)
@@ -3464,6 +3471,13 @@ pub surgeist_css::CssTextAlign::Left
 pub surgeist_css::CssTextAlign::MatchParent
 pub surgeist_css::CssTextAlign::Right
 pub surgeist_css::CssTextAlign::Start
+#[non_exhaustive] pub enum surgeist_css::CssTextAlignAllValue
+pub surgeist_css::CssTextAlignAllValue::Character(surgeist_css::CssCharacterAlignment)
+pub surgeist_css::CssTextAlignAllValue::Keyword(surgeist_css::CssTextAlign)
+impl surgeist_css::CssTextAlignAllValue
+pub const fn surgeist_css::CssTextAlignAllValue::initial() -> Self
+pub fn surgeist_css::CssTextAlignAllValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextAlignAllValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTextAlignLast
 pub surgeist_css::CssTextAlignLast::Auto
 pub surgeist_css::CssTextAlignLast::Center
@@ -3472,6 +3486,25 @@ pub surgeist_css::CssTextAlignLast::Justify
 pub surgeist_css::CssTextAlignLast::Left
 pub surgeist_css::CssTextAlignLast::Right
 pub surgeist_css::CssTextAlignLast::Start
+#[non_exhaustive] pub enum surgeist_css::CssTextAlignLastValue
+pub surgeist_css::CssTextAlignLastValue::Auto
+pub surgeist_css::CssTextAlignLastValue::Keyword(surgeist_css::CssTextAlign)
+impl surgeist_css::CssTextAlignLastValue
+pub const fn surgeist_css::CssTextAlignLastValue::initial() -> Self
+pub fn surgeist_css::CssTextAlignLastValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextAlignLastValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextAlignPosition
+pub surgeist_css::CssTextAlignPosition::Center
+pub surgeist_css::CssTextAlignPosition::End
+pub surgeist_css::CssTextAlignPosition::Left
+pub surgeist_css::CssTextAlignPosition::Right
+pub surgeist_css::CssTextAlignPosition::Start
+#[non_exhaustive] pub enum surgeist_css::CssTextAlignValue
+pub surgeist_css::CssTextAlignValue::Alignment(surgeist_css::CssTextAlignAllValue)
+pub surgeist_css::CssTextAlignValue::JustifyAll
+impl surgeist_css::CssTextAlignValue
+pub fn surgeist_css::CssTextAlignValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextAlignValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTextCombineUpright
 pub surgeist_css::CssTextCombineUpright::All
 pub surgeist_css::CssTextCombineUpright::Digits(core::option::Option<surgeist_css::CssTextCombineDigitCount>)
@@ -4823,6 +4856,23 @@ pub struct surgeist_css::CssCaretColorPropertyValue
 impl surgeist_css::CssCaretColorPropertyValue
 pub fn surgeist_css::CssCaretColorPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssCaretColorPropertyValue::caret(&self) -> &surgeist_css::CssCaretColor
+pub struct surgeist_css::CssCharacterAlignment
+impl surgeist_css::CssCharacterAlignment
+pub const fn surgeist_css::CssCharacterAlignment::authored_fallback(&self) -> core::option::Option<surgeist_css::CssTextAlignPosition>
+pub const fn surgeist_css::CssCharacterAlignment::component(&self) -> &surgeist_css::CssComponentValue
+pub fn surgeist_css::CssCharacterAlignment::decoded(&self) -> &str
+pub fn surgeist_css::CssCharacterAlignment::effective_fallback(&self) -> surgeist_css::CssTextAlignPosition
+pub fn surgeist_css::CssCharacterAlignment::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCharacterAlignment::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCharacterAlignment::try_from_component(component: surgeist_css::CssComponentValue, authored_fallback: core::option::Option<surgeist_css::CssTextAlignPosition>) -> core::result::Result<Self, surgeist_css::CssCharacterAlignmentError>
+pub fn surgeist_css::CssCharacterAlignment::try_new(decoded: impl core::convert::Into<alloc::string::String>, authored_fallback: core::option::Option<surgeist_css::CssTextAlignPosition>) -> core::result::Result<Self, surgeist_css::CssCharacterAlignmentError>
+pub struct surgeist_css::CssCharacterAlignmentError
+impl surgeist_css::CssCharacterAlignmentError
+pub const fn surgeist_css::CssCharacterAlignmentError::kind(&self) -> surgeist_css::CssCharacterAlignmentErrorKind
+pub const fn surgeist_css::CssCharacterAlignmentError::origin(&self) -> &surgeist_css::CssValueOrigin
+impl core::error::Error for surgeist_css::CssCharacterAlignmentError
+impl core::fmt::Display for surgeist_css::CssCharacterAlignmentError
+pub fn surgeist_css::CssCharacterAlignmentError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssCircleShape
 impl surgeist_css::CssCircleShape
 pub const fn surgeist_css::CssCircleShape::new(radius: surgeist_css::CssCircleRadius, position: core::option::Option<surgeist_css::CssPositionValue>) -> Self
@@ -7925,13 +7975,19 @@ pub struct surgeist_css::CssTableLayoutPropertyValue
 impl surgeist_css::CssTableLayoutPropertyValue
 pub fn surgeist_css::CssTableLayoutPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTableLayoutPropertyValue::layout(&self) -> &surgeist_css::CssTableLayout
+pub struct surgeist_css::CssTextAlignAllPropertyValue
+impl surgeist_css::CssTextAlignAllPropertyValue
+pub fn surgeist_css::CssTextAlignAllPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextAlignAllPropertyValue::current(&self) -> &surgeist_css::CssTextAlignAllValue
 pub struct surgeist_css::CssTextAlignLastPropertyValue
 impl surgeist_css::CssTextAlignLastPropertyValue
 pub fn surgeist_css::CssTextAlignLastPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextAlignLastPropertyValue::current(&self) -> &surgeist_css::CssTextAlignLastValue
 pub const fn surgeist_css::CssTextAlignLastPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTextAlignLast>
 pub struct surgeist_css::CssTextAlignPropertyValue
 impl surgeist_css::CssTextAlignPropertyValue
 pub fn surgeist_css::CssTextAlignPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextAlignPropertyValue::current(&self) -> &surgeist_css::CssTextAlignValue
 pub const fn surgeist_css::CssTextAlignPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTextAlign>
 pub struct surgeist_css::CssTextCombineDigitCount
 impl surgeist_css::CssTextCombineDigitCount

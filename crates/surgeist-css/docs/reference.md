@@ -1330,6 +1330,36 @@ syntax family into sibling Surgeist crates.
 
 ## Typography, font families, and font-face
 
+### Authored text alignment
+
+`text-align`, `text-align-all`, and `text-align-last` follow the selected
+[Text 4 alignment definitions](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#text-align-property).
+The first is a shorthand for the latter two. An ordinary positional keyword
+sets `text-align-all` and leaves `text-align-last` at its intrinsic `auto`;
+`match-parent` sets both to `match-parent`, while `justify-all` sets both to
+`justify`. Both longhands inherit; their intrinsic initials are `start` and
+`auto` respectively. Expansion retains the original declaration, importance,
+and authored order without resolving parent direction.
+
+The shorthand and `text-align-all` also accept a string containing exactly one
+decoded default extended grapheme cluster, optionally paired with one of
+`start`, `end`, `left`, `right`, or `center` in either order. The pair grammar
+and one-cluster rule follow the
+[catalog's localized reconciliation](../specs/README.md), which distinguishes
+the selected Text 4 prose from the historical grammar and UAX29 boundary.
+An omitted positional fallback remains omitted in the authored model; its intrinsic
+effective fallback is `right`. The checked `CssCharacterAlignment` retains the
+string component's origin and exposes both decoded text and the authored
+fallback. Its constructors reject empty and multiple-cluster strings.
+`CssTextAlignValue`, `CssTextAlignAllValue`, and `CssTextAlignLastValue` expose
+the three distinct current grammars and bounded canonical specified-value
+serialization. `CssTextAlignPropertyValue::current()` and
+`CssTextAlignLastPropertyValue::current()` provide these current values while
+their `i01_subset()` methods retain the frozen older enum projections; character
+alignment, `justify-all`, and last-line `match-parent` have no older projection.
+`text-align-all` has a current-only wrapper. Character search, font selection,
+directional resolution, and line layout remain downstream concerns.
+
 The authored font surface includes checked four-ASCII-character OpenType tags,
 non-negative feature indices, explicit and system `font` branches, synthesis,
 and the five variant longhands. `font-family`, explicit-font family lists, the

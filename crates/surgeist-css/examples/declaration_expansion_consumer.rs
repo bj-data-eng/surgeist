@@ -23,8 +23,8 @@ use surgeist_css::{
     CssKnownPropertyValueRef, CssLength, CssLonghandContribution, CssLonghandContributions,
     CssLonghandValueRef, CssPendingSubstitution, CssPredefinedColorSpace, CssPropertyNameRef,
     CssPropertyValueErrorKind, CssSerializedOrigin, CssSpecifiedNonNegativeLength, CssTextAlign,
-    CssUnresolvedStandard, CssValueOrigin, expand_declaration, parse_component_values,
-    parse_property_value, parse_style_attribute,
+    CssTextAlignAllValue, CssTextAlignLastValue, CssUnresolvedStandard, CssValueOrigin,
+    expand_declaration, parse_component_values, parse_property_value, parse_style_attribute,
 };
 
 const MARGINS: [Property; 4] = [
@@ -968,20 +968,41 @@ fn strict_reentry_rejects_atomically_and_preserves_out_of_slice_identity() {
             assert_eq!(spacing(member(&values, property)), "3px");
         }
     }
-    let source = declaration(Property::TextAlign, "start", CssImportance::Normal);
+    let source = declaration(Property::FlexBasis, "10px", CssImportance::Normal);
     let error = expand_declaration(&source).unwrap_err();
     assert!(matches!(
         error.kind(),
-        CssExpansionErrorKind::UnsupportedProperty(Property::TextAlign)
+        CssExpansionErrorKind::UnsupportedProperty(Property::FlexBasis)
     ));
-    assert_eq!(source.known().unwrap().property(), Property::TextAlign);
+    assert_eq!(source.known().unwrap().property(), Property::FlexBasis);
+    let source = declaration(Property::TextAlign, "justify-all", CssImportance::Normal);
     let Some(CssKnownPropertyValueRef::TextAlign(value)) = source.known().unwrap().property_value()
     else {
         panic!("original text-align declaration");
     };
-    assert_eq!(value.i01_subset(), Some(&CssTextAlign::Start));
-    assert_eq!(value.as_css(), "start");
-    println!("strict rejection and unsupported identity: ok");
+    assert_eq!(value.i01_subset(), None);
+    assert_eq!(value.as_css(), "justify-all");
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
+        expand_declaration(&source).unwrap()
+    else {
+        panic!("two alignment targets")
+    };
+    let [all, last] = values.items() else {
+        panic!("two alignment targets")
+    };
+    assert!(matches!(
+        all.value(),
+        CssContributionValueRef::Ordinary(CssLonghandValueRef::TextAlignAll(
+            CssTextAlignAllValue::Keyword(CssTextAlign::Justify)
+        ))
+    ));
+    assert!(matches!(
+        last.value(),
+        CssContributionValueRef::Ordinary(CssLonghandValueRef::TextAlignLast(
+            CssTextAlignLastValue::Keyword(CssTextAlign::Justify)
+        ))
+    ));
+    println!("strict rejection and text alignment expansion: ok");
 }
 
 // Variables 1 #defining-variables and #syntax keep specified custom values

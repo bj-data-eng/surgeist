@@ -192,6 +192,18 @@ factor and generated mix-share precision are implementation selections folded
 into those decisions; ordinary alpha omission follows the selected normative
 order rather than creating another source conflict.
 
+Text 4's `text-align` and `text-align-all` tables show a standalone `<string>`
+alternative, but its prose and example expressly combine a string with a keyword.
+The catalog's localized reconciliation retains the five positional keywords from
+the explanatory 13 November 2012 Text 3 grammar and accepts the string and one
+positional keyword in either order. `justify`, `match-parent`, and `justify-all`
+remain separate alternatives, and the obsolete `start end` form is not restored.
+The string must decode to exactly one default extended grapheme cluster; the
+catalog imports only UAX29 revision 47's Unicode 17.0.0 boundary definition for
+this authored check. Its historical Text 3 source and UAX29 body have exact pins
+without adding either document as a fully selected CSS module. Contextual
+typographic tailoring and character placement remain with text and layout.
+
 The top-level `unresolved_requirements` names two separate Writing Modes legacy
 `glyph-orientation-vertical` questions: alternate numeric-terminal spelling,
 including the unitless integer/number distinction, and math applicability with

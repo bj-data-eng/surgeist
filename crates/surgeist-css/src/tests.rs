@@ -6256,15 +6256,6 @@ fn rejection_unsupported_but_syntactically_valid_css_keywords_stay_rejected() {
             property_name_should_be_recognized: true,
         },
         RejectedDeclarationCase {
-            label: "text-align-last match-parent remains unsupported",
-            property_name: "text-align-last",
-            authored_value: "match-parent",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
-                property: "text-align-last",
-            },
-            property_name_should_be_recognized: true,
-        },
-        RejectedDeclarationCase {
             label: "background-origin margin-box remains unsupported",
             property_name: "background-origin",
             authored_value: "margin-box",

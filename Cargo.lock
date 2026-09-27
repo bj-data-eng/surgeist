@@ -3654,6 +3654,7 @@ dependencies = [
  "cssparser-color",
  "serde",
  "serde_json",
+ "unicode-segmentation",
 ]
 
 [[package]]

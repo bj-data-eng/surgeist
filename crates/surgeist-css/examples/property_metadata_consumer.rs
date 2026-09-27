@@ -89,6 +89,8 @@ const LONGHANDS: &[P] = &[
     P::Color,
     P::FontFamily,
     P::TextOrientation,
+    P::TextAlignAll,
+    P::TextAlignLast,
     P::Opacity,
     P::Display,
     P::BoxSizing,
@@ -144,6 +146,7 @@ const LONGHANDS: &[P] = &[
     P::TextCombineUpright,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
+    (P::TextAlign, &[P::TextAlignAll, P::TextAlignLast], &[]),
     (P::Columns, &[P::ColumnWidth, P::ColumnCount], &[]),
     (P::Size, &[P::Width, P::Height], &[]),
     (P::MinSize, &[P::MinWidth, P::MinHeight], &[]),
@@ -568,6 +571,10 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::CaptionSide(v) => assert_eq!(*v, CssCaptionSide::Top),
         CssLonghandValueRef::EmptyCells(v) => assert_eq!(*v, CssEmptyCells::Show),
         CssLonghandValueRef::TableLayout(v) => assert_eq!(*v, CssTableLayout::Auto),
+        CssLonghandValueRef::TextAlignAll(v) => {
+            assert_eq!(*v, CssTextAlignAllValue::Keyword(CssTextAlign::Start))
+        }
+        CssLonghandValueRef::TextAlignLast(v) => assert_eq!(*v, CssTextAlignLastValue::Auto),
         CssLonghandValueRef::ScrollSnapType(v) => assert_eq!(*v, CssScrollSnapType::None),
         CssLonghandValueRef::ScrollSnapAlign(v) => assert_eq!(
             *v,
@@ -607,7 +614,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 170);
+    assert_eq!(expected.len(), 173);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();
@@ -666,6 +673,8 @@ fn metadata_and_initials() {
                     | P::EmptyCells
                     | P::FontFamily
                     | P::TextOrientation
+                    | P::TextAlignAll
+                    | P::TextAlignLast
                     | P::Visibility
                     | P::Direction
                     | P::WritingMode
@@ -700,11 +709,22 @@ fn metadata_and_initials() {
         P::Width.metadata().unwrap().kind(),
         CssPropertyKindRef::Longhand(_)
     ));
-    for property in [P::FlexBasis, P::Font, P::TextAlign] {
+    for property in [P::FlexBasis, P::Font] {
         assert!(
             matches!(property.metadata(), Err(CssPropertyMetadataError::Unavailable(g)) if g == property.grammar())
         );
     }
+    let CssPropertyKindRef::Shorthand(alignment) = P::TextAlign.metadata().unwrap().kind() else {
+        panic!("text-align is a two-member shorthand")
+    };
+    assert_eq!(
+        alignment
+            .settable_members()
+            .iter()
+            .map(|member| member.known_property())
+            .collect::<Vec<_>>(),
+        [P::TextAlignAll, P::TextAlignLast]
+    );
     println!("metadata recognition, inheritance and intrinsic initial values: ok");
 }
 fn memberships_and_resets() {

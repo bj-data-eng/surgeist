@@ -1137,7 +1137,7 @@ profile_source!(
     "CSS Text",
     "4",
     CssSpecificationTier::SurgeistExtension,
-    "https://www.w3.org/TR/2026/WD-css-text-4-20260608/"
+    "https://www.w3.org/TR/2026/WD-css-text-4-20260814/"
 );
 profile_source!(
     X_TEXTDECOR4,
@@ -2294,7 +2294,6 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::CounterReset
         | CssKnownProperty::CounterIncrement
         | CssKnownProperty::LineHeight
-        | CssKnownProperty::TextAlign
         | CssKnownProperty::TextIndent
         | CssKnownProperty::VerticalAlign
         | CssKnownProperty::LetterSpacing
@@ -2511,10 +2510,11 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::GridColumn
         | CssKnownProperty::GridArea
         | CssKnownProperty::Grid => R_GRID2,
-        CssKnownProperty::TextAlignLast
-        | CssKnownProperty::WordBreak
-        | CssKnownProperty::OverflowWrap => S_TEXT3,
-        CssKnownProperty::TextWrap => X_TEXT4,
+        CssKnownProperty::WordBreak | CssKnownProperty::OverflowWrap => S_TEXT3,
+        CssKnownProperty::TextAlign
+        | CssKnownProperty::TextAlignAll
+        | CssKnownProperty::TextAlignLast
+        | CssKnownProperty::TextWrap => X_TEXT4,
         CssKnownProperty::TextDecorationLine
         | CssKnownProperty::TextDecorationColor
         | CssKnownProperty::TextDecorationStyle => S_TEXTDECOR3,
@@ -2641,13 +2641,11 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
             _ => default,
         },
         CssKnownProperty::LetterSpacing
-        | CssKnownProperty::TextAlign
         | CssKnownProperty::TextDecoration
         | CssKnownProperty::TextIndent
         | CssKnownProperty::TextTransform
         | CssKnownProperty::WhiteSpace => match property {
             CssKnownProperty::LetterSpacing => "text.html#propdef-letter-spacing",
-            CssKnownProperty::TextAlign => "text.html#propdef-text-align",
             CssKnownProperty::TextDecoration => "text.html#propdef-text-decoration",
             CssKnownProperty::TextIndent => "text.html#propdef-text-indent",
             CssKnownProperty::TextTransform => "text.html#propdef-text-transform",
@@ -2724,7 +2722,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 613] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 614] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4695,12 +4693,17 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 613] = [
         "writing-mode",
         "baseline.property.writing-mode"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::TextAlign,
         "text-align",
         "baseline.property.text-align"
     ),
-    property_feature!(
+    complete_property_feature!(
+        CssKnownProperty::TextAlignAll,
+        "text-align-all",
+        "official.property.text-align-all"
+    ),
+    complete_property_feature!(
         CssKnownProperty::TextAlignLast,
         "text-align-last",
         "baseline.property.text-align-last"

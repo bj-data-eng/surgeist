@@ -245,46 +245,6 @@ pub(super) fn parse_glyph_orientation_vertical<'i, 't>(
     })
 }
 
-pub(super) fn parse_text_align<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssTextAlign, ParseError<'i, Error>> {
-    let ident = input.expect_ident_cloned().map_err(basic)?;
-    match_ignore_ascii_case! { &ident,
-        "start" => Ok(CssTextAlign::Start),
-        "end" => Ok(CssTextAlign::End),
-        "left" => Ok(CssTextAlign::Left),
-        "right" => Ok(CssTextAlign::Right),
-        "center" => Ok(CssTextAlign::Center),
-        "justify" => Ok(CssTextAlign::Justify),
-        "match-parent" => Ok(CssTextAlign::MatchParent),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("text-align", ident.as_ref()),
-        )),
-    }
-}
-
-pub(super) fn parse_text_align_last<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssTextAlignLast, ParseError<'i, Error>> {
-    let ident = input.expect_ident_cloned().map_err(basic)?;
-    match_ignore_ascii_case! { &ident,
-        "auto" => Ok(CssTextAlignLast::Auto),
-        "start" => Ok(CssTextAlignLast::Start),
-        "end" => Ok(CssTextAlignLast::End),
-        "left" => Ok(CssTextAlignLast::Left),
-        "right" => Ok(CssTextAlignLast::Right),
-        "center" => Ok(CssTextAlignLast::Center),
-        "justify" => Ok(CssTextAlignLast::Justify),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("text-align-last", ident.as_ref()),
-        )),
-    }
-}
-
 pub(super) fn parse_text_indent<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,

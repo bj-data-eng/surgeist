@@ -20,6 +20,7 @@ use crate::scroll_snap::*;
 use crate::sizing::*;
 use crate::sizing_controls::*;
 use crate::syntax::*;
+use crate::text_alignment::*;
 use crate::{
     CssComponentValueRef, CssContainer, CssContainerNames, CssContainerType, CssSpecifiedLength,
     CssValueTokenRef,
@@ -164,8 +165,9 @@ macro_rules! property_schema {
             TextOrientation, "text-orientation", [], "official.property.text-orientation", CssTextOrientation, CssTextOrientationPropertyValue, CssTextOrientationPropertyValueRepresentation, parse_text_orientation, { parse_text_orientation($input)? }, expansion = longhand { wrapper: existing, value: CssTextOrientation, accessor: orientation, inherited: true, initial_kind: value, initial: CssTextOrientation::Mixed };
             UnicodeBidi, "unicode-bidi", [], "official.property.unicode-bidi", CssUnicodeBidi, CssUnicodeBidiPropertyValue, CssUnicodeBidiPropertyValueRepresentation, parse_unicode_bidi, { parse_unicode_bidi($input)? }, expansion = longhand { wrapper: existing, value: CssUnicodeBidi, accessor: bidi, inherited: false, initial_kind: value, initial: CssUnicodeBidi::Normal };
             WritingMode, "writing-mode", [], "baseline.property.writing-mode", CssWritingMode, CssWritingModePropertyValue, CssWritingModePropertyValueRepresentation, parse_writing_mode, { parse_writing_mode($input)? }, expansion = longhand { wrapper: fallback, value: CssWritingMode, accessor: current, inherited: true, initial_kind: value, initial: CssWritingMode::HorizontalTb };
-            TextAlign, "text-align", [], "baseline.property.text-align", CssTextAlign, CssTextAlignPropertyValue, CssTextAlignPropertyValueRepresentation, parse_text_align, { parse_text_align($input)? };
-            TextAlignLast, "text-align-last", [], "baseline.property.text-align-last", CssTextAlignLast, CssTextAlignLastPropertyValue, CssTextAlignLastPropertyValueRepresentation, parse_text_align_last, { parse_text_align_last($input)? };
+            TextAlign, "text-align", [], "baseline.property.text-align", CssTextAlignValue, CssTextAlignPropertyValue, CssTextAlignPropertyValueRepresentation, parse_text_align, { parse_text_align($input, $numeric)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ TextAlignAll => |value: &CssTextAlignValue| Some(crate::text_alignment::shorthand_all(value)), TextAlignLast => |value: &CssTextAlignValue| Some(crate::text_alignment::shorthand_last(value)) ], reset_only: [] };
+            TextAlignAll, "text-align-all", [], "official.property.text-align-all", CssTextAlignAllValue, CssTextAlignAllPropertyValue, CssTextAlignAllPropertyValueRepresentation, parse_text_align_all, { parse_text_align_all($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssTextAlignAllValue, accessor: current, inherited: true, initial_kind: value, initial: CssTextAlignAllValue::initial() };
+            TextAlignLast, "text-align-last", [], "baseline.property.text-align-last", CssTextAlignLastValue, CssTextAlignLastPropertyValue, CssTextAlignLastPropertyValueRepresentation, parse_text_align_last, { parse_text_align_last($input)? }, expansion = longhand { wrapper: existing, value: CssTextAlignLastValue, accessor: current, inherited: true, initial_kind: value, initial: CssTextAlignLastValue::initial() };
             TextIndent, "text-indent", [], "baseline.property.text-indent", CssTextIndent, CssTextIndentPropertyValue, CssTextIndentPropertyValueRepresentation, parse_text_indent, { parse_text_indent($input, $numeric)? };
             VerticalAlign, "vertical-align", [], "baseline.property.vertical-align", CssVerticalAlign, CssVerticalAlignPropertyValue, CssVerticalAlignPropertyValueRepresentation, parse_vertical_align, { parse_vertical_align($input, $numeric)? };
             FontFamily, "font-family", [], "baseline.property.font-family", CssFontFamilyList, CssFontFamilyPropertyValue, CssFontFamilyPropertyValueRepresentation, parse_font_family_list, { parse_font_family_list($input)? }, expansion = longhand { wrapper: existing, value: CssFontFamilyList, accessor: families, inherited: true, initial_kind: user_agent, initial: CssUserAgentInitial::FontFamily };
@@ -1161,6 +1163,28 @@ fn overflow_i01_projection(value: CssOverflow) -> Option<CssOverflow> {
 }
 
 macro_rules! define_property_value {
+    (TextAlign, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssTextAlignValue,
+            CssTextAlign,
+            current,
+            crate::text_alignment::text_align_i01_projection
+        );
+    };
+    (TextAlignLast, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssTextAlignLastValue,
+            CssTextAlignLast,
+            current,
+            crate::text_alignment::text_align_last_i01_projection
+        );
+    };
     (BorderRadius, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
         define_border_width_property_value!(
             $canonical,

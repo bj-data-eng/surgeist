@@ -767,6 +767,7 @@ fn authored_css_cases_match_selected_public_report_observables() {
     let mut migrated_unicode_cases = 0;
     let mut migrated_display_cases = 0;
     let mut migrated_overflow_auto_cases = 0;
+    let mut migrated_alignment_cases = 0;
     for row in rows {
         // Fixture feature labels record the original capture profile. Validation is
         // now unconditional, so every historical profile runs through the same API.
@@ -777,6 +778,11 @@ fn authored_css_cases_match_selected_public_report_observables() {
         }
         if assert_archived_overflow_auto_rejection(&row) {
             migrated_overflow_auto_cases += 1;
+            assert_strict_parity(&row);
+            continue;
+        }
+        if assert_archived_alignment_match_parent_rejection(&row) {
+            migrated_alignment_cases += 1;
             assert_strict_parity(&row);
             continue;
         }
@@ -829,6 +835,55 @@ fn authored_css_cases_match_selected_public_report_observables() {
     assert_eq!(migrated_unicode_cases, 1);
     assert_eq!(migrated_display_cases, 1);
     assert_eq!(migrated_overflow_auto_cases, 3);
+    assert_eq!(migrated_alignment_cases, 1);
+}
+
+// Text 4 §7.4 admits match-parent on the last-line longhand. The immutable I01
+// capture predates this grammar; assert its original rejection and the current
+// typed acceptance independently rather than changing the fixture payload.
+fn assert_archived_alignment_match_parent_rejection(row: &Row) -> bool {
+    if row.case_id != "catalog.property.baseline.property.text-align-last.boundary" {
+        return false;
+    }
+    assert_eq!(row.entry, "style");
+    assert_eq!(row.feature, "both");
+    assert_eq!(row.input, "text-align-last: match-parent");
+    assert_eq!(row.clean, "false");
+    assert_eq!(row.retained, "-");
+    assert_eq!(row.values, "-");
+    assert_eq!(row.authored_declarations, "-");
+    assert_eq!(
+        row.diagnostics,
+        "InvalidPropertyValue/InvalidPropertyValue:baseline.property.text-align-last:a value accepted by the property's grammar:Ident:match-parent/DropDeclaration@17:0:17>0:0:0-29:0:29:29"
+    );
+
+    let report = parse_style_attribute(&row.input);
+    assert!(report.is_clean());
+    let [declaration] = report.syntax().as_slice() else {
+        panic!("current last-line grammar retains one declaration")
+    };
+    assert_eq!(declaration.importance(), CssImportance::Normal);
+    let known = declaration.known().expect("known last-line property");
+    assert_eq!(
+        known.property(),
+        surgeist_css::CssKnownProperty::TextAlignLast
+    );
+    let Some(surgeist_css::CssKnownPropertyValueRef::TextAlignLast(value)) = known.property_value()
+    else {
+        panic!("current last-line value")
+    };
+    assert_eq!(
+        value.current(),
+        &surgeist_css::CssTextAlignLastValue::Keyword(surgeist_css::CssTextAlign::MatchParent)
+    );
+    assert_eq!(value.i01_subset(), None);
+    assert_eq!(value.as_css(), "match-parent");
+    let parsed = declaration
+        .parsed_value()
+        .expect("original value provenance");
+    assert_eq!(parsed.span().start().byte_offset().value(), 16);
+    assert_eq!(parsed.span().end().byte_offset().value(), 29);
+    true
 }
 
 // Overflow 3 §3.1 admits `auto` on the authored overflow axes. Keep the three

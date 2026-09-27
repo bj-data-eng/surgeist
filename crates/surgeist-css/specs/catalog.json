@@ -232,6 +232,17 @@
         "source_resolution": "The existing Values 5 publication-history evidence selects 2024-11-11 as the latest published edition before the cutoff. Selected Sizing 4 section 3.2 directly requires its calc-size() definition. Import only the function grammar, numeric typing and specified simplification, with interpolation and used-value requirements assigned downstream. This neither replaces the selected Values 4 edition nor selects Values 5 or interpolate-size in full."
       },
       {
+        "id": "uax29-revision-47-extended-grapheme-clusters",
+        "kind": "unicode-dated-revision",
+        "date": "2025-08-17",
+        "url": "https://www.unicode.org/reports/tr29/tr29-47.html",
+        "sha256": "130d4e0d3f9da41bf9ad84bf580b3b92edc83886457cbc5a53b432761fd2c6ed",
+        "bytes": 138801,
+        "unicode_version": "17.0.0",
+        "revision": 47,
+        "source_resolution": "Text 4 section 1.4 cites UAX29 for the extended grapheme cluster baseline. Import only revision 47's default extended grapheme cluster boundaries, including rules GB1 through GB999, for intrinsic single-character validation in text alignment. Language- or font-dependent tailoring and other Unicode segmentation algorithms are not imported."
+      },
+      {
         "id": "css-box-4-required-definitions",
         "kind": "w3c-dated-publication",
         "date": "2024-08-04",
@@ -243,6 +254,50 @@
       }
     ],
     "definitions": [
+      {
+        "id": "text-align-single-extended-grapheme-cluster",
+        "source_id": "uax29-revision-47-extended-grapheme-clusters",
+        "sections": [
+          {
+            "anchor": "C1-1",
+            "url": "https://www.unicode.org/reports/tr29/tr29-47.html#C1-1"
+          },
+          {
+            "anchor": "Grapheme_Cluster_Boundary_Rules",
+            "url": "https://www.unicode.org/reports/tr29/tr29-47.html#Grapheme_Cluster_Boundary_Rules"
+          },
+          {
+            "anchor": "GB1",
+            "url": "https://www.unicode.org/reports/tr29/tr29-47.html#GB1"
+          },
+          {
+            "anchor": "GB999",
+            "url": "https://www.unicode.org/reports/tr29/tr29-47.html#GB999"
+          }
+        ],
+        "required_by": [
+          {
+            "module_id": "css-text-4",
+            "section_url": "https://www.w3.org/TR/2026/WD-css-text-4-20260814/#characters",
+            "requirement": "Text 4's typographic-character discussion requires extended grapheme clusters as its baseline; the text-align string's single-character restriction requires an intrinsic, reproducible authored validation unit."
+          },
+          {
+            "module_id": "css-text-4",
+            "section_url": "https://www.w3.org/TR/2026/WD-css-text-4-20260814/#valdef-text-align-string",
+            "requirement": "Validate the decoded alignment string against exactly one default extended grapheme cluster under the localized text-align reconciliation."
+          }
+        ],
+        "authored_owner": "css",
+        "authored_requirements": [
+          "Accept exactly one nonempty default extended grapheme cluster in the decoded text-align string, independent of source escapes, UTF-8 bytes, UTF-16 code units, or Unicode scalar count.",
+          "Use revision 47's default extended boundary rules without contextual language or font tailoring. Preserve the authored string component and its provenance."
+        ],
+        "downstream_owners": [
+          "text",
+          "layout"
+        ],
+        "downstream_requirements": "Contextual typography, font- and language-sensitive tailoring, table-cell character search and placement are outside this intrinsic authored validation import. Other UAX29 algorithms are not selected."
+      },
       {
         "id": "shadow-host-pseudo-classes",
         "source_id": "css-scoping-1-host-definitions",
@@ -2551,6 +2606,37 @@
     }
   ],
   "source_reconciliations": [
+    {
+      "id": "css-text-4-character-alignment-grammar",
+      "source": "https://www.w3.org/TR/2026/WD-css-text-4-20260814/#text-align-property",
+      "source_sha256": "106c5cd086ab23b0edea5aa3ff6876b61cc623154f728aa269b74f0527dba19d",
+      "controlling_sections": [
+        "https://www.w3.org/TR/2026/WD-css-text-4-20260814/#valdef-text-align-string",
+        "https://www.w3.org/TR/2026/WD-css-text-4-20260814/#character-alignment",
+        "https://www.w3.org/TR/2026/WD-css-text-4-20260814/#text-align-all-property",
+        "https://www.w3.org/TR/2026/WD-css-text-4-20260814/#text-align-last-property",
+        "https://www.w3.org/TR/2026/WD-css-text-4-20260814/#characters"
+      ],
+      "explanatory_historical_source": {
+        "url": "https://www.w3.org/TR/2012/WD-css3-text-20121113/",
+        "sections": [
+          "https://www.w3.org/TR/2012/WD-css3-text-20121113/#terms",
+          "https://www.w3.org/TR/2012/WD-css3-text-20121113/#text-align"
+        ],
+        "sha256": "cc1cba0eebc9b4eed5b292763b75a57c142af82797ca767a0ac3944220fb6bef",
+        "bytes": 147952,
+        "role": "The older table states a five-positional-keyword || string group and its terminology equates character with extended grapheme cluster. It explains retained Text 4 prose but is not a selected module or permission to restore obsolete start end syntax."
+      },
+      "conflict": "Text 4's text-align and text-align-all tables list <string> as a single alternative, while section 7.1 directs readers to its combination with keywords and section 7.2 expressly permits a keyword with a string, defaults an absent keyword to right, and demonstrates text-align: \".\" center. Text 4 says the string must be a single character without directly defining that validation unit there; section 1.4 identifies extended grapheme clusters as the text-layout baseline.",
+      "adopted_grammar": {
+        "positional": "start | end | left | right | center",
+        "text-align": "[ positional || <single-EGC-string> ] | justify | match-parent | justify-all",
+        "text-align-all": "[ positional || <single-EGC-string> ] | justify | match-parent",
+        "text-align-last": "auto | positional | justify | match-parent"
+      },
+      "decision": "Allow one decoded default Unicode 17.0.0 extended grapheme cluster with at most one positional keyword in either order. Omitted positional fallback remains omitted in the authored value and has an effective right default. CSS-wide keywords are whole-value alternatives only. Do not pair the string with justify, match-parent or justify-all, and do not restore the historical start end alternative. Apply ordinary shorthand values, including a character value, to text-align-all and reset text-align-last to auto; match-parent sets both members to match-parent, and justify-all sets both to justify.",
+      "justification": "This preserves Text 4's explicit single-character restriction, pair prose, example and shorthand effects while using the bounded five-keyword historical group to resolve the table/prose conflict. Revision 47 supplies an exact default segmentation baseline; contextual typography and layout remain downstream."
+    },
     {
       "id": "css-values-4-serialize-nonfinite-closure",
       "source": "https://www.w3.org/TR/2024/WD-css-values-4-20240312/#serialize-a-math-function",

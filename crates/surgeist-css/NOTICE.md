@@ -4,7 +4,7 @@ The project's own license is in [LICENSE](LICENSE).
 
 ## Dependencies
 
-This notice covers the bundled CSSTree and Web Platform Tests fixtures and the 23 registry crates in
+This notice covers the bundled CSSTree and Web Platform Tests fixtures and the 24 registry crates in
 the local Cargo resolution of `surgeist-css` 0.1.0 with default features,
 including development and build dependencies.
 The Cargo dependencies are not vendored in this repository. The roles below
@@ -117,6 +117,13 @@ distributed by David Tolnay, with Unicode data from Unicode, Inc.:
 
 * License: ([MIT](licenses/unicode-ident/LICENSE-MIT) OR [Apache-2.0](licenses/unicode-ident/LICENSE-APACHE)) AND [Unicode-3.0](licenses/unicode-ident/LICENSE-UNICODE)
 * Homepage: [unicode-ident](https://github.com/dtolnay/unicode-ident)
+
+This product depends on `unicode-segmentation` 1.13.3 for authored text-alignment
+string validation. Its package lists kwantam and Manish Goregaokar as authors;
+the included MIT text credits the Rust Project Developers:
+
+* License: [MIT](licenses/unicode-segmentation/LICENSE-MIT) OR [Apache-2.0](licenses/unicode-segmentation/LICENSE-APACHE); [upstream copyright and declaration](licenses/unicode-segmentation/COPYRIGHT)
+* Homepage: [unicode-segmentation](https://github.com/unicode-rs/unicode-segmentation)
 
 This product includes a selected Web Platform Tests CSS source bundle from commit
 `ddcca5943fd41232d42149aaa19d9a04c5651b18`, distributed by the web-platform-tests
