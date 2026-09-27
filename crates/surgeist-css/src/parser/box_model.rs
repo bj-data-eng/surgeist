@@ -25,38 +25,6 @@ pub(super) fn parse_box_decoration_break<'i, 't>(
     }
 }
 
-pub(super) fn parse_border_styles<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssBorderStyles, ParseError<'i, Error>> {
-    let mut values = Vec::new();
-    while !input.is_exhausted() {
-        values.push(parse_border_style(input)?);
-        if values.len() == 4 && !input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "border-style shorthand has too many values",
-            ));
-        }
-    }
-    Ok(match values.as_slice() {
-        [all] => CssBorderStyles::all(*all),
-        [vertical, horizontal] => {
-            CssBorderStyles::new(*vertical, *horizontal, *vertical, *horizontal)
-        }
-        [top, horizontal, bottom] => CssBorderStyles::new(*top, *horizontal, *bottom, *horizontal),
-        [top, right, bottom, left] => CssBorderStyles::new(*top, *right, *bottom, *left),
-        [] => {
-            return Err(unsupported_value(
-                input,
-                None,
-                "border-style shorthand is missing a value",
-            ));
-        }
-        _ => unreachable!("border-style shorthand parser caps values at four"),
-    })
-}
-
 pub(super) fn parse_border_colors<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
@@ -72,29 +40,6 @@ pub(super) fn parse_border_colors<'i, 't>(
     CssParsedBorderColors::try_new(colors).ok_or_else(|| {
         unsupported_value(input, None, "border-color requires one through four colors")
     })
-}
-
-pub(super) fn parse_border_style<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssBorderStyle, ParseError<'i, Error>> {
-    let ident = input.expect_ident_cloned().map_err(basic)?;
-    match_ignore_ascii_case! { &ident,
-        "none" => Ok(CssBorderStyle::None),
-        "hidden" => Ok(CssBorderStyle::Hidden),
-        "dotted" => Ok(CssBorderStyle::Dotted),
-        "dashed" => Ok(CssBorderStyle::Dashed),
-        "solid" => Ok(CssBorderStyle::Solid),
-        "double" => Ok(CssBorderStyle::Double),
-        "groove" => Ok(CssBorderStyle::Groove),
-        "ridge" => Ok(CssBorderStyle::Ridge),
-        "inset" => Ok(CssBorderStyle::Inset),
-        "outset" => Ok(CssBorderStyle::Outset),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("border-style", ident.as_ref()),
-        )),
-    }
 }
 
 pub(super) fn expand_radius_components(

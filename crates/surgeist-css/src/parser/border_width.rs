@@ -2,7 +2,7 @@
 
 use cssparser::{ParseError, Parser, Token};
 
-use super::box_model::parse_border_style;
+use super::border_style::parse_border_style;
 use super::parse_color;
 use super::values::{CalculationRoot, is_math_function, parse_numeric_function};
 use crate::border_width::CssParsedBorderValue;

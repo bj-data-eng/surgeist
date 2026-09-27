@@ -68,6 +68,10 @@ const LONGHANDS: &[P] = &[
     P::BorderRightStyle,
     P::BorderBottomStyle,
     P::BorderLeftStyle,
+    P::BorderBlockStartStyle,
+    P::BorderBlockEndStyle,
+    P::BorderInlineStartStyle,
+    P::BorderInlineEndStyle,
     P::BorderTopColor,
     P::BorderRightColor,
     P::BorderBottomColor,
@@ -214,13 +218,13 @@ const SHORTHANDS: &[(P, &[P], &[P])] = &[
         &[],
     ),
     (
-        P::BorderStyle,
-        &[
-            P::BorderTopStyle,
-            P::BorderRightStyle,
-            P::BorderBottomStyle,
-            P::BorderLeftStyle,
-        ],
+        P::BorderBlockStyle,
+        &[P::BorderBlockStartStyle, P::BorderBlockEndStyle],
+        &[],
+    ),
+    (
+        P::BorderInlineStyle,
+        &[P::BorderInlineStartStyle, P::BorderInlineEndStyle],
         &[],
     ),
     (
@@ -386,7 +390,11 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::BorderTopStyle(v)
         | CssLonghandValueRef::BorderRightStyle(v)
         | CssLonghandValueRef::BorderBottomStyle(v)
-        | CssLonghandValueRef::BorderLeftStyle(v) => assert_eq!(*v, CssBorderStyle::None),
+        | CssLonghandValueRef::BorderLeftStyle(v)
+        | CssLonghandValueRef::BorderBlockStartStyle(v)
+        | CssLonghandValueRef::BorderBlockEndStyle(v)
+        | CssLonghandValueRef::BorderInlineStartStyle(v)
+        | CssLonghandValueRef::BorderInlineEndStyle(v) => assert_eq!(*v, CssBorderStyle::None),
         CssLonghandValueRef::BorderTopColor(v)
         | CssLonghandValueRef::BorderRightColor(v)
         | CssLonghandValueRef::BorderBottomColor(v)
@@ -531,7 +539,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 154);
+    assert_eq!(expected.len(), 159);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();
@@ -564,6 +572,7 @@ fn metadata_and_initials() {
                         | P::Padding
                         | P::Inset
                         | P::BorderWidth
+                        | P::BorderStyle
                 ));
                 assert_eq!(grammar, handle);
                 assert_eq!(

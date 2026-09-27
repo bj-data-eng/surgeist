@@ -2829,6 +2829,14 @@ The four-side `border-width` grammar accepts one to four values, with an optiona
 
 The affected wrappers expose `current()` for exact checked values. `i01_subset()` remains a compatibility view where the original width and color can be projected without loss; it does not approximate very large or tiny nonzero numeric values. `as_css()` retains authored spelling, while bounded `serialize_specified()` emits the checked canonical value. Layout, writing-mode mapping, and cascade remain downstream.
 
+## Authored border styles
+
+The selected [Backgrounds 3 line-style definitions](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#border-style) and [Logical 1 flow-relative styles](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#border-style) provide ten style keywords for four physical and four logical longhands. Their noninherited initial is `none`. `border-block-style` and `border-inline-style` retain one or two authored values, assigning start then end and repeating the first when the second is omitted. The four-side `border-style` retains one to four authored values and an optional leading `logical` switch. Its assignments are top/right/bottom/left in physical mode and block-start/inline-start/block-end/inline-end in logical mode; it does not map logical sides to physical sides.
+
+`CssBorderStylePropertyValue::current()` now returns `CssBorderStyleShorthand`, preserving authored arity and role mode. Code that previously used its expanded `CssBorderStyles` result can use `i01_subset()` for an exact physical compatibility view, or `current().assigned_values()` with `current().kind()` for the authored roles. The older `CssBorderStyles` and scalar `CssBorderStyle` remain available. Each scalar, pair, and shorthand has bounded specified serialization under one cumulative budget per value.
+
+The selected [Logical 1 issue 3030](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#issue-3d880eb1) leaves the full physical/logical reset membership of `border-style` unresolved. Its authored grammar is accepted, but completed intrinsic expansion and metadata return `UnresolvedStandard` in both modes, for CSS-wide values, and after valid substitution reentry. Pending substitutions stay symbolic. Physical `border` and side-border shorthands still expand their style members and defined defaults, including `border`'s border-image resets. Writing-mode mapping, computed border-width zeroing, and painting remain downstream.
+
 ## Authored corner radii
 
 The selected [Backgrounds 3 radius definitions](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#border-radius)

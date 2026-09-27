@@ -1,7 +1,7 @@
 use super::color::parse_color;
 use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
 
-use super::box_model::parse_border_style;
+use super::border_style::parse_border_style;
 use super::position::{
     next_starts_background_position, parse_background_position_prefix, parse_css_position_value,
 };

@@ -9,6 +9,7 @@
 
 mod background;
 mod border_radius;
+mod border_style;
 mod border_width;
 mod box_model;
 mod box_spacing;
@@ -63,6 +64,7 @@ use cssparser::{
 };
 
 use crate::border_radius::*;
+use crate::border_style::*;
 use crate::border_width::*;
 use crate::box_spacing::*;
 use crate::contain_intrinsic_size::{CssContainIntrinsicSize, CssContainIntrinsicSizeValue};
@@ -78,6 +80,7 @@ use crate::{
 };
 use background::*;
 use border_radius::*;
+use border_style::*;
 use border_width::*;
 use box_model::*;
 use box_spacing::*;

@@ -5,6 +5,7 @@
 //! they do not apply cascade, substitute variables, or resolve authored values.
 
 use crate::border_radius::*;
+use crate::border_style::*;
 use crate::border_width::*;
 use crate::box_spacing::*;
 use crate::box_values::{CssBorderColors, CssParsedBorderColors};
@@ -268,11 +269,17 @@ macro_rules! property_schema {
             ImageOrientation, "image-orientation", [], "official.property.image-orientation", CssImageOrientation, CssImageOrientationPropertyValue, CssImageOrientationPropertyValueRepresentation, parse_image_orientation, { parse_image_orientation($input, $numeric)? };
             ImageRendering, "image-rendering", [], "official.property.image-rendering", CssImageRendering, CssImageRenderingPropertyValue, CssImageRenderingPropertyValueRepresentation, parse_image_rendering, { parse_image_rendering($input)? };
             ObjectFit, "object-fit", [], "official.property.object-fit", CssObjectFit, CssObjectFitPropertyValue, CssObjectFitPropertyValueRepresentation, parse_object_fit, { parse_object_fit($input)? };
-            BorderStyle, "border-style", [], "baseline.property.border-style", CssBorderStyles, CssBorderStylePropertyValue, CssBorderStylePropertyValueRepresentation, parse_border_styles, { parse_border_styles($input)? }, expansion = shorthand { wrapper: fallback, accessor: current, members: [ BorderTopStyle => |value: &CssBorderStyles| Some(value.top), BorderRightStyle => |value: &CssBorderStyles| Some(value.right), BorderBottomStyle => |value: &CssBorderStyles| Some(value.bottom), BorderLeftStyle => |value: &CssBorderStyles| Some(value.left) ], reset_only: [] };
+            BorderStyle, "border-style", [], "baseline.property.border-style", CssBorderStyleShorthand, CssBorderStylePropertyValue, CssBorderStylePropertyValueRepresentation, parse_border_style_shorthand, { parse_border_style_shorthand($input)? }, expansion = unresolved { wrapper: existing, reason: CssUnresolvedStandard::LogicalShorthandResetMembership };
             BorderTopStyle, "border-top-style", [], "baseline.property.border-top-style", CssBorderStyle, CssBorderTopStylePropertyValue, CssBorderTopStylePropertyValueRepresentation, parse_border_style, { parse_border_style($input)? }, expansion = longhand { wrapper: fallback, value: CssBorderStyle, accessor: current, inherited: false, initial_kind: value, initial: CssBorderStyle::None };
             BorderRightStyle, "border-right-style", [], "baseline.property.border-right-style", CssBorderStyle, CssBorderRightStylePropertyValue, CssBorderRightStylePropertyValueRepresentation, parse_border_style, { parse_border_style($input)? }, expansion = longhand { wrapper: fallback, value: CssBorderStyle, accessor: current, inherited: false, initial_kind: value, initial: CssBorderStyle::None };
             BorderBottomStyle, "border-bottom-style", [], "baseline.property.border-bottom-style", CssBorderStyle, CssBorderBottomStylePropertyValue, CssBorderBottomStylePropertyValueRepresentation, parse_border_style, { parse_border_style($input)? }, expansion = longhand { wrapper: fallback, value: CssBorderStyle, accessor: current, inherited: false, initial_kind: value, initial: CssBorderStyle::None };
             BorderLeftStyle, "border-left-style", [], "baseline.property.border-left-style", CssBorderStyle, CssBorderLeftStylePropertyValue, CssBorderLeftStylePropertyValueRepresentation, parse_border_style, { parse_border_style($input)? }, expansion = longhand { wrapper: fallback, value: CssBorderStyle, accessor: current, inherited: false, initial_kind: value, initial: CssBorderStyle::None };
+            BorderBlockStartStyle, "border-block-start-style", [], "official.property.border-block-start-style", CssBorderStyle, CssBorderBlockStartStylePropertyValue, CssBorderBlockStartStylePropertyValueRepresentation, parse_border_style, { parse_border_style($input)? }, expansion = longhand { wrapper: additive, value: CssBorderStyle, accessor: current, inherited: false, initial_kind: value, initial: CssBorderStyle::None };
+            BorderBlockEndStyle, "border-block-end-style", [], "official.property.border-block-end-style", CssBorderStyle, CssBorderBlockEndStylePropertyValue, CssBorderBlockEndStylePropertyValueRepresentation, parse_border_style, { parse_border_style($input)? }, expansion = longhand { wrapper: additive, value: CssBorderStyle, accessor: current, inherited: false, initial_kind: value, initial: CssBorderStyle::None };
+            BorderInlineStartStyle, "border-inline-start-style", [], "official.property.border-inline-start-style", CssBorderStyle, CssBorderInlineStartStylePropertyValue, CssBorderInlineStartStylePropertyValueRepresentation, parse_border_style, { parse_border_style($input)? }, expansion = longhand { wrapper: additive, value: CssBorderStyle, accessor: current, inherited: false, initial_kind: value, initial: CssBorderStyle::None };
+            BorderInlineEndStyle, "border-inline-end-style", [], "official.property.border-inline-end-style", CssBorderStyle, CssBorderInlineEndStylePropertyValue, CssBorderInlineEndStylePropertyValueRepresentation, parse_border_style, { parse_border_style($input)? }, expansion = longhand { wrapper: additive, value: CssBorderStyle, accessor: current, inherited: false, initial_kind: value, initial: CssBorderStyle::None };
+            BorderBlockStyle, "border-block-style", [], "official.property.border-block-style", CssBorderStylePair, CssBorderBlockStylePropertyValue, CssBorderBlockStylePropertyValueRepresentation, parse_border_style_pair, { parse_border_style_pair($input)? }, expansion = shorthand { wrapper: additive, accessor: current, members: [ BorderBlockStartStyle => |value: &CssBorderStylePair| Some(*value.start()), BorderBlockEndStyle => |value: &CssBorderStylePair| Some(*value.end()) ], reset_only: [] };
+            BorderInlineStyle, "border-inline-style", [], "official.property.border-inline-style", CssBorderStylePair, CssBorderInlineStylePropertyValue, CssBorderInlineStylePropertyValueRepresentation, parse_border_style_pair, { parse_border_style_pair($input)? }, expansion = shorthand { wrapper: additive, accessor: current, members: [ BorderInlineStartStyle => |value: &CssBorderStylePair| Some(*value.start()), BorderInlineEndStyle => |value: &CssBorderStylePair| Some(*value.end()) ], reset_only: [] };
             BorderRadius, "border-radius", [], "baseline.property.border-radius", CssBorderRadiusShorthand, CssBorderRadiusPropertyValue, CssBorderRadiusPropertyValueRepresentation, parse_exact_border_radius, { parse_exact_border_radius($input, $numeric)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ BorderTopLeftRadius => |value: &CssBorderRadiusShorthand| Some(value.top_left()), BorderTopRightRadius => |value: &CssBorderRadiusShorthand| Some(value.top_right()), BorderBottomRightRadius => |value: &CssBorderRadiusShorthand| Some(value.bottom_right()), BorderBottomLeftRadius => |value: &CssBorderRadiusShorthand| Some(value.bottom_left()) ], reset_only: [] };
             BorderTopLeftRadius, "border-top-left-radius", [], "baseline.property.border-top-left-radius", CssCornerRadiusValue, CssBorderTopLeftRadiusPropertyValue, CssBorderTopLeftRadiusPropertyValueRepresentation, parse_exact_corner_radius, { parse_exact_corner_radius($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssCornerRadiusValue, accessor: current, inherited: false, initial_kind: value, initial: CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None) };
             BorderTopRightRadius, "border-top-right-radius", [], "baseline.property.border-top-right-radius", CssCornerRadiusValue, CssBorderTopRightRadiusPropertyValue, CssBorderTopRightRadiusPropertyValueRepresentation, parse_exact_corner_radius, { parse_exact_corner_radius($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssCornerRadiusValue, accessor: current, inherited: false, initial_kind: value, initial: CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None) };
@@ -1188,6 +1195,16 @@ macro_rules! define_property_value {
             CssCornerRadiusValue,
             CssCornerRadius,
             crate::border_radius::legacy_corner
+        );
+    };
+    (BorderStyle, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_border_width_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssBorderStyleShorthand,
+            CssBorderStyles,
+            crate::border_style::legacy_shorthand
         );
     };
     (BorderWidth, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {

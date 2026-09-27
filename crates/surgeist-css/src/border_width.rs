@@ -285,22 +285,7 @@ impl CssBorderValue {
                 if !text.is_empty() {
                     context.append(text, " ")?;
                 }
-                append_keyword(
-                    context,
-                    text,
-                    match style {
-                        CssBorderStyle::None => "none",
-                        CssBorderStyle::Hidden => "hidden",
-                        CssBorderStyle::Dotted => "dotted",
-                        CssBorderStyle::Dashed => "dashed",
-                        CssBorderStyle::Solid => "solid",
-                        CssBorderStyle::Double => "double",
-                        CssBorderStyle::Groove => "groove",
-                        CssBorderStyle::Ridge => "ridge",
-                        CssBorderStyle::Inset => "inset",
-                        CssBorderStyle::Outset => "outset",
-                    },
-                )?;
+                style.append_specified(context, text)?;
             }
             if let Some(color) = &self.color {
                 if !text.is_empty() {

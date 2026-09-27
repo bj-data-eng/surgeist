@@ -311,6 +311,9 @@ pub surgeist_css::CssBorderStyle::None
 pub surgeist_css::CssBorderStyle::Outset
 pub surgeist_css::CssBorderStyle::Ridge
 pub surgeist_css::CssBorderStyle::Solid
+impl surgeist_css::CssBorderStyle
+pub fn surgeist_css::CssBorderStyle::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBorderStyle::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssBorderWidth
 pub surgeist_css::CssBorderWidth::Length(surgeist_css::CssSpecifiedNonNegativeLength)
 pub surgeist_css::CssBorderWidth::Medium
@@ -1712,8 +1715,11 @@ pub surgeist_css::CssKnownProperty::BackgroundRepeat
 pub surgeist_css::CssKnownProperty::BackgroundSize
 pub surgeist_css::CssKnownProperty::BlockSize
 pub surgeist_css::CssKnownProperty::Border
+pub surgeist_css::CssKnownProperty::BorderBlockEndStyle
 pub surgeist_css::CssKnownProperty::BorderBlockEndWidth
+pub surgeist_css::CssKnownProperty::BorderBlockStartStyle
 pub surgeist_css::CssKnownProperty::BorderBlockStartWidth
+pub surgeist_css::CssKnownProperty::BorderBlockStyle
 pub surgeist_css::CssKnownProperty::BorderBlockWidth
 pub surgeist_css::CssKnownProperty::BorderBottom
 pub surgeist_css::CssKnownProperty::BorderBottomColor
@@ -1731,8 +1737,11 @@ pub surgeist_css::CssKnownProperty::BorderImageRepeat
 pub surgeist_css::CssKnownProperty::BorderImageSlice
 pub surgeist_css::CssKnownProperty::BorderImageSource
 pub surgeist_css::CssKnownProperty::BorderImageWidth
+pub surgeist_css::CssKnownProperty::BorderInlineEndStyle
 pub surgeist_css::CssKnownProperty::BorderInlineEndWidth
+pub surgeist_css::CssKnownProperty::BorderInlineStartStyle
 pub surgeist_css::CssKnownProperty::BorderInlineStartWidth
+pub surgeist_css::CssKnownProperty::BorderInlineStyle
 pub surgeist_css::CssKnownProperty::BorderInlineWidth
 pub surgeist_css::CssKnownProperty::BorderLeft
 pub surgeist_css::CssKnownProperty::BorderLeftColor
@@ -2031,8 +2040,11 @@ pub surgeist_css::CssKnownPropertyValueRef::BackgroundRepeat(&'a surgeist_css::C
 pub surgeist_css::CssKnownPropertyValueRef::BackgroundSize(&'a surgeist_css::CssBackgroundSizePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BlockSize(&'a surgeist_css::CssBlockSizePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Border(&'a surgeist_css::CssBorderPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::BorderBlockEndStyle(&'a surgeist_css::CssBorderBlockEndStylePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderBlockEndWidth(&'a surgeist_css::CssBorderBlockEndWidthPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::BorderBlockStartStyle(&'a surgeist_css::CssBorderBlockStartStylePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderBlockStartWidth(&'a surgeist_css::CssBorderBlockStartWidthPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::BorderBlockStyle(&'a surgeist_css::CssBorderBlockStylePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderBlockWidth(&'a surgeist_css::CssBorderBlockWidthPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderBottom(&'a surgeist_css::CssBorderBottomPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderBottomColor(&'a surgeist_css::CssBorderBottomColorPropertyValue)
@@ -2050,8 +2062,11 @@ pub surgeist_css::CssKnownPropertyValueRef::BorderImageRepeat(&'a surgeist_css::
 pub surgeist_css::CssKnownPropertyValueRef::BorderImageSlice(&'a surgeist_css::CssBorderImageSlicePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderImageSource(&'a surgeist_css::CssBorderImageSourcePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderImageWidth(&'a surgeist_css::CssBorderImageWidthPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::BorderInlineEndStyle(&'a surgeist_css::CssBorderInlineEndStylePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderInlineEndWidth(&'a surgeist_css::CssBorderInlineEndWidthPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::BorderInlineStartStyle(&'a surgeist_css::CssBorderInlineStartStylePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderInlineStartWidth(&'a surgeist_css::CssBorderInlineStartWidthPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::BorderInlineStyle(&'a surgeist_css::CssBorderInlineStylePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderInlineWidth(&'a surgeist_css::CssBorderInlineWidthPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderLeft(&'a surgeist_css::CssBorderLeftPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderLeftColor(&'a surgeist_css::CssBorderLeftColorPropertyValue)
@@ -2421,7 +2436,9 @@ pub surgeist_css::CssListStyleType::String(surgeist_css::CssContentString)
 #[non_exhaustive] pub enum surgeist_css::CssLonghandValueRef<'a>
 pub surgeist_css::CssLonghandValueRef::AspectRatio(&'a surgeist_css::CssAspectRatioValue)
 pub surgeist_css::CssLonghandValueRef::BlockSize(&'a surgeist_css::CssSizeValue)
+pub surgeist_css::CssLonghandValueRef::BorderBlockEndStyle(&'a surgeist_css::CssBorderStyle)
 pub surgeist_css::CssLonghandValueRef::BorderBlockEndWidth(&'a surgeist_css::CssBorderWidth)
+pub surgeist_css::CssLonghandValueRef::BorderBlockStartStyle(&'a surgeist_css::CssBorderStyle)
 pub surgeist_css::CssLonghandValueRef::BorderBlockStartWidth(&'a surgeist_css::CssBorderWidth)
 pub surgeist_css::CssLonghandValueRef::BorderBottomColor(&'a surgeist_css::CssAuthoredColor)
 pub surgeist_css::CssLonghandValueRef::BorderBottomLeftRadius(&'a surgeist_css::CssCornerRadiusValue)
@@ -2436,7 +2453,9 @@ pub surgeist_css::CssLonghandValueRef::BorderImageRepeat(&'a surgeist_css::CssBo
 pub surgeist_css::CssLonghandValueRef::BorderImageSlice(&'a surgeist_css::CssBorderImageSlice)
 pub surgeist_css::CssLonghandValueRef::BorderImageSource(&'a surgeist_css::CssImageValue)
 pub surgeist_css::CssLonghandValueRef::BorderImageWidth(&'a surgeist_css::CssBorderImageWidth)
+pub surgeist_css::CssLonghandValueRef::BorderInlineEndStyle(&'a surgeist_css::CssBorderStyle)
 pub surgeist_css::CssLonghandValueRef::BorderInlineEndWidth(&'a surgeist_css::CssBorderWidth)
+pub surgeist_css::CssLonghandValueRef::BorderInlineStartStyle(&'a surgeist_css::CssBorderStyle)
 pub surgeist_css::CssLonghandValueRef::BorderInlineStartWidth(&'a surgeist_css::CssBorderWidth)
 pub surgeist_css::CssLonghandValueRef::BorderLeftColor(&'a surgeist_css::CssAuthoredColor)
 pub surgeist_css::CssLonghandValueRef::BorderLeftStyle(&'a surgeist_css::CssBorderStyle)
@@ -4212,14 +4231,26 @@ impl core::cmp::PartialEq for surgeist_css::CssBorder
 pub fn surgeist_css::CssBorder::eq(&self, other: &Self) -> bool
 impl core::fmt::Debug for surgeist_css::CssBorder
 pub fn surgeist_css::CssBorder::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_css::CssBorderBlockEndStylePropertyValue
+impl surgeist_css::CssBorderBlockEndStylePropertyValue
+pub fn surgeist_css::CssBorderBlockEndStylePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBorderBlockEndStylePropertyValue::current(&self) -> &surgeist_css::CssBorderStyle
 pub struct surgeist_css::CssBorderBlockEndWidthPropertyValue
 impl surgeist_css::CssBorderBlockEndWidthPropertyValue
 pub fn surgeist_css::CssBorderBlockEndWidthPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBorderBlockEndWidthPropertyValue::current(&self) -> &surgeist_css::CssBorderWidth
+pub struct surgeist_css::CssBorderBlockStartStylePropertyValue
+impl surgeist_css::CssBorderBlockStartStylePropertyValue
+pub fn surgeist_css::CssBorderBlockStartStylePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBorderBlockStartStylePropertyValue::current(&self) -> &surgeist_css::CssBorderStyle
 pub struct surgeist_css::CssBorderBlockStartWidthPropertyValue
 impl surgeist_css::CssBorderBlockStartWidthPropertyValue
 pub fn surgeist_css::CssBorderBlockStartWidthPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBorderBlockStartWidthPropertyValue::current(&self) -> &surgeist_css::CssBorderWidth
+pub struct surgeist_css::CssBorderBlockStylePropertyValue
+impl surgeist_css::CssBorderBlockStylePropertyValue
+pub fn surgeist_css::CssBorderBlockStylePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBorderBlockStylePropertyValue::current(&self) -> &surgeist_css::CssBorderStylePair
 pub struct surgeist_css::CssBorderBlockWidthPropertyValue
 impl surgeist_css::CssBorderBlockWidthPropertyValue
 pub fn surgeist_css::CssBorderBlockWidthPropertyValue::as_css(&self) -> &str
@@ -4345,14 +4376,26 @@ pub struct surgeist_css::CssBorderImageWidthPropertyValue
 impl surgeist_css::CssBorderImageWidthPropertyValue
 pub fn surgeist_css::CssBorderImageWidthPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBorderImageWidthPropertyValue::widths(&self) -> &surgeist_css::CssBorderImageWidth
+pub struct surgeist_css::CssBorderInlineEndStylePropertyValue
+impl surgeist_css::CssBorderInlineEndStylePropertyValue
+pub fn surgeist_css::CssBorderInlineEndStylePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBorderInlineEndStylePropertyValue::current(&self) -> &surgeist_css::CssBorderStyle
 pub struct surgeist_css::CssBorderInlineEndWidthPropertyValue
 impl surgeist_css::CssBorderInlineEndWidthPropertyValue
 pub fn surgeist_css::CssBorderInlineEndWidthPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBorderInlineEndWidthPropertyValue::current(&self) -> &surgeist_css::CssBorderWidth
+pub struct surgeist_css::CssBorderInlineStartStylePropertyValue
+impl surgeist_css::CssBorderInlineStartStylePropertyValue
+pub fn surgeist_css::CssBorderInlineStartStylePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBorderInlineStartStylePropertyValue::current(&self) -> &surgeist_css::CssBorderStyle
 pub struct surgeist_css::CssBorderInlineStartWidthPropertyValue
 impl surgeist_css::CssBorderInlineStartWidthPropertyValue
 pub fn surgeist_css::CssBorderInlineStartWidthPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBorderInlineStartWidthPropertyValue::current(&self) -> &surgeist_css::CssBorderWidth
+pub struct surgeist_css::CssBorderInlineStylePropertyValue
+impl surgeist_css::CssBorderInlineStylePropertyValue
+pub fn surgeist_css::CssBorderInlineStylePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBorderInlineStylePropertyValue::current(&self) -> &surgeist_css::CssBorderStylePair
 pub struct surgeist_css::CssBorderInlineWidthPropertyValue
 impl surgeist_css::CssBorderInlineWidthPropertyValue
 pub fn surgeist_css::CssBorderInlineWidthPropertyValue::as_css(&self) -> &str
@@ -4464,12 +4507,29 @@ pub struct surgeist_css::CssBorderStartStartRadiusPropertyValue
 impl surgeist_css::CssBorderStartStartRadiusPropertyValue
 pub fn surgeist_css::CssBorderStartStartRadiusPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBorderStartStartRadiusPropertyValue::current(&self) -> &surgeist_css::CssCornerRadiusValue
+pub struct surgeist_css::CssBorderStylePair
+impl surgeist_css::CssBorderStylePair
+pub const fn surgeist_css::CssBorderStylePair::authored_end(&self) -> core::option::Option<&surgeist_css::CssBorderStyle>
+pub fn surgeist_css::CssBorderStylePair::end(&self) -> &surgeist_css::CssBorderStyle
+pub const fn surgeist_css::CssBorderStylePair::new(start: surgeist_css::CssBorderStyle, authored_end: core::option::Option<surgeist_css::CssBorderStyle>) -> Self
+pub fn surgeist_css::CssBorderStylePair::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBorderStylePair::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub const fn surgeist_css::CssBorderStylePair::start(&self) -> &surgeist_css::CssBorderStyle
 pub struct surgeist_css::CssBorderStylePropertyValue
 impl surgeist_css::CssBorderStylePropertyValue
 pub fn surgeist_css::CssBorderStylePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBorderStylePropertyValue::current(&self) -> &surgeist_css::CssBorderStyleShorthand
 pub const fn surgeist_css::CssBorderStylePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssBorderStyles>
-impl surgeist_css::CssBorderStylePropertyValue
-pub const fn surgeist_css::CssBorderStylePropertyValue::current(&self) -> &surgeist_css::CssBorderStyles
+impl core::cmp::PartialEq for surgeist_css::CssBorderStylePropertyValue
+pub fn surgeist_css::CssBorderStylePropertyValue::eq(&self, other: &Self) -> bool
+pub struct surgeist_css::CssBorderStyleShorthand
+impl surgeist_css::CssBorderStyleShorthand
+pub fn surgeist_css::CssBorderStyleShorthand::assigned_values(&self) -> [&surgeist_css::CssBorderStyle; 4]
+pub fn surgeist_css::CssBorderStyleShorthand::authored_values(&self) -> &[surgeist_css::CssBorderStyle]
+pub const fn surgeist_css::CssBorderStyleShorthand::kind(&self) -> surgeist_css::CssBoxSideKind
+pub fn surgeist_css::CssBorderStyleShorthand::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBorderStyleShorthand::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBorderStyleShorthand::try_new(kind: surgeist_css::CssBoxSideKind, values: alloc::vec::Vec<surgeist_css::CssBorderStyle>) -> core::option::Option<Self>
 pub struct surgeist_css::CssBorderStyles
 pub surgeist_css::CssBorderStyles::bottom: surgeist_css::CssBorderStyle
 pub surgeist_css::CssBorderStyles::left: surgeist_css::CssBorderStyle

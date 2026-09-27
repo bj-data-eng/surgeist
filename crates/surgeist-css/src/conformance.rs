@@ -2384,6 +2384,12 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::BorderInlineEndWidth
         | CssKnownProperty::BorderBlockWidth
         | CssKnownProperty::BorderInlineWidth => I_LOGICAL1_20251204,
+        CssKnownProperty::BorderBlockStartStyle
+        | CssKnownProperty::BorderBlockEndStyle
+        | CssKnownProperty::BorderInlineStartStyle
+        | CssKnownProperty::BorderInlineEndStyle
+        | CssKnownProperty::BorderBlockStyle
+        | CssKnownProperty::BorderInlineStyle => I_LOGICAL1_20251204,
         CssKnownProperty::BorderStartStartRadius
         | CssKnownProperty::BorderStartEndRadius
         | CssKnownProperty::BorderEndStartRadius
@@ -2699,7 +2705,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 593] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 600] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -5267,6 +5273,43 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 593] = [
         CssKnownProperty::BorderLeftStyle,
         "border-left-style",
         "baseline.property.border-left-style"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderBlockStartStyle,
+        "border-block-start-style",
+        "official.property.border-block-start-style"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderBlockEndStyle,
+        "border-block-end-style",
+        "official.property.border-block-end-style"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderInlineStartStyle,
+        "border-inline-start-style",
+        "official.property.border-inline-start-style"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderInlineEndStyle,
+        "border-inline-end-style",
+        "official.property.border-inline-end-style"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderBlockStyle,
+        "border-block-style",
+        "official.property.border-block-style"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderInlineStyle,
+        "border-inline-style",
+        "official.property.border-inline-style"
+    ),
+    CssFeatureMetadata::complete(
+        "official.value.border-style-logical-values",
+        CssFeatureKind::Value,
+        "border-style logical switch",
+        I_LOGICAL1_20251204,
+        "#logical-shorthand-keyword",
     ),
     complete_property_feature!(
         CssKnownProperty::BorderRadius,

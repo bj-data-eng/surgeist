@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use crate::CssSpecifiedLength;
 use crate::border_radius::*;
+use crate::border_style::*;
 use crate::border_width::*;
 use crate::box_spacing::*;
 use crate::contain_intrinsic_size::*;

@@ -397,15 +397,27 @@ fn four_sided_styles_and_current_colors() {
             ],
         ),
     ] {
-        let values = expanded(&declaration(
-            Property::BorderStyle,
-            css,
-            CssImportance::Normal,
-        ));
-        assert_members(&values, &STYLES);
-        for (side, expected) in STYLES.into_iter().zip(expected) {
-            assert_eq!(style(member(&values, side)), expected);
-        }
+        let source = declaration(Property::BorderStyle, css, CssImportance::Normal);
+        let Some(CssKnownPropertyValueRef::BorderStyle(authored)) =
+            source.known().unwrap().property_value()
+        else {
+            panic!("authored border style")
+        };
+        assert_eq!(
+            authored.current().kind(),
+            surgeist_css::CssBoxSideKind::Physical
+        );
+        assert_eq!(
+            authored.current().assigned_values().map(|value| *value),
+            expected
+        );
+        assert_eq!(
+            expand_declaration(&source).unwrap_err().kind(),
+            &CssExpansionErrorKind::UnresolvedStandard {
+                property: Property::BorderStyle,
+                reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
+            }
+        );
     }
     for (css, expected) in [
         ("red", ["red", "red", "red", "red"]),
@@ -645,7 +657,6 @@ fn globals_include_reset_only_members_and_all_stays_symbolic() {
         for (property, expected) in [
             (Property::MarginBlock, MARGIN_BLOCK.to_vec()),
             (Property::PaddingBlock, PADDING_BLOCK.to_vec()),
-            (Property::BorderStyle, STYLES.to_vec()),
             (Property::BorderColor, COLORS.to_vec()),
             (Property::Border, border_members()),
             (
@@ -674,6 +685,14 @@ fn globals_include_reset_only_members_and_all_stays_symbolic() {
             expand_declaration(&border_width).unwrap_err().kind(),
             &CssExpansionErrorKind::UnresolvedStandard {
                 property: Property::BorderWidth,
+                reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
+            }
+        );
+        let border_style = declaration(Property::BorderStyle, css, CssImportance::Important);
+        assert_eq!(
+            expand_declaration(&border_style).unwrap_err().kind(),
+            &CssExpansionErrorKind::UnresolvedStandard {
+                property: Property::BorderStyle,
                 reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
             }
         );

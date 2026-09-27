@@ -1132,6 +1132,7 @@ mod normalization;
 pub use media_features::*;
 mod aspect_ratio;
 mod border_radius;
+mod border_style;
 mod border_width;
 mod box_spacing;
 mod break_controls;
@@ -1151,6 +1152,7 @@ mod sizing;
 mod sizing_controls;
 pub use aspect_ratio::{CssRatioOperand, CssSpecifiedRatio};
 pub use border_radius::{CssBorderRadiusShorthand, CssCornerRadiusValue};
+pub use border_style::{CssBorderStylePair, CssBorderStyleShorthand};
 pub use border_width::{
     CssBorderValue, CssBorderWidth, CssBorderWidthPair, CssBorderWidthShorthand,
 };
