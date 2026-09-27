@@ -56,6 +56,14 @@ const LONGHANDS: &[P] = &[
     P::BorderBlockEndWidth,
     P::BorderInlineStartWidth,
     P::BorderInlineEndWidth,
+    P::BorderTopLeftRadius,
+    P::BorderTopRightRadius,
+    P::BorderBottomRightRadius,
+    P::BorderBottomLeftRadius,
+    P::BorderStartStartRadius,
+    P::BorderStartEndRadius,
+    P::BorderEndStartRadius,
+    P::BorderEndEndRadius,
     P::BorderTopStyle,
     P::BorderRightStyle,
     P::BorderBottomStyle,
@@ -195,6 +203,16 @@ const SHORTHANDS: &[(P, &[P], &[P])] = &[
         &[],
     ),
     (P::Container, &[P::ContainerName, P::ContainerType], &[]),
+    (
+        P::BorderRadius,
+        &[
+            P::BorderTopLeftRadius,
+            P::BorderTopRightRadius,
+            P::BorderBottomRightRadius,
+            P::BorderBottomLeftRadius,
+        ],
+        &[],
+    ),
     (
         P::BorderStyle,
         &[
@@ -350,6 +368,21 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         | CssLonghandValueRef::BorderBlockEndWidth(v)
         | CssLonghandValueRef::BorderInlineStartWidth(v)
         | CssLonghandValueRef::BorderInlineEndWidth(v) => assert_eq!(*v, CssBorderWidth::Medium),
+        CssLonghandValueRef::BorderTopLeftRadius(v)
+        | CssLonghandValueRef::BorderTopRightRadius(v)
+        | CssLonghandValueRef::BorderBottomRightRadius(v)
+        | CssLonghandValueRef::BorderBottomLeftRadius(v)
+        | CssLonghandValueRef::BorderStartStartRadius(v)
+        | CssLonghandValueRef::BorderStartEndRadius(v)
+        | CssLonghandValueRef::BorderEndStartRadius(v)
+        | CssLonghandValueRef::BorderEndEndRadius(v) => {
+            assert_eq!(
+                v,
+                &CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None)
+            );
+            assert_eq!(v.horizontal(), v.vertical());
+            assert!(v.authored_vertical().is_none());
+        }
         CssLonghandValueRef::BorderTopStyle(v)
         | CssLonghandValueRef::BorderRightStyle(v)
         | CssLonghandValueRef::BorderBottomStyle(v)
@@ -498,7 +531,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 145);
+    assert_eq!(expected.len(), 154);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();

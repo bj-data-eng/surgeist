@@ -4,6 +4,7 @@
 //! frozen property set. Public identity values describe authored property names;
 //! they do not apply cascade, substitute variables, or resolve authored values.
 
+use crate::border_radius::*;
 use crate::border_width::*;
 use crate::box_spacing::*;
 use crate::box_values::{CssBorderColors, CssParsedBorderColors};
@@ -272,11 +273,15 @@ macro_rules! property_schema {
             BorderRightStyle, "border-right-style", [], "baseline.property.border-right-style", CssBorderStyle, CssBorderRightStylePropertyValue, CssBorderRightStylePropertyValueRepresentation, parse_border_style, { parse_border_style($input)? }, expansion = longhand { wrapper: fallback, value: CssBorderStyle, accessor: current, inherited: false, initial_kind: value, initial: CssBorderStyle::None };
             BorderBottomStyle, "border-bottom-style", [], "baseline.property.border-bottom-style", CssBorderStyle, CssBorderBottomStylePropertyValue, CssBorderBottomStylePropertyValueRepresentation, parse_border_style, { parse_border_style($input)? }, expansion = longhand { wrapper: fallback, value: CssBorderStyle, accessor: current, inherited: false, initial_kind: value, initial: CssBorderStyle::None };
             BorderLeftStyle, "border-left-style", [], "baseline.property.border-left-style", CssBorderStyle, CssBorderLeftStylePropertyValue, CssBorderLeftStylePropertyValueRepresentation, parse_border_style, { parse_border_style($input)? }, expansion = longhand { wrapper: fallback, value: CssBorderStyle, accessor: current, inherited: false, initial_kind: value, initial: CssBorderStyle::None };
-            BorderRadius, "border-radius", [], "baseline.property.border-radius", CssBorderRadii, CssBorderRadiusPropertyValue, CssBorderRadiusPropertyValueRepresentation, parse_border_radius, { parse_border_radius($input, $numeric)? };
-            BorderTopLeftRadius, "border-top-left-radius", [], "baseline.property.border-top-left-radius", CssCornerRadius, CssBorderTopLeftRadiusPropertyValue, CssBorderTopLeftRadiusPropertyValueRepresentation, parse_corner_radius, { parse_corner_radius($input, $numeric)? };
-            BorderTopRightRadius, "border-top-right-radius", [], "baseline.property.border-top-right-radius", CssCornerRadius, CssBorderTopRightRadiusPropertyValue, CssBorderTopRightRadiusPropertyValueRepresentation, parse_corner_radius, { parse_corner_radius($input, $numeric)? };
-            BorderBottomRightRadius, "border-bottom-right-radius", [], "baseline.property.border-bottom-right-radius", CssCornerRadius, CssBorderBottomRightRadiusPropertyValue, CssBorderBottomRightRadiusPropertyValueRepresentation, parse_corner_radius, { parse_corner_radius($input, $numeric)? };
-            BorderBottomLeftRadius, "border-bottom-left-radius", [], "baseline.property.border-bottom-left-radius", CssCornerRadius, CssBorderBottomLeftRadiusPropertyValue, CssBorderBottomLeftRadiusPropertyValueRepresentation, parse_corner_radius, { parse_corner_radius($input, $numeric)? };
+            BorderRadius, "border-radius", [], "baseline.property.border-radius", CssBorderRadiusShorthand, CssBorderRadiusPropertyValue, CssBorderRadiusPropertyValueRepresentation, parse_exact_border_radius, { parse_exact_border_radius($input, $numeric)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ BorderTopLeftRadius => |value: &CssBorderRadiusShorthand| Some(value.top_left()), BorderTopRightRadius => |value: &CssBorderRadiusShorthand| Some(value.top_right()), BorderBottomRightRadius => |value: &CssBorderRadiusShorthand| Some(value.bottom_right()), BorderBottomLeftRadius => |value: &CssBorderRadiusShorthand| Some(value.bottom_left()) ], reset_only: [] };
+            BorderTopLeftRadius, "border-top-left-radius", [], "baseline.property.border-top-left-radius", CssCornerRadiusValue, CssBorderTopLeftRadiusPropertyValue, CssBorderTopLeftRadiusPropertyValueRepresentation, parse_exact_corner_radius, { parse_exact_corner_radius($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssCornerRadiusValue, accessor: current, inherited: false, initial_kind: value, initial: CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None) };
+            BorderTopRightRadius, "border-top-right-radius", [], "baseline.property.border-top-right-radius", CssCornerRadiusValue, CssBorderTopRightRadiusPropertyValue, CssBorderTopRightRadiusPropertyValueRepresentation, parse_exact_corner_radius, { parse_exact_corner_radius($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssCornerRadiusValue, accessor: current, inherited: false, initial_kind: value, initial: CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None) };
+            BorderBottomRightRadius, "border-bottom-right-radius", [], "baseline.property.border-bottom-right-radius", CssCornerRadiusValue, CssBorderBottomRightRadiusPropertyValue, CssBorderBottomRightRadiusPropertyValueRepresentation, parse_exact_corner_radius, { parse_exact_corner_radius($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssCornerRadiusValue, accessor: current, inherited: false, initial_kind: value, initial: CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None) };
+            BorderBottomLeftRadius, "border-bottom-left-radius", [], "baseline.property.border-bottom-left-radius", CssCornerRadiusValue, CssBorderBottomLeftRadiusPropertyValue, CssBorderBottomLeftRadiusPropertyValueRepresentation, parse_exact_corner_radius, { parse_exact_corner_radius($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssCornerRadiusValue, accessor: current, inherited: false, initial_kind: value, initial: CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None) };
+            BorderStartStartRadius, "border-start-start-radius", [], "official.property.border-start-start-radius", CssCornerRadiusValue, CssBorderStartStartRadiusPropertyValue, CssBorderStartStartRadiusPropertyValueRepresentation, parse_exact_corner_radius, { parse_exact_corner_radius($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssCornerRadiusValue, accessor: current, inherited: false, initial_kind: value, initial: CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None) };
+            BorderStartEndRadius, "border-start-end-radius", [], "official.property.border-start-end-radius", CssCornerRadiusValue, CssBorderStartEndRadiusPropertyValue, CssBorderStartEndRadiusPropertyValueRepresentation, parse_exact_corner_radius, { parse_exact_corner_radius($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssCornerRadiusValue, accessor: current, inherited: false, initial_kind: value, initial: CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None) };
+            BorderEndStartRadius, "border-end-start-radius", [], "official.property.border-end-start-radius", CssCornerRadiusValue, CssBorderEndStartRadiusPropertyValue, CssBorderEndStartRadiusPropertyValueRepresentation, parse_exact_corner_radius, { parse_exact_corner_radius($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssCornerRadiusValue, accessor: current, inherited: false, initial_kind: value, initial: CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None) };
+            BorderEndEndRadius, "border-end-end-radius", [], "official.property.border-end-end-radius", CssCornerRadiusValue, CssBorderEndEndRadiusPropertyValue, CssBorderEndEndRadiusPropertyValueRepresentation, parse_exact_corner_radius, { parse_exact_corner_radius($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssCornerRadiusValue, accessor: current, inherited: false, initial_kind: value, initial: CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None) };
             BoxShadow, "box-shadow", [], "baseline.property.box-shadow", CssBoxShadow, CssBoxShadowPropertyValue, CssBoxShadowPropertyValueRepresentation, parse_box_shadow, { parse_box_shadow($input, $numeric)? };
             Opacity, "opacity", [], "baseline.property.opacity", CssOpacity, CssOpacityPropertyValue, CssOpacityPropertyValueRepresentation, parse_opacity, { parse_opacity($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssOpacityValue, accessor: value, inherited: false, initial_kind: value, initial: CssOpacityValue::Literal(CssOpacity::try_new(1.0).expect("one is a valid opacity")) };
             FlexGrow, "flex-grow", [], "baseline.property.flex-grow", CssFlexFactor, CssFlexGrowPropertyValue, CssFlexGrowPropertyValueRepresentation, parse_flex_factor, { parse_flex_factor($input, $numeric, "flex-grow")? };
@@ -1135,6 +1140,56 @@ fn overflow_i01_projection(value: CssOverflow) -> Option<CssOverflow> {
 }
 
 macro_rules! define_property_value {
+    (BorderRadius, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_border_width_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssBorderRadiusShorthand,
+            CssBorderRadii,
+            crate::border_radius::legacy_shorthand
+        );
+    };
+    (BorderTopLeftRadius, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_border_width_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssCornerRadiusValue,
+            CssCornerRadius,
+            crate::border_radius::legacy_corner
+        );
+    };
+    (BorderTopRightRadius, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_border_width_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssCornerRadiusValue,
+            CssCornerRadius,
+            crate::border_radius::legacy_corner
+        );
+    };
+    (BorderBottomRightRadius, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_border_width_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssCornerRadiusValue,
+            CssCornerRadius,
+            crate::border_radius::legacy_corner
+        );
+    };
+    (BorderBottomLeftRadius, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_border_width_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssCornerRadiusValue,
+            CssCornerRadius,
+            crate::border_radius::legacy_corner
+        );
+    };
     (BorderWidth, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
         define_border_width_property_value!(
             $canonical,

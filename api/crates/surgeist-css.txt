@@ -1723,6 +1723,8 @@ pub surgeist_css::CssKnownProperty::BorderBottomStyle
 pub surgeist_css::CssKnownProperty::BorderBottomWidth
 pub surgeist_css::CssKnownProperty::BorderCollapse
 pub surgeist_css::CssKnownProperty::BorderColor
+pub surgeist_css::CssKnownProperty::BorderEndEndRadius
+pub surgeist_css::CssKnownProperty::BorderEndStartRadius
 pub surgeist_css::CssKnownProperty::BorderImage
 pub surgeist_css::CssKnownProperty::BorderImageOutset
 pub surgeist_css::CssKnownProperty::BorderImageRepeat
@@ -1742,6 +1744,8 @@ pub surgeist_css::CssKnownProperty::BorderRightColor
 pub surgeist_css::CssKnownProperty::BorderRightStyle
 pub surgeist_css::CssKnownProperty::BorderRightWidth
 pub surgeist_css::CssKnownProperty::BorderSpacing
+pub surgeist_css::CssKnownProperty::BorderStartEndRadius
+pub surgeist_css::CssKnownProperty::BorderStartStartRadius
 pub surgeist_css::CssKnownProperty::BorderStyle
 pub surgeist_css::CssKnownProperty::BorderTop
 pub surgeist_css::CssKnownProperty::BorderTopColor
@@ -2038,6 +2042,8 @@ pub surgeist_css::CssKnownPropertyValueRef::BorderBottomStyle(&'a surgeist_css::
 pub surgeist_css::CssKnownPropertyValueRef::BorderBottomWidth(&'a surgeist_css::CssBorderBottomWidthPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderCollapse(&'a surgeist_css::CssBorderCollapsePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderColor(&'a surgeist_css::CssBorderColorPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::BorderEndEndRadius(&'a surgeist_css::CssBorderEndEndRadiusPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::BorderEndStartRadius(&'a surgeist_css::CssBorderEndStartRadiusPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderImage(&'a surgeist_css::CssBorderImagePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderImageOutset(&'a surgeist_css::CssBorderImageOutsetPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderImageRepeat(&'a surgeist_css::CssBorderImageRepeatPropertyValue)
@@ -2057,6 +2063,8 @@ pub surgeist_css::CssKnownPropertyValueRef::BorderRightColor(&'a surgeist_css::C
 pub surgeist_css::CssKnownPropertyValueRef::BorderRightStyle(&'a surgeist_css::CssBorderRightStylePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderRightWidth(&'a surgeist_css::CssBorderRightWidthPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderSpacing(&'a surgeist_css::CssBorderSpacingPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::BorderStartEndRadius(&'a surgeist_css::CssBorderStartEndRadiusPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::BorderStartStartRadius(&'a surgeist_css::CssBorderStartStartRadiusPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderStyle(&'a surgeist_css::CssBorderStylePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderTop(&'a surgeist_css::CssBorderTopPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderTopColor(&'a surgeist_css::CssBorderTopColorPropertyValue)
@@ -2416,9 +2424,13 @@ pub surgeist_css::CssLonghandValueRef::BlockSize(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::BorderBlockEndWidth(&'a surgeist_css::CssBorderWidth)
 pub surgeist_css::CssLonghandValueRef::BorderBlockStartWidth(&'a surgeist_css::CssBorderWidth)
 pub surgeist_css::CssLonghandValueRef::BorderBottomColor(&'a surgeist_css::CssAuthoredColor)
+pub surgeist_css::CssLonghandValueRef::BorderBottomLeftRadius(&'a surgeist_css::CssCornerRadiusValue)
+pub surgeist_css::CssLonghandValueRef::BorderBottomRightRadius(&'a surgeist_css::CssCornerRadiusValue)
 pub surgeist_css::CssLonghandValueRef::BorderBottomStyle(&'a surgeist_css::CssBorderStyle)
 pub surgeist_css::CssLonghandValueRef::BorderBottomWidth(&'a surgeist_css::CssBorderWidth)
 pub surgeist_css::CssLonghandValueRef::BorderCollapse(&'a surgeist_css::CssBorderCollapse)
+pub surgeist_css::CssLonghandValueRef::BorderEndEndRadius(&'a surgeist_css::CssCornerRadiusValue)
+pub surgeist_css::CssLonghandValueRef::BorderEndStartRadius(&'a surgeist_css::CssCornerRadiusValue)
 pub surgeist_css::CssLonghandValueRef::BorderImageOutset(&'a surgeist_css::CssBorderImageOutset)
 pub surgeist_css::CssLonghandValueRef::BorderImageRepeat(&'a surgeist_css::CssBorderImageRepeat)
 pub surgeist_css::CssLonghandValueRef::BorderImageSlice(&'a surgeist_css::CssBorderImageSlice)
@@ -2432,7 +2444,11 @@ pub surgeist_css::CssLonghandValueRef::BorderLeftWidth(&'a surgeist_css::CssBord
 pub surgeist_css::CssLonghandValueRef::BorderRightColor(&'a surgeist_css::CssAuthoredColor)
 pub surgeist_css::CssLonghandValueRef::BorderRightStyle(&'a surgeist_css::CssBorderStyle)
 pub surgeist_css::CssLonghandValueRef::BorderRightWidth(&'a surgeist_css::CssBorderWidth)
+pub surgeist_css::CssLonghandValueRef::BorderStartEndRadius(&'a surgeist_css::CssCornerRadiusValue)
+pub surgeist_css::CssLonghandValueRef::BorderStartStartRadius(&'a surgeist_css::CssCornerRadiusValue)
 pub surgeist_css::CssLonghandValueRef::BorderTopColor(&'a surgeist_css::CssAuthoredColor)
+pub surgeist_css::CssLonghandValueRef::BorderTopLeftRadius(&'a surgeist_css::CssCornerRadiusValue)
+pub surgeist_css::CssLonghandValueRef::BorderTopRightRadius(&'a surgeist_css::CssCornerRadiusValue)
 pub surgeist_css::CssLonghandValueRef::BorderTopStyle(&'a surgeist_css::CssBorderStyle)
 pub surgeist_css::CssLonghandValueRef::BorderTopWidth(&'a surgeist_css::CssBorderWidth)
 pub surgeist_css::CssLonghandValueRef::Bottom(&'a surgeist_css::CssInsetValue)
@@ -4216,7 +4232,10 @@ pub const fn surgeist_css::CssBorderBottomColorPropertyValue::i01_subset(&self) 
 pub struct surgeist_css::CssBorderBottomLeftRadiusPropertyValue
 impl surgeist_css::CssBorderBottomLeftRadiusPropertyValue
 pub fn surgeist_css::CssBorderBottomLeftRadiusPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBorderBottomLeftRadiusPropertyValue::current(&self) -> &surgeist_css::CssCornerRadiusValue
 pub const fn surgeist_css::CssBorderBottomLeftRadiusPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssCornerRadius>
+impl core::cmp::PartialEq for surgeist_css::CssBorderBottomLeftRadiusPropertyValue
+pub fn surgeist_css::CssBorderBottomLeftRadiusPropertyValue::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssBorderBottomPropertyValue
 impl surgeist_css::CssBorderBottomPropertyValue
 pub fn surgeist_css::CssBorderBottomPropertyValue::as_css(&self) -> &str
@@ -4227,7 +4246,10 @@ pub fn surgeist_css::CssBorderBottomPropertyValue::eq(&self, other: &Self) -> bo
 pub struct surgeist_css::CssBorderBottomRightRadiusPropertyValue
 impl surgeist_css::CssBorderBottomRightRadiusPropertyValue
 pub fn surgeist_css::CssBorderBottomRightRadiusPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBorderBottomRightRadiusPropertyValue::current(&self) -> &surgeist_css::CssCornerRadiusValue
 pub const fn surgeist_css::CssBorderBottomRightRadiusPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssCornerRadius>
+impl core::cmp::PartialEq for surgeist_css::CssBorderBottomRightRadiusPropertyValue
+pub fn surgeist_css::CssBorderBottomRightRadiusPropertyValue::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssBorderBottomStylePropertyValue
 impl surgeist_css::CssBorderBottomStylePropertyValue
 pub fn surgeist_css::CssBorderBottomStylePropertyValue::as_css(&self) -> &str
@@ -4257,6 +4279,14 @@ pub const fn surgeist_css::CssBorderColors::left(&self) -> &surgeist_css::CssAut
 pub const fn surgeist_css::CssBorderColors::right(&self) -> &surgeist_css::CssAuthoredColor
 pub const fn surgeist_css::CssBorderColors::top(&self) -> &surgeist_css::CssAuthoredColor
 pub fn surgeist_css::CssBorderColors::try_new(colors: alloc::vec::Vec<surgeist_css::CssAuthoredColor>) -> core::option::Option<Self>
+pub struct surgeist_css::CssBorderEndEndRadiusPropertyValue
+impl surgeist_css::CssBorderEndEndRadiusPropertyValue
+pub fn surgeist_css::CssBorderEndEndRadiusPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBorderEndEndRadiusPropertyValue::current(&self) -> &surgeist_css::CssCornerRadiusValue
+pub struct surgeist_css::CssBorderEndStartRadiusPropertyValue
+impl surgeist_css::CssBorderEndStartRadiusPropertyValue
+pub fn surgeist_css::CssBorderEndStartRadiusPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBorderEndStartRadiusPropertyValue::current(&self) -> &surgeist_css::CssCornerRadiusValue
 pub struct surgeist_css::CssBorderImage
 impl surgeist_css::CssBorderImage
 pub const fn surgeist_css::CssBorderImage::outset(&self) -> core::option::Option<&surgeist_css::CssBorderImageOutset>
@@ -4369,7 +4399,25 @@ pub const fn surgeist_css::CssBorderRadii::new(top_left: surgeist_css::CssCorner
 pub struct surgeist_css::CssBorderRadiusPropertyValue
 impl surgeist_css::CssBorderRadiusPropertyValue
 pub fn surgeist_css::CssBorderRadiusPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBorderRadiusPropertyValue::current(&self) -> &surgeist_css::CssBorderRadiusShorthand
 pub const fn surgeist_css::CssBorderRadiusPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssBorderRadii>
+impl core::cmp::PartialEq for surgeist_css::CssBorderRadiusPropertyValue
+pub fn surgeist_css::CssBorderRadiusPropertyValue::eq(&self, other: &Self) -> bool
+pub struct surgeist_css::CssBorderRadiusShorthand
+impl surgeist_css::CssBorderRadiusShorthand
+pub fn surgeist_css::CssBorderRadiusShorthand::authored_vertical_values(&self) -> core::option::Option<&[surgeist_css::CssSpecifiedNonNegativeLengthPercentage]>
+pub fn surgeist_css::CssBorderRadiusShorthand::bottom_left(&self) -> surgeist_css::CssCornerRadiusValue
+pub fn surgeist_css::CssBorderRadiusShorthand::bottom_right(&self) -> surgeist_css::CssCornerRadiusValue
+pub fn surgeist_css::CssBorderRadiusShorthand::horizontal_values(&self) -> &[surgeist_css::CssSpecifiedNonNegativeLengthPercentage]
+pub fn surgeist_css::CssBorderRadiusShorthand::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBorderRadiusShorthand::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBorderRadiusShorthand::top_left(&self) -> surgeist_css::CssCornerRadiusValue
+pub fn surgeist_css::CssBorderRadiusShorthand::top_right(&self) -> surgeist_css::CssCornerRadiusValue
+pub fn surgeist_css::CssBorderRadiusShorthand::try_new(horizontal: alloc::vec::Vec<surgeist_css::CssSpecifiedNonNegativeLengthPercentage>, authored_vertical: core::option::Option<alloc::vec::Vec<surgeist_css::CssSpecifiedNonNegativeLengthPercentage>>) -> core::option::Option<Self>
+pub fn surgeist_css::CssBorderRadiusShorthand::vertical_values(&self) -> &[surgeist_css::CssSpecifiedNonNegativeLengthPercentage]
+impl core::cmp::Eq for surgeist_css::CssBorderRadiusShorthand
+impl core::cmp::PartialEq for surgeist_css::CssBorderRadiusShorthand
+pub fn surgeist_css::CssBorderRadiusShorthand::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssBorderRightColorPropertyValue
 impl surgeist_css::CssBorderRightColorPropertyValue
 pub fn surgeist_css::CssBorderRightColorPropertyValue::as_css(&self) -> &str
@@ -4408,6 +4456,14 @@ pub struct surgeist_css::CssBorderSpacingPropertyValue
 impl surgeist_css::CssBorderSpacingPropertyValue
 pub fn surgeist_css::CssBorderSpacingPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBorderSpacingPropertyValue::spacing(&self) -> &surgeist_css::CssBorderSpacing
+pub struct surgeist_css::CssBorderStartEndRadiusPropertyValue
+impl surgeist_css::CssBorderStartEndRadiusPropertyValue
+pub fn surgeist_css::CssBorderStartEndRadiusPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBorderStartEndRadiusPropertyValue::current(&self) -> &surgeist_css::CssCornerRadiusValue
+pub struct surgeist_css::CssBorderStartStartRadiusPropertyValue
+impl surgeist_css::CssBorderStartStartRadiusPropertyValue
+pub fn surgeist_css::CssBorderStartStartRadiusPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBorderStartStartRadiusPropertyValue::current(&self) -> &surgeist_css::CssCornerRadiusValue
 pub struct surgeist_css::CssBorderStylePropertyValue
 impl surgeist_css::CssBorderStylePropertyValue
 pub fn surgeist_css::CssBorderStylePropertyValue::as_css(&self) -> &str
@@ -4430,7 +4486,10 @@ pub const fn surgeist_css::CssBorderTopColorPropertyValue::i01_subset(&self) -> 
 pub struct surgeist_css::CssBorderTopLeftRadiusPropertyValue
 impl surgeist_css::CssBorderTopLeftRadiusPropertyValue
 pub fn surgeist_css::CssBorderTopLeftRadiusPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBorderTopLeftRadiusPropertyValue::current(&self) -> &surgeist_css::CssCornerRadiusValue
 pub const fn surgeist_css::CssBorderTopLeftRadiusPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssCornerRadius>
+impl core::cmp::PartialEq for surgeist_css::CssBorderTopLeftRadiusPropertyValue
+pub fn surgeist_css::CssBorderTopLeftRadiusPropertyValue::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssBorderTopPropertyValue
 impl surgeist_css::CssBorderTopPropertyValue
 pub fn surgeist_css::CssBorderTopPropertyValue::as_css(&self) -> &str
@@ -4441,7 +4500,10 @@ pub fn surgeist_css::CssBorderTopPropertyValue::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssBorderTopRightRadiusPropertyValue
 impl surgeist_css::CssBorderTopRightRadiusPropertyValue
 pub fn surgeist_css::CssBorderTopRightRadiusPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBorderTopRightRadiusPropertyValue::current(&self) -> &surgeist_css::CssCornerRadiusValue
 pub const fn surgeist_css::CssBorderTopRightRadiusPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssCornerRadius>
+impl core::cmp::PartialEq for surgeist_css::CssBorderTopRightRadiusPropertyValue
+pub fn surgeist_css::CssBorderTopRightRadiusPropertyValue::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssBorderTopStylePropertyValue
 impl surgeist_css::CssBorderTopStylePropertyValue
 pub fn surgeist_css::CssBorderTopStylePropertyValue::as_css(&self) -> &str
@@ -5088,6 +5150,17 @@ impl surgeist_css::CssCornerRadius
 pub const fn surgeist_css::CssCornerRadius::horizontal(&self) -> &surgeist_css::CssLength
 pub fn surgeist_css::CssCornerRadius::try_new(horizontal: surgeist_css::CssLength, vertical: surgeist_css::CssLength) -> core::option::Option<Self>
 pub const fn surgeist_css::CssCornerRadius::vertical(&self) -> &surgeist_css::CssLength
+pub struct surgeist_css::CssCornerRadiusValue
+impl surgeist_css::CssCornerRadiusValue
+pub fn surgeist_css::CssCornerRadiusValue::authored_vertical(&self) -> core::option::Option<&surgeist_css::CssSpecifiedNonNegativeLengthPercentage>
+pub fn surgeist_css::CssCornerRadiusValue::horizontal(&self) -> &surgeist_css::CssSpecifiedNonNegativeLengthPercentage
+pub fn surgeist_css::CssCornerRadiusValue::new(horizontal: surgeist_css::CssSpecifiedNonNegativeLengthPercentage, authored_vertical: core::option::Option<surgeist_css::CssSpecifiedNonNegativeLengthPercentage>) -> Self
+pub fn surgeist_css::CssCornerRadiusValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCornerRadiusValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCornerRadiusValue::vertical(&self) -> &surgeist_css::CssSpecifiedNonNegativeLengthPercentage
+impl core::cmp::Eq for surgeist_css::CssCornerRadiusValue
+impl core::cmp::PartialEq for surgeist_css::CssCornerRadiusValue
+pub fn surgeist_css::CssCornerRadiusValue::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssCounterAdditiveSymbols
 impl surgeist_css::CssCounterAdditiveSymbols
 pub fn surgeist_css::CssCounterAdditiveSymbols::tuples(&self) -> &[surgeist_css::CssCounterAdditiveTuple]

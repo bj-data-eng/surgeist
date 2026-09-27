@@ -1,8 +1,6 @@
 use cssparser::{ParseError, Parser, match_ignore_ascii_case};
 
-use super::values::{
-    parse_color, parse_radius_component, parse_shadow_blur_length, parse_shadow_length,
-};
+use super::values::{parse_color, parse_shadow_blur_length, parse_shadow_length};
 use crate::box_values::CssParsedBorderColors;
 use crate::error::{CssFeatureId, Error, basic, unsupported_value};
 use crate::syntax::*;
@@ -96,88 +94,6 @@ pub(super) fn parse_border_style<'i, 't>(
             unsupported_keyword_reason("border-style", ident.as_ref()),
         )),
     }
-}
-
-pub(super) fn parse_corner_radius<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssCornerRadius, ParseError<'i, Error>> {
-    let horizontal = parse_radius_component(input, numeric)?;
-    let vertical = if input.is_exhausted() {
-        horizontal.clone()
-    } else {
-        parse_radius_component(input, numeric)?
-    };
-    Ok(CssCornerRadius::new(horizontal, vertical))
-}
-
-pub(super) fn parse_border_radius<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssBorderRadii, ParseError<'i, Error>> {
-    let horizontal = parse_radius_component_list(input, numeric)?;
-    if horizontal.is_empty() {
-        return Err(unsupported_value(
-            input,
-            None,
-            "border-radius shorthand is missing a value",
-        ));
-    }
-
-    let vertical = if input.try_parse(|input| input.expect_delim('/')).is_ok() {
-        let vertical = parse_radius_component_list(input, numeric)?;
-        if vertical.is_empty() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "border-radius slash is missing vertical radii",
-            ));
-        }
-        vertical
-    } else {
-        horizontal.clone()
-    };
-
-    let (h_top_left, h_top_right, h_bottom_right, h_bottom_left) =
-        expand_radius_components(horizontal);
-    let (v_top_left, v_top_right, v_bottom_right, v_bottom_left) =
-        expand_radius_components(vertical);
-
-    Ok(CssBorderRadii::new(
-        CssCornerRadius::new(h_top_left, v_top_left),
-        CssCornerRadius::new(h_top_right, v_top_right),
-        CssCornerRadius::new(h_bottom_right, v_bottom_right),
-        CssCornerRadius::new(h_bottom_left, v_bottom_left),
-    ))
-}
-
-pub(super) fn parse_radius_component_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<Vec<CssLength>, ParseError<'i, Error>> {
-    let mut values = Vec::new();
-    while !input.is_exhausted() {
-        let state = input.state();
-        if input.try_parse(|input| input.expect_delim('/')).is_ok() {
-            input.reset(&state);
-            break;
-        }
-
-        values.push(parse_radius_component(input, numeric)?);
-        if values.len() == 4 && !input.is_exhausted() {
-            let state = input.state();
-            let slash_is_next = input.try_parse(|input| input.expect_delim('/')).is_ok();
-            input.reset(&state);
-            if !slash_is_next {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "border-radius shorthand has too many values",
-                ));
-            }
-        }
-    }
-    Ok(values)
 }
 
 pub(super) fn expand_radius_components(

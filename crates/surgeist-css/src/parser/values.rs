@@ -75,13 +75,6 @@ pub(super) fn parse_box_size_value<'i, 't>(
     parse_length_with(input, numeric, LengthGrammar::BoxSize)
 }
 
-pub(super) fn parse_radius_component<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssLength, ParseError<'i, Error>> {
-    parse_length_with(input, numeric, LengthGrammar::Radius)
-}
-
 pub(super) fn parse_shadow_length<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
@@ -115,7 +108,6 @@ pub(super) enum LengthGrammar {
     BoxSize,
     FlowTolerance,
     BorderWidth,
-    Radius,
     ShadowOffset,
     ShadowBlur,
     BorderSpacing,
@@ -141,7 +133,6 @@ impl LengthGrammar {
             self,
             Self::BoxSize
                 | Self::FlowTolerance
-                | Self::Radius
                 | Self::Gap
                 | Self::FontSize
                 | Self::LineHeight
@@ -175,7 +166,6 @@ impl LengthGrammar {
             self,
             Self::BoxSize
                 | Self::FlowTolerance
-                | Self::Radius
                 | Self::Gap
                 | Self::FontSize
                 | Self::LineHeight
@@ -193,7 +183,6 @@ impl LengthGrammar {
             self,
             Self::BoxSize
                 | Self::BorderWidth
-                | Self::Radius
                 | Self::ShadowBlur
                 | Self::BorderSpacing
                 | Self::TextDecorationThickness
@@ -208,7 +197,6 @@ impl LengthGrammar {
             Self::BoxSize => "box size",
             Self::FlowTolerance => "flow-tolerance",
             Self::BorderWidth => "border-width",
-            Self::Radius => "border-radius",
             Self::ShadowOffset => "box-shadow",
             Self::ShadowBlur => "box-shadow blur",
             Self::BorderSpacing => "border-spacing",

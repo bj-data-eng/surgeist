@@ -2384,6 +2384,10 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::BorderInlineEndWidth
         | CssKnownProperty::BorderBlockWidth
         | CssKnownProperty::BorderInlineWidth => I_LOGICAL1_20251204,
+        CssKnownProperty::BorderStartStartRadius
+        | CssKnownProperty::BorderStartEndRadius
+        | CssKnownProperty::BorderEndStartRadius
+        | CssKnownProperty::BorderEndEndRadius => I_LOGICAL1_20251204,
         CssKnownProperty::Color | CssKnownProperty::Opacity => O_COLOR4,
         CssKnownProperty::Border
         | CssKnownProperty::BorderTop
@@ -2695,7 +2699,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 589] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 593] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -5288,6 +5292,26 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 589] = [
         CssKnownProperty::BorderBottomLeftRadius,
         "border-bottom-left-radius",
         "baseline.property.border-bottom-left-radius"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderStartStartRadius,
+        "border-start-start-radius",
+        "official.property.border-start-start-radius"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderStartEndRadius,
+        "border-start-end-radius",
+        "official.property.border-start-end-radius"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderEndStartRadius,
+        "border-end-start-radius",
+        "official.property.border-end-start-radius"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BorderEndEndRadius,
+        "border-end-end-radius",
+        "official.property.border-end-end-radius"
     ),
     CssFeatureMetadata::complete_property(
         "baseline.property.box-shadow",
