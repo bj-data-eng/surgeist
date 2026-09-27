@@ -242,6 +242,66 @@ const SHORTHANDS: &[(P, &[P], &[P])] = &[
         &[],
     ),
     (
+        P::BorderBlockStart,
+        &[
+            P::BorderBlockStartWidth,
+            P::BorderBlockStartStyle,
+            P::BorderBlockStartColor,
+        ],
+        &[],
+    ),
+    (
+        P::BorderBlockEnd,
+        &[
+            P::BorderBlockEndWidth,
+            P::BorderBlockEndStyle,
+            P::BorderBlockEndColor,
+        ],
+        &[],
+    ),
+    (
+        P::BorderInlineStart,
+        &[
+            P::BorderInlineStartWidth,
+            P::BorderInlineStartStyle,
+            P::BorderInlineStartColor,
+        ],
+        &[],
+    ),
+    (
+        P::BorderInlineEnd,
+        &[
+            P::BorderInlineEndWidth,
+            P::BorderInlineEndStyle,
+            P::BorderInlineEndColor,
+        ],
+        &[],
+    ),
+    (
+        P::BorderBlock,
+        &[
+            P::BorderBlockStartWidth,
+            P::BorderBlockEndWidth,
+            P::BorderBlockStartStyle,
+            P::BorderBlockEndStyle,
+            P::BorderBlockStartColor,
+            P::BorderBlockEndColor,
+        ],
+        &[],
+    ),
+    (
+        P::BorderInline,
+        &[
+            P::BorderInlineStartWidth,
+            P::BorderInlineEndWidth,
+            P::BorderInlineStartStyle,
+            P::BorderInlineEndStyle,
+            P::BorderInlineStartColor,
+            P::BorderInlineEndColor,
+        ],
+        &[],
+    ),
+    (
         P::BorderTop,
         &[P::BorderTopWidth, P::BorderTopStyle, P::BorderTopColor],
         &[],
@@ -547,7 +607,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 164);
+    assert_eq!(expected.len(), 170);
     let mut observed = Vec::new();
     for &property in P::all() {
         let handle = property.grammar();

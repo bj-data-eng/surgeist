@@ -283,7 +283,33 @@ fn explicit_width_style_and_color_reach_each_logical_target_without_mapping() {
             } else {
                 "oklch(50% 0.2 30deg)"
             };
-            assert_eq!(item.ordinary_value(), Some(&one_value(&member, authored)));
+            if member.ends_with("-color") {
+                let color = match item.ordinary_value().unwrap().view() {
+                    CssLonghandValueRef::BorderBlockStartColor(color)
+                    | CssLonghandValueRef::BorderBlockEndColor(color)
+                    | CssLonghandValueRef::BorderInlineStartColor(color)
+                    | CssLonghandValueRef::BorderInlineEndColor(color) => color,
+                    _ => panic!("{member} contributes its authored color"),
+                };
+                let oklch = color.oklch_value().expect("exact OKLCH color");
+                assert!(
+                    matches!(oklch.lightness(), CssAuthoredColorComponent::Percentage(value) if value.value() == 50.0)
+                );
+                assert!(
+                    matches!(oklch.chroma(), CssAuthoredColorComponent::ExactNumber(value) if value.numeric().representation() == "0.2")
+                );
+                assert!(
+                    matches!(oklch.hue(), CssAuthoredHue::Angle(value) if value.value() == 30.0 && value.unit() == CssAngleUnit::Degrees)
+                );
+                assert_eq!(oklch.alpha(), None);
+                let color_only = CssBorderValue::try_new(None, None, Some(color.clone())).unwrap();
+                assert_eq!(
+                    color_only.serialize_specified().unwrap(),
+                    "oklch(0.5 0.2 30)"
+                );
+            } else {
+                assert_eq!(item.ordinary_value(), Some(&one_value(&member, authored)));
+            }
         }
     }
 }
@@ -404,16 +430,22 @@ fn normalization_keeps_logical_order_context_and_atomic_six_member_budget() {
         assert_eq!(item.source().importance(), CssImportance::Normal);
         assert!(item.source().position().is_some());
     }
-    assert!(occurrences[0]
-        .selector_context()
-        .same_context(occurrences[1].selector_context()));
-    assert!(occurrences[0]
-        .selector_context()
-        .same_context(occurrences[2].selector_context()));
-    assert!(occurrences[1]
-        .rule_context()
-        .parent()
-        .is_some_and(|parent| matches!(parent.kind(), CssRuleContextKindRef::Media(_))));
+    assert!(
+        occurrences[0]
+            .selector_context()
+            .same_context(occurrences[1].selector_context())
+    );
+    assert!(
+        occurrences[0]
+            .selector_context()
+            .same_context(occurrences[2].selector_context())
+    );
+    assert!(
+        occurrences[1]
+            .rule_context()
+            .parent()
+            .is_some_and(|parent| matches!(parent.kind(), CssRuleContextKindRef::Media(_)))
+    );
 
     let report = parse_sheet(".p{color:red;border-inline:solid;color:blue}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
