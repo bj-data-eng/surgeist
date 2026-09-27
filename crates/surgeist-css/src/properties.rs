@@ -13,6 +13,7 @@ use crate::border_width::*;
 use crate::box_spacing::*;
 use crate::contain_intrinsic_size::*;
 use crate::display::*;
+use crate::font_variant::*;
 use crate::gap::*;
 use crate::inset::*;
 use crate::overflow::CssOverflowValue;
@@ -177,12 +178,14 @@ macro_rules! property_schema {
             FontWeight, "font-weight", [], "baseline.property.font-weight", CssFontWeight, CssFontWeightPropertyValue, CssFontWeightPropertyValueRepresentation, parse_font_weight, { parse_font_weight($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssFontWeight, accessor: current, inherited: true, initial_kind: value, initial: CssFontWeight::Absolute(CssAbsoluteFontWeight::Normal) };
             FontStyle, "font-style", [], "baseline.property.font-style", CssFontStyle, CssFontStylePropertyValue, CssFontStylePropertyValueRepresentation, parse_font_style, { parse_font_style($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssFontStyle, accessor: current, inherited: true, initial_kind: value, initial: CssFontStyle::Keyword(CssFontStyleKeyword::Normal) };
             FontWidth, "font-width", ["font-stretch"], "baseline.property.font-stretch", CssFontWidth, CssFontWidthPropertyValue, CssFontWidthPropertyValueRepresentation, parse_font_width, { parse_font_width($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssFontWidth, accessor: current, inherited: true, initial_kind: value, initial: CssFontWidth::Keyword(CssFontWidthKeyword::Normal) };
-            FontVariant, "font-variant", [], "baseline.property.font-variant", CssFontVariantValue, CssFontVariantPropertyValue, CssFontVariantPropertyValueRepresentation, parse_font_variant, { parse_font_variant($input)? };
-            FontVariantCaps, "font-variant-caps", [], "official.property.font-variant-caps", CssFontVariantCaps, CssFontVariantCapsPropertyValue, CssFontVariantCapsPropertyValueRepresentation, parse_font_variant_caps, { parse_font_variant_caps($input)? };
-            FontVariantEastAsian, "font-variant-east-asian", [], "official.property.font-variant-east-asian", CssFontVariantEastAsian, CssFontVariantEastAsianPropertyValue, CssFontVariantEastAsianPropertyValueRepresentation, parse_font_variant_east_asian, { parse_font_variant_east_asian($input)? };
-            FontVariantLigatures, "font-variant-ligatures", [], "official.property.font-variant-ligatures", CssFontVariantLigatures, CssFontVariantLigaturesPropertyValue, CssFontVariantLigaturesPropertyValueRepresentation, parse_font_variant_ligatures, { parse_font_variant_ligatures($input)? };
-            FontVariantNumeric, "font-variant-numeric", [], "official.property.font-variant-numeric", CssFontVariantNumeric, CssFontVariantNumericPropertyValue, CssFontVariantNumericPropertyValueRepresentation, parse_font_variant_numeric, { parse_font_variant_numeric($input)? };
-            FontVariantPosition, "font-variant-position", [], "official.property.font-variant-position", CssFontVariantPosition, CssFontVariantPositionPropertyValue, CssFontVariantPositionPropertyValueRepresentation, parse_font_variant_position, { parse_font_variant_position($input)? };
+            FontVariant, "font-variant", [], "baseline.property.font-variant", CssFontVariantValue, CssFontVariantPropertyValue, CssFontVariantPropertyValueRepresentation, parse_font_variant, { parse_font_variant($input)? }, expansion = shorthand { wrapper: existing, accessor: variant, members: [ FontVariantLigatures => |value: &CssFontVariantValue| Some(value.expanded_ligatures()), FontVariantCaps => |value: &CssFontVariantValue| Some(value.expanded_caps()), FontVariantAlternates => |value: &CssFontVariantValue| Some(value.expanded_alternates()), FontVariantNumeric => |value: &CssFontVariantValue| Some(value.expanded_numeric()), FontVariantEastAsian => |value: &CssFontVariantValue| Some(value.expanded_east_asian()), FontVariantPosition => |value: &CssFontVariantValue| Some(value.expanded_position()), FontVariantEmoji => |value: &CssFontVariantValue| Some(value.expanded_emoji()) ], reset_only: [] };
+            FontVariantCaps, "font-variant-caps", [], "official.property.font-variant-caps", CssFontVariantCaps, CssFontVariantCapsPropertyValue, CssFontVariantCapsPropertyValueRepresentation, parse_font_variant_caps, { parse_font_variant_caps($input)? }, expansion = longhand { wrapper: existing, value: CssFontVariantCaps, accessor: caps, inherited: true, initial_kind: value, initial: CssFontVariantCaps::Normal };
+            FontVariantEastAsian, "font-variant-east-asian", [], "official.property.font-variant-east-asian", CssFontVariantEastAsian, CssFontVariantEastAsianPropertyValue, CssFontVariantEastAsianPropertyValueRepresentation, parse_font_variant_east_asian, { parse_font_variant_east_asian($input)? }, expansion = longhand { wrapper: existing, value: CssFontVariantEastAsian, accessor: east_asian, inherited: true, initial_kind: value, initial: CssFontVariantEastAsian::Normal };
+            FontVariantLigatures, "font-variant-ligatures", [], "official.property.font-variant-ligatures", CssFontVariantLigatures, CssFontVariantLigaturesPropertyValue, CssFontVariantLigaturesPropertyValueRepresentation, parse_font_variant_ligatures, { parse_font_variant_ligatures($input)? }, expansion = longhand { wrapper: existing, value: CssFontVariantLigatures, accessor: ligatures, inherited: true, initial_kind: value, initial: CssFontVariantLigatures::Normal };
+            FontVariantNumeric, "font-variant-numeric", [], "official.property.font-variant-numeric", CssFontVariantNumeric, CssFontVariantNumericPropertyValue, CssFontVariantNumericPropertyValueRepresentation, parse_font_variant_numeric, { parse_font_variant_numeric($input)? }, expansion = longhand { wrapper: existing, value: CssFontVariantNumeric, accessor: numeric, inherited: true, initial_kind: value, initial: CssFontVariantNumeric::Normal };
+            FontVariantPosition, "font-variant-position", [], "official.property.font-variant-position", CssFontVariantPosition, CssFontVariantPositionPropertyValue, CssFontVariantPositionPropertyValueRepresentation, parse_font_variant_position, { parse_font_variant_position($input)? }, expansion = longhand { wrapper: existing, value: CssFontVariantPosition, accessor: position, inherited: true, initial_kind: value, initial: CssFontVariantPosition::Normal };
+            FontVariantAlternates, "font-variant-alternates", [], "official.property.font-variant-alternates", CssFontVariantAlternates, CssFontVariantAlternatesPropertyValue, CssFontVariantAlternatesPropertyValueRepresentation, parse_font_variant_alternates, { parse_font_variant_alternates($input)? }, expansion = longhand { wrapper: existing, value: CssFontVariantAlternates, accessor: alternates, inherited: true, initial_kind: value, initial: CssFontVariantAlternates::Normal };
+            FontVariantEmoji, "font-variant-emoji", [], "official.property.font-variant-emoji", CssFontVariantEmoji, CssFontVariantEmojiPropertyValue, CssFontVariantEmojiPropertyValueRepresentation, parse_font_variant_emoji, { parse_font_variant_emoji($input)? }, expansion = longhand { wrapper: existing, value: CssFontVariantEmoji, accessor: emoji, inherited: true, initial_kind: value, initial: CssFontVariantEmoji::Normal };
             FontFeatureSettings, "font-feature-settings", [], "baseline.property.font-feature-settings", CssFontFeatureSettings, CssFontFeatureSettingsPropertyValue, CssFontFeatureSettingsPropertyValueRepresentation, parse_font_feature_settings, { parse_font_feature_settings($input)? };
             FontKerning, "font-kerning", [], "official.property.font-kerning", CssFontKerning, CssFontKerningPropertyValue, CssFontKerningPropertyValueRepresentation, parse_font_kerning, { parse_font_kerning($input)? };
             FontSizeAdjust, "font-size-adjust", [], "official.property.font-size-adjust", CssFontSizeAdjust, CssFontSizeAdjustPropertyValue, CssFontSizeAdjustPropertyValueRepresentation, parse_font_size_adjust, { parse_font_size_adjust($input)? };
@@ -635,22 +638,6 @@ fn background_box_list_i01_projection(value: &CssBackgroundBoxList) -> Option<Cs
 
 fn exact_i01_projection<T: Clone>(value: &T) -> Option<T> {
     Some(value.clone())
-}
-
-fn font_variant_i01_projection(value: &CssFontVariantValue) -> Option<CssFontVariant> {
-    match value {
-        CssFontVariantValue::Normal => Some(CssFontVariant::Normal),
-        CssFontVariantValue::Values(values)
-            if values.ligatures().is_none()
-                && values.position().is_none()
-                && values.caps() == Some(CssFontVariantCaps::SmallCaps)
-                && values.numeric().is_none()
-                && values.east_asian().is_none() =>
-        {
-            Some(CssFontVariant::SmallCaps)
-        }
-        CssFontVariantValue::None | CssFontVariantValue::Values(_) => None,
-    }
 }
 
 fn font_feature_settings_i01_projection(
@@ -1847,14 +1834,12 @@ macro_rules! define_property_value {
         FontVariant, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_additive_current_property_value!(
             $canonical,
             $wrapper,
             $representation,
             CssFontVariantValue,
-            CssFontVariant,
-            variant,
-            font_variant_i01_projection
+            variant
         );
     };
     (
@@ -1915,6 +1900,30 @@ macro_rules! define_property_value {
             $representation,
             CssFontVariantPosition,
             position
+        );
+    };
+    (
+        FontVariantAlternates, $canonical:literal, $value:ty, $wrapper:ident,
+        $representation:ident
+    ) => {
+        define_additive_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssFontVariantAlternates,
+            alternates
+        );
+    };
+    (
+        FontVariantEmoji, $canonical:literal, $value:ty, $wrapper:ident,
+        $representation:ident
+    ) => {
+        define_additive_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssFontVariantEmoji,
+            emoji
         );
     };
     (

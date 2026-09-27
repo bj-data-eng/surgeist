@@ -1932,8 +1932,10 @@ static OFFICIAL_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
     active_coverage!("baseline.property.font-style"),
     active_coverage!("official.property.font-synthesis"),
     active_coverage!("baseline.property.font-variant"),
+    active_coverage!("official.property.font-variant-alternates"),
     active_coverage!("official.property.font-variant-caps"),
     active_coverage!("official.property.font-variant-east-asian"),
+    active_coverage!("official.property.font-variant-emoji"),
     active_coverage!("official.property.font-variant-ligatures"),
     active_coverage!("official.property.font-variant-numeric"),
     active_coverage!("official.property.font-variant-position"),
@@ -2452,12 +2454,14 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::FontSize
         | CssKnownProperty::FontWidth => I_FONTS4_20260907,
         CssKnownProperty::FontVariant
+        | CssKnownProperty::FontVariantAlternates
         | CssKnownProperty::FontVariantCaps
         | CssKnownProperty::FontVariantEastAsian
+        | CssKnownProperty::FontVariantEmoji
         | CssKnownProperty::FontVariantLigatures
         | CssKnownProperty::FontVariantNumeric
-        | CssKnownProperty::FontVariantPosition
-        | CssKnownProperty::FontFeatureSettings
+        | CssKnownProperty::FontVariantPosition => I_FONTS4_20260907,
+        CssKnownProperty::FontFeatureSettings
         | CssKnownProperty::FontKerning
         | CssKnownProperty::FontSizeAdjust
         | CssKnownProperty::FontSynthesis => O_FONTS3,
@@ -2713,7 +2717,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 616] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 618] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4762,6 +4766,13 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 616] = [
         &[],
     ),
     CssFeatureMetadata::complete_property(
+        "official.property.font-variant-alternates",
+        CssKnownProperty::FontVariantAlternates,
+        "font-variant-alternates",
+        "#propdef-font-variant-alternates",
+        &[],
+    ),
+    CssFeatureMetadata::complete_property(
         "official.property.font-variant-caps",
         CssKnownProperty::FontVariantCaps,
         "font-variant-caps",
@@ -4773,6 +4784,13 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 616] = [
         CssKnownProperty::FontVariantEastAsian,
         "font-variant-east-asian",
         "#propdef-font-variant-east-asian",
+        &[],
+    ),
+    CssFeatureMetadata::complete_property(
+        "official.property.font-variant-emoji",
+        CssKnownProperty::FontVariantEmoji,
+        "font-variant-emoji",
+        "#propdef-font-variant-emoji",
         &[],
     ),
     CssFeatureMetadata::complete_property(

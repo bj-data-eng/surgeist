@@ -20,6 +20,7 @@ mod effects;
 pub(crate) mod font_face;
 mod font_feature_values;
 pub(crate) mod font_palette_values;
+mod font_variant;
 mod fragments;
 mod gap;
 pub use fragments::{
@@ -73,6 +74,7 @@ use crate::border_style::*;
 use crate::border_width::*;
 use crate::box_spacing::*;
 use crate::contain_intrinsic_size::{CssContainIntrinsicSize, CssContainIntrinsicSizeValue};
+use crate::font_variant::*;
 use crate::inset::{CssInsetPair, CssInsetShorthand, CssInsetValue};
 use crate::named_supports::CssSupportsConditionName;
 use crate::overflow_controls::{CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter};
@@ -106,6 +108,7 @@ pub(crate) use container_query::{
 use counter_style::{parse_counter_style_name, parse_counter_style_rule};
 use effects::*;
 use font_face::parse_font_face_rule;
+use font_variant::*;
 use gap::*;
 use generated_content::*;
 use grid::*;

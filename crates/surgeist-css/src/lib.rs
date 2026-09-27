@@ -1114,6 +1114,8 @@ mod expansion;
 mod font_feature_values;
 mod font_palette_serialization;
 mod font_palette_values;
+mod font_variant;
+mod font_variant_serialization;
 mod imports;
 pub use imports::*;
 mod custom_media;
@@ -1273,6 +1275,7 @@ pub use expansion::{
 };
 pub use font_feature_values::*;
 pub use font_palette_values::*;
+pub use font_variant::*;
 pub use normalization::{
     CssNormalizationError, CssNormalizationErrorKind, CssNormalizationLimits,
     CssNormalizationResource, CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedReport,

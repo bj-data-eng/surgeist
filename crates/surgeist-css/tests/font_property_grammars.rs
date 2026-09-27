@@ -1,7 +1,7 @@
 use surgeist_css::{
     CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue, CssErrorCode,
     CssFontFamilyNameKind, CssFontFeatureSettings, CssFontFeatureValue, CssFontSize, CssFontStyle,
-    CssFontSynthesis, CssFontValue, CssFontVariant, CssFontVariantCaps, CssFontVariantEastAsian,
+    CssFontSynthesis, CssFontValue, CssFontVariantCaps, CssFontVariantEastAsian,
     CssFontVariantEastAsianVariant, CssFontVariantEastAsianWidth, CssFontVariantLigatureState,
     CssFontVariantLigatures, CssFontVariantNumeric, CssFontVariantNumericFigure,
     CssFontVariantNumericFraction, CssFontVariantNumericSpacing, CssFontVariantPosition,
@@ -162,11 +162,12 @@ fn font_variant_longhands_and_shorthand_enforce_keyword_groups() {
     assert!(values.ligatures().is_some());
     assert!(values.numeric().is_some());
     assert!(values.east_asian().is_some());
-    assert!(variant.i01_subset().is_none());
+    assert!(values.alternates().is_none());
+    assert!(values.emoji().is_none());
 }
 
 #[test]
-fn font_variant_keywords_unordered_groups_and_i01_projection_are_exact() {
+fn font_variant_keywords_unordered_groups_and_authored_values_are_exact() {
     for keyword in [
         "normal",
         "small-caps",
@@ -283,10 +284,7 @@ fn font_variant_keywords_unordered_groups_and_i01_projection_are_exact() {
         "{:?}",
         compatibility.diagnostics()
     );
-    for (index, expected) in [CssFontVariant::Normal, CssFontVariant::SmallCaps]
-        .iter()
-        .enumerate()
-    {
+    for index in 0..2 {
         let CssKnownPropertyValueRef::FontVariant(value) = compatibility.syntax()[index]
             .known()
             .unwrap()
@@ -295,7 +293,19 @@ fn font_variant_keywords_unordered_groups_and_i01_projection_are_exact() {
         else {
             panic!("expected font-variant");
         };
-        assert_eq!(value.i01_subset(), Some(expected));
+        match (index, value.variant()) {
+            (0, CssFontVariantValue::Normal) => {}
+            (1, CssFontVariantValue::Values(values)) => {
+                assert_eq!(values.caps(), Some(CssFontVariantCaps::SmallCaps));
+                assert!(values.ligatures().is_none());
+                assert!(values.alternates().is_none());
+                assert!(values.numeric().is_none());
+                assert!(values.east_asian().is_none());
+                assert!(values.position().is_none());
+                assert!(values.emoji().is_none());
+            }
+            _ => panic!("unexpected authored font-variant value"),
+        }
     }
     let CssKnownPropertyValueRef::FontVariant(none) = compatibility.syntax()[2]
         .known()
@@ -306,7 +316,6 @@ fn font_variant_keywords_unordered_groups_and_i01_projection_are_exact() {
         panic!("expected font-variant none");
     };
     assert!(matches!(none.variant(), CssFontVariantValue::None));
-    assert!(none.i01_subset().is_none());
 }
 
 #[test]

@@ -1,0 +1,304 @@
+//! Bounded canonical specified serialization of the authored variant family.
+
+use crate::font_variant::*;
+use crate::specified_rule_serialization::SpecifiedRuleWriter;
+use crate::{
+    CssSpecifiedValueSerializationError as Error, CssSpecifiedValueSerializationLimits as Limits,
+};
+
+type Result<T> = std::result::Result<T, Error>;
+
+fn word(writer: &mut SpecifiedRuleWriter, value: &str) -> Result<()> {
+    writer.context.charge_input(1)?;
+    writer.context.charge_projection(1)?;
+    if !writer.css.is_empty() && !writer.css.ends_with('(') {
+        writer.append(" ")?;
+    }
+    writer.append(value)
+}
+
+fn name(writer: &mut SpecifiedRuleWriter, value: &crate::CssFontFeatureValueName) -> Result<()> {
+    writer.context.charge_input(1)?;
+    writer.context.charge_projection(1)?;
+    writer.append_identifier(value.as_str())
+}
+
+fn named_function(
+    writer: &mut SpecifiedRuleWriter,
+    function: &str,
+    names: &[crate::CssFontFeatureValueName],
+) -> Result<()> {
+    writer.context.charge_input(1)?;
+    writer.context.charge_projection(1)?;
+    if !writer.css.is_empty() {
+        writer.append(" ")?;
+    }
+    writer.append(function)?;
+    writer.append("(")?;
+    for (index, item) in names.iter().enumerate() {
+        if index != 0 {
+            writer.append(", ")?;
+        }
+        name(writer, item)?;
+    }
+    writer.append(")")
+}
+
+impl CssFontVariantLigatures {
+    fn write(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        match self {
+            Self::Normal => word(writer, "normal"),
+            Self::None => word(writer, "none"),
+            Self::Values(values) => {
+                for (choice, positive, negative) in [
+                    (values.common(), "common-ligatures", "no-common-ligatures"),
+                    (
+                        values.discretionary(),
+                        "discretionary-ligatures",
+                        "no-discretionary-ligatures",
+                    ),
+                    (
+                        values.historical(),
+                        "historical-ligatures",
+                        "no-historical-ligatures",
+                    ),
+                    (values.contextual(), "contextual", "no-contextual"),
+                ] {
+                    if let Some(choice) = choice {
+                        word(
+                            writer,
+                            if choice == CssFontVariantLigatureState::Enabled {
+                                positive
+                            } else {
+                                negative
+                            },
+                        )?;
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+impl CssFontVariantCaps {
+    fn write(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        word(
+            writer,
+            match self {
+                Self::Normal => "normal",
+                Self::SmallCaps => "small-caps",
+                Self::AllSmallCaps => "all-small-caps",
+                Self::PetiteCaps => "petite-caps",
+                Self::AllPetiteCaps => "all-petite-caps",
+                Self::Unicase => "unicase",
+                Self::TitlingCaps => "titling-caps",
+            },
+        )
+    }
+}
+
+impl CssFontVariantAlternates {
+    fn write(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        match self {
+            Self::Normal => word(writer, "normal"),
+            Self::Values(values) => values.write(writer),
+        }
+    }
+}
+
+impl CssFontVariantAlternateValues {
+    fn write(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        let values = self;
+        if let Some(value) = values.stylistic() {
+            named_function(writer, "stylistic", std::slice::from_ref(value))?;
+        }
+        if values.historical_forms() {
+            word(writer, "historical-forms")?;
+        }
+        if let Some(values) = values.styleset() {
+            named_function(writer, "styleset", values.names())?;
+        }
+        if let Some(values) = values.character_variant() {
+            named_function(writer, "character-variant", values.names())?;
+        }
+        if let Some(value) = values.swash() {
+            named_function(writer, "swash", std::slice::from_ref(value))?;
+        }
+        if let Some(value) = values.ornaments() {
+            named_function(writer, "ornaments", std::slice::from_ref(value))?;
+        }
+        if let Some(value) = values.annotation() {
+            named_function(writer, "annotation", std::slice::from_ref(value))?;
+        }
+        Ok(())
+    }
+}
+
+impl CssFontVariantNumeric {
+    fn write(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        match self {
+            Self::Normal => word(writer, "normal"),
+            Self::Values(values) => {
+                if let Some(value) = values.figure() {
+                    word(
+                        writer,
+                        match value {
+                            CssFontVariantNumericFigure::LiningNums => "lining-nums",
+                            CssFontVariantNumericFigure::OldstyleNums => "oldstyle-nums",
+                        },
+                    )?;
+                }
+                if let Some(value) = values.spacing() {
+                    word(
+                        writer,
+                        match value {
+                            CssFontVariantNumericSpacing::ProportionalNums => "proportional-nums",
+                            CssFontVariantNumericSpacing::TabularNums => "tabular-nums",
+                        },
+                    )?;
+                }
+                if let Some(value) = values.fraction() {
+                    word(
+                        writer,
+                        match value {
+                            CssFontVariantNumericFraction::DiagonalFractions => {
+                                "diagonal-fractions"
+                            }
+                            CssFontVariantNumericFraction::StackedFractions => "stacked-fractions",
+                        },
+                    )?;
+                }
+                if values.ordinal() {
+                    word(writer, "ordinal")?;
+                }
+                if values.slashed_zero() {
+                    word(writer, "slashed-zero")?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+impl CssFontVariantEastAsian {
+    fn write(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        match self {
+            Self::Normal => word(writer, "normal"),
+            Self::Values(values) => {
+                if let Some(value) = values.variant() {
+                    word(
+                        writer,
+                        match value {
+                            CssFontVariantEastAsianVariant::Jis78 => "jis78",
+                            CssFontVariantEastAsianVariant::Jis83 => "jis83",
+                            CssFontVariantEastAsianVariant::Jis90 => "jis90",
+                            CssFontVariantEastAsianVariant::Jis04 => "jis04",
+                            CssFontVariantEastAsianVariant::Simplified => "simplified",
+                            CssFontVariantEastAsianVariant::Traditional => "traditional",
+                        },
+                    )?;
+                }
+                if let Some(value) = values.width() {
+                    word(
+                        writer,
+                        match value {
+                            CssFontVariantEastAsianWidth::FullWidth => "full-width",
+                            CssFontVariantEastAsianWidth::ProportionalWidth => "proportional-width",
+                        },
+                    )?;
+                }
+                if values.ruby() {
+                    word(writer, "ruby")?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+impl CssFontVariantPosition {
+    fn write(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        word(
+            writer,
+            match self {
+                Self::Normal => "normal",
+                Self::Sub => "sub",
+                Self::Super => "super",
+            },
+        )
+    }
+}
+
+impl CssFontVariantEmoji {
+    fn write(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        word(
+            writer,
+            match self {
+                Self::Normal => "normal",
+                Self::Text => "text",
+                Self::Emoji => "emoji",
+                Self::Unicode => "unicode",
+            },
+        )
+    }
+}
+
+impl CssFontVariantValue {
+    fn write(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        match self {
+            Self::Normal => word(writer, "normal"),
+            Self::None => word(writer, "none"),
+            Self::Values(values) => {
+                if let Some(value) = values.ligatures() {
+                    CssFontVariantLigatures::Values(*value).write(writer)?;
+                }
+                if let Some(value) = values.caps() {
+                    value.write(writer)?;
+                }
+                if let Some(value) = values.alternates() {
+                    value.write(writer)?;
+                }
+                if let Some(value) = values.numeric() {
+                    CssFontVariantNumeric::Values(*value).write(writer)?;
+                }
+                if let Some(value) = values.east_asian() {
+                    CssFontVariantEastAsian::Values(*value).write(writer)?;
+                }
+                if let Some(value) = values.position() {
+                    value.write(writer)?;
+                }
+                if let Some(value) = values.emoji() {
+                    value.write(writer)?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+macro_rules! public_serializer {
+    ($value:ty) => {
+        impl $value {
+            /// Canonical specified CSS for this checked authored value.
+            pub fn serialize_specified(&self) -> Result<String> {
+                self.serialize_specified_with_limits(Limits::default())
+            }
+            /// Serializes under a shared input, projection, and output budget.
+            pub fn serialize_specified_with_limits(&self, limits: Limits) -> Result<String> {
+                let mut writer = SpecifiedRuleWriter::new(limits);
+                self.write(&mut writer)?;
+                Ok(writer.css)
+            }
+        }
+    };
+}
+
+public_serializer!(CssFontVariantLigatures);
+public_serializer!(CssFontVariantCaps);
+public_serializer!(CssFontVariantAlternates);
+public_serializer!(CssFontVariantNumeric);
+public_serializer!(CssFontVariantEastAsian);
+public_serializer!(CssFontVariantPosition);
+public_serializer!(CssFontVariantEmoji);
+public_serializer!(CssFontVariantValue);

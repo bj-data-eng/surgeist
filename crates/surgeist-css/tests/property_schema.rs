@@ -4,9 +4,9 @@ use common::CssParseReportTestExt;
 use surgeist_css::{
     CssAuthoredColorComponent, CssAuthoredSystemColor, CssBasicShapeValue, CssBoxShadow,
     CssClipPathValue, CssEasingValue, CssErrorCode, CssFilterFunctionValue, CssFilterValue,
-    CssImportance, CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
-    CssRecoveryAction, CssRule, CssTransformFunctionValue, CssTransformValue, ErrorKind,
-    parse_sheet, parse_style_attribute,
+    CssFontVariantCaps, CssFontVariantValue, CssImportance, CssKnownDeclaredValueRef,
+    CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction, CssRule,
+    CssTransformFunctionValue, CssTransformValue, ErrorKind, parse_sheet, parse_style_attribute,
 };
 
 #[test]
@@ -108,7 +108,7 @@ fn core_font_wrappers_keep_current_global_and_substitution_branches_distinct() {
 }
 
 #[test]
-fn font_variant_wrappers_keep_current_i01_global_and_substitution_branches_distinct() {
+fn font_variant_wrappers_keep_current_global_and_substitution_branches_distinct() {
     let report = parse_style_attribute(concat!(
         "font-variant: small-caps; font-variant: all-small-caps; ",
         "font-variant-caps: petite-caps; font-variant-east-asian: ruby; ",
@@ -118,7 +118,7 @@ fn font_variant_wrappers_keep_current_i01_global_and_substitution_branches_disti
     ));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
 
-    let CssKnownPropertyValueRef::FontVariant(legacy) = report.syntax()[0]
+    let CssKnownPropertyValueRef::FontVariant(small_caps) = report.syntax()[0]
         .known()
         .unwrap()
         .property_value()
@@ -126,7 +126,19 @@ fn font_variant_wrappers_keep_current_i01_global_and_substitution_branches_disti
     else {
         panic!("expected font-variant");
     };
-    assert!(legacy.i01_subset().is_some());
+    let CssFontVariantValue::Values(small_caps_values) = small_caps.variant() else {
+        panic!("expected small-caps shorthand value")
+    };
+    assert_eq!(
+        small_caps_values.caps(),
+        Some(CssFontVariantCaps::SmallCaps)
+    );
+    assert!(small_caps_values.ligatures().is_none());
+    assert!(small_caps_values.alternates().is_none());
+    assert!(small_caps_values.numeric().is_none());
+    assert!(small_caps_values.east_asian().is_none());
+    assert!(small_caps_values.position().is_none());
+    assert!(small_caps_values.emoji().is_none());
     let CssKnownPropertyValueRef::FontVariant(current) = report.syntax()[1]
         .known()
         .unwrap()
@@ -135,7 +147,13 @@ fn font_variant_wrappers_keep_current_i01_global_and_substitution_branches_disti
     else {
         panic!("expected font-variant");
     };
-    assert!(current.i01_subset().is_none());
+    let CssFontVariantValue::Values(current_values) = current.variant() else {
+        panic!("expected all-small-caps shorthand value")
+    };
+    assert_eq!(
+        current_values.caps(),
+        Some(CssFontVariantCaps::AllSmallCaps)
+    );
 
     assert!(matches!(
         report.syntax()[2].known().unwrap().property_value(),

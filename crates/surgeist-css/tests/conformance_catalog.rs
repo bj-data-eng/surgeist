@@ -118,7 +118,12 @@ fn assert_complete_fonts3_feature(
     let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing metadata for {id}"));
     assert_eq!(metadata.kind(), kind, "{id}");
     assert_eq!(metadata.spelling(), spelling, "{id}");
-    assert_eq!(metadata.source().id().as_str(), "O-FONTS3", "{id}");
+    let source = if spelling.starts_with("font-variant") {
+        "I-FONTS4-20260907"
+    } else {
+        "O-FONTS3"
+    };
+    assert_eq!(metadata.source().id().as_str(), source, "{id}");
     assert_eq!(metadata.production(), production, "{id}");
     assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id}");
     assert_eq!(metadata.supported_subset(), None, "{id}");
@@ -205,6 +210,12 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
             "small-caps oldstyle-nums",
         ),
         (
+            "official.property.font-variant-alternates",
+            "font-variant-alternates",
+            "#propdef-font-variant-alternates",
+            "styleset(Alpha, beta)",
+        ),
+        (
             "official.property.font-variant-caps",
             "font-variant-caps",
             "#propdef-font-variant-caps",
@@ -215,6 +226,12 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
             "font-variant-east-asian",
             "#propdef-font-variant-east-asian",
             "jis04 ruby",
+        ),
+        (
+            "official.property.font-variant-emoji",
+            "font-variant-emoji",
+            "#propdef-font-variant-emoji",
+            "emoji",
         ),
         (
             "official.property.font-variant-ligatures",

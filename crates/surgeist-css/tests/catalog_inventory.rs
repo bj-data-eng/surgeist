@@ -328,6 +328,12 @@ fn added_fonts3_property_rows_expose_complete_authored_metadata() {
             "style weight",
         ),
         (
+            "official.property.font-variant-alternates",
+            "font-variant-alternates",
+            "#propdef-font-variant-alternates",
+            "styleset(Alpha, beta)",
+        ),
+        (
             "official.property.font-variant-caps",
             "font-variant-caps",
             "#propdef-font-variant-caps",
@@ -338,6 +344,12 @@ fn added_fonts3_property_rows_expose_complete_authored_metadata() {
             "font-variant-east-asian",
             "#propdef-font-variant-east-asian",
             "jis04 ruby",
+        ),
+        (
+            "official.property.font-variant-emoji",
+            "font-variant-emoji",
+            "#propdef-font-variant-emoji",
+            "emoji",
         ),
         (
             "official.property.font-variant-ligatures",
@@ -374,7 +386,12 @@ fn added_fonts3_property_rows_expose_complete_authored_metadata() {
 
         let metadata = property_support_metadata(name).unwrap_or_else(|| panic!("missing {id}"));
         assert_eq!(metadata.feature().id().as_str(), id);
-        assert_eq!(metadata.feature().source().id().as_str(), "O-FONTS3");
+        let source = if name.starts_with("font-variant") {
+            "I-FONTS4-20260907"
+        } else {
+            "O-FONTS3"
+        };
+        assert_eq!(metadata.feature().source().id().as_str(), source);
         assert_eq!(metadata.feature().status(), CssSupportStatus::Complete);
         assert_eq!(metadata.feature().supported_subset(), None);
         assert_eq!(metadata.feature().unsupported_remainder(), None);

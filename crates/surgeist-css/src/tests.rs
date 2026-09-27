@@ -8441,10 +8441,20 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
         width.current(),
         &CssFontWidth::Keyword(CssFontWidthKeyword::SemiCondensed)
     );
-    assert_eq!(
-        declaration_value!(".panel { font-variant: small-caps; }", FontVariant),
-        CssFontVariant::SmallCaps
+    let variant_declaration = declaration(
+        ".panel { font-variant: small-caps; }",
+        CssProperty::FontVariant,
     );
+    let Some(CssKnownPropertyValueRef::FontVariant(variant)) = variant_declaration
+        .known()
+        .and_then(|known| known.property_value())
+    else {
+        panic!("expected current font-variant");
+    };
+    let CssFontVariantValue::Values(values) = variant.variant() else {
+        panic!("expected small-caps subgroup");
+    };
+    assert_eq!(values.caps(), Some(CssFontVariantCaps::SmallCaps));
     assert_eq!(
         declaration_value!(
             ".panel { font-feature-settings: \"kern\" on, \"liga\" 0; }",

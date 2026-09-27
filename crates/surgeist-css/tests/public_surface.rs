@@ -346,18 +346,30 @@ fn public_surface_exposes_checked_font_variant_group_models() {
             None,
             None,
             None,
+            None,
+            None,
         )
         .is_none()
     );
     assert!(
-        CssFontVariantValues::try_new(None, None, Some(CssFontVariantCaps::Normal), None, None,)
-            .is_none()
+        CssFontVariantValues::try_new(
+            None,
+            None,
+            Some(CssFontVariantCaps::Normal),
+            None,
+            None,
+            None,
+            None
+        )
+        .is_none()
     );
     let values = CssFontVariantValues::try_new(
         Some(ligatures),
         Some(CssFontVariantPosition::Super),
         Some(CssFontVariantCaps::SmallCaps),
         Some(numeric),
+        None,
+        None,
         None,
     )
     .expect("compatible nonempty shorthand union");

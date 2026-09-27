@@ -1421,7 +1421,7 @@ directional resolution, and line layout remain downstream concerns.
 
 The authored font surface includes checked four-ASCII-character OpenType tags,
 non-negative feature indices, explicit and system `font` branches, synthesis,
-and the five variant longhands. `font-family`, explicit-font family lists, the
+and the seven variant longhands. `font-family`, explicit-font family lists, the
 `@font-face` family descriptor, and `local()` names follow the selected
 September 7, 2026 Fonts 4 grammar. Other typography records retain their
 individual dated sources.
@@ -1432,6 +1432,32 @@ These two wrappers no longer expose `i01_subset()`, and the obsolete `CssFont`
 payload has been removed; use `CssFontValue` and `CssExplicitFont`. Font weight,
 style, and size wrappers are also current-only; other font wrappers retain their
 separate compatibility projections where available.
+
+The selected Fonts 4 `font-variant` family accepts ligatures, caps, alternates,
+numeric, East Asian, position, and emoji groups in either longhand declarations
+or the full shorthand. `CssFontVariantValue` retains the authored groups;
+intrinsic expansion contributes all seven inherited longhands, using `normal`
+for omitted groups. `none` contributes ligatures `none` and six `normal` values.
+The shorthand and its longhand wrappers expose borrowed current values and no
+longer offer an `i01_subset()` projection. The separate CSS2 `font` prefix
+continues to accept only `normal` or `small-caps` as its variant component.
+
+`CssFontVariantAlternateValues` checks at most one of each alternate function
+and a nonempty combination. `CssFontVariantAlternateNames` checks nonempty name
+lists while retaining case, order, and repeated names. Names use the decoded
+`CssFontFeatureValueName` identifier model and remain unresolved until a font is
+selected. All seven longhand value types and `CssFontVariantValue` provide bounded
+`serialize_specified()` and `serialize_specified_with_limits()` methods. These
+emit grammar order and escaped names without resolving glyph selection.
+
+Code constructing `CssFontVariantValues` must append `alternates` and `emoji`
+arguments to `try_new`, passing `None` for either omitted group. The aggregate
+and `CssFontVariantValue` now own optional name collections, so they implement
+`Clone` rather than `Copy`; callers needing another owned value must clone it.
+`CssFontVariantValues::try_new` is no longer `const`, and its `caps()` and
+`position()` getters now borrow `&self` while still returning the same copied
+enum choices. Migrate `CssFontVariantPropertyValue::i01_subset()` consumers to
+`variant()` and inspect the `Normal`, `None`, or checked `Values` branch directly.
 
 ```rust
 use surgeist_css::{

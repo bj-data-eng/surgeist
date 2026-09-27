@@ -1408,6 +1408,12 @@ pub surgeist_css::CssFontValue::System(surgeist_css::CssSystemFont)
 #[non_exhaustive] pub enum surgeist_css::CssFontVariant
 pub surgeist_css::CssFontVariant::Normal
 pub surgeist_css::CssFontVariant::SmallCaps
+#[non_exhaustive] pub enum surgeist_css::CssFontVariantAlternates
+pub surgeist_css::CssFontVariantAlternates::Normal
+pub surgeist_css::CssFontVariantAlternates::Values(surgeist_css::CssFontVariantAlternateValues)
+impl surgeist_css::CssFontVariantAlternates
+pub fn surgeist_css::CssFontVariantAlternates::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontVariantAlternates::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFontVariantCaps
 pub surgeist_css::CssFontVariantCaps::AllPetiteCaps
 pub surgeist_css::CssFontVariantCaps::AllSmallCaps
@@ -1416,9 +1422,15 @@ pub surgeist_css::CssFontVariantCaps::PetiteCaps
 pub surgeist_css::CssFontVariantCaps::SmallCaps
 pub surgeist_css::CssFontVariantCaps::TitlingCaps
 pub surgeist_css::CssFontVariantCaps::Unicase
+impl surgeist_css::CssFontVariantCaps
+pub fn surgeist_css::CssFontVariantCaps::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontVariantCaps::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFontVariantEastAsian
 pub surgeist_css::CssFontVariantEastAsian::Normal
 pub surgeist_css::CssFontVariantEastAsian::Values(surgeist_css::CssFontVariantEastAsianValues)
+impl surgeist_css::CssFontVariantEastAsian
+pub fn surgeist_css::CssFontVariantEastAsian::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontVariantEastAsian::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFontVariantEastAsianVariant
 pub surgeist_css::CssFontVariantEastAsianVariant::Jis04
 pub surgeist_css::CssFontVariantEastAsianVariant::Jis78
@@ -1429,6 +1441,14 @@ pub surgeist_css::CssFontVariantEastAsianVariant::Traditional
 #[non_exhaustive] pub enum surgeist_css::CssFontVariantEastAsianWidth
 pub surgeist_css::CssFontVariantEastAsianWidth::FullWidth
 pub surgeist_css::CssFontVariantEastAsianWidth::ProportionalWidth
+#[non_exhaustive] pub enum surgeist_css::CssFontVariantEmoji
+pub surgeist_css::CssFontVariantEmoji::Emoji
+pub surgeist_css::CssFontVariantEmoji::Normal
+pub surgeist_css::CssFontVariantEmoji::Text
+pub surgeist_css::CssFontVariantEmoji::Unicode
+impl surgeist_css::CssFontVariantEmoji
+pub fn surgeist_css::CssFontVariantEmoji::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontVariantEmoji::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFontVariantLigatureState
 pub surgeist_css::CssFontVariantLigatureState::Disabled
 pub surgeist_css::CssFontVariantLigatureState::Enabled
@@ -1436,9 +1456,15 @@ pub surgeist_css::CssFontVariantLigatureState::Enabled
 pub surgeist_css::CssFontVariantLigatures::None
 pub surgeist_css::CssFontVariantLigatures::Normal
 pub surgeist_css::CssFontVariantLigatures::Values(surgeist_css::CssFontVariantLigatureValues)
+impl surgeist_css::CssFontVariantLigatures
+pub fn surgeist_css::CssFontVariantLigatures::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontVariantLigatures::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFontVariantNumeric
 pub surgeist_css::CssFontVariantNumeric::Normal
 pub surgeist_css::CssFontVariantNumeric::Values(surgeist_css::CssFontVariantNumericValues)
+impl surgeist_css::CssFontVariantNumeric
+pub fn surgeist_css::CssFontVariantNumeric::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontVariantNumeric::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFontVariantNumericFigure
 pub surgeist_css::CssFontVariantNumericFigure::LiningNums
 pub surgeist_css::CssFontVariantNumericFigure::OldstyleNums
@@ -1452,10 +1478,16 @@ pub surgeist_css::CssFontVariantNumericSpacing::TabularNums
 pub surgeist_css::CssFontVariantPosition::Normal
 pub surgeist_css::CssFontVariantPosition::Sub
 pub surgeist_css::CssFontVariantPosition::Super
+impl surgeist_css::CssFontVariantPosition
+pub fn surgeist_css::CssFontVariantPosition::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontVariantPosition::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFontVariantValue
 pub surgeist_css::CssFontVariantValue::None
 pub surgeist_css::CssFontVariantValue::Normal
 pub surgeist_css::CssFontVariantValue::Values(surgeist_css::CssFontVariantValues)
+impl surgeist_css::CssFontVariantValue
+pub fn surgeist_css::CssFontVariantValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontVariantValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFontWeight
 pub surgeist_css::CssFontWeight::Absolute(surgeist_css::CssAbsoluteFontWeight)
 pub surgeist_css::CssFontWeight::Bolder
@@ -1898,8 +1930,10 @@ pub surgeist_css::CssKnownProperty::FontSizeAdjust
 pub surgeist_css::CssKnownProperty::FontStyle
 pub surgeist_css::CssKnownProperty::FontSynthesis
 pub surgeist_css::CssKnownProperty::FontVariant
+pub surgeist_css::CssKnownProperty::FontVariantAlternates
 pub surgeist_css::CssKnownProperty::FontVariantCaps
 pub surgeist_css::CssKnownProperty::FontVariantEastAsian
+pub surgeist_css::CssKnownProperty::FontVariantEmoji
 pub surgeist_css::CssKnownProperty::FontVariantLigatures
 pub surgeist_css::CssKnownProperty::FontVariantNumeric
 pub surgeist_css::CssKnownProperty::FontVariantPosition
@@ -2236,8 +2270,10 @@ pub surgeist_css::CssKnownPropertyValueRef::FontSizeAdjust(&'a surgeist_css::Css
 pub surgeist_css::CssKnownPropertyValueRef::FontStyle(&'a surgeist_css::CssFontStylePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontSynthesis(&'a surgeist_css::CssFontSynthesisPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontVariant(&'a surgeist_css::CssFontVariantPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::FontVariantAlternates(&'a surgeist_css::CssFontVariantAlternatesPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontVariantCaps(&'a surgeist_css::CssFontVariantCapsPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontVariantEastAsian(&'a surgeist_css::CssFontVariantEastAsianPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::FontVariantEmoji(&'a surgeist_css::CssFontVariantEmojiPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontVariantLigatures(&'a surgeist_css::CssFontVariantLigaturesPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontVariantNumeric(&'a surgeist_css::CssFontVariantNumericPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontVariantPosition(&'a surgeist_css::CssFontVariantPositionPropertyValue)
@@ -2594,6 +2630,13 @@ pub surgeist_css::CssLonghandValueRef::FlowTolerance(&'a surgeist_css::CssFlowTo
 pub surgeist_css::CssLonghandValueRef::FontFamily(&'a surgeist_css::CssFontFamilyList)
 pub surgeist_css::CssLonghandValueRef::FontSize(&'a surgeist_css::CssFontSize)
 pub surgeist_css::CssLonghandValueRef::FontStyle(&'a surgeist_css::CssFontStyle)
+pub surgeist_css::CssLonghandValueRef::FontVariantAlternates(&'a surgeist_css::CssFontVariantAlternates)
+pub surgeist_css::CssLonghandValueRef::FontVariantCaps(&'a surgeist_css::CssFontVariantCaps)
+pub surgeist_css::CssLonghandValueRef::FontVariantEastAsian(&'a surgeist_css::CssFontVariantEastAsian)
+pub surgeist_css::CssLonghandValueRef::FontVariantEmoji(&'a surgeist_css::CssFontVariantEmoji)
+pub surgeist_css::CssLonghandValueRef::FontVariantLigatures(&'a surgeist_css::CssFontVariantLigatures)
+pub surgeist_css::CssLonghandValueRef::FontVariantNumeric(&'a surgeist_css::CssFontVariantNumeric)
+pub surgeist_css::CssLonghandValueRef::FontVariantPosition(&'a surgeist_css::CssFontVariantPosition)
 pub surgeist_css::CssLonghandValueRef::FontWeight(&'a surgeist_css::CssFontWeight)
 pub surgeist_css::CssLonghandValueRef::FontWidth(&'a surgeist_css::CssFontWidth)
 pub surgeist_css::CssLonghandValueRef::FrameSizing(&'a surgeist_css::CssFrameSizing)
@@ -6121,6 +6164,24 @@ impl surgeist_css::CssFontSynthesisValues
 pub const fn surgeist_css::CssFontSynthesisValues::style(self) -> bool
 pub const fn surgeist_css::CssFontSynthesisValues::try_new(weight: bool, style: bool) -> core::option::Option<Self>
 pub const fn surgeist_css::CssFontSynthesisValues::weight(self) -> bool
+pub struct surgeist_css::CssFontVariantAlternateNames
+impl surgeist_css::CssFontVariantAlternateNames
+pub fn surgeist_css::CssFontVariantAlternateNames::names(&self) -> &[surgeist_css::CssFontFeatureValueName]
+pub fn surgeist_css::CssFontVariantAlternateNames::try_new(names: alloc::vec::Vec<surgeist_css::CssFontFeatureValueName>) -> core::option::Option<Self>
+pub struct surgeist_css::CssFontVariantAlternateValues
+impl surgeist_css::CssFontVariantAlternateValues
+pub fn surgeist_css::CssFontVariantAlternateValues::annotation(&self) -> core::option::Option<&surgeist_css::CssFontFeatureValueName>
+pub fn surgeist_css::CssFontVariantAlternateValues::character_variant(&self) -> core::option::Option<&surgeist_css::CssFontVariantAlternateNames>
+pub fn surgeist_css::CssFontVariantAlternateValues::historical_forms(&self) -> bool
+pub fn surgeist_css::CssFontVariantAlternateValues::ornaments(&self) -> core::option::Option<&surgeist_css::CssFontFeatureValueName>
+pub fn surgeist_css::CssFontVariantAlternateValues::styleset(&self) -> core::option::Option<&surgeist_css::CssFontVariantAlternateNames>
+pub fn surgeist_css::CssFontVariantAlternateValues::stylistic(&self) -> core::option::Option<&surgeist_css::CssFontFeatureValueName>
+pub fn surgeist_css::CssFontVariantAlternateValues::swash(&self) -> core::option::Option<&surgeist_css::CssFontFeatureValueName>
+pub fn surgeist_css::CssFontVariantAlternateValues::try_new(stylistic: core::option::Option<surgeist_css::CssFontFeatureValueName>, historical_forms: bool, styleset: core::option::Option<surgeist_css::CssFontVariantAlternateNames>, character_variant: core::option::Option<surgeist_css::CssFontVariantAlternateNames>, swash: core::option::Option<surgeist_css::CssFontFeatureValueName>, ornaments: core::option::Option<surgeist_css::CssFontFeatureValueName>, annotation: core::option::Option<surgeist_css::CssFontFeatureValueName>) -> core::option::Option<Self>
+pub struct surgeist_css::CssFontVariantAlternatesPropertyValue
+impl surgeist_css::CssFontVariantAlternatesPropertyValue
+pub const fn surgeist_css::CssFontVariantAlternatesPropertyValue::alternates(&self) -> &surgeist_css::CssFontVariantAlternates
+pub fn surgeist_css::CssFontVariantAlternatesPropertyValue::as_css(&self) -> &str
 pub struct surgeist_css::CssFontVariantCapsPropertyValue
 impl surgeist_css::CssFontVariantCapsPropertyValue
 pub fn surgeist_css::CssFontVariantCapsPropertyValue::as_css(&self) -> &str
@@ -6135,6 +6196,10 @@ pub const fn surgeist_css::CssFontVariantEastAsianValues::ruby(self) -> bool
 pub const fn surgeist_css::CssFontVariantEastAsianValues::try_new(variant: core::option::Option<surgeist_css::CssFontVariantEastAsianVariant>, width: core::option::Option<surgeist_css::CssFontVariantEastAsianWidth>, ruby: bool) -> core::option::Option<Self>
 pub const fn surgeist_css::CssFontVariantEastAsianValues::variant(self) -> core::option::Option<surgeist_css::CssFontVariantEastAsianVariant>
 pub const fn surgeist_css::CssFontVariantEastAsianValues::width(self) -> core::option::Option<surgeist_css::CssFontVariantEastAsianWidth>
+pub struct surgeist_css::CssFontVariantEmojiPropertyValue
+impl surgeist_css::CssFontVariantEmojiPropertyValue
+pub fn surgeist_css::CssFontVariantEmojiPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssFontVariantEmojiPropertyValue::emoji(&self) -> &surgeist_css::CssFontVariantEmoji
 pub struct surgeist_css::CssFontVariantLigatureValues
 impl surgeist_css::CssFontVariantLigatureValues
 pub const fn surgeist_css::CssFontVariantLigatureValues::common(self) -> core::option::Option<surgeist_css::CssFontVariantLigatureState>
@@ -6165,16 +6230,17 @@ pub const fn surgeist_css::CssFontVariantPositionPropertyValue::position(&self) 
 pub struct surgeist_css::CssFontVariantPropertyValue
 impl surgeist_css::CssFontVariantPropertyValue
 pub fn surgeist_css::CssFontVariantPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssFontVariantPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssFontVariant>
 pub const fn surgeist_css::CssFontVariantPropertyValue::variant(&self) -> &surgeist_css::CssFontVariantValue
 pub struct surgeist_css::CssFontVariantValues
 impl surgeist_css::CssFontVariantValues
-pub const fn surgeist_css::CssFontVariantValues::caps(self) -> core::option::Option<surgeist_css::CssFontVariantCaps>
+pub const fn surgeist_css::CssFontVariantValues::alternates(&self) -> core::option::Option<&surgeist_css::CssFontVariantAlternateValues>
+pub const fn surgeist_css::CssFontVariantValues::caps(&self) -> core::option::Option<surgeist_css::CssFontVariantCaps>
 pub const fn surgeist_css::CssFontVariantValues::east_asian(&self) -> core::option::Option<&surgeist_css::CssFontVariantEastAsianValues>
+pub const fn surgeist_css::CssFontVariantValues::emoji(&self) -> core::option::Option<surgeist_css::CssFontVariantEmoji>
 pub const fn surgeist_css::CssFontVariantValues::ligatures(&self) -> core::option::Option<&surgeist_css::CssFontVariantLigatureValues>
 pub const fn surgeist_css::CssFontVariantValues::numeric(&self) -> core::option::Option<&surgeist_css::CssFontVariantNumericValues>
-pub const fn surgeist_css::CssFontVariantValues::position(self) -> core::option::Option<surgeist_css::CssFontVariantPosition>
-pub const fn surgeist_css::CssFontVariantValues::try_new(ligatures: core::option::Option<surgeist_css::CssFontVariantLigatureValues>, position: core::option::Option<surgeist_css::CssFontVariantPosition>, caps: core::option::Option<surgeist_css::CssFontVariantCaps>, numeric: core::option::Option<surgeist_css::CssFontVariantNumericValues>, east_asian: core::option::Option<surgeist_css::CssFontVariantEastAsianValues>) -> core::option::Option<Self>
+pub const fn surgeist_css::CssFontVariantValues::position(&self) -> core::option::Option<surgeist_css::CssFontVariantPosition>
+pub fn surgeist_css::CssFontVariantValues::try_new(ligatures: core::option::Option<surgeist_css::CssFontVariantLigatureValues>, position: core::option::Option<surgeist_css::CssFontVariantPosition>, caps: core::option::Option<surgeist_css::CssFontVariantCaps>, numeric: core::option::Option<surgeist_css::CssFontVariantNumericValues>, east_asian: core::option::Option<surgeist_css::CssFontVariantEastAsianValues>, alternates: core::option::Option<surgeist_css::CssFontVariantAlternateValues>, emoji: core::option::Option<surgeist_css::CssFontVariantEmoji>) -> core::option::Option<Self>
 pub struct surgeist_css::CssFontWeightNumber
 impl surgeist_css::CssFontWeightNumber
 pub fn surgeist_css::CssFontWeightNumber::calculation(&self) -> core::option::Option<&surgeist_css::CssNumberCalculation>

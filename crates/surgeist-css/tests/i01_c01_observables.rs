@@ -3206,6 +3206,32 @@ fn assert_known_property_value(
             );
             return;
         }
+        (
+            surgeist_css::CssKnownProperty::FontVariant,
+            surgeist_css::CssKnownPropertyValueRef::FontVariant(value),
+        ) => {
+            let surgeist_css::CssFontVariantValue::Values(values) = value.variant() else {
+                panic!("{}: expected captured small-caps variant", frozen.case_id);
+            };
+            assert_eq!(
+                values.caps(),
+                Some(surgeist_css::CssFontVariantCaps::SmallCaps)
+            );
+            assert!(values.ligatures().is_none());
+            assert!(values.alternates().is_none());
+            assert!(values.numeric().is_none());
+            assert!(values.east_asian().is_none());
+            assert!(values.position().is_none());
+            assert!(values.emoji().is_none());
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                "SmallCaps",
+                semantic,
+                authored,
+            );
+            return;
+        }
         _ => {}
     }
     assert_property_specific_value!(
@@ -3266,7 +3292,6 @@ fn assert_known_property_value(
             TextAlignLast,
             TextIndent,
             VerticalAlign,
-            FontVariant,
             FontFeatureSettings,
             LetterSpacing,
             TextWrap,
