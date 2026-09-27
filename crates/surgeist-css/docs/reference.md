@@ -753,6 +753,25 @@ Private fields couple every owned ordinary or initial value to its terminal
 property; metadata availability does not claim complete grammar or shorthand
 coverage beyond the selected slice.
 
+## Authored overflow wrapping
+
+[CSS Text 4 §6.4](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#overflow-wrap-property)
+defines `overflow-wrap` as the inherited longhand with initial value `normal`.
+It accepts `normal`, `break-word`, or `anywhere`. The legacy `word-wrap` spelling
+is a name alias of the same property and accepts the same values; parsed
+declarations retain the original spelling and source coordinates. The selected
+support record cites the [14 August 2026 CSS Text 3 draft](https://www.w3.org/TR/2026/CRD-css-text-3-20260814/#propdef-overflow-wrap).
+
+`CssOverflowWrapPropertyValue::current()` exposes the exact checked keyword;
+`i01_subset()` retains its existing compatibility projection. Intrinsic
+expansion emits one `OverflowWrap` contribution, preserving importance and source
+occurrence. CSS-wide values remain symbolic, and substitution-dependent values
+reenter the same grammar after replacement. `CssOverflowWrap::serialize_specified`
+emits the canonical keyword under configurable resource limits. Line breaking,
+min-content sizing, cascade, and layout use these authored values downstream:
+`anywhere` creates opportunities counted in min-content size, while `break-word`
+does not. This crate leaves those contextual effects to their owning layers.
+
 ## Authored gap values and legacy names
 
 [Alignment 3 §8.1](https://www.w3.org/TR/2026/WD-css-align-3-20260130/#column-row-gap)

@@ -2565,6 +2565,7 @@ pub surgeist_css::CssLonghandValueRef::Order(&'a surgeist_css::CssIntegerValue)
 pub surgeist_css::CssLonghandValueRef::OverflowBlock(&'a surgeist_css::CssOverflow)
 pub surgeist_css::CssLonghandValueRef::OverflowClipMargin(&'a surgeist_css::CssOverflowClipMargin)
 pub surgeist_css::CssLonghandValueRef::OverflowInline(&'a surgeist_css::CssOverflow)
+pub surgeist_css::CssLonghandValueRef::OverflowWrap(&'a surgeist_css::CssOverflowWrap)
 pub surgeist_css::CssLonghandValueRef::OverflowX(&'a surgeist_css::CssOverflow)
 pub surgeist_css::CssLonghandValueRef::OverflowY(&'a surgeist_css::CssOverflow)
 pub surgeist_css::CssLonghandValueRef::PaddingBlockEnd(&'a surgeist_css::CssPaddingValue)
@@ -3001,6 +3002,9 @@ pub surgeist_css::CssOverflowI01PropertyValue::Single(surgeist_css::CssOverflow)
 pub surgeist_css::CssOverflowWrap::Anywhere
 pub surgeist_css::CssOverflowWrap::BreakWord
 pub surgeist_css::CssOverflowWrap::Normal
+impl surgeist_css::CssOverflowWrap
+pub fn surgeist_css::CssOverflowWrap::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssOverflowWrap::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssPageSelector
 pub surgeist_css::CssPageSelector::First
 pub surgeist_css::CssPageSelector::Left
@@ -7158,6 +7162,8 @@ pub struct surgeist_css::CssOverflowWrapPropertyValue
 impl surgeist_css::CssOverflowWrapPropertyValue
 pub fn surgeist_css::CssOverflowWrapPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssOverflowWrapPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssOverflowWrap>
+impl surgeist_css::CssOverflowWrapPropertyValue
+pub const fn surgeist_css::CssOverflowWrapPropertyValue::current(&self) -> &surgeist_css::CssOverflowWrap
 pub struct surgeist_css::CssOverflowXPropertyValue
 impl surgeist_css::CssOverflowXPropertyValue
 pub fn surgeist_css::CssOverflowXPropertyValue::as_css(&self) -> &str

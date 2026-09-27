@@ -923,7 +923,7 @@ profile_source!(
     "CSS Text",
     "3",
     CssSpecificationTier::Snapshot2026Stable,
-    "https://www.w3.org/TR/2026/CRD-css-text-3-20260608/"
+    "https://www.w3.org/TR/2026/CRD-css-text-3-20260814/"
 );
 profile_source!(
     S_TEXTDECOR3,
@@ -4871,10 +4871,11 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 616] = [
         "word-break",
         "baseline.property.word-break"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::OverflowWrap,
         "overflow-wrap",
-        "baseline.property.overflow-wrap"
+        "baseline.property.overflow-wrap",
+        CssKnownProperty::OverflowWrap.aliases()
     ),
     complete_property_feature!(
         CssKnownProperty::TextOverflow,

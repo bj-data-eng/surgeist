@@ -201,6 +201,28 @@ pub(crate) fn serialize_keyword_sequence(
     Ok(output)
 }
 
+impl crate::CssOverflowWrap {
+    /// Serializes the specified overflow wrapping keyword before layout resolution.
+    pub fn serialize_specified(&self) -> Result<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Serializes one keyword under exact input, projection, and byte limits.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        serialize_keyword_sequence(
+            match self {
+                Self::Normal => "normal",
+                Self::BreakWord => "break-word",
+                Self::Anywhere => "anywhere",
+            },
+            limits,
+        )
+    }
+}
+
 impl CssBoxSizing {
     /// Serializes the intrinsic specified keyword without resolving a box size.
     pub fn serialize_specified(&self) -> Result<String> {

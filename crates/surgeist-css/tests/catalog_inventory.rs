@@ -72,12 +72,20 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
             "row-gap" => &["grid-row-gap"],
             "column-gap" => &["grid-column-gap"],
             "gap" => &["grid-gap"],
+            "overflow-wrap" => &["word-wrap"],
             _ => &[],
         };
         assert_eq!(metadata.aliases(), expected_aliases);
         assert_eq!(metadata.property().aliases(), expected_aliases);
         if !expected_aliases.is_empty() {
-            assert_eq!(feature.source().id().as_str(), "S-ALIGN3");
+            assert_eq!(
+                feature.source().id().as_str(),
+                if vector.canonical_name == "overflow-wrap" {
+                    "S-TEXT3"
+                } else {
+                    "S-ALIGN3"
+                }
+            );
             assert_eq!(feature.status(), CssSupportStatus::Complete);
             assert_eq!(feature.supported_subset(), None);
             assert_eq!(feature.unsupported_remainder(), None);
