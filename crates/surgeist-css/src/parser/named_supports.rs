@@ -373,7 +373,6 @@ fn partition(
             match pending {
                 PendingChild::AtRule(pending) => {
                     if !pending.malformed {
-                        flush_run(&mut parent.run, &mut parent.items);
                         parent
                             .items
                             .push(CssSupportsTestItem::AtRule(CssSupportsAtRuleTest::new(
@@ -388,7 +387,6 @@ fn partition(
                 }
                 PendingChild::Qualified(pending) => {
                     if !pending.malformed {
-                        flush_run(&mut parent.run, &mut parent.items);
                         parent.items.push(CssSupportsTestItem::QualifiedRule(
                             CssSupportsQualifiedRuleTest {
                                 prelude: pending.prelude,
@@ -421,6 +419,9 @@ fn partition(
 
         let start = frame.index;
         if let Some(CssValueTokenRef::AtKeyword(name)) = token(&frame.components[start]) {
+            // Consuming an at-rule ends the preceding declaration run even when
+            // its prelude later fails and the at-rule itself is discarded.
+            flush_run(&mut frame.run, &mut frame.items);
             let name = name.to_owned();
             let at_keyword = frame.components[start].clone();
             frame.index += 1;
@@ -498,7 +499,6 @@ fn partition(
                 }
                 continue;
             }
-            flush_run(&mut frame.run, &mut frame.items);
             frame
                 .items
                 .push(CssSupportsTestItem::AtRule(CssSupportsAtRuleTest::new(
@@ -559,6 +559,9 @@ fn partition(
             && let Some(block) = curly(&frame.components[block_index])
             && !custom_name
         {
+            // A complete qualified-rule boundary also ends the run before
+            // validation; malformed preludes do not merge surrounding runs.
+            flush_run(&mut frame.run, &mut frame.items);
             let prelude =
                 CssComponentValues::try_new(frame.components[start..block_index].to_vec())
                     .expect("validated component subsequence");
