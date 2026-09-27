@@ -54,7 +54,10 @@ fn every_known_descriptor_defers_env_and_reenters_its_ordinary_grammar() {
                     end: None,
                 }
             ),
-            Ordinary::FontStyle(style) => assert_eq!(style, CssFontFaceStyle::Italic),
+            Ordinary::FontStyle(style) => assert_eq!(
+                style,
+                CssFontFaceStyle::Keyword(surgeist_css::CssFontStyleKeyword::Italic)
+            ),
             Ordinary::FontWidth(width) => assert_eq!(
                 width,
                 CssFontFaceWidth::Range {

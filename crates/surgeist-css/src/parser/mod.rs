@@ -79,11 +79,11 @@ use crate::overflow_controls::{CssOverflowClipMargin, CssScrollBehavior, CssScro
 use crate::text_alignment::{CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignValue};
 use crate::{
     CssContainer, CssContainerNames, CssContainerType, CssFontPaletteDescriptorKind,
-    CssFontPaletteDescriptorValue, CssFontPaletteName, CssFontWeight, CssFontWidth, CssFrameSizing,
-    CssGapShorthand, CssGapValue, CssMaxSizePair, CssMaxSizeValue, CssMinIntrinsicSizing,
-    CssOverflowValue, CssScrollMarginPair, CssScrollMarginShorthand, CssScrollPaddingPair,
-    CssScrollPaddingShorthand, CssScrollPaddingValue, CssScrollSnapAlign, CssScrollSnapStop,
-    CssScrollSnapType, CssSizePair, CssSizeValue, CssSpecifiedLength,
+    CssFontPaletteDescriptorValue, CssFontPaletteName, CssFontStyle, CssFontWeight, CssFontWidth,
+    CssFrameSizing, CssGapShorthand, CssGapValue, CssMaxSizePair, CssMaxSizeValue,
+    CssMinIntrinsicSizing, CssOverflowValue, CssScrollMarginPair, CssScrollMarginShorthand,
+    CssScrollPaddingPair, CssScrollPaddingShorthand, CssScrollPaddingValue, CssScrollSnapAlign,
+    CssScrollSnapStop, CssScrollSnapType, CssSizePair, CssSizeValue, CssSpecifiedLength,
 };
 use background::*;
 use border_color::*;

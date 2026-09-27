@@ -11,8 +11,8 @@ use super::recovery::{
     recovery_action_for_error,
 };
 use super::typography::{
-    parse_absolute_font_weight, parse_font_feature_settings, parse_font_width,
-    parse_non_generic_font_family_name,
+    common_font_style_keyword, parse_absolute_font_weight, parse_font_feature_settings,
+    parse_font_oblique_angle, parse_font_width, parse_non_generic_font_family_name,
 };
 use super::{block_item_diagnostic, is_declaration_recovery_unit, parse_descriptor_boundary};
 use crate::error::{
@@ -21,7 +21,7 @@ use crate::error::{
 };
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
-use crate::{CssFontFaceWeight, CssFontFaceWidth};
+use crate::{CssFontFaceObliqueRange, CssFontFaceStyle, CssFontFaceWeight, CssFontFaceWidth};
 
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
     &[CssFeatureId::new("baseline.rule.font-face")];
@@ -383,7 +383,7 @@ pub(super) fn parse_font_face_value<'i, 't>(
                 CssFontFaceDescriptorValue::FontWeight(parse_font_face_weight(input, numeric)?)
             }
             CssFontFaceDescriptorKind::FontStyle => {
-                CssFontFaceDescriptorValue::FontStyle(parse_font_face_style(input)?)
+                CssFontFaceDescriptorValue::FontStyle(parse_font_face_style(input, numeric)?)
             }
             CssFontFaceDescriptorKind::FontWidth => {
                 CssFontFaceDescriptorValue::FontWidth(parse_font_face_width(input, numeric)?)
@@ -658,47 +658,35 @@ fn parse_font_face_weight<'i, 't>(
 
 fn parse_font_face_style<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssFontFaceStyle, ParseError<'i, Error>> {
     let ident = input.expect_ident_cloned().map_err(basic)?;
-    match_ignore_ascii_case! { &ident,
-        "normal" => Ok(CssFontFaceStyle::Normal),
-        "italic" => Ok(CssFontFaceStyle::Italic),
-        "oblique" => {
-            if input.is_exhausted() {
-                return Ok(CssFontFaceStyle::Oblique(None));
-            }
-            let start = parse_angle_degrees(input, "font-style oblique angle")?;
-            let end = if input.is_exhausted() {
-                None
-            } else {
-                Some(parse_angle_degrees(input, "font-style oblique angle range")?)
-            };
-            CssFontFaceObliqueRange::try_new(start, end)
-                .map(|range| CssFontFaceStyle::Oblique(Some(range)))
-                .ok_or_else(|| unsupported_value(input, None, "invalid font-style oblique range"))
-        },
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("font-style descriptor", ident.as_ref()),
-        )),
+    if ident.eq_ignore_ascii_case("auto") {
+        return Ok(CssFontFaceStyle::Auto);
     }
-}
-
-fn parse_angle_degrees<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    context: &str,
-) -> std::result::Result<f32, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Dimension { value, unit, .. } if unit.eq_ignore_ascii_case("deg") => Ok(*value),
-        Token::Dimension { unit, .. } => Err(unsupported_value_at(
-            location,
-            None,
-            format!("{context} must use deg units, got `{unit}`"),
-        )),
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
+    if ident.eq_ignore_ascii_case("oblique") {
+        if input.is_exhausted() {
+            return Ok(CssFontFaceStyle::Oblique { range: None });
+        }
+        let start = parse_font_oblique_angle(input, numeric)?;
+        let end = if input.is_exhausted() {
+            None
+        } else {
+            Some(parse_font_oblique_angle(input, numeric)?)
+        };
+        return Ok(CssFontFaceStyle::Oblique {
+            range: Some(CssFontFaceObliqueRange::new(start, end)),
+        });
     }
+    common_font_style_keyword(&ident)
+        .map(CssFontFaceStyle::Keyword)
+        .ok_or_else(|| {
+            unsupported_value(
+                input,
+                None,
+                unsupported_keyword_reason("font-style descriptor", ident.as_ref()),
+            )
+        })
 }
 
 fn parse_font_face_width<'i, 't>(

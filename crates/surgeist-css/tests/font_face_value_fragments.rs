@@ -78,7 +78,9 @@ fn every_descriptor_kind_returns_its_source_neutral_typed_value() {
         (
             Kind::FontStyle,
             "italic",
-            Value::FontStyle(CssFontFaceStyle::Italic),
+            Value::FontStyle(CssFontFaceStyle::Keyword(
+                surgeist_css::CssFontStyleKeyword::Italic,
+            )),
         ),
         (
             Kind::FontWidth,

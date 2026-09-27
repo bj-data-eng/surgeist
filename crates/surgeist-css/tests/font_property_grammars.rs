@@ -785,7 +785,12 @@ fn system_fonts_are_whole_values_and_explicit_components_are_unique() {
     let CssFontValue::Explicit(font) = legacy.font() else {
         panic!("expected current explicit font");
     };
-    assert_eq!(font.style(), Some(CssFontStyle::Italic));
+    assert_eq!(
+        font.style(),
+        Some(&CssFontStyle::Keyword(
+            surgeist_css::CssFontStyleKeyword::Italic
+        ))
+    );
     assert_eq!(font.families().families()[0].as_str(), "Arial");
 
     for invalid in [
@@ -820,12 +825,12 @@ fn font_shorthand_retains_ambiguous_normal_before_explicit_style() {
     assert_eq!(report.syntax().len(), 6);
 
     for (index, expected_style) in [
-        CssFontStyle::Italic,
-        CssFontStyle::Italic,
-        CssFontStyle::Italic,
-        CssFontStyle::Italic,
-        CssFontStyle::Italic,
-        CssFontStyle::Oblique,
+        CssFontStyle::Keyword(surgeist_css::CssFontStyleKeyword::Italic),
+        CssFontStyle::Keyword(surgeist_css::CssFontStyleKeyword::Italic),
+        CssFontStyle::Keyword(surgeist_css::CssFontStyleKeyword::Italic),
+        CssFontStyle::Keyword(surgeist_css::CssFontStyleKeyword::Italic),
+        CssFontStyle::Keyword(surgeist_css::CssFontStyleKeyword::Italic),
+        CssFontStyle::Oblique { angle: None },
     ]
     .iter()
     .enumerate()
@@ -841,7 +846,7 @@ fn font_shorthand_retains_ambiguous_normal_before_explicit_style() {
         let CssFontValue::Explicit(explicit) = value.font() else {
             panic!("expected explicit font shorthand at declaration {index}");
         };
-        assert_eq!(explicit.style(), Some(*expected_style));
+        assert_eq!(explicit.style(), Some(expected_style));
     }
 }
 

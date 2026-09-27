@@ -1463,6 +1463,39 @@ borrow their optional weight through `CssExplicitFont::weight()` and accept the
 same absolute and relative weight components, including fractions and number
 math. Other shorthand component gaps remain.
 
+The selected Fonts 4 `font-style` property accepts `normal`, `italic`, `left`,
+`right`, and `oblique` with an optional angle. `CssFontStyleKeyword` shares the
+four keywords with the descriptor, while `CssFontStyle::Oblique { angle: None }`
+retains omission rather than inserting the matching default `14deg`.
+`CssFontObliqueAngle` accepts literal `deg`, `grad`, and `turn` angles at exact
+lexical bounds of ±90deg, ±100grad, and ±0.25turn. Radian admission has an
+explicit binary64 precision: the original decimal coefficient is parsed as
+`f64` and compared directly with `FRAC_PI_2`. Thus
+`1.5707963267948966rad` is admitted and `1.5707963267948968rad` is rejected;
+decimal spellings that round to the same binary64 value share an admission
+result. The original component, unit, token spelling, and parsed or programmatic
+origin remain available after admission. A bare unitless zero is not an angle.
+Angle-valued calculations remain symbolic and use the existing numeric type
+rules; their apparent computed result is not range-checked here.
+
+`CssFontFaceStyle` admits descriptor-only `auto`, one of the shared keywords,
+or oblique with zero, one, or two checked angle endpoints. The optional
+`CssFontFaceObliqueRange` end preserves authored arity and order, including
+descending and mixed-unit pairs. Its `new(start, end)`, `start()`, and `end()`
+methods operate on checked angles without a floating-point degree projection.
+The old property variants such as `CssFontStyle::Italic` become
+`CssFontStyle::Keyword(CssFontStyleKeyword::Italic)`; the old descriptor variants
+become `CssFontFaceStyle::Keyword(...)` or `Oblique { range }`. The property
+wrapper's `current()` returns a borrowed `&CssFontStyle`, and
+`CssExplicitFont::style()` returns `Option<&CssFontStyle>`; the old property
+`i01_subset()` projection is removed. The inherited property initial is
+`normal`, and expansion preserves importance and source provenance. The
+explicit `font` shorthand accepts this selected style component, including
+optional oblique angle math, while retaining its other documented component
+limits. Property, descriptor, scalar, and range values have bounded canonical
+specified serializers; no font matching, computed-style resolution, or complete
+font-face rule serialization is implied.
+
 The `@font-face` weight descriptor now uses
 `CssFontFaceWeight::Auto` or `Range { start, end }`, where each endpoint is a
 checked `CssAbsoluteFontWeight` and `end: None` preserves a single authored
@@ -1473,7 +1506,7 @@ ranges retain their authored order; computed endpoint ordering and font
 matching belong downstream. The property, descriptor and numeric/range
 historical conformance IDs now cite the September 7, 2026 Fonts 4 source and
 are `Complete` for their authored grammars. This does not complete `font`,
-`@font-face` as a whole, font-style, or environment execution.
+`@font-face` as a whole, or environment execution.
 
 `CssFontFamilyName` distinguishes quoted literal names, identifier sequences,
 and typed generics. Its fifteen `CssGenericFontFamily` values comprise eleven
@@ -1606,9 +1639,10 @@ CSSOM or contextual color/profile evaluation is implied.
 
 `@font-face` retains every valid descriptor occurrence in authored order;
 `effective(kind)` returns the last admitted ordinary or pending occurrence.
-Source-list grammar follows the selected Fonts 4 edition. Weight property and
-descriptor grammar now cite its September 7, 2026 edition; other descriptor and
-property records retain their individual dated sources. An invalid or unknown descriptor is dropped
+Source-list grammar follows the selected Fonts 4 edition. Weight and style
+property and descriptor grammars now cite its September 7, 2026 edition; other
+descriptor and property records retain their individual dated sources. An invalid
+or unknown descriptor is dropped
 with a `DropDescriptor` diagnostic without erasing valid neighbors. Empty rules
 and rules missing `font-family` or `src` remain valid authored syntax. Those two
 effective lookups return `Option`; their absence excludes the face from downstream font
@@ -1668,13 +1702,13 @@ technology is required together. `tech()` retains its exact authored order and
 repetitions. `CssFontFormatHint::is_equivalent_to` recognizes TrueType/OpenType
 compatibility while ordinary equality keeps their identities distinct.
 
-The `font-family`, `font-weight` and `font-width` properties and descriptors,
-`font`, `@font-face`, `src`,
-font-source and modern-source-hint records cite the September 7, 2026 edition as
+The `font-family`, `font-weight`, `font-style` and `font-width` properties and
+descriptors, `font`, `@font-face`, `src`, font-source and modern-source-hint
+records cite the September 7, 2026 edition as
 `I-FONTS4-20260907`. The family property and descriptor and the narrowly named
-modern-source-hint record are `Complete`; the weight and width properties and
-descriptors are also `Complete` for their authored grammars. The shorthand, rule and source-list
-records remain `Partial`.
+modern-source-hint record are `Complete`; the weight, style and width properties
+and descriptors are also `Complete` for their authored grammars. The shorthand,
+rule and source-list records remain `Partial`.
 The older `I-FONTS4` identity keeps its April 22 edition; `O-FONTS3` also
 remains available for historical source records. These immutable identities
 must not be repointed when adopting a newer production.
@@ -1722,9 +1756,8 @@ while preserving supplied parsed, programmatic or mixed origins. Only a pending
 value exposes `reparse_after_substitution`, which checks caller-supplied
 replacement components and returns an ordinary value; residual `var()` or
 `env()`, recovered components and invalid ordinary grammar are typed failures.
-This API never executes substitution. Fonts 4 shorthand
-components including oblique angles, `xxx-large` or
-`math` sizes also remain unsupported.
+This API never executes substitution. Fonts 4 shorthand components including
+`xxx-large` or `math` sizes remain unsupported.
 Selected descriptors including `font-variation-settings`, `font-named-instance`
 and metric overrides remain unfinished.
 The source-list URL branch accepts `url()` but does not yet implement `src()`
@@ -2229,7 +2262,7 @@ records for `dimension`, `angle`, `angle-percentage`, `time-percentage`,
 
 The preserved extension records `ext.value.relative-color`,
 `ext.value.color-mix`, `ext.value.grid-repeat`, `ext.value.basic-shape`,
-`ext.descriptor.font-style-oblique-range` and `ext.supports.selector` remain `Partial`,
+and `ext.supports.selector` remain `Partial`,
 with both subset and remainder metadata. The five `ext.media.range.*` records
 for width, height, resolution, color and monochrome are now `Complete`, covering
 signed symbolic operands and source-ordered chained comparisons.

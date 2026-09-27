@@ -96,6 +96,38 @@ impl<'a> LexicalDecimal<'a> {
                     && self.digits().next() == Some(1)
                     && self.digits().skip(1).all(|digit| digit == 0)))
     }
+
+    /// Compares the absolute authored decimal with a fixed positive decimal
+    /// boundary, without expanding an exponent into zeroes. The boundary's
+    /// significant digits contain no decimal point, and `bound_exponent` is
+    /// its base-ten scale (for example, `("25", -2)` is one quarter).
+    pub(crate) fn absolute_at_most(&self, bound_digits: &str, bound_exponent: i128) -> bool {
+        if self.len == 0 {
+            return true;
+        }
+        let Some(exponent) = self.exponent else {
+            return self.exponent_negative;
+        };
+        let magnitude = exponent.saturating_add(i128::try_from(self.len).unwrap_or(i128::MAX));
+        let bound_magnitude = bound_exponent + bound_digits.len() as i128;
+        match magnitude.cmp(&bound_magnitude) {
+            std::cmp::Ordering::Less => true,
+            std::cmp::Ordering::Greater => false,
+            std::cmp::Ordering::Equal => {
+                let mut authored = self.digits();
+                let mut bound = bound_digits.bytes().map(|digit| digit - b'0');
+                loop {
+                    match (authored.next(), bound.next()) {
+                        (None, None) => return true,
+                        (Some(left), Some(right)) if left != right => return left < right,
+                        (Some(left), None) if left != 0 => return false,
+                        (None, Some(right)) if right != 0 => return true,
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
 }
 
 const DECIMAL_LIMB_DIGITS: usize = 9;

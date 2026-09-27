@@ -26,7 +26,7 @@ use crate::{
     CssComponentValueRef, CssContainer, CssContainerNames, CssContainerType, CssSpecifiedLength,
     CssValueTokenRef,
 };
-use crate::{CssFontWeight, CssFontWidth};
+use crate::{CssFontStyle, CssFontWeight, CssFontWidth};
 
 macro_rules! property_schema {
     ($callback:ident, $input:ident, $numeric:ident) => {
@@ -175,7 +175,7 @@ macro_rules! property_schema {
             FontFamily, "font-family", [], "baseline.property.font-family", CssFontFamilyList, CssFontFamilyPropertyValue, CssFontFamilyPropertyValueRepresentation, parse_font_family_list, { parse_font_family_list($input)? }, expansion = longhand { wrapper: existing, value: CssFontFamilyList, accessor: families, inherited: true, initial_kind: user_agent, initial: CssUserAgentInitial::FontFamily };
             Font, "font", [], "baseline.property.font", CssFontValue, CssFontPropertyValue, CssFontPropertyValueRepresentation, parse_font, { parse_font($input, $numeric)? };
             FontWeight, "font-weight", [], "baseline.property.font-weight", CssFontWeight, CssFontWeightPropertyValue, CssFontWeightPropertyValueRepresentation, parse_font_weight, { parse_font_weight($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssFontWeight, accessor: current, inherited: true, initial_kind: value, initial: CssFontWeight::Absolute(CssAbsoluteFontWeight::Normal) };
-            FontStyle, "font-style", [], "baseline.property.font-style", CssFontStyle, CssFontStylePropertyValue, CssFontStylePropertyValueRepresentation, parse_font_style, { parse_font_style($input)? };
+            FontStyle, "font-style", [], "baseline.property.font-style", CssFontStyle, CssFontStylePropertyValue, CssFontStylePropertyValueRepresentation, parse_font_style, { parse_font_style($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssFontStyle, accessor: current, inherited: true, initial_kind: value, initial: CssFontStyle::Keyword(CssFontStyleKeyword::Normal) };
             FontWidth, "font-width", ["font-stretch"], "baseline.property.font-stretch", CssFontWidth, CssFontWidthPropertyValue, CssFontWidthPropertyValueRepresentation, parse_font_width, { parse_font_width($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssFontWidth, accessor: current, inherited: true, initial_kind: value, initial: CssFontWidth::Keyword(CssFontWidthKeyword::Normal) };
             FontVariant, "font-variant", [], "baseline.property.font-variant", CssFontVariantValue, CssFontVariantPropertyValue, CssFontVariantPropertyValueRepresentation, parse_font_variant, { parse_font_variant($input)? };
             FontVariantCaps, "font-variant-caps", [], "official.property.font-variant-caps", CssFontVariantCaps, CssFontVariantCapsPropertyValue, CssFontVariantCapsPropertyValueRepresentation, parse_font_variant_caps, { parse_font_variant_caps($input)? };

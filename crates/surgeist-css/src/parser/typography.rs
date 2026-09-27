@@ -9,7 +9,8 @@ use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_va
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
 use crate::{
-    CssAbsoluteFontWeight, CssFontStretch, CssFontWeight, CssFontWeightNumber, CssFontWidth,
+    CssAbsoluteFontWeight, CssFontObliqueAngle, CssFontStretch, CssFontStyle, CssFontStyleKeyword,
+    CssFontWeight, CssFontWeightNumber, CssFontWidth,
 };
 
 pub(super) static IMPLEMENTED_PROPERTY_EXTENSIONS: &[CssFeatureId] =
@@ -426,7 +427,7 @@ pub(super) fn parse_font<'i, 't>(
         }
 
         if style.is_none()
-            && let Ok(parsed_style) = input.try_parse(parse_font_style)
+            && let Ok(parsed_style) = input.try_parse(|input| parse_font_style(input, numeric))
         {
             style = Some(parsed_style);
             continue;
@@ -459,7 +460,7 @@ pub(super) fn parse_font<'i, 't>(
 
     for _ in 0..normal_count {
         if style.is_none() {
-            style = Some(CssFontStyle::Normal);
+            style = Some(CssFontStyle::Keyword(CssFontStyleKeyword::Normal));
         } else if variant.is_none() {
             variant = Some(CssFontVariant::Normal);
         } else if weight.is_none() {
@@ -577,18 +578,72 @@ pub(super) fn parse_absolute_font_weight<'i, 't>(
 
 pub(super) fn parse_font_style<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssFontStyle, ParseError<'i, Error>> {
     let ident = input.expect_ident_cloned().map_err(basic)?;
-    match_ignore_ascii_case! { &ident,
-        "normal" => Ok(CssFontStyle::Normal),
-        "italic" => Ok(CssFontStyle::Italic),
-        "oblique" => Ok(CssFontStyle::Oblique),
-        _ => Err(unsupported_value(
-            input,
-            None,
-            unsupported_keyword_reason("font-style", ident.as_ref()),
-        )),
+    if ident.eq_ignore_ascii_case("oblique") {
+        let angle = input
+            .try_parse(|input| parse_font_oblique_angle(input, numeric))
+            .ok();
+        return Ok(CssFontStyle::Oblique { angle });
     }
+    common_font_style_keyword(&ident)
+        .map(CssFontStyle::Keyword)
+        .ok_or_else(|| {
+            unsupported_value(
+                input,
+                None,
+                unsupported_keyword_reason("font-style", ident.as_ref()),
+            )
+        })
+}
+
+pub(super) fn common_font_style_keyword(name: &str) -> Option<CssFontStyleKeyword> {
+    if name.eq_ignore_ascii_case("normal") {
+        Some(CssFontStyleKeyword::Normal)
+    } else if name.eq_ignore_ascii_case("italic") {
+        Some(CssFontStyleKeyword::Italic)
+    } else if name.eq_ignore_ascii_case("left") {
+        Some(CssFontStyleKeyword::Left)
+    } else if name.eq_ignore_ascii_case("right") {
+        Some(CssFontStyleKeyword::Right)
+    } else {
+        None
+    }
+}
+
+pub(super) fn parse_font_oblique_angle<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<CssFontObliqueAngle, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let state = input.state();
+    let location = input.current_source_location();
+    let root_offset = input.position().byte_index();
+    let result = match input.next().map_err(basic)? {
+        Token::Dimension { .. } => {
+            input.reset(&state);
+            let component = numeric.collect(input).map_err(|_| {
+                unsupported_value_at(location, None, "invalid font-style angle component")
+            })?;
+            CssFontObliqueAngle::try_from_component(component)
+        }
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            let expression =
+                parse_numeric_function(input, &state, numeric, CalculationRoot::Angle)?;
+            CssFontObliqueAngle::try_from_calculation(crate::CssAngleCalculation::from_expression(
+                expression,
+            ))
+        }
+        token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
+    };
+    result.map_err(|error| {
+        unsupported_value_at(
+            numeric.error_location(&error, location, root_offset),
+            None,
+            "font-style requires an oblique angle between -90deg and 90deg",
+        )
+    })
 }
 
 pub(super) fn parse_font_stretch<'i, 't>(

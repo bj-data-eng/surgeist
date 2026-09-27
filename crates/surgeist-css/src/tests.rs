@@ -40,6 +40,11 @@ fn weight_number(spelling: &str) -> CssFontWeightNumber {
         .expect("valid exact font weight")
 }
 
+fn oblique_angle(spelling: &str) -> CssFontObliqueAngle {
+    CssFontObliqueAngle::try_from_component(CssComponentValue::try_token(spelling).unwrap())
+        .expect("valid exact oblique angle")
+}
+
 macro_rules! face_value {
     ($descriptors:expr, $kind:ident) => {{
         let descriptor = $descriptors
@@ -5225,9 +5230,12 @@ fn font_face_descriptor_collection_preserves_optional_matching_fields() {
             .into(),
         ),
         CssFontFaceDescriptor::new(
-            CssFontFaceDescriptorValue::FontStyle(CssFontFaceStyle::Oblique(Some(
-                CssFontFaceObliqueRange::try_new(-10.0, Some(20.0)).unwrap(),
-            )))
+            CssFontFaceDescriptorValue::FontStyle(CssFontFaceStyle::Oblique {
+                range: Some(CssFontFaceObliqueRange::new(
+                    oblique_angle("-10deg"),
+                    Some(oblique_angle("20deg")),
+                )),
+            })
             .into(),
         ),
         CssFontFaceDescriptor::new(
@@ -5269,7 +5277,7 @@ fn font_face_descriptor_collection_preserves_optional_matching_fields() {
     );
     assert!(matches!(
         face_value!(descriptors, FontStyle),
-        CssFontFaceStyle::Oblique(Some(_))
+        CssFontFaceStyle::Oblique { range: Some(_) }
     ));
     assert_eq!(
         face_value!(descriptors, FontWidth)
@@ -5386,18 +5394,19 @@ fn font_face_numeric_descriptors_enforce_invariants() {
         "expanded condensed"
     );
 
+    let descending =
+        CssFontFaceObliqueRange::new(oblique_angle("90deg"), Some(oblique_angle("-90deg")));
+    assert_eq!(descending.start().serialize_specified().unwrap(), "90deg");
     assert_eq!(
-        CssFontFaceObliqueRange::try_new(-90.0, Some(90.0))
-            .unwrap()
-            .end_degrees()
-            .unwrap()
-            .value(),
-        90.0
+        descending.end().unwrap().serialize_specified().unwrap(),
+        "-90deg"
     );
-    assert_eq!(CssFontFaceObliqueRange::try_new(-90.1, None), None);
-    assert_eq!(CssFontFaceObliqueRange::try_new(90.1, None), None);
-    assert_eq!(CssFontFaceObliqueRange::try_new(f32::NAN, None), None);
-    assert_eq!(CssFontFaceObliqueRange::try_new(10.0, Some(0.0)), None);
+    for invalid in ["-90.1deg", "90.1deg"] {
+        assert!(
+            CssFontObliqueAngle::try_from_component(CssComponentValue::try_token(invalid).unwrap())
+                .is_err()
+        );
+    }
 
     assert_eq!(
         CssUnicodeRange::try_new(0x10ffff, 0x10ffff).unwrap().end(),
@@ -5426,7 +5435,10 @@ fn font_face_rule_accessors_expose_authored_structure() {
             .into(),
         ),
         CssFontFaceDescriptor::new(
-            CssFontFaceDescriptorValue::FontStyle(CssFontFaceStyle::Normal).into(),
+            CssFontFaceDescriptorValue::FontStyle(CssFontFaceStyle::Keyword(
+                CssFontStyleKeyword::Normal,
+            ))
+            .into(),
         ),
         CssFontFaceDescriptor::new(
             CssFontFaceDescriptorValue::FontDisplay(CssFontDisplay::Auto).into(),
@@ -5473,7 +5485,7 @@ fn font_face_rule_parser_accepts_descriptor_block() {
     );
     assert_eq!(
         Some(face_value!(descriptors, FontStyle)),
-        Some(&CssFontFaceStyle::Normal)
+        Some(&CssFontFaceStyle::Keyword(CssFontStyleKeyword::Normal))
     );
     assert_eq!(
         Some(face_value!(descriptors, FontDisplay)),
@@ -5536,12 +5548,17 @@ fn font_face_rule_parser_accepts_strict_numeric_ranges() {
     };
 
     let descriptors = font_face_rule(rule).descriptors();
-    let Some(CssFontFaceStyle::Oblique(Some(oblique))) = Some(face_value!(descriptors, FontStyle))
+    let Some(CssFontFaceStyle::Oblique {
+        range: Some(oblique),
+    }) = Some(face_value!(descriptors, FontStyle))
     else {
         panic!("expected oblique range");
     };
-    assert_eq!(oblique.start_degrees().value(), -10.0);
-    assert_eq!(oblique.end_degrees().unwrap().value(), 20.0);
+    assert_eq!(oblique.start().serialize_specified().unwrap(), "-10deg");
+    assert_eq!(
+        oblique.end().unwrap().serialize_specified().unwrap(),
+        "20deg"
+    );
     assert_eq!(
         face_value!(descriptors, FontWidth)
             .start()
@@ -8399,9 +8416,16 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
         weight.current(),
         &CssFontWeight::Absolute(CssAbsoluteFontWeight::Number(weight_number("725")))
     );
+    let style_declaration = declaration(".panel { font-style: italic; }", CssProperty::FontStyle);
+    let Some(CssKnownPropertyValueRef::FontStyle(style)) = style_declaration
+        .known()
+        .and_then(|known| known.property_value())
+    else {
+        panic!("expected current font-style");
+    };
     assert_eq!(
-        declaration_value!(".panel { font-style: italic; }", FontStyle),
-        CssFontStyle::Italic
+        style.current(),
+        &CssFontStyle::Keyword(CssFontStyleKeyword::Italic)
     );
     let width_declaration = declaration(
         ".panel { font-stretch: semi-condensed; }",
@@ -8444,7 +8468,10 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
     let CssFontValue::Explicit(font) = value.font() else {
         panic!("expected an explicit font");
     };
-    assert_eq!(font.style(), Some(CssFontStyle::Italic));
+    assert_eq!(
+        font.style(),
+        Some(&CssFontStyle::Keyword(CssFontStyleKeyword::Italic))
+    );
     assert_eq!(font.variant(), Some(CssFontVariant::SmallCaps));
     assert_eq!(
         font.weight(),

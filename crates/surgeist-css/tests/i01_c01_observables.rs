@@ -3059,6 +3059,23 @@ fn assert_known_property_value(
             return;
         }
         (
+            surgeist_css::CssKnownProperty::FontStyle,
+            surgeist_css::CssKnownPropertyValueRef::FontStyle(value),
+        ) => {
+            assert_eq!(
+                value.current(),
+                &surgeist_css::CssFontStyle::Keyword(surgeist_css::CssFontStyleKeyword::Italic)
+            );
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                "Italic",
+                semantic,
+                authored,
+            );
+            return;
+        }
+        (
             surgeist_css::CssKnownProperty::FontWeight,
             surgeist_css::CssKnownPropertyValueRef::FontWeight(value),
         ) => {
@@ -3085,7 +3102,12 @@ fn assert_known_property_value(
             let surgeist_css::CssFontValue::Explicit(font) = value.font() else {
                 panic!("{}: expected captured explicit font", frozen.case_id);
             };
-            assert_eq!(font.style(), Some(surgeist_css::CssFontStyle::Italic));
+            assert_eq!(
+                font.style(),
+                Some(&surgeist_css::CssFontStyle::Keyword(
+                    surgeist_css::CssFontStyleKeyword::Italic
+                ))
+            );
             assert_eq!(
                 font.variant(),
                 Some(surgeist_css::CssFontVariant::SmallCaps)
@@ -3210,7 +3232,6 @@ fn assert_known_property_value(
             TextAlignLast,
             TextIndent,
             VerticalAlign,
-            FontStyle,
             FontVariant,
             FontFeatureSettings,
             LetterSpacing,

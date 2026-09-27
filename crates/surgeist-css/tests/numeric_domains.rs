@@ -1,7 +1,7 @@
 use surgeist_css::{
     CssAnimationIterationCount, CssAnimationIterationNumber, CssAspectRatio, CssComponentValue,
     CssErrorCode, CssFiniteNumber, CssFlexFactor, CssFlowTolerance, CssFlowToleranceRef,
-    CssFontFaceObliqueRange, CssFontSizeAdjust, CssFontWeightNumber, CssGridRepeatInteger,
+    CssFontObliqueAngle, CssFontSizeAdjust, CssFontWeightNumber, CssGridRepeatInteger,
     CssGridTrackBreadth, CssKeyframePercent, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
     CssLengthDimension, CssLengthUnit, CssNonNegativeNumber, CssOpacity, CssOpacityScalarKind,
     CssOpacityValue, CssRatio, CssRecoveryAction, CssResolution, CssResolutionUnit, CssRule,
@@ -25,11 +25,17 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         assert_eq!(CssLengthDimension::try_new(value, CssLengthUnit::Rem), None);
         assert_eq!(CssGridTrackBreadth::try_fraction(value), None);
         assert_eq!(CssScaleValues::try_new(vec![value]), None);
-        assert_eq!(CssFontFaceObliqueRange::try_new(value, None), None);
         assert_eq!(CssResolution::try_new(value, CssResolutionUnit::Dppx), None);
         assert_eq!(CssTime::try_new(value, CssTimeUnit::Seconds), None);
         assert_eq!(CssAnimationIterationNumber::try_new(value), None);
         assert_eq!(CssAnimationIterationCount::try_number(value), None);
+    }
+
+    for invalid in ["-90.1deg", "90.1deg", "0"] {
+        assert!(
+            CssFontObliqueAngle::try_from_component(CssComponentValue::try_token(invalid).unwrap())
+                .is_err()
+        );
     }
 
     assert_eq!(

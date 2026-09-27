@@ -15,7 +15,7 @@ pub(crate) use crate::media_features::*;
 pub(crate) use crate::numeric::*;
 use crate::{
     CssColorAngleLiteral, CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError,
-    CssFontStretch, CssFontWeight, CssValueOrigin,
+    CssFontStretch, CssFontStyle, CssFontWeight, CssValueOrigin,
 };
 use crate::{
     CssContainerScrollQuery, CssContainerStyleQuery, CssFontFeatureValuesRule,
@@ -6500,14 +6500,6 @@ impl CssFontFamilyList {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssFontStyle {
-    Normal,
-    Italic,
-    Oblique,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
 pub enum CssFontVariant {
     Normal,
     SmallCaps,
@@ -7185,8 +7177,8 @@ impl CssExplicitFont {
     }
 
     #[must_use]
-    pub const fn style(&self) -> Option<CssFontStyle> {
-        self.style
+    pub const fn style(&self) -> Option<&CssFontStyle> {
+        self.style.as_ref()
     }
 
     #[must_use]

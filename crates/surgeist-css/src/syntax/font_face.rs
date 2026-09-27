@@ -1,5 +1,5 @@
-use super::{CssAuthoredFontFeatureSettings, CssFiniteNumber, CssSourcePosition};
-use crate::{CssComponentValues, CssFontFaceWeight, CssFontFaceWidth};
+use super::{CssAuthoredFontFeatureSettings, CssSourcePosition};
+use crate::{CssComponentValues, CssFontFaceStyle, CssFontFaceWeight, CssFontFaceWidth};
 
 mod pending;
 pub use pending::{CssFontFaceValueError, CssFontFaceValueErrorKind};
@@ -498,56 +498,6 @@ impl CssFontFaceSourceList {
     #[must_use]
     pub fn sources(&self) -> &[CssFontFaceSource] {
         &self.sources
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssFontFaceStyle {
-    Normal,
-    Italic,
-    Oblique(Option<CssFontFaceObliqueRange>),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssFontFaceObliqueRange {
-    start_degrees: CssFiniteNumber,
-    end_degrees: Option<CssFiniteNumber>,
-}
-
-impl CssFontFaceObliqueRange {
-    #[must_use]
-    pub fn try_new(start_degrees: f32, end_degrees: Option<f32>) -> Option<Self> {
-        if !(-90.0..=90.0).contains(&start_degrees) {
-            return None;
-        }
-
-        let start_degrees = CssFiniteNumber::try_new(start_degrees)?;
-        let end_degrees = match end_degrees {
-            Some(end_degrees)
-                if (-90.0..=90.0).contains(&end_degrees)
-                    && start_degrees.value() <= end_degrees =>
-            {
-                Some(CssFiniteNumber::try_new(end_degrees)?)
-            }
-            Some(_) => return None,
-            None => None,
-        };
-
-        Some(Self {
-            start_degrees,
-            end_degrees,
-        })
-    }
-
-    #[must_use]
-    pub const fn start_degrees(self) -> CssFiniteNumber {
-        self.start_degrees
-    }
-
-    #[must_use]
-    pub const fn end_degrees(self) -> Option<CssFiniteNumber> {
-        self.end_degrees
     }
 }
 
