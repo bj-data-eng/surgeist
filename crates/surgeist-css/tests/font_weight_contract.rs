@@ -4,7 +4,8 @@
 
 use surgeist_css::{
     CssAbsoluteFontWeight as Absolute, CssComponentValue, CssComponentValues, CssContributions,
-    CssExpansion, CssExpansionErrorKind, CssFontValue, CssFontWeight, CssFontWeightNumber,
+    CssExpansion, CssExpansionErrorKind, CssFontStyle, CssFontValue, CssFontWeight,
+    CssFontWeightNumber,
     CssImportance, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
     CssLonghandValueRef, CssNumberCalculation, CssNumericConstructionErrorKind, CssPropertyGrammar,
     CssPropertyKindRef, CssPropertyValueErrorKind, CssSerializedOrigin,
@@ -309,9 +310,29 @@ fn shorthand_borrows_fractional_and_symbolic_weight_without_claiming_other_gramm
             expected
         );
     }
+    let source = "font: oblique 10deg 16px serif";
+    let report = parse_style_attribute(source);
+    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
+    let CssKnownPropertyValueRef::Font(wrapper) = report.syntax()[0]
+        .known()
+        .unwrap()
+        .property_value()
+        .unwrap()
+    else {
+        panic!("font shorthand")
+    };
+    let CssFontValue::Explicit(explicit) = wrapper.font() else {
+        panic!("explicit font")
+    };
+    let Some(CssFontStyle::Oblique { angle: Some(angle) }) = explicit.style() else {
+        panic!("authored oblique angle")
+    };
+    assert_eq!(angle.serialize_specified().unwrap(), "10deg");
+    assert!(explicit.weight().is_none());
+
     for source in [
         "font: bold 700 16px serif",
-        "font: oblique 10deg 16px serif",
+        "font: oblique 10deg italic 16px serif",
     ] {
         let report = parse_style_attribute(source);
         assert!(!report.is_clean(), "{source}");
