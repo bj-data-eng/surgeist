@@ -79,7 +79,7 @@ use crate::overflow_controls::{CssOverflowClipMargin, CssScrollBehavior, CssScro
 use crate::text_alignment::{CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignValue};
 use crate::{
     CssContainer, CssContainerNames, CssContainerType, CssFontPaletteDescriptorKind,
-    CssFontPaletteDescriptorValue, CssFontPaletteName, CssFontWidth, CssFrameSizing,
+    CssFontPaletteDescriptorValue, CssFontPaletteName, CssFontWeight, CssFontWidth, CssFrameSizing,
     CssGapShorthand, CssGapValue, CssMaxSizePair, CssMaxSizeValue, CssMinIntrinsicSizing,
     CssOverflowValue, CssScrollMarginPair, CssScrollMarginShorthand, CssScrollPaddingPair,
     CssScrollPaddingShorthand, CssScrollPaddingValue, CssScrollSnapAlign, CssScrollSnapStop,

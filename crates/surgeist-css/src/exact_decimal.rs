@@ -81,6 +81,21 @@ impl<'a> LexicalDecimal<'a> {
         let point = exponent.saturating_add(self.len as i128);
         point < 3 || (point == 3 && self.len == 1 && self.digits().next() == Some(1))
     }
+    /// Tests the Fonts 4 inclusive weight interval without rounded float tokens.
+    pub(crate) fn in_font_weight_range(&self) -> bool {
+        if self.len == 0 || self.negative {
+            return false;
+        }
+        let Some(exponent) = self.exponent else {
+            return false;
+        };
+        let magnitude = exponent.saturating_add(i128::try_from(self.len).unwrap_or(i128::MAX));
+        magnitude >= 1
+            && (magnitude < 4
+                || (magnitude == 4
+                    && self.digits().next() == Some(1)
+                    && self.digits().skip(1).all(|digit| digit == 0)))
+    }
 }
 
 const DECIMAL_LIMB_DIGITS: usize = 9;

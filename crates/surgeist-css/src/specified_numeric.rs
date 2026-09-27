@@ -1,4 +1,4 @@
-//! Exact, checked authored length and percentage domains for CSS properties.
+//! Exact, checked authored length and percentage domains with shared numeric helpers.
 
 use crate::{
     CssComponentValue, CssComponentValueRef, CssLengthCalculation, CssLengthPercentageCalculation,
@@ -12,7 +12,7 @@ use crate::{
 type ConstructionResult<T> = Result<T, CssNumericConstructionError>;
 type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
 
-fn significant_root(
+pub(crate) fn significant_root(
     calculation: &crate::CssComponentValues,
 ) -> ConstructionResult<&CssComponentValue> {
     calculation
@@ -83,7 +83,7 @@ enum LiteralUnit {
     Percentage,
 }
 
-fn capture_literal(
+pub(crate) fn capture_literal(
     component: &CssComponentValue,
     context: &mut SpecifiedSerializationContext,
 ) -> SerializationResult<String> {
@@ -98,7 +98,7 @@ fn capture_literal(
                 .as_css_str(),
         ),
         CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) => (number, "%"),
-        _ => unreachable!("checked specified length literal"),
+        _ => unreachable!("checked specified numeric literal"),
     };
     let coefficient_limit = context
         .remaining_bytes()

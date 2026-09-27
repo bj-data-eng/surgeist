@@ -12,6 +12,13 @@ pub surgeist_css::CssAbsoluteColorExclusion::CurrentColor
 pub surgeist_css::CssAbsoluteColorExclusion::DeviceCmyk
 pub surgeist_css::CssAbsoluteColorExclusion::LightDark
 pub surgeist_css::CssAbsoluteColorExclusion::SystemColor
+#[non_exhaustive] pub enum surgeist_css::CssAbsoluteFontWeight
+pub surgeist_css::CssAbsoluteFontWeight::Bold
+pub surgeist_css::CssAbsoluteFontWeight::Normal
+pub surgeist_css::CssAbsoluteFontWeight::Number(surgeist_css::CssFontWeightNumber)
+impl surgeist_css::CssAbsoluteFontWeight
+pub fn surgeist_css::CssAbsoluteFontWeight::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAbsoluteFontWeight::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssAlignItems
 pub surgeist_css::CssAlignItems::Baseline
 pub surgeist_css::CssAlignItems::Center
@@ -1248,9 +1255,14 @@ pub surgeist_css::CssFontFaceValueErrorKind::Component(surgeist_css::CssComponen
 pub surgeist_css::CssFontFaceValueErrorKind::Grammar(surgeist_css::ErrorKind)
 pub surgeist_css::CssFontFaceValueErrorKind::RecoveredComponent
 pub surgeist_css::CssFontFaceValueErrorKind::ResidualSubstitution
-#[non_exhaustive] pub enum surgeist_css::CssFontFaceWeightKeyword
-pub surgeist_css::CssFontFaceWeightKeyword::Bold
-pub surgeist_css::CssFontFaceWeightKeyword::Normal
+#[non_exhaustive] pub enum surgeist_css::CssFontFaceWeight
+pub surgeist_css::CssFontFaceWeight::Auto
+pub surgeist_css::CssFontFaceWeight::Range
+pub surgeist_css::CssFontFaceWeight::Range::end: core::option::Option<surgeist_css::CssAbsoluteFontWeight>
+pub surgeist_css::CssFontFaceWeight::Range::start: surgeist_css::CssAbsoluteFontWeight
+impl surgeist_css::CssFontFaceWeight
+pub fn surgeist_css::CssFontFaceWeight::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontFaceWeight::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFontFaceWidth
 pub surgeist_css::CssFontFaceWidth::Auto
 pub surgeist_css::CssFontFaceWidth::Range
@@ -1425,11 +1437,12 @@ pub surgeist_css::CssFontVariantValue::None
 pub surgeist_css::CssFontVariantValue::Normal
 pub surgeist_css::CssFontVariantValue::Values(surgeist_css::CssFontVariantValues)
 #[non_exhaustive] pub enum surgeist_css::CssFontWeight
-pub surgeist_css::CssFontWeight::Bold
+pub surgeist_css::CssFontWeight::Absolute(surgeist_css::CssAbsoluteFontWeight)
 pub surgeist_css::CssFontWeight::Bolder
 pub surgeist_css::CssFontWeight::Lighter
-pub surgeist_css::CssFontWeight::Normal
-pub surgeist_css::CssFontWeight::Number(surgeist_css::CssFontWeightNumber)
+impl surgeist_css::CssFontWeight
+pub fn surgeist_css::CssFontWeight::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontWeight::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFontWidth
 pub surgeist_css::CssFontWidth::Keyword(surgeist_css::CssFontWidthKeyword)
 pub surgeist_css::CssFontWidth::Percentage(surgeist_css::CssSpecifiedNonNegativePercentage)
@@ -2553,6 +2566,7 @@ pub surgeist_css::CssLonghandValueRef::EmptyCells(&'a surgeist_css::CssEmptyCell
 pub surgeist_css::CssLonghandValueRef::Float(&'a surgeist_css::CssFloat)
 pub surgeist_css::CssLonghandValueRef::FlowTolerance(&'a surgeist_css::CssFlowTolerance)
 pub surgeist_css::CssLonghandValueRef::FontFamily(&'a surgeist_css::CssFontFamilyList)
+pub surgeist_css::CssLonghandValueRef::FontWeight(&'a surgeist_css::CssFontWeight)
 pub surgeist_css::CssLonghandValueRef::FontWidth(&'a surgeist_css::CssFontWidth)
 pub surgeist_css::CssLonghandValueRef::FrameSizing(&'a surgeist_css::CssFrameSizing)
 pub surgeist_css::CssLonghandValueRef::Height(&'a surgeist_css::CssSizeValue)
@@ -5749,7 +5763,7 @@ pub const fn surgeist_css::CssExplicitFont::stretch(&self) -> core::option::Opti
 pub const fn surgeist_css::CssExplicitFont::style(&self) -> core::option::Option<surgeist_css::CssFontStyle>
 pub fn surgeist_css::CssExplicitFont::try_new(style: core::option::Option<surgeist_css::CssFontStyle>, variant: core::option::Option<surgeist_css::CssFontVariant>, weight: core::option::Option<surgeist_css::CssFontWeight>, stretch: core::option::Option<surgeist_css::CssFontStretch>, size: surgeist_css::CssFontSize, line_height: core::option::Option<surgeist_css::CssLineHeight>, families: surgeist_css::CssFontFamilyList) -> core::option::Option<Self>
 pub const fn surgeist_css::CssExplicitFont::variant(&self) -> core::option::Option<surgeist_css::CssFontVariant>
-pub const fn surgeist_css::CssExplicitFont::weight(&self) -> core::option::Option<surgeist_css::CssFontWeight>
+pub const fn surgeist_css::CssExplicitFont::weight(&self) -> core::option::Option<&surgeist_css::CssFontWeight>
 pub struct surgeist_css::CssFeatureId(_)
 impl surgeist_css::CssFeatureId
 pub const fn surgeist_css::CssFeatureId::as_str(self) -> &'static str
@@ -5894,19 +5908,6 @@ impl core::error::Error for surgeist_css::CssFontFaceValueError
 pub fn surgeist_css::CssFontFaceValueError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_css::CssFontFaceValueError
 pub fn surgeist_css::CssFontFaceValueError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub struct surgeist_css::CssFontFaceWeight
-impl surgeist_css::CssFontFaceWeight
-pub fn surgeist_css::CssFontFaceWeight::bold() -> Self
-pub const fn surgeist_css::CssFontFaceWeight::end(self) -> core::option::Option<surgeist_css::CssFontFaceWeightValue>
-pub const fn surgeist_css::CssFontFaceWeight::keyword(self) -> core::option::Option<surgeist_css::CssFontFaceWeightKeyword>
-pub fn surgeist_css::CssFontFaceWeight::normal() -> Self
-pub const fn surgeist_css::CssFontFaceWeight::start(self) -> surgeist_css::CssFontFaceWeightValue
-pub fn surgeist_css::CssFontFaceWeight::try_range(start: f32, end: f32) -> core::option::Option<Self>
-pub fn surgeist_css::CssFontFaceWeight::try_single(value: f32) -> core::option::Option<Self>
-pub struct surgeist_css::CssFontFaceWeightValue
-impl surgeist_css::CssFontFaceWeightValue
-pub fn surgeist_css::CssFontFaceWeightValue::try_new(value: f32) -> core::option::Option<Self>
-pub const fn surgeist_css::CssFontFaceWeightValue::value(self) -> surgeist_css::CssFiniteNumber
 pub struct surgeist_css::CssFontFamilyList
 impl surgeist_css::CssFontFamilyList
 pub fn surgeist_css::CssFontFamilyList::families(&self) -> &[surgeist_css::CssFontFamilyName]
@@ -6138,12 +6139,20 @@ pub const fn surgeist_css::CssFontVariantValues::position(self) -> core::option:
 pub const fn surgeist_css::CssFontVariantValues::try_new(ligatures: core::option::Option<surgeist_css::CssFontVariantLigatureValues>, position: core::option::Option<surgeist_css::CssFontVariantPosition>, caps: core::option::Option<surgeist_css::CssFontVariantCaps>, numeric: core::option::Option<surgeist_css::CssFontVariantNumericValues>, east_asian: core::option::Option<surgeist_css::CssFontVariantEastAsianValues>) -> core::option::Option<Self>
 pub struct surgeist_css::CssFontWeightNumber
 impl surgeist_css::CssFontWeightNumber
-pub const fn surgeist_css::CssFontWeightNumber::try_new(value: i32) -> core::option::Option<Self>
-pub const fn surgeist_css::CssFontWeightNumber::value(self) -> i32
+pub fn surgeist_css::CssFontWeightNumber::calculation(&self) -> core::option::Option<&surgeist_css::CssNumberCalculation>
+pub fn surgeist_css::CssFontWeightNumber::literal_component(&self) -> core::option::Option<&surgeist_css::CssComponentValue>
+pub fn surgeist_css::CssFontWeightNumber::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssFontWeightNumber::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontWeightNumber::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontWeightNumber::try_from_calculation(calculation: surgeist_css::CssNumberCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssFontWeightNumber::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+impl core::cmp::Eq for surgeist_css::CssFontWeightNumber
+impl core::cmp::PartialEq for surgeist_css::CssFontWeightNumber
+pub fn surgeist_css::CssFontWeightNumber::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssFontWeightPropertyValue
 impl surgeist_css::CssFontWeightPropertyValue
 pub fn surgeist_css::CssFontWeightPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssFontWeightPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssFontWeight>
+pub const fn surgeist_css::CssFontWeightPropertyValue::current(&self) -> &surgeist_css::CssFontWeight
 pub struct surgeist_css::CssFontWidthPropertyValue
 impl surgeist_css::CssFontWidthPropertyValue
 pub fn surgeist_css::CssFontWidthPropertyValue::as_css(&self) -> &str

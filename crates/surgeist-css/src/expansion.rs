@@ -27,11 +27,13 @@ use crate::sizing_controls::*;
 use crate::syntax::*;
 use crate::text_alignment::{CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignValue};
 use crate::{
+    CssAbsoluteFontWeight, CssFontWeight, CssFontWidth, CssFontWidthKeyword, CssSpecifiedLength,
+};
+use crate::{
     CssComponentValues, CssContainer, CssContainerNames, CssContainerType, CssKnownProperty,
     CssPropertyValueParseError, CssSpecifiedLengthPercentage,
     CssSpecifiedNonNegativeLengthPercentage,
 };
-use crate::{CssFontWidth, CssFontWidthKeyword, CssSpecifiedLength};
 
 /// Why intrinsic expansion could not produce completed contributions.
 #[non_exhaustive]

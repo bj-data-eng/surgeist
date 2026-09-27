@@ -1,7 +1,7 @@
 use surgeist_css::{
-    CssAnimationIterationCount, CssAnimationIterationNumber, CssAspectRatio, CssErrorCode,
-    CssFiniteNumber, CssFlexFactor, CssFlowTolerance, CssFlowToleranceRef, CssFontFaceObliqueRange,
-    CssFontFaceWeightValue, CssFontSizeAdjust, CssFontWeightNumber, CssGridRepeatInteger,
+    CssAnimationIterationCount, CssAnimationIterationNumber, CssAspectRatio, CssComponentValue,
+    CssErrorCode, CssFiniteNumber, CssFlexFactor, CssFlowTolerance, CssFlowToleranceRef,
+    CssFontFaceObliqueRange, CssFontSizeAdjust, CssFontWeightNumber, CssGridRepeatInteger,
     CssGridTrackBreadth, CssKeyframePercent, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
     CssLengthDimension, CssLengthUnit, CssNonNegativeNumber, CssOpacity, CssOpacityScalarKind,
     CssOpacityValue, CssRatio, CssRecoveryAction, CssResolution, CssResolutionUnit, CssRule,
@@ -25,7 +25,6 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         assert_eq!(CssLengthDimension::try_new(value, CssLengthUnit::Rem), None);
         assert_eq!(CssGridTrackBreadth::try_fraction(value), None);
         assert_eq!(CssScaleValues::try_new(vec![value]), None);
-        assert_eq!(CssFontFaceWeightValue::try_new(value), None);
         assert_eq!(CssFontFaceObliqueRange::try_new(value, None), None);
         assert_eq!(CssResolution::try_new(value, CssResolutionUnit::Dppx), None);
         assert_eq!(CssTime::try_new(value, CssTimeUnit::Seconds), None);
@@ -59,8 +58,20 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         CssKeyframePercent::try_new(100.0).unwrap().value().value(),
         100.0
     );
-    assert_eq!(CssFontWeightNumber::try_new(1).unwrap().value(), 1);
-    assert_eq!(CssFontWeightNumber::try_new(1000).unwrap().value(), 1000);
+    assert_eq!(
+        CssFontWeightNumber::try_from_component(CssComponentValue::try_number("1").unwrap())
+            .unwrap()
+            .serialize_specified()
+            .unwrap(),
+        "1"
+    );
+    assert_eq!(
+        CssFontWeightNumber::try_from_component(CssComponentValue::try_number("1000").unwrap())
+            .unwrap()
+            .serialize_specified()
+            .unwrap(),
+        "1000"
+    );
     assert_eq!(CssGridRepeatInteger::try_new(1).unwrap().value(), 1);
     assert_eq!(CssTime::try_seconds(0.0).unwrap().value(), 0.0);
     assert_eq!(

@@ -1186,6 +1186,10 @@ pub use display::{
 pub use gap::{CssGapShorthand, CssGapValue};
 mod font_width;
 pub use font_width::{CssFontFaceWidth, CssFontStretch, CssFontWidth, CssFontWidthKeyword};
+mod font_weight;
+pub use font_weight::{
+    CssAbsoluteFontWeight, CssFontFaceWeight, CssFontWeight, CssFontWeightNumber,
+};
 pub use inset::{CssInsetPair, CssInsetShorthand, CssInsetValue};
 pub use integer_value::CssIntegerLiteral;
 pub use overflow::CssOverflowValue;

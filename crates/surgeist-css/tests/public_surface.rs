@@ -1009,19 +1009,28 @@ fn public_surface_font_format_models_enforce_fonts4_cardinality() {
 #[test]
 fn public_surface_font_face_descriptor_current_models_are_checked() {
     use surgeist_css::{
-        CssFontFaceWeight, CssFontFaceWeightKeyword, CssFontFaceWidth, CssFontWidth,
+        CssAbsoluteFontWeight, CssFontFaceWeight, CssFontFaceWidth, CssFontWidth,
         CssFontWidthKeyword,
     };
 
     assert_eq!(
-        CssFontFaceWeight::normal().keyword(),
-        Some(CssFontFaceWeightKeyword::Normal)
+        CssFontFaceWeight::Range {
+            start: CssAbsoluteFontWeight::Normal,
+            end: None
+        }
+        .serialize_specified()
+        .unwrap(),
+        "normal"
     );
     assert_eq!(
-        CssFontFaceWeight::bold().keyword(),
-        Some(CssFontFaceWeightKeyword::Bold)
+        CssFontFaceWeight::Range {
+            start: CssAbsoluteFontWeight::Bold,
+            end: Some(CssAbsoluteFontWeight::Normal),
+        }
+        .serialize_specified()
+        .unwrap(),
+        "bold normal"
     );
-    assert_eq!(CssFontFaceWeight::try_range(700.0, 400.0), None);
     let descending = CssFontFaceWidth::Range {
         start: CssFontWidth::Keyword(CssFontWidthKeyword::UltraExpanded),
         end: Some(CssFontWidth::Keyword(CssFontWidthKeyword::Condensed)),

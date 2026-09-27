@@ -1,5 +1,5 @@
 use super::{CssAuthoredFontFeatureSettings, CssFiniteNumber, CssSourcePosition};
-use crate::{CssComponentValues, CssFontFaceWidth};
+use crate::{CssComponentValues, CssFontFaceWeight, CssFontFaceWidth};
 
 mod pending;
 pub use pending::{CssFontFaceValueError, CssFontFaceValueErrorKind};
@@ -498,107 +498,6 @@ impl CssFontFaceSourceList {
     #[must_use]
     pub fn sources(&self) -> &[CssFontFaceSource] {
         &self.sources
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssFontFaceWeight {
-    start: CssFontFaceWeightValue,
-    end: Option<CssFontFaceWeightValue>,
-    keyword: Option<CssFontFaceWeightKeyword>,
-}
-
-impl CssFontFaceWeight {
-    #[must_use]
-    pub fn normal() -> Self {
-        Self::from_keyword(CssFontFaceWeightKeyword::Normal)
-    }
-
-    #[must_use]
-    pub fn bold() -> Self {
-        Self::from_keyword(CssFontFaceWeightKeyword::Bold)
-    }
-
-    #[must_use]
-    pub(crate) fn from_keyword(keyword: CssFontFaceWeightKeyword) -> Self {
-        let value = match keyword {
-            CssFontFaceWeightKeyword::Normal => 400.0,
-            CssFontFaceWeightKeyword::Bold => 700.0,
-        };
-        Self {
-            start: CssFontFaceWeightValue {
-                value: CssFiniteNumber::new_unchecked(value),
-            },
-            end: None,
-            keyword: Some(keyword),
-        }
-    }
-
-    #[must_use]
-    pub fn try_single(value: f32) -> Option<Self> {
-        Some(Self {
-            start: CssFontFaceWeightValue::try_new(value)?,
-            end: None,
-            keyword: None,
-        })
-    }
-
-    #[must_use]
-    pub fn try_range(start: f32, end: f32) -> Option<Self> {
-        let start = CssFontFaceWeightValue::try_new(start)?;
-        let end = CssFontFaceWeightValue::try_new(end)?;
-        if start.value().value() <= end.value().value() {
-            Some(Self {
-                start,
-                end: Some(end),
-                keyword: None,
-            })
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub const fn start(self) -> CssFontFaceWeightValue {
-        self.start
-    }
-
-    #[must_use]
-    pub const fn end(self) -> Option<CssFontFaceWeightValue> {
-        self.end
-    }
-
-    #[must_use]
-    pub const fn keyword(self) -> Option<CssFontFaceWeightKeyword> {
-        self.keyword
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssFontFaceWeightKeyword {
-    Normal,
-    Bold,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssFontFaceWeightValue {
-    value: CssFiniteNumber,
-}
-
-impl CssFontFaceWeightValue {
-    #[must_use]
-    pub fn try_new(value: f32) -> Option<Self> {
-        if (1.0..=1000.0).contains(&value) {
-            CssFiniteNumber::try_new(value).map(|value| Self { value })
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub const fn value(self) -> CssFiniteNumber {
-        self.value
     }
 }
 

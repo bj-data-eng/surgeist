@@ -3,12 +3,13 @@
 //! Public authored `@font-face` environment-value contracts from CSS Env 1 §3.
 
 use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue as Authored, CssAuthoredFontFeatureSettings, CssFontDisplay,
-    CssFontFaceDescriptor, CssFontFaceDescriptorKind as Kind,
-    CssFontFaceDescriptorValue as Ordinary, CssFontFaceDescriptors, CssFontFaceSource,
-    CssFontFaceStyle, CssFontFaceWeight, CssFontFaceWidth, CssFontWidth, CssFontWidthKeyword,
-    CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef, CssValueOrigin,
-    normalize_report, parse_component_values, parse_font_face_descriptor_value, parse_sheet,
+    CssAbsoluteFontWeight, CssAuthoredFontFaceDescriptorValue as Authored,
+    CssAuthoredFontFeatureSettings, CssFontDisplay, CssFontFaceDescriptor,
+    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Ordinary,
+    CssFontFaceDescriptors, CssFontFaceSource, CssFontFaceStyle, CssFontFaceWeight,
+    CssFontFaceWidth, CssFontWidth, CssFontWidthKeyword, CssNormalizedItem, CssRecoveryAction,
+    CssRule, CssRuleContextKindRef, CssValueOrigin, normalize_report, parse_component_values,
+    parse_font_face_descriptor_value, parse_sheet,
 };
 
 fn checked(kind: Kind, text: &str) -> Authored {
@@ -46,7 +47,13 @@ fn every_known_descriptor_defers_env_and_reenters_its_ordinary_grammar() {
                 };
                 assert_eq!(url.url(), "face.woff2");
             }
-            Ordinary::FontWeight(weight) => assert_eq!(weight, CssFontFaceWeight::bold()),
+            Ordinary::FontWeight(weight) => assert_eq!(
+                weight,
+                CssFontFaceWeight::Range {
+                    start: CssAbsoluteFontWeight::Bold,
+                    end: None,
+                }
+            ),
             Ordinary::FontStyle(style) => assert_eq!(style, CssFontFaceStyle::Italic),
             Ordinary::FontWidth(width) => assert_eq!(
                 width,

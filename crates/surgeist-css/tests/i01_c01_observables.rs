@@ -3059,6 +3059,26 @@ fn assert_known_property_value(
             return;
         }
         (
+            surgeist_css::CssKnownProperty::FontWeight,
+            surgeist_css::CssKnownPropertyValueRef::FontWeight(value),
+        ) => {
+            let surgeist_css::CssFontWeight::Absolute(surgeist_css::CssAbsoluteFontWeight::Number(
+                number,
+            )) = value.current()
+            else {
+                panic!("{}: expected captured numeric font weight", frozen.case_id);
+            };
+            assert_eq!(number.serialize_specified().unwrap(), "725");
+            assert_captured_numeric_metadata(
+                property.stable_id(),
+                value.as_css(),
+                "Number(CssFontWeightNumber { value: 725 })",
+                semantic,
+                authored,
+            );
+            return;
+        }
+        (
             surgeist_css::CssKnownProperty::Font,
             surgeist_css::CssKnownPropertyValueRef::Font(value),
         ) => {
@@ -3072,8 +3092,13 @@ fn assert_known_property_value(
             );
             assert_eq!(
                 font.weight(),
-                Some(surgeist_css::CssFontWeight::Number(
-                    surgeist_css::CssFontWeightNumber::try_new(700).unwrap()
+                Some(&surgeist_css::CssFontWeight::Absolute(
+                    surgeist_css::CssAbsoluteFontWeight::Number(
+                        surgeist_css::CssFontWeightNumber::try_from_component(
+                            surgeist_css::CssComponentValue::try_number("700").unwrap()
+                        )
+                        .unwrap()
+                    )
                 ))
             );
             assert_eq!(
@@ -3185,7 +3210,6 @@ fn assert_known_property_value(
             TextAlignLast,
             TextIndent,
             VerticalAlign,
-            FontWeight,
             FontStyle,
             FontVariant,
             FontFeatureSettings,

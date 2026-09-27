@@ -7,12 +7,12 @@
 mod font_face_support;
 
 use surgeist_css::{
-    CssAuthoredFontFeatureSettings, CssComponentValue, CssErrorCode, CssFontDisplay,
-    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value, CssFontFaceFamily,
-    CssFontFaceSource, CssFontFaceSourceList, CssFontFaceStyle, CssFontFaceWeight,
-    CssFontFaceWidth, CssFontLocalName, CssFontWidth, CssRecoveryAction, CssRule,
-    CssSpecifiedNonNegativePercentage, CssUnicodeRange, CssUnicodeRangeList, ErrorKind,
-    parse_font_face_descriptor_value, parse_sheet,
+    CssAbsoluteFontWeight, CssAuthoredFontFeatureSettings, CssComponentValue, CssErrorCode,
+    CssFontDisplay, CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value,
+    CssFontFaceFamily, CssFontFaceSource, CssFontFaceSourceList, CssFontFaceStyle,
+    CssFontFaceWeight, CssFontFaceWidth, CssFontLocalName, CssFontWeightNumber, CssFontWidth,
+    CssRecoveryAction, CssRule, CssSpecifiedNonNegativePercentage, CssUnicodeRange,
+    CssUnicodeRangeList, ErrorKind, parse_font_face_descriptor_value, parse_sheet,
 };
 
 fn local_x() -> CssFontFaceSourceList {
@@ -60,7 +60,20 @@ fn every_descriptor_kind_returns_its_source_neutral_typed_value() {
         (
             Kind::FontWeight,
             "400 700",
-            Value::FontWeight(CssFontFaceWeight::try_range(400.0, 700.0).unwrap()),
+            Value::FontWeight(CssFontFaceWeight::Range {
+                start: CssAbsoluteFontWeight::Number(
+                    CssFontWeightNumber::try_from_component(
+                        CssComponentValue::try_number("400").unwrap(),
+                    )
+                    .unwrap(),
+                ),
+                end: Some(CssAbsoluteFontWeight::Number(
+                    CssFontWeightNumber::try_from_component(
+                        CssComponentValue::try_number("700").unwrap(),
+                    )
+                    .unwrap(),
+                )),
+            }),
         ),
         (
             Kind::FontStyle,

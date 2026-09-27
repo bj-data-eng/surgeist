@@ -11,16 +11,17 @@ use super::recovery::{
     recovery_action_for_error,
 };
 use super::typography::{
-    parse_font_feature_settings, parse_font_width, parse_non_generic_font_family_name,
+    parse_absolute_font_weight, parse_font_feature_settings, parse_font_width,
+    parse_non_generic_font_family_name,
 };
 use super::{block_item_diagnostic, is_declaration_recovery_unit, parse_descriptor_boundary};
-use crate::CssFontFaceWidth;
 use crate::error::{
     CssFeatureId, Error, basic, descriptor_name_error, from_parse_error, incomplete_descriptor_at,
     unsupported_value, unsupported_value_at, with_descriptor_context,
 };
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
+use crate::{CssFontFaceWeight, CssFontFaceWidth};
 
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
     &[CssFeatureId::new("baseline.rule.font-face")];
@@ -379,7 +380,7 @@ pub(super) fn parse_font_face_value<'i, 't>(
                 parse_font_face_source_list(source, input, member_diagnostics, implicit_closures)?,
             ),
             CssFontFaceDescriptorKind::FontWeight => {
-                CssFontFaceDescriptorValue::FontWeight(parse_font_face_weight(input)?)
+                CssFontFaceDescriptorValue::FontWeight(parse_font_face_weight(input, numeric)?)
             }
             CssFontFaceDescriptorKind::FontStyle => {
                 CssFontFaceDescriptorValue::FontStyle(parse_font_face_style(input)?)
@@ -638,44 +639,21 @@ fn font_tech_hint_from_str(value: &str) -> Option<CssFontTechHint> {
 
 fn parse_font_face_weight<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssFontFaceWeight, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        return match_ignore_ascii_case! { &ident,
-            "normal" => Ok(CssFontFaceWeight::normal()),
-            "bold" => Ok(CssFontFaceWeight::bold()),
-            _ => Err(unsupported_value_at(
-                location,
-                None,
-                unsupported_keyword_reason("font-weight descriptor", ident.as_ref()),
-            )),
-        };
+    if input
+        .try_parse(|input| input.expect_ident_matching("auto"))
+        .is_ok()
+    {
+        return Ok(CssFontFaceWeight::Auto);
     }
-
-    let first = parse_font_weight_number(input)?;
-    if input.is_exhausted() {
-        CssFontFaceWeight::try_single(first)
-            .ok_or_else(|| unsupported_value(input, None, "invalid font-weight descriptor"))
+    let start = parse_absolute_font_weight(input, numeric)?;
+    let end = if input.is_exhausted() {
+        None
     } else {
-        let second = parse_font_weight_number(input)?;
-        CssFontFaceWeight::try_range(first, second)
-            .ok_or_else(|| unsupported_value(input, None, "invalid font-weight descriptor range"))
-    }
-}
-
-fn parse_font_weight_number<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<f32, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Number { value, .. } => Ok(*value),
-        Token::Ident(ident) => Err(unsupported_value_at(
-            location,
-            None,
-            unsupported_keyword_reason("font-weight descriptor", ident.as_ref()),
-        )),
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
+        Some(parse_absolute_font_weight(input, numeric)?)
+    };
+    Ok(CssFontFaceWeight::Range { start, end })
 }
 
 fn parse_font_face_style<'i, 't>(

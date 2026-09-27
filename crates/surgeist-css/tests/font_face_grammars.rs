@@ -3,10 +3,10 @@
 mod font_face_support;
 
 use surgeist_css::{
-    CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue, CssErrorCode,
-    CssFontFaceDescriptorKind, CssFontFaceSource, CssFontFaceWeightKeyword, CssFontFaceWidth,
-    CssFontFormatHint, CssFontTechHint, CssFontWidth, CssFontWidthKeyword, CssRecoveryAction,
-    CssRule, parse_sheet,
+    CssAbsoluteFontWeight, CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue,
+    CssErrorCode, CssFontFaceDescriptorKind, CssFontFaceSource, CssFontFaceWeight,
+    CssFontFaceWidth, CssFontFormatHint, CssFontTechHint, CssFontWidth, CssFontWidthKeyword,
+    CssRecoveryAction, CssRule, parse_sheet,
 };
 
 fn assert_strict_parity(source: &str) {
@@ -283,10 +283,11 @@ fn font_face_preserves_occurrences_and_uses_last_valid_descriptor() {
         )
     );
     assert_eq!(
-        ordinary_face!(rule.descriptors(), FontWeight)
-            .unwrap()
-            .keyword(),
-        Some(CssFontFaceWeightKeyword::Bold)
+        ordinary_face!(rule.descriptors(), FontWeight).unwrap(),
+        &CssFontFaceWeight::Range {
+            start: CssAbsoluteFontWeight::Bold,
+            end: None
+        }
     );
     assert!(matches!(
         ordinary_face!(rule.descriptors(), FontWidth).unwrap(),
@@ -330,18 +331,8 @@ fn font_face_preserves_occurrences_and_uses_last_valid_descriptor() {
 
 #[test]
 fn fonts3_descriptor_values_and_selected_fonts4_ranges_are_typed() {
-    for (authored, expected) in [
-        ("normal", Some(CssFontFaceWeightKeyword::Normal)),
-        ("bold", Some(CssFontFaceWeightKeyword::Bold)),
-        ("100", None),
-        ("200", None),
-        ("300", None),
-        ("400", None),
-        ("500", None),
-        ("600", None),
-        ("700", None),
-        ("800", None),
-        ("900", None),
+    for authored in [
+        "normal", "bold", "100", "200", "300", "400", "500", "600", "700", "800", "900",
     ] {
         let source = format!("@font-face{{font-family:Demo;src:url(face);font-weight:{authored}}}");
         let report = parse_sheet(&source);
@@ -349,12 +340,9 @@ fn fonts3_descriptor_values_and_selected_fonts4_ranges_are_typed() {
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("expected font-face for {authored}");
         };
-        assert_eq!(
-            ordinary_face!(rule.descriptors(), FontWeight)
-                .unwrap()
-                .keyword(),
-            expected
-        );
+        let weight = ordinary_face!(rule.descriptors(), FontWeight).unwrap();
+        assert!(matches!(weight, CssFontFaceWeight::Range { end: None, .. }));
+        assert_eq!(weight.serialize_specified().unwrap(), authored);
         assert_strict_parity(&source);
     }
 

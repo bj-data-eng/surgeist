@@ -15,7 +15,7 @@ pub(crate) use crate::media_features::*;
 pub(crate) use crate::numeric::*;
 use crate::{
     CssColorAngleLiteral, CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError,
-    CssFontStretch, CssValueOrigin,
+    CssFontStretch, CssFontWeight, CssValueOrigin,
 };
 use crate::{
     CssContainerScrollQuery, CssContainerStyleQuery, CssFontFeatureValuesRule,
@@ -6500,45 +6500,6 @@ impl CssFontFamilyList {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssFontWeight {
-    Normal,
-    Bold,
-    Bolder,
-    Lighter,
-    Number(CssFontWeightNumber),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssFontWeightNumber {
-    value: i32,
-}
-
-impl CssFontWeightNumber {
-    #[must_use]
-    pub const fn try_new(value: i32) -> Option<Self> {
-        if value >= 1 && value <= 1000 {
-            Some(Self { value })
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub(crate) const fn new(value: i32) -> Self {
-        match Self::try_new(value) {
-            Some(value) => value,
-            None => panic!("font weight number must be between 1 and 1000"),
-        }
-    }
-
-    #[must_use]
-    pub const fn value(self) -> i32 {
-        self.value
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
 pub enum CssFontStyle {
     Normal,
     Italic,
@@ -7234,8 +7195,8 @@ impl CssExplicitFont {
     }
 
     #[must_use]
-    pub const fn weight(&self) -> Option<CssFontWeight> {
-        self.weight
+    pub const fn weight(&self) -> Option<&CssFontWeight> {
+        self.weight.as_ref()
     }
 
     #[must_use]

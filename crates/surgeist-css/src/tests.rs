@@ -35,6 +35,11 @@ fn declaration(input: &str, property: CssProperty) -> CssDeclaration {
         .clone()
 }
 
+fn weight_number(spelling: &str) -> CssFontWeightNumber {
+    CssFontWeightNumber::try_from_component(CssComponentValue::try_number(spelling).unwrap())
+        .expect("valid exact font weight")
+}
+
 macro_rules! face_value {
     ($descriptors:expr, $kind:ident) => {{
         let descriptor = $descriptors
@@ -5213,9 +5218,10 @@ fn font_face_descriptor_collection_preserves_optional_matching_fields() {
         family_record,
         source_record,
         CssFontFaceDescriptor::new(
-            CssFontFaceDescriptorValue::FontWeight(
-                CssFontFaceWeight::try_range(400.0, 700.0).unwrap(),
-            )
+            CssFontFaceDescriptorValue::FontWeight(CssFontFaceWeight::Range {
+                start: CssAbsoluteFontWeight::Number(weight_number("400")),
+                end: Some(CssAbsoluteFontWeight::Number(weight_number("700"))),
+            })
             .into(),
         ),
         CssFontFaceDescriptor::new(
@@ -5256,8 +5262,10 @@ fn font_face_descriptor_collection_preserves_optional_matching_fields() {
     assert_eq!(face_value!(descriptors, FontFamily), &family);
     assert_eq!(face_value!(descriptors, Src), &src);
     assert_eq!(
-        face_value!(descriptors, FontWeight).start().value().value(),
-        400.0
+        face_value!(descriptors, FontWeight)
+            .serialize_specified()
+            .unwrap(),
+        "400 700"
     );
     assert!(matches!(
         face_value!(descriptors, FontStyle),
@@ -5336,31 +5344,25 @@ fn font_face_source_and_unicode_lists_reject_empty_values() {
 
 #[test]
 fn font_face_numeric_descriptors_enforce_invariants() {
+    for valid in ["1", "400", "1000"] {
+        assert_eq!(weight_number(valid).serialize_specified().unwrap(), valid);
+    }
+    for invalid in ["0", "1001", "0.999", "1000.001"] {
+        assert!(
+            CssFontWeightNumber::try_from_component(
+                CssComponentValue::try_number(invalid).unwrap()
+            )
+            .is_err()
+        );
+    }
     assert_eq!(
-        CssFontFaceWeightValue::try_new(1.0)
-            .unwrap()
-            .value()
-            .value(),
-        1.0
-    );
-    assert_eq!(
-        CssFontFaceWeightValue::try_new(1000.0)
-            .unwrap()
-            .value()
-            .value(),
-        1000.0
-    );
-    assert_eq!(CssFontFaceWeightValue::try_new(0.999), None);
-    assert_eq!(CssFontFaceWeightValue::try_new(1000.001), None);
-    assert_eq!(CssFontFaceWeightValue::try_new(f32::NAN), None);
-    assert_eq!(CssFontFaceWeight::try_range(700.0, 400.0), None);
-    assert_eq!(
-        CssFontFaceWeight::try_single(400.0)
-            .unwrap()
-            .start()
-            .value()
-            .value(),
-        400.0
+        CssFontFaceWeight::Range {
+            start: CssAbsoluteFontWeight::Number(weight_number("700")),
+            end: Some(CssAbsoluteFontWeight::Number(weight_number("400"))),
+        }
+        .serialize_specified()
+        .unwrap(),
+        "700 400"
     );
 
     assert!(
@@ -5464,16 +5466,10 @@ fn font_face_rule_parser_accepts_descriptor_block() {
     assert_eq!(source.format(), Some(&CssFontFormatHint::Woff2));
     assert!(source.tech().is_empty());
     assert_eq!(
-        face_value!(descriptors, FontWeight).start().value().value(),
-        400.0
-    );
-    assert_eq!(
         face_value!(descriptors, FontWeight)
-            .end()
-            .unwrap()
-            .value()
-            .value(),
-        700.0
+            .serialize_specified()
+            .unwrap(),
+        "400 700"
     );
     assert_eq!(
         Some(face_value!(descriptors, FontStyle)),
@@ -8392,9 +8388,16 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
         ]
     );
 
+    let weight_declaration = declaration(".panel { font-weight: 725; }", CssProperty::FontWeight);
+    let Some(CssKnownPropertyValueRef::FontWeight(weight)) = weight_declaration
+        .known()
+        .and_then(|known| known.property_value())
+    else {
+        panic!("expected current font-weight");
+    };
     assert_eq!(
-        declaration_value!(".panel { font-weight: 725; }", FontWeight),
-        CssFontWeight::Number(CssFontWeightNumber::new(725))
+        weight.current(),
+        &CssFontWeight::Absolute(CssAbsoluteFontWeight::Number(weight_number("725")))
     );
     assert_eq!(
         declaration_value!(".panel { font-style: italic; }", FontStyle),
@@ -8445,7 +8448,9 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
     assert_eq!(font.variant(), Some(CssFontVariant::SmallCaps));
     assert_eq!(
         font.weight(),
-        Some(CssFontWeight::Number(CssFontWeightNumber::new(700)))
+        Some(&CssFontWeight::Absolute(CssAbsoluteFontWeight::Number(
+            weight_number("700")
+        )))
     );
     assert_eq!(font.stretch(), Some(CssFontStretch::Condensed));
     assert_eq!(
@@ -8513,11 +8518,17 @@ fn parses_text_decoration_family() {
 #[test]
 fn checked_typography_constructors_reject_invalid_states() {
     assert_eq!(CssFontFamilyList::try_new(Vec::new()), None);
-    assert_eq!(CssFontWeightNumber::try_new(0), None);
-    assert_eq!(CssFontWeightNumber::try_new(1001), None);
+    assert!(
+        CssFontWeightNumber::try_from_component(CssComponentValue::try_number("0").unwrap())
+            .is_err()
+    );
+    assert!(
+        CssFontWeightNumber::try_from_component(CssComponentValue::try_number("1001").unwrap())
+            .is_err()
+    );
     assert_eq!(
-        CssFontWeightNumber::try_new(500),
-        Some(CssFontWeightNumber::new(500))
+        CssFontWeightNumber::try_from_component(CssComponentValue::try_number("500").unwrap()),
+        Ok(weight_number("500"))
     );
     assert_eq!(CssFontFeatureList::try_new(Vec::new()), None);
     assert_eq!(CssTextDecorationLine::try_new(Vec::new()), None);

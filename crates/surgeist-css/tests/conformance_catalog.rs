@@ -100,19 +100,12 @@ const GRID_PROPERTY_SUBSET: &str = "The structural grammar supports non-recursiv
 const GRID_PROPERTY_REMAINDER: &str = "Subgrid name-repeat, wider Values math functions, and other unselected Grid property grammar remain unsupported.";
 const KEYFRAMES_SUBSET: &str = "Keyframe names, literal selectors, empty rules and blocks, duplicate selectors and blocks in authored order, and supported declarations with recovery are supported.";
 const KEYFRAMES_REMAINDER: &str = "Calculation selectors, string names, and declaration-processing grammar not selected by C07 remain unsupported.";
-const FONT_WEIGHT_RANGE_SUBSET: &str =
-    "Integer font-weight values from 1 through 1000 are supported.";
-const FONT_WEIGHT_RANGE_REMAINDER: &str =
-    "Other unselected Fonts 4 font-weight property grammar remains unsupported.";
-const FONT_FACE_WEIGHT_RANGE_SUBSET: &str = "Font-face font-weight numbers from 1 through 1000 and increasing two-value ranges are supported.";
-const FONT_FACE_WEIGHT_RANGE_REMAINDER: &str =
-    "Other unselected Fonts 4 font-weight descriptor grammar remains unsupported.";
 const FONT_FACE_STYLE_RANGE_SUBSET: &str =
     "Font-face oblique style with one or two increasing -90deg through 90deg angles is supported.";
 const FONT_FACE_STYLE_RANGE_REMAINDER: &str =
     "Other unselected Fonts 4 font-style descriptor grammar remains unsupported.";
-const FONT_SHORTHAND_SUBSET: &str = "Explicit fonts support the selected Fonts 4 family grammar, Fonts 3 style, variant, width and size components, integer weights from 1 through 1000, and optional line height. All six system-font alternatives are supported.";
-const FONT_SHORTHAND_REMAINDER: &str = "Oblique angles, non-integer font weights, xxx-large and math font sizes, and other Fonts 4 shorthand component forms remain unsupported.";
+const FONT_SHORTHAND_SUBSET: &str = "Explicit fonts support the selected Fonts 4 family grammar, Fonts 3 style, variant, width and size components, all Fonts 4 absolute and relative weight forms including fractional numbers and symbolic number math, and optional line height. All six system-font alternatives are supported.";
+const FONT_SHORTHAND_REMAINDER: &str = "Oblique angles, xxx-large and math font sizes, and other Fonts 4 shorthand component forms remain unsupported.";
 const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range and feature-settings descriptors have typed ordinary representations and admit pending whole values for valid env(); invalid descriptors recover independently.";
 const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-variation-settings, font-named-instance and metric overrides remain unsupported.";
 const FONT_SOURCE_SUBSET: &str = "url() and local() sources preserve authored order, including empty URL strings, the selected literal family-name grammar, a single format hint and technology hints. Invalid source members recover independently, while invalid descriptor annotations or all-invalid lists discard the descriptor. The four legacy variation strings project to base formats and required variations without changing authored hints; TrueType and OpenType have explicit format equivalence.";
@@ -187,17 +180,17 @@ fn selected_font_family_and_shorthand_metadata_match_their_grammar_boundaries() 
         "font: menu",
         "font: large menu",
         "font: 16px generic(fangsong)",
+        "font: 450.5 16px serif",
     ] {
         let report = parse_style_attribute(authored);
         assert!(report.is_clean(), "{authored}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1, "{authored}");
     }
 
-    // Fonts4 #propdef-font imports the newer style, weight and size grammars.
+    // Fonts4 #propdef-font imports newer style and size grammars that remain partial.
     // These are valid selected-source forms outside the implemented subset.
     for authored in [
         "font: oblique 10deg 16px serif",
-        "font: 450.5 16px serif",
         "font: xxx-large serif",
         "font: math serif",
     ] {
@@ -288,12 +281,6 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
             "#propdef-font-variant-position",
             "super",
         ),
-        (
-            "baseline.property.font-weight",
-            "font-weight",
-            "#propdef-font-weight",
-            "700",
-        ),
     ];
     for (id, spelling, production, authored) in fonts3_properties {
         let report = parse_style_attribute(&format!("{spelling}: {authored}"));
@@ -316,12 +303,6 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
             "baseline.descriptor.font-style",
             CssFeatureKind::Descriptor,
             "font-style in @font-face",
-            "#font-prop-desc",
-        ),
-        (
-            "baseline.descriptor.font-weight",
-            CssFeatureKind::Descriptor,
-            "font-weight in @font-face",
             "#font-prop-desc",
         ),
         (
@@ -381,14 +362,6 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
         "{:?}",
         numeric_weight.diagnostics()
     );
-    assert_partial_fonts4_feature(
-        "ext.property.font-weight-range",
-        CssFeatureKind::Property,
-        "font-weight numeric range",
-        "#font-weight-prop",
-        FONT_WEIGHT_RANGE_SUBSET,
-        FONT_WEIGHT_RANGE_REMAINDER,
-    );
     let invalid_numeric_weight = parse_style_attribute("font-weight: 1001");
     assert!(invalid_numeric_weight.syntax().is_empty());
     assert_eq!(invalid_numeric_weight.diagnostics().len(), 1);
@@ -397,49 +370,37 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
         CssErrorCode::InvalidPropertyValue
     );
 
-    for (id, spelling, production, subset, remainder, authored, rejected) in [
-        (
-            "ext.descriptor.font-weight-range",
-            "font-weight ranges in @font-face",
-            "#font-weight-desc",
-            FONT_FACE_WEIGHT_RANGE_SUBSET,
-            FONT_FACE_WEIGHT_RANGE_REMAINDER,
-            "font-weight: 300 700",
-            "font-weight: 700 300",
-        ),
-        (
-            "ext.descriptor.font-style-oblique-range",
-            "font-style oblique ranges in @font-face",
-            "#font-style-desc",
-            FONT_FACE_STYLE_RANGE_SUBSET,
-            FONT_FACE_STYLE_RANGE_REMAINDER,
-            "font-style: oblique -10deg 20deg",
-            "font-style: oblique 91deg",
-        ),
-    ] {
-        let report = parse_sheet(&format!(
-            "@font-face {{ font-family: Demo; src: url(demo.woff2); {authored}; }}"
-        ));
-        assert!(report.is_clean(), "{id}: {:?}", report.diagnostics());
-        assert_partial_fonts4_feature(
-            id,
-            CssFeatureKind::Descriptor,
-            spelling,
-            production,
-            subset,
-            remainder,
-        );
+    let (id, spelling, production, subset, remainder, authored, rejected) = (
+        "ext.descriptor.font-style-oblique-range",
+        "font-style oblique ranges in @font-face",
+        "#font-style-desc",
+        FONT_FACE_STYLE_RANGE_SUBSET,
+        FONT_FACE_STYLE_RANGE_REMAINDER,
+        "font-style: oblique -10deg 20deg",
+        "font-style: oblique 91deg",
+    );
+    let report = parse_sheet(&format!(
+        "@font-face {{ font-family: Demo; src: url(demo.woff2); {authored}; }}"
+    ));
+    assert!(report.is_clean(), "{id}: {:?}", report.diagnostics());
+    assert_partial_fonts4_feature(
+        id,
+        CssFeatureKind::Descriptor,
+        spelling,
+        production,
+        subset,
+        remainder,
+    );
 
-        let rejected_report = parse_sheet(&format!(
-            "@font-face {{ font-family: Demo; src: url(demo.woff2); {rejected}; }}"
-        ));
-        assert_eq!(rejected_report.diagnostics().len(), 1, "{id}");
-        assert_eq!(
-            rejected_report.diagnostics()[0].error().code(),
-            CssErrorCode::InvalidDescriptorValue,
-            "{id}"
-        );
-    }
+    let rejected_report = parse_sheet(&format!(
+        "@font-face {{ font-family: Demo; src: url(demo.woff2); {rejected}; }}"
+    ));
+    assert_eq!(rejected_report.diagnostics().len(), 1, "{id}");
+    assert_eq!(
+        rejected_report.diagnostics()[0].error().code(),
+        CssErrorCode::InvalidDescriptorValue,
+        "{id}"
+    );
 
     let modern_hints = parse_sheet(concat!(
         "@font-face { font-family: Demo; ",
@@ -548,6 +509,49 @@ fn selected_font_width_records_keep_historical_ids_and_canonical_names() {
             ))
         ));
     }
+}
+
+#[test]
+fn selected_font_weight_records_keep_historical_ids_and_complete_authored_grammar() {
+    for (id, kind, spelling, production) in [
+        (
+            "baseline.property.font-weight",
+            CssFeatureKind::Property,
+            "font-weight",
+            "#propdef-font-weight",
+        ),
+        (
+            "ext.property.font-weight-range",
+            CssFeatureKind::Property,
+            "font-weight numeric range",
+            "#font-weight-absolute-values",
+        ),
+        (
+            "baseline.descriptor.font-weight",
+            CssFeatureKind::Descriptor,
+            "font-weight in @font-face",
+            "#font-prop-desc",
+        ),
+        (
+            "ext.descriptor.font-weight-range",
+            CssFeatureKind::Descriptor,
+            "font-weight ranges in @font-face",
+            "#font-prop-desc",
+        ),
+    ] {
+        let record = feature_metadata(id).unwrap_or_else(|| panic!("missing {id}"));
+        assert_eq!(record.kind(), kind, "{id}");
+        assert_eq!(record.spelling(), spelling, "{id}");
+        assert_eq!(record.source().id().as_str(), "I-FONTS4-20260907", "{id}");
+        assert_eq!(record.production(), production, "{id}");
+        assert_eq!(record.status(), CssSupportStatus::Complete, "{id}");
+        assert_eq!(record.supported_subset(), None, "{id}");
+        assert_eq!(record.unsupported_remainder(), None, "{id}");
+    }
+    let property = parse_style_attribute("font-weight: 725.25");
+    assert!(property.is_clean(), "{:?}", property.diagnostics());
+    let descriptor = parse_sheet("@font-face { font-weight: bold 300; }");
+    assert!(descriptor.is_clean(), "{:?}", descriptor.diagnostics());
 }
 
 #[test]
@@ -1482,7 +1486,7 @@ const EXPECTED: &[ExpectedFeature] = &[
         id: "baseline.descriptor.font-weight",
         kind: CssFeatureKind::Descriptor,
         spelling: "font-weight in @font-face",
-        source: ExpectedSource::Id("O-FONTS3"),
+        source: ExpectedSource::Id("I-FONTS4-20260907"),
         production: "#font-prop-desc",
         status: CssSupportStatus::Complete,
         supported_subset: None,
@@ -1902,9 +1906,7 @@ fn c14_amended_ledger_public_metadata_is_reconciled() {
         "ext.value.color-mix",
         "ext.value.grid-repeat",
         "ext.value.basic-shape",
-        "ext.descriptor.font-weight-range",
         "ext.descriptor.font-style-oblique-range",
-        "ext.property.font-weight-range",
         "ext.supports.selector",
     ] {
         let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
@@ -2322,23 +2324,11 @@ fn c14_retained_partial_extensions_have_direct_public_evidence() {
             Input::Style("clip-path: circle(50% at center)"),
         ),
         (
-            "ext.descriptor.font-weight-range",
-            CssFeatureKind::Descriptor,
-            Input::Sheet(
-                "@font-face { font-family: Demo; src: url(demo.woff2); font-weight: 300 700; }",
-            ),
-        ),
-        (
             "ext.descriptor.font-style-oblique-range",
             CssFeatureKind::Descriptor,
             Input::Sheet(
                 "@font-face { font-family: Demo; src: url(demo.woff2); font-style: oblique -10deg 20deg; }",
             ),
-        ),
-        (
-            "ext.property.font-weight-range",
-            CssFeatureKind::Property,
-            Input::Style("font-weight: 725"),
         ),
         (
             "ext.supports.selector",

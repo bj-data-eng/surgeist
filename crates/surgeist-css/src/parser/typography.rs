@@ -8,7 +8,9 @@ use super::values::{
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
-use crate::{CssFontStretch, CssFontWidth};
+use crate::{
+    CssAbsoluteFontWeight, CssFontStretch, CssFontWeight, CssFontWeightNumber, CssFontWidth,
+};
 
 pub(super) static IMPLEMENTED_PROPERTY_EXTENSIONS: &[CssFeatureId] =
     &[CssFeatureId::new("ext.property.font-weight-range")];
@@ -436,7 +438,7 @@ pub(super) fn parse_font<'i, 't>(
             continue;
         }
         if weight.is_none()
-            && let Ok(parsed_weight) = input.try_parse(parse_font_weight)
+            && let Ok(parsed_weight) = input.try_parse(|input| parse_font_weight(input, numeric))
         {
             weight = Some(parsed_weight);
             continue;
@@ -461,7 +463,7 @@ pub(super) fn parse_font<'i, 't>(
         } else if variant.is_none() {
             variant = Some(CssFontVariant::Normal);
         } else if weight.is_none() {
-            weight = Some(CssFontWeight::Normal);
+            weight = Some(CssFontWeight::Absolute(CssAbsoluteFontWeight::Normal));
         } else if stretch.is_none() {
             stretch = Some(CssFontStretch::Normal);
         } else {
@@ -507,38 +509,68 @@ fn parse_system_font<'i, 't>(
 
 pub(super) fn parse_font_weight<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssFontWeight, ParseError<'i, Error>> {
+    let start = input.state();
+    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+        match_ignore_ascii_case! { &ident,
+            "bolder" => return Ok(CssFontWeight::Bolder),
+            "lighter" => return Ok(CssFontWeight::Lighter),
+            _ => {}
+        }
+    }
+    input.reset(&start);
+    parse_absolute_font_weight(input, numeric).map(CssFontWeight::Absolute)
+}
+
+pub(super) fn parse_absolute_font_weight<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<CssAbsoluteFontWeight, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let state = input.state();
     let location = input.current_source_location();
+    let root_offset = input.position().byte_index();
     match input.next().map_err(basic)? {
         Token::Ident(ident) => match_ignore_ascii_case! { ident,
-            "normal" => Ok(CssFontWeight::Normal),
-            "bold" => Ok(CssFontWeight::Bold),
-            "bolder" => Ok(CssFontWeight::Bolder),
-            "lighter" => Ok(CssFontWeight::Lighter),
+            "normal" => Ok(CssAbsoluteFontWeight::Normal),
+            "bold" => Ok(CssAbsoluteFontWeight::Bold),
             _ => Err(unsupported_value_at(
                 location,
                 None,
-                unsupported_keyword_reason("font-weight", ident.as_ref()),
+                unsupported_keyword_reason("absolute font-weight", ident.as_ref()),
             )),
         },
-        Token::Number {
-            int_value: Some(value),
-            ..
-        } if CssFontWeightNumber::try_new(*value).is_some() => {
-            Ok(CssFontWeight::Number(CssFontWeightNumber::new(*value)))
+        Token::Number { .. } | Token::Percentage { .. } | Token::Dimension { .. } => {
+            input.reset(&state);
+            let component = numeric
+                .collect(input)
+                .map_err(|_| unsupported_value_at(location, None, "invalid font-weight number"))?;
+            CssFontWeightNumber::try_from_component(component)
+                .map(CssAbsoluteFontWeight::Number)
+                .map_err(|error| {
+                    unsupported_value_at(
+                        numeric.error_location(&error, location, root_offset),
+                        None,
+                        "font-weight requires a number between 1 and 1000",
+                    )
+                })
         }
-        Token::Number {
-            int_value: Some(_), ..
-        } => Err(unsupported_value_at(
-            location,
-            None,
-            "font-weight must be 1 through 1000",
-        )),
-        Token::Number { .. } => Err(unsupported_value_at(
-            location,
-            None,
-            "font-weight number must be an integer",
-        )),
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            let expression =
+                parse_numeric_function(input, &state, numeric, CalculationRoot::Number)?;
+            CssFontWeightNumber::try_from_calculation(crate::CssNumberCalculation::from_expression(
+                expression,
+            ))
+            .map(CssAbsoluteFontWeight::Number)
+            .map_err(|error| {
+                unsupported_value_at(
+                    numeric.error_location(&error, location, root_offset),
+                    None,
+                    "font-weight requires number math",
+                )
+            })
+        }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
 }
