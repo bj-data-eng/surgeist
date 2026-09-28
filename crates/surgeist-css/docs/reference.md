@@ -993,7 +993,6 @@ assert!(matches!(
     duration.durations().values()[0],
     CssDuration::Calculation(_)
 ));
-assert!(duration.i01_subset().is_none());
 
 let CssKnownPropertyValueRef::TransitionDelay(delay) = report.syntax()[1]
     .known()
@@ -1009,11 +1008,13 @@ assert!(matches!(
 ));
 ```
 
-The current accessors expose `CssDuration`, `CssDelay`, typed iteration values,
-and typed calculation trees. `i01_subset()` remains the frozen compatibility
-view: every I01 timing value retains its exact projection, while newly accepted
-signed-delay or calculation syntax returns `None` when the older payload cannot
-represent it. Calculation roots preserve authored units and expression shape;
+The timing accessors expose `CssDuration`, `CssDelay`,
+`CssAnimationIterationCount`, `CssEasing`, and typed calculation trees directly.
+`CssTransition::try_new` and `CssAnimation::try_new` accept the same typed
+components as parsing. `CssAnimationComponents` is the animation constructor's
+input assembly.
+Empty aggregate items and empty lists are rejected. Calculation roots preserve
+authored units and expression shape;
 this crate does not resolve relative units, evaluate computed ranges, run
 animation timelines, or lower values into sibling Surgeist crates.
 
@@ -1089,14 +1090,13 @@ function grammar boundary.
 
 ## Dedicated authored function grammars
 
-Current property accessors expose dedicated typed function families while
-`i01_subset()` remains the frozen compatibility view. `transform.current()`
-returns `CssTransformValue`, timing-function wrappers expose current
-`CssEasingValue` lists, `filter.current()` and `backdrop-filter.current()` return
-`CssFilterValue`, `box-shadow.current()` returns `CssBoxShadow`, and
-`clip-path.current()` returns an optional `CssClipPathValue`. A current value can
-be valid when its I01 projection is `None`; consumers must not treat the
-compatibility view as the current grammar.
+Property accessors expose dedicated typed function families. Timing-function
+wrappers expose the sole `CssEasingList` through `timing_functions()`.
+`transform.current()` returns `CssTransformValue`, `filter.current()` and
+`backdrop-filter.current()` return `CssFilterValue`, `box-shadow.current()`
+returns `CssBoxShadow`, and `clip-path.current()` returns an optional
+`CssClipPathValue`. Those other families retain their documented I01
+projections independently of timing.
 
 ```rust
 use surgeist_css::{

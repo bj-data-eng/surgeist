@@ -73,6 +73,20 @@ macro_rules! declaration_value {
     }};
 }
 
+macro_rules! timing_value {
+    ($input:expr, $variant:ident, $accessor:ident) => {{
+        let declaration = declaration($input, CssProperty::$variant);
+        let value = declaration
+            .known()
+            .and_then(|known| known.property_value())
+            .expect("ordinary timing declaration");
+        let CssKnownPropertyValueRef::$variant(value) = value else {
+            panic!("timing wrapper did not match requested property");
+        };
+        value.$accessor().clone()
+    }};
+}
+
 macro_rules! spacing_value {
     ($input:expr, $variant:ident) => {{
         let declaration = declaration($input, CssProperty::$variant);
@@ -131,6 +145,20 @@ macro_rules! declaration_payload {
             panic!("property wrapper did not match requested property");
         };
         value.i01_subset().expect("I01 property payload").clone()
+    }};
+}
+
+macro_rules! timing_payload {
+    ($declaration:expr, $variant:ident, $accessor:ident) => {{
+        let declaration = &$declaration;
+        let value = declaration
+            .known()
+            .and_then(|known| known.property_value())
+            .expect("ordinary timing declaration");
+        let CssKnownPropertyValueRef::$variant(value) = value else {
+            panic!("timing wrapper did not match requested property");
+        };
+        value.$accessor().clone()
     }};
 }
 
@@ -550,15 +578,15 @@ fn keyframes_rule_parser_accepts_string_names_and_selector_lists() {
     assert_eq!(declarations[0].property(), &CssProperty::AnimationName);
     assert_eq!(declarations[1].property(), &CssProperty::Animation);
 
-    let names = declaration_payload!(declarations[0], AnimationName);
+    let names = timing_payload!(declarations[0], AnimationName, names);
     assert_eq!(
         names.names(),
         &[CssAnimationName::String(CssKeyframesString::new("fade in"))]
     );
 
-    let animations = declaration_payload!(declarations[1], Animation);
+    let animations = timing_payload!(declarations[1], Animation, animations);
     assert_eq!(
-        animations.items()[0].name(),
+        animations.values()[0].name(),
         Some(&CssAnimationName::String(CssKeyframesString::new(
             "fade in"
         )))
@@ -1548,10 +1576,6 @@ fn filter_arguments(css: &str) -> CssFilterArguments {
 
 fn basic_shape_arguments(css: &str) -> CssBasicShapeArguments {
     CssBasicShapeArguments::new(CssAuthoredFunctionArguments::new(css))
-}
-
-fn easing_arguments(css: &str) -> CssEasingArguments {
-    CssEasingArguments::new(CssAuthoredFunctionArguments::new(css))
 }
 
 #[test]
@@ -8941,7 +8965,7 @@ fn parses_transform_effect_and_mask_properties_as_authored_syntax() {
 }
 
 #[test]
-fn authored_transform_filter_easing_and_basic_shape_arguments_preserve_css_with_family_context() {
+fn authored_transform_filter_and_basic_shape_arguments_preserve_css_with_family_context() {
     fn transform_css(arguments: &CssTransformArguments) -> &str {
         arguments.as_css()
     }
@@ -8949,9 +8973,6 @@ fn authored_transform_filter_easing_and_basic_shape_arguments_preserve_css_with_
         arguments.as_css()
     }
     fn basic_shape_css(arguments: &CssBasicShapeArguments) -> &str {
-        arguments.as_css()
-    }
-    fn easing_css(arguments: &CssEasingArguments) -> &str {
         arguments.as_css()
     }
 
@@ -8983,22 +9004,25 @@ fn authored_transform_filter_easing_and_basic_shape_arguments_preserve_css_with_
     };
     assert_eq!(basic_shape_css(&arguments), "50% at center");
 
-    let easings = declaration_value!(
+    let easings = timing_value!(
         ".panel { transition-timing-function: cubic-bezier(0.1, 0.2, 0.3, 1); }",
-        TransitionTimingFunction
+        TransitionTimingFunction,
+        timing_functions
     );
-    let CssEasing::CubicBezier(arguments) = &easings.easings()[0] else {
+    let CssEasing::CubicBezier(bezier) = &easings.values()[0] else {
         panic!("expected cubic-bezier easing");
     };
-    assert_eq!(easing_css(arguments), "0.1, 0.2, 0.3, 1");
+    assert!(matches!(bezier.x1().value(), CssEasingNumber::Literal(value) if value.value() == 0.1));
+    assert!(matches!(bezier.y2(), CssEasingNumber::Literal(value) if value.value() == 1.0));
 }
 
 #[test]
 fn parses_transition_properties_and_preserves_comma_lists() {
     assert_eq!(
-        declaration_value!(
+        timing_value!(
             ".panel { transition-property: opacity, transform; }",
-            TransitionProperty
+            TransitionProperty,
+            properties
         ),
         CssTransitionPropertyList::new(vec![
             CssTransitionProperty::Custom(CssCustomIdent::new("opacity")),
@@ -9006,56 +9030,70 @@ fn parses_transition_properties_and_preserves_comma_lists() {
         ])
     );
     assert_eq!(
-        declaration_value!(
+        timing_value!(
             ".panel { transition-duration: 150ms, 2s; }",
-            TransitionDuration
+            TransitionDuration,
+            durations
         ),
-        CssTimeList::new(vec![
-            CssTime::try_milliseconds(150.0).unwrap(),
-            CssTime::try_seconds(2.0).unwrap(),
+        CssDurationList::try_new(vec![
+            CssDuration::Literal(
+                CssDurationLiteral::try_new(150.0, CssTimeUnit::Milliseconds).unwrap()
+            ),
+            CssDuration::Literal(CssDurationLiteral::try_new(2.0, CssTimeUnit::Seconds).unwrap()),
         ])
+        .unwrap()
     );
-    assert_eq!(
-        declaration_value!(
-            ".panel { transition-timing-function: ease-in, cubic-bezier(0.1, 0.2, 0.3, 1); }",
-            TransitionTimingFunction
-        ),
-        CssEasingList::new(vec![
-            CssEasing::EaseIn,
-            CssEasing::CubicBezier(easing_arguments("0.1, 0.2, 0.3, 1")),
-        ])
+    let easings = timing_value!(
+        ".panel { transition-timing-function: ease-in, cubic-bezier(0.1, 0.2, 0.3, 1); }",
+        TransitionTimingFunction,
+        timing_functions
     );
+    assert!(matches!(
+        easings.values(),
+        [
+            CssEasing::Keyword(CssEasingKeyword::EaseIn),
+            CssEasing::CubicBezier(_)
+        ]
+    ));
 
-    let transitions = declaration_value!(
+    let transitions = timing_value!(
         ".panel { transition: opacity 150ms ease-in 20ms, transform 2s linear; }",
-        Transition
+        Transition,
+        transitions
     );
-    assert_eq!(transitions.items().len(), 2);
+    assert_eq!(transitions.values().len(), 2);
 }
 
 #[test]
 fn parses_animation_properties_and_preserves_comma_lists() {
     assert_eq!(
-        declaration_value!(".panel { animation-name: fade, none; }", AnimationName),
+        timing_value!(
+            ".panel { animation-name: fade, none; }",
+            AnimationName,
+            names
+        ),
         CssAnimationNameList::new(vec![
             CssAnimationName::Custom(CssCustomIdent::new("fade")),
             CssAnimationName::None,
         ])
     );
     assert_eq!(
-        declaration_value!(
+        timing_value!(
             ".panel { animation-iteration-count: 2, infinite; }",
-            AnimationIterationCount
+            AnimationIterationCount,
+            iteration_counts
         ),
-        CssAnimationIterationCountList::new(vec![
-            CssAnimationIterationCount::try_number(2.0).unwrap(),
+        CssAnimationIterationCountList::try_new(vec![
+            CssAnimationIterationCount::Number(CssAnimationIterationNumber::try_new(2.0).unwrap()),
             CssAnimationIterationCount::Infinite,
         ])
+        .unwrap()
     );
     assert_eq!(
-        declaration_value!(
+        timing_value!(
             ".panel { animation-play-state: running, paused; }",
-            AnimationPlayState
+            AnimationPlayState,
+            play_states
         ),
         CssAnimationPlayStateList::new(vec![
             CssAnimationPlayState::Running,
@@ -9063,11 +9101,12 @@ fn parses_animation_properties_and_preserves_comma_lists() {
         ])
     );
 
-    let animations = declaration_value!(
+    let animations = timing_value!(
         ".panel { animation: fade 1s ease-in 200ms 3 alternate both running, slide 2s linear; }",
-        Animation
+        Animation,
+        animations
     );
-    assert_eq!(animations.items().len(), 2);
+    assert_eq!(animations.values().len(), 2);
 }
 
 #[test]
@@ -9109,8 +9148,11 @@ fn background_effect_and_animation_constructors_reject_invalid_states() {
         CssAnimation::try_new(CssAnimationComponents::default()),
         None
     );
-    assert_eq!(CssTime::try_seconds(-1.0), None);
-    assert_eq!(CssAnimationIterationCount::try_number(-1.0), None);
+    assert_eq!(
+        CssDurationLiteral::try_new(-1.0, CssTimeUnit::Seconds),
+        None
+    );
+    assert_eq!(CssAnimationIterationNumber::try_new(-1.0), None);
     assert_eq!(CssOutline::try_new(None, None, None), None);
 }
 

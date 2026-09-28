@@ -1,4 +1,4 @@
-use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
+use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::values::{
     CalculationRoot, next_is_comma, parse_custom_ident_from_str_at, parse_numeric_function,
@@ -135,18 +135,10 @@ pub(super) fn parse_delay<'i, 't>(
 pub(super) fn parse_easing_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssParsedEasingList, ParseError<'i, Error>> {
-    let mut current = Vec::new();
-    let mut legacy = Some(Vec::new());
+) -> std::result::Result<CssEasingList, ParseError<'i, Error>> {
+    let mut values = Vec::new();
     loop {
-        let parsed = parse_easing(input, numeric)?;
-        let (current_easing, legacy_easing) = parsed.into_parts();
-        current.push(current_easing);
-        match (legacy.as_mut(), legacy_easing) {
-            (Some(values), Some(value)) => values.push(value),
-            (_, None) => legacy = None,
-            (None, Some(_)) => {}
-        }
+        values.push(parse_easing(input, numeric)?);
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
         }
@@ -158,35 +150,30 @@ pub(super) fn parse_easing_list<'i, 't>(
             ));
         }
     }
-    let current = CssEasingValueList::try_new(current)
-        .ok_or_else(|| unsupported_value(input, None, "easing list is empty"))?;
-    let legacy = legacy.and_then(CssEasingList::try_new);
-    Ok(CssParsedEasingList::new(current, legacy))
+    CssEasingList::try_new(values)
+        .ok_or_else(|| unsupported_value(input, None, "easing list is empty"))
 }
 
 pub(super) fn parse_easing<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssParsedEasing, ParseError<'i, Error>> {
+) -> std::result::Result<CssEasing, ParseError<'i, Error>> {
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        let (current, legacy) = match_ignore_ascii_case! { &ident,
-            "ease" => (CssEasingKeyword::Ease, CssEasing::Ease),
-            "linear" => (CssEasingKeyword::Linear, CssEasing::Linear),
-            "ease-in" => (CssEasingKeyword::EaseIn, CssEasing::EaseIn),
-            "ease-out" => (CssEasingKeyword::EaseOut, CssEasing::EaseOut),
-            "ease-in-out" => (CssEasingKeyword::EaseInOut, CssEasing::EaseInOut),
-            "step-start" => (CssEasingKeyword::StepStart, CssEasing::StepStart),
-            "step-end" => (CssEasingKeyword::StepEnd, CssEasing::StepEnd),
+        let keyword = match_ignore_ascii_case! { &ident,
+            "ease" => CssEasingKeyword::Ease,
+            "linear" => CssEasingKeyword::Linear,
+            "ease-in" => CssEasingKeyword::EaseIn,
+            "ease-out" => CssEasingKeyword::EaseOut,
+            "ease-in-out" => CssEasingKeyword::EaseInOut,
+            "step-start" => CssEasingKeyword::StepStart,
+            "step-end" => CssEasingKeyword::StepEnd,
             _ => Err(unsupported_value(
                 input,
                 None,
                 unsupported_keyword_reason("easing", ident.as_ref()),
             ))?,
         };
-        return Ok(CssParsedEasing::new(
-            CssEasingValue::Keyword(current),
-            Some(legacy),
-        ));
+        return Ok(CssEasing::Keyword(keyword));
     }
     let location = input.current_source_location();
     let name = match input.next().map_err(basic)? {
@@ -204,81 +191,18 @@ pub(super) fn parse_easing<'i, 't>(
             ));
         }
     };
-    let (current, arguments) = input.parse_nested_block(|input| {
-        let state = input.state();
-        let authored = collect_easing_authored_tokens(input)?;
-        input.reset(&state);
-        let current = match kind {
-            CssEasingFunctionKind::CubicBezier => {
-                CssEasingValue::CubicBezier(parse_cubic_bezier(input, numeric)?)
-            }
-            CssEasingFunctionKind::Steps => CssEasingValue::Steps(parse_steps(input, numeric)?),
-        };
-        Ok((
-            current,
-            CssEasingArguments::new(CssAuthoredFunctionArguments::new(authored)),
-        ))
-    })?;
-    let legacy = current_easing_belongs_to_i01(&current).then_some(match kind {
-        CssEasingFunctionKind::CubicBezier => CssEasing::CubicBezier(arguments),
-        CssEasingFunctionKind::Steps => CssEasing::Steps(arguments),
-    });
-    Ok(CssParsedEasing::new(current, legacy))
+    input.parse_nested_block(|input| match kind {
+        CssEasingFunctionKind::CubicBezier => {
+            parse_cubic_bezier(input, numeric).map(CssEasing::CubicBezier)
+        }
+        CssEasingFunctionKind::Steps => parse_steps(input, numeric).map(CssEasing::Steps),
+    })
 }
 
 #[derive(Clone, Copy)]
 enum CssEasingFunctionKind {
     CubicBezier,
     Steps,
-}
-
-fn current_easing_belongs_to_i01(value: &CssEasingValue) -> bool {
-    match value {
-        CssEasingValue::Keyword(_) => true,
-        CssEasingValue::CubicBezier(value) => [
-            value.x1().value(),
-            value.y1(),
-            value.x2().value(),
-            value.y2(),
-        ]
-        .into_iter()
-        .all(|value| matches!(value, CssEasingNumber::Literal(_))),
-        CssEasingValue::Steps(value) => value.count().literal().is_some(),
-    }
-}
-
-fn collect_easing_authored_tokens<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<String, ParseError<'i, Error>> {
-    let mut value = String::new();
-    while !input.is_exhausted() {
-        let token = input.next().map_err(basic)?.clone();
-        let token_css = match token {
-            Token::Function(_) => {
-                let mut css = token.to_css_string();
-                css.push_str(&input.parse_nested_block(collect_easing_authored_tokens)?);
-                css.push(')');
-                css
-            }
-            Token::ParenthesisBlock => {
-                let nested = input.parse_nested_block(collect_easing_authored_tokens)?;
-                format!("({nested})")
-            }
-            _ => token.to_css_string(),
-        };
-        if matches!(token, Token::Comma) {
-            if value.ends_with(' ') {
-                value.pop();
-            }
-            value.push_str(", ");
-        } else {
-            if !value.is_empty() && !value.ends_with(' ') {
-                value.push(' ');
-            }
-            value.push_str(&token_css);
-        }
-    }
-    Ok(value.trim().to_owned())
 }
 
 fn parse_easing_number<'i, 't>(
@@ -438,7 +362,7 @@ pub(super) fn parse_transition_property<'i, 't>(
 pub(super) fn parse_transition_value_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssTransitionValueList, ParseError<'i, Error>> {
+) -> std::result::Result<CssTransitionList, ParseError<'i, Error>> {
     let mut items = Vec::new();
     loop {
         items.push(parse_single_transition_value(input, numeric)?);
@@ -453,14 +377,14 @@ pub(super) fn parse_transition_value_list<'i, 't>(
             ));
         }
     }
-    CssTransitionValueList::try_new(items)
+    CssTransitionList::try_new(items)
         .ok_or_else(|| unsupported_value(input, None, "transition list is empty"))
 }
 
 pub(super) fn parse_single_transition_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssTransitionValue, ParseError<'i, Error>> {
+) -> std::result::Result<CssTransition, ParseError<'i, Error>> {
     let mut property = None;
     let mut duration = None;
     let mut delay = None;
@@ -497,7 +421,7 @@ pub(super) fn parse_single_transition_value<'i, 't>(
             "unsupported transition component",
         ));
     }
-    CssTransitionValue::try_new(property, duration, delay, timing_function)
+    CssTransition::try_new(property, duration, delay, timing_function)
         .ok_or_else(|| unsupported_value(input, None, "transition item is empty"))
 }
 
@@ -544,7 +468,7 @@ pub(super) fn parse_animation_name<'i, 't>(
 pub(super) fn parse_animation_iteration_value_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssAnimationIterationValueList, ParseError<'i, Error>> {
+) -> std::result::Result<CssAnimationIterationCountList, ParseError<'i, Error>> {
     let mut counts = Vec::new();
     loop {
         counts.push(parse_animation_iteration_value(input, numeric)?);
@@ -559,25 +483,25 @@ pub(super) fn parse_animation_iteration_value_list<'i, 't>(
             ));
         }
     }
-    CssAnimationIterationValueList::try_new(counts)
+    CssAnimationIterationCountList::try_new(counts)
         .ok_or_else(|| unsupported_value(input, None, "animation-iteration-count list is empty"))
 }
 
 pub(super) fn parse_animation_iteration_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssAnimationIterationValue, ParseError<'i, Error>> {
+) -> std::result::Result<CssAnimationIterationCount, ParseError<'i, Error>> {
     let numeric_start = input.state();
     if input
         .try_parse(|input| input.expect_ident_matching("infinite"))
         .is_ok()
     {
-        return Ok(CssAnimationIterationValue::Infinite);
+        return Ok(CssAnimationIterationCount::Infinite);
     }
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
         Token::Number { value, .. } => CssAnimationIterationNumber::try_new(*value)
-            .map(CssAnimationIterationValue::Number)
+            .map(CssAnimationIterationCount::Number)
             .ok_or_else(|| {
                 unsupported_value_at(
                     location,
@@ -588,7 +512,7 @@ pub(super) fn parse_animation_iteration_value<'i, 't>(
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)
                 .map(CssNumberCalculation::from_expression)
-                .map(CssAnimationIterationValue::Calculation)
+                .map(CssAnimationIterationCount::Calculation)
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
@@ -709,7 +633,7 @@ pub(super) fn parse_animation_play_state<'i, 't>(
 pub(super) fn parse_animation_value_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssAnimationValueList, ParseError<'i, Error>> {
+) -> std::result::Result<CssAnimationList, ParseError<'i, Error>> {
     let mut items = Vec::new();
     loop {
         items.push(parse_single_animation_value(input, numeric)?);
@@ -724,14 +648,14 @@ pub(super) fn parse_animation_value_list<'i, 't>(
             ));
         }
     }
-    CssAnimationValueList::try_new(items)
+    CssAnimationList::try_new(items)
         .ok_or_else(|| unsupported_value(input, None, "animation list is empty"))
 }
 
 pub(super) fn parse_single_animation_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssAnimationValue, ParseError<'i, Error>> {
+) -> std::result::Result<CssAnimation, ParseError<'i, Error>> {
     let mut name = None;
     let mut duration = None;
     let mut delay = None;
@@ -799,7 +723,7 @@ pub(super) fn parse_single_animation_value<'i, 't>(
         ));
     }
 
-    CssAnimationValue::try_new(
+    CssAnimation::try_new(CssAnimationComponents {
         name,
         duration,
         delay,
@@ -808,6 +732,6 @@ pub(super) fn parse_single_animation_value<'i, 't>(
         direction,
         fill_mode,
         play_state,
-    )
+    })
     .ok_or_else(|| unsupported_value(input, None, "animation item is empty"))
 }

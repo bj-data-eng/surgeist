@@ -1,7 +1,7 @@
 use surgeist_css::{
     CssAngleCalculation, CssAngleUnit, CssAuthoredFontFaceDescriptorValue, CssBasicShapeValue,
     CssBlendMode, CssBoxEdgeKeyword, CssBoxShadow, CssCalculationType, CssClipPathValue,
-    CssDelayLiteral, CssEasingValue, CssErrorCode, CssExclusionReason, CssFeatureKind,
+    CssDelayLiteral, CssEasing, CssErrorCode, CssExclusionReason, CssFeatureKind,
     CssFilterFunctionValue, CssFilterValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
     CssFrequencyCalculation, CssFrequencyUnit, CssHorizontalPosition, CssIntegerCalculation,
     CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssLengthCalculation,
@@ -4926,11 +4926,11 @@ fn official_easing_metadata_matches_typed_functions() {
         panic!("expected transition timing value");
     };
     assert!(matches!(
-        value.current().values(),
+        value.timing_functions().values(),
         [
-            CssEasingValue::Keyword(_),
-            CssEasingValue::CubicBezier(_),
-            CssEasingValue::Steps(_),
+            CssEasing::Keyword(_),
+            CssEasing::CubicBezier(_),
+            CssEasing::Steps(_),
         ]
     ));
     assert_complete_function_metadata(
@@ -5344,7 +5344,7 @@ fn completed_function_property_metadata_matches_public_current_accessors() {
             .property_value()
             .unwrap(),
         CssKnownPropertyValueRef::TransitionTimingFunction(value)
-            if matches!(value.current().values(), [CssEasingValue::CubicBezier(_)])
+            if matches!(value.timing_functions().values(), [CssEasing::CubicBezier(_)])
     ));
     assert!(matches!(
         report.syntax()[4]
@@ -5353,7 +5353,7 @@ fn completed_function_property_metadata_matches_public_current_accessors() {
             .property_value()
             .unwrap(),
         CssKnownPropertyValueRef::AnimationTimingFunction(value)
-            if matches!(value.current().values(), [CssEasingValue::Steps(_)])
+            if matches!(value.timing_functions().values(), [CssEasing::Steps(_)])
     ));
 
     assert_complete_function_property_metadata(

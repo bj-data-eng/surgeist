@@ -95,14 +95,9 @@ pub surgeist_css::CssAnimationFillMode::Both
 pub surgeist_css::CssAnimationFillMode::Forwards
 pub surgeist_css::CssAnimationFillMode::None
 #[non_exhaustive] pub enum surgeist_css::CssAnimationIterationCount
+pub surgeist_css::CssAnimationIterationCount::Calculation(surgeist_css::CssNumberCalculation)
 pub surgeist_css::CssAnimationIterationCount::Infinite
 pub surgeist_css::CssAnimationIterationCount::Number(surgeist_css::CssAnimationIterationNumber)
-impl surgeist_css::CssAnimationIterationCount
-pub const fn surgeist_css::CssAnimationIterationCount::try_number(value: f32) -> core::option::Option<Self>
-#[non_exhaustive] pub enum surgeist_css::CssAnimationIterationValue
-pub surgeist_css::CssAnimationIterationValue::Calculation(surgeist_css::CssNumberCalculation)
-pub surgeist_css::CssAnimationIterationValue::Infinite
-pub surgeist_css::CssAnimationIterationValue::Number(surgeist_css::CssAnimationIterationNumber)
 #[non_exhaustive] pub enum surgeist_css::CssAnimationName
 pub surgeist_css::CssAnimationName::Custom(surgeist_css::CssCustomIdent)
 pub surgeist_css::CssAnimationName::None
@@ -1123,15 +1118,9 @@ pub fn surgeist_css::CssDisplayValue::serialize_specified_with_limits(&self, lim
 pub surgeist_css::CssDuration::Calculation(surgeist_css::CssTimeCalculation)
 pub surgeist_css::CssDuration::Literal(surgeist_css::CssDurationLiteral)
 #[non_exhaustive] pub enum surgeist_css::CssEasing
-pub surgeist_css::CssEasing::CubicBezier(surgeist_css::CssEasingArguments)
-pub surgeist_css::CssEasing::Ease
-pub surgeist_css::CssEasing::EaseIn
-pub surgeist_css::CssEasing::EaseInOut
-pub surgeist_css::CssEasing::EaseOut
-pub surgeist_css::CssEasing::Linear
-pub surgeist_css::CssEasing::StepEnd
-pub surgeist_css::CssEasing::StepStart
-pub surgeist_css::CssEasing::Steps(surgeist_css::CssEasingArguments)
+pub surgeist_css::CssEasing::CubicBezier(surgeist_css::CssCubicBezier)
+pub surgeist_css::CssEasing::Keyword(surgeist_css::CssEasingKeyword)
+pub surgeist_css::CssEasing::Steps(surgeist_css::CssSteps)
 #[non_exhaustive] pub enum surgeist_css::CssEasingKeyword
 pub surgeist_css::CssEasingKeyword::Ease
 pub surgeist_css::CssEasingKeyword::EaseIn
@@ -1143,10 +1132,6 @@ pub surgeist_css::CssEasingKeyword::StepStart
 #[non_exhaustive] pub enum surgeist_css::CssEasingNumber
 pub surgeist_css::CssEasingNumber::Calculation(surgeist_css::CssNumberCalculation)
 pub surgeist_css::CssEasingNumber::Literal(surgeist_css::CssFiniteNumber)
-#[non_exhaustive] pub enum surgeist_css::CssEasingValue
-pub surgeist_css::CssEasingValue::CubicBezier(surgeist_css::CssCubicBezier)
-pub surgeist_css::CssEasingValue::Keyword(surgeist_css::CssEasingKeyword)
-pub surgeist_css::CssEasingValue::Steps(surgeist_css::CssSteps)
 #[non_exhaustive] pub enum surgeist_css::CssEllipseRadius
 pub surgeist_css::CssEllipseRadius::Default
 pub surgeist_css::CssEllipseRadius::Extent(surgeist_css::CssRadialExtent)
@@ -4260,19 +4245,19 @@ pub const fn surgeist_css::CssAngleLiteral::unit(self) -> surgeist_css::CssAngle
 pub const fn surgeist_css::CssAngleLiteral::value(self) -> f32
 pub struct surgeist_css::CssAnimation
 impl surgeist_css::CssAnimation
-pub const fn surgeist_css::CssAnimation::delay(&self) -> core::option::Option<surgeist_css::CssTime>
+pub const fn surgeist_css::CssAnimation::delay(&self) -> core::option::Option<&surgeist_css::CssDelay>
 pub const fn surgeist_css::CssAnimation::direction(&self) -> core::option::Option<surgeist_css::CssAnimationDirection>
-pub const fn surgeist_css::CssAnimation::duration(&self) -> core::option::Option<surgeist_css::CssTime>
+pub const fn surgeist_css::CssAnimation::duration(&self) -> core::option::Option<&surgeist_css::CssDuration>
 pub const fn surgeist_css::CssAnimation::fill_mode(&self) -> core::option::Option<surgeist_css::CssAnimationFillMode>
-pub const fn surgeist_css::CssAnimation::iteration_count(&self) -> core::option::Option<surgeist_css::CssAnimationIterationCount>
+pub const fn surgeist_css::CssAnimation::iteration_count(&self) -> core::option::Option<&surgeist_css::CssAnimationIterationCount>
 pub const fn surgeist_css::CssAnimation::name(&self) -> core::option::Option<&surgeist_css::CssAnimationName>
 pub const fn surgeist_css::CssAnimation::play_state(&self) -> core::option::Option<surgeist_css::CssAnimationPlayState>
 pub const fn surgeist_css::CssAnimation::timing_function(&self) -> core::option::Option<&surgeist_css::CssEasing>
 pub fn surgeist_css::CssAnimation::try_new(components: surgeist_css::CssAnimationComponents) -> core::option::Option<Self>
 pub struct surgeist_css::CssAnimationComponents
-pub surgeist_css::CssAnimationComponents::delay: core::option::Option<surgeist_css::CssTime>
+pub surgeist_css::CssAnimationComponents::delay: core::option::Option<surgeist_css::CssDelay>
 pub surgeist_css::CssAnimationComponents::direction: core::option::Option<surgeist_css::CssAnimationDirection>
-pub surgeist_css::CssAnimationComponents::duration: core::option::Option<surgeist_css::CssTime>
+pub surgeist_css::CssAnimationComponents::duration: core::option::Option<surgeist_css::CssDuration>
 pub surgeist_css::CssAnimationComponents::fill_mode: core::option::Option<surgeist_css::CssAnimationFillMode>
 pub surgeist_css::CssAnimationComponents::iteration_count: core::option::Option<surgeist_css::CssAnimationIterationCount>
 pub surgeist_css::CssAnimationComponents::name: core::option::Option<surgeist_css::CssAnimationName>
@@ -4282,49 +4267,44 @@ pub struct surgeist_css::CssAnimationDelayPropertyValue
 impl surgeist_css::CssAnimationDelayPropertyValue
 pub fn surgeist_css::CssAnimationDelayPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssAnimationDelayPropertyValue::delays(&self) -> &surgeist_css::CssDelayList
-pub const fn surgeist_css::CssAnimationDelayPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTimeList>
 pub struct surgeist_css::CssAnimationDirectionList
 impl surgeist_css::CssAnimationDirectionList
+pub fn surgeist_css::CssAnimationDirectionList::directions(&self) -> &[surgeist_css::CssAnimationDirection]
 pub fn surgeist_css::CssAnimationDirectionList::try_new(directions: alloc::vec::Vec<surgeist_css::CssAnimationDirection>) -> core::option::Option<Self>
 pub struct surgeist_css::CssAnimationDirectionPropertyValue
 impl surgeist_css::CssAnimationDirectionPropertyValue
 pub fn surgeist_css::CssAnimationDirectionPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssAnimationDirectionPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAnimationDirectionList>
+pub const fn surgeist_css::CssAnimationDirectionPropertyValue::directions(&self) -> &surgeist_css::CssAnimationDirectionList
 pub struct surgeist_css::CssAnimationDurationPropertyValue
 impl surgeist_css::CssAnimationDurationPropertyValue
 pub fn surgeist_css::CssAnimationDurationPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssAnimationDurationPropertyValue::durations(&self) -> &surgeist_css::CssDurationList
-pub const fn surgeist_css::CssAnimationDurationPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTimeList>
 pub struct surgeist_css::CssAnimationFillModeList
 impl surgeist_css::CssAnimationFillModeList
+pub fn surgeist_css::CssAnimationFillModeList::modes(&self) -> &[surgeist_css::CssAnimationFillMode]
 pub fn surgeist_css::CssAnimationFillModeList::try_new(modes: alloc::vec::Vec<surgeist_css::CssAnimationFillMode>) -> core::option::Option<Self>
 pub struct surgeist_css::CssAnimationFillModePropertyValue
 impl surgeist_css::CssAnimationFillModePropertyValue
 pub fn surgeist_css::CssAnimationFillModePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssAnimationFillModePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAnimationFillModeList>
+pub const fn surgeist_css::CssAnimationFillModePropertyValue::fill_modes(&self) -> &surgeist_css::CssAnimationFillModeList
 pub struct surgeist_css::CssAnimationIterationCountList
 impl surgeist_css::CssAnimationIterationCountList
-pub fn surgeist_css::CssAnimationIterationCountList::counts(&self) -> &[surgeist_css::CssAnimationIterationCount]
-pub fn surgeist_css::CssAnimationIterationCountList::try_new(counts: alloc::vec::Vec<surgeist_css::CssAnimationIterationCount>) -> core::option::Option<Self>
+pub fn surgeist_css::CssAnimationIterationCountList::try_new(values: alloc::vec::Vec<surgeist_css::CssAnimationIterationCount>) -> core::option::Option<Self>
+pub fn surgeist_css::CssAnimationIterationCountList::values(&self) -> &[surgeist_css::CssAnimationIterationCount]
 pub struct surgeist_css::CssAnimationIterationCountPropertyValue
 impl surgeist_css::CssAnimationIterationCountPropertyValue
 pub fn surgeist_css::CssAnimationIterationCountPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssAnimationIterationCountPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAnimationIterationCountList>
-pub const fn surgeist_css::CssAnimationIterationCountPropertyValue::iteration_counts(&self) -> &surgeist_css::CssAnimationIterationValueList
+pub const fn surgeist_css::CssAnimationIterationCountPropertyValue::iteration_counts(&self) -> &surgeist_css::CssAnimationIterationCountList
 pub struct surgeist_css::CssAnimationIterationNumber
 impl surgeist_css::CssAnimationIterationNumber
 pub const fn surgeist_css::CssAnimationIterationNumber::try_new(value: f32) -> core::option::Option<Self>
 pub const fn surgeist_css::CssAnimationIterationNumber::value(self) -> f32
 impl core::fmt::Debug for surgeist_css::CssAnimationIterationNumber
 pub fn surgeist_css::CssAnimationIterationNumber::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub struct surgeist_css::CssAnimationIterationValueList
-impl surgeist_css::CssAnimationIterationValueList
-pub fn surgeist_css::CssAnimationIterationValueList::try_new(values: alloc::vec::Vec<surgeist_css::CssAnimationIterationValue>) -> core::option::Option<Self>
-pub fn surgeist_css::CssAnimationIterationValueList::values(&self) -> &[surgeist_css::CssAnimationIterationValue]
 pub struct surgeist_css::CssAnimationList
 impl surgeist_css::CssAnimationList
-pub fn surgeist_css::CssAnimationList::items(&self) -> &[surgeist_css::CssAnimation]
-pub fn surgeist_css::CssAnimationList::try_new(items: alloc::vec::Vec<surgeist_css::CssAnimation>) -> core::option::Option<Self>
+pub fn surgeist_css::CssAnimationList::try_new(values: alloc::vec::Vec<surgeist_css::CssAnimation>) -> core::option::Option<Self>
+pub fn surgeist_css::CssAnimationList::values(&self) -> &[surgeist_css::CssAnimation]
 pub struct surgeist_css::CssAnimationNameList
 impl surgeist_css::CssAnimationNameList
 pub fn surgeist_css::CssAnimationNameList::names(&self) -> &[surgeist_css::CssAnimationName]
@@ -4332,38 +4312,23 @@ pub fn surgeist_css::CssAnimationNameList::try_new(names: alloc::vec::Vec<surgei
 pub struct surgeist_css::CssAnimationNamePropertyValue
 impl surgeist_css::CssAnimationNamePropertyValue
 pub fn surgeist_css::CssAnimationNamePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssAnimationNamePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAnimationNameList>
+pub const fn surgeist_css::CssAnimationNamePropertyValue::names(&self) -> &surgeist_css::CssAnimationNameList
 pub struct surgeist_css::CssAnimationPlayStateList
 impl surgeist_css::CssAnimationPlayStateList
+pub fn surgeist_css::CssAnimationPlayStateList::states(&self) -> &[surgeist_css::CssAnimationPlayState]
 pub fn surgeist_css::CssAnimationPlayStateList::try_new(states: alloc::vec::Vec<surgeist_css::CssAnimationPlayState>) -> core::option::Option<Self>
 pub struct surgeist_css::CssAnimationPlayStatePropertyValue
 impl surgeist_css::CssAnimationPlayStatePropertyValue
 pub fn surgeist_css::CssAnimationPlayStatePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssAnimationPlayStatePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAnimationPlayStateList>
+pub const fn surgeist_css::CssAnimationPlayStatePropertyValue::play_states(&self) -> &surgeist_css::CssAnimationPlayStateList
 pub struct surgeist_css::CssAnimationPropertyValue
 impl surgeist_css::CssAnimationPropertyValue
-pub const fn surgeist_css::CssAnimationPropertyValue::animations(&self) -> &surgeist_css::CssAnimationValueList
+pub const fn surgeist_css::CssAnimationPropertyValue::animations(&self) -> &surgeist_css::CssAnimationList
 pub fn surgeist_css::CssAnimationPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssAnimationPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAnimationList>
 pub struct surgeist_css::CssAnimationTimingFunctionPropertyValue
 impl surgeist_css::CssAnimationTimingFunctionPropertyValue
 pub fn surgeist_css::CssAnimationTimingFunctionPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssAnimationTimingFunctionPropertyValue::current(&self) -> &surgeist_css::CssEasingValueList
-pub const fn surgeist_css::CssAnimationTimingFunctionPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssEasingList>
-pub struct surgeist_css::CssAnimationValue
-impl surgeist_css::CssAnimationValue
-pub const fn surgeist_css::CssAnimationValue::current_timing_function(&self) -> core::option::Option<&surgeist_css::CssEasingValue>
-pub const fn surgeist_css::CssAnimationValue::delay(&self) -> core::option::Option<&surgeist_css::CssDelay>
-pub const fn surgeist_css::CssAnimationValue::direction(&self) -> core::option::Option<surgeist_css::CssAnimationDirection>
-pub const fn surgeist_css::CssAnimationValue::duration(&self) -> core::option::Option<&surgeist_css::CssDuration>
-pub const fn surgeist_css::CssAnimationValue::fill_mode(&self) -> core::option::Option<surgeist_css::CssAnimationFillMode>
-pub const fn surgeist_css::CssAnimationValue::iteration_count(&self) -> core::option::Option<&surgeist_css::CssAnimationIterationValue>
-pub const fn surgeist_css::CssAnimationValue::name(&self) -> core::option::Option<&surgeist_css::CssAnimationName>
-pub const fn surgeist_css::CssAnimationValue::play_state(&self) -> core::option::Option<surgeist_css::CssAnimationPlayState>
-pub const fn surgeist_css::CssAnimationValue::timing_function(&self) -> core::option::Option<&surgeist_css::CssEasing>
-pub struct surgeist_css::CssAnimationValueList
-impl surgeist_css::CssAnimationValueList
-pub fn surgeist_css::CssAnimationValueList::values(&self) -> &[surgeist_css::CssAnimationValue]
+pub const fn surgeist_css::CssAnimationTimingFunctionPropertyValue::timing_functions(&self) -> &surgeist_css::CssEasingList
 pub struct surgeist_css::CssAspectRatio
 impl surgeist_css::CssAspectRatio
 pub fn surgeist_css::CssAspectRatio::try_new(value: f32) -> core::option::Option<Self>
@@ -6044,17 +6009,10 @@ impl surgeist_css::CssDurationLiteral
 pub const fn surgeist_css::CssDurationLiteral::try_new(value: f32, unit: surgeist_css::CssTimeUnit) -> core::option::Option<Self>
 pub const fn surgeist_css::CssDurationLiteral::unit(self) -> surgeist_css::CssTimeUnit
 pub const fn surgeist_css::CssDurationLiteral::value(self) -> f32
-pub struct surgeist_css::CssEasingArguments
-impl surgeist_css::CssEasingArguments
-pub fn surgeist_css::CssEasingArguments::as_css(&self) -> &str
 pub struct surgeist_css::CssEasingList
 impl surgeist_css::CssEasingList
-pub fn surgeist_css::CssEasingList::easings(&self) -> &[surgeist_css::CssEasing]
-pub fn surgeist_css::CssEasingList::try_new(easings: alloc::vec::Vec<surgeist_css::CssEasing>) -> core::option::Option<Self>
-pub struct surgeist_css::CssEasingValueList
-impl surgeist_css::CssEasingValueList
-pub fn surgeist_css::CssEasingValueList::try_new(values: alloc::vec::Vec<surgeist_css::CssEasingValue>) -> core::option::Option<Self>
-pub fn surgeist_css::CssEasingValueList::values(&self) -> &[surgeist_css::CssEasingValue]
+pub fn surgeist_css::CssEasingList::try_new(values: alloc::vec::Vec<surgeist_css::CssEasing>) -> core::option::Option<Self>
+pub fn surgeist_css::CssEasingList::values(&self) -> &[surgeist_css::CssEasing]
 pub struct surgeist_css::CssEdges
 pub surgeist_css::CssEdges::bottom: surgeist_css::CssLength
 pub surgeist_css::CssEdges::left: surgeist_css::CssLength
@@ -8927,15 +8885,6 @@ pub struct surgeist_css::CssTextWrapPropertyValue
 impl surgeist_css::CssTextWrapPropertyValue
 pub fn surgeist_css::CssTextWrapPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTextWrapPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTextWrap>
-pub struct surgeist_css::CssTime
-impl surgeist_css::CssTime
-pub const fn surgeist_css::CssTime::try_milliseconds(value: f32) -> core::option::Option<Self>
-pub const fn surgeist_css::CssTime::try_new(value: f32, unit: surgeist_css::CssTimeUnit) -> core::option::Option<Self>
-pub const fn surgeist_css::CssTime::try_seconds(value: f32) -> core::option::Option<Self>
-pub const fn surgeist_css::CssTime::unit(self) -> surgeist_css::CssTimeUnit
-pub const fn surgeist_css::CssTime::value(self) -> f32
-impl core::fmt::Debug for surgeist_css::CssTime
-pub fn surgeist_css::CssTime::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssTimeCalculation
 impl surgeist_css::CssTimeCalculation
 pub fn surgeist_css::CssTimeCalculation::components(&self) -> &surgeist_css::CssComponentValues
@@ -8949,10 +8898,6 @@ pub fn surgeist_css::CssTimeCalculation::try_from_components(values: surgeist_cs
 pub fn surgeist_css::CssTimeCalculation::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 impl surgeist_css::CssTimeCalculation
 pub fn surgeist_css::CssTimeCalculation::try_literal(value: f32, unit: surgeist_css::CssTimeUnit) -> core::option::Option<Self>
-pub struct surgeist_css::CssTimeList
-impl surgeist_css::CssTimeList
-pub fn surgeist_css::CssTimeList::times(&self) -> &[surgeist_css::CssTime]
-pub fn surgeist_css::CssTimeList::try_new(times: alloc::vec::Vec<surgeist_css::CssTime>) -> core::option::Option<Self>
 pub struct surgeist_css::CssTokenSummary
 impl surgeist_css::CssTokenSummary
 pub fn surgeist_css::CssTokenSummary::authored(&self) -> &str
@@ -9055,25 +9000,23 @@ pub const fn surgeist_css::CssTransformTranslate3d::y(&self) -> &surgeist_css::C
 pub const fn surgeist_css::CssTransformTranslate3d::z(&self) -> &surgeist_css::CssTransformLength
 pub struct surgeist_css::CssTransition
 impl surgeist_css::CssTransition
-pub const fn surgeist_css::CssTransition::delay(&self) -> core::option::Option<surgeist_css::CssTime>
-pub const fn surgeist_css::CssTransition::duration(&self) -> core::option::Option<surgeist_css::CssTime>
+pub const fn surgeist_css::CssTransition::delay(&self) -> core::option::Option<&surgeist_css::CssDelay>
+pub const fn surgeist_css::CssTransition::duration(&self) -> core::option::Option<&surgeist_css::CssDuration>
 pub const fn surgeist_css::CssTransition::property(&self) -> core::option::Option<&surgeist_css::CssTransitionProperty>
 pub const fn surgeist_css::CssTransition::timing_function(&self) -> core::option::Option<&surgeist_css::CssEasing>
-pub fn surgeist_css::CssTransition::try_new(property: core::option::Option<surgeist_css::CssTransitionProperty>, duration: core::option::Option<surgeist_css::CssTime>, delay: core::option::Option<surgeist_css::CssTime>, timing_function: core::option::Option<surgeist_css::CssEasing>) -> core::option::Option<Self>
+pub fn surgeist_css::CssTransition::try_new(property: core::option::Option<surgeist_css::CssTransitionProperty>, duration: core::option::Option<surgeist_css::CssDuration>, delay: core::option::Option<surgeist_css::CssDelay>, timing_function: core::option::Option<surgeist_css::CssEasing>) -> core::option::Option<Self>
 pub struct surgeist_css::CssTransitionDelayPropertyValue
 impl surgeist_css::CssTransitionDelayPropertyValue
 pub fn surgeist_css::CssTransitionDelayPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTransitionDelayPropertyValue::delays(&self) -> &surgeist_css::CssDelayList
-pub const fn surgeist_css::CssTransitionDelayPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTimeList>
 pub struct surgeist_css::CssTransitionDurationPropertyValue
 impl surgeist_css::CssTransitionDurationPropertyValue
 pub fn surgeist_css::CssTransitionDurationPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTransitionDurationPropertyValue::durations(&self) -> &surgeist_css::CssDurationList
-pub const fn surgeist_css::CssTransitionDurationPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTimeList>
 pub struct surgeist_css::CssTransitionList
 impl surgeist_css::CssTransitionList
-pub fn surgeist_css::CssTransitionList::items(&self) -> &[surgeist_css::CssTransition]
-pub fn surgeist_css::CssTransitionList::try_new(items: alloc::vec::Vec<surgeist_css::CssTransition>) -> core::option::Option<Self>
+pub fn surgeist_css::CssTransitionList::try_new(values: alloc::vec::Vec<surgeist_css::CssTransition>) -> core::option::Option<Self>
+pub fn surgeist_css::CssTransitionList::values(&self) -> &[surgeist_css::CssTransition]
 pub struct surgeist_css::CssTransitionPropertyList
 impl surgeist_css::CssTransitionPropertyList
 pub fn surgeist_css::CssTransitionPropertyList::properties(&self) -> &[surgeist_css::CssTransitionProperty]
@@ -9081,27 +9024,15 @@ pub fn surgeist_css::CssTransitionPropertyList::try_new(properties: alloc::vec::
 pub struct surgeist_css::CssTransitionPropertyPropertyValue
 impl surgeist_css::CssTransitionPropertyPropertyValue
 pub fn surgeist_css::CssTransitionPropertyPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssTransitionPropertyPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTransitionPropertyList>
+pub const fn surgeist_css::CssTransitionPropertyPropertyValue::properties(&self) -> &surgeist_css::CssTransitionPropertyList
 pub struct surgeist_css::CssTransitionPropertyValue
 impl surgeist_css::CssTransitionPropertyValue
 pub fn surgeist_css::CssTransitionPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssTransitionPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTransitionList>
-pub const fn surgeist_css::CssTransitionPropertyValue::transitions(&self) -> &surgeist_css::CssTransitionValueList
+pub const fn surgeist_css::CssTransitionPropertyValue::transitions(&self) -> &surgeist_css::CssTransitionList
 pub struct surgeist_css::CssTransitionTimingFunctionPropertyValue
 impl surgeist_css::CssTransitionTimingFunctionPropertyValue
 pub fn surgeist_css::CssTransitionTimingFunctionPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssTransitionTimingFunctionPropertyValue::current(&self) -> &surgeist_css::CssEasingValueList
-pub const fn surgeist_css::CssTransitionTimingFunctionPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssEasingList>
-pub struct surgeist_css::CssTransitionValue
-impl surgeist_css::CssTransitionValue
-pub const fn surgeist_css::CssTransitionValue::current_timing_function(&self) -> core::option::Option<&surgeist_css::CssEasingValue>
-pub const fn surgeist_css::CssTransitionValue::delay(&self) -> core::option::Option<&surgeist_css::CssDelay>
-pub const fn surgeist_css::CssTransitionValue::duration(&self) -> core::option::Option<&surgeist_css::CssDuration>
-pub const fn surgeist_css::CssTransitionValue::property(&self) -> core::option::Option<&surgeist_css::CssTransitionProperty>
-pub const fn surgeist_css::CssTransitionValue::timing_function(&self) -> core::option::Option<&surgeist_css::CssEasing>
-pub struct surgeist_css::CssTransitionValueList
-impl surgeist_css::CssTransitionValueList
-pub fn surgeist_css::CssTransitionValueList::values(&self) -> &[surgeist_css::CssTransitionValue]
+pub const fn surgeist_css::CssTransitionTimingFunctionPropertyValue::timing_functions(&self) -> &surgeist_css::CssEasingList
 pub struct surgeist_css::CssTranslatePropertyValue
 impl surgeist_css::CssTranslatePropertyValue
 pub fn surgeist_css::CssTranslatePropertyValue::as_css(&self) -> &str

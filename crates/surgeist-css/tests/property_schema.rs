@@ -3,7 +3,7 @@ mod common;
 use common::CssParseReportTestExt;
 use surgeist_css::{
     CssAuthoredColorComponent, CssAuthoredSystemColor, CssBasicShapeValue, CssBoxShadow,
-    CssClipPathValue, CssEasingValue, CssErrorCode, CssFilterFunctionValue, CssFilterValue,
+    CssClipPathValue, CssEasing, CssErrorCode, CssFilterFunctionValue, CssFilterValue,
     CssFontVariantCaps, CssFontVariantValue, CssImportance, CssKnownDeclaredValueRef,
     CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction, CssRule,
     CssTransformFunctionValue, CssTransformValue, ErrorKind, parse_sheet, parse_style_attribute,
@@ -963,7 +963,10 @@ fn object_and_transform_origin_wrappers_keep_current_global_and_substitution_bra
 }
 
 #[test]
-fn timing_wrappers_expose_exact_property_specific_current_accessors() {
+fn timing_wrappers_expose_exact_property_specific_accessors() {
+    use surgeist_css::{
+        CssAnimationIterationCount, CssDelay, CssDuration, CssTimeUnit, CssTransitionProperty,
+    };
     let report = parse_style_attribute(concat!(
         "transition-duration: calc(1s + 2s); transition-delay: -1s; ",
         "animation-duration: calc(3ms * 2); animation-delay: -4ms; ",
@@ -975,32 +978,54 @@ fn timing_wrappers_expose_exact_property_specific_current_accessors() {
     for declaration in report.syntax().as_slice() {
         match declaration.known().unwrap().property_value().unwrap() {
             CssKnownPropertyValueRef::TransitionDuration(value) => {
-                assert_eq!(value.durations().values().len(), 1);
-                assert!(value.i01_subset().is_none());
+                assert!(matches!(
+                    value.durations().values(),
+                    [CssDuration::Calculation(_)]
+                ));
             }
             CssKnownPropertyValueRef::TransitionDelay(value) => {
-                assert_eq!(value.delays().values().len(), 1);
-                assert!(value.i01_subset().is_none());
+                assert!(matches!(value.delays().values(), [CssDelay::Literal(t)]
+                    if t.value() == -1.0 && t.unit() == CssTimeUnit::Seconds));
             }
             CssKnownPropertyValueRef::AnimationDuration(value) => {
-                assert_eq!(value.durations().values().len(), 1);
-                assert!(value.i01_subset().is_none());
+                assert!(matches!(
+                    value.durations().values(),
+                    [CssDuration::Calculation(_)]
+                ));
             }
             CssKnownPropertyValueRef::AnimationDelay(value) => {
-                assert_eq!(value.delays().values().len(), 1);
-                assert!(value.i01_subset().is_none());
+                assert!(matches!(value.delays().values(), [CssDelay::Literal(t)]
+                    if t.value() == -4.0 && t.unit() == CssTimeUnit::Milliseconds));
             }
             CssKnownPropertyValueRef::AnimationIterationCount(value) => {
-                assert_eq!(value.iteration_counts().values().len(), 1);
-                assert!(value.i01_subset().is_none());
+                assert!(matches!(
+                    value.iteration_counts().values(),
+                    [CssAnimationIterationCount::Calculation(_)]
+                ));
             }
             CssKnownPropertyValueRef::Transition(value) => {
-                assert_eq!(value.transitions().values().len(), 1);
-                assert!(value.i01_subset().is_none());
+                let [item] = value.transitions().values() else {
+                    panic!("one transition");
+                };
+                assert!(
+                    matches!(item.property(), Some(CssTransitionProperty::Custom(name)) if name.as_str() == "opacity")
+                );
+                assert!(
+                    matches!(item.duration(), Some(CssDuration::Literal(t)) if t.value() == 1.0)
+                );
+                assert!(matches!(item.delay(), Some(CssDelay::Literal(t)) if t.value() == -2.0));
             }
             CssKnownPropertyValueRef::Animation(value) => {
-                assert_eq!(value.animations().values().len(), 1);
-                assert!(value.i01_subset().is_none());
+                let [item] = value.animations().values() else {
+                    panic!("one animation");
+                };
+                assert!(
+                    matches!(item.duration(), Some(CssDuration::Literal(t)) if t.value() == 3.0)
+                );
+                assert!(matches!(item.delay(), Some(CssDelay::Literal(t)) if t.value() == -4.0));
+                assert!(
+                    matches!(item.iteration_count(), Some(CssAnimationIterationCount::Number(n)) if n.value() == 2.0)
+                );
             }
             _ => panic!("unexpected property wrapper"),
         }
@@ -1152,7 +1177,7 @@ fn transform_wrapper_keeps_current_global_and_substitution_branches_distinct() {
 }
 
 #[test]
-fn timing_function_wrappers_keep_current_i01_global_and_substitution_branches_distinct() {
+fn timing_function_wrappers_keep_typed_global_and_substitution_branches_distinct() {
     let report = parse_style_attribute(concat!(
         "transition-timing-function: cubic-bezier(0.1, -2, 0.9, 3); ",
         "animation-timing-function: steps(2, jump-none); ",
@@ -1171,10 +1196,9 @@ fn timing_function_wrappers_keep_current_i01_global_and_substitution_branches_di
         panic!("expected transition timing wrapper");
     };
     assert!(matches!(
-        value.current().values(),
-        [CssEasingValue::CubicBezier(_)]
+        value.timing_functions().values(),
+        [CssEasing::CubicBezier(_)]
     ));
-    assert!(value.i01_subset().is_some());
 
     let animation = report.syntax()[1]
         .known()
@@ -1186,10 +1210,9 @@ fn timing_function_wrappers_keep_current_i01_global_and_substitution_branches_di
         panic!("expected animation timing wrapper");
     };
     assert!(matches!(
-        value.current().values(),
-        [CssEasingValue::Steps(_)]
+        value.timing_functions().values(),
+        [CssEasing::Steps(_)]
     ));
-    assert!(value.i01_subset().is_some());
 
     let global = report.syntax()[2]
         .known()

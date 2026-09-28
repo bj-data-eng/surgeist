@@ -365,13 +365,13 @@ macro_rules! property_schema {
             MaskPosition, "mask-position", [], "baseline.property.mask-position", CssMaskPositionList, CssMaskPositionPropertyValue, CssMaskPositionPropertyValueRepresentation, parse_mask_position_list, { parse_mask_position_list($input, $numeric)? };
             MaskRepeat, "mask-repeat", [], "baseline.property.mask-repeat", CssBackgroundRepeatList, CssMaskRepeatPropertyValue, CssMaskRepeatPropertyValueRepresentation, parse_background_repeat_list, { parse_background_repeat_list($input)? };
             TransitionProperty, "transition-property", [], "baseline.property.transition-property", CssTransitionPropertyList, CssTransitionPropertyPropertyValue, CssTransitionPropertyPropertyValueRepresentation, parse_transition_property_list, { parse_transition_property_list($input)? };
-            TransitionDuration, "transition-duration", [], "baseline.property.transition-duration", CssTimeList, CssTransitionDurationPropertyValue, CssTransitionDurationPropertyValueRepresentation, parse_duration_list, { parse_duration_list($input, $numeric)? };
-            TransitionDelay, "transition-delay", [], "baseline.property.transition-delay", CssTimeList, CssTransitionDelayPropertyValue, CssTransitionDelayPropertyValueRepresentation, parse_delay_list, { parse_delay_list($input, $numeric)? };
+            TransitionDuration, "transition-duration", [], "baseline.property.transition-duration", CssDurationList, CssTransitionDurationPropertyValue, CssTransitionDurationPropertyValueRepresentation, parse_duration_list, { parse_duration_list($input, $numeric)? };
+            TransitionDelay, "transition-delay", [], "baseline.property.transition-delay", CssDelayList, CssTransitionDelayPropertyValue, CssTransitionDelayPropertyValueRepresentation, parse_delay_list, { parse_delay_list($input, $numeric)? };
             TransitionTimingFunction, "transition-timing-function", [], "baseline.property.transition-timing-function", CssEasingList, CssTransitionTimingFunctionPropertyValue, CssTransitionTimingFunctionPropertyValueRepresentation, parse_easing_list, { parse_easing_list($input, $numeric)? };
             Transition, "transition", [], "baseline.property.transition", CssTransitionList, CssTransitionPropertyValue, CssTransitionPropertyValueRepresentation, parse_transition_value_list, { parse_transition_value_list($input, $numeric)? };
             AnimationName, "animation-name", [], "baseline.property.animation-name", CssAnimationNameList, CssAnimationNamePropertyValue, CssAnimationNamePropertyValueRepresentation, parse_animation_name_list, { parse_animation_name_list($input)? };
-            AnimationDuration, "animation-duration", [], "baseline.property.animation-duration", CssTimeList, CssAnimationDurationPropertyValue, CssAnimationDurationPropertyValueRepresentation, parse_duration_list, { parse_duration_list($input, $numeric)? };
-            AnimationDelay, "animation-delay", [], "baseline.property.animation-delay", CssTimeList, CssAnimationDelayPropertyValue, CssAnimationDelayPropertyValueRepresentation, parse_delay_list, { parse_delay_list($input, $numeric)? };
+            AnimationDuration, "animation-duration", [], "baseline.property.animation-duration", CssDurationList, CssAnimationDurationPropertyValue, CssAnimationDurationPropertyValueRepresentation, parse_duration_list, { parse_duration_list($input, $numeric)? };
+            AnimationDelay, "animation-delay", [], "baseline.property.animation-delay", CssDelayList, CssAnimationDelayPropertyValue, CssAnimationDelayPropertyValueRepresentation, parse_delay_list, { parse_delay_list($input, $numeric)? };
             AnimationTimingFunction, "animation-timing-function", [], "baseline.property.animation-timing-function", CssEasingList, CssAnimationTimingFunctionPropertyValue, CssAnimationTimingFunctionPropertyValueRepresentation, parse_easing_list, { parse_easing_list($input, $numeric)? };
             AnimationIterationCount, "animation-iteration-count", [], "baseline.property.animation-iteration-count", CssAnimationIterationCountList, CssAnimationIterationCountPropertyValue, CssAnimationIterationCountPropertyValueRepresentation, parse_animation_iteration_value_list, { parse_animation_iteration_value_list($input, $numeric)? };
             AnimationDirection, "animation-direction", [], "baseline.property.animation-direction", CssAnimationDirectionList, CssAnimationDirectionPropertyValue, CssAnimationDirectionPropertyValueRepresentation, parse_animation_direction_list, { parse_animation_direction_list($input)? };
@@ -582,121 +582,6 @@ fn flex_i01_projection(value: &CssFlexValue) -> Option<CssFlex> {
     }
 }
 
-fn duration_i01_projection(value: &CssDuration) -> Option<CssTime> {
-    match value {
-        CssDuration::Literal(value) => CssTime::try_new(value.value(), value.unit()),
-        CssDuration::Calculation(_) => None,
-    }
-}
-
-fn delay_i01_projection(value: &CssDelay) -> Option<CssTime> {
-    match value {
-        CssDelay::Literal(value) => CssTime::try_new(value.value(), value.unit()),
-        CssDelay::Calculation(_) => None,
-    }
-}
-
-fn duration_list_i01_projection(value: &CssDurationList) -> Option<CssTimeList> {
-    let values = value
-        .values()
-        .iter()
-        .map(duration_i01_projection)
-        .collect::<Option<Vec<_>>>()?;
-    CssTimeList::try_new(values)
-}
-
-fn delay_list_i01_projection(value: &CssDelayList) -> Option<CssTimeList> {
-    let values = value
-        .values()
-        .iter()
-        .map(delay_i01_projection)
-        .collect::<Option<Vec<_>>>()?;
-    CssTimeList::try_new(values)
-}
-
-fn iteration_i01_projection(
-    value: &CssAnimationIterationValue,
-) -> Option<CssAnimationIterationCount> {
-    match value {
-        CssAnimationIterationValue::Infinite => Some(CssAnimationIterationCount::Infinite),
-        CssAnimationIterationValue::Number(value) => {
-            CssAnimationIterationCount::try_number(value.value())
-        }
-        CssAnimationIterationValue::Calculation(_) => None,
-    }
-}
-
-fn iteration_list_i01_projection(
-    value: &CssAnimationIterationValueList,
-) -> Option<CssAnimationIterationCountList> {
-    let values = value
-        .values()
-        .iter()
-        .map(iteration_i01_projection)
-        .collect::<Option<Vec<_>>>()?;
-    CssAnimationIterationCountList::try_new(values)
-}
-
-fn transition_i01_projection(value: &CssTransitionValue) -> Option<CssTransition> {
-    let duration = match value.duration() {
-        Some(value) => Some(duration_i01_projection(value)?),
-        None => None,
-    };
-    let delay = match value.delay() {
-        Some(value) => Some(delay_i01_projection(value)?),
-        None => None,
-    };
-    CssTransition::try_new(
-        value.property().cloned(),
-        duration,
-        delay,
-        value.timing_function().cloned(),
-    )
-}
-
-fn transition_list_i01_projection(value: &CssTransitionValueList) -> Option<CssTransitionList> {
-    let values = value
-        .values()
-        .iter()
-        .map(transition_i01_projection)
-        .collect::<Option<Vec<_>>>()?;
-    CssTransitionList::try_new(values)
-}
-
-fn animation_i01_projection(value: &CssAnimationValue) -> Option<CssAnimation> {
-    let duration = match value.duration() {
-        Some(value) => Some(duration_i01_projection(value)?),
-        None => None,
-    };
-    let delay = match value.delay() {
-        Some(value) => Some(delay_i01_projection(value)?),
-        None => None,
-    };
-    let iteration_count = match value.iteration_count() {
-        Some(value) => Some(iteration_i01_projection(value)?),
-        None => None,
-    };
-    CssAnimation::try_new(CssAnimationComponents {
-        name: value.name().cloned(),
-        duration,
-        delay,
-        timing_function: value.timing_function().cloned(),
-        iteration_count,
-        direction: value.direction(),
-        fill_mode: value.fill_mode(),
-        play_state: value.play_state(),
-    })
-}
-
-fn animation_list_i01_projection(value: &CssAnimationValueList) -> Option<CssAnimationList> {
-    let values = value
-        .values()
-        .iter()
-        .map(animation_i01_projection)
-        .collect::<Option<Vec<_>>>()?;
-    CssAnimationList::try_new(values)
-}
-
 fn background_position_list_i01_projection(
     value: &CssBackgroundPositionList,
 ) -> Option<CssPositionList> {
@@ -836,17 +721,17 @@ macro_rules! define_inset_property_value {
     };
 }
 
-macro_rules! define_additive_current_property_value {
+macro_rules! define_semantic_property_value {
     (
         $canonical:literal, $wrapper:ident, $representation:ident,
-        $current:ty, $accessor:ident
+        $value:ty, $accessor:ident
     ) => {
         #[derive(Clone, Debug, PartialEq)]
         pub(crate) struct $representation {
-            current: $current,
+            value: $value,
         }
 
-        #[doc = concat!("A grammar-checked current authored value for `", $canonical, "`.")]
+        #[doc = concat!("A grammar-checked authored value for `", $canonical, "`.")]
         #[derive(Clone, Debug, PartialEq)]
         pub struct $wrapper {
             authored: CssAuthoredDeclarationValue,
@@ -855,13 +740,10 @@ macro_rules! define_additive_current_property_value {
 
         impl $wrapper {
             #[must_use]
-            pub(crate) const fn new(
-                authored: CssAuthoredDeclarationValue,
-                current: $current,
-            ) -> Self {
+            pub(crate) const fn new(authored: CssAuthoredDeclarationValue, value: $value) -> Self {
                 Self {
                     authored,
-                    representation: $representation { current },
+                    representation: $representation { value },
                 }
             }
 
@@ -871,59 +753,8 @@ macro_rules! define_additive_current_property_value {
             }
 
             #[must_use]
-            pub const fn $accessor(&self) -> &$current {
-                &self.representation.current
-            }
-        }
-    };
-}
-
-macro_rules! define_easing_property_value {
-    ($canonical:literal, $wrapper:ident, $representation:ident) => {
-        #[derive(Clone, Debug, PartialEq)]
-        pub(crate) struct $representation {
-            current: CssEasingValueList,
-            i01_subset: Option<CssEasingList>,
-        }
-
-        #[doc = concat!("A grammar-checked authored ordinary value for `", $canonical, "`.")]
-        #[derive(Clone, Debug, PartialEq)]
-        pub struct $wrapper {
-            authored: CssAuthoredDeclarationValue,
-            representation: $representation,
-        }
-
-        impl $wrapper {
-            #[must_use]
-            pub(crate) fn new(
-                authored: CssAuthoredDeclarationValue,
-                parsed: CssParsedEasingList,
-            ) -> Self {
-                let (current, i01_subset) = parsed.into_parts();
-                Self {
-                    authored,
-                    representation: $representation {
-                        current,
-                        i01_subset,
-                    },
-                }
-            }
-
-            #[must_use]
-            pub fn as_css(&self) -> &str {
-                self.authored.as_css()
-            }
-
-            /// Returns the exact checked current authored easing list.
-            #[must_use]
-            pub const fn current(&self) -> &CssEasingValueList {
-                &self.representation.current
-            }
-
-            /// Returns the frozen keyword/authored-arguments compatibility projection.
-            #[must_use]
-            pub const fn i01_subset(&self) -> Option<&CssEasingList> {
-                self.representation.i01_subset.as_ref()
+            pub const fn $accessor(&self) -> &$value {
+                &self.representation.value
             }
         }
     };
@@ -1578,16 +1409,10 @@ macro_rules! define_property_value {
         );
     };
     (ContainerName, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            names
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, names);
     };
     (ContainerType, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -1596,13 +1421,7 @@ macro_rules! define_property_value {
         );
     };
     (Container, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            container
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, container);
     };
 
     (FlexDirection, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
@@ -1638,49 +1457,25 @@ macro_rules! define_property_value {
         }
     };
     (FlexFlow, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            CssFlexFlow,
-            flow
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssFlexFlow, flow);
     };
     (
         ColumnCount, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            count
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, count);
     };
     (
         ColumnFill, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            fill
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, fill);
     };
     (
         ColumnRule, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            rule
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, rule);
     };
     (
         ColumnRuleColor, $canonical:literal, $value:ty, $wrapper:ident,
@@ -1692,205 +1487,103 @@ macro_rules! define_property_value {
         ColumnRuleStyle, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            style
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, style);
     };
     (
         ColumnRuleWidth, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            width
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, width);
     };
     (
         ColumnSpan, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            span
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, span);
     };
     (
         ColumnWidth, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            width
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, width);
     };
     (
         Columns, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            columns
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, columns);
     };
     (
         BorderCollapse, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            collapse
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, collapse);
     };
     (
         BorderSpacing, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            spacing
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, spacing);
     };
     (
         CaptionSide, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            side
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, side);
     };
     (
         Clip, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            clip
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, clip);
     };
     (
         EmptyCells, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            cells
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, cells);
     };
     (
         Orphans, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            minimum
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, minimum);
     };
     (
         BreakAfter, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            current
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, current);
     };
     (
         BreakBefore, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            current
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, current);
     };
     (
         BreakInside, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            current
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, current);
     };
     (
         Quotes, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            quotes
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, quotes);
     };
     (
         TableLayout, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            layout
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, layout);
     };
     (
         Widows, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            minimum
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, minimum);
     };
     (
         WordSpacing, $canonical:literal, $value:ty, $wrapper:ident,
@@ -1924,91 +1617,49 @@ macro_rules! define_property_value {
         TextCombineUpright, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            combine
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, combine);
     };
     (
         TextOrientation, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            orientation
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, orientation);
     };
     (
         UnicodeBidi, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            bidi
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, bidi);
     };
     (
         CaretColor, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            caret
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, caret);
     };
     (
         OutlineOffset, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            offset
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, offset);
     };
     (
         Resize, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            resize
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, resize);
     };
     (
         Contain, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            containment
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, containment);
     };
     (
         TransformBox, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2020,43 +1671,25 @@ macro_rules! define_property_value {
         BackgroundBlendMode, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            modes
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, modes);
     };
     (
         Isolation, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            isolation
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, isolation);
     };
     (
         MixBlendMode, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            mode
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, mode);
     };
     (
         FontFamily, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2068,19 +1701,13 @@ macro_rules! define_property_value {
         Font, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            CssFontValue,
-            font
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssFontValue, font);
     };
     (
         FontVariant, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2092,7 +1719,7 @@ macro_rules! define_property_value {
         FontVariantCaps, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2104,7 +1731,7 @@ macro_rules! define_property_value {
         FontVariantEastAsian, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2116,7 +1743,7 @@ macro_rules! define_property_value {
         FontVariantLigatures, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2128,7 +1755,7 @@ macro_rules! define_property_value {
         FontVariantNumeric, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2140,7 +1767,7 @@ macro_rules! define_property_value {
         FontVariantPosition, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2152,7 +1779,7 @@ macro_rules! define_property_value {
         FontVariantAlternates, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2164,7 +1791,7 @@ macro_rules! define_property_value {
         FontVariantEmoji, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2176,7 +1803,7 @@ macro_rules! define_property_value {
         FontFeatureSettings, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2188,7 +1815,7 @@ macro_rules! define_property_value {
         FontKerning, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2200,7 +1827,7 @@ macro_rules! define_property_value {
         FontSizeAdjust, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2212,7 +1839,7 @@ macro_rules! define_property_value {
         FontSynthesis, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2224,7 +1851,7 @@ macro_rules! define_property_value {
         GridTemplateRows, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2236,7 +1863,7 @@ macro_rules! define_property_value {
         GridTemplateColumns, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2248,7 +1875,7 @@ macro_rules! define_property_value {
         GridAutoRows, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2260,7 +1887,7 @@ macro_rules! define_property_value {
         GridAutoColumns, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2272,7 +1899,7 @@ macro_rules! define_property_value {
         GridTemplate, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2284,13 +1911,7 @@ macro_rules! define_property_value {
         Grid, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            CssGrid,
-            value
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssGrid, value);
     };
     (
         Color, $canonical:literal, $value:ty, $wrapper:ident,
@@ -2617,7 +2238,7 @@ macro_rules! define_property_value {
         BorderImageOutset, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2629,7 +2250,7 @@ macro_rules! define_property_value {
         BorderImageRepeat, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2641,7 +2262,7 @@ macro_rules! define_property_value {
         BorderImageSlice, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2653,7 +2274,7 @@ macro_rules! define_property_value {
         BorderImageSource, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2665,7 +2286,7 @@ macro_rules! define_property_value {
         BorderImageWidth, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2677,7 +2298,7 @@ macro_rules! define_property_value {
         ImageOrientation, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2689,7 +2310,7 @@ macro_rules! define_property_value {
         ImageRendering, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -2701,13 +2322,7 @@ macro_rules! define_property_value {
         ObjectFit, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            CssObjectFit,
-            fit
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssObjectFit, fit);
     };
     (
         MaskImage, $canonical:literal, $value:ty, $wrapper:ident,
@@ -2985,110 +2600,168 @@ macro_rules! define_property_value {
         TransitionTimingFunction, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_easing_property_value!($canonical, $wrapper, $representation);
+        define_semantic_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssEasingList,
+            timing_functions
+        );
     };
     (
         AnimationTimingFunction, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_easing_property_value!($canonical, $wrapper, $representation);
+        define_semantic_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssEasingList,
+            timing_functions
+        );
     };
     (
         TransitionDuration, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
             CssDurationList,
-            CssTimeList,
-            durations,
-            duration_list_i01_projection
+            durations
         );
     };
     (
         TransitionDelay, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
             CssDelayList,
-            CssTimeList,
-            delays,
-            delay_list_i01_projection
+            delays
         );
     };
     (
         AnimationDuration, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
             CssDurationList,
-            CssTimeList,
-            durations,
-            duration_list_i01_projection
+            durations
         );
     };
     (
         AnimationDelay, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
             CssDelayList,
-            CssTimeList,
-            delays,
-            delay_list_i01_projection
+            delays
         );
     };
     (
         AnimationIterationCount, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
-            CssAnimationIterationValueList,
             CssAnimationIterationCountList,
-            iteration_counts,
-            iteration_list_i01_projection
+            iteration_counts
         );
     };
     (
         Transition, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
-            CssTransitionValueList,
             CssTransitionList,
-            transitions,
-            transition_list_i01_projection
+            transitions
         );
     };
     (
         Animation, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
-            CssAnimationValueList,
             CssAnimationList,
-            animations,
-            animation_list_i01_projection
+            animations
+        );
+    };
+    (
+        TransitionProperty, $canonical:literal, $value:ty, $wrapper:ident,
+        $representation:ident
+    ) => {
+        define_semantic_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssTransitionPropertyList,
+            properties
+        );
+    };
+    (
+        AnimationName, $canonical:literal, $value:ty, $wrapper:ident,
+        $representation:ident
+    ) => {
+        define_semantic_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssAnimationNameList,
+            names
+        );
+    };
+    (
+        AnimationDirection, $canonical:literal, $value:ty, $wrapper:ident,
+        $representation:ident
+    ) => {
+        define_semantic_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssAnimationDirectionList,
+            directions
+        );
+    };
+    (
+        AnimationFillMode, $canonical:literal, $value:ty, $wrapper:ident,
+        $representation:ident
+    ) => {
+        define_semantic_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssAnimationFillModeList,
+            fill_modes
+        );
+    };
+    (
+        AnimationPlayState, $canonical:literal, $value:ty, $wrapper:ident,
+        $representation:ident
+    ) => {
+        define_semantic_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssAnimationPlayStateList,
+            play_states
         );
     };
     (
@@ -3226,7 +2899,7 @@ macro_rules! define_property_value {
         FlowTolerance, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -3237,51 +2910,27 @@ macro_rules! define_property_value {
     (
         GridRowStart, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            CssGridLine,
-            value
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssGridLine, value);
     };
     (
         GridRowEnd, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            CssGridLine,
-            value
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssGridLine, value);
     };
     (
         GridColumnStart, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            CssGridLine,
-            value
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssGridLine, value);
     };
     (
         GridColumnEnd, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            CssGridLine,
-            value
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssGridLine, value);
     };
     (
         GridRow, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -3292,7 +2941,7 @@ macro_rules! define_property_value {
     (
         GridColumn, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -3303,16 +2952,10 @@ macro_rules! define_property_value {
     (
         GridArea, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident
     ) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            CssGridArea,
-            value
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssGridArea, value);
     };
     (GridAutoFlow, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -3321,7 +2964,7 @@ macro_rules! define_property_value {
         );
     };
     (GridTemplateAreas, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -3504,7 +3147,7 @@ macro_rules! define_expansion_current_accessor {
 macro_rules! define_property_value_from_schema {
     (FontLanguageOverride, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
         longhand { wrapper: additive, $($metadata:tt)* }) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -3514,7 +3157,7 @@ macro_rules! define_property_value_from_schema {
     };
     (FontOpticalSizing, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
         longhand { wrapper: additive, $($metadata:tt)* }) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -3524,7 +3167,7 @@ macro_rules! define_property_value_from_schema {
     };
     (FontVariationSettings, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
         longhand { wrapper: additive, $($metadata:tt)* }) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -3534,7 +3177,7 @@ macro_rules! define_property_value_from_schema {
     };
     (LineHeight, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
         longhand { wrapper: additive, $($metadata:tt)* }) => {
-        define_additive_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
@@ -3544,13 +3187,7 @@ macro_rules! define_property_value_from_schema {
     };
     (FontSize, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
         longhand { wrapper: additive, $($metadata:tt)* }) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            CssFontSize,
-            size
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssFontSize, size);
     };
     (BorderBlockStartColor, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
         longhand { wrapper: additive, $($metadata:tt)* }) => {
@@ -3570,33 +3207,15 @@ macro_rules! define_property_value_from_schema {
     };
     ($variant:ident, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
         longhand { wrapper: additive, $($metadata:tt)* }) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            current
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, current);
     };
     ($variant:ident, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
         shorthand { wrapper: additive, $($metadata:tt)* }) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            current
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, current);
     };
     ($variant:ident, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
         unresolved { wrapper: additive, $($metadata:tt)* }) => {
-        define_additive_current_property_value!(
-            $canonical,
-            $wrapper,
-            $representation,
-            $value,
-            current
-        );
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, current);
     };
     ($variant:ident, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident
         $(, $kind:ident { $($metadata:tt)* })?) => {

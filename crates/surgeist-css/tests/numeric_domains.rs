@@ -1,12 +1,12 @@
 use surgeist_css::{
-    CssAnimationIterationCount, CssAnimationIterationNumber, CssAspectRatio, CssComponentValue,
-    CssErrorCode, CssFiniteNumber, CssFlexFactor, CssFlowTolerance, CssFlowToleranceRef,
-    CssFontObliqueAngle, CssFontSizeAdjust, CssFontWeightNumber, CssGridRepeatInteger,
-    CssKeyframePercent, CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssLengthDimension,
-    CssLengthUnit, CssNonNegativeNumber, CssOpacity, CssOpacityScalarKind, CssOpacityValue,
-    CssRatio, CssRecoveryAction, CssResolution, CssResolutionUnit, CssRule, CssScaleValues,
-    CssSpecifiedNonNegativeNumber, CssTime, CssTimeUnit, CssTokenKind, ErrorKind, parse_sheet,
-    parse_style_attribute,
+    CssAnimationIterationNumber, CssAspectRatio, CssComponentValue, CssDelayLiteral,
+    CssDurationLiteral, CssErrorCode, CssFiniteNumber, CssFlexFactor, CssFlowTolerance,
+    CssFlowToleranceRef, CssFontObliqueAngle, CssFontSizeAdjust, CssFontWeightNumber,
+    CssGridRepeatInteger, CssKeyframePercent, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLength, CssLengthDimension, CssLengthUnit, CssNonNegativeNumber, CssOpacity,
+    CssOpacityScalarKind, CssOpacityValue, CssRatio, CssRecoveryAction, CssResolution,
+    CssResolutionUnit, CssRule, CssScaleValues, CssSpecifiedNonNegativeNumber, CssTimeUnit,
+    CssTokenKind, ErrorKind, parse_sheet, parse_style_attribute,
 };
 
 #[test]
@@ -25,9 +25,12 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         assert_eq!(CssLengthDimension::try_new(value, CssLengthUnit::Rem), None);
         assert_eq!(CssScaleValues::try_new(vec![value]), None);
         assert_eq!(CssResolution::try_new(value, CssResolutionUnit::Dppx), None);
-        assert_eq!(CssTime::try_new(value, CssTimeUnit::Seconds), None);
+        assert_eq!(
+            CssDurationLiteral::try_new(value, CssTimeUnit::Seconds),
+            None
+        );
+        assert_eq!(CssDelayLiteral::try_new(value, CssTimeUnit::Seconds), None);
         assert_eq!(CssAnimationIterationNumber::try_new(value), None);
-        assert_eq!(CssAnimationIterationCount::try_number(value), None);
     }
 
     for invalid in ["-90.1deg", "90.1deg", "0"] {
@@ -85,7 +88,12 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         "1000"
     );
     assert_eq!(CssGridRepeatInteger::try_new(1).unwrap().value(), 1);
-    assert_eq!(CssTime::try_seconds(0.0).unwrap().value(), 0.0);
+    assert_eq!(
+        CssDurationLiteral::try_new(0.0, CssTimeUnit::Seconds)
+            .unwrap()
+            .value(),
+        0.0
+    );
     assert_eq!(
         CssAnimationIterationNumber::try_new(f32::MAX)
             .unwrap()

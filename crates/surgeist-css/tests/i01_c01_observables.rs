@@ -3461,6 +3461,201 @@ fn assert_known_property_value(
         }
         _ => {}
     }
+    // Frozen timing Debug payloads are archival observations. Assert the selected
+    // typed semantics of each captured ordinary timing declaration directly.
+    use surgeist_css::{
+        CssAnimationDirection as Direction, CssAnimationFillMode as Fill,
+        CssAnimationIterationCount as Iteration, CssAnimationName as Name,
+        CssAnimationPlayState as Play, CssDelay, CssDuration, CssEasing,
+        CssEasingKeyword as Keyword, CssTimeUnit as Unit,
+        CssTransitionProperty as TransitionPropertyValue,
+    };
+    let timing_authored = match (property, value) {
+        (
+            surgeist_css::CssKnownProperty::TransitionProperty,
+            surgeist_css::CssKnownPropertyValueRef::TransitionProperty(value),
+        ) => {
+            let [
+                TransitionPropertyValue::Custom(a),
+                TransitionPropertyValue::Custom(b),
+            ] = value.properties().properties()
+            else {
+                panic!("captured transition properties");
+            };
+            assert_eq!((a.as_str(), b.as_str()), ("opacity", "transform"));
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::TransitionDuration,
+            surgeist_css::CssKnownPropertyValueRef::TransitionDuration(value),
+        ) => {
+            assert!(matches!(value.durations().values(),
+                [CssDuration::Literal(a), CssDuration::Literal(b)]
+                if a.value() == 150.0 && a.unit() == Unit::Milliseconds
+                    && b.value() == 2.0 && b.unit() == Unit::Seconds));
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::TransitionDelay,
+            surgeist_css::CssKnownPropertyValueRef::TransitionDelay(value),
+        ) => {
+            assert!(matches!(value.delays().values(), [CssDelay::Literal(a)]
+                if a.value() == 20.0 && a.unit() == Unit::Milliseconds));
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::TransitionTimingFunction,
+            surgeist_css::CssKnownPropertyValueRef::TransitionTimingFunction(value),
+        ) => {
+            let [
+                CssEasing::Keyword(Keyword::EaseIn),
+                CssEasing::CubicBezier(bezier),
+            ] = value.timing_functions().values()
+            else {
+                panic!("captured transition easings");
+            };
+            use surgeist_css::CssEasingNumber::Literal;
+            assert!(matches!(bezier.x1().value(), Literal(x) if x.value() == 0.1));
+            assert!(matches!(bezier.y1(), Literal(y) if y.value() == 0.2));
+            assert!(matches!(bezier.x2().value(), Literal(x) if x.value() == 0.3));
+            assert!(matches!(bezier.y2(), Literal(y) if y.value() == 1.0));
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::Transition,
+            surgeist_css::CssKnownPropertyValueRef::Transition(value),
+        ) => {
+            let [first, second] = value.transitions().values() else {
+                panic!("two captured transitions");
+            };
+            assert!(
+                matches!(first.property(), Some(TransitionPropertyValue::Custom(name)) if name.as_str() == "opacity")
+            );
+            assert!(
+                matches!(first.duration(), Some(CssDuration::Literal(t)) if t.value() == 150.0 && t.unit() == Unit::Milliseconds)
+            );
+            assert!(
+                matches!(first.delay(), Some(CssDelay::Literal(t)) if t.value() == 20.0 && t.unit() == Unit::Milliseconds)
+            );
+            assert!(matches!(
+                first.timing_function(),
+                Some(CssEasing::Keyword(Keyword::EaseIn))
+            ));
+            assert!(
+                matches!(second.property(), Some(TransitionPropertyValue::Custom(name)) if name.as_str() == "transform")
+            );
+            assert!(
+                matches!(second.duration(), Some(CssDuration::Literal(t)) if t.value() == 2.0 && t.unit() == Unit::Seconds)
+            );
+            assert!(second.delay().is_none());
+            assert!(matches!(
+                second.timing_function(),
+                Some(CssEasing::Keyword(Keyword::Linear))
+            ));
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::AnimationName,
+            surgeist_css::CssKnownPropertyValueRef::AnimationName(value),
+        ) => {
+            assert!(
+                matches!(value.names().names(), [Name::Custom(name), Name::None] if name.as_str() == "fade")
+            );
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::AnimationDuration,
+            surgeist_css::CssKnownPropertyValueRef::AnimationDuration(value),
+        ) => {
+            assert!(
+                matches!(value.durations().values(), [CssDuration::Literal(t)] if t.value() == 1.0 && t.unit() == Unit::Seconds)
+            );
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::AnimationDelay,
+            surgeist_css::CssKnownPropertyValueRef::AnimationDelay(value),
+        ) => {
+            assert!(
+                matches!(value.delays().values(), [CssDelay::Literal(t)] if t.value() == 200.0 && t.unit() == Unit::Milliseconds)
+            );
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::AnimationTimingFunction,
+            surgeist_css::CssKnownPropertyValueRef::AnimationTimingFunction(value),
+        ) => {
+            assert!(matches!(
+                value.timing_functions().values(),
+                [CssEasing::Keyword(Keyword::EaseOut)]
+            ));
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::AnimationIterationCount,
+            surgeist_css::CssKnownPropertyValueRef::AnimationIterationCount(value),
+        ) => {
+            assert!(
+                matches!(value.iteration_counts().values(), [Iteration::Number(n), Iteration::Infinite] if n.value() == 2.0)
+            );
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::AnimationDirection,
+            surgeist_css::CssKnownPropertyValueRef::AnimationDirection(value),
+        ) => {
+            assert_eq!(value.directions().directions(), &[Direction::Alternate]);
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::AnimationFillMode,
+            surgeist_css::CssKnownPropertyValueRef::AnimationFillMode(value),
+        ) => {
+            assert_eq!(value.fill_modes().modes(), &[Fill::Both]);
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::AnimationPlayState,
+            surgeist_css::CssKnownPropertyValueRef::AnimationPlayState(value),
+        ) => {
+            assert_eq!(value.play_states().states(), &[Play::Running, Play::Paused]);
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::Animation,
+            surgeist_css::CssKnownPropertyValueRef::Animation(value),
+        ) => {
+            let [item] = value.animations().values() else {
+                panic!("one captured animation");
+            };
+            assert!(matches!(item.name(), Some(Name::Custom(name)) if name.as_str() == "fade"));
+            assert!(
+                matches!(item.duration(), Some(CssDuration::Literal(t)) if t.value() == 1.0 && t.unit() == Unit::Seconds)
+            );
+            assert!(
+                matches!(item.delay(), Some(CssDelay::Literal(t)) if t.value() == 200.0 && t.unit() == Unit::Milliseconds)
+            );
+            assert!(matches!(
+                item.timing_function(),
+                Some(CssEasing::Keyword(Keyword::EaseIn))
+            ));
+            assert!(
+                matches!(item.iteration_count(), Some(Iteration::Number(n)) if n.value() == 3.0)
+            );
+            assert_eq!(item.direction(), Some(Direction::Alternate));
+            assert_eq!(item.fill_mode(), Some(Fill::Both));
+            assert_eq!(item.play_state(), Some(Play::Running));
+            Some(value.as_css())
+        }
+        _ => None,
+    };
+    if let Some(css) = timing_authored {
+        assert_eq!(authored.id, property.stable_id());
+        assert_eq!(authored.value_capability, "deferred-i01");
+        assert_eq!(css, authored.value);
+        assert!(semantic.is_some_and(|item| item.id == property.stable_id()));
+        return;
+    }
     // The archive keeps the old Debug payload. Assert each captured Grid value
     // against the authored model's branch and independently fixed constituents.
     use surgeist_css::{
@@ -3880,20 +4075,6 @@ fn assert_known_property_value(
             MaskSize,
             MaskPosition,
             MaskRepeat,
-            TransitionProperty,
-            TransitionDuration,
-            TransitionDelay,
-            TransitionTimingFunction,
-            Transition,
-            AnimationName,
-            AnimationDuration,
-            AnimationDelay,
-            AnimationTimingFunction,
-            AnimationIterationCount,
-            AnimationDirection,
-            AnimationFillMode,
-            AnimationPlayState,
-            Animation,
     );
 }
 fn global_keyword_css(keyword: surgeist_css::CssGlobalKeyword) -> &'static str {

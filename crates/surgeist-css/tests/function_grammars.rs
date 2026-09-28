@@ -1,11 +1,11 @@
 use surgeist_css::{
     CssBasicShapeValue, CssBoxShadow, CssCircleRadius, CssClipPathPropertyValue, CssClipPathValue,
-    CssCubicBezier, CssDropShadow, CssEasingKeyword, CssEasingNumber, CssEasingValue,
-    CssEasingValueList, CssEllipseRadius, CssErrorCode, CssFilterAmount, CssFilterAngle,
-    CssFilterBlur, CssFilterFunctionValue, CssFilterFunctionValueList, CssFilterNumber,
-    CssFilterPercentage, CssFilterPropertyValue, CssFilterValue, CssFiniteNumber,
-    CssHorizontalPosition, CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
-    CssLength, CssPolygonFillRule, CssRadialExtent, CssRecoveryAction, CssShapeLength,
+    CssCubicBezier, CssDropShadow, CssEasing, CssEasingKeyword, CssEasingList, CssEasingNumber,
+    CssEllipseRadius, CssErrorCode, CssFilterAmount, CssFilterAngle, CssFilterBlur,
+    CssFilterFunctionValue, CssFilterFunctionValueList, CssFilterNumber, CssFilterPercentage,
+    CssFilterPropertyValue, CssFilterValue, CssFiniteNumber, CssHorizontalPosition,
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
+    CssPolygonFillRule, CssRadialExtent, CssRecoveryAction, CssShapeLength,
     CssShapeLengthPercentage, CssStepCount, CssStepPosition, CssSteps, CssTransform,
     CssTransformAngle, CssTransformFunctionKind, CssTransformFunctionValue,
     CssTransformFunctionValueList, CssTransformLength, CssTransformLengthPercentage,
@@ -736,21 +736,21 @@ fn easing_functions_reject_out_of_range_x_and_invalid_jump_none_count() {
 }
 
 #[test]
-fn every_easing_keyword_and_alias_is_a_distinct_current_branch() {
+fn every_easing_keyword_and_alias_is_a_distinct_branch() {
     let property = parsed_easing_property(
         "ease, linear, ease-in, ease-out, ease-in-out, step-start, step-end",
     );
-    let values = property.current().values();
+    let values = property.timing_functions().values();
     assert!(matches!(
         values,
         [
-            CssEasingValue::Keyword(CssEasingKeyword::Ease),
-            CssEasingValue::Keyword(CssEasingKeyword::Linear),
-            CssEasingValue::Keyword(CssEasingKeyword::EaseIn),
-            CssEasingValue::Keyword(CssEasingKeyword::EaseOut),
-            CssEasingValue::Keyword(CssEasingKeyword::EaseInOut),
-            CssEasingValue::Keyword(CssEasingKeyword::StepStart),
-            CssEasingValue::Keyword(CssEasingKeyword::StepEnd),
+            CssEasing::Keyword(CssEasingKeyword::Ease),
+            CssEasing::Keyword(CssEasingKeyword::Linear),
+            CssEasing::Keyword(CssEasingKeyword::EaseIn),
+            CssEasing::Keyword(CssEasingKeyword::EaseOut),
+            CssEasing::Keyword(CssEasingKeyword::EaseInOut),
+            CssEasing::Keyword(CssEasingKeyword::StepStart),
+            CssEasing::Keyword(CssEasingKeyword::StepEnd),
         ]
     ));
 }
@@ -761,11 +761,10 @@ fn cubic_bezier_coordinates_are_typed_and_keep_symbolic_number_math() {
         "cubic-bezier(0, -20, 1, 30), ",
         "cubic-bezier(calc(0 + .25), calc(-1 - 2), calc(1 - .25), calc(2 * 3))"
     ));
-    assert!(property.i01_subset().is_none());
     let [
-        CssEasingValue::CubicBezier(literal),
-        CssEasingValue::CubicBezier(symbolic),
-    ] = property.current().values()
+        CssEasing::CubicBezier(literal),
+        CssEasing::CubicBezier(symbolic),
+    ] = property.timing_functions().values()
     else {
         panic!("expected two typed cubic-bezier values");
     };
@@ -807,8 +806,7 @@ fn every_steps_position_is_typed_and_jump_none_keeps_its_count_rule() {
         "steps(2, jump-none), steps(1, jump-both), steps(1, start), steps(1, end), ",
         "steps(calc(1 + 1), jump-none)"
     ));
-    assert!(property.i01_subset().is_none());
-    let values = property.current().values();
+    let values = property.timing_functions().values();
     let expected_positions = [
         None,
         Some(CssStepPosition::JumpStart),
@@ -819,12 +817,12 @@ fn every_steps_position_is_typed_and_jump_none_keeps_its_count_rule() {
         Some(CssStepPosition::End),
     ];
     for (value, expected_position) in values[..7].iter().zip(expected_positions) {
-        let CssEasingValue::Steps(steps) = value else {
+        let CssEasing::Steps(steps) = value else {
             panic!("expected typed steps value");
         };
         assert_eq!(steps.position(), expected_position);
     }
-    let CssEasingValue::Steps(symbolic) = &values[7] else {
+    let CssEasing::Steps(symbolic) = &values[7] else {
         panic!("expected symbolic typed steps value");
     };
     assert!(symbolic.count().calculation().is_some());
@@ -833,7 +831,7 @@ fn every_steps_position_is_typed_and_jump_none_keeps_its_count_rule() {
     assert!(CssSteps::try_new(one, Some(CssStepPosition::JumpNone)).is_none());
     assert!(CssStepCount::try_literal(0).is_none());
     assert!(CssStepCount::try_literal(-1).is_none());
-    assert!(CssEasingValueList::try_new(Vec::new()).is_none());
+    assert!(CssEasingList::try_new(Vec::new()).is_none());
 }
 
 #[test]

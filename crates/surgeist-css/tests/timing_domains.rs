@@ -1,8 +1,8 @@
 use surgeist_css::{
-    CssAnimationDirection, CssAnimationFillMode, CssAnimationIterationNumber,
-    CssAnimationIterationValue, CssAnimationIterationValueList, CssAnimationName,
+    CssAnimationDirection, CssAnimationFillMode, CssAnimationIterationCount,
+    CssAnimationIterationCountList, CssAnimationIterationNumber, CssAnimationName,
     CssAnimationPlayState, CssCalculationExpressionRef, CssCalculationType, CssDelay, CssDelayList,
-    CssDelayLiteral, CssDuration, CssDurationList, CssDurationLiteral, CssEasing, CssEasingValue,
+    CssDelayLiteral, CssDuration, CssDurationList, CssDurationLiteral, CssEasing, CssEasingKeyword,
     CssErrorCode, CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction, CssSourcePosition,
     CssStepPosition, CssTimeUnit, CssTokenKind, CssTransitionProperty, ErrorKind,
     parse_style_attribute,
@@ -155,17 +155,17 @@ fn iteration_values_check_literals_and_keep_infinite_and_calculation_branches() 
     }
     let number = CssAnimationIterationNumber::try_new(2.5).expect("finite iteration number");
     assert_eq!(number.value(), 2.5);
-    assert!(CssAnimationIterationValueList::try_new(Vec::new()).is_none());
-    let values = CssAnimationIterationValueList::try_new(vec![
-        CssAnimationIterationValue::Infinite,
-        CssAnimationIterationValue::Number(number),
+    assert!(CssAnimationIterationCountList::try_new(Vec::new()).is_none());
+    let values = CssAnimationIterationCountList::try_new(vec![
+        CssAnimationIterationCount::Infinite,
+        CssAnimationIterationCount::Number(number),
     ])
     .expect("non-empty iteration list");
     assert_eq!(values.values().len(), 2);
 }
 
 #[test]
-fn timing_longhands_expose_exact_current_values_and_lossy_i01_boundaries() {
+fn timing_longhands_expose_exact_typed_values() {
     let report = parse_style_attribute(concat!(
         "transition-duration: 1s, calc((2ms + 3ms) * 2); ",
         "transition-delay: -1s, 2ms; ",
@@ -200,7 +200,6 @@ fn timing_longhands_expose_exact_current_values_and_lossy_i01_boundaries() {
         root.operand(),
         CssCalculationExpressionRef::Product(_)
     ));
-    assert!(value.i01_subset().is_none());
 
     let CssKnownPropertyValueRef::TransitionDelay(value) = report.syntax()[1]
         .known()
@@ -216,7 +215,6 @@ fn timing_longhands_expose_exact_current_values_and_lossy_i01_boundaries() {
             if literal.value() == -1.0 && literal.unit() == CssTimeUnit::Seconds
     ));
     assert!(matches!(value.delays().values()[1], CssDelay::Literal(_)));
-    assert!(value.i01_subset().is_none());
 
     let CssKnownPropertyValueRef::AnimationDuration(value) = report.syntax()[2]
         .known()
@@ -231,7 +229,6 @@ fn timing_longhands_expose_exact_current_values_and_lossy_i01_boundaries() {
         value.durations().values()[1],
         CssDuration::Calculation(_)
     ));
-    assert!(value.i01_subset().is_none());
 
     let CssKnownPropertyValueRef::AnimationDelay(value) = report.syntax()[3]
         .known()
@@ -249,7 +246,6 @@ fn timing_longhands_expose_exact_current_values_and_lossy_i01_boundaries() {
         value.delays().values()[1],
         CssDelay::Literal(literal) if literal.value() == -4.0
     ));
-    assert!(value.i01_subset().is_none());
 
     let CssKnownPropertyValueRef::AnimationIterationCount(value) = report.syntax()[4]
         .known()
@@ -260,20 +256,19 @@ fn timing_longhands_expose_exact_current_values_and_lossy_i01_boundaries() {
         panic!("expected animation-iteration-count wrapper");
     };
     let values = value.iteration_counts().values();
-    assert!(matches!(values[0], CssAnimationIterationValue::Infinite));
+    assert!(matches!(values[0], CssAnimationIterationCount::Infinite));
     assert!(matches!(
         values[1],
-        CssAnimationIterationValue::Number(number) if number.value() == 2.5
+        CssAnimationIterationCount::Number(number) if number.value() == 2.5
     ));
     assert!(matches!(
         values[2],
-        CssAnimationIterationValue::Calculation(_)
+        CssAnimationIterationCount::Calculation(_)
     ));
-    assert!(value.i01_subset().is_none());
 }
 
 #[test]
-fn positive_i01_timing_inputs_keep_exact_compatibility_debug_observables() {
+fn ordinary_timing_inputs_retain_each_typed_component() {
     let report = parse_style_attribute(concat!(
         "transition-duration: 1s, 2ms; transition-delay: 3s; ",
         "animation-duration: 4ms; animation-delay: 5s; ",
@@ -282,50 +277,82 @@ fn positive_i01_timing_inputs_keep_exact_compatibility_debug_observables() {
         "animation: fade 3s linear 2 4ms reverse both paused"
     ));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-
-    let values: Vec<String> = report
+    assert_eq!(report.syntax().len(), 7);
+    let values: Vec<_> = report
         .syntax()
         .iter()
-        .map(|declaration| {
-            let value = declaration.known().unwrap().property_value().unwrap();
-            match value {
-                CssKnownPropertyValueRef::TransitionDuration(value) => {
-                    format!("{:?}", value.i01_subset().unwrap())
-                }
-                CssKnownPropertyValueRef::TransitionDelay(value) => {
-                    format!("{:?}", value.i01_subset().unwrap())
-                }
-                CssKnownPropertyValueRef::AnimationDuration(value) => {
-                    format!("{:?}", value.i01_subset().unwrap())
-                }
-                CssKnownPropertyValueRef::AnimationDelay(value) => {
-                    format!("{:?}", value.i01_subset().unwrap())
-                }
-                CssKnownPropertyValueRef::AnimationIterationCount(value) => {
-                    format!("{:?}", value.i01_subset().unwrap())
-                }
-                CssKnownPropertyValueRef::Transition(value) => {
-                    format!("{:?}", value.i01_subset().unwrap())
-                }
-                CssKnownPropertyValueRef::Animation(value) => {
-                    format!("{:?}", value.i01_subset().unwrap())
-                }
-                _ => panic!("unexpected timing wrapper"),
-            }
-        })
+        .map(|declaration| declaration.known().unwrap().property_value().unwrap())
         .collect();
-    assert_eq!(
-        values,
-        [
-            "CssTimeList { times: [CssTime { value: 1.0, unit: Seconds }, CssTime { value: 2.0, unit: Milliseconds }] }",
-            "CssTimeList { times: [CssTime { value: 3.0, unit: Seconds }] }",
-            "CssTimeList { times: [CssTime { value: 4.0, unit: Milliseconds }] }",
-            "CssTimeList { times: [CssTime { value: 5.0, unit: Seconds }] }",
-            "CssAnimationIterationCountList { counts: [Infinite, Number(CssAnimationIterationNumber { value: 2.0 })] }",
-            "CssTransitionList { items: [CssTransition { property: Some(Custom(CssCustomIdent { value: \"opacity\" })), duration: Some(CssTime { value: 1.0, unit: Seconds }), delay: Some(CssTime { value: 2.0, unit: Milliseconds }), timing_function: Some(Ease) }] }",
-            "CssAnimationList { items: [CssAnimation { name: Some(Custom(CssCustomIdent { value: \"fade\" })), duration: Some(CssTime { value: 3.0, unit: Seconds }), delay: Some(CssTime { value: 4.0, unit: Milliseconds }), timing_function: Some(Linear), iteration_count: Some(Number(CssAnimationIterationNumber { value: 2.0 })), direction: Some(Reverse), fill_mode: Some(Both), play_state: Some(Paused) }] }",
-        ]
+    let CssKnownPropertyValueRef::TransitionDuration(duration) = values[0] else {
+        panic!("transition duration");
+    };
+    assert!(matches!(duration.durations().values(), [
+        CssDuration::Literal(first), CssDuration::Literal(second)
+    ] if first.value() == 1.0 && first.unit() == CssTimeUnit::Seconds
+        && second.value() == 2.0 && second.unit() == CssTimeUnit::Milliseconds));
+    let CssKnownPropertyValueRef::TransitionDelay(delay) = values[1] else {
+        panic!("transition delay");
+    };
+    assert!(matches!(delay.delays().values(), [CssDelay::Literal(value)]
+        if value.value() == 3.0 && value.unit() == CssTimeUnit::Seconds));
+    let CssKnownPropertyValueRef::AnimationDuration(duration) = values[2] else {
+        panic!("animation duration");
+    };
+    assert!(
+        matches!(duration.durations().values(), [CssDuration::Literal(value)]
+        if value.value() == 4.0 && value.unit() == CssTimeUnit::Milliseconds)
     );
+    let CssKnownPropertyValueRef::AnimationDelay(delay) = values[3] else {
+        panic!("animation delay");
+    };
+    assert!(matches!(delay.delays().values(), [CssDelay::Literal(value)]
+        if value.value() == 5.0 && value.unit() == CssTimeUnit::Seconds));
+    let CssKnownPropertyValueRef::AnimationIterationCount(counts) = values[4] else {
+        panic!("iteration counts");
+    };
+    assert!(matches!(counts.iteration_counts().values(), [
+        CssAnimationIterationCount::Infinite, CssAnimationIterationCount::Number(value)
+    ] if value.value() == 2.0));
+    let CssKnownPropertyValueRef::Transition(transition) = values[5] else {
+        panic!("transition");
+    };
+    let [transition] = transition.transitions().values() else {
+        panic!("one transition");
+    };
+    assert!(
+        matches!(transition.property(), Some(CssTransitionProperty::Custom(name)) if name.as_str() == "opacity")
+    );
+    assert!(
+        matches!(transition.duration(), Some(CssDuration::Literal(value)) if value.value() == 1.0)
+    );
+    assert!(matches!(transition.delay(), Some(CssDelay::Literal(value)) if value.value() == 2.0));
+    assert!(matches!(
+        transition.timing_function(),
+        Some(CssEasing::Keyword(CssEasingKeyword::Ease))
+    ));
+    let CssKnownPropertyValueRef::Animation(animation) = values[6] else {
+        panic!("animation");
+    };
+    let [animation] = animation.animations().values() else {
+        panic!("one animation");
+    };
+    assert!(
+        matches!(animation.name(), Some(CssAnimationName::Custom(name)) if name.as_str() == "fade")
+    );
+    assert!(
+        matches!(animation.duration(), Some(CssDuration::Literal(value)) if value.value() == 3.0)
+    );
+    assert!(matches!(animation.delay(), Some(CssDelay::Literal(value)) if value.value() == 4.0));
+    assert!(matches!(
+        animation.timing_function(),
+        Some(CssEasing::Keyword(CssEasingKeyword::Linear))
+    ));
+    assert!(
+        matches!(animation.iteration_count(), Some(CssAnimationIterationCount::Number(value)) if value.value() == 2.0)
+    );
+    assert_eq!(animation.direction(), Some(CssAnimationDirection::Reverse));
+    assert_eq!(animation.fill_mode(), Some(CssAnimationFillMode::Both));
+    assert_eq!(animation.play_state(), Some(CssAnimationPlayState::Paused));
 }
 
 #[test]
@@ -359,7 +386,7 @@ fn transition_shorthand_assigns_first_time_to_duration_and_second_to_signed_dela
     ));
     assert!(matches!(
         transitions[0].timing_function(),
-        Some(CssEasing::Ease)
+        Some(CssEasing::Keyword(CssEasingKeyword::Ease))
     ));
     assert!(matches!(
         transitions[1].duration(),
@@ -369,11 +396,10 @@ fn transition_shorthand_assigns_first_time_to_duration_and_second_to_signed_dela
         transitions[1].delay(),
         Some(CssDelay::Calculation(_))
     ));
-    assert!(value.i01_subset().is_none());
 }
 
 #[test]
-fn animation_shorthand_exposes_all_eight_current_components() {
+fn animation_shorthand_exposes_all_eight_components() {
     let report = parse_style_attribute(
         "animation: fade calc((1s + 2s) * 2) ease calc(-1s + 2s) calc((1 + 2) * 3) reverse both paused",
     );
@@ -395,15 +421,17 @@ fn animation_shorthand_exposes_all_eight_current_components() {
         Some(CssDuration::Calculation(_))
     ));
     assert!(matches!(animation.delay(), Some(CssDelay::Calculation(_))));
-    assert!(matches!(animation.timing_function(), Some(CssEasing::Ease)));
+    assert!(matches!(
+        animation.timing_function(),
+        Some(CssEasing::Keyword(CssEasingKeyword::Ease))
+    ));
     assert!(matches!(
         animation.iteration_count(),
-        Some(CssAnimationIterationValue::Calculation(_))
+        Some(CssAnimationIterationCount::Calculation(_))
     ));
     assert_eq!(animation.direction(), Some(CssAnimationDirection::Reverse));
     assert_eq!(animation.fill_mode(), Some(CssAnimationFillMode::Both));
     assert_eq!(animation.play_state(), Some(CssAnimationPlayState::Paused));
-    assert!(value.i01_subset().is_none());
 }
 
 #[test]
@@ -424,12 +452,12 @@ fn timing_shorthands_propagate_typed_cubic_and_step_values() {
         panic!("expected transition wrapper");
     };
     assert!(matches!(
-        transition.transitions().values()[0].current_timing_function(),
-        Some(CssEasingValue::CubicBezier(_))
+        transition.transitions().values()[0].timing_function(),
+        Some(CssEasing::CubicBezier(_))
     ));
     assert!(matches!(
-        transition.transitions().values()[1].current_timing_function(),
-        Some(CssEasingValue::Steps(steps))
+        transition.transitions().values()[1].timing_function(),
+        Some(CssEasing::Steps(steps))
             if steps.count().literal() == Some(2)
                 && steps.position() == Some(CssStepPosition::JumpNone)
     ));
@@ -443,14 +471,11 @@ fn timing_shorthands_propagate_typed_cubic_and_step_values() {
         panic!("expected animation wrapper");
     };
     assert!(matches!(
-        animation.animations().values()[0].current_timing_function(),
-        Some(CssEasingValue::Steps(steps))
+        animation.animations().values()[0].timing_function(),
+        Some(CssEasing::Steps(steps))
             if steps.count().literal() == Some(3)
                 && steps.position() == Some(CssStepPosition::JumpBoth)
     ));
-
-    assert!(transition.i01_subset().is_some());
-    assert!(animation.i01_subset().is_some());
 }
 
 #[test]
@@ -499,7 +524,10 @@ fn every_transition_component_order_preserves_first_time_and_second_time_domains
             "{source}",
         );
         assert!(
-            matches!(transition.timing_function(), Some(CssEasing::EaseIn)),
+            matches!(
+                transition.timing_function(),
+                Some(CssEasing::Keyword(CssEasingKeyword::EaseIn))
+            ),
             "{source}",
         );
 
@@ -560,11 +588,14 @@ fn every_animation_component_order_preserves_all_eight_typed_domains() {
             "{source}",
         );
         assert!(
-            matches!(animation.timing_function(), Some(CssEasing::EaseIn)),
+            matches!(
+                animation.timing_function(),
+                Some(CssEasing::Keyword(CssEasingKeyword::EaseIn))
+            ),
             "{source}",
         );
         assert!(
-            matches!(animation.iteration_count(), Some(CssAnimationIterationValue::Number(number)) if number.value() == 2.0),
+            matches!(animation.iteration_count(), Some(CssAnimationIterationCount::Number(number)) if number.value() == 2.0),
             "{source}",
         );
         assert_eq!(

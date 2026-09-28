@@ -265,13 +265,12 @@
 //!
 //! # Dedicated authored function grammars
 //!
-//! Current property accessors expose dedicated typed function families while
-//! `i01_subset()` remains the frozen compatibility view. Transform wrappers return
-//! [`CssTransformValue`], timing-function wrappers expose [`CssEasingValue`] lists,
-//! filter and backdrop-filter wrappers return [`CssFilterValue`], box-shadow returns
-//! [`CssBoxShadow`], and clip-path returns an optional [`CssClipPathValue`]. A current
-//! value can be valid when its I01 projection is `None`; compatibility data is not the
-//! current grammar.
+//! Property accessors expose dedicated typed function families. Timing-function
+//! wrappers expose the sole [`CssEasingList`] through `timing_functions()`.
+//! Transform wrappers return [`CssTransformValue`], filter and backdrop-filter
+//! wrappers return [`CssFilterValue`], box-shadow returns [`CssBoxShadow`], and
+//! clip-path returns an optional [`CssClipPathValue`]. Those other families
+//! retain their documented I01 projections independently of timing.
 //!
 //! ```
 //! use surgeist_css::{
@@ -502,13 +501,13 @@
 //! matching, fallback, shaping, cascade, substitution, computed values, and
 //! live CSSOM behavior belong to their downstream owners.
 //!
-//! # Timing domains and I01 compatibility
+//! # Authored timing domains
 //!
 //! Duration literals are finite and non-negative; delay literals are finite and signed. A range
 //! constraint that belongs to a literal is enforced immediately, while a well-typed calculation
-//! remains representable for later computed-value processing. Current property accessors expose
-//! those distinct domains. [`CssKnownDeclaration::property_value`] provides
-//! `i01_subset()` on the timing wrappers as the frozen compatibility view.
+//! remains representable for later computed-value processing. Property accessors expose
+//! those distinct domains directly. Checked [`CssTransition`] and [`CssAnimation`]
+//! constructors retain the same typed components as their property parsers.
 //!
 //! ```
 //! use surgeist_css::{
@@ -536,7 +535,6 @@
 //!     duration.durations().values()[0],
 //!     CssDuration::Calculation(_)
 //! ));
-//! assert!(duration.i01_subset().is_none());
 //!
 //! let CssKnownPropertyValueRef::TransitionDelay(delay) = report.syntax()[1]
 //!     .known()
@@ -551,20 +549,9 @@
 //!     CssDelay::Literal(value) if value.value() == -250.0
 //! ));
 //!
-//! let i01 = parse_style_attribute("transition-duration: 1s");
-//! let CssKnownPropertyValueRef::TransitionDuration(duration) = i01.syntax()[0]
-//!     .known()
-//!     .expect("known duration")
-//!     .property_value()
-//!     .expect("ordinary duration")
-//! else {
-//!     panic!("expected transition-duration");
-//! };
-//! assert!(duration.i01_subset().is_some());
 //! ```
 //!
-//! New signed-delay and typed-calculation syntax returns no I01 projection when the older payload
-//! cannot represent it. This crate owns authored timing syntax only; timeline evaluation and
+//! This crate owns authored timing syntax only; timeline evaluation and
 //! cross-crate lowering remain downstream responsibilities.
 //!
 //! # Namespaces and complete Selectors 3 syntax

@@ -132,7 +132,7 @@ fn c14_remaining_shared_values_are_typed() {
         panic!("expected animation-name");
     };
     assert!(matches!(
-        names.i01_subset().expect("I01 animation names").names(),
+        names.names().names(),
         [CssAnimationName::Custom(name)] if name.as_str() == "Main"
     ));
     let CssKnownPropertyValueRef::FontFamily(families) = values.syntax()[2]
