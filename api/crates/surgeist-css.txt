@@ -897,6 +897,9 @@ pub surgeist_css::CssContentValueItem::TargetText(surgeist_css::CssTargetText)
 pub surgeist_css::CssContentVisibility::Auto
 pub surgeist_css::CssContentVisibility::Hidden
 pub surgeist_css::CssContentVisibility::Visible
+impl surgeist_css::CssContentVisibility
+pub fn surgeist_css::CssContentVisibility::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssContentVisibility::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssContrastPreference
 pub surgeist_css::CssContrastPreference::Custom
 pub surgeist_css::CssContrastPreference::Less
@@ -2801,6 +2804,7 @@ pub surgeist_css::CssLonghandValueRef::ContainIntrinsicWidth(&'a surgeist_css::C
 pub surgeist_css::CssLonghandValueRef::ContainerName(&'a surgeist_css::CssContainerNames)
 pub surgeist_css::CssLonghandValueRef::ContainerType(&'a surgeist_css::CssContainerType)
 pub surgeist_css::CssLonghandValueRef::Content(&'a surgeist_css::CssContentValue)
+pub surgeist_css::CssLonghandValueRef::ContentVisibility(&'a surgeist_css::CssContentVisibility)
 pub surgeist_css::CssLonghandValueRef::CounterIncrement(&'a surgeist_css::CssCounterChangesValue)
 pub surgeist_css::CssLonghandValueRef::CounterReset(&'a surgeist_css::CssCounterChangesValue)
 pub surgeist_css::CssLonghandValueRef::CounterSet(&'a surgeist_css::CssCounterChangesValue)
@@ -5819,6 +5823,8 @@ pub struct surgeist_css::CssContentVisibilityPropertyValue
 impl surgeist_css::CssContentVisibilityPropertyValue
 pub fn surgeist_css::CssContentVisibilityPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssContentVisibilityPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssContentVisibility>
+impl surgeist_css::CssContentVisibilityPropertyValue
+pub const fn surgeist_css::CssContentVisibilityPropertyValue::current(&self) -> &surgeist_css::CssContentVisibility
 pub struct surgeist_css::CssCornerRadius
 impl surgeist_css::CssCornerRadius
 pub const fn surgeist_css::CssCornerRadius::horizontal(&self) -> &surgeist_css::CssLength

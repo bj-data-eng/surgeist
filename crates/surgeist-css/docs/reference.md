@@ -599,6 +599,20 @@ canonical byte count before allocating output. The selected definition is
 which supersedes CSS2 for this property. Layout, painting and interaction effects
 remain downstream.
 
+`content-visibility` follows the pinned
+[Containment 2 §4](https://www.w3.org/TR/2022/WD-css-contain-2-20220917/#content-visibility)
+authored grammar: exactly `visible`, `auto`, or `hidden`. It is a non-inherited
+longhand with intrinsic initial `visible`. `CssContentVisibilityPropertyValue`
+retains authored spelling through `as_css()` and exposes the checked enum through
+`current()`; its existing `i01_subset()` is exact for these three values.
+Ordinary declarations expand to one terminal contribution. CSS-wide keywords
+remain symbolic, and variable, environment, and attribute substitutions reenter
+the same whole-value grammar while retaining the original occurrence.
+`CssContentVisibility::serialize_specified()` emits one canonical keyword; its
+bounded variant charges one input node, one projection node, and exact output
+bytes. Skipped-content state, user relevance, used containment, layout, painting,
+and interaction need downstream context and are not decided by this authored API.
+
 Order is a non-inherited longhand with ordinary initial `CssIntegerValue::Literal(0)`.
 Its specified integer value expands to one contribution; normalization retains
 source order and does not sort declarations by their numeric values. Layout

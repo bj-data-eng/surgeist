@@ -1,8 +1,10 @@
-//! Current authored Display3 values and the selected standalone Grid3 extensions.
+//! Current authored Display3 and Containment2 visibility values, plus the
+//! selected standalone Grid3 extensions.
 
 use crate::specified_serialization::serialize_keyword_sequence;
 use crate::{
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits, CssVisibility,
+    CssContentVisibility, CssSpecifiedValueSerializationError,
+    CssSpecifiedValueSerializationLimits, CssVisibility,
 };
 
 /// The outer display type of an ordinary display value.
@@ -248,6 +250,28 @@ impl CssVisibility {
             Self::Visible => "visible",
             Self::Hidden => "hidden",
             Self::Collapse => "collapse",
+        };
+        serialize_keyword_sequence(text, limits)
+    }
+}
+
+impl CssContentVisibility {
+    /// Serializes the specified content-visibility keyword without deciding
+    /// whether contents are skipped or which containment applies at use time.
+    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Serializes atomically, charging one input node, one projection node,
+    /// and the exact output byte count. Authored input is never modified.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String, CssSpecifiedValueSerializationError> {
+        let text = match self {
+            Self::Visible => "visible",
+            Self::Hidden => "hidden",
+            Self::Auto => "auto",
         };
         serialize_keyword_sequence(text, limits)
     }

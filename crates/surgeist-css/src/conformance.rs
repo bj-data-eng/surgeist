@@ -4387,7 +4387,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 624] = [
         "content",
         "baseline.property.content"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::ContentVisibility,
         "content-visibility",
         "baseline.property.content-visibility"

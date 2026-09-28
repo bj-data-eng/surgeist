@@ -1,7 +1,8 @@
 #![forbid(unsafe_code)]
 //! Independent contract cases for the selected public metadata and grammar slice.
 //! CSS Box 3, Backgrounds 3, Cascade 5, Color 4, Fonts 4, Writing Modes 4,
-//! Variables 1, Conditional Rules 5, Display 3, Sizing 3/4, and the pinned Grid 3 define values and shorthand semantics.
+//! Variables 1, Conditional Rules 5, Display 3, Containment 2, Sizing 3/4,
+//! and the pinned Grid 3 define values and shorthand semantics.
 //! Grammar-handle identity, explicit unavailable metadata, and source occurrence
 //! retention are Surgeist public contracts. No contextual style is resolved.
 use surgeist_css::CssKnownProperty as P;
@@ -193,6 +194,7 @@ const LONGHANDS: &[P] = &[
     P::JustifySelf,
     P::AspectRatio,
     P::Visibility,
+    P::ContentVisibility,
     P::OverflowWrap,
     P::Direction,
     P::UnicodeBidi,
@@ -658,6 +660,9 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::WritingMode(v) => assert_eq!(v, &CssWritingMode::HorizontalTb),
         CssLonghandValueRef::TextCombineUpright(v) => assert_eq!(v, &CssTextCombineUpright::None),
         CssLonghandValueRef::Visibility(v) => assert_eq!(v, &CssVisibility::Visible),
+        CssLonghandValueRef::ContentVisibility(v) => {
+            assert_eq!(v, &CssContentVisibility::Visible)
+        }
         CssLonghandValueRef::Order(v) => assert_eq!(v, &CssIntegerValue::Literal(0)),
         CssLonghandValueRef::AspectRatio(v) => {
             assert!(matches!(v, CssAspectRatioValue::Auto));
@@ -833,7 +838,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 237);
+    assert_eq!(expected.len(), 238);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {
