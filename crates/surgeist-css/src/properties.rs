@@ -165,7 +165,7 @@ macro_rules! property_schema {
             GridTemplate, "grid-template", [], "baseline.property.grid-template", CssGridTemplate, CssGridTemplatePropertyValue, CssGridTemplatePropertyValueRepresentation, parse_grid_template, { parse_grid_template($input, $numeric)? };
             GridAutoRows, "grid-auto-rows", [], "baseline.property.grid-auto-rows", CssGridTrackList, CssGridAutoRowsPropertyValue, CssGridAutoRowsPropertyValueRepresentation, parse_grid_auto_track_sizes, { parse_grid_auto_track_sizes($input, $numeric)? };
             GridAutoColumns, "grid-auto-columns", [], "baseline.property.grid-auto-columns", CssGridTrackList, CssGridAutoColumnsPropertyValue, CssGridAutoColumnsPropertyValueRepresentation, parse_grid_auto_track_sizes, { parse_grid_auto_track_sizes($input, $numeric)? };
-            GridAutoFlow, "grid-auto-flow", [], "baseline.property.grid-auto-flow", CssGridAutoFlow, CssGridAutoFlowPropertyValue, CssGridAutoFlowPropertyValueRepresentation, parse_grid_auto_flow, { parse_grid_auto_flow($input)? };
+            GridAutoFlow, "grid-auto-flow", [], "baseline.property.grid-auto-flow", CssGridAutoFlowValue, CssGridAutoFlowPropertyValue, CssGridAutoFlowPropertyValueRepresentation, parse_grid_auto_flow, { parse_grid_auto_flow($input)? }, expansion = longhand { wrapper: existing, value: CssGridAutoFlowValue, accessor: current, inherited: false, initial_kind: value, initial: CssGridAutoFlowValue::Normal };
             GridRowStart, "grid-row-start", [], "baseline.property.grid-row-start", CssAuthoredGridLine, CssGridRowStartPropertyValue, CssGridRowStartPropertyValueRepresentation, parse_grid_line, { parse_grid_line($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssAuthoredGridLine, accessor: current, inherited: false, initial_kind: value, initial: CssAuthoredGridLine::Auto };
             GridRowEnd, "grid-row-end", [], "baseline.property.grid-row-end", CssAuthoredGridLine, CssGridRowEndPropertyValue, CssGridRowEndPropertyValueRepresentation, parse_grid_line, { parse_grid_line($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssAuthoredGridLine, accessor: current, inherited: false, initial_kind: value, initial: CssAuthoredGridLine::Auto };
             GridColumnStart, "grid-column-start", [], "baseline.property.grid-column-start", CssAuthoredGridLine, CssGridColumnStartPropertyValue, CssGridColumnStartPropertyValueRepresentation, parse_grid_line, { parse_grid_line($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssAuthoredGridLine, accessor: current, inherited: false, initial_kind: value, initial: CssAuthoredGridLine::Auto };
@@ -3380,6 +3380,17 @@ macro_rules! define_property_value {
             CssGridArea,
             current,
             CssAuthoredGridArea::i01_subset
+        );
+    };
+    (GridAutoFlow, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssGridAutoFlowValue,
+            CssGridAutoFlow,
+            current,
+            |value: &CssGridAutoFlowValue| value.i01_subset()
         );
     };
     (

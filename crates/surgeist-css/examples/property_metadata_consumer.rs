@@ -101,6 +101,7 @@ const LONGHANDS: &[P] = &[
     P::ListStyleImage,
     P::MarkerSide,
     P::FlowTolerance,
+    P::GridAutoFlow,
     P::GridRowStart,
     P::GridRowEnd,
     P::GridColumnStart,
@@ -526,6 +527,7 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::ContainerName(v) => assert_eq!(*v, CssContainerNames::None),
         CssLonghandValueRef::ContainerType(v) => assert_eq!(*v, CssContainerType::Normal),
         CssLonghandValueRef::Position(v) => assert_eq!(*v, CssLayoutPosition::Static),
+        CssLonghandValueRef::GridAutoFlow(v) => assert_eq!(*v, CssGridAutoFlowValue::Normal),
         CssLonghandValueRef::GridRowStart(v)
         | CssLonghandValueRef::GridRowEnd(v)
         | CssLonghandValueRef::GridColumnStart(v)
@@ -860,7 +862,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 245);
+    assert_eq!(expected.len(), 246);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {

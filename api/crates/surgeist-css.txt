@@ -1740,6 +1740,15 @@ pub surgeist_css::CssGrid::Template(surgeist_css::CssGridTemplate)
 #[non_exhaustive] pub enum surgeist_css::CssGridAutoFlowAxis
 pub surgeist_css::CssGridAutoFlowAxis::Column
 pub surgeist_css::CssGridAutoFlowAxis::Row
+#[non_exhaustive] pub enum surgeist_css::CssGridAutoFlowValue
+pub surgeist_css::CssGridAutoFlowValue::Dense
+pub surgeist_css::CssGridAutoFlowValue::ExplicitAxis(surgeist_css::CssGridAutoFlow)
+pub surgeist_css::CssGridAutoFlowValue::Normal
+impl surgeist_css::CssGridAutoFlowValue
+pub const fn surgeist_css::CssGridAutoFlowValue::explicit_axis(axis: surgeist_css::CssGridAutoFlowAxis, dense: bool) -> Self
+pub const fn surgeist_css::CssGridAutoFlowValue::i01_subset(self) -> core::option::Option<surgeist_css::CssGridAutoFlow>
+pub fn surgeist_css::CssGridAutoFlowValue::serialize_specified(self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssGridAutoFlowValue::serialize_specified_with_limits(self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssGridLine
 pub surgeist_css::CssGridLine::Auto
 pub surgeist_css::CssGridLine::CustomIdent(surgeist_css::CssCustomIdent)
@@ -2848,6 +2857,7 @@ pub surgeist_css::CssLonghandValueRef::FontVariationSettings(&'a surgeist_css::C
 pub surgeist_css::CssLonghandValueRef::FontWeight(&'a surgeist_css::CssFontWeight)
 pub surgeist_css::CssLonghandValueRef::FontWidth(&'a surgeist_css::CssFontWidth)
 pub surgeist_css::CssLonghandValueRef::FrameSizing(&'a surgeist_css::CssFrameSizing)
+pub surgeist_css::CssLonghandValueRef::GridAutoFlow(&'a surgeist_css::CssGridAutoFlowValue)
 pub surgeist_css::CssLonghandValueRef::GridColumnEnd(&'a surgeist_css::CssAuthoredGridLine)
 pub surgeist_css::CssLonghandValueRef::GridColumnStart(&'a surgeist_css::CssAuthoredGridLine)
 pub surgeist_css::CssLonghandValueRef::GridRowEnd(&'a surgeist_css::CssAuthoredGridLine)
@@ -6806,6 +6816,7 @@ pub const fn surgeist_css::CssGridAutoFlow::new(axis: surgeist_css::CssGridAutoF
 pub struct surgeist_css::CssGridAutoFlowPropertyValue
 impl surgeist_css::CssGridAutoFlowPropertyValue
 pub fn surgeist_css::CssGridAutoFlowPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssGridAutoFlowPropertyValue::current(&self) -> &surgeist_css::CssGridAutoFlowValue
 pub const fn surgeist_css::CssGridAutoFlowPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssGridAutoFlow>
 pub struct surgeist_css::CssGridAutoRowsPropertyValue
 impl surgeist_css::CssGridAutoRowsPropertyValue

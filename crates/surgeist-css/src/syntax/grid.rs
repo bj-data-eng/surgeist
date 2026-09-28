@@ -370,6 +370,72 @@ impl CssGridAutoFlow {
     }
 }
 
+/// The six authored `grid-auto-flow` states. An unspecified direction remains
+/// symbolic for the layout layer; in particular, bare `dense` is not `row dense`.
+///
+/// ```
+/// use surgeist_css::{CssGridAutoFlowAxis, CssGridAutoFlowValue};
+///
+/// let dense = CssGridAutoFlowValue::Dense;
+/// let row_dense = CssGridAutoFlowValue::explicit_axis(CssGridAutoFlowAxis::Row, true);
+/// assert_ne!(dense, row_dense);
+/// assert_eq!(dense.serialize_specified().unwrap(), "dense");
+/// assert_eq!(row_dense.serialize_specified().unwrap(), "row dense");
+/// ```
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssGridAutoFlowValue {
+    Normal,
+    Dense,
+    ExplicitAxis(CssGridAutoFlow),
+}
+
+impl CssGridAutoFlowValue {
+    /// Constructs an explicit row or column choice, with optional dense packing.
+    #[must_use]
+    pub const fn explicit_axis(axis: CssGridAutoFlowAxis, dense: bool) -> Self {
+        Self::ExplicitAxis(CssGridAutoFlow::new(axis, dense))
+    }
+
+    /// Returns the frozen I01 value only when an axis was explicitly authored.
+    #[must_use]
+    pub const fn i01_subset(self) -> Option<CssGridAutoFlow> {
+        match self {
+            Self::ExplicitAxis(value) => Some(value),
+            Self::Normal | Self::Dense => None,
+        }
+    }
+
+    /// Emits the canonical authored spelling without resolving the direction.
+    pub fn serialize_specified(self) -> Result<String, crate::CssSpecifiedValueSerializationError> {
+        self.serialize_specified_with_limits(crate::CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Emits canonical text under cumulative input, projection, and byte limits.
+    pub fn serialize_specified_with_limits(
+        self,
+        limits: crate::CssSpecifiedValueSerializationLimits,
+    ) -> Result<String, crate::CssSpecifiedValueSerializationError> {
+        use crate::specified_serialization::SpecifiedSerializationContext;
+        let (text, nodes) = match self {
+            Self::Normal => ("normal", 1),
+            Self::Dense => ("dense", 1),
+            Self::ExplicitAxis(value) => match (value.axis(), value.dense()) {
+                (CssGridAutoFlowAxis::Row, false) => ("row", 1),
+                (CssGridAutoFlowAxis::Row, true) => ("row dense", 2),
+                (CssGridAutoFlowAxis::Column, false) => ("column", 1),
+                (CssGridAutoFlowAxis::Column, true) => ("column dense", 2),
+            },
+        };
+        let mut context = SpecifiedSerializationContext::new(limits);
+        context.charge_input(nodes)?;
+        context.charge_projection(nodes)?;
+        let mut css = String::new();
+        context.append(&mut css, text)?;
+        Ok(css)
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssGridLine {

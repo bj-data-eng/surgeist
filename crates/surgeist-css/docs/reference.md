@@ -1403,6 +1403,26 @@ crate.
 
 ## Authored Grid repetition and keyframe structure
 
+`grid-auto-flow` accepts six authored meanings: `normal`, `dense`, `row`,
+`row dense`, `column`, and `column dense`. The axis and `dense` keywords may be
+authored in either order; `CssGridAutoFlowValue::serialize_specified()` emits
+the canonical order. `normal` and bare `dense` leave direction unspecified, and
+the `CssGridAutoFlowPropertyValue::current()` accessor preserves that difference.
+Its `i01_subset()` projects only explicit row or column forms into the older
+`CssGridAutoFlow` type. The intrinsic initial is `normal`, and the longhand is
+not inherited. CSS-wide values, `all`, and pending substitutions remain
+symbolic through intrinsic expansion.
+
+This initial differs from the `row` initial in the selected
+[Grid 2 §7.7](https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#grid-auto-flow-property).
+The choice follows the
+[pinned WebKit grammar and initial](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/CSSProperties.json#L11479)
+while the selected
+[Grid 3 §2.3](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#grid-lanes-orientation)
+leaves open whether its orientation belongs on `grid-auto-flow` or a separate
+property. This CSS layer does not choose the resulting layout direction or
+change the existing `grid` shorthand's explicit row/dense branch.
+
 The four Grid placement longhands (`grid-row-start`, `grid-row-end`,
 `grid-column-start`, and `grid-column-end`) and the `grid-row`, `grid-column`,
 and `grid-area` shorthands expose `CssAuthoredGridLine`,

@@ -701,12 +701,27 @@ pub(super) fn parse_grid_template<'i, 't>(
 
 pub(super) fn parse_grid_auto_flow<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssGridAutoFlow, ParseError<'i, Error>> {
+) -> std::result::Result<CssGridAutoFlowValue, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("normal"))
+        .is_ok()
+    {
+        return Ok(CssGridAutoFlowValue::Normal);
+    }
+    if input
+        .try_parse(|input| input.expect_ident_matching("dense"))
+        .is_ok()
+    {
+        return Ok(match input.try_parse(parse_grid_auto_flow_axis) {
+            Ok(axis) => CssGridAutoFlowValue::explicit_axis(axis, true),
+            Err(_) => CssGridAutoFlowValue::Dense,
+        });
+    }
     let axis = parse_grid_auto_flow_axis(input)?;
     let dense = input
         .try_parse(|input| input.expect_ident_matching("dense"))
         .is_ok();
-    Ok(CssGridAutoFlow::new(axis, dense))
+    Ok(CssGridAutoFlowValue::explicit_axis(axis, dense))
 }
 
 pub(super) fn parse_grid_auto_flow_axis<'i, 't>(

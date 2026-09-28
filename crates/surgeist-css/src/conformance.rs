@@ -2265,6 +2265,8 @@ const GRID_REPEAT_SUBSET: &str = "Non-recursive integer track and fixed repeats,
 const GRID_REPEAT_REMAINDER: &str = "Subgrid name-repeat, wider Values math functions, and other unselected Grid forms remain unsupported.";
 const GRID_PROPERTY_SUBSET: &str = "The structural grammar supports non-recursive integer track and fixed repeats, one Grid 3 automatic repeat with general track-size content and fixed-size surroundings where permitted, and repeat-free automatic track-size lists.";
 const GRID_PROPERTY_REMAINDER: &str = "Subgrid name-repeat, wider Values math functions, and other unselected Grid property grammar remain unsupported.";
+const GRID_AUTO_FLOW_SUBSET: &str = "The authored grid-auto-flow grammar accepts exactly normal, dense, row, row dense, column, and column dense; axis and dense may appear in either order. Normal and bare dense remain symbolic; intrinsic longhand expansion and canonical specified serialization preserve the six states.";
+const GRID_AUTO_FLOW_REMAINDER: &str = "Grid 3 §2.3 issue #12803 has not settled whether its context-dependent orientation extends grid-auto-flow or belongs to a separate grid-lanes-direction property. The normal initial and implicit-direction dense choice follow the recorded WebKit behavior; runtime orientation and placement belong downstream.";
 const KEYFRAMES_SUBSET: &str = "Keyframe names, literal selectors, empty rules and blocks, duplicate selectors and blocks in authored order, and supported declarations with recovery are supported.";
 const KEYFRAMES_REMAINDER: &str = "Calculation selectors, string names, and declaration-processing grammar not selected by C07 remain unsupported.";
 const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range, feature-settings and variation-settings descriptors have typed ordinary representations and admit pending whole values for valid env(); invalid descriptors recover independently.";
@@ -4662,10 +4664,14 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 624] = [
         GRID_PROPERTY_SUBSET,
         GRID_PROPERTY_REMAINDER,
     ),
-    property_feature!(
+    CssFeatureMetadata::partial_property_with_boundary(
+        "baseline.property.grid-auto-flow",
         CssKnownProperty::GridAutoFlow,
         "grid-auto-flow",
-        "baseline.property.grid-auto-flow"
+        "#propdef-grid-auto-flow",
+        &[],
+        GRID_AUTO_FLOW_SUBSET,
+        GRID_AUTO_FLOW_REMAINDER,
     ),
     complete_property_feature!(
         CssKnownProperty::GridRowStart,
