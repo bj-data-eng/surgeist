@@ -86,8 +86,8 @@ const C12_INVALID_DECLARATIONS: &[InvalidDeclaration] = &[
     },
     InvalidDeclaration {
         authored_name: "word-spacing",
-        invalid_value: "10%",
-        responsible: "10%",
+        invalid_value: "1fr",
+        responsible: "1fr",
         property: CssKnownProperty::WordSpacing,
     },
     InvalidDeclaration {
@@ -173,6 +173,33 @@ fn property_names(declarations: &surgeist_css::CssDeclarationList) -> Vec<&str> 
             _ => panic!("unexpected future property-name kind"),
         })
         .collect()
+}
+
+#[test]
+fn text_four_percentage_word_spacing_keeps_original_c12_neighbors() {
+    // CSS Text 4 §8.1 admits a signed <length-percentage>; this captured C12
+    // input is valid, while `1fr` remains the recovery control above.
+    let source = "--😀: kept; word-spacing: 10%; color: red";
+    let report = parse_style_attribute(source);
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    assert_eq!(
+        property_names(report.syntax()),
+        ["--😀", "word-spacing", "color"]
+    );
+    let CssPropertyNameRef::Known(CssKnownProperty::WordSpacing) =
+        report.syntax()[1].property_name()
+    else {
+        panic!("retained word-spacing occurrence")
+    };
+    assert_eq!(
+        report.syntax()[1]
+            .value_components()
+            .serialize()
+            .unwrap()
+            .as_css(),
+        " 10%"
+    );
+    assert!(surgeist_css::validate_style_attribute(source).is_ok());
 }
 
 fn assert_one_invalid_declaration(
