@@ -471,7 +471,7 @@ unfinished. This property migration does not complete the other Grid3 families.
 `expand_declaration` currently covers custom declarations, physical and logical
 margin/padding longhands, their logical axis pairs, border width, style and color,
 the four side-border shorthands, `border`,
-the five border-image longhands, `border-collapse`, `border-spacing`, `caption-side`, `empty-cells`,
+the five border-image longhands, `border-collapse`, `border-spacing`, `caption-side`, `clip`, `empty-cells`,
 `table-layout`, `flow-tolerance`, `color`, `font-family`,
 `text-orientation`, its legacy `glyph-orientation-vertical` grammar, `opacity`, `display`, `box-sizing`,
 `order`, `aspect-ratio`, `visibility`, `direction`, `unicode-bidi`, `writing-mode`, `text-combine-upright`,
@@ -2168,14 +2168,25 @@ these authored models into another Surgeist crate.
 
 ## CSS2 residual, writing, UI, containment, and compositing properties
 
-This property family provides the selected authored grammars for thirteen CSS2
-residual properties, Writing Modes 3 `text-combine-upright`,
+This property family provides the selected authored grammars for twelve CSS2
+residual properties, the deprecated `clip` property in Masking 1 Appendix A,
+Writing Modes 3 `text-combine-upright`,
 `text-orientation`, and `unicode-bidi`, UI3 `caret-color`, `outline-offset`, and
 `resize`, Containment 1 `contain`, Transforms 1 `transform-box`, and Compositing
 1 `background-blend-mode`, `isolation`, and `mix-blend-mode`. Their property
 wrappers preserve exact authored CSS and expose typed current values without
 performing cascade, layout, pagination, painting, hit testing, containment
 semantics, blending, or writing-mode resolution.
+
+[Masking 1 Appendix A](https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#clip-property)
+supersedes CSS2 §11.1.2 for `clip` while retaining required support for the
+deprecated property. Its noninherited initial is `auto`. A `rect()` has four
+top, right, bottom, left edges, each `auto` or a signed length; both comma-only
+and whitespace-only authored separators are accepted. `CssClipLength`,
+`CssClipEdge`, `CssClipRect`, and `CssClip` serialize their checked specified
+values under one cumulative budget, with commas in canonical rectangles and
+symbolic calculations left unresolved. Applying a clipping region and the
+separate `clip-path` property remain outside this authored-value contract.
 
 `glyph-orientation-vertical` is the selected Writing Modes legacy shorthand,
 not a name-equivalent schema alias. Its implemented compatibility subset admits

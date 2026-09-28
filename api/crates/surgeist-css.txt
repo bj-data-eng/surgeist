@@ -546,9 +546,15 @@ pub fn surgeist_css::CssClear::serialize_specified_with_limits(&self, limits: su
 #[non_exhaustive] pub enum surgeist_css::CssClip
 pub surgeist_css::CssClip::Auto
 pub surgeist_css::CssClip::Rect(surgeist_css::CssClipRect)
+impl surgeist_css::CssClip
+pub fn surgeist_css::CssClip::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssClip::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssClipEdge
 pub surgeist_css::CssClipEdge::Auto
 pub surgeist_css::CssClipEdge::Length(surgeist_css::CssClipLength)
+impl surgeist_css::CssClipEdge
+pub fn surgeist_css::CssClipEdge::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssClipEdge::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssClipPath
 pub surgeist_css::CssClipPath::BasicShape(surgeist_css::CssBasicShape)
 pub surgeist_css::CssClipPath::None
@@ -2696,6 +2702,7 @@ pub surgeist_css::CssLonghandValueRef::BreakBefore(&'a surgeist_css::CssBreakBet
 pub surgeist_css::CssLonghandValueRef::BreakInside(&'a surgeist_css::CssBreakInside)
 pub surgeist_css::CssLonghandValueRef::CaptionSide(&'a surgeist_css::CssCaptionSide)
 pub surgeist_css::CssLonghandValueRef::Clear(&'a surgeist_css::CssClear)
+pub surgeist_css::CssLonghandValueRef::Clip(&'a surgeist_css::CssClip)
 pub surgeist_css::CssLonghandValueRef::Color(&'a surgeist_css::CssAuthoredColor)
 pub surgeist_css::CssLonghandValueRef::ColumnCount(&'a surgeist_css::CssColumnCount)
 pub surgeist_css::CssLonghandValueRef::ColumnGap(&'a surgeist_css::CssGapValue)
@@ -5175,6 +5182,9 @@ pub const fn surgeist_css::CssClearPropertyValue::current(&self) -> &surgeist_cs
 pub const fn surgeist_css::CssClearPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssClear>
 pub struct surgeist_css::CssClipLength
 impl surgeist_css::CssClipLength
+pub fn surgeist_css::CssClipLength::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssClipLength::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssClipLength
 pub fn surgeist_css::CssClipLength::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
 pub const fn surgeist_css::CssClipLength::value(&self) -> &surgeist_css::CssLength
 pub struct surgeist_css::CssClipPathPropertyValue
@@ -5193,6 +5203,9 @@ pub const fn surgeist_css::CssClipRect::left(&self) -> &surgeist_css::CssClipEdg
 pub const fn surgeist_css::CssClipRect::new(top: surgeist_css::CssClipEdge, right: surgeist_css::CssClipEdge, bottom: surgeist_css::CssClipEdge, left: surgeist_css::CssClipEdge) -> Self
 pub const fn surgeist_css::CssClipRect::right(&self) -> &surgeist_css::CssClipEdge
 pub const fn surgeist_css::CssClipRect::top(&self) -> &surgeist_css::CssClipEdge
+impl surgeist_css::CssClipRect
+pub fn surgeist_css::CssClipRect::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssClipRect::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssColorAngleLiteral
 impl surgeist_css::CssColorAngleLiteral
 pub const fn surgeist_css::CssColorAngleLiteral::component(&self) -> &surgeist_css::CssComponentValue

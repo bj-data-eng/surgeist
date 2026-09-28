@@ -1,9 +1,11 @@
 //! Bounded specified serialization for checked CSS2 table border spacing.
 
-use crate::specified_serialization::SpecifiedSerializationContext;
+use crate::specified_serialization::{
+    SpecifiedSerializationContext, serialize_checked_pure_length_into,
+};
 use crate::{
-    CssBorderSpacing, CssBorderSpacingLength, CssCalcLength, CssLength,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
+    CssBorderSpacing, CssBorderSpacingLength, CssSpecifiedValueSerializationError,
+    CssSpecifiedValueSerializationLimits,
 };
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
@@ -30,39 +32,7 @@ impl CssBorderSpacingLength {
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
     ) -> Result<()> {
-        match self.value() {
-            CssLength::Px(value) => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
-                context.append(output, &CssCalcLength::Px(*value).to_css_string())
-            }
-            CssLength::Dimension(value) => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
-                context.append(output, &value.to_css_string())
-            }
-            CssLength::Zero => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
-                context.append(output, "0")
-            }
-            CssLength::Calc(CssCalcLength::Typed(calculation)) => {
-                calculation.serialize_specified_into(context, output)
-            }
-            CssLength::Calc(calculation) => {
-                // A constructed legacy calc scalar can be negative. Retain its math
-                // wrapper: the equivalent bare length is invalid for this property.
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
-                context.append(output, "calc(")?;
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
-                context.append(output, &calculation.to_css_string())?;
-                context.append(output, ")")
-            }
-            // The private checked constructor rules out every other CssLength arm.
-            _ => unreachable!("checked border-spacing length"),
-        }
+        serialize_checked_pure_length_into(self.value(), context, output)
     }
 }
 

@@ -3639,8 +3639,8 @@ fn c12_property_metadata_is_truthful() {
         (
             "official.property.clip",
             "clip",
-            "O-CSS2",
-            "visufx.html#propdef-clip",
+            "S-MASKING1",
+            "#propdef-clip",
             "rect(auto, 10px, 20px, -1px)",
         ),
         (

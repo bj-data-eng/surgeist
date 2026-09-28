@@ -5732,7 +5732,7 @@ pub enum CssCaptionSide {
     Bottom,
 }
 
-/// A checked authored CSS2 `clip` rectangle length.
+/// A checked authored signed length for the deprecated Masking 1 `clip` rectangle.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssClipLength {
     value: CssLength,
@@ -5751,7 +5751,7 @@ impl CssClipLength {
     }
 }
 
-/// One authored edge of a CSS2 `clip: rect(...)` value.
+/// One authored edge of a deprecated Masking 1 `clip: rect(...)` value.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssClipEdge {
@@ -5759,7 +5759,7 @@ pub enum CssClipEdge {
     Length(CssClipLength),
 }
 
-/// The four authored edges of a CSS2 clipping rectangle.
+/// The four authored edges of a deprecated Masking 1 clipping rectangle.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssClipRect {
     top: CssClipEdge,
@@ -5805,7 +5805,7 @@ impl CssClipRect {
     }
 }
 
-/// The authored CSS2 `clip` value.
+/// The authored deprecated Masking 1 `clip` value.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssClip {

@@ -1149,6 +1149,7 @@ mod border_width;
 mod box_spacing;
 mod break_controls;
 mod calc_size;
+mod clip;
 mod color_scalar;
 mod column_sizing;
 mod contain_intrinsic_size;

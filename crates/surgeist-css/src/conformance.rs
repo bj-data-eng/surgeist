@@ -2269,7 +2269,6 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         CssKnownProperty::BorderCollapse
         | CssKnownProperty::BorderSpacing
         | CssKnownProperty::CaptionSide
-        | CssKnownProperty::Clip
         | CssKnownProperty::EmptyCells
         | CssKnownProperty::Quotes
         | CssKnownProperty::TableLayout
@@ -2568,7 +2567,8 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         }
         CssKnownProperty::Filter => I_FILTER1,
         CssKnownProperty::BackdropFilter => X_FILTER2_BASE,
-        CssKnownProperty::ClipPath
+        CssKnownProperty::Clip
+        | CssKnownProperty::ClipPath
         | CssKnownProperty::Mask
         | CssKnownProperty::MaskImage
         | CssKnownProperty::MaskSize
@@ -2606,7 +2606,7 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
             CssKnownProperty::TableLayout => "tables.html#propdef-table-layout",
             _ => default,
         },
-        CssKnownProperty::Clip => "visufx.html#propdef-clip",
+        CssKnownProperty::Clip => "#propdef-clip",
         CssKnownProperty::Orphans | CssKnownProperty::Widows => match property {
             CssKnownProperty::Orphans => "#propdef-orphans",
             CssKnownProperty::Widows => "#propdef-widows",

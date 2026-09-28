@@ -1,8 +1,8 @@
 //! Bounded, context-independent specified-value text.
 
 use crate::{
-    CssBorderCollapse, CssBoxSizing, CssCaptionSide, CssEmptyCells, CssOpacityScalarKind,
-    CssOpacityValue, CssTableLayout,
+    CssBorderCollapse, CssBoxSizing, CssCalcLength, CssCaptionSide, CssEmptyCells, CssLength,
+    CssOpacityScalarKind, CssOpacityValue, CssTableLayout,
 };
 use std::fmt;
 
@@ -199,6 +199,48 @@ pub(crate) fn serialize_keyword_sequence(
     let mut output = String::new();
     context.append(&mut output, text)?;
     Ok(output)
+}
+
+/// Streams a previously checked pure length. Callers must admit the `CssLength`
+/// through their own property-specific constructor before using this helper;
+/// this function does not relax signedness or keyword rules.
+pub(crate) fn serialize_checked_pure_length_into(
+    value: &CssLength,
+    context: &mut SpecifiedSerializationContext,
+    output: &mut String,
+) -> Result<()> {
+    match value {
+        CssLength::Px(value) => {
+            context.charge_input(1)?;
+            context.charge_projection(1)?;
+            context.append(output, &CssCalcLength::Px(*value).to_css_string())
+        }
+        CssLength::Dimension(value) => {
+            context.charge_input(1)?;
+            context.charge_projection(1)?;
+            context.append(output, &value.to_css_string())
+        }
+        CssLength::Zero => {
+            context.charge_input(1)?;
+            context.charge_projection(1)?;
+            context.append(output, "0")
+        }
+        CssLength::Calc(CssCalcLength::Typed(calculation)) => {
+            calculation.serialize_specified_into(context, output)
+        }
+        CssLength::Calc(calculation) => {
+            // Legacy scalar calc arms can be signed. Keep their math wrapper,
+            // including where the bare length is invalid for the caller.
+            context.charge_input(1)?;
+            context.charge_projection(1)?;
+            context.append(output, "calc(")?;
+            context.charge_input(1)?;
+            context.charge_projection(1)?;
+            context.append(output, &calculation.to_css_string())?;
+            context.append(output, ")")
+        }
+        _ => unreachable!("property-checked pure length"),
+    }
 }
 
 impl crate::CssOverflowWrap {
