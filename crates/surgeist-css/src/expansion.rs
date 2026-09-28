@@ -416,6 +416,8 @@ pub enum CssContributionValueRef<'a> {
     Global(CssGlobalKeyword),
     /// An intrinsic initial requiring a user-agent environment.
     UserAgentInitial(CssUserAgentInitial),
+    /// A settable `font` member requiring the selected system-font environment.
+    SystemFont(CssSystemFont),
 }
 
 #[derive(Debug)]
@@ -705,7 +707,38 @@ fn complete_contributions(
                 .map(|member| member.global(keyword))
                 .collect(),
         },
-        CssKnownDeclaredValueRef::Property(value) => ordinary_values(known.property(), value)?,
+        CssKnownDeclaredValueRef::Property(value) => match value {
+            CssKnownPropertyValueRef::Font(font) => match font.font() {
+                CssFontValue::System(system) => {
+                    let CssPropertyKindRef::Shorthand(metadata) = CssKnownProperty::Font
+                        .metadata()
+                        .expect("font expansion metadata")
+                        .kind()
+                    else {
+                        unreachable!("font is a shorthand")
+                    };
+                    let ExpansionShape::Longhands(members) = shape else {
+                        unreachable!("font expands into longhands")
+                    };
+                    members
+                        .iter()
+                        .enumerate()
+                        .map(|(index, member)| {
+                            if index < metadata.settable_members().len() {
+                                OwnedContributionValue::SystemFont(
+                                    CssLonghandProperty(*member),
+                                    *system,
+                                )
+                            } else {
+                                member.initial()
+                            }
+                        })
+                        .collect()
+                }
+                CssFontValue::Explicit(_) => ordinary_values(known.property(), value)?,
+            },
+            _ => ordinary_values(known.property(), value)?,
+        },
         CssKnownDeclaredValueRef::SubstitutionDependent(_) => {
             return Err(CssExpansionError::new(
                 CssExpansionErrorKind::ResidualSubstitution,
@@ -821,6 +854,7 @@ enum OwnedContributionValue {
     Ordinary(CssLonghandValue),
     Global(CssLonghandProperty, CssGlobalKeyword),
     UserAgent(CssUserAgentInitial),
+    SystemFont(CssLonghandProperty, CssSystemFont),
 }
 impl OwnedContributionValue {
     fn from_initial(value: CssLonghandInitialValue) -> Self {
@@ -834,6 +868,7 @@ impl OwnedContributionValue {
             Self::Ordinary(v) => v.property(),
             Self::Global(p, _) => *p,
             Self::UserAgent(v) => v.property(),
+            Self::SystemFont(property, _) => *property,
         }
         .known_property()
     }
@@ -842,6 +877,7 @@ impl OwnedContributionValue {
             Self::Ordinary(v) => CssContributionValueRef::Ordinary(v.view()),
             Self::Global(_, v) => CssContributionValueRef::Global(*v),
             Self::UserAgent(v) => CssContributionValueRef::UserAgentInitial(*v),
+            Self::SystemFont(_, font) => CssContributionValueRef::SystemFont(*font),
         }
     }
 }

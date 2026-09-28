@@ -1488,7 +1488,8 @@ returns a borrowed `&CssFontWeight` and is current-only; its former
 `i01_subset()` projection is removed. Explicit `font` shorthand values also
 borrow their optional weight through `CssExplicitFont::weight()` and accept the
 same absolute and relative weight components, including fractions and number
-math. Other shorthand component gaps remain.
+math. Intrinsic shorthand expansion now contributes seven settable terminals and
+resets twelve more to their initials.
 
 The selected Fonts 4 `font-style` property accepts `normal`, `italic`, `left`,
 `right`, and `oblique` with an optional angle. `CssFontStyleKeyword` shares the
@@ -1546,8 +1547,11 @@ current-only; `i01_subset()` and the old I01 size projection are removed.
 same size grammar, including `xxx-large`, `math`, and typed size math, while
 preserving the following font-family boundary and optional slash line height.
 The inherited size initial is `medium`, and intrinsic longhand contributions
-preserve importance and declaration provenance. Full `font` shorthand expansion
-and reset semantics remain unfinished.
+preserve importance and declaration provenance. Explicit `font` values contribute
+present components and initial values for omissions and reset-only members.
+System fonts retain symbolic values for the seven settable terminals; the twelve
+reset-only terminals receive intrinsic initials. System font selection and
+missing-preference fallback belong to downstream resolution.
 
 `line-height` and the optional `font` slash component share one exact authored
 grammar: `normal`, a nonnegative number, or a nonnegative length-percentage.
@@ -1591,8 +1595,12 @@ no longer `Copy`; borrow through `value()` and inspect exact indices with
 `CssFontSizeAdjust::Number` now holds `CssSpecifiedNonNegativeNumber`; inspect
 its exact component or calculation instead of a float. The new signed
 `CssSpecifiedNumber` serves variation values. All these scalars and settings
-offer bounded specified serialization. Full `font` shorthand expansion and
-reset semantics remain unfinished in CSS. Font matching and computed value
+offer bounded specified serialization. `CssFontValue` and `CssExplicitFont` also
+serialize canonically under one cumulative input, projection, and byte budget.
+Their family serializer preserves quoted versus identifier representation and
+identifier token boundaries. Optional `normal` components are omitted when they
+do not alter shorthand expansion; authored optional nodes still count against the
+input budget even when omitted from the output. Font matching and computed value
 resolution remain downstream.
 
 The `@font-face` weight descriptor now uses

@@ -220,13 +220,22 @@ impl CssFontWeight {
     ) -> SerializationResult<String> {
         let mut context = SpecifiedSerializationContext::new(limits);
         let mut output = String::new();
+        self.append_specified(&mut context, &mut output)?;
+        Ok(output)
+    }
+
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> SerializationResult<()> {
         match self {
-            Self::Absolute(absolute) => absolute.append_specified(&mut context, &mut output)?,
+            Self::Absolute(absolute) => absolute.append_specified(context, output)?,
             Self::Bolder | Self::Lighter => {
                 context.charge_input(1)?;
                 context.charge_projection(1)?;
                 context.append(
-                    &mut output,
+                    output,
                     if matches!(self, Self::Bolder) {
                         "bolder"
                     } else {
@@ -235,7 +244,7 @@ impl CssFontWeight {
                 )?;
             }
         }
-        Ok(output)
+        Ok(())
     }
 }
 

@@ -830,6 +830,7 @@ pub surgeist_css::CssContrastPreference::NoPreference
 #[non_exhaustive] pub enum surgeist_css::CssContributionValueRef<'a>
 pub surgeist_css::CssContributionValueRef::Global(surgeist_css::CssGlobalKeyword)
 pub surgeist_css::CssContributionValueRef::Ordinary(surgeist_css::CssLonghandValueRef<'a>)
+pub surgeist_css::CssContributionValueRef::SystemFont(surgeist_css::CssSystemFont)
 pub surgeist_css::CssContributionValueRef::UserAgentInitial(surgeist_css::CssUserAgentInitial)
 #[non_exhaustive] pub enum surgeist_css::CssContributions
 pub surgeist_css::CssContributions::Custom(surgeist_css::CssCustomPropertyContribution)
@@ -1424,6 +1425,9 @@ pub surgeist_css::CssFontTechHint::Variations
 #[non_exhaustive] pub enum surgeist_css::CssFontValue
 pub surgeist_css::CssFontValue::Explicit(surgeist_css::CssExplicitFont)
 pub surgeist_css::CssFontValue::System(surgeist_css::CssSystemFont)
+impl surgeist_css::CssFontValue
+pub fn surgeist_css::CssFontValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFontVariant
 pub surgeist_css::CssFontVariant::Normal
 pub surgeist_css::CssFontVariant::SmallCaps
@@ -5875,6 +5879,9 @@ pub const fn surgeist_css::CssExplicitFont::style(&self) -> core::option::Option
 pub fn surgeist_css::CssExplicitFont::try_new(style: core::option::Option<surgeist_css::CssFontStyle>, variant: core::option::Option<surgeist_css::CssFontVariant>, weight: core::option::Option<surgeist_css::CssFontWeight>, stretch: core::option::Option<surgeist_css::CssFontStretch>, size: surgeist_css::CssFontSize, line_height: core::option::Option<surgeist_css::CssLineHeight>, families: surgeist_css::CssFontFamilyList) -> core::option::Option<Self>
 pub const fn surgeist_css::CssExplicitFont::variant(&self) -> core::option::Option<surgeist_css::CssFontVariant>
 pub const fn surgeist_css::CssExplicitFont::weight(&self) -> core::option::Option<&surgeist_css::CssFontWeight>
+impl surgeist_css::CssExplicitFont
+pub fn surgeist_css::CssExplicitFont::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssExplicitFont::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssFeatureId(_)
 impl surgeist_css::CssFeatureId
 pub const fn surgeist_css::CssFeatureId::as_str(self) -> &'static str

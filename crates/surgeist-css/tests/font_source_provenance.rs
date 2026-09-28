@@ -1,8 +1,8 @@
 //! The selected published Fonts4 grammar owns family names and source lists;
 //! immutable source identities must keep their original edition.
 //! The format/technology-hint subproduction includes the legacy equivalents.
-//! Broader font, font-face and source support remains Partial because newer
-//! shorthand components, selected descriptors and the src() URL branch are absent.
+//! Font-face and source support remains Partial because selected descriptors
+//! and the src() URL branch are absent.
 
 use surgeist_css::{CssSupportStatus, feature_metadata, specification_source};
 
@@ -20,7 +20,7 @@ fn selected_font_source_records_reference_the_pinned_published_edition() {
         (
             "baseline.property.font",
             "#propdef-font",
-            CssSupportStatus::Partial,
+            CssSupportStatus::Complete,
         ),
         (
             "baseline.descriptor.font-family",

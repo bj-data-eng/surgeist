@@ -171,6 +171,32 @@ const LONGHANDS: &[P] = &[
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
     (P::Gap, &[P::RowGap, P::ColumnGap], &[]),
     (
+        P::Font,
+        &[
+            P::FontFamily,
+            P::FontSize,
+            P::FontWidth,
+            P::FontStyle,
+            P::FontVariantCaps,
+            P::FontWeight,
+            P::LineHeight,
+        ],
+        &[
+            P::FontFeatureSettings,
+            P::FontKerning,
+            P::FontLanguageOverride,
+            P::FontOpticalSizing,
+            P::FontSizeAdjust,
+            P::FontVariantAlternates,
+            P::FontVariantEastAsian,
+            P::FontVariantEmoji,
+            P::FontVariantLigatures,
+            P::FontVariantNumeric,
+            P::FontVariantPosition,
+            P::FontVariationSettings,
+        ],
+    ),
+    (
         P::FontVariant,
         &[
             P::FontVariantLigatures,
@@ -704,7 +730,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 198);
+    assert_eq!(expected.len(), 199);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {
@@ -824,11 +850,9 @@ fn metadata_and_initials() {
         P::Width.metadata().unwrap().kind(),
         CssPropertyKindRef::Longhand(_)
     ));
-    for property in [P::FlexBasis, P::Font] {
-        assert!(
-            matches!(property.metadata(), Err(CssPropertyMetadataError::Unavailable(g)) if g == property.grammar())
-        );
-    }
+    assert!(
+        matches!(P::FlexBasis.metadata(), Err(CssPropertyMetadataError::Unavailable(g)) if g == P::FlexBasis.grammar())
+    );
     let CssPropertyKindRef::Shorthand(alignment) = P::TextAlign.metadata().unwrap().kind() else {
         panic!("text-align is a two-member shorthand")
     };

@@ -45,21 +45,30 @@ impl CssLineHeight {
     ) -> SerializationResult<String> {
         let mut context = SpecifiedSerializationContext::new(limits);
         let mut output = String::new();
+        self.append_specified(&mut context, &mut output)?;
+        Ok(output)
+    }
+
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> SerializationResult<()> {
         match self {
             Self::Normal => {
                 context.charge_input(1)?;
                 context.charge_projection(1)?;
-                context.append(&mut output, "normal")?;
+                context.append(output, "normal")?;
             }
             Self::Number(value) => {
-                let captured = value.capture_specified(&mut context)?;
-                context.append(&mut output, &captured)?;
+                let captured = value.capture_specified(context)?;
+                context.append(output, &captured)?;
             }
             Self::LengthPercentage(value) => {
-                let captured = value.capture_specified(&mut context)?;
-                context.append(&mut output, &captured)?;
+                let captured = value.capture_specified(context)?;
+                context.append(output, &captured)?;
             }
         }
-        Ok(output)
+        Ok(())
     }
 }

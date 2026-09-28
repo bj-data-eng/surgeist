@@ -486,9 +486,9 @@
 //! used belongs to later contextual processing.
 //!
 //! Family, font, source-list, and font-face records cite `I-FONTS4-20260907`.
-//! Family grammar and modern source hints are Complete; the font shorthand,
-//! source list, and font-face rule remain Partial. Newer shorthand components,
-//! selected descriptors, and the Values 4 `src()` URL function are unfinished.
+//! Family grammar, the font shorthand, and modern source hints are Complete;
+//! source list and font-face rule remain Partial. Selected descriptors and the
+//! Values 4 `src()` URL function are unfinished.
 //! Older immutable source identities retain their original editions.
 //! Family models do not yet provide canonical CSS serialization. Font loading,
 //! matching, fallback, shaping, cascade, substitution, computed values, and
@@ -1202,6 +1202,7 @@ pub use font_settings::{
 };
 mod font_size;
 pub use font_size::CssFontSize;
+mod font_shorthand;
 mod line_height;
 pub use line_height::CssLineHeight;
 mod font_style;

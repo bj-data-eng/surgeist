@@ -78,7 +78,7 @@ impl CssFontFaceWidth {
 }
 
 impl CssFontWidthKeyword {
-    const fn as_css(self) -> &'static str {
+    pub(crate) const fn as_css(self) -> &'static str {
         match self {
             Self::UltraCondensed => "ultra-condensed",
             Self::ExtraCondensed => "extra-condensed",

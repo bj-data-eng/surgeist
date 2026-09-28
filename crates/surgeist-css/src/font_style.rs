@@ -306,19 +306,28 @@ impl CssFontStyle {
     ) -> SerializationResult<String> {
         let mut context = SpecifiedSerializationContext::new(limits);
         let mut output = String::new();
+        self.append_specified(&mut context, &mut output)?;
+        Ok(output)
+    }
+
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> SerializationResult<()> {
         match self {
-            Self::Keyword(keyword) => append_keyword(*keyword, &mut context, &mut output)?,
+            Self::Keyword(keyword) => append_keyword(*keyword, context, output)?,
             Self::Oblique { angle } => {
                 context.charge_input(1)?;
                 context.charge_projection(1)?;
-                context.append(&mut output, "oblique")?;
+                context.append(output, "oblique")?;
                 if let Some(angle) = angle {
-                    context.append(&mut output, " ")?;
-                    angle.append_specified(&mut context, &mut output)?;
+                    context.append(output, " ")?;
+                    angle.append_specified(context, output)?;
                 }
             }
         }
-        Ok(output)
+        Ok(())
     }
 }
 
