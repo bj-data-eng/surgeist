@@ -910,6 +910,10 @@ pub surgeist_css::CssCounterChanges::Changes(surgeist_css::CssCounterChangeList)
 pub surgeist_css::CssCounterChanges::None
 impl surgeist_css::CssCounterChanges
 pub fn surgeist_css::CssCounterChanges::try_changes(changes: alloc::vec::Vec<surgeist_css::CssCounterChange>) -> core::option::Option<Self>
+#[non_exhaustive] pub enum surgeist_css::CssCounterProperty
+pub surgeist_css::CssCounterProperty::Increment
+pub surgeist_css::CssCounterProperty::Reset
+pub surgeist_css::CssCounterProperty::Set
 #[non_exhaustive] pub enum surgeist_css::CssCounterStyle
 pub surgeist_css::CssCounterStyle::BuiltIn(surgeist_css::CssBuiltInCounterStyle)
 pub surgeist_css::CssCounterStyle::Named(surgeist_css::CssCounterStyleName)
@@ -2789,6 +2793,9 @@ pub surgeist_css::CssLonghandValueRef::ContainIntrinsicWidth(&'a surgeist_css::C
 pub surgeist_css::CssLonghandValueRef::ContainerName(&'a surgeist_css::CssContainerNames)
 pub surgeist_css::CssLonghandValueRef::ContainerType(&'a surgeist_css::CssContainerType)
 pub surgeist_css::CssLonghandValueRef::Content(&'a surgeist_css::CssContentValue)
+pub surgeist_css::CssLonghandValueRef::CounterIncrement(&'a surgeist_css::CssCounterChangesValue)
+pub surgeist_css::CssLonghandValueRef::CounterReset(&'a surgeist_css::CssCounterChangesValue)
+pub surgeist_css::CssLonghandValueRef::CounterSet(&'a surgeist_css::CssCounterChangesValue)
 pub surgeist_css::CssLonghandValueRef::Direction(&'a surgeist_css::CssDirection)
 pub surgeist_css::CssLonghandValueRef::Display(&'a surgeist_css::CssDisplayValue)
 pub surgeist_css::CssLonghandValueRef::EmptyCells(&'a surgeist_css::CssEmptyCells)
@@ -5831,6 +5838,19 @@ pub struct surgeist_css::CssCounterChangeList
 impl surgeist_css::CssCounterChangeList
 pub fn surgeist_css::CssCounterChangeList::changes(&self) -> &[surgeist_css::CssCounterChange]
 pub fn surgeist_css::CssCounterChangeList::try_new(changes: alloc::vec::Vec<surgeist_css::CssCounterChange>) -> core::option::Option<Self>
+pub struct surgeist_css::CssCounterChangeValue
+impl surgeist_css::CssCounterChangeValue
+pub const fn surgeist_css::CssCounterChangeValue::name(&self) -> &surgeist_css::CssContentCounterName
+pub const fn surgeist_css::CssCounterChangeValue::new(name: surgeist_css::CssContentCounterName, value: core::option::Option<surgeist_css::CssIntegerValue>) -> Self
+pub const fn surgeist_css::CssCounterChangeValue::value(&self) -> core::option::Option<&surgeist_css::CssIntegerValue>
+pub struct surgeist_css::CssCounterChangesValue
+impl surgeist_css::CssCounterChangesValue
+pub fn surgeist_css::CssCounterChangesValue::changes(&self) -> core::option::Option<&[surgeist_css::CssCounterChangeValue]>
+pub const fn surgeist_css::CssCounterChangesValue::none() -> Self
+pub fn surgeist_css::CssCounterChangesValue::try_changes(changes: alloc::vec::Vec<surgeist_css::CssCounterChangeValue>) -> core::option::Option<Self>
+impl surgeist_css::CssCounterChangesValue
+pub fn surgeist_css::CssCounterChangesValue::serialize_specified(&self, property: surgeist_css::CssCounterProperty) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCounterChangesValue::serialize_specified_with_limits(&self, property: surgeist_css::CssCounterProperty, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssCounterFunction
 impl surgeist_css::CssCounterFunction
 pub const fn surgeist_css::CssCounterFunction::name(&self) -> &surgeist_css::CssCounterName
@@ -5839,6 +5859,7 @@ pub const fn surgeist_css::CssCounterFunction::style(&self) -> core::option::Opt
 pub struct surgeist_css::CssCounterIncrementPropertyValue
 impl surgeist_css::CssCounterIncrementPropertyValue
 pub fn surgeist_css::CssCounterIncrementPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssCounterIncrementPropertyValue::current(&self) -> &surgeist_css::CssCounterChangesValue
 pub const fn surgeist_css::CssCounterIncrementPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssCounterChanges>
 pub struct surgeist_css::CssCounterName
 impl surgeist_css::CssCounterName
@@ -5847,10 +5868,12 @@ pub fn surgeist_css::CssCounterName::try_new(name: impl core::convert::Into<allo
 pub struct surgeist_css::CssCounterResetPropertyValue
 impl surgeist_css::CssCounterResetPropertyValue
 pub fn surgeist_css::CssCounterResetPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssCounterResetPropertyValue::current(&self) -> &surgeist_css::CssCounterChangesValue
 pub const fn surgeist_css::CssCounterResetPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssCounterChanges>
 pub struct surgeist_css::CssCounterSetPropertyValue
 impl surgeist_css::CssCounterSetPropertyValue
 pub fn surgeist_css::CssCounterSetPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssCounterSetPropertyValue::current(&self) -> &surgeist_css::CssCounterChangesValue
 pub const fn surgeist_css::CssCounterSetPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssCounterChanges>
 pub struct surgeist_css::CssCounterStyleDescriptors
 impl surgeist_css::CssCounterStyleDescriptors

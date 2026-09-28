@@ -2282,8 +2282,6 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::CaptionSide
         | CssKnownProperty::EmptyCells
         | CssKnownProperty::TableLayout
-        | CssKnownProperty::CounterReset
-        | CssKnownProperty::CounterIncrement
         | CssKnownProperty::LineHeight
         | CssKnownProperty::TextIndent
         | CssKnownProperty::VerticalAlign
@@ -2491,7 +2489,9 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::JustifyTracks
         | CssKnownProperty::AlignTracks => S_ALIGN3,
         CssKnownProperty::ContentVisibility => I_CONTAIN2,
-        CssKnownProperty::CounterSet
+        CssKnownProperty::CounterReset
+        | CssKnownProperty::CounterIncrement
+        | CssKnownProperty::CounterSet
         | CssKnownProperty::ListStyleType
         | CssKnownProperty::ListStylePosition
         | CssKnownProperty::ListStyleImage
@@ -2626,11 +2626,9 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
         CssKnownProperty::WordSpacing => "#propdef-word-spacing",
         CssKnownProperty::LetterSpacing => "#propdef-letter-spacing",
         CssKnownProperty::ZIndex => "visuren.html#propdef-z-index",
-        CssKnownProperty::CounterIncrement | CssKnownProperty::CounterReset => match property {
-            CssKnownProperty::CounterIncrement => "generate.html#propdef-counter-increment",
-            CssKnownProperty::CounterReset => "generate.html#propdef-counter-reset",
-            _ => default,
-        },
+        CssKnownProperty::CounterIncrement => "#propdef-counter-increment",
+        CssKnownProperty::CounterReset => "#propdef-counter-reset",
+        CssKnownProperty::CounterSet => "#propdef-counter-set",
         CssKnownProperty::ListStyle => "#propdef-list-style",
         CssKnownProperty::ListStyleImage => "#propdef-list-style-image",
         CssKnownProperty::ListStylePosition => "#propdef-list-style-position",
@@ -4411,17 +4409,17 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 623] = [
         "list-style",
         "baseline.property.list-style"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::CounterReset,
         "counter-reset",
         "baseline.property.counter-reset"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::CounterIncrement,
         "counter-increment",
         "baseline.property.counter-increment"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::CounterSet,
         "counter-set",
         "baseline.property.counter-set"

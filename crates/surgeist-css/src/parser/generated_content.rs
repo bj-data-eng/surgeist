@@ -1,6 +1,5 @@
 use cssparser::{ParseError, Parser, match_ignore_ascii_case};
 
-use super::values::parse_integer;
 use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
 
@@ -49,13 +48,14 @@ pub(super) fn parse_content<'i, 't>(
 
 pub(super) fn parse_counter_changes<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssCounterChanges, ParseError<'i, Error>> {
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<crate::CssCounterChangesValue, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
         .is_ok()
     {
         if input.is_exhausted() {
-            return Ok(CssCounterChanges::None);
+            return Ok(crate::CssCounterChangesValue::none());
         }
         return Err(unsupported_value(
             input,
@@ -66,14 +66,14 @@ pub(super) fn parse_counter_changes<'i, 't>(
 
     let mut changes = Vec::new();
     while !input.is_exhausted() {
-        let name = parse_counter_name(input)?;
+        let name = super::content_values::parse_counter_name(input)?;
         let value = input
-            .try_parse(|input| parse_integer(input, "counter value"))
+            .try_parse(|input| super::values::parse_integer_value(input, numeric))
             .ok();
-        changes.push(CssCounterChange::new(name, value));
+        changes.push(crate::CssCounterChangeValue::new(name, value));
     }
 
-    CssCounterChanges::try_changes(changes)
+    crate::CssCounterChangesValue::try_changes(changes)
         .ok_or_else(|| unsupported_value(input, None, "counter change list is empty"))
 }
 
@@ -84,16 +84,4 @@ pub(super) fn parse_content_string<'i, 't>(
     let value = input.expect_string_cloned().map_err(basic)?;
     CssContentString::try_new(value.to_string())
         .ok_or_else(|| unsupported_value_at(location, None, "content string contains null"))
-}
-
-fn parse_counter_name<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssCounterName, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let name = input
-        .expect_ident_cloned()
-        .map_err(|_| unsupported_value(input, None, "expected counter name"))?;
-    CssCounterName::try_new(name.to_string()).ok_or_else(|| {
-        unsupported_value_at(location, None, format!("unsupported counter name `{name}`"))
-    })
 }

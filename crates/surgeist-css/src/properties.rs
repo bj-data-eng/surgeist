@@ -119,9 +119,9 @@ macro_rules! property_schema {
             ListStylePosition, "list-style-position", [], "baseline.property.list-style-position", CssListStylePosition, CssListStylePositionPropertyValue, CssListStylePositionPropertyValueRepresentation, parse_list_style_position, { parse_list_style_position($input)? }, expansion = longhand { wrapper: existing, value: CssListStylePosition, accessor: current, inherited: true, initial_kind: value, initial: CssListStylePosition::Outside };
             ListStyleImage, "list-style-image", [], "baseline.property.list-style-image", CssImageValue, CssListStyleImagePropertyValue, CssListStyleImagePropertyValueRepresentation, parse_list_style_image, { parse_list_style_image($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssImageValue, accessor: current, inherited: true, initial_kind: value, initial: CssImageValue::None };
             ListStyle, "list-style", [], "baseline.property.list-style", crate::CssListStyleValue, CssListStylePropertyValue, CssListStylePropertyValueRepresentation, parse_list_style, { parse_list_style($input, $numeric)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ ListStylePosition => |value: &crate::CssListStyleValue| value.position(), ListStyleImage => |value: &crate::CssListStyleValue| value.image().cloned(), ListStyleType => |value: &crate::CssListStyleValue| value.style_type().cloned() ], reset_only: [] };
-            CounterReset, "counter-reset", [], "baseline.property.counter-reset", CssCounterChanges, CssCounterResetPropertyValue, CssCounterResetPropertyValueRepresentation, parse_counter_changes, { parse_counter_changes($input)? };
-            CounterIncrement, "counter-increment", [], "baseline.property.counter-increment", CssCounterChanges, CssCounterIncrementPropertyValue, CssCounterIncrementPropertyValueRepresentation, parse_counter_changes, { parse_counter_changes($input)? };
-            CounterSet, "counter-set", [], "baseline.property.counter-set", CssCounterChanges, CssCounterSetPropertyValue, CssCounterSetPropertyValueRepresentation, parse_counter_changes, { parse_counter_changes($input)? };
+            CounterReset, "counter-reset", [], "baseline.property.counter-reset", crate::CssCounterChangesValue, CssCounterResetPropertyValue, CssCounterResetPropertyValueRepresentation, parse_counter_changes, { parse_counter_changes($input, $numeric)? }, expansion = longhand { wrapper: existing, value: crate::CssCounterChangesValue, accessor: current, inherited: false, initial_kind: value, initial: crate::CssCounterChangesValue::none() };
+            CounterIncrement, "counter-increment", [], "baseline.property.counter-increment", crate::CssCounterChangesValue, CssCounterIncrementPropertyValue, CssCounterIncrementPropertyValueRepresentation, parse_counter_changes, { parse_counter_changes($input, $numeric)? }, expansion = longhand { wrapper: existing, value: crate::CssCounterChangesValue, accessor: current, inherited: false, initial_kind: value, initial: crate::CssCounterChangesValue::none() };
+            CounterSet, "counter-set", [], "baseline.property.counter-set", crate::CssCounterChangesValue, CssCounterSetPropertyValue, CssCounterSetPropertyValueRepresentation, parse_counter_changes, { parse_counter_changes($input, $numeric)? }, expansion = longhand { wrapper: existing, value: crate::CssCounterChangesValue, accessor: current, inherited: false, initial_kind: value, initial: crate::CssCounterChangesValue::none() };
             Width, "width", [], "baseline.property.width", CssSizeValue, CssWidthPropertyValue, CssWidthPropertyValueRepresentation, parse_size_value, { parse_size_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssSizeValue, accessor: current, inherited: false, initial_kind: value, initial: CssSizeValue::Auto };
             Height, "height", [], "baseline.property.height", CssSizeValue, CssHeightPropertyValue, CssHeightPropertyValueRepresentation, parse_size_value, { parse_size_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssSizeValue, accessor: current, inherited: false, initial_kind: value, initial: CssSizeValue::Auto };
             InlineSize, "inline-size", [], "official.property.inline-size", CssSizeValue, CssInlineSizePropertyValue, CssInlineSizePropertyValueRepresentation, parse_size_value, { parse_size_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssSizeValue, accessor: current, inherited: false, initial_kind: value, initial: CssSizeValue::Auto };
@@ -1188,6 +1188,39 @@ fn overflow_i01_projection(value: CssOverflow) -> Option<CssOverflow> {
 }
 
 macro_rules! define_property_value {
+    (CounterReset, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            crate::CssCounterChangesValue,
+            CssCounterChanges,
+            current,
+            crate::counter_changes::changes_i01
+        );
+    };
+    (CounterIncrement, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            crate::CssCounterChangesValue,
+            CssCounterChanges,
+            current,
+            crate::counter_changes::changes_i01
+        );
+    };
+    (CounterSet, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            crate::CssCounterChangesValue,
+            CssCounterChanges,
+            current,
+            crate::counter_changes::changes_i01
+        );
+    };
     (ListStyleType, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
         define_current_property_value!(
             $canonical,

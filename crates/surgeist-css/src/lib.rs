@@ -1112,6 +1112,8 @@ mod component_values;
 mod conformance;
 mod content_serialization;
 mod content_values;
+mod counter_changes;
+mod counter_changes_serialization;
 mod error;
 mod expansion;
 mod font_feature_values;
@@ -1303,6 +1305,7 @@ pub use component_values::{
 };
 pub use conformance::*;
 pub use content_values::*;
+pub use counter_changes::{CssCounterChangeValue, CssCounterChangesValue, CssCounterProperty};
 pub use error::*;
 pub use expansion::{
     CssContributionValueRef, CssContributions, CssCustomPropertyContribution, CssExpansion,

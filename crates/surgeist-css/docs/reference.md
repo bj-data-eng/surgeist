@@ -2280,6 +2280,20 @@ meaning-preserving initials, and inserts `outside` when a custom type named
 initials still consume node budget. Marker construction, image loading, and
 painting remain downstream.
 
+[CSS Lists 3 §§4–4.2](https://www.w3.org/TR/2020/WD-css-lists-3-20201117/#counter-reset)
+defines `counter-reset`, `counter-increment`, and `counter-set` as separate
+noninherited longhands with `none` initials. `CssCounterChangesValue` retains
+`none` or nonempty ordered checked entries, including duplicate names and
+whether each integer was authored. The three property wrappers expose
+`current()` and an exact conditional legacy `i01_subset()`. Names use the
+Content 3 checked counter-name domain; integer tokens remain exact at any
+magnitude, and integer calculations retain their authored tree and origin.
+For canonical specified serialization, pass `CssCounterProperty` explicitly:
+an omitted operand writes `0` for reset/set and `1` for increment. One bounded
+writer charges the list, entries, names, and numeric subtrees cumulatively;
+synthetic defaults consume projection and byte budgets without invented input
+nodes. Counter execution, clamping, and duplicate application remain downstream.
+
 [CSS Text 4 §§8.1–8.2](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#word-spacing-property)
 defines `word-spacing` and `letter-spacing` as inherited longhands with
 `normal` initials and signed `<length-percentage>` values. Their shared

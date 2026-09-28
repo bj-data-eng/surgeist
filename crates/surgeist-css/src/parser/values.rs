@@ -302,6 +302,45 @@ pub(super) fn calculation_error<'i>(location: cssparser::SourceLocation) -> Pars
     unsupported_value_at(location, None, "invalid typed calculation")
 }
 
+/// Shared exact integer admission for authored number tokens and integer-root math.
+pub(super) fn parse_integer_value<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
+) -> Result<CssIntegerValue, ParseError<'i, Error>> {
+    let numeric_start = input.state();
+    let location = input.current_source_location();
+    match input.next().map_err(basic)? {
+        Token::Number { .. } => {
+            input.reset(&numeric_start);
+            parse_current_integer_literal(input, numeric)
+        }
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Integer)
+                .map(CssIntegerCalculation::from_expression)
+                .map(CssIntegerValue::Calculation)
+        }
+        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
+    }
+}
+
+pub(super) fn parse_current_integer_literal<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
+) -> Result<CssIntegerValue, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let location = input.current_source_location();
+    let offset = input.position().byte_index();
+    let component = numeric.collect(input).map_err(|error| {
+        unsupported_value_at(
+            numeric.error_location(&error, location, offset),
+            None,
+            "invalid integer component",
+        )
+    })?;
+    crate::integer_value::admit_integer_literal(component)
+        .map_err(|_| unsupported_value_at(location, None, "value must have integer token syntax"))
+}
+
 pub(super) fn parse_number<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<f32, ParseError<'i, Error>> {

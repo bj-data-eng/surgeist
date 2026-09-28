@@ -150,7 +150,9 @@ fn parse_generic_name<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, CssConte
         .ok_or_else(|| unsupported_value(input, None, "reserved custom identifier"))
 }
 
-fn parse_counter_name<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, CssContentCounterName> {
+pub(super) fn parse_counter_name<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> Result<'i, CssContentCounterName> {
     let ident = input.expect_ident_cloned().map_err(basic)?;
     let checked = CssIdent::try_new(ident.to_string())
         .map_err(|_| unsupported_value(input, None, "invalid decoded counter name"))?;

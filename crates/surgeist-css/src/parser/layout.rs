@@ -1,6 +1,9 @@
 use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
 
-use super::values::{CalculationRoot, LengthGrammar, parse_length_with, parse_numeric_function};
+use super::values::{
+    CalculationRoot, LengthGrammar, parse_current_integer_literal, parse_integer_value,
+    parse_length_with, parse_numeric_function,
+};
 use crate::CssOverflowValue;
 use crate::display::*;
 use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
@@ -752,42 +755,11 @@ pub(super) fn parse_scrollbar_width<'i, 't>(
     }
 }
 
-pub(super) fn parse_current_integer_literal<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssIntegerValue, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let location = input.current_source_location();
-    let offset = input.position().byte_index();
-    let component = numeric.collect(input).map_err(|error| {
-        unsupported_value_at(
-            numeric.error_location(&error, location, offset),
-            None,
-            "invalid integer component",
-        )
-    })?;
-    crate::integer_value::admit_integer_literal(component)
-        .map_err(|_| unsupported_value_at(location, None, "value must have integer token syntax"))
-}
-
 pub(super) fn parse_order<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssIntegerValue, ParseError<'i, Error>> {
-    let numeric_start = input.state();
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Number { .. } => {
-            input.reset(&numeric_start);
-            parse_current_integer_literal(input, numeric)
-        }
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Integer)
-                .map(CssIntegerCalculation::from_expression)
-                .map(CssIntegerValue::Calculation)
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
+    parse_integer_value(input, numeric)
 }
 
 pub(super) fn parse_z_index<'i, 't>(

@@ -215,7 +215,7 @@ pub(super) fn parse_text_combine_upright<'i, 't>(
             let count = match input.next().map_err(basic)? {
                 Token::Number { .. } => {
                     input.reset(&start);
-                    let value = super::layout::parse_current_integer_literal(input, numeric)?;
+                    let value = super::values::parse_current_integer_literal(input, numeric)?;
                     let count = match value {
                         CssIntegerValue::Literal(value) => CssTextCombineDigitCount::try_literal(value),
                         CssIntegerValue::ExactLiteral(_) | CssIntegerValue::Calculation(_) => None,
