@@ -2568,12 +2568,12 @@ fn official_position_metadata_matches_generic_position_behavior() {
         panic!("expected object-position value");
     };
     assert!(matches!(
-        value.position().value().horizontal(),
+        value.position().horizontal(),
         CssHorizontalPosition::RightOffset(offset)
             if matches!(offset.value(), CssLength::Percent(value) if value.value() == 5.0)
     ));
     assert!(matches!(
-        value.position().value().vertical(),
+        value.position().vertical(),
         CssVerticalPosition::BottomOffset(offset)
             if matches!(offset.value(), CssLength::Px(value) if value.value() == 2.0)
     ));
@@ -2642,7 +2642,7 @@ fn background_position_property_metadata_matches_layer_list_behavior() {
 }
 
 #[test]
-fn object_position_property_metadata_matches_current_accessor_behavior() {
+fn object_position_property_metadata_matches_semantic_accessor_behavior() {
     let report = parse_style_attribute("object-position: center 25%");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = report.syntax()[0].known().expect("known object-position");
@@ -2654,11 +2654,11 @@ fn object_position_property_metadata_matches_current_accessor_behavior() {
         panic!("expected object-position value");
     };
     assert!(matches!(
-        value.position().value().horizontal(),
+        value.position().horizontal(),
         CssHorizontalPosition::Center
     ));
     assert!(matches!(
-        value.position().value().vertical(),
+        value.position().vertical(),
         CssVerticalPosition::Offset(offset)
             if matches!(offset.value(), CssLength::Percent(value) if value.value() == 25.0)
     ));
@@ -2722,14 +2722,11 @@ fn mask_position_property_metadata_matches_generic_layer_behavior() {
         panic!("expected two mask-position layers");
     };
     assert!(matches!(
-        first.value().horizontal(),
+        first.horizontal(),
         CssHorizontalPosition::LeftOffset(offset)
             if matches!(offset.value(), CssLength::Px(value) if value.value() == 10.0)
     ));
-    assert!(matches!(
-        second.value().horizontal(),
-        CssHorizontalPosition::Center
-    ));
+    assert!(matches!(second.horizontal(), CssHorizontalPosition::Center));
 
     assert_complete_position_property_metadata(
         "baseline.property.mask-position",

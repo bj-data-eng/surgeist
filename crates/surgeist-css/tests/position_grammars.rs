@@ -1,13 +1,12 @@
 use surgeist_css::{
     CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize, CssCalcLength, CssErrorCode,
-    CssHorizontalPosition, CssHorizontalPositionKeyword, CssImageLayer, CssKnownProperty,
-    CssKnownPropertyValueRef, CssLength, CssLengthPercentageCalculation, CssLengthUnit,
-    CssMaskLayer, CssMaskList, CssObjectPosition, CssPosition, CssPositionComponent,
+    CssHorizontalPosition, CssImageLayer, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
+    CssLengthPercentageCalculation, CssLengthUnit, CssMaskLayer, CssMaskList, CssPosition,
     CssPositionOffset, CssRecoveryAction, CssTokenKind, CssTransformOrigin, CssTransformOriginZ,
     CssUrl, CssVerticalPosition, CssVerticalPositionKeyword, ErrorKind, parse_style_attribute,
 };
 
-fn object_position(value: &str) -> CssObjectPosition {
+fn object_position(value: &str) -> CssPosition {
     let source = format!("object-position: {value}");
     let report = parse_style_attribute(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
@@ -114,7 +113,7 @@ fn generic_position_rejects_axis_order_partial_pairs_and_duplicate_axes() {
 }
 
 #[test]
-fn deferred_background_position_preserves_three_component_legacy_projection() {
+fn background_position_preserves_three_component_edge_origin() {
     let report = parse_style_attribute("background-position: left 10px top");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = report.syntax()[0]
@@ -126,23 +125,18 @@ fn deferred_background_position_preserves_three_component_legacy_projection() {
     else {
         panic!("expected background-position value");
     };
-    let positions = value
-        .i01_subset()
-        .expect("deferred background-position retains its I01 projection")
-        .positions();
+    let positions = value.positions().positions();
     assert_eq!(positions.len(), 1);
     assert!(matches!(
-        positions[0].components(),
-        [
-            CssPositionComponent::Horizontal(CssHorizontalPositionKeyword::Left),
-            CssPositionComponent::Length(CssLength::Px(length)),
-            CssPositionComponent::Vertical(CssVerticalPositionKeyword::Top),
-        ] if length.value() == 10.0
+        positions[0].horizontal(),
+        CssHorizontalPosition::LeftOffset(offset)
+            if matches!(offset.value(), CssLength::Px(length) if length.value() == 10.0)
     ));
+    assert!(matches!(positions[0].vertical(), CssVerticalPosition::Top));
 }
 
 #[test]
-fn deferred_transform_origin_preserves_two_planar_plus_z_legacy_projection() {
+fn transform_origin_preserves_two_planar_axes_plus_z() {
     let report = parse_style_attribute("transform-origin: left top 10px");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = report.syntax()[0]
@@ -154,17 +148,12 @@ fn deferred_transform_origin_preserves_two_planar_plus_z_legacy_projection() {
     else {
         panic!("expected transform-origin value");
     };
-    let position = value
-        .i01_subset()
-        .expect("deferred transform-origin retains its I01 projection");
-    assert!(matches!(
-        position.components(),
-        [
-            CssPositionComponent::Horizontal(CssHorizontalPositionKeyword::Left),
-            CssPositionComponent::Vertical(CssVerticalPositionKeyword::Top),
-            CssPositionComponent::Length(CssLength::Px(length)),
-        ] if length.value() == 10.0
-    ));
+    let origin = value.origin();
+    assert!(matches!(origin.horizontal(), CssHorizontalPosition::Left));
+    assert!(matches!(origin.vertical(), CssVerticalPosition::Top));
+    assert!(
+        matches!(origin.z().map(CssTransformOriginZ::value), Some(CssLength::Px(length)) if length.value() == 10.0)
+    );
 }
 
 #[test]
@@ -211,12 +200,12 @@ fn object_position_parser_preserves_ordinary_global_and_substitution_branches() 
 fn object_position_exposes_the_exact_generic_position_model() {
     let position = object_position("right 5% bottom 2px");
     assert!(matches!(
-        position.value().horizontal(),
+        position.horizontal(),
         CssHorizontalPosition::RightOffset(offset)
             if matches!(offset.value(), CssLength::Percent(value) if value.value() == 5.0)
     ));
     assert!(matches!(
-        position.value().vertical(),
+        position.vertical(),
         CssVerticalPosition::BottomOffset(offset)
             if matches!(offset.value(), CssLength::Px(value) if value.value() == 2.0)
     ));
@@ -632,22 +621,22 @@ fn background_and_mask_position_lists_expose_each_exact_layer() {
     let mask_layers = mask.positions().positions();
     assert_eq!(mask_layers.len(), 2);
     assert!(matches!(
-        mask_layers[0].value().horizontal(),
+        mask_layers[0].horizontal(),
         CssHorizontalPosition::RightOffset(offset)
             if matches!(offset.value(), CssLength::Percent(value) if value.value() == 5.0)
     ));
     assert!(matches!(
-        mask_layers[0].value().vertical(),
+        mask_layers[0].vertical(),
         CssVerticalPosition::BottomOffset(offset)
             if matches!(offset.value(), CssLength::Px(value) if value.value() == 2.0)
     ));
     assert!(matches!(
-        mask_layers[1].value().horizontal(),
+        mask_layers[1].horizontal(),
         CssHorizontalPosition::Offset(offset)
             if matches!(offset.value(), CssLength::Calc(_))
     ));
     assert!(matches!(
-        mask_layers[1].value().vertical(),
+        mask_layers[1].vertical(),
         CssVerticalPosition::Top
     ));
 }
@@ -763,10 +752,8 @@ fn mask_shorthand_preserves_valid_image_position_size_and_repeat_components() {
                 CssUrl::try_new("mask.png").expect("nonempty URL"),
             )),
             Some(
-                CssPosition::try_new(vec![CssPositionComponent::Horizontal(
-                    CssHorizontalPositionKeyword::Center,
-                )])
-                .expect("valid center position"),
+                CssPosition::try_new(CssHorizontalPosition::Center, CssVerticalPosition::Center)
+                    .expect("valid center position"),
             ),
             Some(CssBackgroundSize::Contain),
             Some(CssBackgroundRepeat::Axes {
@@ -777,7 +764,16 @@ fn mask_shorthand_preserves_valid_image_position_size_and_repeat_components() {
         .expect("nonempty mask layer"),
     ])
     .expect("nonempty mask list");
-    assert_eq!(value.i01_subset(), Some(&expected));
+    assert_eq!(value.value(), &expected);
+    let [layer] = value.value().layers() else {
+        panic!("one mask layer")
+    };
+    let position = layer.position().expect("authored center position");
+    assert!(matches!(
+        position.horizontal(),
+        CssHorizontalPosition::Center
+    ));
+    assert!(matches!(position.vertical(), CssVerticalPosition::Center));
 
     {
         let strict = surgeist_css::validate_style_attribute(source)
@@ -845,7 +841,7 @@ fn layered_position_failures_drop_each_declaration_and_continue() {
 }
 
 #[test]
-fn layered_position_i01_projection_is_exact_and_typed_calculations_are_current_only() {
+fn layered_positions_retain_order_and_symbolic_calculations() {
     let report = parse_style_attribute(concat!(
         "background-position: left 10px top, bottom right; ",
         "background-position: left calc((1px + 2%) * 3) top; ",
@@ -854,17 +850,55 @@ fn layered_position_i01_projection_is_exact_and_typed_calculations_are_current_o
     ));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
 
-    for (index, has_i01_projection) in [(0, true), (1, false), (2, true), (3, false)] {
-        let value = report.syntax()[index]
-            .known()
-            .expect("known layered position")
-            .property_value()
-            .expect("ordinary layered position");
-        let projection = match value {
-            CssKnownPropertyValueRef::BackgroundPosition(value) => value.i01_subset(),
-            CssKnownPropertyValueRef::MaskPosition(value) => value.i01_subset(),
-            _ => panic!("expected layered position"),
-        };
-        assert_eq!(projection.is_some(), has_i01_projection, "index {index}");
-    }
+    let background = |index: usize| match report.syntax()[index]
+        .known()
+        .unwrap()
+        .property_value()
+        .unwrap()
+    {
+        CssKnownPropertyValueRef::BackgroundPosition(value) => value.positions().positions(),
+        _ => panic!("expected background-position at {index}"),
+    };
+    let mask = |index: usize| match report.syntax()[index]
+        .known()
+        .unwrap()
+        .property_value()
+        .unwrap()
+    {
+        CssKnownPropertyValueRef::MaskPosition(value) => value.positions().positions(),
+        _ => panic!("expected mask-position at {index}"),
+    };
+    let first = background(0);
+    assert_eq!(first.len(), 2);
+    assert!(
+        matches!(first[0].horizontal(), CssHorizontalPosition::LeftOffset(offset) if matches!(offset.value(), CssLength::Px(n) if n.value() == 10.0))
+    );
+    assert!(matches!(first[0].vertical(), CssVerticalPosition::Top));
+    assert!(matches!(
+        first[1].horizontal(),
+        CssHorizontalPosition::Right
+    ));
+    assert!(matches!(first[1].vertical(), CssVerticalPosition::Bottom));
+    let second = background(1);
+    assert_eq!(second.len(), 1);
+    assert!(
+        matches!(second[0].horizontal(), CssHorizontalPosition::LeftOffset(offset) if matches!(offset.value(), CssLength::Calc(_)))
+    );
+    assert!(matches!(second[0].vertical(), CssVerticalPosition::Top));
+    let third = mask(2);
+    assert_eq!(third.len(), 2);
+    assert!(matches!(third[0].horizontal(), CssHorizontalPosition::Left));
+    assert!(matches!(third[0].vertical(), CssVerticalPosition::Top));
+    assert!(
+        matches!(third[1].horizontal(), CssHorizontalPosition::Offset(offset) if matches!(offset.value(), CssLength::Percent(n) if n.value() == 10.0))
+    );
+    assert!(
+        matches!(third[1].vertical(), CssVerticalPosition::Offset(offset) if matches!(offset.value(), CssLength::Percent(n) if n.value() == 20.0))
+    );
+    let fourth = mask(3);
+    assert_eq!(fourth.len(), 1);
+    assert!(
+        matches!(fourth[0].horizontal(), CssHorizontalPosition::Offset(offset) if matches!(offset.value(), CssLength::Calc(_)))
+    );
+    assert!(matches!(fourth[0].vertical(), CssVerticalPosition::Top));
 }

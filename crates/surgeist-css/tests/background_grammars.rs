@@ -129,7 +129,21 @@ fn background_longhands_preserve_comma_lists_and_current_accessors() {
         panic!("expected background-position");
     };
     assert_eq!(positions.positions().positions().len(), 2);
-    assert!(positions.i01_subset().is_some());
+    assert!(matches!(
+        positions.positions().positions()[0].horizontal(),
+        CssHorizontalPosition::Left
+    ));
+    assert!(matches!(
+        positions.positions().positions()[0].vertical(),
+        CssVerticalPosition::Top
+    ));
+    assert!(matches!(positions.positions().positions()[1].horizontal(),
+        CssHorizontalPosition::RightOffset(offset)
+            if matches!(offset.value(), CssLength::Px(value) if value.value() == 10.0)));
+    assert!(matches!(
+        positions.positions().positions()[1].vertical(),
+        CssVerticalPosition::Bottom
+    ));
 
     let CssKnownPropertyValueRef::BackgroundSize(sizes) = values[2] else {
         panic!("expected background-size");

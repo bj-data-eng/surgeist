@@ -289,7 +289,7 @@ macro_rules! property_schema {
             BorderInlineColor, "border-inline-color", [], "official.property.border-inline-color", CssBorderColorPair, CssBorderInlineColorPropertyValue, CssBorderInlineColorPropertyValueRepresentation, parse_border_color_pair, { parse_border_color_pair($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: value, members: [ BorderInlineStartColor => |value: &CssBorderColorPair| Some(value.start().clone()), BorderInlineEndColor => |value: &CssBorderColorPair| Some(value.end().clone()) ], reset_only: [] };
             BackgroundImage, "background-image", [], "baseline.property.background-image", CssImageLayerList, CssBackgroundImagePropertyValue, CssBackgroundImagePropertyValueRepresentation, parse_image_layer_list, { parse_image_layer_list($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssImageValueList, accessor: images, inherited: false, initial_kind: value, initial: CssImageValueList::try_new(vec![CssImageValue::None]).expect("one initial image") };
             BackgroundPosition, "background-position", [], "baseline.property.background-position", CssBackgroundPositionList, CssBackgroundPositionPropertyValue, CssBackgroundPositionPropertyValueRepresentation, parse_background_position_list, { parse_background_position_list($input, $numeric)? };
-            ObjectPosition, "object-position", [], "official.property.object-position", CssObjectPosition, CssObjectPositionPropertyValue, CssObjectPositionPropertyValueRepresentation, parse_object_position, { parse_object_position($input, $numeric)? };
+            ObjectPosition, "object-position", [], "official.property.object-position", CssPosition, CssObjectPositionPropertyValue, CssObjectPositionPropertyValueRepresentation, parse_object_position, { parse_object_position($input, $numeric)? };
             BackgroundSize, "background-size", [], "baseline.property.background-size", CssBackgroundSizeList, CssBackgroundSizePropertyValue, CssBackgroundSizePropertyValueRepresentation, parse_background_size_list, { parse_background_size_list($input, $numeric)? };
             BackgroundRepeat, "background-repeat", [], "baseline.property.background-repeat", CssBackgroundRepeatList, CssBackgroundRepeatPropertyValue, CssBackgroundRepeatPropertyValueRepresentation, parse_background_repeat_list, { parse_background_repeat_list($input)? };
             BackgroundOrigin, "background-origin", [], "baseline.property.background-origin", CssBackgroundBox, CssBackgroundOriginPropertyValue, CssBackgroundOriginPropertyValueRepresentation, parse_background_box_list, { parse_background_box_list($input)? };
@@ -360,7 +360,7 @@ macro_rules! property_schema {
             Mask, "mask", [], "baseline.property.mask", CssMaskList, CssMaskPropertyValue, CssMaskPropertyValueRepresentation, parse_mask_list, { parse_mask_list($input, $numeric)? };
             MaskImage, "mask-image", [], "baseline.property.mask-image", CssImageLayerList, CssMaskImagePropertyValue, CssMaskImagePropertyValueRepresentation, parse_image_layer_list, { parse_image_layer_list($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssImageValueList, accessor: images, inherited: false, initial_kind: value, initial: CssImageValueList::try_new(vec![CssImageValue::None]).expect("one initial image") };
             MaskSize, "mask-size", [], "baseline.property.mask-size", CssBackgroundSizeList, CssMaskSizePropertyValue, CssMaskSizePropertyValueRepresentation, parse_background_size_list, { parse_background_size_list($input, $numeric)? };
-            MaskPosition, "mask-position", [], "baseline.property.mask-position", CssMaskPositionList, CssMaskPositionPropertyValue, CssMaskPositionPropertyValueRepresentation, parse_mask_position_list, { parse_mask_position_list($input, $numeric)? };
+            MaskPosition, "mask-position", [], "baseline.property.mask-position", CssPositionList, CssMaskPositionPropertyValue, CssMaskPositionPropertyValueRepresentation, parse_mask_position_list, { parse_mask_position_list($input, $numeric)? };
             MaskRepeat, "mask-repeat", [], "baseline.property.mask-repeat", CssBackgroundRepeatList, CssMaskRepeatPropertyValue, CssMaskRepeatPropertyValueRepresentation, parse_background_repeat_list, { parse_background_repeat_list($input)? };
             TransitionProperty, "transition-property", [], "baseline.property.transition-property", CssTransitionPropertyList, CssTransitionPropertyPropertyValue, CssTransitionPropertyPropertyValueRepresentation, parse_transition_property_list, { parse_transition_property_list($input)? };
             TransitionDuration, "transition-duration", [], "baseline.property.transition-duration", CssDurationList, CssTransitionDurationPropertyValue, CssTransitionDurationPropertyValueRepresentation, parse_duration_list, { parse_duration_list($input, $numeric)? };
@@ -578,30 +578,6 @@ fn flex_i01_projection(value: &CssFlexValue) -> Option<CssFlex> {
             ))
         }
     }
-}
-
-fn background_position_list_i01_projection(
-    value: &CssBackgroundPositionList,
-) -> Option<CssPositionList> {
-    let positions = value
-        .positions()
-        .iter()
-        .map(|position| position.legacy().cloned())
-        .collect::<Option<Vec<_>>>()?;
-    CssPositionList::try_new(positions)
-}
-
-fn mask_position_list_i01_projection(value: &CssMaskPositionList) -> Option<CssPositionList> {
-    let positions = value
-        .positions()
-        .iter()
-        .map(|position| position.legacy().cloned())
-        .collect::<Option<Vec<_>>>()?;
-    CssPositionList::try_new(positions)
-}
-
-fn transform_origin_i01_projection(value: &CssTransformOrigin) -> Option<CssPosition> {
-    value.legacy().cloned()
 }
 
 fn background_box_list_i01_projection(value: &CssBackgroundBoxList) -> Option<CssBackgroundBox> {
@@ -2072,6 +2048,12 @@ macro_rules! define_property_value {
         define_semantic_property_value!($canonical, $wrapper, $representation, CssObjectFit, fit);
     };
     (
+        Mask, $canonical:literal, $value:ty, $wrapper:ident,
+        $representation:ident
+    ) => {
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssMaskList, value);
+    };
+    (
         MaskImage, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
@@ -2167,54 +2149,24 @@ macro_rules! define_property_value {
         ObjectPosition, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        #[derive(Clone, Debug, PartialEq)]
-        pub(crate) struct $representation {
-            current: CssObjectPosition,
-        }
-
-        /// A grammar-checked authored ordinary value for `object-position`.
-        #[derive(Clone, Debug, PartialEq)]
-        pub struct $wrapper {
-            authored: CssAuthoredDeclarationValue,
-            representation: $representation,
-        }
-
-        impl $wrapper {
-            #[must_use]
-            pub(crate) const fn new(
-                authored: CssAuthoredDeclarationValue,
-                current: CssObjectPosition,
-            ) -> Self {
-                Self {
-                    authored,
-                    representation: $representation { current },
-                }
-            }
-
-            #[must_use]
-            pub fn as_css(&self) -> &str {
-                self.authored.as_css()
-            }
-
-            /// Returns the exact authored object position.
-            #[must_use]
-            pub const fn position(&self) -> &CssObjectPosition {
-                &self.representation.current
-            }
-        }
+        define_semantic_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssPosition,
+            position
+        );
     };
     (
         BackgroundPosition, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
             CssBackgroundPositionList,
-            CssPositionList,
-            positions,
-            background_position_list_i01_projection
+            positions
         );
     };
     (
@@ -2291,28 +2243,24 @@ macro_rules! define_property_value {
         MaskPosition, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
-            CssMaskPositionList,
             CssPositionList,
-            positions,
-            mask_position_list_i01_projection
+            positions
         );
     };
     (
         TransformOrigin, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
             CssTransformOrigin,
-            CssPosition,
-            origin,
-            transform_origin_i01_projection
+            origin
         );
     };
     (

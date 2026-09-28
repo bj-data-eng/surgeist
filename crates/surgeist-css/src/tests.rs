@@ -111,6 +111,15 @@ macro_rules! declaration_value {
     ($input:expr, ClipPath) => {
         semantic_value!($input, ClipPath)
     };
+    ($input:expr, Mask) => {
+        semantic_value!($input, Mask)
+    };
+    ($input:expr, BackgroundPosition) => {
+        position_value!($input, BackgroundPosition, positions)
+    };
+    ($input:expr, TransformOrigin) => {
+        position_value!($input, TransformOrigin, origin)
+    };
     ($input:expr, $variant:ident) => {{
         let declaration = declaration($input, CssProperty::$variant);
         let value = declaration
@@ -121,6 +130,20 @@ macro_rules! declaration_value {
             panic!("property wrapper did not match requested property");
         };
         value.i01_subset().expect("I01 property payload").clone()
+    }};
+}
+
+macro_rules! position_value {
+    ($input:expr, $variant:ident, $accessor:ident) => {{
+        let declaration = declaration($input, CssProperty::$variant);
+        let CssKnownPropertyValueRef::$variant(value) = declaration
+            .known()
+            .and_then(|known| known.property_value())
+            .expect("ordinary position value")
+        else {
+            panic!("position wrapper did not match requested property");
+        };
+        value.$accessor().clone()
     }};
 }
 
@@ -4848,12 +4871,13 @@ fn rejection_negative_numbers_and_public_constructor_invariants_matrix() {
 
     assert_eq!(CssFontFamilyList::try_new(Vec::new()), None);
     assert_eq!(CssGridGeneralTrackList::try_new(Vec::new()), None);
-    assert_eq!(
-        CssPosition::try_new(vec![
-            CssPositionComponent::Horizontal(CssHorizontalPositionKeyword::Left),
-            CssPositionComponent::Horizontal(CssHorizontalPositionKeyword::Right),
-        ]),
-        None
+    let offset = CssPositionOffset::try_new(CssLength::px(1.0)).unwrap();
+    assert!(
+        CssPosition::try_new(
+            CssHorizontalPosition::LeftOffset(offset),
+            CssVerticalPosition::Top
+        )
+        .is_none()
     );
     assert_eq!(CssTransitionList::try_new(Vec::new()), None);
     assert_eq!(
@@ -8851,12 +8875,18 @@ fn parses_background_properties_as_authored_syntax() {
             ".panel { background-position: left 10px top 20%; }",
             BackgroundPosition
         ),
-        CssPositionList::new(vec![CssPosition::new(vec![
-            CssPositionComponent::Horizontal(CssHorizontalPositionKeyword::Left),
-            CssPositionComponent::Length(CssLength::px(10.0)),
-            CssPositionComponent::Vertical(CssVerticalPositionKeyword::Top),
-            CssPositionComponent::Length(CssLength::percent(20.0)),
-        ])])
+        CssBackgroundPositionList::try_new(vec![
+            CssBackgroundPosition::try_new(
+                CssHorizontalPosition::LeftOffset(
+                    CssPositionOffset::try_new(CssLength::px(10.0)).unwrap(),
+                ),
+                CssVerticalPosition::TopOffset(
+                    CssPositionOffset::try_new(CssLength::percent(20.0)).unwrap(),
+                ),
+            )
+            .unwrap()
+        ])
+        .unwrap()
     );
     assert_eq!(
         declaration_value!(
@@ -8954,10 +8984,11 @@ fn parses_transform_effect_and_mask_properties_as_authored_syntax() {
 
     assert_eq!(
         declaration_value!(".panel { transform-origin: center top; }", TransformOrigin),
-        CssPosition::new(vec![
-            CssPositionComponent::Horizontal(CssHorizontalPositionKeyword::Center),
-            CssPositionComponent::Vertical(CssVerticalPositionKeyword::Top),
-        ])
+        CssTransformOrigin::try_new(
+            CssPosition::try_new(CssHorizontalPosition::Center, CssVerticalPosition::Top).unwrap(),
+            None,
+        )
+        .unwrap()
     );
     let CssFilter::Functions(filter) =
         declaration_value!(".panel { filter: blur(4px) opacity(50%); }", Filter)
@@ -9155,19 +9186,21 @@ fn background_effect_and_animation_constructors_reject_invalid_states() {
     assert_eq!(CssImageLayerList::try_new(Vec::new()), None);
     assert_eq!(CssCursorUrlList::try_new(Vec::new()), None);
     assert!(CssCursor::try_urls(Vec::new(), CssCursorKeyword::Pointer).is_none());
-    assert_eq!(
-        CssPosition::try_new(vec![
-            CssPositionComponent::Horizontal(CssHorizontalPositionKeyword::Left),
-            CssPositionComponent::Horizontal(CssHorizontalPositionKeyword::Right),
-        ]),
-        None
+    let horizontal = CssPositionOffset::try_new(CssLength::px(1.0)).unwrap();
+    assert!(
+        CssPosition::try_new(
+            CssHorizontalPosition::LeftOffset(horizontal),
+            CssVerticalPosition::Top
+        )
+        .is_none()
     );
-    assert_eq!(
-        CssPosition::try_new(vec![
-            CssPositionComponent::Vertical(CssVerticalPositionKeyword::Top),
-            CssPositionComponent::Vertical(CssVerticalPositionKeyword::Bottom),
-        ]),
-        None
+    let vertical = CssPositionOffset::try_new(CssLength::percent(5.0)).unwrap();
+    assert!(
+        CssPosition::try_new(
+            CssHorizontalPosition::Left,
+            CssVerticalPosition::BottomOffset(vertical)
+        )
+        .is_none()
     );
     assert_eq!(CssTranslateValues::try_new(Vec::new()), None);
     assert_eq!(

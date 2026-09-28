@@ -2,7 +2,7 @@ use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
 
 use super::background::{parse_background_repeat, parse_background_size, parse_image_layer};
 use super::box_model::{expand_radius_components, parse_drop_shadow};
-use super::position::{parse_css_position, parse_css_position_value};
+use super::position::parse_css_position;
 use super::url::parse_url;
 use super::values::{
     CalculationRoot, LengthGrammar, checked_percentage_value, next_is_comma, next_is_delim,
@@ -642,12 +642,12 @@ fn parse_ellipse_shape<'i, 't>(
 fn parse_optional_shape_position<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<Option<CssPositionValue>, ParseError<'i, Error>> {
+) -> std::result::Result<Option<CssPosition>, ParseError<'i, Error>> {
     if input.is_exhausted() {
         return Ok(None);
     }
     input.expect_ident_matching("at")?;
-    parse_css_position_value(input, numeric).map(Some)
+    parse_css_position(input, numeric).map(Some)
 }
 
 fn parse_shape_length_percentage<'i, 't>(

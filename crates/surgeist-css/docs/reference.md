@@ -417,11 +417,8 @@ operand has no binary operator; signed operand tokens remain valid. Checked
 component construction owns shape and resource admission, so arbitrary recursive
 legacy sums can no longer bypass those invariants.
 
-The frozen I01 position projection grammar admits literal lengths only.
-Calculation-bearing authored positions still parse through the numeric owner but
-have no projection through that frozen grammar. Position compatibility checks
-exclude every `CssLength::Calc` variant. Basic shapes and `clip-path` use their
-sole typed authored graph, including symbolic calculations.
+Positions, basic shapes, and `clip-path` use their typed authored graphs,
+including symbolic calculations.
 
 ## Authored preferred aspect ratios
 
@@ -1019,7 +1016,7 @@ animation timelines, or lower values into sibling Surgeist crates.
 
 ## Property-specific authored positions
 
-Current position values preserve authored symbolic offsets and expose both axes
+Authored position values preserve symbolic offsets and expose both axes
 without resolving percentages, calculations, writing modes, positioning boxes,
 object sizes, layout, painting, or transforms. `CssPositionOffset` accepts only
 the position-valid length-percentage domain and retains whether an offset was
@@ -1027,10 +1024,10 @@ free or authored against a named edge.
 
 The property grammars and accessors are deliberately distinct:
 
-- `CssObjectPositionPropertyValue::position()` exposes one generic
-  `CssPositionValue` through `CssObjectPosition::value()`.
-- `CssMaskPositionPropertyValue::positions()` exposes a nonempty list whose
-  `CssMaskPosition` layers each contain one generic `CssPositionValue`.
+- `CssObjectPositionPropertyValue::position()` exposes one generic `CssPosition`.
+- `CssMaskPositionPropertyValue::positions()` exposes a nonempty `CssPositionList`.
+- `CssMaskPropertyValue::value()` exposes typed mask shorthand layers; each
+  layer exposes its optional generic position through `CssMaskLayer::position()`.
 - `CssBackgroundPositionPropertyValue::positions()` exposes a distinct
   nonempty layer list that additionally admits the background-only
   three-component form.
@@ -1066,7 +1063,7 @@ let CssKnownPropertyValueRef::ObjectPosition(object) = report.syntax()[1]
     .property_value().expect("ordinary object position")
 else { panic!("expected object-position") };
 assert!(matches!(
-    object.position().value().horizontal(),
+    object.position().horizontal(),
     CssHorizontalPosition::RightOffset(_)
 ));
 
@@ -1092,11 +1089,12 @@ explicitly gives the conflicting `top 50px` example as one planar value plus
 Z. The source discrepancy remains tracked separately from the selected
 operational behavior.
 
-The `background-position`, `mask-position`, and `transform-origin` wrappers keep
-`i01_subset()` as a frozen compatibility view. Every I01 value retains its exact
-projection; newly accepted current syntax returns `None` when the older payload
-cannot represent it without loss. `object-position` is additive and has no I01
-projection. Position use
+The position wrappers expose their checked semantic values directly. Generic
+`CssPosition::try_new` accepts paired edge offsets or no edge offsets;
+`CssBackgroundPosition::try_new` additionally accepts one edge offset with a
+keyword on the other axis, but not with a bare offset. The checked
+`CssTransformOrigin::try_new` excludes edge offsets and keeps optional pure-length
+Z. Position use
 inside gradients, transforms, filters, and basic shapes remains on its separate
 function grammar boundary.
 
@@ -2422,7 +2420,7 @@ Programmatic gradients use `CssGradientColorStop::from_color`, checked
 `CssColorStopList::try_new`, and `CssLinearGradient::new` or
 `CssRadialGradient::try_new`. The radial constructor rejects incompatible
 explicit radius forms, permits omitted size and extents, and preserves authored
-omissions. `CssPositionValue::try_new` checks the generic
+omissions. `CssPosition::try_new` checks the generic
 position grammar: explicit edge offsets occur on both axes or neither. These
 constructors retain authored symbolic values without resolving colors,
 percentages, URLs, or positions.
@@ -3317,7 +3315,7 @@ their normalized checked kinds. Property wrappers still retain original
 ## Authored positioning and insets
 
 The selected [Values 4 generic `<position>` serialization](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#position-serialization)
-is available on `CssPositionValue::serialize_specified()` and its limits variant.
+is available on `CssPosition::serialize_specified()` and its limits variant.
 It writes the checked horizontal and vertical axes in that order: a parsed
 `top` becomes `center top`, while `bottom 2% right 1px` becomes
 `right 1px bottom 2%`. Paired edge offsets retain their edge keywords and

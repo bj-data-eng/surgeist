@@ -58,7 +58,7 @@ fn assert_url_payload(value: CssKnownPropertyValueRef<'_>, expected: &str) {
             [layer] if matches!(layer.image(), Some(CssImageValue::Url(url)) if url.as_str() == expected)
         )),
         CssKnownPropertyValueRef::Mask(value) => {
-            assert_eq!(value.i01_subset().unwrap().layers().len(), 1);
+            assert_eq!(value.value().layers().len(), 1);
         }
         CssKnownPropertyValueRef::BorderImage(value) => assert!(matches!(
             value.border_image().source(),

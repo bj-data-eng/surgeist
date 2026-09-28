@@ -8210,7 +8210,7 @@ pub enum CssRadialSize {
 pub struct CssRadialGradient {
     shape: Option<CssRadialShape>,
     size: Option<CssRadialSize>,
-    position: Option<CssPositionValue>,
+    position: Option<CssPosition>,
     stops: CssColorStopList,
 }
 
@@ -8226,7 +8226,7 @@ impl CssRadialGradient {
     }
 
     #[must_use]
-    pub const fn position(&self) -> Option<&CssPositionValue> {
+    pub const fn position(&self) -> Option<&CssPosition> {
         self.position.as_ref()
     }
 
@@ -8319,12 +8319,12 @@ pub enum CssVerticalPosition {
 /// Both axes are explicit in this model, including axes omitted and therefore centered by the
 /// grammar. Paired edge offsets are valid; a lone edge offset is not.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssPositionValue {
+pub struct CssPosition {
     horizontal: CssHorizontalPosition,
     vertical: CssVerticalPosition,
 }
 
-impl CssPositionValue {
+impl CssPosition {
     /// Constructs the generic position when both axes use edge offsets or neither does.
     /// Background's separate three-component position grammar is not admitted here.
     #[must_use]
@@ -8362,10 +8362,30 @@ impl CssPositionValue {
     }
 }
 
+/// A nonempty authored comma list of generic positions.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssPositionList {
+    positions: Vec<CssPosition>,
+}
+
+impl CssPositionList {
+    /// Constructs a nonempty list of checked positions.
+    #[must_use]
+    pub fn try_new(positions: Vec<CssPosition>) -> Option<Self> {
+        (!positions.is_empty()).then_some(Self { positions })
+    }
+
+    /// Returns positions in authored order.
+    #[must_use]
+    pub fn positions(&self) -> &[CssPosition] {
+        &self.positions
+    }
+}
+
 mod images;
 pub use images::CssImage;
 
-/// One parser-produced authored layer of `background-position`.
+/// One checked authored layer of `background-position`.
 ///
 /// This model is distinct from generic `<position>` because the background grammar admits its
 /// specified three-component form. Both axes remain symbolic and retain authored edge origins.
@@ -8373,21 +8393,32 @@ pub use images::CssImage;
 pub struct CssBackgroundPosition {
     horizontal: CssHorizontalPosition,
     vertical: CssVerticalPosition,
-    legacy: Option<CssPosition>,
 }
 
 impl CssBackgroundPosition {
+    /// Constructs a representable background position, including the three-component form.
     #[must_use]
-    pub(crate) const fn new(
+    pub fn try_new(
         horizontal: CssHorizontalPosition,
         vertical: CssVerticalPosition,
-        legacy: Option<CssPosition>,
-    ) -> Self {
-        Self {
+    ) -> Option<Self> {
+        let horizontal_edge = matches!(
+            horizontal,
+            CssHorizontalPosition::LeftOffset(_) | CssHorizontalPosition::RightOffset(_)
+        );
+        let vertical_edge = matches!(
+            vertical,
+            CssVerticalPosition::TopOffset(_) | CssVerticalPosition::BottomOffset(_)
+        );
+        if horizontal_edge && matches!(vertical, CssVerticalPosition::Offset(_))
+            || vertical_edge && matches!(horizontal, CssHorizontalPosition::Offset(_))
+        {
+            return None;
+        }
+        Some(Self {
             horizontal,
             vertical,
-            legacy,
-        }
+        })
     }
 
     /// Returns the authored horizontal position, including its offset origin.
@@ -8400,11 +8431,6 @@ impl CssBackgroundPosition {
     #[must_use]
     pub const fn vertical(&self) -> &CssVerticalPosition {
         &self.vertical
-    }
-
-    #[must_use]
-    pub(crate) const fn legacy(&self) -> Option<&CssPosition> {
-        self.legacy.as_ref()
     }
 }
 
@@ -8434,85 +8460,6 @@ impl CssBackgroundPositionList {
     #[must_use]
     pub fn positions(&self) -> &[CssBackgroundPosition] {
         &self.positions
-    }
-}
-
-/// One parser-produced authored layer of `mask-position`.
-///
-/// Mask layers use generic `<position>` exactly and therefore cannot represent the
-/// background-only three-component form.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssMaskPosition {
-    value: CssPositionValue,
-    legacy: Option<CssPosition>,
-}
-
-impl CssMaskPosition {
-    #[must_use]
-    pub(crate) const fn new(value: CssPositionValue, legacy: Option<CssPosition>) -> Self {
-        Self { value, legacy }
-    }
-
-    /// Returns the exact generic position for this mask layer.
-    #[must_use]
-    pub const fn value(&self) -> &CssPositionValue {
-        &self.value
-    }
-
-    #[must_use]
-    pub(crate) const fn legacy(&self) -> Option<&CssPosition> {
-        self.legacy.as_ref()
-    }
-}
-
-/// A nonempty authored comma list of generic `mask-position` layers.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssMaskPositionList {
-    positions: Vec<CssMaskPosition>,
-}
-
-impl CssMaskPositionList {
-    /// Constructs a nonempty list from already validated mask-position layers.
-    #[must_use]
-    pub fn try_new(positions: Vec<CssMaskPosition>) -> Option<Self> {
-        if positions.is_empty() {
-            None
-        } else {
-            Some(Self::new(positions))
-        }
-    }
-
-    #[must_use]
-    pub(crate) const fn new(positions: Vec<CssMaskPosition>) -> Self {
-        Self { positions }
-    }
-
-    /// Returns the authored layers in comma order.
-    #[must_use]
-    pub fn positions(&self) -> &[CssMaskPosition] {
-        &self.positions
-    }
-}
-
-/// A parser-produced authored value of the `object-position` property.
-///
-/// Object positioning uses generic `<position>` exactly. The value remains symbolic and does not
-/// resolve percentages against an object or positioning area.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssObjectPosition {
-    value: CssPositionValue,
-}
-
-impl CssObjectPosition {
-    #[must_use]
-    pub(crate) const fn new(value: CssPositionValue) -> Self {
-        Self { value }
-    }
-
-    /// Returns the exact authored generic position.
-    #[must_use]
-    pub const fn value(&self) -> &CssPositionValue {
-        &self.value
     }
 }
 
@@ -8553,31 +8500,35 @@ impl CssTransformOriginZ {
     }
 }
 
-/// A parser-produced authored value of the `transform-origin` property.
+/// A checked authored value of the `transform-origin` property.
 ///
 /// Both 2D axes are explicit, and the optional z axis can contain only a checked authored length.
-/// Construction is parser-owned so the directed greedy split cannot be bypassed.
+/// Edge-relative offsets are excluded from this property's planar grammar.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssTransformOrigin {
     horizontal: CssHorizontalPosition,
     vertical: CssVerticalPosition,
     z: Option<CssTransformOriginZ>,
-    legacy: Option<CssPosition>,
 }
 
 impl CssTransformOrigin {
+    /// Constructs a planar position with an optional authored Z length.
     #[must_use]
-    pub(crate) fn new(
-        position: CssPositionValue,
-        z: Option<CssTransformOriginZ>,
-        legacy: Option<CssPosition>,
-    ) -> Self {
-        Self {
+    pub fn try_new(position: CssPosition, z: Option<CssTransformOriginZ>) -> Option<Self> {
+        if matches!(
+            position.horizontal,
+            CssHorizontalPosition::LeftOffset(_) | CssHorizontalPosition::RightOffset(_)
+        ) || matches!(
+            position.vertical,
+            CssVerticalPosition::TopOffset(_) | CssVerticalPosition::BottomOffset(_)
+        ) {
+            return None;
+        }
+        Some(Self {
             horizontal: position.horizontal,
             vertical: position.vertical,
             z,
-            legacy,
-        }
+        })
     }
 
     /// Returns the authored horizontal position.
@@ -8596,105 +8547,6 @@ impl CssTransformOrigin {
     #[must_use]
     pub const fn z(&self) -> Option<&CssTransformOriginZ> {
         self.z.as_ref()
-    }
-
-    #[must_use]
-    pub(crate) const fn legacy(&self) -> Option<&CssPosition> {
-        self.legacy.as_ref()
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssPositionComponent {
-    Horizontal(CssHorizontalPositionKeyword),
-    Vertical(CssVerticalPositionKeyword),
-    Length(CssLength),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssPosition {
-    components: Vec<CssPositionComponent>,
-}
-
-impl CssPosition {
-    #[must_use]
-    pub fn try_new(components: Vec<CssPositionComponent>) -> Option<Self> {
-        if components.is_empty()
-            || components.len() > 4
-            || has_duplicate_axis_side_keywords(&components)
-        {
-            None
-        } else {
-            Some(Self::new(components))
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn new(components: Vec<CssPositionComponent>) -> Self {
-        Self { components }
-    }
-
-    #[must_use]
-    pub fn components(&self) -> &[CssPositionComponent] {
-        &self.components
-    }
-}
-
-fn has_duplicate_axis_side_keywords(components: &[CssPositionComponent]) -> bool {
-    let mut has_horizontal_side = false;
-    let mut has_vertical_side = false;
-
-    for component in components {
-        match component {
-            CssPositionComponent::Horizontal(
-                CssHorizontalPositionKeyword::Left | CssHorizontalPositionKeyword::Right,
-            ) => {
-                if has_horizontal_side {
-                    return true;
-                }
-                has_horizontal_side = true;
-            }
-            CssPositionComponent::Vertical(
-                CssVerticalPositionKeyword::Top | CssVerticalPositionKeyword::Bottom,
-            ) => {
-                if has_vertical_side {
-                    return true;
-                }
-                has_vertical_side = true;
-            }
-            CssPositionComponent::Horizontal(CssHorizontalPositionKeyword::Center)
-            | CssPositionComponent::Vertical(CssVerticalPositionKeyword::Center)
-            | CssPositionComponent::Length(_) => {}
-        }
-    }
-
-    false
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssPositionList {
-    positions: Vec<CssPosition>,
-}
-
-impl CssPositionList {
-    #[must_use]
-    pub fn try_new(positions: Vec<CssPosition>) -> Option<Self> {
-        if positions.is_empty() {
-            None
-        } else {
-            Some(Self::new(positions))
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn new(positions: Vec<CssPosition>) -> Self {
-        Self { positions }
-    }
-
-    #[must_use]
-    pub fn positions(&self) -> &[CssPosition] {
-        &self.positions
     }
 }
 
@@ -10003,12 +9855,12 @@ pub enum CssEllipseRadius {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssCircleShape {
     radius: CssCircleRadius,
-    position: Option<CssPositionValue>,
+    position: Option<CssPosition>,
 }
 
 impl CssCircleShape {
     #[must_use]
-    pub const fn new(radius: CssCircleRadius, position: Option<CssPositionValue>) -> Self {
+    pub const fn new(radius: CssCircleRadius, position: Option<CssPosition>) -> Self {
         Self { radius, position }
     }
 
@@ -10018,7 +9870,7 @@ impl CssCircleShape {
     }
 
     #[must_use]
-    pub const fn position(&self) -> Option<&CssPositionValue> {
+    pub const fn position(&self) -> Option<&CssPosition> {
         self.position.as_ref()
     }
 }
@@ -10027,12 +9879,12 @@ impl CssCircleShape {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssEllipseShape {
     radius: CssEllipseRadius,
-    position: Option<CssPositionValue>,
+    position: Option<CssPosition>,
 }
 
 impl CssEllipseShape {
     #[must_use]
-    pub const fn new(radius: CssEllipseRadius, position: Option<CssPositionValue>) -> Self {
+    pub const fn new(radius: CssEllipseRadius, position: Option<CssPosition>) -> Self {
         Self { radius, position }
     }
 
@@ -10042,7 +9894,7 @@ impl CssEllipseShape {
     }
 
     #[must_use]
-    pub const fn position(&self) -> Option<&CssPositionValue> {
+    pub const fn position(&self) -> Option<&CssPosition> {
         self.position.as_ref()
     }
 }
@@ -10237,6 +10089,12 @@ impl CssMaskLayer {
             size,
             repeat,
         }
+    }
+
+    /// Returns the authored generic position, when present.
+    #[must_use]
+    pub const fn position(&self) -> Option<&CssPosition> {
+        self.position.as_ref()
     }
 }
 

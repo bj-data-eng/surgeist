@@ -241,7 +241,7 @@ fn radial_constructor_checks_shape_size_matrix_without_inventing_defaults() {
     )))
     .unwrap();
     let position =
-        CssPositionValue::try_new(CssHorizontalPosition::Left, CssVerticalPosition::Top).unwrap();
+        CssPosition::try_new(CssHorizontalPosition::Left, CssVerticalPosition::Top).unwrap();
     let constructed = CssRadialGradient::try_new(
         Some(CssRadialShape::Circle),
         Some(CssRadialSize::Circle(radius)),
@@ -258,21 +258,21 @@ fn radial_constructor_checks_shape_size_matrix_without_inventing_defaults() {
 #[test]
 fn generic_position_requires_edge_offsets_on_both_axes_or_neither() {
     assert!(
-        CssPositionValue::try_new(
+        CssPosition::try_new(
             CssHorizontalPosition::LeftOffset(offset(10.0)),
             CssVerticalPosition::Center,
         )
         .is_none()
     );
     assert!(
-        CssPositionValue::try_new(
+        CssPosition::try_new(
             CssHorizontalPosition::Center,
             CssVerticalPosition::BottomOffset(offset(20.0)),
         )
         .is_none()
     );
 
-    let paired = CssPositionValue::try_new(
+    let paired = CssPosition::try_new(
         CssHorizontalPosition::RightOffset(offset(10.0)),
         CssVerticalPosition::TopOffset(offset(20.0)),
     )
@@ -285,18 +285,17 @@ fn generic_position_requires_edge_offsets_on_both_axes_or_neither() {
     );
 
     assert!(
-        CssPositionValue::try_new(CssHorizontalPosition::Left, CssVerticalPosition::Bottom)
-            .is_some()
+        CssPosition::try_new(CssHorizontalPosition::Left, CssVerticalPosition::Bottom).is_some()
     );
     assert!(
-        CssPositionValue::try_new(
+        CssPosition::try_new(
             CssHorizontalPosition::Offset(offset(15.0)),
             CssVerticalPosition::Center
         )
         .is_some()
     );
     assert!(
-        CssPositionValue::try_new(
+        CssPosition::try_new(
             CssHorizontalPosition::Left,
             CssVerticalPosition::Offset(offset(25.0))
         )

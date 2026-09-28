@@ -3237,10 +3237,6 @@ pub surgeist_css::CssPointerEvents::None
 #[non_exhaustive] pub enum surgeist_css::CssPolygonFillRule
 pub surgeist_css::CssPolygonFillRule::Evenodd
 pub surgeist_css::CssPolygonFillRule::Nonzero
-#[non_exhaustive] pub enum surgeist_css::CssPositionComponent
-pub surgeist_css::CssPositionComponent::Horizontal(surgeist_css::CssHorizontalPositionKeyword)
-pub surgeist_css::CssPositionComponent::Length(surgeist_css::CssLength)
-pub surgeist_css::CssPositionComponent::Vertical(surgeist_css::CssVerticalPositionKeyword)
 #[non_exhaustive] pub enum surgeist_css::CssPositiveIntegerValue
 pub surgeist_css::CssPositiveIntegerValue::Calculation(surgeist_css::CssIntegerCalculation)
 pub surgeist_css::CssPositiveIntegerValue::ExactLiteral(surgeist_css::CssPositiveIntegerLiteral)
@@ -4366,6 +4362,7 @@ pub const fn surgeist_css::CssBackgroundOriginPropertyValue::i01_subset(&self) -
 pub struct surgeist_css::CssBackgroundPosition
 impl surgeist_css::CssBackgroundPosition
 pub const fn surgeist_css::CssBackgroundPosition::horizontal(&self) -> &surgeist_css::CssHorizontalPosition
+pub fn surgeist_css::CssBackgroundPosition::try_new(horizontal: surgeist_css::CssHorizontalPosition, vertical: surgeist_css::CssVerticalPosition) -> core::option::Option<Self>
 pub const fn surgeist_css::CssBackgroundPosition::vertical(&self) -> &surgeist_css::CssVerticalPosition
 pub struct surgeist_css::CssBackgroundPositionList
 impl surgeist_css::CssBackgroundPositionList
@@ -4374,7 +4371,6 @@ pub fn surgeist_css::CssBackgroundPositionList::try_new(positions: alloc::vec::V
 pub struct surgeist_css::CssBackgroundPositionPropertyValue
 impl surgeist_css::CssBackgroundPositionPropertyValue
 pub fn surgeist_css::CssBackgroundPositionPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBackgroundPositionPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssPositionList>
 pub const fn surgeist_css::CssBackgroundPositionPropertyValue::positions(&self) -> &surgeist_css::CssBackgroundPositionList
 pub struct surgeist_css::CssBackgroundPropertyValue
 impl surgeist_css::CssBackgroundPropertyValue
@@ -4986,8 +4982,8 @@ impl core::fmt::Display for surgeist_css::CssCharacterAlignmentError
 pub fn surgeist_css::CssCharacterAlignmentError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssCircleShape
 impl surgeist_css::CssCircleShape
-pub const fn surgeist_css::CssCircleShape::new(radius: surgeist_css::CssCircleRadius, position: core::option::Option<surgeist_css::CssPositionValue>) -> Self
-pub const fn surgeist_css::CssCircleShape::position(&self) -> core::option::Option<&surgeist_css::CssPositionValue>
+pub const fn surgeist_css::CssCircleShape::new(radius: surgeist_css::CssCircleRadius, position: core::option::Option<surgeist_css::CssPosition>) -> Self
+pub const fn surgeist_css::CssCircleShape::position(&self) -> core::option::Option<&surgeist_css::CssPosition>
 pub const fn surgeist_css::CssCircleShape::radius(&self) -> &surgeist_css::CssCircleRadius
 pub struct surgeist_css::CssClearPropertyValue
 impl surgeist_css::CssClearPropertyValue
@@ -5848,8 +5844,8 @@ pub fn surgeist_css::CssEllipseRadii::try_new(horizontal: surgeist_css::CssLengt
 pub const fn surgeist_css::CssEllipseRadii::vertical(&self) -> &surgeist_css::CssShapeLengthPercentage
 pub struct surgeist_css::CssEllipseShape
 impl surgeist_css::CssEllipseShape
-pub const fn surgeist_css::CssEllipseShape::new(radius: surgeist_css::CssEllipseRadius, position: core::option::Option<surgeist_css::CssPositionValue>) -> Self
-pub const fn surgeist_css::CssEllipseShape::position(&self) -> core::option::Option<&surgeist_css::CssPositionValue>
+pub const fn surgeist_css::CssEllipseShape::new(radius: surgeist_css::CssEllipseRadius, position: core::option::Option<surgeist_css::CssPosition>) -> Self
+pub const fn surgeist_css::CssEllipseShape::position(&self) -> core::option::Option<&surgeist_css::CssPosition>
 pub const fn surgeist_css::CssEllipseShape::radius(&self) -> &surgeist_css::CssEllipseRadius
 pub struct surgeist_css::CssEmptyCellsPropertyValue
 impl surgeist_css::CssEmptyCellsPropertyValue
@@ -7151,27 +7147,20 @@ pub const fn surgeist_css::CssMaskImagePropertyValue::i01_subset(&self) -> core:
 pub const fn surgeist_css::CssMaskImagePropertyValue::images(&self) -> &surgeist_css::CssImageValueList
 pub struct surgeist_css::CssMaskLayer
 impl surgeist_css::CssMaskLayer
+pub const fn surgeist_css::CssMaskLayer::position(&self) -> core::option::Option<&surgeist_css::CssPosition>
 pub fn surgeist_css::CssMaskLayer::try_new(image: core::option::Option<surgeist_css::CssImageLayer>, position: core::option::Option<surgeist_css::CssPosition>, size: core::option::Option<surgeist_css::CssBackgroundSize>, repeat: core::option::Option<surgeist_css::CssBackgroundRepeat>) -> core::option::Option<Self>
 pub struct surgeist_css::CssMaskList
 impl surgeist_css::CssMaskList
 pub fn surgeist_css::CssMaskList::layers(&self) -> &[surgeist_css::CssMaskLayer]
 pub fn surgeist_css::CssMaskList::try_new(layers: alloc::vec::Vec<surgeist_css::CssMaskLayer>) -> core::option::Option<Self>
-pub struct surgeist_css::CssMaskPosition
-impl surgeist_css::CssMaskPosition
-pub const fn surgeist_css::CssMaskPosition::value(&self) -> &surgeist_css::CssPositionValue
-pub struct surgeist_css::CssMaskPositionList
-impl surgeist_css::CssMaskPositionList
-pub fn surgeist_css::CssMaskPositionList::positions(&self) -> &[surgeist_css::CssMaskPosition]
-pub fn surgeist_css::CssMaskPositionList::try_new(positions: alloc::vec::Vec<surgeist_css::CssMaskPosition>) -> core::option::Option<Self>
 pub struct surgeist_css::CssMaskPositionPropertyValue
 impl surgeist_css::CssMaskPositionPropertyValue
 pub fn surgeist_css::CssMaskPositionPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMaskPositionPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssPositionList>
-pub const fn surgeist_css::CssMaskPositionPropertyValue::positions(&self) -> &surgeist_css::CssMaskPositionList
+pub const fn surgeist_css::CssMaskPositionPropertyValue::positions(&self) -> &surgeist_css::CssPositionList
 pub struct surgeist_css::CssMaskPropertyValue
 impl surgeist_css::CssMaskPropertyValue
 pub fn surgeist_css::CssMaskPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMaskPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssMaskList>
+pub const fn surgeist_css::CssMaskPropertyValue::value(&self) -> &surgeist_css::CssMaskList
 pub struct surgeist_css::CssMaskRepeatPropertyValue
 impl surgeist_css::CssMaskRepeatPropertyValue
 pub fn surgeist_css::CssMaskRepeatPropertyValue::as_css(&self) -> &str
@@ -7449,13 +7438,10 @@ pub struct surgeist_css::CssObjectFitPropertyValue
 impl surgeist_css::CssObjectFitPropertyValue
 pub fn surgeist_css::CssObjectFitPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssObjectFitPropertyValue::fit(&self) -> &surgeist_css::CssObjectFit
-pub struct surgeist_css::CssObjectPosition
-impl surgeist_css::CssObjectPosition
-pub const fn surgeist_css::CssObjectPosition::value(&self) -> &surgeist_css::CssPositionValue
 pub struct surgeist_css::CssObjectPositionPropertyValue
 impl surgeist_css::CssObjectPositionPropertyValue
 pub fn surgeist_css::CssObjectPositionPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssObjectPositionPropertyValue::position(&self) -> &surgeist_css::CssObjectPosition
+pub const fn surgeist_css::CssObjectPositionPropertyValue::position(&self) -> &surgeist_css::CssPosition
 pub struct surgeist_css::CssOpacity
 impl surgeist_css::CssOpacity
 pub fn surgeist_css::CssOpacity::try_new(value: f32) -> core::option::Option<Self>
@@ -7781,8 +7767,12 @@ pub const fn surgeist_css::CssPolygonShape::points(&self) -> &surgeist_css::CssP
 pub const fn surgeist_css::CssPolygonShape::round(&self) -> core::option::Option<&surgeist_css::CssShapeLength>
 pub struct surgeist_css::CssPosition
 impl surgeist_css::CssPosition
-pub fn surgeist_css::CssPosition::components(&self) -> &[surgeist_css::CssPositionComponent]
-pub fn surgeist_css::CssPosition::try_new(components: alloc::vec::Vec<surgeist_css::CssPositionComponent>) -> core::option::Option<Self>
+pub const fn surgeist_css::CssPosition::horizontal(&self) -> &surgeist_css::CssHorizontalPosition
+pub fn surgeist_css::CssPosition::try_new(horizontal: surgeist_css::CssHorizontalPosition, vertical: surgeist_css::CssVerticalPosition) -> core::option::Option<Self>
+pub const fn surgeist_css::CssPosition::vertical(&self) -> &surgeist_css::CssVerticalPosition
+impl surgeist_css::CssPosition
+pub fn surgeist_css::CssPosition::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPosition::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssPositionList
 impl surgeist_css::CssPositionList
 pub fn surgeist_css::CssPositionList::positions(&self) -> &[surgeist_css::CssPosition]
@@ -7797,14 +7787,6 @@ pub fn surgeist_css::CssPositionPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssPositionPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLayoutPosition>
 impl surgeist_css::CssPositionPropertyValue
 pub const fn surgeist_css::CssPositionPropertyValue::current(&self) -> &surgeist_css::CssLayoutPosition
-pub struct surgeist_css::CssPositionValue
-impl surgeist_css::CssPositionValue
-pub const fn surgeist_css::CssPositionValue::horizontal(&self) -> &surgeist_css::CssHorizontalPosition
-pub fn surgeist_css::CssPositionValue::try_new(horizontal: surgeist_css::CssHorizontalPosition, vertical: surgeist_css::CssVerticalPosition) -> core::option::Option<Self>
-pub const fn surgeist_css::CssPositionValue::vertical(&self) -> &surgeist_css::CssVerticalPosition
-impl surgeist_css::CssPositionValue
-pub fn surgeist_css::CssPositionValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-pub fn surgeist_css::CssPositionValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssPositiveInteger
 impl surgeist_css::CssPositiveInteger
 pub const fn surgeist_css::CssPositiveInteger::try_new(value: i32) -> core::option::Option<Self>
@@ -7930,12 +7912,12 @@ pub fn surgeist_css::CssRadialEllipseSize::try_new(horizontal: surgeist_css::Css
 pub const fn surgeist_css::CssRadialEllipseSize::vertical(&self) -> &surgeist_css::CssLength
 pub struct surgeist_css::CssRadialGradient
 impl surgeist_css::CssRadialGradient
-pub const fn surgeist_css::CssRadialGradient::position(&self) -> core::option::Option<&surgeist_css::CssPositionValue>
+pub const fn surgeist_css::CssRadialGradient::position(&self) -> core::option::Option<&surgeist_css::CssPosition>
 pub const fn surgeist_css::CssRadialGradient::shape(&self) -> core::option::Option<surgeist_css::CssRadialShape>
 pub const fn surgeist_css::CssRadialGradient::size(&self) -> core::option::Option<&surgeist_css::CssRadialSize>
 pub const fn surgeist_css::CssRadialGradient::stops(&self) -> &surgeist_css::CssColorStopList
 impl surgeist_css::CssRadialGradient
-pub fn surgeist_css::CssRadialGradient::try_new(shape: core::option::Option<surgeist_css::CssRadialShape>, size: core::option::Option<surgeist_css::CssRadialSize>, position: core::option::Option<surgeist_css::CssPositionValue>, stops: surgeist_css::CssColorStopList) -> core::option::Option<Self>
+pub fn surgeist_css::CssRadialGradient::try_new(shape: core::option::Option<surgeist_css::CssRadialShape>, size: core::option::Option<surgeist_css::CssRadialSize>, position: core::option::Option<surgeist_css::CssPosition>, stops: surgeist_css::CssColorStopList) -> core::option::Option<Self>
 pub struct surgeist_css::CssRangeFeature<T>
 impl<T> surgeist_css::CssRangeFeature<T>
 pub const fn surgeist_css::CssRangeFeature<T>::comparison(&self) -> core::option::Option<surgeist_css::CssQueryComparison>
@@ -8763,12 +8745,12 @@ pub const fn surgeist_css::CssTransformNonNegativeLength::value(&self) -> &surge
 pub struct surgeist_css::CssTransformOrigin
 impl surgeist_css::CssTransformOrigin
 pub const fn surgeist_css::CssTransformOrigin::horizontal(&self) -> &surgeist_css::CssHorizontalPosition
+pub fn surgeist_css::CssTransformOrigin::try_new(position: surgeist_css::CssPosition, z: core::option::Option<surgeist_css::CssTransformOriginZ>) -> core::option::Option<Self>
 pub const fn surgeist_css::CssTransformOrigin::vertical(&self) -> &surgeist_css::CssVerticalPosition
 pub const fn surgeist_css::CssTransformOrigin::z(&self) -> core::option::Option<&surgeist_css::CssTransformOriginZ>
 pub struct surgeist_css::CssTransformOriginPropertyValue
 impl surgeist_css::CssTransformOriginPropertyValue
 pub fn surgeist_css::CssTransformOriginPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssTransformOriginPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssPosition>
 pub const fn surgeist_css::CssTransformOriginPropertyValue::origin(&self) -> &surgeist_css::CssTransformOrigin
 pub struct surgeist_css::CssTransformOriginZ
 impl surgeist_css::CssTransformOriginZ

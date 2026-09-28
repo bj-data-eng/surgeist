@@ -200,7 +200,7 @@
 //! assert!(CssPositionOffset::try_new(CssLength::Auto).is_none());
 //! ```
 //!
-//! [`CssPositionValue::try_new`] checks the generic position's cross-axis pairing of edge
+//! [`CssPosition::try_new`] checks the generic position's cross-axis pairing of edge
 //! offsets. Its borrowed horizontal and vertical views make omitted centered axes and authored
 //! edge origins explicit. `object-position` and every
 //! `mask-position` layer use this exact generic grammar. `background-position` instead exposes a
@@ -237,7 +237,7 @@
 //!     .property_value().expect("ordinary mask position")
 //! else { panic!("expected mask-position") };
 //! assert!(matches!(
-//!     mask.positions().positions()[0].value().vertical(),
+//!     mask.positions().positions()[0].vertical(),
 //!     CssVerticalPosition::BottomOffset(_)
 //! ));
 //!
@@ -245,7 +245,7 @@
 //!     .known().expect("known object position")
 //!     .property_value().expect("ordinary object position")
 //! else { panic!("expected object-position") };
-//! assert!(matches!(object.position().value().horizontal(), CssHorizontalPosition::Center));
+//! assert!(matches!(object.position().horizontal(), CssHorizontalPosition::Center));
 //!
 //! let CssKnownPropertyValueRef::TransformOrigin(transform) = report.syntax()[3]
 //!     .known().expect("known transform origin")
@@ -263,10 +263,10 @@
 //! WebKit transform-origin consumer; CSS Values 4 gives a conflicting example
 //! for the two-token form, recorded in the reference guide.
 //!
-//! The `background-position`, `mask-position`, and `transform-origin` wrappers retain
-//! `i01_subset()` as a frozen compatibility view. Newly accepted current syntax returns `None`
-//! when it cannot be represented without loss;
-//! `object-position` is additive and has no I01 projection. Function-specific position grammars,
+//! The position property wrappers expose only their checked semantic models.
+//! `background-position` retains its distinct three-component grammar, while
+//! `object-position`, `mask-position`, and mask shorthand use generic [`CssPosition`].
+//! Function-specific position grammars,
 //! cascade, substitution, contextual resolution, layout, painting, transforms, and cross-crate
 //! lowering remain outside this surface.
 //!

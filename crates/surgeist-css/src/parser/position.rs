@@ -38,12 +38,10 @@ pub(super) fn parse_background_position_prefix<'i, 't>(
 pub(super) fn parse_mask_position_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssMaskPositionList, ParseError<'i, Error>> {
+) -> std::result::Result<CssPositionList, ParseError<'i, Error>> {
     let mut positions = Vec::new();
     loop {
-        let (current, legacy) = parse_generic_position(input, numeric)?;
-        let legacy = (!position_has_calculation(&legacy)).then_some(legacy);
-        positions.push(CssMaskPosition::new(current, legacy));
+        positions.push(parse_generic_position(input, numeric)?);
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
         }
@@ -55,7 +53,7 @@ pub(super) fn parse_mask_position_list<'i, 't>(
             ));
         }
     }
-    CssMaskPositionList::try_new(positions)
+    CssPositionList::try_new(positions)
         .ok_or_else(|| unsupported_value(input, None, "mask-position list is empty"))
 }
 
@@ -84,8 +82,8 @@ pub(super) fn parse_background_position_list<'i, 't>(
 pub(super) fn parse_object_position<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssObjectPosition, ParseError<'i, Error>> {
-    parse_generic_position(input, numeric).map(|(position, _)| CssObjectPosition::new(position))
+) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
+    parse_generic_position(input, numeric)
 }
 
 pub(super) fn parse_transform_origin<'i, 't>(
@@ -95,22 +93,21 @@ pub(super) fn parse_transform_origin<'i, 't>(
     let (atoms, states) = parse_position_atoms(input, numeric)?;
 
     if atoms.len() <= 2
-        && let Some((position, legacy)) = build_generic_position(&atoms)
+        && let Some(position) = build_generic_position(&atoms)
     {
-        let legacy = (!position_has_calculation(&legacy)).then_some(legacy);
-        return Ok(CssTransformOrigin::new(position, None, legacy));
+        return CssTransformOrigin::try_new(position, None)
+            .ok_or_else(|| invalid_generic_position_atom(input, &states[0]));
     }
 
     // The selected transform-origin grammar requires two planar atoms before Z.
     // A vertical keyword followed by a length is not reinterpreted as planar + Z.
     if atoms.len() == 3 {
         let z_index = atoms.len() - 1;
-        if let Some((position, _)) = build_generic_position(&atoms[..z_index]) {
+        if let Some(position) = build_generic_position(&atoms[..z_index]) {
             let z = transform_origin_z(&atoms[z_index])
                 .ok_or_else(|| invalid_generic_position_atom(input, &states[z_index]))?;
-            let legacy = CssPosition::new(contextual_legacy_components(&atoms));
-            let legacy = (!position_has_calculation(&legacy)).then_some(legacy);
-            return Ok(CssTransformOrigin::new(position, Some(z), legacy));
+            return CssTransformOrigin::try_new(position, Some(z))
+                .ok_or_else(|| invalid_generic_position_atom(input, &states[0]));
         }
     }
 
@@ -126,7 +123,7 @@ pub(super) fn parse_css_position<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
-    parse_generic_position(input, numeric).map(|(_, legacy)| legacy)
+    parse_generic_position(input, numeric)
 }
 
 #[derive(Clone, Debug)]
@@ -140,7 +137,7 @@ enum GenericPositionAtom {
 fn parse_generic_position<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<(CssPositionValue, CssPosition), ParseError<'i, Error>> {
+) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
     let (atoms, states) = parse_position_atoms(input, numeric)?;
     build_generic_position(&atoms)
         .ok_or_else(|| invalid_generic_position_atom(input, &states[invalid_atom_index(&atoms)]))
@@ -173,13 +170,6 @@ fn parse_background_position<'i, 't>(
     build_background_position(&atoms).ok_or_else(|| {
         invalid_generic_position_atom(input, &states[invalid_background_atom_index(&atoms)])
     })
-}
-
-pub(super) fn parse_css_position_value<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssPositionValue, ParseError<'i, Error>> {
-    parse_generic_position(input, numeric).map(|(current, _)| current)
 }
 
 fn parse_generic_position_atom<'i, 't>(
@@ -265,129 +255,47 @@ fn invalid_atom_index(atoms: &[GenericPositionAtom]) -> usize {
     }
 }
 
-fn build_generic_position(
-    atoms: &[GenericPositionAtom],
-) -> Option<(CssPositionValue, CssPosition)> {
+fn build_generic_position(atoms: &[GenericPositionAtom]) -> Option<CssPosition> {
     use GenericPositionAtom::{Center, Horizontal, Offset, Vertical};
 
-    let (horizontal, vertical, components) = match atoms {
-        [Horizontal(keyword)] => (
-            horizontal_keyword(*keyword),
-            CssVerticalPosition::Center,
-            vec![CssPositionComponent::Horizontal(*keyword)],
-        ),
-        [Vertical(keyword)] => (
-            CssHorizontalPosition::Center,
-            vertical_keyword(*keyword),
-            vec![CssPositionComponent::Vertical(*keyword)],
-        ),
-        [Center] => (
-            CssHorizontalPosition::Center,
-            CssVerticalPosition::Center,
-            vec![CssPositionComponent::Horizontal(
-                CssHorizontalPositionKeyword::Center,
-            )],
-        ),
+    let (horizontal, vertical) = match atoms {
+        [Horizontal(keyword)] => (horizontal_keyword(*keyword), CssVerticalPosition::Center),
+        [Vertical(keyword)] => (CssHorizontalPosition::Center, vertical_keyword(*keyword)),
+        [Center] => (CssHorizontalPosition::Center, CssVerticalPosition::Center),
         [Offset(offset)] => (
             CssHorizontalPosition::Offset(offset.clone()),
             CssVerticalPosition::Center,
-            vec![CssPositionComponent::Length(offset.value().clone())],
         ),
-        [Horizontal(horizontal), Vertical(vertical)] => (
-            horizontal_keyword(*horizontal),
-            vertical_keyword(*vertical),
-            vec![
-                CssPositionComponent::Horizontal(*horizontal),
-                CssPositionComponent::Vertical(*vertical),
-            ],
-        ),
-        [Vertical(vertical), Horizontal(horizontal)] => (
-            horizontal_keyword(*horizontal),
-            vertical_keyword(*vertical),
-            vec![
-                CssPositionComponent::Vertical(*vertical),
-                CssPositionComponent::Horizontal(*horizontal),
-            ],
-        ),
-        [Horizontal(horizontal), Center] => (
-            horizontal_keyword(*horizontal),
-            CssVerticalPosition::Center,
-            vec![
-                CssPositionComponent::Horizontal(*horizontal),
-                CssPositionComponent::Vertical(CssVerticalPositionKeyword::Center),
-            ],
-        ),
-        [Center, Horizontal(horizontal)] => (
-            horizontal_keyword(*horizontal),
-            CssVerticalPosition::Center,
-            vec![
-                CssPositionComponent::Vertical(CssVerticalPositionKeyword::Center),
-                CssPositionComponent::Horizontal(*horizontal),
-            ],
-        ),
-        [Vertical(vertical), Center] => (
-            CssHorizontalPosition::Center,
-            vertical_keyword(*vertical),
-            vec![
-                CssPositionComponent::Vertical(*vertical),
-                CssPositionComponent::Horizontal(CssHorizontalPositionKeyword::Center),
-            ],
-        ),
-        [Center, Vertical(vertical)] => (
-            CssHorizontalPosition::Center,
-            vertical_keyword(*vertical),
-            vec![
-                CssPositionComponent::Horizontal(CssHorizontalPositionKeyword::Center),
-                CssPositionComponent::Vertical(*vertical),
-            ],
-        ),
-        [Center, Center] => (
-            CssHorizontalPosition::Center,
-            CssVerticalPosition::Center,
-            vec![
-                CssPositionComponent::Horizontal(CssHorizontalPositionKeyword::Center),
-                CssPositionComponent::Vertical(CssVerticalPositionKeyword::Center),
-            ],
-        ),
+        [Horizontal(horizontal), Vertical(vertical)]
+        | [Vertical(vertical), Horizontal(horizontal)] => {
+            (horizontal_keyword(*horizontal), vertical_keyword(*vertical))
+        }
+        [Horizontal(horizontal), Center] | [Center, Horizontal(horizontal)] => {
+            (horizontal_keyword(*horizontal), CssVerticalPosition::Center)
+        }
+        [Vertical(vertical), Center] | [Center, Vertical(vertical)] => {
+            (CssHorizontalPosition::Center, vertical_keyword(*vertical))
+        }
+        [Center, Center] => (CssHorizontalPosition::Center, CssVerticalPosition::Center),
         [Horizontal(horizontal), Offset(offset)] => (
             horizontal_keyword(*horizontal),
             CssVerticalPosition::Offset(offset.clone()),
-            vec![
-                CssPositionComponent::Horizontal(*horizontal),
-                CssPositionComponent::Length(offset.value().clone()),
-            ],
         ),
         [Center, Offset(offset)] => (
             CssHorizontalPosition::Center,
             CssVerticalPosition::Offset(offset.clone()),
-            vec![
-                CssPositionComponent::Horizontal(CssHorizontalPositionKeyword::Center),
-                CssPositionComponent::Length(offset.value().clone()),
-            ],
         ),
         [Offset(offset), Vertical(vertical)] => (
             CssHorizontalPosition::Offset(offset.clone()),
             vertical_keyword(*vertical),
-            vec![
-                CssPositionComponent::Length(offset.value().clone()),
-                CssPositionComponent::Vertical(*vertical),
-            ],
         ),
         [Offset(offset), Center] => (
             CssHorizontalPosition::Offset(offset.clone()),
             CssVerticalPosition::Center,
-            vec![
-                CssPositionComponent::Length(offset.value().clone()),
-                CssPositionComponent::Vertical(CssVerticalPositionKeyword::Center),
-            ],
         ),
         [Offset(horizontal), Offset(vertical)] => (
             CssHorizontalPosition::Offset(horizontal.clone()),
             CssVerticalPosition::Offset(vertical.clone()),
-            vec![
-                CssPositionComponent::Length(horizontal.value().clone()),
-                CssPositionComponent::Length(vertical.value().clone()),
-            ],
         ),
         [
             Horizontal(horizontal),
@@ -397,7 +305,6 @@ fn build_generic_position(
         ] if is_horizontal_edge(*horizontal) && is_vertical_edge(*vertical) => (
             horizontal_edge_offset(*horizontal, horizontal_offset.clone()),
             vertical_edge_offset(*vertical, vertical_offset.clone()),
-            legacy_components(atoms),
         ),
         [
             Vertical(vertical),
@@ -407,13 +314,11 @@ fn build_generic_position(
         ] if is_vertical_edge(*vertical) && is_horizontal_edge(*horizontal) => (
             horizontal_edge_offset(*horizontal, horizontal_offset.clone()),
             vertical_edge_offset(*vertical, vertical_offset.clone()),
-            legacy_components(atoms),
         ),
         _ => return None,
     };
 
-    CssPositionValue::try_new(horizontal, vertical)
-        .map(|value| (value, CssPosition::new(components)))
+    CssPosition::try_new(horizontal, vertical)
 }
 
 fn invalid_background_atom_index(atoms: &[GenericPositionAtom]) -> usize {
@@ -477,67 +382,15 @@ fn build_background_position(atoms: &[GenericPositionAtom]) -> Option<CssBackgro
             CssVerticalPosition::Center,
         ),
         _ => {
-            let (position, legacy) = build_generic_position(atoms)?;
-            let legacy = (!position_has_calculation(&legacy)).then_some(legacy);
-            return Some(CssBackgroundPosition::new(
+            let position = build_generic_position(atoms)?;
+            return CssBackgroundPosition::try_new(
                 position.horizontal().clone(),
                 position.vertical().clone(),
-                legacy,
-            ));
+            );
         }
     };
 
-    let legacy = CssPosition::new(contextual_legacy_components(atoms));
-    let legacy = (!position_has_calculation(&legacy)).then_some(legacy);
-    Some(CssBackgroundPosition::new(horizontal, vertical, legacy))
-}
-
-fn contextual_legacy_components(atoms: &[GenericPositionAtom]) -> Vec<CssPositionComponent> {
-    let mut components = Vec::with_capacity(atoms.len());
-    for atom in atoms {
-        let component = match atom {
-            GenericPositionAtom::Horizontal(keyword) => CssPositionComponent::Horizontal(*keyword),
-            GenericPositionAtom::Vertical(keyword) => CssPositionComponent::Vertical(*keyword),
-            GenericPositionAtom::Center => {
-                if components
-                    .iter()
-                    .any(|component| matches!(component, CssPositionComponent::Horizontal(_)))
-                {
-                    CssPositionComponent::Vertical(CssVerticalPositionKeyword::Center)
-                } else {
-                    CssPositionComponent::Horizontal(CssHorizontalPositionKeyword::Center)
-                }
-            }
-            GenericPositionAtom::Offset(offset) => {
-                CssPositionComponent::Length(offset.value().clone())
-            }
-        };
-        components.push(component);
-    }
-    components
-}
-
-fn position_has_calculation(position: &CssPosition) -> bool {
-    position
-        .components()
-        .iter()
-        .any(|component| matches!(component, CssPositionComponent::Length(CssLength::Calc(_))))
-}
-
-fn legacy_components(atoms: &[GenericPositionAtom]) -> Vec<CssPositionComponent> {
-    atoms
-        .iter()
-        .map(|atom| match atom {
-            GenericPositionAtom::Horizontal(keyword) => CssPositionComponent::Horizontal(*keyword),
-            GenericPositionAtom::Vertical(keyword) => CssPositionComponent::Vertical(*keyword),
-            GenericPositionAtom::Center => {
-                CssPositionComponent::Horizontal(CssHorizontalPositionKeyword::Center)
-            }
-            GenericPositionAtom::Offset(offset) => {
-                CssPositionComponent::Length(offset.value().clone())
-            }
-        })
-        .collect()
+    CssBackgroundPosition::try_new(horizontal, vertical)
 }
 
 const fn horizontal_keyword(keyword: CssHorizontalPositionKeyword) -> CssHorizontalPosition {

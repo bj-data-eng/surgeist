@@ -203,7 +203,14 @@ fn checked_owners() -> Vec<CheckedOwner> {
             CssTranslateValues::try_new(vec![v]).is_some()
         }),
         ("position", |v| {
-            CssPosition::try_new(vec![CssPositionComponent::Length(v)]).is_some()
+            CssPositionOffset::try_new(v)
+                .and_then(|offset| {
+                    CssPosition::try_new(
+                        CssHorizontalPosition::Offset(offset),
+                        CssVerticalPosition::Center,
+                    )
+                })
+                .is_some()
         }),
         ("outline", |v| {
             CssOutline::try_new(Some(CssOutlineWidth::Length(v)), None, None).is_some()

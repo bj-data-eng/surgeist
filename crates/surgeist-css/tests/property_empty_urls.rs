@@ -63,7 +63,7 @@ fn assert_url_payload(name: &str, value: CssKnownPropertyValueRef<'_>, expected:
                 .unwrap(),
             ])
             .unwrap();
-            assert_eq!(value.i01_subset(), Some(&expected_mask));
+            assert_eq!(value.value(), &expected_mask);
         }
         _ => panic!("expected typed URL consumer for {name}"),
     }

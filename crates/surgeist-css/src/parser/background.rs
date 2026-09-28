@@ -3,7 +3,7 @@ use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
 
 use super::border_style::parse_border_style;
 use super::position::{
-    next_starts_background_position, parse_background_position_prefix, parse_css_position_value,
+    next_starts_background_position, parse_background_position_prefix, parse_css_position,
 };
 use super::url::parse_url;
 use super::values::{
@@ -1051,7 +1051,7 @@ fn next_starts_radial_prelude<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
 type RadialPrelude = (
     Option<CssRadialShape>,
     Option<CssRadialSize>,
-    Option<CssPositionValue>,
+    Option<CssPosition>,
 );
 
 fn parse_radial_gradient_prelude<'i, 't>(
@@ -1070,7 +1070,7 @@ fn parse_radial_gradient_prelude<'i, 't>(
                 .try_parse(|input| input.expect_ident_matching("at"))
                 .is_ok()
         {
-            position = Some(parse_css_position_value(input, numeric)?);
+            position = Some(parse_css_position(input, numeric)?);
             consumed = true;
             break;
         }
@@ -1623,23 +1623,23 @@ mod tests {
 
     use super::*;
 
-    fn parse_current(source: &str) -> CssPositionValue {
+    fn parse_position(source: &str) -> CssPosition {
         let snapshot = crate::CssSourceSnapshot::new(source);
         let numeric = crate::numeric::NumericInputContext::parsed(&snapshot);
         let mut input = ParserInput::new(source);
         let mut parser = Parser::new(&mut input);
         parser
-            .parse_entirely(|input| parse_css_position_value(input, &numeric))
+            .parse_entirely(|input| parse_css_position(input, &numeric))
             .expect("valid generic position")
     }
 
     #[test]
     fn generic_position_model_distinguishes_omitted_and_free_offset_axes() {
-        let top = parse_current("top");
+        let top = parse_position("top");
         assert!(matches!(top.horizontal(), CssHorizontalPosition::Center));
         assert!(matches!(top.vertical(), CssVerticalPosition::Top));
 
-        let free = parse_current("25% 10px");
+        let free = parse_position("25% 10px");
         assert!(matches!(
             free.horizontal(),
             CssHorizontalPosition::Offset(offset)
@@ -1655,7 +1655,7 @@ mod tests {
     #[test]
     fn generic_position_model_retains_each_edge_offset_origin_and_pair_order() {
         for source in ["left 10px bottom 20%", "bottom 20% left 10px"] {
-            let position = parse_current(source);
+            let position = parse_position(source);
             assert!(matches!(
                 position.horizontal(),
                 CssHorizontalPosition::LeftOffset(offset)
@@ -1668,7 +1668,7 @@ mod tests {
             ));
         }
 
-        let opposite = parse_current("right calc(1px * 2) top calc(10% + 2px)");
+        let opposite = parse_position("right calc(1px * 2) top calc(10% + 2px)");
         assert!(matches!(
             opposite.horizontal(),
             CssHorizontalPosition::RightOffset(offset)

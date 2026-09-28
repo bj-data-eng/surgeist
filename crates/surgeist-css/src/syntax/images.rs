@@ -2,8 +2,8 @@
 
 use super::{
     CssColor, CssColorStopList, CssGradientColorStop, CssGradientLinePosition, CssImageValue,
-    CssLinearGradient, CssLinearGradientDirection, CssPositionValue, CssRadialGradient,
-    CssRadialShape, CssRadialSize,
+    CssLinearGradient, CssLinearGradientDirection, CssPosition, CssRadialGradient, CssRadialShape,
+    CssRadialSize,
 };
 
 /// One authored `<image>`, excluding property-specific `none` keywords.
@@ -71,7 +71,7 @@ impl CssRadialGradient {
     pub fn try_new(
         shape: Option<CssRadialShape>,
         size: Option<CssRadialSize>,
-        position: Option<CssPositionValue>,
+        position: Option<CssPosition>,
         stops: CssColorStopList,
     ) -> Option<Self> {
         if !Self::allows_shape_size(shape, size.as_ref()) {

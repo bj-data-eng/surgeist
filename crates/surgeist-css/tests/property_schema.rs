@@ -945,7 +945,7 @@ fn layered_position_wrappers_keep_current_global_and_substitution_branches_disti
 }
 
 #[test]
-fn object_and_transform_origin_wrappers_keep_current_global_and_substitution_branches_distinct() {
+fn object_and_transform_origin_wrappers_keep_ordinary_global_and_substitution_branches_distinct() {
     let report = parse_style_attribute(concat!(
         "object-position: left 10px bottom 20%; ",
         "transform-origin: left top 5px; ",
@@ -963,7 +963,7 @@ fn object_and_transform_origin_wrappers_keep_current_global_and_substitution_bra
         panic!("expected object-position value");
     };
     assert!(matches!(
-        value.position().value().horizontal(),
+        value.position().horizontal(),
         surgeist_css::CssHorizontalPosition::LeftOffset(_)
     ));
     assert!(object.global().is_none());

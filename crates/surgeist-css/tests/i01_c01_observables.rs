@@ -4271,6 +4271,92 @@ fn assert_known_property_value(
         assert!(semantic.is_some_and(|item| item.id == property.stable_id()));
         return;
     }
+    let position_authored = match (property, value) {
+        (
+            surgeist_css::CssKnownProperty::BackgroundPosition,
+            surgeist_css::CssKnownPropertyValueRef::BackgroundPosition(value),
+        ) => {
+            use surgeist_css::{
+                CssHorizontalPosition as Horizontal, CssLength, CssVerticalPosition as Vertical,
+            };
+            let [position] = value.positions().positions() else {
+                panic!("captured one background-position layer")
+            };
+            assert!(
+                matches!(position.horizontal(), Horizontal::LeftOffset(offset) if matches!(offset.value(), CssLength::Px(number) if number.value() == 10.0))
+            );
+            assert!(
+                matches!(position.vertical(), Vertical::TopOffset(offset) if matches!(offset.value(), CssLength::Percent(number) if number.value() == 20.0))
+            );
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::MaskPosition,
+            surgeist_css::CssKnownPropertyValueRef::MaskPosition(value),
+        ) => {
+            use surgeist_css::{
+                CssHorizontalPosition as Horizontal, CssVerticalPosition as Vertical,
+            };
+            let [position] = value.positions().positions() else {
+                panic!("captured one mask-position layer")
+            };
+            assert!(matches!(position.horizontal(), Horizontal::Center));
+            assert!(matches!(position.vertical(), Vertical::Center));
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::TransformOrigin,
+            surgeist_css::CssKnownPropertyValueRef::TransformOrigin(value),
+        ) => {
+            use surgeist_css::{
+                CssHorizontalPosition as Horizontal, CssVerticalPosition as Vertical,
+            };
+            let origin = value.origin();
+            assert!(matches!(origin.horizontal(), Horizontal::Center));
+            assert!(matches!(origin.vertical(), Vertical::Top));
+            assert!(origin.z().is_none());
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::Mask,
+            surgeist_css::CssKnownPropertyValueRef::Mask(value),
+        ) => {
+            use surgeist_css::{
+                CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize,
+                CssHorizontalPosition as Horizontal, CssImageLayer, CssMaskLayer, CssMaskList,
+                CssPosition, CssUrl, CssVerticalPosition as Vertical,
+            };
+            let expected = CssMaskList::try_new(vec![
+                CssMaskLayer::try_new(
+                    Some(CssImageLayer::Url(CssUrl::try_new("mask.png").unwrap())),
+                    Some(CssPosition::try_new(Horizontal::Center, Vertical::Center).unwrap()),
+                    Some(CssBackgroundSize::Contain),
+                    Some(CssBackgroundRepeat::Axes {
+                        x: CssBackgroundRepeatStyle::NoRepeat,
+                        y: CssBackgroundRepeatStyle::NoRepeat,
+                    }),
+                )
+                .unwrap(),
+            ])
+            .unwrap();
+            assert_eq!(value.value(), &expected);
+            let [layer] = value.value().layers() else {
+                panic!("one captured mask layer")
+            };
+            let position = layer.position().expect("captured center position");
+            assert!(matches!(position.horizontal(), Horizontal::Center));
+            assert!(matches!(position.vertical(), Vertical::Center));
+            Some(value.as_css())
+        }
+        _ => None,
+    };
+    if let Some(css) = position_authored {
+        assert_eq!(authored.id, property.stable_id());
+        assert_eq!(authored.value_capability, "deferred-i01");
+        assert_eq!(css, authored.value);
+        assert!(semantic.is_some_and(|item| item.id == property.stable_id()));
+        return;
+    }
     assert_property_specific_value!(
         property,
         value,
@@ -4337,7 +4423,6 @@ fn assert_known_property_value(
             BorderBottomWidth,
             BorderLeftWidth,
             BackgroundImage,
-            BackgroundPosition,
             BackgroundSize,
             BackgroundRepeat,
             BackgroundOrigin,
@@ -4367,14 +4452,11 @@ fn assert_known_property_value(
             UserSelect,
             OutlineStyle,
             OutlineWidth,
-            TransformOrigin,
             Translate,
             Rotate,
             Scale,
-            Mask,
             MaskImage,
             MaskSize,
-            MaskPosition,
             MaskRepeat,
     );
 }

@@ -1,7 +1,7 @@
 //! Bounded specified serialization for Values 4 generic `<position>`.
 
 use crate::{
-    CssHorizontalPosition, CssPositionValue, CssSpecifiedValueSerializationError,
+    CssHorizontalPosition, CssPosition, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationLimits, CssVerticalPosition,
     specified_rule_serialization::SpecifiedRuleWriter,
     specified_serialization::serialize_checked_length_percentage_into,
@@ -9,7 +9,7 @@ use crate::{
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 
-impl CssPositionValue {
+impl CssPosition {
     /// Serializes the checked generic position in horizontal-then-vertical order.
     /// Percentages and calculations retain their symbolic specified meaning.
     pub fn serialize_specified(&self) -> Result<String> {

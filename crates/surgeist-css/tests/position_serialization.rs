@@ -4,13 +4,13 @@
 
 use surgeist_css::{
     CssCalcLength, CssHorizontalPosition as H, CssKnownPropertyValueRef, CssLength,
-    CssLengthPercentageCalculation, CssPositionOffset, CssPositionValue,
+    CssLengthPercentageCalculation, CssPosition, CssPositionOffset,
     CssSpecifiedValueSerializationErrorKind as ErrorKind,
     CssSpecifiedValueSerializationLimits as L, CssVerticalPosition as V, parse_component_values,
     parse_style_attribute,
 };
 
-fn parsed(input: &str) -> CssPositionValue {
+fn parsed(input: &str) -> CssPosition {
     let report = parse_style_attribute(&format!("mask-position: {input}"));
     assert!(report.is_clean(), "{input}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::MaskPosition(value) = report.syntax()[0]
@@ -21,7 +21,7 @@ fn parsed(input: &str) -> CssPositionValue {
     else {
         panic!("expected mask-position");
     };
-    value.positions().positions()[0].value().clone()
+    value.positions().positions()[0].clone()
 }
 
 fn px(value: f32) -> CssPositionOffset {
@@ -50,13 +50,13 @@ fn specified_axes_are_explicit_and_horizontal_first() {
 #[test]
 fn typed_axes_preserve_offset_origin_and_symbolic_values() {
     let paired =
-        CssPositionValue::try_new(H::RightOffset(px(0.0)), V::BottomOffset(percent(2.0))).unwrap();
+        CssPosition::try_new(H::RightOffset(px(0.0)), V::BottomOffset(percent(2.0))).unwrap();
     assert!(matches!(paired.horizontal(), H::RightOffset(_)));
     assert!(matches!(paired.vertical(), V::BottomOffset(_)));
     assert_eq!(paired.serialize_specified().unwrap(), "right 0px bottom 2%");
-    assert!(CssPositionValue::try_new(H::RightOffset(px(0.0)), V::Top).is_none());
+    assert!(CssPosition::try_new(H::RightOffset(px(0.0)), V::Top).is_none());
 
-    let signed = CssPositionValue::try_new(H::Offset(px(-1.0)), V::Offset(percent(-2.0))).unwrap();
+    let signed = CssPosition::try_new(H::Offset(px(-1.0)), V::Offset(percent(-2.0))).unwrap();
     assert_eq!(signed.serialize_specified().unwrap(), "-1px -2%");
 
     let calculation = CssLengthPercentageCalculation::try_from_components(
@@ -65,7 +65,7 @@ fn typed_axes_preserve_offset_origin_and_symbolic_values() {
     .unwrap();
     let offset =
         CssPositionOffset::try_new(CssLength::Calc(CssCalcLength::Typed(calculation))).unwrap();
-    let symbolic = CssPositionValue::try_new(H::Offset(offset), V::Center).unwrap();
+    let symbolic = CssPosition::try_new(H::Offset(offset), V::Center).unwrap();
     assert_eq!(
         symbolic.serialize_specified().unwrap(),
         "calc(5% + 1px) center"
@@ -74,7 +74,7 @@ fn typed_axes_preserve_offset_origin_and_symbolic_values() {
 
 #[test]
 fn one_budget_covers_aggregate_axes_children_and_full_output() {
-    let keywords = CssPositionValue::try_new(H::Left, V::Top).unwrap();
+    let keywords = CssPosition::try_new(H::Left, V::Top).unwrap();
     assert_eq!(
         keywords
             .serialize_specified_with_limits(L::new(3, 3, 8))
@@ -99,7 +99,7 @@ fn one_budget_covers_aggregate_axes_children_and_full_output() {
     }
 
     let offsets =
-        CssPositionValue::try_new(H::RightOffset(px(1.0)), V::BottomOffset(percent(2.0))).unwrap();
+        CssPosition::try_new(H::RightOffset(px(1.0)), V::BottomOffset(percent(2.0))).unwrap();
     let expected = "right 1px bottom 2%";
     assert_eq!(
         offsets
@@ -133,8 +133,8 @@ fn typed_math_projection_is_cumulative_across_both_axes() {
         )))
         .unwrap()
     };
-    let one = CssPositionValue::try_new(H::Offset(axis()), V::Center).unwrap();
-    let two = CssPositionValue::try_new(H::Offset(axis()), V::Offset(axis())).unwrap();
+    let one = CssPosition::try_new(H::Offset(axis()), V::Center).unwrap();
+    let two = CssPosition::try_new(H::Offset(axis()), V::Offset(axis())).unwrap();
     let one_css = one.serialize_specified().unwrap();
     let two_css = two.serialize_specified().unwrap();
     assert_eq!(one_css, "calc(2em + 1px) center");

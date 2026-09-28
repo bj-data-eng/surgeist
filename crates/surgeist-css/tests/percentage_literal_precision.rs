@@ -23,7 +23,7 @@ fn first_object_position_percent(source: &str) -> f32 {
     else {
         panic!("expected object-position");
     };
-    let CssHorizontalPosition::Offset(offset) = value.position().value().horizontal() else {
+    let CssHorizontalPosition::Offset(offset) = value.position().horizontal() else {
         panic!("expected percentage offset");
     };
     let CssLength::Percent(number) = offset.value() else {
@@ -79,7 +79,7 @@ fn checked_object_position_percent(components: CssComponentValues) -> f32 {
     else {
         panic!("expected checked object-position");
     };
-    let CssHorizontalPosition::Offset(offset) = value.position().value().horizontal() else {
+    let CssHorizontalPosition::Offset(offset) = value.position().horizontal() else {
         panic!("expected checked percentage offset");
     };
     let CssLength::Percent(number) = offset.value() else {
