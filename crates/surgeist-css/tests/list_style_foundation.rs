@@ -373,6 +373,100 @@ fn pending_shorthand_reentry_is_strict_atomic_and_preserves_source_identity() {
 }
 
 #[test]
+fn pending_list_style_longhands_reenter_their_own_grammar_without_losing_source() {
+    for (property, valid_values, invalid) in [
+        (TYPE, &["\"★\"", "CustomMarker"][..], "default"),
+        (POSITION, &["inside"][..], "none"),
+        (IMAGE, &["url(\"#mark\")"][..], "outside"),
+    ] {
+        let source = declaration(property, "var(--marker)");
+        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+            panic!("{property:?} remains pending until substitution")
+        };
+        assert!(pending.source().same_occurrence(&source));
+
+        for residual in [
+            "var(--again)",
+            "env(safe-area-inset-top)",
+            "attr(data-marker)",
+        ] {
+            assert_eq!(
+                pending
+                    .reenter(parse_component_values(residual).unwrap())
+                    .unwrap_err()
+                    .kind(),
+                &CssExpansionErrorKind::ResidualSubstitution,
+                "{property:?}: {residual}"
+            );
+        }
+        for rejected in [invalid, ""] {
+            assert!(matches!(
+                pending
+                    .reenter(parse_component_values(rejected).unwrap())
+                    .unwrap_err()
+                    .kind(),
+                CssExpansionErrorKind::InvalidReplacement(_)
+            ));
+        }
+
+        for replacement_css in valid_values.iter().copied().chain(["inherit"]) {
+            let replacement = parse_component_values(replacement_css).unwrap();
+            for _ in 0..2 {
+                let CssContributions::Longhands(values) =
+                    pending.reenter(replacement.clone()).unwrap()
+                else {
+                    panic!("{property:?} contributes one longhand")
+                };
+                let [item] = values.items() else {
+                    panic!("one {property:?} terminal")
+                };
+                assert_eq!(item.property(), property);
+                assert!(item.source().same_occurrence(&source));
+                assert_eq!(item.source().importance(), CssImportance::Important);
+                assert_eq!(item.replacement_components(), Some(&replacement));
+
+                if replacement_css == "inherit" {
+                    assert_eq!(
+                        item.value(),
+                        CssContributionValueRef::Global(CssGlobalKeyword::Inherit)
+                    );
+                } else {
+                    match (
+                        property,
+                        replacement_css,
+                        item.ordinary_value().unwrap().view(),
+                    ) {
+                        (
+                            TYPE,
+                            "\"★\"",
+                            CssLonghandValueRef::ListStyleType(CssListStyleTypeValue::String(
+                                value,
+                            )),
+                        ) => assert_eq!(value.as_str(), "★"),
+                        (
+                            TYPE,
+                            "CustomMarker",
+                            CssLonghandValueRef::ListStyleType(
+                                CssListStyleTypeValue::CounterStyle(value),
+                            ),
+                        ) => assert_eq!(value.named().unwrap().as_str(), "CustomMarker"),
+                        (POSITION, "inside", CssLonghandValueRef::ListStylePosition(value)) => {
+                            assert_eq!(*value, CssListStylePosition::Inside)
+                        }
+                        (
+                            IMAGE,
+                            "url(\"#mark\")",
+                            CssLonghandValueRef::ListStyleImage(CssImageValue::Url(value)),
+                        ) => assert_eq!(value.as_str(), "#mark"),
+                        _ => panic!("{property:?} accepted the expected authored value"),
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn normalization_preserves_mixed_declaration_order_and_fails_at_member_limit() {
     let report = parse_sheet(".a{list-style-type:disc;color:red;list-style:inside}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
