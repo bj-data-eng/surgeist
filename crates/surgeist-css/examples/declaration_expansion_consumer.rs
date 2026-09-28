@@ -968,13 +968,13 @@ fn strict_reentry_rejects_atomically_and_preserves_out_of_slice_identity() {
             assert_eq!(spacing(member(&values, property)), "3px");
         }
     }
-    let source = declaration(Property::JustifyContent, "center", CssImportance::Normal);
+    let source = declaration(Property::BorderSpacing, "1px", CssImportance::Normal);
     let error = expand_declaration(&source).unwrap_err();
     assert!(matches!(
         error.kind(),
-        CssExpansionErrorKind::UnsupportedProperty(Property::JustifyContent)
+        CssExpansionErrorKind::UnsupportedProperty(Property::BorderSpacing)
     ));
-    assert_eq!(source.known().unwrap().property(), Property::JustifyContent);
+    assert_eq!(source.known().unwrap().property(), Property::BorderSpacing);
     let source = declaration(Property::TextAlign, "justify-all", CssImportance::Normal);
     let Some(CssKnownPropertyValueRef::TextAlign(value)) = source.known().unwrap().property_value()
     else {

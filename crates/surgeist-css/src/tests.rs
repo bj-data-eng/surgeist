@@ -8052,7 +8052,7 @@ fn unsupported_position_keyword_is_typed_with_property_context() {
 
 #[test]
 fn unsupported_alignment_keyword_is_typed_with_property_context() {
-    let error = parse_sheet(".panel { align-items: unsafe center; }").unwrap_err();
+    let error = parse_sheet(".panel { align-items: unsafe stretch; }").unwrap_err();
 
     let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
         panic!("unexpected error kind: {:?}", error.kind());
@@ -8155,20 +8155,25 @@ fn rejects_positioning_alignment_and_visibility_leakage_values() {
 }
 
 #[test]
-fn rejects_unmodeled_safe_prefixed_alignment_values() {
-    let cases = [
+fn safe_prefixed_alignment_positions_are_admitted_but_stretch_is_rejected() {
+    let accepted = [
         ".panel { align-items: safe start; }",
         ".panel { align-items: safe flex-start; }",
-        ".panel { align-items: safe stretch; }",
         ".panel { align-content: safe start; }",
         ".panel { align-content: safe flex-start; }",
-        ".panel { align-content: safe stretch; }",
         ".panel { place-content: safe start; }",
         ".panel { place-content: safe flex-start; }",
+    ];
+    for case in accepted {
+        assert!(parse_sheet(case).is_ok(), "{case} should be admitted");
+    }
+    let rejected = [
+        ".panel { align-items: safe stretch; }",
+        ".panel { align-content: safe stretch; }",
         ".panel { place-content: safe stretch; }",
     ];
 
-    for case in cases {
+    for case in rejected {
         assert!(parse_sheet(case).is_err(), "{case} should be rejected");
     }
 }

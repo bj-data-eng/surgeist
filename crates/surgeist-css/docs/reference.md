@@ -2290,6 +2290,33 @@ lower values into another Surgeist crate.
 
 ## Flexbox, multicolumn, and catalog coverage
 
+The nine selected Box Alignment 3 properties have checked authored values and
+intrinsic expansion. Six noninherited longhands keep their distinct domains and
+initials: `align-content`, `justify-content`, and `align-items` start at
+`normal`; `justify-items` starts at `legacy`; and `align-self` and
+`justify-self` start at `auto`. The three `place-*` shorthands set ordered
+align/justify pairs with no reset-only members. An omitted justify component
+copies align except that a baseline in `place-content` defaults justify to
+`start`. Each longhand has a private-field checked value around the shared
+authored alignment vocabulary, so an item-only position cannot enter a content
+property by typed construction. The place values hold two independently
+checked property values. Canonical specified serialization emits both effective
+components with one resource budget; explicit `first baseline` serializes as
+`baseline` while the authored wrapper retains its original spelling and its
+conditional frozen I01 projection. For the ambiguous shorthand
+`baseline last baseline`, parsing prefers bare `baseline` for align and
+`last baseline` for justify; a one-component shorthand `baseline last` still
+denotes last-baseline align with an omitted justify component. The grammars and
+omission rules follow the selected
+[Box Alignment 3 §§4–7](https://www.w3.org/TR/2026/WD-css-align-3-20260130/).
+The ambiguous split follows the pinned
+[WebKit baseline consumer](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/parser/CSSPropertyParserConsumer%2BAlign.cpp),
+while the parser still accepts the published reverse baseline order.
+The four historically Flexbox-sourced alignment feature IDs retain their IDs
+while their completed authored grammar metadata now cites the selected Box
+Alignment 3 source. This CSS layer does not claim layout-mode support for every
+alignment keyword.
+
 Flexbox 1 `flex-flow`, `flex-basis`, `flex-grow`, `flex-shrink`, and `flex`, and all
 nine Multicolumn 1 properties expose typed authored values. `flex-direction`
 and `flex-wrap` are noninherited terminals with `row` and `nowrap` initials.

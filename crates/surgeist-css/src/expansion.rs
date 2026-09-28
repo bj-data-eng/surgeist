@@ -9,6 +9,7 @@
 use std::fmt;
 use std::sync::Arc;
 
+use crate::alignment::*;
 use crate::border_color::*;
 use crate::border_radius::*;
 use crate::border_style::*;

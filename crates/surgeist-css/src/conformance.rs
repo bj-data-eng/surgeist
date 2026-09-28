@@ -2342,10 +2342,6 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         CssKnownProperty::FlexDirection
         | CssKnownProperty::FlexFlow
         | CssKnownProperty::FlexWrap
-        | CssKnownProperty::AlignContent
-        | CssKnownProperty::JustifyContent
-        | CssKnownProperty::AlignItems
-        | CssKnownProperty::AlignSelf
         | CssKnownProperty::FlexBasis
         | CssKnownProperty::FlexGrow
         | CssKnownProperty::FlexShrink
@@ -2478,7 +2474,11 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::ScrollBehavior
         | CssKnownProperty::ScrollbarGutter
         | CssKnownProperty::TextOverflow => X_OVERFLOW3,
-        CssKnownProperty::JustifyItems
+        CssKnownProperty::AlignContent
+        | CssKnownProperty::JustifyContent
+        | CssKnownProperty::AlignItems
+        | CssKnownProperty::AlignSelf
+        | CssKnownProperty::JustifyItems
         | CssKnownProperty::JustifySelf
         | CssKnownProperty::PlaceContent
         | CssKnownProperty::PlaceItems
@@ -4317,47 +4317,47 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 622] = [
     ),
     complete_property_feature!(CssKnownProperty::Float, "float", "baseline.property.float"),
     complete_property_feature!(CssKnownProperty::Clear, "clear", "baseline.property.clear"),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::AlignContent,
         "align-content",
         "baseline.property.align-content"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::JustifyContent,
         "justify-content",
         "baseline.property.justify-content"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::AlignItems,
         "align-items",
         "baseline.property.align-items"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::AlignSelf,
         "align-self",
         "baseline.property.align-self"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::JustifyItems,
         "justify-items",
         "baseline.property.justify-items"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::JustifySelf,
         "justify-self",
         "baseline.property.justify-self"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::PlaceContent,
         "place-content",
         "baseline.property.place-content"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::PlaceItems,
         "place-items",
         "baseline.property.place-items"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::PlaceSelf,
         "place-self",
         "baseline.property.place-self"

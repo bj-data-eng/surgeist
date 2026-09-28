@@ -50,6 +50,29 @@ pub surgeist_css::CssAlignment::SpaceBetween
 pub surgeist_css::CssAlignment::SpaceEvenly
 pub surgeist_css::CssAlignment::Start
 pub surgeist_css::CssAlignment::Stretch
+#[non_exhaustive] pub enum surgeist_css::CssAlignmentPosition
+pub surgeist_css::CssAlignmentPosition::Center
+pub surgeist_css::CssAlignmentPosition::End
+pub surgeist_css::CssAlignmentPosition::FlexEnd
+pub surgeist_css::CssAlignmentPosition::FlexStart
+pub surgeist_css::CssAlignmentPosition::Left
+pub surgeist_css::CssAlignmentPosition::Right
+pub surgeist_css::CssAlignmentPosition::SelfEnd
+pub surgeist_css::CssAlignmentPosition::SelfStart
+pub surgeist_css::CssAlignmentPosition::Start
+#[non_exhaustive] pub enum surgeist_css::CssAlignmentValue
+pub surgeist_css::CssAlignmentValue::Auto
+pub surgeist_css::CssAlignmentValue::Baseline(surgeist_css::CssBaselinePosition)
+pub surgeist_css::CssAlignmentValue::Legacy(core::option::Option<surgeist_css::CssLegacyAlignment>)
+pub surgeist_css::CssAlignmentValue::Normal
+pub surgeist_css::CssAlignmentValue::Normal::overflow: core::option::Option<surgeist_css::CssOverflowPosition>
+pub surgeist_css::CssAlignmentValue::Position
+pub surgeist_css::CssAlignmentValue::Position::overflow: core::option::Option<surgeist_css::CssOverflowPosition>
+pub surgeist_css::CssAlignmentValue::Position::position: surgeist_css::CssAlignmentPosition
+pub surgeist_css::CssAlignmentValue::SpaceAround
+pub surgeist_css::CssAlignmentValue::SpaceBetween
+pub surgeist_css::CssAlignmentValue::SpaceEvenly
+pub surgeist_css::CssAlignmentValue::Stretch
 #[non_exhaustive] pub enum surgeist_css::CssAllDeclaredValue
 pub surgeist_css::CssAllDeclaredValue::Global(surgeist_css::CssGlobalKeyword)
 pub surgeist_css::CssAllDeclaredValue::SubstitutionDependent(surgeist_css::CssSubstitutionDependentValue)
@@ -261,6 +284,10 @@ pub surgeist_css::CssBackgroundSize::Explicit::width: surgeist_css::CssBackgroun
 #[non_exhaustive] pub enum surgeist_css::CssBackgroundSizeComponent
 pub surgeist_css::CssBackgroundSizeComponent::Auto
 pub surgeist_css::CssBackgroundSizeComponent::Length(surgeist_css::CssLength)
+#[non_exhaustive] pub enum surgeist_css::CssBaselinePosition
+pub surgeist_css::CssBaselinePosition::Baseline
+pub surgeist_css::CssBaselinePosition::First
+pub surgeist_css::CssBaselinePosition::Last
 #[non_exhaustive] pub enum surgeist_css::CssBasicShape
 pub surgeist_css::CssBasicShape::Circle(surgeist_css::CssBasicShapeArguments)
 pub surgeist_css::CssBasicShape::Ellipse(surgeist_css::CssBasicShapeArguments)
@@ -2512,6 +2539,10 @@ pub surgeist_css::CssLayoutPosition::Sticky
 impl surgeist_css::CssLayoutPosition
 pub fn surgeist_css::CssLayoutPosition::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssLayoutPosition::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssLegacyAlignment
+pub surgeist_css::CssLegacyAlignment::Center
+pub surgeist_css::CssLegacyAlignment::Left
+pub surgeist_css::CssLegacyAlignment::Right
 #[non_exhaustive] pub enum surgeist_css::CssLength
 pub surgeist_css::CssLength::Auto
 pub surgeist_css::CssLength::Calc(surgeist_css::CssCalcLength)
@@ -2614,6 +2645,9 @@ pub surgeist_css::CssListStyleType::CounterStyle(surgeist_css::CssCounterStyle)
 pub surgeist_css::CssListStyleType::None
 pub surgeist_css::CssListStyleType::String(surgeist_css::CssContentString)
 #[non_exhaustive] pub enum surgeist_css::CssLonghandValueRef<'a>
+pub surgeist_css::CssLonghandValueRef::AlignContent(&'a surgeist_css::CssAlignContentValue)
+pub surgeist_css::CssLonghandValueRef::AlignItems(&'a surgeist_css::CssAlignItemsValue)
+pub surgeist_css::CssLonghandValueRef::AlignSelf(&'a surgeist_css::CssAlignSelfValue)
 pub surgeist_css::CssLonghandValueRef::AspectRatio(&'a surgeist_css::CssAspectRatioValue)
 pub surgeist_css::CssLonghandValueRef::BlockSize(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::BorderBlockEndColor(&'a surgeist_css::CssAuthoredColor)
@@ -2706,6 +2740,9 @@ pub surgeist_css::CssLonghandValueRef::InsetBlockEnd(&'a surgeist_css::CssInsetV
 pub surgeist_css::CssLonghandValueRef::InsetBlockStart(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::InsetInlineEnd(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::InsetInlineStart(&'a surgeist_css::CssInsetValue)
+pub surgeist_css::CssLonghandValueRef::JustifyContent(&'a surgeist_css::CssJustifyContentValue)
+pub surgeist_css::CssLonghandValueRef::JustifyItems(&'a surgeist_css::CssJustifyItemsValue)
+pub surgeist_css::CssLonghandValueRef::JustifySelf(&'a surgeist_css::CssJustifySelfValue)
 pub surgeist_css::CssLonghandValueRef::Left(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::LineHeight(&'a surgeist_css::CssLineHeight)
 pub surgeist_css::CssLonghandValueRef::MarginBlockEnd(&'a surgeist_css::CssMarginValue)
@@ -3165,6 +3202,9 @@ pub fn surgeist_css::CssOverflow::serialize_specified_with_limits(&self, limits:
 #[non_exhaustive] pub enum surgeist_css::CssOverflowI01PropertyValue
 pub surgeist_css::CssOverflowI01PropertyValue::Pair(surgeist_css::CssOverflowAxes)
 pub surgeist_css::CssOverflowI01PropertyValue::Single(surgeist_css::CssOverflow)
+#[non_exhaustive] pub enum surgeist_css::CssOverflowPosition
+pub surgeist_css::CssOverflowPosition::Safe
+pub surgeist_css::CssOverflowPosition::Unsafe
 #[non_exhaustive] pub enum surgeist_css::CssOverflowWrap
 pub surgeist_css::CssOverflowWrap::Anywhere
 pub surgeist_css::CssOverflowWrap::BreakWord
@@ -4024,15 +4064,36 @@ pub surgeist_css::ErrorKind::UnsupportedProperty(surgeist_css::CssUnsupportedPro
 pub struct surgeist_css::CssAlignContentPropertyValue
 impl surgeist_css::CssAlignContentPropertyValue
 pub fn surgeist_css::CssAlignContentPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssAlignContentPropertyValue::current(&self) -> &surgeist_css::CssAlignContentValue
 pub const fn surgeist_css::CssAlignContentPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAlignment>
+pub struct surgeist_css::CssAlignContentValue(_)
+impl surgeist_css::CssAlignContentValue
+pub fn surgeist_css::CssAlignContentValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAlignContentValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub const fn surgeist_css::CssAlignContentValue::try_new(value: surgeist_css::CssAlignmentValue) -> core::option::Option<Self>
+pub const fn surgeist_css::CssAlignContentValue::value(&self) -> surgeist_css::CssAlignmentValue
 pub struct surgeist_css::CssAlignItemsPropertyValue
 impl surgeist_css::CssAlignItemsPropertyValue
 pub fn surgeist_css::CssAlignItemsPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssAlignItemsPropertyValue::current(&self) -> &surgeist_css::CssAlignItemsValue
 pub const fn surgeist_css::CssAlignItemsPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAlignItems>
+pub struct surgeist_css::CssAlignItemsValue(_)
+impl surgeist_css::CssAlignItemsValue
+pub fn surgeist_css::CssAlignItemsValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAlignItemsValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub const fn surgeist_css::CssAlignItemsValue::try_new(value: surgeist_css::CssAlignmentValue) -> core::option::Option<Self>
+pub const fn surgeist_css::CssAlignItemsValue::value(&self) -> surgeist_css::CssAlignmentValue
 pub struct surgeist_css::CssAlignSelfPropertyValue
 impl surgeist_css::CssAlignSelfPropertyValue
 pub fn surgeist_css::CssAlignSelfPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssAlignSelfPropertyValue::current(&self) -> &surgeist_css::CssAlignSelfValue
 pub const fn surgeist_css::CssAlignSelfPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAlignItems>
+pub struct surgeist_css::CssAlignSelfValue(_)
+impl surgeist_css::CssAlignSelfValue
+pub fn surgeist_css::CssAlignSelfValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAlignSelfValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub const fn surgeist_css::CssAlignSelfValue::try_new(value: surgeist_css::CssAlignmentValue) -> core::option::Option<Self>
+pub const fn surgeist_css::CssAlignSelfValue::value(&self) -> surgeist_css::CssAlignmentValue
 pub struct surgeist_css::CssAlignTracksPropertyValue
 impl surgeist_css::CssAlignTracksPropertyValue
 pub fn surgeist_css::CssAlignTracksPropertyValue::as_css(&self) -> &str
@@ -6734,15 +6795,36 @@ pub const fn surgeist_css::CssIsolationPropertyValue::isolation(&self) -> &surge
 pub struct surgeist_css::CssJustifyContentPropertyValue
 impl surgeist_css::CssJustifyContentPropertyValue
 pub fn surgeist_css::CssJustifyContentPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssJustifyContentPropertyValue::current(&self) -> &surgeist_css::CssJustifyContentValue
 pub const fn surgeist_css::CssJustifyContentPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAlignment>
+pub struct surgeist_css::CssJustifyContentValue(_)
+impl surgeist_css::CssJustifyContentValue
+pub fn surgeist_css::CssJustifyContentValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssJustifyContentValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub const fn surgeist_css::CssJustifyContentValue::try_new(value: surgeist_css::CssAlignmentValue) -> core::option::Option<Self>
+pub const fn surgeist_css::CssJustifyContentValue::value(&self) -> surgeist_css::CssAlignmentValue
 pub struct surgeist_css::CssJustifyItemsPropertyValue
 impl surgeist_css::CssJustifyItemsPropertyValue
 pub fn surgeist_css::CssJustifyItemsPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssJustifyItemsPropertyValue::current(&self) -> &surgeist_css::CssJustifyItemsValue
 pub const fn surgeist_css::CssJustifyItemsPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAlignItems>
+pub struct surgeist_css::CssJustifyItemsValue(_)
+impl surgeist_css::CssJustifyItemsValue
+pub fn surgeist_css::CssJustifyItemsValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssJustifyItemsValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub const fn surgeist_css::CssJustifyItemsValue::try_new(value: surgeist_css::CssAlignmentValue) -> core::option::Option<Self>
+pub const fn surgeist_css::CssJustifyItemsValue::value(&self) -> surgeist_css::CssAlignmentValue
 pub struct surgeist_css::CssJustifySelfPropertyValue
 impl surgeist_css::CssJustifySelfPropertyValue
 pub fn surgeist_css::CssJustifySelfPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssJustifySelfPropertyValue::current(&self) -> &surgeist_css::CssJustifySelfValue
 pub const fn surgeist_css::CssJustifySelfPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAlignItems>
+pub struct surgeist_css::CssJustifySelfValue(_)
+impl surgeist_css::CssJustifySelfValue
+pub fn surgeist_css::CssJustifySelfValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssJustifySelfValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub const fn surgeist_css::CssJustifySelfValue::try_new(value: surgeist_css::CssAlignmentValue) -> core::option::Option<Self>
+pub const fn surgeist_css::CssJustifySelfValue::value(&self) -> surgeist_css::CssAlignmentValue
 pub struct surgeist_css::CssJustifyTracksPropertyValue
 impl surgeist_css::CssJustifyTracksPropertyValue
 pub fn surgeist_css::CssJustifyTracksPropertyValue::as_css(&self) -> &str
@@ -7581,7 +7663,16 @@ pub const fn surgeist_css::CssPlaceContentAlignment::second(self) -> surgeist_cs
 pub struct surgeist_css::CssPlaceContentPropertyValue
 impl surgeist_css::CssPlaceContentPropertyValue
 pub fn surgeist_css::CssPlaceContentPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssPlaceContentPropertyValue::current(&self) -> &surgeist_css::CssPlaceContentValue
 pub const fn surgeist_css::CssPlaceContentPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssPlaceAlignment>
+pub struct surgeist_css::CssPlaceContentValue
+impl surgeist_css::CssPlaceContentValue
+pub const fn surgeist_css::CssPlaceContentValue::align(&self) -> surgeist_css::CssAlignContentValue
+pub fn surgeist_css::CssPlaceContentValue::from_align(align: surgeist_css::CssAlignContentValue) -> Self
+pub const fn surgeist_css::CssPlaceContentValue::justify(&self) -> surgeist_css::CssJustifyContentValue
+pub const fn surgeist_css::CssPlaceContentValue::new(align: surgeist_css::CssAlignContentValue, justify: surgeist_css::CssJustifyContentValue) -> Self
+pub fn surgeist_css::CssPlaceContentValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPlaceContentValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssPlaceItemsAlignment
 impl surgeist_css::CssPlaceItemsAlignment
 pub const fn surgeist_css::CssPlaceItemsAlignment::all(value: surgeist_css::CssAlignItems) -> Self
@@ -7591,11 +7682,29 @@ pub const fn surgeist_css::CssPlaceItemsAlignment::second(self) -> surgeist_css:
 pub struct surgeist_css::CssPlaceItemsPropertyValue
 impl surgeist_css::CssPlaceItemsPropertyValue
 pub fn surgeist_css::CssPlaceItemsPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssPlaceItemsPropertyValue::current(&self) -> &surgeist_css::CssPlaceItemsValue
 pub const fn surgeist_css::CssPlaceItemsPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssPlaceAlignment>
+pub struct surgeist_css::CssPlaceItemsValue
+impl surgeist_css::CssPlaceItemsValue
+pub const fn surgeist_css::CssPlaceItemsValue::align(&self) -> surgeist_css::CssAlignItemsValue
+pub fn surgeist_css::CssPlaceItemsValue::from_align(align: surgeist_css::CssAlignItemsValue) -> Self
+pub const fn surgeist_css::CssPlaceItemsValue::justify(&self) -> surgeist_css::CssJustifyItemsValue
+pub const fn surgeist_css::CssPlaceItemsValue::new(align: surgeist_css::CssAlignItemsValue, justify: surgeist_css::CssJustifyItemsValue) -> Self
+pub fn surgeist_css::CssPlaceItemsValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPlaceItemsValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssPlaceSelfPropertyValue
 impl surgeist_css::CssPlaceSelfPropertyValue
 pub fn surgeist_css::CssPlaceSelfPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssPlaceSelfPropertyValue::current(&self) -> &surgeist_css::CssPlaceSelfValue
 pub const fn surgeist_css::CssPlaceSelfPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssPlaceAlignment>
+pub struct surgeist_css::CssPlaceSelfValue
+impl surgeist_css::CssPlaceSelfValue
+pub const fn surgeist_css::CssPlaceSelfValue::align(&self) -> surgeist_css::CssAlignSelfValue
+pub fn surgeist_css::CssPlaceSelfValue::from_align(align: surgeist_css::CssAlignSelfValue) -> Self
+pub const fn surgeist_css::CssPlaceSelfValue::justify(&self) -> surgeist_css::CssJustifySelfValue
+pub const fn surgeist_css::CssPlaceSelfValue::new(align: surgeist_css::CssAlignSelfValue, justify: surgeist_css::CssJustifySelfValue) -> Self
+pub fn surgeist_css::CssPlaceSelfValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPlaceSelfValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssPointerEventsPropertyValue
 impl surgeist_css::CssPointerEventsPropertyValue
 pub fn surgeist_css::CssPointerEventsPropertyValue::as_css(&self) -> &str

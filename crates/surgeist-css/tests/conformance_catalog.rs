@@ -2254,6 +2254,28 @@ fn c14_closure_metadata_and_docs_are_truthful() {
 }
 
 #[test]
+fn selected_alignment_grammars_cite_the_superseding_align3_source() {
+    for name in [
+        "align-content",
+        "justify-content",
+        "align-items",
+        "justify-items",
+        "align-self",
+        "justify-self",
+        "place-content",
+        "place-items",
+        "place-self",
+    ] {
+        let property = CssKnownProperty::from_name(name).unwrap();
+        let feature = feature_metadata(property.stable_id()).unwrap();
+        assert_eq!(feature.source().id().as_str(), "S-ALIGN3", "{name}");
+        assert_eq!(feature.status(), CssSupportStatus::Complete, "{name}");
+        assert_eq!(feature.supported_subset(), None, "{name}");
+        assert_eq!(feature.unsupported_remainder(), None, "{name}");
+    }
+}
+
+#[test]
 fn c14_remaining_official_values_are_typed() {
     let dimension =
         CssLengthDimension::try_new(-1.5, CssLengthUnit::Cqw).expect("finite dimension");

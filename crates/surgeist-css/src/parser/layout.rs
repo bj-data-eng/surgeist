@@ -500,43 +500,12 @@ impl AllowedAlignmentKeywords {
             distribution: true,
         }
     }
-
-    const fn item() -> Self {
-        Self {
-            normal: true,
-            distribution: false,
-        }
-    }
 }
 
 pub(super) fn parse_content_alignment<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssAlignment, ParseError<'i, Error>> {
     parse_alignment(input, AllowedAlignmentKeywords::content())
-}
-
-pub(super) fn parse_align_items<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssAlignItems, ParseError<'i, Error>> {
-    let alignment = parse_alignment(input, AllowedAlignmentKeywords::item())?;
-    Ok(match alignment {
-        CssAlignment::Normal => CssAlignItems::Normal,
-        CssAlignment::Start => CssAlignItems::Start,
-        CssAlignment::End => CssAlignItems::End,
-        CssAlignment::SafeEnd => CssAlignItems::SafeEnd,
-        CssAlignment::FlexStart => CssAlignItems::FlexStart,
-        CssAlignment::FlexEnd => CssAlignItems::FlexEnd,
-        CssAlignment::SafeFlexEnd => CssAlignItems::SafeFlexEnd,
-        CssAlignment::Center => CssAlignItems::Center,
-        CssAlignment::SafeCenter => CssAlignItems::SafeCenter,
-        CssAlignment::Baseline => CssAlignItems::Baseline,
-        CssAlignment::FirstBaseline => CssAlignItems::FirstBaseline,
-        CssAlignment::LastBaseline => CssAlignItems::LastBaseline,
-        CssAlignment::Stretch => CssAlignItems::Stretch,
-        CssAlignment::SpaceBetween | CssAlignment::SpaceAround | CssAlignment::SpaceEvenly => {
-            unreachable!("item alignment parser disables distribution keywords")
-        }
-    })
 }
 
 pub(super) fn parse_alignment<'i, 't>(
@@ -632,29 +601,6 @@ pub(super) fn parse_alignment<'i, 't>(
             unsupported_keyword_reason("alignment", original),
         )),
     }
-}
-
-pub(super) fn parse_place_alignment<'i, 't, T: Copy>(
-    input: &mut Parser<'i, 't>,
-    mut parse_component: impl FnMut(
-        &mut Parser<'i, 't>,
-    ) -> std::result::Result<T, ParseError<'i, Error>>,
-    make: impl Fn(T, T) -> CssPlaceAlignment,
-) -> std::result::Result<CssPlaceAlignment, ParseError<'i, Error>> {
-    let first = parse_component(input)?;
-    let second = if input.is_exhausted() {
-        first
-    } else {
-        parse_component(input)?
-    };
-    if !input.is_exhausted() {
-        return Err(unsupported_value(
-            input,
-            None,
-            "place alignment shorthand has too many values",
-        ));
-    }
-    Ok(make(first, second))
 }
 
 pub(super) fn parse_visibility<'i, 't>(

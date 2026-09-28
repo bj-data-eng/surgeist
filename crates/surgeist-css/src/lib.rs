@@ -1140,6 +1140,7 @@ pub use media::*;
 mod media_features;
 mod normalization;
 pub use media_features::*;
+mod alignment;
 mod aspect_ratio;
 mod border_radius;
 mod border_style;
@@ -1163,6 +1164,12 @@ mod scroll_snap;
 mod sizing;
 mod sizing_controls;
 mod text_alignment;
+pub use alignment::{
+    CssAlignContentValue, CssAlignItemsValue, CssAlignSelfValue, CssAlignmentPosition,
+    CssAlignmentValue, CssBaselinePosition, CssJustifyContentValue, CssJustifyItemsValue,
+    CssJustifySelfValue, CssLegacyAlignment, CssOverflowPosition, CssPlaceContentValue,
+    CssPlaceItemsValue, CssPlaceSelfValue,
+};
 pub use aspect_ratio::{CssRatioOperand, CssSpecifiedRatio};
 pub use border_color::{CssBorderColorPair, CssBorderColorShorthand, CssBorderColors};
 pub use border_radius::{CssBorderRadiusShorthand, CssCornerRadiusValue};

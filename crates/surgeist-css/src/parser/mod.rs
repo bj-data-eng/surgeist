@@ -7,6 +7,7 @@
 //! Parse failures expose typed [`ErrorKind`] values plus source line and column
 //! information so callers do not need to parse display strings.
 
+mod alignment;
 mod background;
 mod border_color;
 mod border_radius;
@@ -93,6 +94,7 @@ use crate::{
     CssScrollPaddingValue, CssScrollSnapAlign, CssScrollSnapStop, CssScrollSnapType, CssSizePair,
     CssSizeValue, CssSpecifiedLength,
 };
+use alignment::*;
 use background::*;
 use border_color::*;
 use border_radius::*;

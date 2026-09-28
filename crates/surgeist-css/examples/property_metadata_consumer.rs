@@ -165,6 +165,12 @@ const LONGHANDS: &[P] = &[
     P::FlexGrow,
     P::FlexShrink,
     P::FlexWrap,
+    P::AlignContent,
+    P::JustifyContent,
+    P::AlignItems,
+    P::JustifyItems,
+    P::AlignSelf,
+    P::JustifySelf,
     P::AspectRatio,
     P::Visibility,
     P::OverflowWrap,
@@ -176,6 +182,9 @@ const LONGHANDS: &[P] = &[
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
     (P::Flex, &[P::FlexGrow, P::FlexShrink, P::FlexBasis], &[]),
     (P::FlexFlow, &[P::FlexDirection, P::FlexWrap], &[]),
+    (P::PlaceContent, &[P::AlignContent, P::JustifyContent], &[]),
+    (P::PlaceItems, &[P::AlignItems, P::JustifyItems], &[]),
+    (P::PlaceSelf, &[P::AlignSelf, P::JustifySelf], &[]),
     (P::Gap, &[P::RowGap, P::ColumnGap], &[]),
     (
         P::Font,
@@ -483,6 +492,20 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
             assert_eq!(v.serialize_specified().unwrap(), "1")
         }
         CssLonghandValueRef::FlexWrap(v) => assert_eq!(*v, CssFlexWrap::NoWrap),
+        CssLonghandValueRef::AlignContent(v) => {
+            assert_eq!(v.value(), CssAlignmentValue::Normal { overflow: None })
+        }
+        CssLonghandValueRef::JustifyContent(v) => {
+            assert_eq!(v.value(), CssAlignmentValue::Normal { overflow: None })
+        }
+        CssLonghandValueRef::AlignItems(v) => {
+            assert_eq!(v.value(), CssAlignmentValue::Normal { overflow: None })
+        }
+        CssLonghandValueRef::JustifyItems(v) => {
+            assert_eq!(v.value(), CssAlignmentValue::Legacy(None))
+        }
+        CssLonghandValueRef::AlignSelf(v) => assert_eq!(v.value(), CssAlignmentValue::Auto),
+        CssLonghandValueRef::JustifySelf(v) => assert_eq!(v.value(), CssAlignmentValue::Auto),
         CssLonghandValueRef::FrameSizing(v) => assert_eq!(*v, CssFrameSizing::Auto),
         CssLonghandValueRef::MinIntrinsicSizing(v) => assert_eq!(*v, CssMinIntrinsicSizing::Legacy),
         CssLonghandValueRef::Top(v)
@@ -751,7 +774,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 206);
+    assert_eq!(expected.len(), 215);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {

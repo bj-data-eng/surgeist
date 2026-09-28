@@ -5,6 +5,7 @@
 //! they do not apply cascade, substitute variables, or resolve authored values.
 
 use crate::CssSpecifiedNonNegativeNumber;
+use crate::alignment::*;
 use crate::border_color::{
     CssBorderColorPair, CssBorderColorShorthand, CssParsedBorderColorShorthand,
 };
@@ -98,15 +99,15 @@ macro_rules! property_schema {
             FlexWrap, "flex-wrap", [], "baseline.property.flex-wrap", CssFlexWrap, CssFlexWrapPropertyValue, CssFlexWrapPropertyValueRepresentation, parse_flex_wrap, { parse_flex_wrap($input)? }, expansion = longhand { wrapper: existing, value: CssFlexWrap, accessor: current, inherited: false, initial_kind: value, initial: CssFlexWrap::NoWrap };
             Float, "float", [], "baseline.property.float", CssFloat, CssFloatPropertyValue, CssFloatPropertyValueRepresentation, parse_float, { parse_float($input)? }, expansion = longhand { wrapper: existing, value: CssFloat, accessor: current, inherited: false, initial_kind: value, initial: CssFloat::None };
             Clear, "clear", [], "baseline.property.clear", CssClear, CssClearPropertyValue, CssClearPropertyValueRepresentation, parse_clear, { parse_clear($input)? }, expansion = longhand { wrapper: existing, value: CssClear, accessor: current, inherited: false, initial_kind: value, initial: CssClear::None };
-            AlignContent, "align-content", [], "baseline.property.align-content", CssAlignment, CssAlignContentPropertyValue, CssAlignContentPropertyValueRepresentation, parse_content_alignment, { parse_content_alignment($input)? };
-            JustifyContent, "justify-content", [], "baseline.property.justify-content", CssAlignment, CssJustifyContentPropertyValue, CssJustifyContentPropertyValueRepresentation, parse_content_alignment, { parse_content_alignment($input)? };
-            AlignItems, "align-items", [], "baseline.property.align-items", CssAlignItems, CssAlignItemsPropertyValue, CssAlignItemsPropertyValueRepresentation, parse_align_items, { parse_align_items($input)? };
-            AlignSelf, "align-self", [], "baseline.property.align-self", CssAlignItems, CssAlignSelfPropertyValue, CssAlignSelfPropertyValueRepresentation, parse_align_items, { parse_align_items($input)? };
-            JustifyItems, "justify-items", [], "baseline.property.justify-items", CssAlignItems, CssJustifyItemsPropertyValue, CssJustifyItemsPropertyValueRepresentation, parse_align_items, { parse_align_items($input)? };
-            JustifySelf, "justify-self", [], "baseline.property.justify-self", CssAlignItems, CssJustifySelfPropertyValue, CssJustifySelfPropertyValueRepresentation, parse_align_items, { parse_align_items($input)? };
-            PlaceContent, "place-content", [], "baseline.property.place-content", CssPlaceAlignment, CssPlaceContentPropertyValue, CssPlaceContentPropertyValueRepresentation, parse_place_alignment, { parse_place_alignment($input, parse_content_alignment, CssPlaceAlignment::content)? };
-            PlaceItems, "place-items", [], "baseline.property.place-items", CssPlaceAlignment, CssPlaceItemsPropertyValue, CssPlaceItemsPropertyValueRepresentation, parse_place_alignment, { parse_place_alignment($input, parse_align_items, CssPlaceAlignment::items)? };
-            PlaceSelf, "place-self", [], "baseline.property.place-self", CssPlaceAlignment, CssPlaceSelfPropertyValue, CssPlaceSelfPropertyValueRepresentation, parse_place_alignment, { parse_place_alignment($input, parse_align_items, CssPlaceAlignment::items)? };
+            AlignContent, "align-content", [], "baseline.property.align-content", CssAlignment, CssAlignContentPropertyValue, CssAlignContentPropertyValueRepresentation, parse_align_content_value, { parse_align_content_value($input)? }, expansion = longhand { wrapper: existing, value: CssAlignContentValue, accessor: current, inherited: false, initial_kind: value, initial: CssAlignContentValue::try_new(CssAlignmentValue::Normal { overflow: None }).expect("valid align-content initial") };
+            JustifyContent, "justify-content", [], "baseline.property.justify-content", CssAlignment, CssJustifyContentPropertyValue, CssJustifyContentPropertyValueRepresentation, parse_justify_content_value, { parse_justify_content_value($input)? }, expansion = longhand { wrapper: existing, value: CssJustifyContentValue, accessor: current, inherited: false, initial_kind: value, initial: CssJustifyContentValue::try_new(CssAlignmentValue::Normal { overflow: None }).expect("valid justify-content initial") };
+            AlignItems, "align-items", [], "baseline.property.align-items", CssAlignItems, CssAlignItemsPropertyValue, CssAlignItemsPropertyValueRepresentation, parse_align_items_value, { parse_align_items_value($input)? }, expansion = longhand { wrapper: existing, value: CssAlignItemsValue, accessor: current, inherited: false, initial_kind: value, initial: CssAlignItemsValue::try_new(CssAlignmentValue::Normal { overflow: None }).expect("valid align-items initial") };
+            AlignSelf, "align-self", [], "baseline.property.align-self", CssAlignItems, CssAlignSelfPropertyValue, CssAlignSelfPropertyValueRepresentation, parse_align_self_value, { parse_align_self_value($input)? }, expansion = longhand { wrapper: existing, value: CssAlignSelfValue, accessor: current, inherited: false, initial_kind: value, initial: CssAlignSelfValue::try_new(CssAlignmentValue::Auto).expect("valid align-self initial") };
+            JustifyItems, "justify-items", [], "baseline.property.justify-items", CssAlignItems, CssJustifyItemsPropertyValue, CssJustifyItemsPropertyValueRepresentation, parse_justify_items_value, { parse_justify_items_value($input)? }, expansion = longhand { wrapper: existing, value: CssJustifyItemsValue, accessor: current, inherited: false, initial_kind: value, initial: CssJustifyItemsValue::try_new(CssAlignmentValue::Legacy(None)).expect("valid justify-items initial") };
+            JustifySelf, "justify-self", [], "baseline.property.justify-self", CssAlignItems, CssJustifySelfPropertyValue, CssJustifySelfPropertyValueRepresentation, parse_justify_self_value, { parse_justify_self_value($input)? }, expansion = longhand { wrapper: existing, value: CssJustifySelfValue, accessor: current, inherited: false, initial_kind: value, initial: CssJustifySelfValue::try_new(CssAlignmentValue::Auto).expect("valid justify-self initial") };
+            PlaceContent, "place-content", [], "baseline.property.place-content", CssPlaceAlignment, CssPlaceContentPropertyValue, CssPlaceContentPropertyValueRepresentation, parse_place_content_value, { parse_place_content_value($input)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ AlignContent => |value: &CssPlaceContentValue| Some(value.align()), JustifyContent => |value: &CssPlaceContentValue| Some(value.justify()) ], reset_only: [] };
+            PlaceItems, "place-items", [], "baseline.property.place-items", CssPlaceAlignment, CssPlaceItemsPropertyValue, CssPlaceItemsPropertyValueRepresentation, parse_place_items_value, { parse_place_items_value($input)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ AlignItems => |value: &CssPlaceItemsValue| Some(value.align()), JustifyItems => |value: &CssPlaceItemsValue| Some(value.justify()) ], reset_only: [] };
+            PlaceSelf, "place-self", [], "baseline.property.place-self", CssPlaceAlignment, CssPlaceSelfPropertyValue, CssPlaceSelfPropertyValueRepresentation, parse_place_self_value, { parse_place_self_value($input)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ AlignSelf => |value: &CssPlaceSelfValue| Some(value.align()), JustifySelf => |value: &CssPlaceSelfValue| Some(value.justify()) ], reset_only: [] };
             Visibility, "visibility", [], "baseline.property.visibility", CssVisibility, CssVisibilityPropertyValue, CssVisibilityPropertyValueRepresentation, parse_visibility, { parse_visibility($input)? }, expansion = longhand { wrapper: fallback, value: CssVisibility, accessor: current, inherited: true, initial_kind: value, initial: CssVisibility::Visible };
             Content, "content", [], "baseline.property.content", CssContent, CssContentPropertyValue, CssContentPropertyValueRepresentation, parse_content, { parse_content($input)? };
             ContentVisibility, "content-visibility", [], "baseline.property.content-visibility", CssContentVisibility, CssContentVisibilityPropertyValue, CssContentVisibilityPropertyValueRepresentation, parse_content_visibility, { parse_content_visibility($input)? };
@@ -1149,6 +1150,105 @@ fn overflow_i01_projection(value: CssOverflow) -> Option<CssOverflow> {
 }
 
 macro_rules! define_property_value {
+    (AlignContent, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssAlignContentValue,
+            CssAlignment,
+            current,
+            crate::alignment::align_content_i01
+        );
+    };
+    (JustifyContent, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssJustifyContentValue,
+            CssAlignment,
+            current,
+            crate::alignment::justify_content_i01
+        );
+    };
+    (AlignItems, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssAlignItemsValue,
+            CssAlignItems,
+            current,
+            crate::alignment::align_items_i01
+        );
+    };
+    (JustifyItems, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssJustifyItemsValue,
+            CssAlignItems,
+            current,
+            crate::alignment::justify_items_i01
+        );
+    };
+    (AlignSelf, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssAlignSelfValue,
+            CssAlignItems,
+            current,
+            crate::alignment::align_self_i01
+        );
+    };
+    (JustifySelf, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssJustifySelfValue,
+            CssAlignItems,
+            current,
+            crate::alignment::justify_self_i01
+        );
+    };
+    (PlaceContent, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssPlaceContentValue,
+            CssPlaceAlignment,
+            current,
+            crate::alignment::place_content_i01
+        );
+    };
+    (PlaceItems, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssPlaceItemsValue,
+            CssPlaceAlignment,
+            current,
+            crate::alignment::place_items_i01
+        );
+    };
+    (PlaceSelf, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssPlaceSelfValue,
+            CssPlaceAlignment,
+            current,
+            crate::alignment::place_self_i01
+        );
+    };
     (TextAlign, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
         define_current_property_value!(
             $canonical,
