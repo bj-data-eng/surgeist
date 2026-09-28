@@ -4632,7 +4632,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 624] = [
         GRID_PROPERTY_SUBSET,
         GRID_PROPERTY_REMAINDER,
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::GridTemplateAreas,
         "grid-template-areas",
         "baseline.property.grid-template-areas"

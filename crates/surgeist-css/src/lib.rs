@@ -1167,6 +1167,7 @@ mod contain_intrinsic_size;
 mod display;
 mod exact_decimal;
 mod gap;
+mod grid_template_areas;
 mod inset;
 mod integer_value;
 mod numeric;
@@ -1209,6 +1210,11 @@ pub use display::{
     CssDisplayListItemInside, CssDisplayOutside, CssDisplayValue,
 };
 pub use gap::{CssGapShorthand, CssGapValue};
+pub use grid_template_areas::{
+    CssAuthoredGridTemplateAreaCell, CssAuthoredGridTemplateAreaRow,
+    CssAuthoredGridTemplateAreaRows, CssAuthoredGridTemplateAreas, CssGridTemplateAreaError,
+    CssGridTemplateAreaName,
+};
 mod font_width;
 pub use font_width::{CssFontFaceWidth, CssFontStretch, CssFontWidth, CssFontWidthKeyword};
 mod font_controls;

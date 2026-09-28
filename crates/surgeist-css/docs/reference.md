@@ -1423,6 +1423,29 @@ leaves open whether its orientation belongs on `grid-auto-flow` or a separate
 property. This CSS layer does not choose the resulting layout direction or
 change the existing `grid` shorthand's explicit row/dense branch.
 
+`grid-template-areas` exposes `CssAuthoredGridTemplateAreas` through its
+property wrapper's `current()` accessor. Its `None` initial is not inherited.
+Each decoded string row follows [Grid 2 §7.3](https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#grid-template-areas-property):
+the longest run of ident code points makes one named cell, the longest run of
+periods makes one empty cell, and decoded space, tab, and line feed separate
+runs. Other decoded ASCII punctuation or controls, including carriage return
+and form feed produced by an escape, invalidate the declaration. Non-ASCII
+code points such as NBSP remain part of an area name. The checked row and
+matrix constructors require nonempty rows, equal widths, and a filled rectangle
+for each case-sensitive name. Area names have their own checked type so leading
+digits and CSS-wide keyword spellings remain valid within a string. The older
+`CssGridTemplateAreas` view projects only names admitted by its existing
+checked `CssCustomIdent` constructor and valid shape constructors; its
+`i01_subset()` can therefore be `None` for a valid current value.
+
+`serialize_specified_with_limits()` emits canonical quoted rows with one space
+between cells and one period for each empty cell under cumulative input-node,
+projection-node, and CSS-byte budgets. The property wrapper's `as_css()` retains
+the authored source. CSS-wide values, `all`, and pending substitutions use the
+same intrinsic expansion and strict grammar reentry as other completed
+longhands. This does not complete the `grid-template` or `grid` shorthand's
+ASCII-art grammar or perform layout.
+
 The four Grid placement longhands (`grid-row-start`, `grid-row-end`,
 `grid-column-start`, and `grid-column-end`) and the `grid-row`, `grid-column`,
 and `grid-area` shorthands expose `CssAuthoredGridLine`,

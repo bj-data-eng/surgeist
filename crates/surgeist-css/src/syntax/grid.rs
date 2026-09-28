@@ -1,5 +1,4 @@
 use super::{CssCustomIdent, CssLength, CssNonNegativeNumber};
-use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
@@ -242,6 +241,7 @@ impl CssGridTemplateAreaRows {
         }
     }
 
+    #[cfg(test)]
     #[must_use]
     pub(crate) fn new_unchecked(rows: Vec<CssGridTemplateAreaRow>) -> Self {
         Self { rows }
@@ -259,75 +259,24 @@ impl CssGridTemplateAreas {
         CssGridTemplateAreaRows::try_new(rows).map(Self::Rows)
     }
 
+    #[cfg(test)]
     #[must_use]
     pub(crate) fn rows(rows: Vec<CssGridTemplateAreaRow>) -> Self {
         Self::Rows(CssGridTemplateAreaRows::new_unchecked(rows))
     }
 }
 
-pub(crate) enum GridAreaValidationError {
-    MissingRows,
-    EmptyRow,
-    InconsistentWidths,
-    NonRectangular(String),
-}
+pub(crate) use crate::grid_template_areas::CssGridTemplateAreaError as GridAreaValidationError;
 
 pub(crate) fn validate_grid_template_area_rows(
     rows: &[CssGridTemplateAreaRow],
 ) -> Result<(), GridAreaValidationError> {
-    if rows.is_empty() {
-        return Err(GridAreaValidationError::MissingRows);
-    }
-    let width = rows[0].cells().len();
-    if width == 0 {
-        return Err(GridAreaValidationError::EmptyRow);
-    }
-    if rows.iter().any(|row| row.cells().len() != width) {
-        return Err(GridAreaValidationError::InconsistentWidths);
-    }
-
-    let mut bounds = HashMap::<String, GridAreaBounds>::new();
-    for (row_index, row) in rows.iter().enumerate() {
-        for (col_index, cell) in row.cells().iter().enumerate() {
-            let CssGridTemplateAreaCell::Named(name) = cell else {
-                continue;
-            };
-            bounds
-                .entry(name.as_str().to_owned())
-                .and_modify(|bounds| {
-                    bounds.min_row = bounds.min_row.min(row_index);
-                    bounds.max_row = bounds.max_row.max(row_index);
-                    bounds.min_col = bounds.min_col.min(col_index);
-                    bounds.max_col = bounds.max_col.max(col_index);
-                    bounds.count += 1;
-                })
-                .or_insert(GridAreaBounds {
-                    min_row: row_index,
-                    max_row: row_index,
-                    min_col: col_index,
-                    max_col: col_index,
-                    count: 1,
-                });
+    crate::grid_template_areas::validate_area_matrix(rows, CssGridTemplateAreaRow::cells, |cell| {
+        match cell {
+            CssGridTemplateAreaCell::Empty => None,
+            CssGridTemplateAreaCell::Named(name) => Some(name.as_str()),
         }
-    }
-
-    for (name, bounds) in bounds {
-        let rectangle_area =
-            (bounds.max_row - bounds.min_row + 1) * (bounds.max_col - bounds.min_col + 1);
-        if rectangle_area != bounds.count {
-            return Err(GridAreaValidationError::NonRectangular(name));
-        }
-    }
-    Ok(())
-}
-
-#[derive(Clone, Copy)]
-struct GridAreaBounds {
-    min_row: usize,
-    max_row: usize,
-    min_col: usize,
-    max_col: usize,
-    count: usize,
+    })
 }
 
 #[derive(Clone, Debug, PartialEq)]

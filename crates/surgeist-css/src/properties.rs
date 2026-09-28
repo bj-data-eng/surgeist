@@ -23,6 +23,7 @@ use crate::font_controls::*;
 use crate::font_settings::*;
 use crate::font_variant::*;
 use crate::gap::*;
+use crate::grid_template_areas::CssAuthoredGridTemplateAreas;
 use crate::inset::*;
 use crate::overflow::CssOverflowValue;
 use crate::overflow_controls::{CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter};
@@ -161,7 +162,7 @@ macro_rules! property_schema {
             FlowTolerance, "flow-tolerance", [], "ext.property.flow-tolerance", CssFlowTolerance, CssFlowTolerancePropertyValue, CssFlowTolerancePropertyValueRepresentation, parse_flow_tolerance, { parse_flow_tolerance($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssFlowTolerance, accessor: value, inherited: false, initial_kind: value, initial: CssFlowTolerance::normal() };
             GridTemplateRows, "grid-template-rows", [], "baseline.property.grid-template-rows", CssGridTrackList, CssGridTemplateRowsPropertyValue, CssGridTemplateRowsPropertyValueRepresentation, parse_grid_track_list, { parse_grid_track_list($input, $numeric)? };
             GridTemplateColumns, "grid-template-columns", [], "baseline.property.grid-template-columns", CssGridTrackList, CssGridTemplateColumnsPropertyValue, CssGridTemplateColumnsPropertyValueRepresentation, parse_grid_track_list, { parse_grid_track_list($input, $numeric)? };
-            GridTemplateAreas, "grid-template-areas", [], "baseline.property.grid-template-areas", CssGridTemplateAreas, CssGridTemplateAreasPropertyValue, CssGridTemplateAreasPropertyValueRepresentation, parse_grid_template_areas, { parse_grid_template_areas($input)? };
+            GridTemplateAreas, "grid-template-areas", [], "baseline.property.grid-template-areas", crate::CssAuthoredGridTemplateAreas, CssGridTemplateAreasPropertyValue, CssGridTemplateAreasPropertyValueRepresentation, parse_grid_template_areas, { parse_grid_template_areas($input)? }, expansion = longhand { wrapper: existing, value: crate::CssAuthoredGridTemplateAreas, accessor: current, inherited: false, initial_kind: value, initial: crate::CssAuthoredGridTemplateAreas::None };
             GridTemplate, "grid-template", [], "baseline.property.grid-template", CssGridTemplate, CssGridTemplatePropertyValue, CssGridTemplatePropertyValueRepresentation, parse_grid_template, { parse_grid_template($input, $numeric)? };
             GridAutoRows, "grid-auto-rows", [], "baseline.property.grid-auto-rows", CssGridTrackList, CssGridAutoRowsPropertyValue, CssGridAutoRowsPropertyValueRepresentation, parse_grid_auto_track_sizes, { parse_grid_auto_track_sizes($input, $numeric)? };
             GridAutoColumns, "grid-auto-columns", [], "baseline.property.grid-auto-columns", CssGridTrackList, CssGridAutoColumnsPropertyValue, CssGridAutoColumnsPropertyValueRepresentation, parse_grid_auto_track_sizes, { parse_grid_auto_track_sizes($input, $numeric)? };
@@ -3391,6 +3392,17 @@ macro_rules! define_property_value {
             CssGridAutoFlow,
             current,
             |value: &CssGridAutoFlowValue| value.i01_subset()
+        );
+    };
+    (GridTemplateAreas, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssAuthoredGridTemplateAreas,
+            CssGridTemplateAreas,
+            current,
+            CssAuthoredGridTemplateAreas::i01_subset
         );
     };
     (

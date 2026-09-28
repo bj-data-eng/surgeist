@@ -4,10 +4,10 @@ use super::values::{
     LengthGrammar, checked_percentage_value, next_is_delim, parse_custom_ident_from_str_at,
     parse_length_with_context, parse_positive_integer,
 };
-use crate::CssFeatureId;
 use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
 use crate::validation::{LengthUnitStatus, classify_length_unit, unsupported_keyword_reason};
+use crate::{CssAuthoredGridTemplateAreas, CssFeatureId};
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] =
     &[CssFeatureId::new("ext.value.grid-repeat")];
@@ -580,10 +580,10 @@ fn parse_grid_auto_track_sizes_with_mode<'i, 't>(
 
 pub(super) fn parse_grid_template_areas<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssGridTemplateAreas, ParseError<'i, Error>> {
+) -> std::result::Result<CssAuthoredGridTemplateAreas, ParseError<'i, Error>> {
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         return match_ignore_ascii_case! { &ident,
-            "none" => Ok(CssGridTemplateAreas::None),
+            "none" => Ok(CssAuthoredGridTemplateAreas::None),
             _ => Err(unsupported_value(
                 input,
                 None,
@@ -596,63 +596,34 @@ pub(super) fn parse_grid_template_areas<'i, 't>(
     while !input.is_exhausted() {
         let location = input.current_source_location();
         let row = input.expect_string_cloned().map_err(basic)?;
-        rows.push(parse_grid_template_area_row(row.as_ref(), location)?);
+        rows.push(
+            crate::grid_template_areas::parse_decoded_row(row.as_ref())
+                .map_err(|error| unsupported_value_at(location, None, area_error_message(error)))?,
+        );
     }
-    validate_grid_template_area_rectangles(&rows, input)?;
-    Ok(CssGridTemplateAreas::rows(rows))
+    CssAuthoredGridTemplateAreas::try_rows(rows)
+        .map_err(|error| unsupported_value(input, None, area_error_message(error)))
 }
 
-pub(super) fn parse_grid_template_area_row<'i>(
-    row: &str,
-    location: cssparser::SourceLocation,
-) -> std::result::Result<CssGridTemplateAreaRow, ParseError<'i, Error>> {
-    let cells = row
-        .split_whitespace()
-        .map(|token| {
-            if token.chars().all(|ch| ch == '.') {
-                Ok(CssGridTemplateAreaCell::Empty)
-            } else if token.contains('.') {
-                Err(unsupported_value_at(
-                    location,
-                    None,
-                    format!("invalid grid template area token `{token}`"),
-                ))
-            } else {
-                parse_custom_ident_from_str_at("grid template area", token, location)
-                    .map(CssGridTemplateAreaCell::Named)
-            }
-        })
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-
-    if cells.is_empty() {
-        Err(unsupported_value_at(
-            location,
-            None,
-            "grid template area row is empty",
-        ))
-    } else {
-        Ok(CssGridTemplateAreaRow::new(cells))
+fn area_error_message(error: crate::CssGridTemplateAreaError) -> String {
+    match error {
+        crate::CssGridTemplateAreaError::InvalidName => {
+            "invalid grid template area name".to_owned()
+        }
+        crate::CssGridTemplateAreaError::TrashCharacter(character) => {
+            format!("invalid grid template area character {character}")
+        }
+        crate::CssGridTemplateAreaError::MissingRows => {
+            "grid-template-areas is missing rows".to_owned()
+        }
+        crate::CssGridTemplateAreaError::EmptyRow => "grid template area row is empty".to_owned(),
+        crate::CssGridTemplateAreaError::InconsistentWidths => {
+            "grid-template-areas rows have inconsistent widths".to_owned()
+        }
+        crate::CssGridTemplateAreaError::NonRectangular(name) => {
+            format!("grid template area {name} is not rectangular")
+        }
     }
-}
-
-pub(super) fn validate_grid_template_area_rectangles<'i, 't>(
-    rows: &[CssGridTemplateAreaRow],
-    input: &Parser<'i, 't>,
-) -> std::result::Result<(), ParseError<'i, Error>> {
-    validate_grid_template_area_rows(rows).map_err(|issue| {
-        let message = match issue {
-            GridAreaValidationError::MissingRows => {
-                "grid-template-areas is missing rows".to_owned()
-            }
-            GridAreaValidationError::EmptyRow | GridAreaValidationError::InconsistentWidths => {
-                "grid-template-areas rows have inconsistent widths".to_owned()
-            }
-            GridAreaValidationError::NonRectangular(name) => {
-                format!("grid template area `{name}` is not rectangular")
-            }
-        };
-        unsupported_value(input, None, message)
-    })
 }
 
 pub(super) fn parse_grid_template<'i, 't>(

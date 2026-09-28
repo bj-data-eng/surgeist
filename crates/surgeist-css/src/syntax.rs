@@ -5291,7 +5291,6 @@ pub use grid::*;
 mod grid_placement;
 pub(crate) use grid::{
     CssParsedGrid, CssParsedGridTemplate, CssParsedGridTrackList, CssParsedGridTrackSizeList,
-    GridAreaValidationError, validate_grid_template_area_rows,
 };
 pub use grid_placement::*;
 
