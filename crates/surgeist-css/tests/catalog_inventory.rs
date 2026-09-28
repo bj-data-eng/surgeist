@@ -69,6 +69,18 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
         assert_eq!(metadata.property().canonical_name(), vector.canonical_name);
         assert_eq!(metadata.canonical_name(), vector.canonical_name);
         let expected_aliases: &[&str] = match vector.canonical_name {
+            "align-content" => &["-webkit-align-content"],
+            "align-items" => &["-webkit-align-items"],
+            "align-self" => &["-webkit-align-self"],
+            "justify-content" => &["-webkit-justify-content"],
+            "flex" => &["-webkit-flex"],
+            "flex-basis" => &["-webkit-flex-basis"],
+            "flex-direction" => &["-webkit-flex-direction"],
+            "flex-flow" => &["-webkit-flex-flow"],
+            "flex-grow" => &["-webkit-flex-grow"],
+            "flex-shrink" => &["-webkit-flex-shrink"],
+            "flex-wrap" => &["-webkit-flex-wrap"],
+            "order" => &["-webkit-order"],
             "row-gap" => &["grid-row-gap"],
             "column-gap" => &["grid-column-gap"],
             "gap" => &["grid-gap"],
@@ -84,6 +96,9 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
                 match vector.canonical_name {
                     "overflow-wrap" => "S-TEXT3",
                     "font-width" => "I-FONTS4-20260907",
+                    "order" => "S-DISPLAY3",
+                    "flex" | "flex-basis" | "flex-direction" | "flex-flow" | "flex-grow"
+                    | "flex-shrink" | "flex-wrap" => "O-FLEXBOX1",
                     _ => "S-ALIGN3",
                 }
             );

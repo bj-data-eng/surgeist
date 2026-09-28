@@ -1002,11 +1002,11 @@
 //! remainder metadata. `@font-feature-values` is Partial under its documented
 //! provisional Fonts 4 policy, with its rule serialization unfinished. C13's
 //! 456 public catalog records plus C14's 31 additions reached 487 at that point;
-//! subsequent selected records bring the current catalog to 513. That catalog
-//! cardinality is distinct from the immutable official
+//! subsequent selected records extend the catalog. [`feature_catalog`] owns its
+//! current cardinality, which is distinct from the immutable official
 //! inventory of exactly 162 property units, one normative legacy shorthand, and
 //! 167 non-property units. All 219 I01 baseline records retain their
-//! classifications, and the exclusion registry remains exactly 131 rows.
+//! classifications, and the exclusion registry now contains exactly 130 rows.
 //!
 //! # Support metadata and application policy
 //!

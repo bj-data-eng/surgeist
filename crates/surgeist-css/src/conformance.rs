@@ -1709,12 +1709,6 @@ static CONFORMANCE_EXCLUSIONS: &[CssExclusionMetadata] = &[
         CssExclusionReason::OutsideAuthoredSyntaxBoundary
     ),
     exclusion!(
-        "excluded.O-FLEXBOX1.webkit-legacy",
-        O_FLEXBOX1,
-        "#webkit-aliases",
-        CssExclusionReason::SupersededWithoutCurrentProduction
-    ),
-    exclusion!(
         "excluded.O-UI3.behavior",
         O_UI3,
         "ellipsis/input/default-style behavior sections",
@@ -2215,7 +2209,7 @@ static OFFICIAL_EXCLUDED_COVERAGE: &[CssOfficialCoverageRecord] = excluded_cover
     50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73,
     74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97,
     98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116,
-    117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130,
+    117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129,
 );
 
 const BASELINE_RULE_SUBSET: &str =
@@ -4288,17 +4282,20 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 622] = [
     complete_property_feature!(
         CssKnownProperty::FlexDirection,
         "flex-direction",
-        "baseline.property.flex-direction"
+        "baseline.property.flex-direction",
+        CssKnownProperty::FlexDirection.aliases()
     ),
     complete_property_feature!(
         CssKnownProperty::FlexFlow,
         "flex-flow",
-        "official.property.flex-flow"
+        "official.property.flex-flow",
+        CssKnownProperty::FlexFlow.aliases()
     ),
     complete_property_feature!(
         CssKnownProperty::FlexWrap,
         "flex-wrap",
-        "baseline.property.flex-wrap"
+        "baseline.property.flex-wrap",
+        CssKnownProperty::FlexWrap.aliases()
     ),
     complete_property_feature!(
         CssKnownProperty::ContainerName,
@@ -4320,22 +4317,26 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 622] = [
     complete_property_feature!(
         CssKnownProperty::AlignContent,
         "align-content",
-        "baseline.property.align-content"
+        "baseline.property.align-content",
+        CssKnownProperty::AlignContent.aliases()
     ),
     complete_property_feature!(
         CssKnownProperty::JustifyContent,
         "justify-content",
-        "baseline.property.justify-content"
+        "baseline.property.justify-content",
+        CssKnownProperty::JustifyContent.aliases()
     ),
     complete_property_feature!(
         CssKnownProperty::AlignItems,
         "align-items",
-        "baseline.property.align-items"
+        "baseline.property.align-items",
+        CssKnownProperty::AlignItems.aliases()
     ),
     complete_property_feature!(
         CssKnownProperty::AlignSelf,
         "align-self",
-        "baseline.property.align-self"
+        "baseline.property.align-self",
+        CssKnownProperty::AlignSelf.aliases()
     ),
     complete_property_feature!(
         CssKnownProperty::JustifyItems,
@@ -4517,7 +4518,8 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 622] = [
     complete_property_feature!(
         CssKnownProperty::FlexBasis,
         "flex-basis",
-        "baseline.property.flex-basis"
+        "baseline.property.flex-basis",
+        CssKnownProperty::FlexBasis.aliases()
     ),
     complete_property_feature!(
         CssKnownProperty::Gap,
@@ -5508,15 +5510,27 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 622] = [
     complete_property_feature!(
         CssKnownProperty::FlexGrow,
         "flex-grow",
-        "baseline.property.flex-grow"
+        "baseline.property.flex-grow",
+        CssKnownProperty::FlexGrow.aliases()
     ),
     complete_property_feature!(
         CssKnownProperty::FlexShrink,
         "flex-shrink",
-        "baseline.property.flex-shrink"
+        "baseline.property.flex-shrink",
+        CssKnownProperty::FlexShrink.aliases()
     ),
-    complete_property_feature!(CssKnownProperty::Order, "order", "baseline.property.order"),
-    complete_property_feature!(CssKnownProperty::Flex, "flex", "baseline.property.flex"),
+    complete_property_feature!(
+        CssKnownProperty::Order,
+        "order",
+        "baseline.property.order",
+        CssKnownProperty::Order.aliases()
+    ),
+    complete_property_feature!(
+        CssKnownProperty::Flex,
+        "flex",
+        "baseline.property.flex",
+        CssKnownProperty::Flex.aliases()
+    ),
     property_feature!(
         CssKnownProperty::JustifyTracks,
         "justify-tracks",

@@ -2242,7 +2242,7 @@ legacy shorthand is `Partial`. This activation does not inflate the immutable
 ledger or promote later work: it remains 162 property units (161 canonical
 properties plus the custom property family), one normative legacy shorthand,
 and 167 non-property units.
-The unchanged 131-row exclusion registry still includes exactly 50 superseded
+The 130-row exclusion registry still includes exactly 50 superseded
 CSS2 property definitions, 20 informative CSS2 Appendix A properties, and the
 two current-production-less `glyph-orientation-horizontal` and `ime-mode`
 spellings; the remaining exclusions cover exact non-property or downstream
@@ -2341,7 +2341,15 @@ an omitted component taking its initial value and no reset-only members.
 `CssFlexFlow::new()` constructs the pair directly; all three values serialize
 specified keywords with bounded output, and `flex-flow` serializes both
 effective components in that order. The direction and wrap wrappers retain
-exact I01 projections.
+exact I01 projections. The twelve deprecated `-webkit-` property spellings in
+[Flexbox 1 normative Appendix B](https://www.w3.org/TR/2025/CRD-css-flexbox-1-20251014/#webkit-aliases)
+are name-equivalent aliases of their seven flex properties, four alignment
+properties, and `order`. They use each target's full authored grammar and
+expansion. The four alignment targets retain their selected Alignment 3 grammar
+source, and `order` retains Display 3; the Flexbox appendix supplies the alias
+obligation, not a replacement canonical definition. Browser UAs must support
+these compatibility names; other UAs may. Authors should use them only where
+legacy compatibility requires them.
 `columns` retains
 the effective width and count, with omitted components set to `auto`, while its
 wrapper preserves the original spelling and order. `column-rule` preserves
@@ -2452,14 +2460,14 @@ palette rule kind has a canonical specified writer.
 The preceding public support catalog contained 456 records. The 31 additions
 above brought it to 487; fourteen additional media feature records and two
 custom-media rule/reference records reached 503. Later selected additions,
-including four palette rule/descriptor records, bring the current public support
-catalog to 513 records, as declared in
-[the catalog source](../src/conformance.rs). That
+including four palette rule/descriptor records, further extend the public support
+catalog. Its current cardinality comes from
+[`feature_catalog()`](../src/conformance.rs). That
 catalog cardinality is distinct from the immutable official inventory of
 exactly 162 property units (161 canonical properties plus the custom-property
 family), one normative legacy shorthand, and 167 non-property units. All 219
 preserved I01 baseline records retain their classifications, and the exclusion
-registry remains exactly 131 rows.
+registry now contains exactly 130 rows.
 
 The crate owns authored syntax and canonical serialization. Cascade, substitution,
 selector matching, query evaluation, resource loading, layout, pagination,
