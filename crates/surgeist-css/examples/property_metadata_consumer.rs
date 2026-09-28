@@ -113,6 +113,8 @@ const LONGHANDS: &[P] = &[
     P::TextOrientation,
     P::TextAlignAll,
     P::TextAlignLast,
+    P::WordSpacing,
+    P::LetterSpacing,
     P::Opacity,
     P::Display,
     P::BoxSizing,
@@ -480,6 +482,9 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::ContainerName(v) => assert_eq!(*v, CssContainerNames::None),
         CssLonghandValueRef::ContainerType(v) => assert_eq!(*v, CssContainerType::Normal),
         CssLonghandValueRef::Position(v) => assert_eq!(*v, CssLayoutPosition::Static),
+        CssLonghandValueRef::WordSpacing(v) | CssLonghandValueRef::LetterSpacing(v) => {
+            assert_eq!(v, &CssTextSpacingAdjustment::Normal)
+        }
         CssLonghandValueRef::FlexBasis(v) => {
             assert!(matches!(
                 v.view(),
@@ -781,7 +786,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 217);
+    assert_eq!(expected.len(), 219);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {
@@ -867,6 +872,8 @@ fn metadata_and_initials() {
                     | P::TextOrientation
                     | P::TextAlignAll
                     | P::TextAlignLast
+                    | P::WordSpacing
+                    | P::LetterSpacing
                     | P::Visibility
                     | P::OverflowWrap
                     | P::Direction

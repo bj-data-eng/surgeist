@@ -2266,7 +2266,6 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::EmptyCells
         | CssKnownProperty::Quotes
         | CssKnownProperty::TableLayout
-        | CssKnownProperty::WordSpacing
         | CssKnownProperty::Content
         | CssKnownProperty::ListStyleType
         | CssKnownProperty::ListStylePosition
@@ -2277,7 +2276,6 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::LineHeight
         | CssKnownProperty::TextIndent
         | CssKnownProperty::VerticalAlign
-        | CssKnownProperty::LetterSpacing
         | CssKnownProperty::WhiteSpace
         | CssKnownProperty::TextDecoration
         | CssKnownProperty::TextTransform
@@ -2503,7 +2501,9 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         CssKnownProperty::TextAlign
         | CssKnownProperty::TextAlignAll
         | CssKnownProperty::TextAlignLast
-        | CssKnownProperty::TextWrap => X_TEXT4,
+        | CssKnownProperty::TextWrap
+        | CssKnownProperty::WordSpacing
+        | CssKnownProperty::LetterSpacing => X_TEXT4,
         CssKnownProperty::TextDecorationLine
         | CssKnownProperty::TextDecorationColor
         | CssKnownProperty::TextDecorationStyle => S_TEXTDECOR3,
@@ -2607,7 +2607,8 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
             _ => default,
         },
         CssKnownProperty::Quotes => "generate.html#propdef-quotes",
-        CssKnownProperty::WordSpacing => "text.html#propdef-word-spacing",
+        CssKnownProperty::WordSpacing => "#propdef-word-spacing",
+        CssKnownProperty::LetterSpacing => "#propdef-letter-spacing",
         CssKnownProperty::ZIndex => "visuren.html#propdef-z-index",
         CssKnownProperty::Content
         | CssKnownProperty::CounterIncrement
@@ -2630,12 +2631,10 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
             CssKnownProperty::VerticalAlign => "visudet.html#propdef-vertical-align",
             _ => default,
         },
-        CssKnownProperty::LetterSpacing
-        | CssKnownProperty::TextDecoration
+        CssKnownProperty::TextDecoration
         | CssKnownProperty::TextIndent
         | CssKnownProperty::TextTransform
         | CssKnownProperty::WhiteSpace => match property {
-            CssKnownProperty::LetterSpacing => "text.html#propdef-letter-spacing",
             CssKnownProperty::TextDecoration => "text.html#propdef-text-decoration",
             CssKnownProperty::TextIndent => "text.html#propdef-text-indent",
             CssKnownProperty::TextTransform => "text.html#propdef-text-transform",
@@ -4881,7 +4880,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 622] = [
         I_FONTS4_20260907,
         "#font-weight-absolute-values",
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::LetterSpacing,
         "letter-spacing",
         "baseline.property.letter-spacing"
@@ -5964,7 +5963,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 622] = [
         "official.property.word-spacing",
         CssKnownProperty::WordSpacing,
         "word-spacing",
-        "text.html#propdef-word-spacing",
+        "#propdef-word-spacing",
         &[],
     ),
     CssFeatureMetadata::complete_property(

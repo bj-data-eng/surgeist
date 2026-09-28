@@ -8364,10 +8364,28 @@ fn parses_typography_and_text_length_families() {
         declaration_value!(".panel { letter-spacing: normal; }", LetterSpacing),
         CssLetterSpacing::Normal
     );
+    let authored = declaration(
+        ".panel { letter-spacing: 0.1em; }",
+        CssProperty::LetterSpacing,
+    );
+    let CssKnownPropertyValueRef::LetterSpacing(spacing) = authored
+        .known()
+        .and_then(|known| known.property_value())
+        .expect("ordinary letter spacing")
+    else {
+        panic!("expected letter spacing");
+    };
+    assert_eq!(spacing.as_css(), "0.1em");
+    assert!(matches!(
+        spacing.current(),
+        CssTextSpacingAdjustment::LengthPercentage(value)
+            if value.serialize_specified().unwrap() == "0.1em"
+    ));
+    assert!(spacing.i01_subset().is_none()); // Decimal 0.1 is not binary32-exact.
     assert_eq!(
-        declaration_value!(".panel { letter-spacing: 0.1em; }", LetterSpacing),
+        declaration_value!(".panel { letter-spacing: 0.25em; }", LetterSpacing),
         CssLetterSpacing::Length(CssLetterSpacingLength::new(CssLength::dimension(
-            0.1,
+            0.25,
             CssLengthUnit::Em
         )))
     );

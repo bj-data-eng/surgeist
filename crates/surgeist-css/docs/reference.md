@@ -2168,7 +2168,7 @@ these authored models into another Surgeist crate.
 
 ## CSS2 residual, writing, UI, containment, and compositing properties
 
-This property family provides the selected authored grammars for twelve CSS2
+This property family provides the selected authored grammars for eleven CSS2
 residual properties, the deprecated `clip` property in Masking 1 Appendix A,
 Writing Modes 3 `text-combine-upright`,
 `text-orientation`, and `unicode-bidi`, UI3 `caret-color`, `outline-offset`, and
@@ -2187,6 +2187,21 @@ and whitespace-only authored separators are accepted. `CssClipLength`,
 values under one cumulative budget, with commas in canonical rectangles and
 symbolic calculations left unresolved. Applying a clipping region and the
 separate `clip-path` property remain outside this authored-value contract.
+
+[CSS Text 4 §§8.1–8.2](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#word-spacing-property)
+defines `word-spacing` and `letter-spacing` as inherited longhands with
+`normal` initials and signed `<length-percentage>` values. Their shared
+`CssTextSpacingAdjustment` retains exact numeric spelling, source origin, and
+symbolic math, and serializes under a bounded resource budget. Percentages
+inherit intact and resolve against used font size downstream. The historical
+pure-length `CssWordSpacing` and `CssLetterSpacing` values remain conditional
+I01 projections: percentage-bearing or inexact values have no projection.
+For example, authored `0.1em` remains exact in the current value but has no
+legacy binary32 projection; `0.25em` has one.
+`CssWordSpacingPropertyValue::spacing()` now borrows the shared current value;
+call `i01_subset()` for an exactly representable historical value.
+`CssLetterSpacingPropertyValue::current()` borrows the shared current value,
+while its existing `i01_subset()` remains available for pure lengths.
 
 `glyph-orientation-vertical` is the selected Writing Modes legacy shorthand,
 not a name-equivalent schema alias. Its implemented compatibility subset admits

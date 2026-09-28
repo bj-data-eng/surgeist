@@ -10,8 +10,10 @@ use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
 use crate::{
     CssAbsoluteFontWeight, CssFontObliqueAngle, CssFontSize, CssFontStretch, CssFontStyle,
-    CssFontStyleKeyword, CssFontWeight, CssFontWeightNumber, CssFontWidth, CssLineHeight,
+    CssFontStyleKeyword, CssFontWeight, CssFontWeightNumber, CssFontWidth,
+    CssLengthPercentageCalculation, CssLineHeight, CssSpecifiedLengthPercentage,
     CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
+    CssTextSpacingAdjustment,
 };
 
 pub(super) static IMPLEMENTED_PROPERTY_EXTENSIONS: &[CssFeatureId] =
@@ -833,35 +835,57 @@ pub(super) fn parse_font_synthesis<'i, 't>(
 pub(super) fn parse_letter_spacing<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssLetterSpacing, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("normal"))
-        .is_ok()
-    {
-        Ok(CssLetterSpacing::Normal)
-    } else {
-        parse_length_with(input, numeric, LengthGrammar::LetterSpacing)
-            .map(CssLetterSpacingLength::new)
-            .map(CssLetterSpacing::Length)
-    }
+) -> std::result::Result<CssTextSpacingAdjustment, ParseError<'i, Error>> {
+    parse_text_spacing_adjustment(input, numeric, "letter-spacing")
 }
 
 pub(super) fn parse_word_spacing<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssWordSpacing, ParseError<'i, Error>> {
+) -> std::result::Result<CssTextSpacingAdjustment, ParseError<'i, Error>> {
+    parse_text_spacing_adjustment(input, numeric, "word-spacing")
+}
+
+fn parse_text_spacing_adjustment<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+    property: &str,
+) -> std::result::Result<CssTextSpacingAdjustment, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("normal"))
         .is_ok()
     {
-        Ok(CssWordSpacing::Normal)
-    } else {
-        let location = input.current_source_location();
-        let value = parse_length_with(input, numeric, LengthGrammar::WordSpacing)?;
-        CssWordSpacingLength::try_new(value)
-            .map(CssWordSpacing::Length)
-            .ok_or_else(|| unsupported_value_at(location, None, "word-spacing requires a length"))
+        return Ok(CssTextSpacingAdjustment::Normal);
     }
+    input.skip_whitespace();
+    let state = input.state();
+    let location = input.current_source_location();
+    let root_offset = input.position().byte_index();
+    let value = match input.next().map_err(basic)? {
+        Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
+            input.reset(&state);
+            let component = numeric.collect(input).map_err(|_| {
+                unsupported_value_at(location, None, format!("invalid {property} component"))
+            })?;
+            CssSpecifiedLengthPercentage::try_from_component(component)
+        }
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            let expression =
+                parse_numeric_function(input, &state, numeric, CalculationRoot::LengthPercentage)?;
+            CssSpecifiedLengthPercentage::try_from_calculation(
+                CssLengthPercentageCalculation::from_expression(expression),
+            )
+        }
+        token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
+    }
+    .map_err(|error| {
+        unsupported_value_at(
+            numeric.error_location(&error, location, root_offset),
+            None,
+            format!("{property} requires normal or a length-percentage"),
+        )
+    })?;
+    Ok(CssTextSpacingAdjustment::LengthPercentage(value))
 }
 
 pub(super) fn parse_text_wrap<'i, 't>(

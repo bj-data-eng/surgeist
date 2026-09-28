@@ -167,6 +167,8 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
         ("grid", "R-GRID2"),
         ("word-break", "S-TEXT3"),
         ("text-wrap", "X-TEXT4"),
+        ("word-spacing", "X-TEXT4"),
+        ("letter-spacing", "X-TEXT4"),
         ("text-decoration-line", "S-TEXTDECOR3"),
         ("text-decoration-thickness", "X-TEXTDECOR4"),
         ("inset", "I-POSITION3"),

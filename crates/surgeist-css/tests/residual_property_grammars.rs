@@ -2,7 +2,7 @@ use surgeist_css::{
     CssBorderCollapse, CssBoxEdgeKeyword, CssBreakBetween, CssBreakInside, CssCaptionSide, CssClip,
     CssClipEdge, CssEmptyCells, CssErrorCode, CssGlobalKeyword, CssKnownDeclaredValueRef,
     CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssQuotes, CssRecoveryAction,
-    CssTableLayout, CssWordSpacing, ErrorKind, parse_style_attribute,
+    CssTableLayout, CssTextSpacingAdjustment, CssWordSpacing, ErrorKind, parse_style_attribute,
 };
 
 #[test]
@@ -208,9 +208,17 @@ fn css2_residual_properties_retain_typed_values() {
     else {
         panic!("expected word-spacing");
     };
+    assert_eq!(
+        word_spacing.spacing().serialize_specified().unwrap(),
+        "-0.25em"
+    );
     assert!(matches!(
         word_spacing.spacing(),
-        CssWordSpacing::Length(length)
+        CssTextSpacingAdjustment::LengthPercentage(_)
+    ));
+    assert!(matches!(
+        word_spacing.i01_subset(),
+        Some(CssWordSpacing::Length(length))
             if matches!(length.value(), CssLength::Dimension(value) if value.value() == -0.25)
     ));
 }
@@ -255,6 +263,7 @@ fn css2_residual_keyword_numeric_list_and_separator_domains_are_complete() {
         "quotes: \"\" \"\"",
         "quotes: \"[\" \"]\" \"«\" \"»\"",
         "word-spacing: normal",
+        "word-spacing: 10%",
         "word-spacing: -2em",
         "word-spacing: calc(1em - 2px)",
     ] {
@@ -334,7 +343,7 @@ fn css2_residual_invalid_values_drop_exact_declaration_and_keep_sibling() {
         ("quotes", "none \"open\" \"close\""),
         ("table-layout", "auto fixed"),
         ("widows", "0"),
-        ("word-spacing", "10%"),
+        ("word-spacing", "1fr"),
         ("word-spacing", "normal 1px"),
         ("word-spacing", "auto"),
     ] {
@@ -420,13 +429,46 @@ fn css2_residual_eof_and_non_bmp_recovery_preserve_exact_coordinates() {
             if detail.property() == CssKnownProperty::Quotes
     ));
 
-    let source = "--😀: 1; word-spacing: 10%; color: red";
+    let accepted = "--😀: 1; word-spacing: 10%; color: red";
+    let accepted_report = parse_style_attribute(accepted);
+    assert!(
+        accepted_report.is_clean(),
+        "{:?}",
+        accepted_report.diagnostics()
+    );
+    assert_eq!(accepted_report.syntax().len(), 3);
+    let CssKnownPropertyValueRef::WordSpacing(accepted_spacing) = accepted_report.syntax()[1]
+        .known()
+        .unwrap()
+        .property_value()
+        .unwrap()
+    else {
+        panic!("accepted percentage word spacing")
+    };
+    assert_eq!(
+        accepted_spacing.spacing().serialize_specified().unwrap(),
+        "10%"
+    );
+
+    let source = "--😀: 1; word-spacing: 1fr; color: red";
+    let [offending] = surgeist_css::parse_component_values("1fr")
+        .unwrap()
+        .items()
+        .to_vec()
+        .try_into()
+        .unwrap();
+    assert!(matches!(
+        offending.view(),
+        surgeist_css::CssComponentValueRef::Token(
+            surgeist_css::CssValueTokenRef::Dimension { unit, .. }
+        ) if unit == "fr"
+    ));
     let report = parse_style_attribute(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
-        panic!("percentage word spacing must recover exactly once");
+        panic!("unsupported dimension must recover exactly once");
     };
-    let responsible = source.find("10%").unwrap();
+    let responsible = source.find("1fr").unwrap();
     let declaration_start = source.find("word-spacing").unwrap();
     let declaration_end = declaration_start + source[declaration_start..].find(';').unwrap() + 1;
     assert_eq!(

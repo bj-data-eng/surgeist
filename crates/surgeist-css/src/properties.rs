@@ -30,9 +30,10 @@ use crate::sizing::*;
 use crate::sizing_controls::*;
 use crate::syntax::*;
 use crate::text_alignment::*;
+use crate::text_spacing::CssTextSpacingAdjustment;
 use crate::{
     CssComponentValueRef, CssContainer, CssContainerNames, CssContainerType, CssSpecifiedLength,
-    CssValueTokenRef,
+    CssSpecifiedLengthPercentage, CssValueTokenRef,
 };
 use crate::{CssFontSize, CssFontStyle, CssFontWeight, CssFontWidth, CssLineHeight};
 
@@ -85,7 +86,7 @@ macro_rules! property_schema {
             ScrollPadding, "scroll-padding", [], "official.property.scroll-padding", CssScrollPaddingShorthand, CssScrollPaddingPropertyValue, CssScrollPaddingPropertyValueRepresentation, parse_scroll_padding_shorthand, { parse_scroll_padding_shorthand($input, $numeric)? }, expansion = unresolved { wrapper: additive, reason: CssUnresolvedStandard::LogicalShorthandResetMembership };
             ScrollMargin, "scroll-margin", [], "official.property.scroll-margin", CssScrollMarginShorthand, CssScrollMarginPropertyValue, CssScrollMarginPropertyValueRepresentation, parse_scroll_margin_shorthand, { parse_scroll_margin_shorthand($input, $numeric)? }, expansion = unresolved { wrapper: additive, reason: CssUnresolvedStandard::LogicalShorthandResetMembership };
             Widows, "widows", [], "official.property.widows", CssPageLineMinimum, CssWidowsPropertyValue, CssWidowsPropertyValueRepresentation, parse_page_line_minimum, { parse_page_line_minimum($input, $numeric, "widows")? }, expansion = longhand { wrapper: existing, value: CssPageLineMinimum, accessor: minimum, inherited: true, initial_kind: value, initial: CssPageLineMinimum::initial() };
-            WordSpacing, "word-spacing", [], "official.property.word-spacing", CssWordSpacing, CssWordSpacingPropertyValue, CssWordSpacingPropertyValueRepresentation, parse_word_spacing, { parse_word_spacing($input, $numeric)? };
+            WordSpacing, "word-spacing", [], "official.property.word-spacing", CssWordSpacing, CssWordSpacingPropertyValue, CssWordSpacingPropertyValueRepresentation, parse_word_spacing, { parse_word_spacing($input, $numeric)? }, expansion = longhand { wrapper: existing, value: crate::CssTextSpacingAdjustment, accessor: spacing, inherited: true, initial_kind: value, initial: crate::CssTextSpacingAdjustment::Normal };
             Position, "position", [], "baseline.property.position", CssLayoutPosition, CssPositionPropertyValue, CssPositionPropertyValueRepresentation, parse_position, { parse_position($input)? }, expansion = longhand { wrapper: fallback, value: CssLayoutPosition, accessor: current, inherited: false, initial_kind: value, initial: CssLayoutPosition::Static };
             Direction, "direction", [], "baseline.property.direction", CssDirection, CssDirectionPropertyValue, CssDirectionPropertyValueRepresentation, parse_direction, { parse_direction($input)? }, expansion = longhand { wrapper: fallback, value: CssDirection, accessor: current, inherited: true, initial_kind: value, initial: CssDirection::Ltr };
             Overflow, "overflow", [], "baseline.property.overflow", CssOverflowValue, CssOverflowPropertyValue, CssOverflowPropertyValueRepresentation, parse_overflow_value, { parse_overflow_value($input)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ OverflowX => |value: &CssOverflowValue| Some(value.x()), OverflowY => |value: &CssOverflowValue| Some(value.y()) ], reset_only: [] };
@@ -202,7 +203,7 @@ macro_rules! property_schema {
             FontOpticalSizing, "font-optical-sizing", [], "official.property.font-optical-sizing", CssFontOpticalSizing, CssFontOpticalSizingPropertyValue, CssFontOpticalSizingPropertyValueRepresentation, parse_font_optical_sizing, { parse_font_optical_sizing($input)? }, expansion = longhand { wrapper: additive, value: CssFontOpticalSizing, accessor: optical_sizing, inherited: true, initial_kind: value, initial: CssFontOpticalSizing::Auto };
             FontVariationSettings, "font-variation-settings", [], "official.property.font-variation-settings", CssFontVariationSettings, CssFontVariationSettingsPropertyValue, CssFontVariationSettingsPropertyValueRepresentation, parse_font_variation_settings, { parse_font_variation_settings($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssFontVariationSettings, accessor: variations, inherited: true, initial_kind: value, initial: CssFontVariationSettings::Normal };
             FontSynthesis, "font-synthesis", [], "official.property.font-synthesis", CssFontSynthesis, CssFontSynthesisPropertyValue, CssFontSynthesisPropertyValueRepresentation, parse_font_synthesis, { parse_font_synthesis($input)? };
-            LetterSpacing, "letter-spacing", [], "baseline.property.letter-spacing", CssLetterSpacing, CssLetterSpacingPropertyValue, CssLetterSpacingPropertyValueRepresentation, parse_letter_spacing, { parse_letter_spacing($input, $numeric)? };
+            LetterSpacing, "letter-spacing", [], "baseline.property.letter-spacing", CssLetterSpacing, CssLetterSpacingPropertyValue, CssLetterSpacingPropertyValueRepresentation, parse_letter_spacing, { parse_letter_spacing($input, $numeric)? }, expansion = longhand { wrapper: existing, value: crate::CssTextSpacingAdjustment, accessor: current, inherited: true, initial_kind: value, initial: crate::CssTextSpacingAdjustment::Normal };
             TextWrap, "text-wrap", [], "baseline.property.text-wrap", CssTextWrap, CssTextWrapPropertyValue, CssTextWrapPropertyValueRepresentation, parse_text_wrap, { parse_text_wrap($input)? };
             WhiteSpace, "white-space", [], "baseline.property.white-space", CssWhiteSpace, CssWhiteSpacePropertyValue, CssWhiteSpacePropertyValueRepresentation, parse_white_space, { parse_white_space($input)? };
             WordBreak, "word-break", [], "baseline.property.word-break", CssWordBreak, CssWordBreakPropertyValue, CssWordBreakPropertyValueRepresentation, parse_word_break, { parse_word_break($input)? };
@@ -380,32 +381,56 @@ macro_rules! property_schema {
 
 pub(crate) use property_schema;
 
+/// Projects only exactly representable legacy numeric payloads; callers apply
+/// their own property domain after this shared conversion.
+fn length_percentage_i01_projection(value: &CssSpecifiedLengthPercentage) -> Option<CssLength> {
+    if let Some(calculation) = value.calculation() {
+        return Some(CssLength::Calc(CssCalcLength::Typed(calculation.clone())));
+    }
+    let component = value.literal_component()?;
+    match component.view() {
+        CssComponentValueRef::Token(CssValueTokenRef::Number(number)) => {
+            (crate::exact_decimal::exact_legacy_value(number.representation())? == 0.0)
+                .then_some(CssLength::Zero)
+        }
+        CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) => {
+            CssLength::try_percent(crate::exact_decimal::exact_legacy_value(
+                number.representation(),
+            )?)
+        }
+        CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) => {
+            CssLength::try_dimension(
+                crate::exact_decimal::exact_legacy_value(number.representation())?,
+                CssLengthUnit::from_css_unit(unit)?,
+            )
+        }
+        _ => None,
+    }
+}
+
 fn inset_i01_projection(value: &CssInsetValue) -> Option<CssLength> {
     match value {
         CssInsetValue::Auto => Some(CssLength::Auto),
-        CssInsetValue::LengthPercentage(value) => {
-            if let Some(calculation) = value.calculation() {
-                return Some(CssLength::Calc(CssCalcLength::Typed(calculation.clone())));
-            }
-            let component = value.literal_component()?;
-            match component.view() {
-                CssComponentValueRef::Token(CssValueTokenRef::Number(number)) => {
-                    (crate::exact_decimal::exact_legacy_value(number.representation())? == 0.0)
-                        .then_some(CssLength::Zero)
-                }
-                CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) => {
-                    CssLength::try_percent(crate::exact_decimal::exact_legacy_value(
-                        number.representation(),
-                    )?)
-                }
-                CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) => {
-                    CssLength::try_dimension(
-                        crate::exact_decimal::exact_legacy_value(number.representation())?,
-                        CssLengthUnit::from_css_unit(unit)?,
-                    )
-                }
-                _ => None,
-            }
+        CssInsetValue::LengthPercentage(value) => length_percentage_i01_projection(value),
+    }
+}
+
+fn word_spacing_i01_projection(value: &CssTextSpacingAdjustment) -> Option<CssWordSpacing> {
+    match value {
+        CssTextSpacingAdjustment::Normal => Some(CssWordSpacing::Normal),
+        CssTextSpacingAdjustment::LengthPercentage(value) => {
+            CssWordSpacingLength::try_new(length_percentage_i01_projection(value)?)
+                .map(CssWordSpacing::Length)
+        }
+    }
+}
+
+fn letter_spacing_i01_projection(value: &CssTextSpacingAdjustment) -> Option<CssLetterSpacing> {
+    match value {
+        CssTextSpacingAdjustment::Normal => Some(CssLetterSpacing::Normal),
+        CssTextSpacingAdjustment::LengthPercentage(value) => {
+            CssLetterSpacingLength::try_new(length_percentage_i01_projection(value)?)
+                .map(CssLetterSpacing::Length)
         }
     }
 }
@@ -1822,12 +1847,28 @@ macro_rules! define_property_value {
         WordSpacing, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_additive_current_property_value!(
+        define_current_property_value!(
             $canonical,
             $wrapper,
             $representation,
-            $value,
-            spacing
+            CssTextSpacingAdjustment,
+            CssWordSpacing,
+            spacing,
+            word_spacing_i01_projection
+        );
+    };
+    (
+        LetterSpacing, $canonical:literal, $value:ty, $wrapper:ident,
+        $representation:ident
+    ) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssTextSpacingAdjustment,
+            CssLetterSpacing,
+            current,
+            letter_spacing_i01_projection
         );
     };
     (

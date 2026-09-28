@@ -5908,7 +5908,7 @@ pub enum CssTableLayout {
     Fixed,
 }
 
-/// A checked authored `word-spacing` length.
+/// A checked pure-length `word-spacing` compatibility payload.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssWordSpacingLength {
     value: CssLength,
@@ -5927,7 +5927,7 @@ impl CssWordSpacingLength {
     }
 }
 
-/// The authored CSS2 `word-spacing` value.
+/// The frozen pure-length `word-spacing` compatibility value.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssWordSpacing {
@@ -6487,12 +6487,14 @@ pub enum CssFontValue {
 
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
+/// The frozen pure-length `letter-spacing` compatibility value.
 pub enum CssLetterSpacing {
     Normal,
     Length(CssLetterSpacingLength),
 }
 
 #[derive(Clone, Debug, PartialEq)]
+/// A checked pure-length `letter-spacing` compatibility payload.
 pub struct CssLetterSpacingLength {
     length: CssLength,
 }

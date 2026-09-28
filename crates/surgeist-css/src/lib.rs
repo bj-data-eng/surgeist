@@ -1166,6 +1166,7 @@ mod scroll_snap;
 mod sizing;
 mod sizing_controls;
 mod text_alignment;
+mod text_spacing;
 pub use alignment::{
     CssAlignContentValue, CssAlignItemsValue, CssAlignSelfValue, CssAlignmentPosition,
     CssAlignmentValue, CssBaselinePosition, CssJustifyContentValue, CssJustifyItemsValue,
@@ -1243,6 +1244,7 @@ pub use text_alignment::{
     CssCharacterAlignment, CssCharacterAlignmentError, CssCharacterAlignmentErrorKind,
     CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignPosition, CssTextAlignValue,
 };
+pub use text_spacing::CssTextSpacingAdjustment;
 mod float_clear;
 mod overflow;
 mod overflow_controls;

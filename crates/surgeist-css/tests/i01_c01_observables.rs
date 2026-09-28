@@ -24,6 +24,9 @@ const FIXTURE: &str = include_str!("fixtures/i01-c01-observables.tsv");
 // endpoint token, following Syntax 3 §7.1 and the descriptor token-origin contract.
 // Fonts 4 §6.9.1 also retains named font-feature-values rules and their valid
 // styleset entries, without projecting descriptors into property declarations.
+// CSS Text 4 §8.2 retains 0.1em exactly; its historical rounded f32 I01
+// payload is no longer an exact projection of that specified value.
+// https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-letter-spacing
 const HEADER: &str =
     "case_id\tentry\tfeature\tinput\tclean\tretained\tvalues\tauthored_declarations\tdiagnostics";
 
@@ -3075,6 +3078,36 @@ fn assert_known_property_value(
                 semantic,
                 authored,
             );
+            return;
+        }
+        (
+            surgeist_css::CssKnownProperty::LetterSpacing,
+            surgeist_css::CssKnownPropertyValueRef::LetterSpacing(value),
+        ) => {
+            use surgeist_css::{
+                CssComponentValueRef, CssTextSpacingAdjustment, CssValueOrigin, CssValueTokenRef,
+            };
+            assert_eq!(authored.id, property.stable_id());
+            assert_eq!(authored.value_capability, "public");
+            assert_eq!(authored.value, "0.1em");
+            assert_eq!(value.as_css(), "0.1em");
+            assert!(value.i01_subset().is_none());
+            let CssTextSpacingAdjustment::LengthPercentage(length) = value.current() else {
+                panic!("exact current letter spacing")
+            };
+            let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
+                length.literal_component().unwrap().view()
+            else {
+                panic!("exact authored dimension")
+            };
+            assert_eq!(number.representation(), "0.1");
+            assert_eq!(unit, "em");
+            assert!(matches!(length.origin(), CssValueOrigin::Parsed(_)));
+            assert_eq!(value.current().serialize_specified().unwrap(), "0.1em");
+            if let Some(semantic) = semantic {
+                assert_eq!(semantic.id, property.stable_id());
+                assert_eq!(semantic.payload, "typed:LengthPercentage(0.1em)");
+            }
             return;
         }
         (

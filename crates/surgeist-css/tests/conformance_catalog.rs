@@ -3702,8 +3702,8 @@ fn c12_property_metadata_is_truthful() {
         (
             "official.property.word-spacing",
             "word-spacing",
-            "O-CSS2",
-            "text.html#propdef-word-spacing",
+            "X-TEXT4",
+            "#propdef-word-spacing",
             "-0.25em",
         ),
         (
