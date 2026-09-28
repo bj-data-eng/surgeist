@@ -272,15 +272,10 @@ fn authored_declaration_retains_balanced_fallback_with_nested_restricted_tokens(
 }
 
 #[test]
-fn authored_declaration_rejects_malformed_custom_names_and_nonterminal_globals() {
+fn authored_declaration_rejects_malformed_custom_names() {
     for (source, code, byte_offset) in [
         (".x { --: 1px; }", CssErrorCode::UnknownProperty, 5),
         (".x { --bad name: 1px; }", CssErrorCode::UnexpectedToken, 11),
-        (
-            ".x { --x: inherit 1px; }",
-            CssErrorCode::InvalidQualifiedRule,
-            18,
-        ),
     ] {
         let error = parse_sheet(source).expect_err("invalid custom declaration must fail strictly");
         assert_eq!(error.code(), code, "unexpected error for `{source}`");

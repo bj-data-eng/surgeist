@@ -3820,7 +3820,10 @@ fn custom_property_global_keyword_must_be_whole_value() {
             .global(),
         Some(CssGlobalKeyword::Inherit)
     );
-    assert!(parse_sheet(".theme { --gap: inherit 1px; }").is_err());
+    let declaration = single_declaration(".theme { --gap: inherit 1px; }");
+    let value = declaration.custom().unwrap().value();
+    assert_eq!(value.global(), None);
+    assert_eq!(value.value().unwrap().as_css(), "inherit 1px");
 }
 
 #[test]

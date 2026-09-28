@@ -7,8 +7,12 @@ use surgeist_css::{
 };
 
 const FIXTURE: &str = include_str!("fixtures/i01-c01-observables.tsv");
-// Case inputs, feature labels, and I01 value expectations retain their capture
-// provenance. Selected report expectations follow Fonts4 section 4.1 (missing
+// Case inputs and feature labels retain their capture provenance. Selected
+// value expectations follow CSS Variables 1 §2.1 (2022-06-16): a CSS-wide
+// keyword followed by ordinary custom-property tokens is declaration-value,
+// not a global value.
+// https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#syntax
+// Selected report expectations follow Fonts4 section 4.1 (missing
 // matching descriptors do not invalidate an authored font face) and the authored
 // child/declaration-run model introduced by 54a4f4e4b21a3bb506bc4e37adb6c724fb69e773.
 // https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-rule

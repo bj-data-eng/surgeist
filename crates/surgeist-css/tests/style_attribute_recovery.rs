@@ -75,7 +75,6 @@ fn style_attribute_declaration_error_classes_match_style_blocks_modulo_wrapper_o
         ),
         ("color: #ggg;", CssErrorCode::InvalidColorSyntax, 7),
         ("--bad name: 1px;", CssErrorCode::UnexpectedToken, 6),
-        ("--x: inherit 1px;", CssErrorCode::InvalidQualifiedRule, 13),
         ("broken;", CssErrorCode::UnexpectedEnd, 6),
     ] {
         let source = format!("color: red; {unit} height: 3px;");

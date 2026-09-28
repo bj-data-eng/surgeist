@@ -1341,11 +1341,8 @@ const EXPECTED: &[ExpectedFeature] = &[
             "Other valid CSS Variables custom-property declaration forms are outside the I01 subset.",
         ),
         recognized_code: None,
-        positive: Some(Input::Style("--theme: dark")),
-        negative: Some((
-            Input::Style("--x: inherit 1px"),
-            CssErrorCode::InvalidQualifiedRule,
-        )),
+        positive: Some(Input::Style("--x: inherit 1px")),
+        negative: Some((Input::Style("--: 1px"), CssErrorCode::UnknownProperty)),
     },
     ExpectedFeature {
         id: "baseline.value.substitution-dependent",
