@@ -2681,6 +2681,7 @@ pub surgeist_css::CssLonghandValueRef::BorderLeftWidth(&'a surgeist_css::CssBord
 pub surgeist_css::CssLonghandValueRef::BorderRightColor(&'a surgeist_css::CssAuthoredColor)
 pub surgeist_css::CssLonghandValueRef::BorderRightStyle(&'a surgeist_css::CssBorderStyle)
 pub surgeist_css::CssLonghandValueRef::BorderRightWidth(&'a surgeist_css::CssBorderWidth)
+pub surgeist_css::CssLonghandValueRef::BorderSpacing(&'a surgeist_css::CssBorderSpacing)
 pub surgeist_css::CssLonghandValueRef::BorderStartEndRadius(&'a surgeist_css::CssCornerRadiusValue)
 pub surgeist_css::CssLonghandValueRef::BorderStartStartRadius(&'a surgeist_css::CssCornerRadiusValue)
 pub surgeist_css::CssLonghandValueRef::BorderTopColor(&'a surgeist_css::CssAuthoredColor)
@@ -4889,7 +4890,13 @@ impl surgeist_css::CssBorderSpacing
 pub const fn surgeist_css::CssBorderSpacing::horizontal(&self) -> &surgeist_css::CssBorderSpacingLength
 pub fn surgeist_css::CssBorderSpacing::try_new(horizontal: surgeist_css::CssLength, vertical: surgeist_css::CssLength) -> core::option::Option<Self>
 pub const fn surgeist_css::CssBorderSpacing::vertical(&self) -> &surgeist_css::CssBorderSpacingLength
+impl surgeist_css::CssBorderSpacing
+pub fn surgeist_css::CssBorderSpacing::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBorderSpacing::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssBorderSpacingLength
+impl surgeist_css::CssBorderSpacingLength
+pub fn surgeist_css::CssBorderSpacingLength::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBorderSpacingLength::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl surgeist_css::CssBorderSpacingLength
 pub fn surgeist_css::CssBorderSpacingLength::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
 pub const fn surgeist_css::CssBorderSpacingLength::value(&self) -> &surgeist_css::CssLength

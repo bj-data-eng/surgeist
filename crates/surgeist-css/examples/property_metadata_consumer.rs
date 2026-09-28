@@ -137,6 +137,7 @@ const LONGHANDS: &[P] = &[
     P::ColumnWidth,
     P::ColumnCount,
     P::BorderCollapse,
+    P::BorderSpacing,
     P::CaptionSide,
     P::EmptyCells,
     P::TableLayout,
@@ -681,6 +682,10 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::ColumnWidth(v) => assert_eq!(*v, CssSizeValue::Auto),
         CssLonghandValueRef::ColumnCount(v) => assert_eq!(*v, CssColumnCount::Auto),
         CssLonghandValueRef::BorderCollapse(v) => assert_eq!(*v, CssBorderCollapse::Separate),
+        CssLonghandValueRef::BorderSpacing(v) => {
+            assert_eq!(v.horizontal().value(), &CssLength::Zero);
+            assert_eq!(v.vertical().value(), &CssLength::Zero);
+        }
         CssLonghandValueRef::CaptionSide(v) => assert_eq!(*v, CssCaptionSide::Top),
         CssLonghandValueRef::EmptyCells(v) => assert_eq!(*v, CssEmptyCells::Show),
         CssLonghandValueRef::FontSize(v) => assert_eq!(v, &CssFontSize::Medium),
@@ -774,7 +779,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 215);
+    assert_eq!(expected.len(), 216);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {
@@ -833,6 +838,7 @@ fn metadata_and_initials() {
                 property,
                 P::Color
                     | P::BorderCollapse
+                    | P::BorderSpacing
                     | P::CaptionSide
                     | P::EmptyCells
                     | P::Orphans

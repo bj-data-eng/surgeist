@@ -2309,6 +2309,14 @@ impl CssLengthPercentageCalculation {
     pub(crate) fn structural_eq(&self, other: &Self) -> bool {
         self.expression.structural_eq(&other.expression)
     }
+
+    pub(crate) fn serialize_specified_into(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        project_specified_into(&self.expression, context, output).map(|_| ())
+    }
 }
 
 impl CssIntegerCalculation {

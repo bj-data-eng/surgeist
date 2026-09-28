@@ -471,7 +471,7 @@ unfinished. This property migration does not complete the other Grid3 families.
 `expand_declaration` currently covers custom declarations, physical and logical
 margin/padding longhands, their logical axis pairs, border width, style and color,
 the four side-border shorthands, `border`,
-the five border-image longhands, `border-collapse`, `caption-side`, `empty-cells`,
+the five border-image longhands, `border-collapse`, `border-spacing`, `caption-side`, `empty-cells`,
 `table-layout`, `flow-tolerance`, `color`, `font-family`,
 `text-orientation`, its legacy `glyph-orientation-vertical` grammar, `opacity`, `display`, `box-sizing`,
 `order`, `aspect-ratio`, `visibility`, `direction`, `unicode-bidi`, `writing-mode`, `text-combine-upright`,
@@ -482,13 +482,18 @@ return typed unsupported errors preserving their identity. The stylesheet
 normalizer uses this same expansion boundary, so its complete property coverage
 remains unfinished.
 
-The four [selected CSS2 table properties](https://www.w3.org/TR/2011/REC-CSS2-20110607/tables.html)
+The five [selected CSS2 table properties](https://www.w3.org/TR/2011/REC-CSS2-20110607/tables.html)
 expand to one typed longhand each. `border-collapse` accepts `collapse | separate`
-(initial `separate`), `caption-side` accepts `top | bottom` (initial `top`),
+(initial `separate`), `border-spacing` accepts one or two nonnegative lengths
+(initial horizontal and vertical `0`), `caption-side` accepts `top | bottom` (initial `top`),
 `empty-cells` accepts `show | hide` (initial `show`), and `table-layout` accepts
-`auto | fixed` (initial `auto`). The first three inherit by default; `table-layout`
-does not. Their keyword enums serialize canonically with bounded specified-value
-serialization. The [selected Logical 1 caption-side definition](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#caption-side)
+`auto | fixed` (initial `auto`). The first four inherit by default; `table-layout`
+does not. The four keyword enums serialize canonically with bounded specified-value
+limits. Checked `CssBorderSpacingLength` serializes one axis; the checked
+`CssBorderSpacing` serializes the full effective horizontal-then-vertical pair
+under one cumulative budget, repeating a single authored length without resolving
+relative units or typed math. This specified projection does not select CSSOM's
+minimal one-value spelling. The [selected Logical 1 caption-side definition](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#caption-side)
 adds `inline-start | inline-end` only with `left | right` support, which this profile has not
 selected. Caption positioning relative to writing mode remains for downstream
 style and layout interpretation; CSS retains the authored `top | bottom` value.

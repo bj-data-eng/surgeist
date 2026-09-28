@@ -1143,6 +1143,7 @@ pub use media_features::*;
 mod alignment;
 mod aspect_ratio;
 mod border_radius;
+mod border_spacing;
 mod border_style;
 mod border_width;
 mod box_spacing;
