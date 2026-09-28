@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-#![recursion_limit = "256"]
+#![recursion_limit = "512"]
 //! Browser-recovering CSS ingestion for Surgeist.
 //!
 //! [`parse_sheet`] and [`parse_style_attribute`] parse UTF-8 input into CSS-owned

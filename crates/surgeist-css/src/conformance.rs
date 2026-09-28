@@ -4667,37 +4667,37 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 624] = [
         "grid-auto-flow",
         "baseline.property.grid-auto-flow"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::GridRowStart,
         "grid-row-start",
         "baseline.property.grid-row-start"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::GridRowEnd,
         "grid-row-end",
         "baseline.property.grid-row-end"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::GridColumnStart,
         "grid-column-start",
         "baseline.property.grid-column-start"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::GridColumnEnd,
         "grid-column-end",
         "baseline.property.grid-column-end"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::GridRow,
         "grid-row",
         "baseline.property.grid-row"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::GridColumn,
         "grid-column",
         "baseline.property.grid-column"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::GridArea,
         "grid-area",
         "baseline.property.grid-area"

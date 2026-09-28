@@ -101,6 +101,10 @@ const LONGHANDS: &[P] = &[
     P::ListStyleImage,
     P::MarkerSide,
     P::FlowTolerance,
+    P::GridRowStart,
+    P::GridRowEnd,
+    P::GridColumnStart,
+    P::GridColumnEnd,
     P::Color,
     P::FontFamily,
     P::FontSize,
@@ -208,6 +212,18 @@ const SHORTHANDS: &[(P, &[P], &[P])] = &[
     (P::PlaceItems, &[P::AlignItems, P::JustifyItems], &[]),
     (P::PlaceSelf, &[P::AlignSelf, P::JustifySelf], &[]),
     (P::Gap, &[P::RowGap, P::ColumnGap], &[]),
+    (P::GridRow, &[P::GridRowStart, P::GridRowEnd], &[]),
+    (P::GridColumn, &[P::GridColumnStart, P::GridColumnEnd], &[]),
+    (
+        P::GridArea,
+        &[
+            P::GridRowStart,
+            P::GridColumnStart,
+            P::GridRowEnd,
+            P::GridColumnEnd,
+        ],
+        &[],
+    ),
     (
         P::ListStyle,
         &[P::ListStylePosition, P::ListStyleImage, P::ListStyleType],
@@ -510,6 +526,12 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::ContainerName(v) => assert_eq!(*v, CssContainerNames::None),
         CssLonghandValueRef::ContainerType(v) => assert_eq!(*v, CssContainerType::Normal),
         CssLonghandValueRef::Position(v) => assert_eq!(*v, CssLayoutPosition::Static),
+        CssLonghandValueRef::GridRowStart(v)
+        | CssLonghandValueRef::GridRowEnd(v)
+        | CssLonghandValueRef::GridColumnStart(v)
+        | CssLonghandValueRef::GridColumnEnd(v) => {
+            assert_eq!(*v, CssAuthoredGridLine::Auto)
+        }
         CssLonghandValueRef::Quotes(v) => assert_eq!(v, &CssQuotes::Auto),
         CssLonghandValueRef::CounterReset(v)
         | CssLonghandValueRef::CounterIncrement(v)
@@ -838,7 +860,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 238);
+    assert_eq!(expected.len(), 245);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {

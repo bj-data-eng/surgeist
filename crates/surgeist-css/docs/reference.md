@@ -1403,6 +1403,32 @@ crate.
 
 ## Authored Grid repetition and keyframe structure
 
+The four Grid placement longhands (`grid-row-start`, `grid-row-end`,
+`grid-column-start`, and `grid-column-end`) and the `grid-row`, `grid-column`,
+and `grid-area` shorthands expose `CssAuthoredGridLine`,
+`CssAuthoredGridLineRange`, and `CssAuthoredGridArea` through their property
+wrappers' `current()` accessors. These are the authored [Grid 2 line placement
+values](https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#line-placement),
+which [Grid 3 §4.1](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#grid-lanes-placement)
+also uses. A line may be `auto`, a bare name, a nonzero signed integer with an
+optional name, or `span` with a positive integer and/or name. Component order is
+flexible on input; specified serialization writes the integer before the name,
+and writes `span` first. Ordinary integer tokens retain exact magnitude beyond
+`i32`. Integer-root math remains symbolic, including expressions whose result
+could fall outside a range; [Values 4 range checking](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-range)
+belongs to computed or used value handling.
+
+The shorthand models retain which slash-separated members were authored.
+`effective_end()` and the area `effective_*()` accessors provide intrinsic
+longhand contributions: an omitted partner copies only a bare line name and is
+otherwise `auto`. In `grid-area`, the member order is row start, column start,
+row end, column end, and an omitted column end follows the effective column
+start. These accessors do not resolve conflicting line placements; that needs
+layout context. `i01_subset()` continues to return the original Grid types only
+when every authored member fits their frozen representation. Canonical
+`serialize_specified_with_limits()` applies one cumulative resource budget to
+the complete line or shorthand.
+
 The six Grid repetition consumers expose a parser-owned current value through
 `current()` while preserving their existing `i01_subset()` compatibility view.
 Current Grid track lists distinguish general lists from lists containing exactly

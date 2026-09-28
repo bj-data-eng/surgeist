@@ -385,6 +385,7 @@ impl CssGridLine {
         CssGridLineInteger::try_new(value).map(Self::Integer)
     }
 
+    #[cfg(test)]
     #[must_use]
     pub(crate) fn integer(value: i32) -> Self {
         match Self::try_integer(value) {
@@ -398,6 +399,7 @@ impl CssGridLine {
         CssGridLineSpan::try_new(integer, name).map(Self::Span)
     }
 
+    #[cfg(test)]
     #[must_use]
     pub(crate) fn span(integer: Option<i32>, name: Option<CssCustomIdent>) -> Self {
         Self::Span(CssGridLineSpan::new(integer, name))
@@ -445,6 +447,7 @@ impl CssGridLineSpan {
         }
     }
 
+    #[cfg(test)]
     #[must_use]
     pub(crate) fn new(integer: Option<i32>, name: Option<CssCustomIdent>) -> Self {
         match Self::try_new(integer, name) {

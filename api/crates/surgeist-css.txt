@@ -184,6 +184,17 @@ pub surgeist_css::CssAuthoredGridFixedRepeatComponent::LineNames(surgeist_css::C
 pub surgeist_css::CssAuthoredGridGeneralTrackComponent::LineNames(surgeist_css::CssGridLineNames)
 pub surgeist_css::CssAuthoredGridGeneralTrackComponent::Repeat(surgeist_css::CssAuthoredGridIntegerTrackRepeat)
 pub surgeist_css::CssAuthoredGridGeneralTrackComponent::TrackSize(surgeist_css::CssAuthoredGridTrackSize)
+#[non_exhaustive] pub enum surgeist_css::CssAuthoredGridLine
+pub surgeist_css::CssAuthoredGridLine::Auto
+pub surgeist_css::CssAuthoredGridLine::Indexed(surgeist_css::CssGridLineIndex)
+pub surgeist_css::CssAuthoredGridLine::Name(surgeist_css::CssGridLineName)
+pub surgeist_css::CssAuthoredGridLine::Span(surgeist_css::CssGridLineSpanValue)
+impl surgeist_css::CssAuthoredGridLine
+pub fn surgeist_css::CssAuthoredGridLine::i01_subset(&self) -> core::option::Option<surgeist_css::CssGridLine>
+pub fn surgeist_css::CssAuthoredGridLine::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAuthoredGridLine::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAuthoredGridLine::try_indexed(value: surgeist_css::CssIntegerValue, name: core::option::Option<surgeist_css::CssGridLineName>) -> core::option::Option<Self>
+pub fn surgeist_css::CssAuthoredGridLine::try_span(integer: core::option::Option<surgeist_css::CssPositiveIntegerValue>, name: core::option::Option<surgeist_css::CssGridLineName>) -> core::option::Option<Self>
 #[non_exhaustive] pub enum surgeist_css::CssAuthoredGridTrackBreadthKind
 pub surgeist_css::CssAuthoredGridTrackBreadthKind::Auto
 pub surgeist_css::CssAuthoredGridTrackBreadthKind::Fraction
@@ -2837,6 +2848,10 @@ pub surgeist_css::CssLonghandValueRef::FontVariationSettings(&'a surgeist_css::C
 pub surgeist_css::CssLonghandValueRef::FontWeight(&'a surgeist_css::CssFontWeight)
 pub surgeist_css::CssLonghandValueRef::FontWidth(&'a surgeist_css::CssFontWidth)
 pub surgeist_css::CssLonghandValueRef::FrameSizing(&'a surgeist_css::CssFrameSizing)
+pub surgeist_css::CssLonghandValueRef::GridColumnEnd(&'a surgeist_css::CssAuthoredGridLine)
+pub surgeist_css::CssLonghandValueRef::GridColumnStart(&'a surgeist_css::CssAuthoredGridLine)
+pub surgeist_css::CssLonghandValueRef::GridRowEnd(&'a surgeist_css::CssAuthoredGridLine)
+pub surgeist_css::CssLonghandValueRef::GridRowStart(&'a surgeist_css::CssAuthoredGridLine)
 pub surgeist_css::CssLonghandValueRef::Height(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::InlineSize(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::InsetBlockEnd(&'a surgeist_css::CssInsetValue)
@@ -4496,6 +4511,19 @@ pub fn surgeist_css::CssAuthoredFontFeatureList::try_new(features: alloc::vec::V
 pub struct surgeist_css::CssAuthoredFunctionArguments
 impl surgeist_css::CssAuthoredFunctionArguments
 pub fn surgeist_css::CssAuthoredFunctionArguments::as_css(&self) -> &str
+pub struct surgeist_css::CssAuthoredGridArea
+impl surgeist_css::CssAuthoredGridArea
+pub const fn surgeist_css::CssAuthoredGridArea::authored_column_end(&self) -> core::option::Option<&surgeist_css::CssAuthoredGridLine>
+pub const fn surgeist_css::CssAuthoredGridArea::authored_column_start(&self) -> core::option::Option<&surgeist_css::CssAuthoredGridLine>
+pub const fn surgeist_css::CssAuthoredGridArea::authored_row_end(&self) -> core::option::Option<&surgeist_css::CssAuthoredGridLine>
+pub fn surgeist_css::CssAuthoredGridArea::effective_column_end(&self) -> surgeist_css::CssAuthoredGridLine
+pub fn surgeist_css::CssAuthoredGridArea::effective_column_start(&self) -> surgeist_css::CssAuthoredGridLine
+pub fn surgeist_css::CssAuthoredGridArea::effective_row_end(&self) -> surgeist_css::CssAuthoredGridLine
+pub fn surgeist_css::CssAuthoredGridArea::i01_subset(&self) -> core::option::Option<surgeist_css::CssGridArea>
+pub const fn surgeist_css::CssAuthoredGridArea::row_start(&self) -> &surgeist_css::CssAuthoredGridLine
+pub fn surgeist_css::CssAuthoredGridArea::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAuthoredGridArea::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAuthoredGridArea::try_new(row_start: surgeist_css::CssAuthoredGridLine, column_start: core::option::Option<surgeist_css::CssAuthoredGridLine>, row_end: core::option::Option<surgeist_css::CssAuthoredGridLine>, column_end: core::option::Option<surgeist_css::CssAuthoredGridLine>) -> core::option::Option<Self>
 #[non_exhaustive] pub struct surgeist_css::CssAuthoredGridAutoRepeat
 impl surgeist_css::CssAuthoredGridAutoRepeat
 pub const fn surgeist_css::CssAuthoredGridAutoRepeat::content(&self) -> &surgeist_css::CssAuthoredGridTrackRepeatContent
@@ -4520,6 +4548,15 @@ pub const fn surgeist_css::CssAuthoredGridIntegerFixedRepeat::count(&self) -> su
 impl surgeist_css::CssAuthoredGridIntegerTrackRepeat
 pub const fn surgeist_css::CssAuthoredGridIntegerTrackRepeat::content(&self) -> &surgeist_css::CssAuthoredGridTrackRepeatContent
 pub const fn surgeist_css::CssAuthoredGridIntegerTrackRepeat::count(&self) -> surgeist_css::CssGridRepeatInteger
+pub struct surgeist_css::CssAuthoredGridLineRange
+impl surgeist_css::CssAuthoredGridLineRange
+pub const fn surgeist_css::CssAuthoredGridLineRange::authored_end(&self) -> core::option::Option<&surgeist_css::CssAuthoredGridLine>
+pub fn surgeist_css::CssAuthoredGridLineRange::effective_end(&self) -> surgeist_css::CssAuthoredGridLine
+pub fn surgeist_css::CssAuthoredGridLineRange::i01_subset(&self) -> core::option::Option<surgeist_css::CssGridLineRange>
+pub const fn surgeist_css::CssAuthoredGridLineRange::new(start: surgeist_css::CssAuthoredGridLine, end: core::option::Option<surgeist_css::CssAuthoredGridLine>) -> Self
+pub fn surgeist_css::CssAuthoredGridLineRange::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAuthoredGridLineRange::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub const fn surgeist_css::CssAuthoredGridLineRange::start(&self) -> &surgeist_css::CssAuthoredGridLine
 #[non_exhaustive] pub struct surgeist_css::CssAuthoredGridTemplateValue
 impl surgeist_css::CssAuthoredGridTemplateValue
 pub const fn surgeist_css::CssAuthoredGridTemplateValue::columns(&self) -> core::option::Option<&surgeist_css::CssAuthoredGridTrackList>
@@ -6754,6 +6791,7 @@ pub const fn surgeist_css::CssGridArea::row_start(&self) -> &surgeist_css::CssGr
 pub struct surgeist_css::CssGridAreaPropertyValue
 impl surgeist_css::CssGridAreaPropertyValue
 pub fn surgeist_css::CssGridAreaPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssGridAreaPropertyValue::current(&self) -> &surgeist_css::CssAuthoredGridArea
 pub const fn surgeist_css::CssGridAreaPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssGridArea>
 pub struct surgeist_css::CssGridAutoColumnsPropertyValue
 impl surgeist_css::CssGridAutoColumnsPropertyValue
@@ -6777,19 +6815,33 @@ pub const fn surgeist_css::CssGridAutoRowsPropertyValue::i01_subset(&self) -> co
 pub struct surgeist_css::CssGridColumnEndPropertyValue
 impl surgeist_css::CssGridColumnEndPropertyValue
 pub fn surgeist_css::CssGridColumnEndPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssGridColumnEndPropertyValue::current(&self) -> &surgeist_css::CssAuthoredGridLine
 pub const fn surgeist_css::CssGridColumnEndPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssGridLine>
 pub struct surgeist_css::CssGridColumnPropertyValue
 impl surgeist_css::CssGridColumnPropertyValue
 pub fn surgeist_css::CssGridColumnPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssGridColumnPropertyValue::current(&self) -> &surgeist_css::CssAuthoredGridLineRange
 pub const fn surgeist_css::CssGridColumnPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssGridLineRange>
 pub struct surgeist_css::CssGridColumnStartPropertyValue
 impl surgeist_css::CssGridColumnStartPropertyValue
 pub fn surgeist_css::CssGridColumnStartPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssGridColumnStartPropertyValue::current(&self) -> &surgeist_css::CssAuthoredGridLine
 pub const fn surgeist_css::CssGridColumnStartPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssGridLine>
+pub struct surgeist_css::CssGridLineIndex
+impl surgeist_css::CssGridLineIndex
+pub fn surgeist_css::CssGridLineIndex::name(&self) -> core::option::Option<&surgeist_css::CssGridLineName>
+pub fn surgeist_css::CssGridLineIndex::try_new(value: surgeist_css::CssIntegerValue, name: core::option::Option<surgeist_css::CssGridLineName>) -> core::option::Option<Self>
+pub fn surgeist_css::CssGridLineIndex::value(&self) -> &surgeist_css::CssIntegerValue
+impl core::cmp::PartialEq for surgeist_css::CssGridLineIndex
+pub fn surgeist_css::CssGridLineIndex::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssGridLineInteger
 impl surgeist_css::CssGridLineInteger
 pub const fn surgeist_css::CssGridLineInteger::try_new(value: i32) -> core::option::Option<Self>
 pub const fn surgeist_css::CssGridLineInteger::value(self) -> i32
+pub struct surgeist_css::CssGridLineName(_)
+impl surgeist_css::CssGridLineName
+pub fn surgeist_css::CssGridLineName::ident(&self) -> &surgeist_css::CssIdent
+pub fn surgeist_css::CssGridLineName::try_new(value: surgeist_css::CssIdent) -> core::option::Option<Self>
 pub struct surgeist_css::CssGridLineNames
 impl surgeist_css::CssGridLineNames
 pub fn surgeist_css::CssGridLineNames::names(&self) -> &[surgeist_css::CssCustomIdent]
@@ -6804,6 +6856,11 @@ impl surgeist_css::CssGridLineSpan
 pub const fn surgeist_css::CssGridLineSpan::integer(&self) -> core::option::Option<i32>
 pub const fn surgeist_css::CssGridLineSpan::name(&self) -> core::option::Option<&surgeist_css::CssCustomIdent>
 pub fn surgeist_css::CssGridLineSpan::try_new(integer: core::option::Option<i32>, name: core::option::Option<surgeist_css::CssCustomIdent>) -> core::option::Option<Self>
+pub struct surgeist_css::CssGridLineSpanValue
+impl surgeist_css::CssGridLineSpanValue
+pub fn surgeist_css::CssGridLineSpanValue::integer(&self) -> core::option::Option<&surgeist_css::CssPositiveIntegerValue>
+pub fn surgeist_css::CssGridLineSpanValue::name(&self) -> core::option::Option<&surgeist_css::CssGridLineName>
+pub fn surgeist_css::CssGridLineSpanValue::try_new(integer: core::option::Option<surgeist_css::CssPositiveIntegerValue>, name: core::option::Option<surgeist_css::CssGridLineName>) -> core::option::Option<Self>
 pub struct surgeist_css::CssGridPropertyValue
 impl surgeist_css::CssGridPropertyValue
 pub fn surgeist_css::CssGridPropertyValue::as_css(&self) -> &str
@@ -6821,14 +6878,17 @@ pub const fn surgeist_css::CssGridRepeatInteger::value(self) -> i32
 pub struct surgeist_css::CssGridRowEndPropertyValue
 impl surgeist_css::CssGridRowEndPropertyValue
 pub fn surgeist_css::CssGridRowEndPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssGridRowEndPropertyValue::current(&self) -> &surgeist_css::CssAuthoredGridLine
 pub const fn surgeist_css::CssGridRowEndPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssGridLine>
 pub struct surgeist_css::CssGridRowPropertyValue
 impl surgeist_css::CssGridRowPropertyValue
 pub fn surgeist_css::CssGridRowPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssGridRowPropertyValue::current(&self) -> &surgeist_css::CssAuthoredGridLineRange
 pub const fn surgeist_css::CssGridRowPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssGridLineRange>
 pub struct surgeist_css::CssGridRowStartPropertyValue
 impl surgeist_css::CssGridRowStartPropertyValue
 pub fn surgeist_css::CssGridRowStartPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssGridRowStartPropertyValue::current(&self) -> &surgeist_css::CssAuthoredGridLine
 pub const fn surgeist_css::CssGridRowStartPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssGridLine>
 pub struct surgeist_css::CssGridSpanInteger
 impl surgeist_css::CssGridSpanInteger
