@@ -4285,7 +4285,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 622] = [
         "scrollbar-gutter",
         "ext.property.scrollbar-gutter"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::FlexDirection,
         "flex-direction",
         "baseline.property.flex-direction"
@@ -4295,7 +4295,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 622] = [
         "flex-flow",
         "official.property.flex-flow"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::FlexWrap,
         "flex-wrap",
         "baseline.property.flex-wrap"

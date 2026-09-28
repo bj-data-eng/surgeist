@@ -15,7 +15,7 @@ use crate::border_style::*;
 use crate::border_width::*;
 use crate::box_spacing::*;
 use crate::contain_intrinsic_size::*;
-use crate::flex::CssFlexBasisValue;
+use crate::flex::{CssFlexBasisValue, CssFlexDirection, CssFlexFlow, CssFlexWrap};
 use crate::font_controls::*;
 use crate::font_settings::*;
 use crate::font_variant::*;

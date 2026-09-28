@@ -1204,7 +1204,10 @@ mod font_size;
 pub use font_size::CssFontSize;
 mod flex;
 mod font_shorthand;
-pub use flex::{CssFlexBasisRef, CssFlexBasisValue, CssFlexComponents, CssFlexValue};
+pub use flex::{
+    CssFlexBasisRef, CssFlexBasisValue, CssFlexComponents, CssFlexDirection, CssFlexFlow,
+    CssFlexValue, CssFlexWrap,
+};
 mod line_height;
 pub use line_height::CssLineHeight;
 mod font_style;

@@ -167,6 +167,7 @@ use crate::error::{
 use crate::properties::*;
 use crate::syntax::*;
 use crate::validation::parse_global_keyword;
+use crate::{CssFlexDirection, CssFlexFlow, CssFlexWrap};
 
 #[expect(
     dead_code,

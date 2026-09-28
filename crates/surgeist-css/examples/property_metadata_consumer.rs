@@ -161,8 +161,10 @@ const LONGHANDS: &[P] = &[
     P::ScrollMarginInlineEnd,
     P::Order,
     P::FlexBasis,
+    P::FlexDirection,
     P::FlexGrow,
     P::FlexShrink,
+    P::FlexWrap,
     P::AspectRatio,
     P::Visibility,
     P::OverflowWrap,
@@ -173,6 +175,7 @@ const LONGHANDS: &[P] = &[
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
     (P::Flex, &[P::FlexGrow, P::FlexShrink, P::FlexBasis], &[]),
+    (P::FlexFlow, &[P::FlexDirection, P::FlexWrap], &[]),
     (P::Gap, &[P::RowGap, P::ColumnGap], &[]),
     (
         P::Font,
@@ -472,12 +475,14 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
                 CssFlexBasisRef::Size(CssSizeValue::Auto)
             ))
         }
+        CssLonghandValueRef::FlexDirection(v) => assert_eq!(*v, CssFlexDirection::Row),
         CssLonghandValueRef::FlexGrow(v) => {
             assert_eq!(v.serialize_specified().unwrap(), "0")
         }
         CssLonghandValueRef::FlexShrink(v) => {
             assert_eq!(v.serialize_specified().unwrap(), "1")
         }
+        CssLonghandValueRef::FlexWrap(v) => assert_eq!(*v, CssFlexWrap::NoWrap),
         CssLonghandValueRef::FrameSizing(v) => assert_eq!(*v, CssFrameSizing::Auto),
         CssLonghandValueRef::MinIntrinsicSizing(v) => assert_eq!(*v, CssMinIntrinsicSizing::Legacy),
         CssLonghandValueRef::Top(v)
@@ -746,7 +751,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 203);
+    assert_eq!(expected.len(), 206);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {

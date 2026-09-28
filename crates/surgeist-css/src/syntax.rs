@@ -4469,51 +4469,6 @@ impl CssOverflowAxes {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssFlexDirection {
-    Row,
-    Column,
-    RowReverse,
-    ColumnReverse,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssFlexWrap {
-    NoWrap,
-    Wrap,
-    WrapReverse,
-}
-
-/// The authored component values of the `flex-flow` shorthand.
-///
-/// Omitted components use their specified initial values. This syntax value does not perform
-/// flex layout or resolve either component against layout context.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssFlexFlow {
-    direction: CssFlexDirection,
-    wrap: CssFlexWrap,
-}
-
-impl CssFlexFlow {
-    pub(crate) const fn new(direction: CssFlexDirection, wrap: CssFlexWrap) -> Self {
-        Self { direction, wrap }
-    }
-
-    /// Returns the authored direction component, or `row` when it was omitted.
-    #[must_use]
-    pub const fn direction(&self) -> CssFlexDirection {
-        self.direction
-    }
-
-    /// Returns the authored wrapping component, or `nowrap` when it was omitted.
-    #[must_use]
-    pub const fn wrap(&self) -> CssFlexWrap {
-        self.wrap
-    }
-}
-
 /// A checked positive authored integer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssPositiveInteger {

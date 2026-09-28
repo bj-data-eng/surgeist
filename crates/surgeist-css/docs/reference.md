@@ -2291,8 +2291,15 @@ lower values into another Surgeist crate.
 ## Flexbox, multicolumn, and catalog coverage
 
 Flexbox 1 `flex-flow`, `flex-basis`, `flex-grow`, `flex-shrink`, and `flex`, and all
-nine Multicolumn 1 properties expose typed authored values. `flex-flow` preserves
-the direction/wrap combination; `columns` retains
+nine Multicolumn 1 properties expose typed authored values. `flex-direction`
+and `flex-wrap` are noninherited terminals with `row` and `nowrap` initials.
+`flex-flow` expands to those two terminals in direction-then-wrap order, with
+an omitted component taking its initial value and no reset-only members.
+`CssFlexFlow::new()` constructs the pair directly; all three values serialize
+specified keywords with bounded output, and `flex-flow` serializes both
+effective components in that order. The direction and wrap wrappers retain
+exact I01 projections.
+`columns` retains
 the effective width and count, with omitted components set to `auto`, while its
 wrapper preserves the original spelling and order. `column-rule` preserves
 width, style, and color without performing layout, pagination, or painting.

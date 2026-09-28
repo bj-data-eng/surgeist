@@ -9,6 +9,137 @@ use crate::{
 
 type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
 
+/// Main-axis direction of an authored flex container.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssFlexDirection {
+    Row,
+    Column,
+    RowReverse,
+    ColumnReverse,
+}
+
+impl CssFlexDirection {
+    const fn keyword(self) -> &'static str {
+        match self {
+            Self::Row => "row",
+            Self::Column => "column",
+            Self::RowReverse => "row-reverse",
+            Self::ColumnReverse => "column-reverse",
+        }
+    }
+
+    pub fn serialize_specified(self) -> SerializationResult<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    pub fn serialize_specified_with_limits(
+        self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult<String> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let mut output = String::new();
+        self.serialize_specified_into(&mut context, &mut output)?;
+        Ok(output)
+    }
+
+    fn serialize_specified_into(
+        self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> SerializationResult<()> {
+        append_keyword(context, output, self.keyword())
+    }
+}
+
+/// Cross-axis wrapping of an authored flex container.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssFlexWrap {
+    NoWrap,
+    Wrap,
+    WrapReverse,
+}
+
+impl CssFlexWrap {
+    const fn keyword(self) -> &'static str {
+        match self {
+            Self::NoWrap => "nowrap",
+            Self::Wrap => "wrap",
+            Self::WrapReverse => "wrap-reverse",
+        }
+    }
+
+    pub fn serialize_specified(self) -> SerializationResult<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    pub fn serialize_specified_with_limits(
+        self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult<String> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let mut output = String::new();
+        self.serialize_specified_into(&mut context, &mut output)?;
+        Ok(output)
+    }
+
+    fn serialize_specified_into(
+        self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> SerializationResult<()> {
+        append_keyword(context, output, self.keyword())
+    }
+}
+
+/// The specified direction and wrapping of `flex-flow`.
+///
+/// Omitted components take their specified initial values; this value does not
+/// perform flex layout or resolve either component against layout context.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CssFlexFlow {
+    direction: CssFlexDirection,
+    wrap: CssFlexWrap,
+}
+
+impl CssFlexFlow {
+    /// Constructs a valid pair of specified direction and wrapping values.
+    pub const fn new(direction: CssFlexDirection, wrap: CssFlexWrap) -> Self {
+        Self { direction, wrap }
+    }
+
+    /// Returns the authored direction component, or `row` when it was omitted.
+    #[must_use]
+    pub const fn direction(&self) -> CssFlexDirection {
+        self.direction
+    }
+
+    /// Returns the authored wrapping component, or `nowrap` when it was omitted.
+    #[must_use]
+    pub const fn wrap(&self) -> CssFlexWrap {
+        self.wrap
+    }
+
+    pub fn serialize_specified(&self) -> SerializationResult<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult<String> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let mut output = String::new();
+        self.direction
+            .serialize_specified_into(&mut context, &mut output)?;
+        context.append(&mut output, " ")?;
+        self.wrap
+            .serialize_specified_into(&mut context, &mut output)?;
+        Ok(output)
+    }
+}
+
 #[derive(Clone, Debug)]
 enum Basis {
     Content,

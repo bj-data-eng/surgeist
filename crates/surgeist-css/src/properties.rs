@@ -14,7 +14,9 @@ use crate::border_width::*;
 use crate::box_spacing::*;
 use crate::contain_intrinsic_size::*;
 use crate::display::*;
-use crate::flex::{CssFlexBasisRef, CssFlexBasisValue, CssFlexValue};
+use crate::flex::{
+    CssFlexBasisRef, CssFlexBasisValue, CssFlexDirection, CssFlexFlow, CssFlexValue, CssFlexWrap,
+};
 use crate::font_controls::*;
 use crate::font_settings::*;
 use crate::font_variant::*;
@@ -91,9 +93,9 @@ macro_rules! property_schema {
             OverflowClipMargin, "overflow-clip-margin", [], "ext.property.overflow-clip-margin", CssOverflowClipMargin, CssOverflowClipMarginPropertyValue, CssOverflowClipMarginPropertyValueRepresentation, parse_overflow_clip_margin, { parse_overflow_clip_margin($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssOverflowClipMargin, accessor: current, inherited: false, initial_kind: value, initial: CssOverflowClipMargin::initial() };
             ScrollBehavior, "scroll-behavior", [], "ext.property.scroll-behavior", CssScrollBehavior, CssScrollBehaviorPropertyValue, CssScrollBehaviorPropertyValueRepresentation, parse_scroll_behavior, { parse_scroll_behavior($input)? }, expansion = longhand { wrapper: additive, value: CssScrollBehavior, accessor: current, inherited: false, initial_kind: value, initial: CssScrollBehavior::Auto };
             ScrollbarGutter, "scrollbar-gutter", [], "ext.property.scrollbar-gutter", CssScrollbarGutter, CssScrollbarGutterPropertyValue, CssScrollbarGutterPropertyValueRepresentation, parse_scrollbar_gutter, { parse_scrollbar_gutter($input)? }, expansion = longhand { wrapper: additive, value: CssScrollbarGutter, accessor: current, inherited: false, initial_kind: value, initial: CssScrollbarGutter::Auto };
-            FlexDirection, "flex-direction", [], "baseline.property.flex-direction", CssFlexDirection, CssFlexDirectionPropertyValue, CssFlexDirectionPropertyValueRepresentation, parse_flex_direction, { parse_flex_direction($input)? };
-            FlexFlow, "flex-flow", [], "official.property.flex-flow", CssFlexFlow, CssFlexFlowPropertyValue, CssFlexFlowPropertyValueRepresentation, parse_flex_flow, { parse_flex_flow($input)? };
-            FlexWrap, "flex-wrap", [], "baseline.property.flex-wrap", CssFlexWrap, CssFlexWrapPropertyValue, CssFlexWrapPropertyValueRepresentation, parse_flex_wrap, { parse_flex_wrap($input)? };
+            FlexDirection, "flex-direction", [], "baseline.property.flex-direction", CssFlexDirection, CssFlexDirectionPropertyValue, CssFlexDirectionPropertyValueRepresentation, parse_flex_direction, { parse_flex_direction($input)? }, expansion = longhand { wrapper: existing, value: CssFlexDirection, accessor: current, inherited: false, initial_kind: value, initial: CssFlexDirection::Row };
+            FlexFlow, "flex-flow", [], "official.property.flex-flow", CssFlexFlow, CssFlexFlowPropertyValue, CssFlexFlowPropertyValueRepresentation, parse_flex_flow, { parse_flex_flow($input)? }, expansion = shorthand { wrapper: existing, accessor: flow, members: [ FlexDirection => |value: &CssFlexFlow| Some(value.direction()), FlexWrap => |value: &CssFlexFlow| Some(value.wrap()) ], reset_only: [] };
+            FlexWrap, "flex-wrap", [], "baseline.property.flex-wrap", CssFlexWrap, CssFlexWrapPropertyValue, CssFlexWrapPropertyValueRepresentation, parse_flex_wrap, { parse_flex_wrap($input)? }, expansion = longhand { wrapper: existing, value: CssFlexWrap, accessor: current, inherited: false, initial_kind: value, initial: CssFlexWrap::NoWrap };
             Float, "float", [], "baseline.property.float", CssFloat, CssFloatPropertyValue, CssFloatPropertyValueRepresentation, parse_float, { parse_float($input)? }, expansion = longhand { wrapper: existing, value: CssFloat, accessor: current, inherited: false, initial_kind: value, initial: CssFloat::None };
             Clear, "clear", [], "baseline.property.clear", CssClear, CssClearPropertyValue, CssClearPropertyValueRepresentation, parse_clear, { parse_clear($input)? }, expansion = longhand { wrapper: existing, value: CssClear, accessor: current, inherited: false, initial_kind: value, initial: CssClear::None };
             AlignContent, "align-content", [], "baseline.property.align-content", CssAlignment, CssAlignContentPropertyValue, CssAlignContentPropertyValueRepresentation, parse_content_alignment, { parse_content_alignment($input)? };
@@ -1427,10 +1429,39 @@ macro_rules! define_property_value {
         );
     };
 
-    (
-        FlexFlow, $canonical:literal, $value:ty, $wrapper:ident,
-        $representation:ident
-    ) => {
+    (FlexDirection, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssFlexDirection,
+            CssFlexDirection,
+            current,
+            |value: &CssFlexDirection| Some(*value)
+        );
+        impl $wrapper {
+            pub const fn exact_i01_projection(&self) -> Option<&CssFlexDirection> {
+                self.i01_subset()
+            }
+        }
+    };
+    (FlexWrap, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssFlexWrap,
+            CssFlexWrap,
+            current,
+            |value: &CssFlexWrap| Some(*value)
+        );
+        impl $wrapper {
+            pub const fn exact_i01_projection(&self) -> Option<&CssFlexWrap> {
+                self.i01_subset()
+            }
+        }
+    };
+    (FlexFlow, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
         define_additive_current_property_value!(
             $canonical,
             $wrapper,
