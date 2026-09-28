@@ -417,7 +417,7 @@ operand has no binary operator; signed operand tokens remain valid. Checked
 component construction owns shape and resource admission, so arbitrary recursive
 legacy sums can no longer bypass those invariants.
 
-The frozen I01 position, basic-shape and filter projection grammar now admits
+The frozen I01 position and basic-shape projection grammar now admits
 literal lengths only. Calculation-bearing current values still parse through the
 numeric owner but have no projection through that frozen grammar. Literal
 projections, including `circle(50% at center)`, remain available. This does not
