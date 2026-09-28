@@ -83,14 +83,9 @@ pub(crate) fn parse_custom_property_value<'i, 't>(
     let state = input.state();
     if let Ok(ident) = input.expect_ident_cloned()
         && let Some(keyword) = parse_global_keyword(&ident)
+        && input.is_exhausted()
     {
-        if input.is_exhausted() {
-            return Ok(CssCustomPropertyDeclaredValue::Global(keyword));
-        }
-        return Err(invalid_syntax(
-            input.current_source_location(),
-            "CSS global keyword must be the entire custom property value",
-        ));
+        return Ok(CssCustomPropertyDeclaredValue::Global(keyword));
     }
     input.reset(&state);
     let (authored, _) =
