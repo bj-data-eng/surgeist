@@ -5,6 +5,16 @@ use crate::{
     CssListStyleImage, CssListStylePosition, CssListStyleType,
 };
 
+/// Symbolic marker-side selection for a list item.
+///
+/// Selecting the element's or parent's directionality and placing a marker occur downstream.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssMarkerSide {
+    MatchSelf,
+    MatchParent,
+}
+
 /// A checked authored `list-style-type` value.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]

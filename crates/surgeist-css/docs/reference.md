@@ -2280,6 +2280,13 @@ meaning-preserving initials, and inserts `outside` when a custom type named
 initials still consume node budget. Marker construction, image loading, and
 painting remain downstream.
 
+[CSS Lists 3 §3.7](https://www.w3.org/TR/2020/WD-css-lists-3-20201117/#propdef-marker-side)
+defines inherited `marker-side` with initial `match-self`. Its current-only
+wrapper exposes the checked `CssMarkerSide` keyword; bounded specified
+serialization emits `match-self` or `match-parent`. Selecting element or parent
+directionality and marker placement remain downstream. `marker-side` is a separate
+longhand and is not a fourth `list-style` shorthand member.
+
 [CSS Lists 3 §§4–4.2](https://www.w3.org/TR/2020/WD-css-lists-3-20201117/#counter-reset)
 defines `counter-reset`, `counter-increment`, and `counter-set` as separate
 noninherited longhands with `none` initials. `CssCounterChangesValue` retains

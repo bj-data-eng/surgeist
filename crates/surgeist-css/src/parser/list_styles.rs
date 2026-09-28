@@ -6,7 +6,20 @@ use super::background::parse_image_value;
 use super::content_values::parse_style;
 use super::generated_content::parse_content_string;
 use crate::error::{Error, basic, unsupported_value};
-use crate::{CssImageValue, CssListStylePosition, CssListStyleTypeValue, CssListStyleValue};
+use crate::{
+    CssImageValue, CssListStylePosition, CssListStyleTypeValue, CssListStyleValue, CssMarkerSide,
+};
+
+pub(super) fn parse_marker_side<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> Result<CssMarkerSide, ParseError<'i, Error>> {
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    match_ignore_ascii_case! { &ident,
+        "match-self" => Ok(CssMarkerSide::MatchSelf),
+        "match-parent" => Ok(CssMarkerSide::MatchParent),
+        _ => Err(unsupported_value(input, None, "expected match-self or match-parent")),
+    }
+}
 
 pub(super) fn parse_list_style_type<'i, 't>(
     input: &mut Parser<'i, 't>,

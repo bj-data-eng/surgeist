@@ -152,12 +152,14 @@ fn programmatic_components_use_the_same_grammar_and_origin() {
     let invalid =
         CssComponentValues::try_new(vec![CssComponentValue::try_ident("outside").unwrap()])
             .unwrap();
-    assert!(parse_property_value(
-        CssPropertyNameRef::Known(property),
-        invalid,
-        CssImportance::Normal,
-    )
-    .is_err());
+    assert!(
+        parse_property_value(
+            CssPropertyNameRef::Known(property),
+            invalid,
+            CssImportance::Normal,
+        )
+        .is_err()
+    );
 }
 
 #[test]

@@ -1318,7 +1318,7 @@ pub use expansion::{
 pub use font_feature_values::*;
 pub use font_palette_values::*;
 pub use font_variant::*;
-pub use list_styles::{CssListStyleTypeValue, CssListStyleValue};
+pub use list_styles::{CssListStyleTypeValue, CssListStyleValue, CssMarkerSide};
 pub use normalization::{
     CssNormalizationError, CssNormalizationErrorKind, CssNormalizationLimits,
     CssNormalizationResource, CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedReport,

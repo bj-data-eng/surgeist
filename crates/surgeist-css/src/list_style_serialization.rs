@@ -3,7 +3,7 @@
 use crate::content_serialization;
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
-    CssImageValue, CssListStylePosition, CssListStyleTypeValue, CssListStyleValue,
+    CssImageValue, CssListStylePosition, CssListStyleTypeValue, CssListStyleValue, CssMarkerSide,
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
 };
 
@@ -17,6 +17,29 @@ fn charge(writer: &mut SpecifiedRuleWriter) -> Result<()> {
 fn keyword(writer: &mut SpecifiedRuleWriter, value: &str) -> Result<()> {
     charge(writer)?;
     writer.append(value)
+}
+
+impl CssMarkerSide {
+    /// Serializes the specified keyword without resolving directionality.
+    pub fn serialize_specified(&self) -> Result<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Charges one input node, one projection node, and the emitted CSS bytes.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        keyword(
+            &mut writer,
+            match self {
+                Self::MatchSelf => "match-self",
+                Self::MatchParent => "match-parent",
+            },
+        )?;
+        Ok(writer.css)
+    }
 }
 
 fn append_type(writer: &mut SpecifiedRuleWriter, value: &CssListStyleTypeValue) -> Result<()> {

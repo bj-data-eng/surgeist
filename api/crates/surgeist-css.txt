@@ -2130,6 +2130,7 @@ pub surgeist_css::CssKnownProperty::MarginInlineStart
 pub surgeist_css::CssKnownProperty::MarginLeft
 pub surgeist_css::CssKnownProperty::MarginRight
 pub surgeist_css::CssKnownProperty::MarginTop
+pub surgeist_css::CssKnownProperty::MarkerSide
 pub surgeist_css::CssKnownProperty::Mask
 pub surgeist_css::CssKnownProperty::MaskImage
 pub surgeist_css::CssKnownProperty::MaskPosition
@@ -2473,6 +2474,7 @@ pub surgeist_css::CssKnownPropertyValueRef::MarginInlineStart(&'a surgeist_css::
 pub surgeist_css::CssKnownPropertyValueRef::MarginLeft(&'a surgeist_css::CssMarginLeftPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MarginRight(&'a surgeist_css::CssMarginRightPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MarginTop(&'a surgeist_css::CssMarginTopPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MarkerSide(&'a surgeist_css::CssMarkerSidePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Mask(&'a surgeist_css::CssMaskPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MaskImage(&'a surgeist_css::CssMaskImagePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MaskPosition(&'a surgeist_css::CssMaskPositionPropertyValue)
@@ -2848,6 +2850,7 @@ pub surgeist_css::CssLonghandValueRef::MarginInlineStart(&'a surgeist_css::CssMa
 pub surgeist_css::CssLonghandValueRef::MarginLeft(&'a surgeist_css::CssMarginValue)
 pub surgeist_css::CssLonghandValueRef::MarginRight(&'a surgeist_css::CssMarginValue)
 pub surgeist_css::CssLonghandValueRef::MarginTop(&'a surgeist_css::CssMarginValue)
+pub surgeist_css::CssLonghandValueRef::MarkerSide(&'a surgeist_css::CssMarkerSide)
 pub surgeist_css::CssLonghandValueRef::MaskImage(&'a surgeist_css::CssImageValueList)
 pub surgeist_css::CssLonghandValueRef::MaxBlockSize(&'a surgeist_css::CssMaxSizeValue)
 pub surgeist_css::CssLonghandValueRef::MaxHeight(&'a surgeist_css::CssMaxSizeValue)
@@ -2924,6 +2927,12 @@ pub fn surgeist_css::CssMarginValue::serialize_specified_with_limits(&self, limi
 impl core::cmp::Eq for surgeist_css::CssMarginValue
 impl core::cmp::PartialEq for surgeist_css::CssMarginValue
 pub fn surgeist_css::CssMarginValue::eq(&self, other: &Self) -> bool
+#[non_exhaustive] pub enum surgeist_css::CssMarkerSide
+pub surgeist_css::CssMarkerSide::MatchParent
+pub surgeist_css::CssMarkerSide::MatchSelf
+impl surgeist_css::CssMarkerSide
+pub fn surgeist_css::CssMarkerSide::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMarkerSide::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub enum surgeist_css::CssMathFunction
 pub surgeist_css::CssMathFunction::Abs
 pub surgeist_css::CssMathFunction::Acos
@@ -7322,6 +7331,10 @@ pub struct surgeist_css::CssMarginTopPropertyValue
 impl surgeist_css::CssMarginTopPropertyValue
 pub fn surgeist_css::CssMarginTopPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssMarginTopPropertyValue::current(&self) -> &surgeist_css::CssMarginValue
+pub struct surgeist_css::CssMarkerSidePropertyValue
+impl surgeist_css::CssMarkerSidePropertyValue
+pub fn surgeist_css::CssMarkerSidePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMarkerSidePropertyValue::current(&self) -> &surgeist_css::CssMarkerSide
 pub struct surgeist_css::CssMaskImagePropertyValue
 impl surgeist_css::CssMaskImagePropertyValue
 pub fn surgeist_css::CssMaskImagePropertyValue::as_css(&self) -> &str

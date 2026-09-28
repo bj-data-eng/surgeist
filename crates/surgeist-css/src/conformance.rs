@@ -1847,6 +1847,7 @@ static OFFICIAL_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
     active_coverage!("baseline.property.list-style-image"),
     active_coverage!("baseline.property.list-style-position"),
     active_coverage!("baseline.property.list-style-type"),
+    active_coverage!("official.property.marker-side"),
     active_coverage!("baseline.property.max-height"),
     active_coverage!("baseline.property.max-width"),
     active_coverage!("official.property.max-inline-size"),
@@ -2495,7 +2496,8 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::ListStyleType
         | CssKnownProperty::ListStylePosition
         | CssKnownProperty::ListStyleImage
-        | CssKnownProperty::ListStyle => I_LISTS3,
+        | CssKnownProperty::ListStyle
+        | CssKnownProperty::MarkerSide => I_LISTS3,
         CssKnownProperty::FlowTolerance => X_GRID3_20260121,
         CssKnownProperty::GridTemplateRows
         | CssKnownProperty::GridTemplateColumns
@@ -2633,6 +2635,7 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
         CssKnownProperty::ListStyleImage => "#propdef-list-style-image",
         CssKnownProperty::ListStylePosition => "#propdef-list-style-position",
         CssKnownProperty::ListStyleType => "#propdef-list-style-type",
+        CssKnownProperty::MarkerSide => "#propdef-marker-side",
         CssKnownProperty::LineHeight | CssKnownProperty::VerticalAlign => match property {
             CssKnownProperty::LineHeight => "visudet.html#propdef-line-height",
             CssKnownProperty::VerticalAlign => "visudet.html#propdef-vertical-align",
@@ -2721,7 +2724,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 623] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 624] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4408,6 +4411,11 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 623] = [
         CssKnownProperty::ListStyle,
         "list-style",
         "baseline.property.list-style"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MarkerSide,
+        "marker-side",
+        "official.property.marker-side"
     ),
     complete_property_feature!(
         CssKnownProperty::CounterReset,

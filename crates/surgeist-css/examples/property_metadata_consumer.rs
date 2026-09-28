@@ -98,6 +98,7 @@ const LONGHANDS: &[P] = &[
     P::ListStyleType,
     P::ListStylePosition,
     P::ListStyleImage,
+    P::MarkerSide,
     P::FlowTolerance,
     P::Color,
     P::FontFamily,
@@ -508,6 +509,7 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
             assert_eq!(*v, CssListStylePosition::Outside)
         }
         CssLonghandValueRef::ListStyleImage(v) => assert_eq!(v, &CssImageValue::None),
+        CssLonghandValueRef::MarkerSide(v) => assert_eq!(*v, CssMarkerSide::MatchSelf),
         CssLonghandValueRef::WordSpacing(v) | CssLonghandValueRef::LetterSpacing(v) => {
             assert_eq!(v, &CssTextSpacingAdjustment::Normal)
         }
@@ -816,7 +818,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 230);
+    assert_eq!(expected.len(), 231);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {
@@ -887,6 +889,7 @@ fn metadata_and_initials() {
                     | P::ListStyleType
                     | P::ListStylePosition
                     | P::ListStyleImage
+                    | P::MarkerSide
                     | P::FontWeight
                     | P::FontStyle
                     | P::FontWidth
