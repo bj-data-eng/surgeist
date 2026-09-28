@@ -15,6 +15,7 @@ use super::typography::{
     common_font_style_keyword, parse_absolute_font_weight, parse_font_oblique_angle,
     parse_font_width, parse_non_generic_font_family_name,
 };
+use super::url::parse_url;
 use super::{block_item_diagnostic, is_declaration_recovery_unit, parse_descriptor_boundary};
 use crate::error::{
     CssFeatureId, Error, basic, descriptor_name_error, from_parse_error, incomplete_descriptor_at,
@@ -549,15 +550,15 @@ fn parse_font_face_source<'i, 't>(
         }
     }
 
-    Ok(CssFontFaceSource::Url(
-        CssFontFaceUrlSource::new_with_formats(url, formats, tech),
-    ))
+    Ok(CssFontFaceSource::Url(CssFontFaceUrlSource::new_with_url(
+        url, formats, tech,
+    )))
 }
 
 fn parse_font_source_url<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<String, ParseError<'i, Error>> {
-    input.expect_url().map_err(basic).map(|url| url.to_string())
+) -> std::result::Result<CssUrl, ParseError<'i, Error>> {
+    parse_url(input)
 }
 
 fn parse_local_name<'i, 't>(

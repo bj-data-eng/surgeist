@@ -1,8 +1,8 @@
 //! The selected published Fonts4 grammar owns family names and source lists;
 //! immutable source identities must keep their original edition.
 //! The format/technology-hint subproduction includes the legacy equivalents.
-//! Font-face and source support remains Partial because selected descriptors
-//! and the src() URL branch are absent.
+//! Font-face rule support remains Partial because selected descriptors are
+//! unfinished. Source-list authored grammar includes the Values4 src() branch.
 
 use surgeist_css::{CssSupportStatus, feature_metadata, specification_source};
 
@@ -35,12 +35,12 @@ fn selected_font_source_records_reference_the_pinned_published_edition() {
         (
             "baseline.descriptor.src",
             "#font-face-src-parsing",
-            CssSupportStatus::Partial,
+            CssSupportStatus::Complete,
         ),
         (
             "official.value.font-source",
             "#font-face-src-parsing",
-            CssSupportStatus::Partial,
+            CssSupportStatus::Complete,
         ),
         (
             "ext.value.font-source-modern-hints",

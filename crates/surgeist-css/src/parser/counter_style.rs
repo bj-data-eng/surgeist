@@ -4,8 +4,8 @@ use cssparser::{
     match_ignore_ascii_case,
 };
 
-use super::background::parse_url;
 use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
+use super::url::parse_url;
 use super::values::parse_integer;
 use super::{
     block_item_diagnostic, is_declaration_recovery_unit, parse_descriptor_boundary,

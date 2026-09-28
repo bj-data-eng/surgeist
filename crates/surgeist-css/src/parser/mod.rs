@@ -62,6 +62,7 @@ mod supports;
 mod text_alignment;
 mod timing;
 mod typography;
+mod url;
 mod values;
 mod variables;
 pub(crate) use variables::first_substitution_origin;
@@ -148,6 +149,7 @@ use sizing_controls::*;
 use supports::{
     parse_supports_condition, parse_supports_declaration, with_supports_prelude_context,
 };
+use url::parse_url;
 pub(crate) mod named_supports;
 use text_alignment::*;
 use timing::*;
@@ -3426,8 +3428,8 @@ fn parse_import_target<'i, 't>(
         )));
     }
 
-    if let Ok(value) = input.try_parse(Parser::expect_url) {
-        return Ok(CssImportTarget::Url(CssImportUrl::new(value.as_ref())));
+    if let Ok(value) = input.try_parse(parse_url) {
+        return Ok(CssImportTarget::Url(CssImportUrl::from_url(value)));
     }
 
     Err(invalid_syntax(

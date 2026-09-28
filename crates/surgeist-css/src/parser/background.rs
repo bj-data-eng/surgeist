@@ -5,6 +5,7 @@ use super::border_style::parse_border_style;
 use super::position::{
     next_starts_background_position, parse_background_position_prefix, parse_css_position_value,
 };
+use super::url::parse_url;
 use super::values::{
     CalculationRoot, LengthGrammar, next_is_comma, parse_length_with, parse_length_with_context,
     parse_numeric_function,
@@ -210,6 +211,7 @@ fn next_starts_background_image<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
         Ok(Token::UnquotedUrl(_)) => true,
         Ok(Token::Function(name)) => {
             name.eq_ignore_ascii_case("url")
+                || name.eq_ignore_ascii_case("src")
                 || matches!(
                     name.to_ascii_lowercase().as_str(),
                     "linear-gradient"
@@ -1243,79 +1245,6 @@ pub(super) fn parse_image_layer<'i, 't>(
         return Ok(CssImageLayer::None);
     }
     parse_url(input).map(CssImageLayer::Url)
-}
-
-pub(super) fn parse_url<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssUrl, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    match input.next().map_err(basic)?.clone() {
-        Token::UnquotedUrl(value) => Ok(CssUrl::new(value.to_string())),
-        Token::Function(name) if name.eq_ignore_ascii_case("url") => {
-            let (value, modifiers) = input.parse_nested_block(|input| {
-                let value = input.expect_string_cloned().map_err(basic)?.to_string();
-                let mut modifiers = Vec::new();
-                while !input.is_exhausted() {
-                    let modifier_location = input.current_source_location();
-                    match input.next().map_err(basic)?.clone() {
-                        Token::Ident(value) => {
-                            modifiers.push(CssUrlModifier::Ident(CssIdent::new(value.to_string())));
-                        }
-                        Token::Function(name) => {
-                            let arguments = input.parse_nested_block(|input| {
-                                let start = input.position();
-                                consume_url_modifier_components(input)?;
-                                Ok(CssAuthoredFunctionArguments::new(
-                                    input.slice_from(start).to_owned(),
-                                ))
-                            })?;
-                            modifiers.push(CssUrlModifier::Function(CssUrlModifierFunction::new(
-                                CssIdent::new(name.to_string()),
-                                arguments,
-                            )));
-                        }
-                        token => {
-                            return Err(
-                                modifier_location.new_unexpected_token_error::<Error>(token)
-                            );
-                        }
-                    }
-                }
-                Ok((value, modifiers))
-            })?;
-            Ok(CssUrl::with_modifiers(value, modifiers))
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token)),
-    }
-}
-
-fn consume_url_modifier_components<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<(), ParseError<'i, Error>> {
-    while !input.is_exhausted() {
-        let location = input.current_source_location();
-        match input
-            .next_including_whitespace_and_comments()
-            .map_err(basic)?
-            .clone()
-        {
-            Token::Function(_)
-            | Token::ParenthesisBlock
-            | Token::SquareBracketBlock
-            | Token::CurlyBracketBlock => {
-                input.parse_nested_block(consume_url_modifier_components)?;
-            }
-            token @ (Token::BadString(_)
-            | Token::BadUrl(_)
-            | Token::CloseParenthesis
-            | Token::CloseSquareBracket
-            | Token::CloseCurlyBracket) => {
-                return Err(location.new_unexpected_token_error::<Error>(token));
-            }
-            _ => {}
-        }
-    }
-    Ok(())
 }
 
 pub(super) fn parse_background_size_list<'i, 't>(

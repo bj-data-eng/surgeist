@@ -999,9 +999,9 @@ pub enum CssImportTarget {
     String(CssImportString),
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct CssImportUrl {
-    value: String,
+    url: CssUrl,
 }
 
 impl CssImportUrl {
@@ -1014,13 +1014,33 @@ impl CssImportUrl {
 
     #[must_use]
     pub(crate) fn new(value: impl Into<String>) -> Self {
-        let value = value.into();
-        Self { value }
+        Self::from_url(CssUrl::new(value))
+    }
+
+    /// Preserves a checked authored URL, including its function identity and modifiers.
+    #[must_use]
+    pub fn from_url(url: CssUrl) -> Self {
+        Self { url }
+    }
+
+    /// Returns the shared authored URL without losing its function or modifiers.
+    #[must_use]
+    pub const fn url(&self) -> &CssUrl {
+        &self.url
     }
 
     #[must_use]
     pub fn as_str(&self) -> &str {
-        &self.value
+        self.url.as_str()
+    }
+}
+
+impl std::fmt::Debug for CssImportUrl {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CssImportUrl")
+            .field("value", &self.as_str())
+            .finish()
     }
 }
 
@@ -7628,8 +7648,16 @@ fn is_non_negative_length_percentage(length: &CssLength) -> bool {
     }
 }
 
+/// The two authored function identities in the selected Values 4 `<url>` grammar.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssUrlFunction {
+    Url,
+    Src,
+}
+
 #[derive(Clone, Eq, PartialEq)]
 pub struct CssUrl {
+    function: CssUrlFunction,
     value: String,
     modifiers: Vec<CssUrlModifier>,
 }
@@ -7644,18 +7672,27 @@ impl CssUrl {
 
     #[must_use]
     pub(crate) fn new(value: impl Into<String>) -> Self {
+        Self::from_parts(CssUrlFunction::Url, value, Vec::new())
+    }
+
+    /// Constructs a decoded authored URL with its function identity and ordered modifiers.
+    /// Resource resolution and modifier interpretation belong downstream.
+    #[must_use]
+    pub fn from_parts(
+        function: CssUrlFunction,
+        value: impl Into<String>,
+        modifiers: Vec<CssUrlModifier>,
+    ) -> Self {
         Self {
+            function,
             value: value.into(),
-            modifiers: Vec::new(),
+            modifiers,
         }
     }
 
     #[must_use]
-    pub(crate) fn with_modifiers(value: impl Into<String>, modifiers: Vec<CssUrlModifier>) -> Self {
-        Self {
-            value: value.into(),
-            modifiers,
-        }
+    pub const fn function(&self) -> CssUrlFunction {
+        self.function
     }
 
     #[must_use]
@@ -7663,7 +7700,7 @@ impl CssUrl {
         &self.value
     }
 
-    /// Returns the authored modifiers of a quoted `url()` value.
+    /// Returns the authored modifiers of a quoted `url()` or `src()` value.
     ///
     /// Values and Units Level 3 defines modifier syntax without assigning
     /// resource semantics to any particular modifier. This accessor therefore

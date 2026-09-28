@@ -102,9 +102,6 @@ const KEYFRAMES_SUBSET: &str = "Keyframe names, literal selectors, empty rules a
 const KEYFRAMES_REMAINDER: &str = "Calculation selectors, string names, and declaration-processing grammar not selected by C07 remain unsupported.";
 const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range, feature-settings and variation-settings descriptors have typed ordinary representations and admit pending whole values for valid env(); invalid descriptors recover independently.";
 const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-named-instance and metric overrides remain unsupported.";
-const FONT_SOURCE_SUBSET: &str = "url() and local() sources preserve authored order, including empty URL strings, the selected literal family-name grammar, a single format hint and technology hints. Invalid source members recover independently, while invalid descriptor annotations or all-invalid lists discard the descriptor. The four legacy variation strings project to base formats and required variations without changing authored hints; TrueType and OpenType have explicit format equivalence.";
-const FONT_SOURCE_REMAINDER: &str =
-    "The src() function from the referenced Values 4 <url> production remains unsupported.";
 
 fn assert_complete_fonts3_feature(
     id: &str,
@@ -1569,17 +1566,14 @@ const EXPECTED: &[ExpectedFeature] = &[
         spelling: "src in @font-face",
         source: ExpectedSource::Id("I-FONTS4-20260907"),
         production: "#font-face-src-parsing",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(FONT_SOURCE_SUBSET),
-        unsupported_remainder: Some(FONT_SOURCE_REMAINDER),
+        status: CssSupportStatus::Complete,
+        supported_subset: None,
+        unsupported_remainder: None,
         recognized_code: None,
         positive: Some(Input::Sheet(
             "@font-face { font-family: Inter; src: url(inter.woff2) format(\"woff2\"); }",
         )),
-        negative: Some((
-            Input::Sheet("@font-face { src: src(\"inter.woff2\"); }"),
-            CssErrorCode::InvalidDescriptorValue,
-        )),
+        negative: None,
     },
     ExpectedFeature {
         id: "baseline.descriptor.font-weight",
@@ -2233,14 +2227,14 @@ fn c14_closure_metadata_and_docs_are_truthful() {
             "official.value.url",
             CssFeatureKind::Value,
             "<url>",
-            "O-VALUES3",
+            "I-VALUES4-20240312",
             "#urls",
         ),
         (
             "official.value.url-modifier",
             CssFeatureKind::Value,
             "<url-modifier>",
-            "O-VALUES3",
+            "I-VALUES4-20240312",
             "#url-modifiers",
         ),
     ] {
@@ -4064,84 +4058,6 @@ fn conformance_catalog_vectors_cover_each_supported_and_unsupported_boundary() {
 
         match expected.status {
             CssSupportStatus::Complete => assert!(expected.negative.is_none()),
-            CssSupportStatus::Partial if expected.id == "baseline.descriptor.src" => {
-                // The local-name remainder is closed. Values4 <url> still admits
-                // src() beyond the implemented url() source branch.
-                // https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-src-parsing
-                let (input, code) = expected.negative.expect("src() gap needs a vector");
-                let source_diagnostics = diagnostics(input);
-                assert_eq!(source_diagnostics.len(), 1);
-                assert_eq!(source_diagnostics[0].0, code);
-
-                let report = parse_sheet("@font-face { src: local(system-ui); }");
-                assert!(!report.is_clean());
-                assert_eq!(report.diagnostics().len(), 1);
-                assert_eq!(
-                    report.diagnostics()[0].action(),
-                    CssRecoveryAction::DropDescriptor,
-                );
-                let [CssRule::FontFace(face)] = report.syntax().rules() else {
-                    panic!("expected the retained font face");
-                };
-                assert!(
-                    face.descriptors()
-                        .effective(CssFontFaceDescriptorKind::Src)
-                        .is_none()
-                );
-
-                for (name, decoded) in [("\"system-ui\"", "system-ui"), ("menu", "menu")] {
-                    let report = parse_sheet(&format!("@font-face {{ src: local({name}); }}"));
-                    assert!(report.is_clean());
-                    let [CssRule::FontFace(face)] = report.syntax().rules() else {
-                        panic!("expected a retained font face");
-                    };
-                    let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(
-                        CssFontFaceDescriptorValue::Src(source),
-                    )) = face
-                        .descriptors()
-                        .effective(CssFontFaceDescriptorKind::Src)
-                        .map(|record| record.value())
-                    else {
-                        panic!("expected ordinary source descriptor");
-                    };
-                    let [surgeist_css::CssFontFaceSource::Local(local)] = source.sources() else {
-                        panic!("expected the local name");
-                    };
-                    assert_eq!(local.as_str(), decoded);
-                }
-                let report = parse_sheet(
-                    "@font-face { src: url(demo.woff2) format(\"woff2-variations\"); }",
-                );
-                assert!(report.is_clean());
-                let [CssRule::FontFace(face)] = report.syntax().rules() else {
-                    panic!("expected a retained font face");
-                };
-                let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(
-                    CssFontFaceDescriptorValue::Src(value),
-                )) = face
-                    .descriptors()
-                    .effective(CssFontFaceDescriptorKind::Src)
-                    .map(|record| record.value())
-                else {
-                    panic!("expected ordinary source descriptor");
-                };
-                let [surgeist_css::CssFontFaceSource::Url(source)] = value.sources() else {
-                    panic!("expected a retained URL source");
-                };
-                assert_eq!(
-                    source.formats().unwrap().formats()[0].as_str(),
-                    "woff2-variations"
-                );
-                assert_eq!(
-                    source.format(),
-                    Some(&surgeist_css::CssFontFormatHint::Woff2)
-                );
-                assert!(source.tech().is_empty());
-                assert_eq!(
-                    source.required_technologies().collect::<Vec<_>>(),
-                    [surgeist_css::CssFontTechHint::Variations]
-                );
-            }
             CssSupportStatus::Partial | CssSupportStatus::RecognizedUnsupported => {
                 let (input, code) = expected
                     .negative
@@ -4171,7 +4087,101 @@ fn conformance_catalog_vectors_cover_each_supported_and_unsupported_boundary() {
 }
 
 #[test]
+fn font_source_complete_grammar_retains_legacy_controls_and_rejects_malformed_src() {
+    // Fonts 4 src accepts local names and legacy format labels; Values 4 src()
+    // still requires a quoted string payload.
+    let malformed = parse_sheet("@font-face { src: src(foo); }");
+    assert!(!malformed.is_clean());
+    assert_eq!(malformed.diagnostics().len(), 1);
+    assert_eq!(
+        malformed.diagnostics()[0].action(),
+        CssRecoveryAction::DropDescriptor
+    );
+    let [CssRule::FontFace(face)] = malformed.syntax().rules() else {
+        panic!("expected retained font face");
+    };
+    assert!(
+        face.descriptors()
+            .effective(CssFontFaceDescriptorKind::Src)
+            .is_none()
+    );
+    let report = parse_sheet("@font-face { src: local(system-ui); }");
+    assert!(!report.is_clean());
+    assert_eq!(report.diagnostics().len(), 1);
+    assert_eq!(
+        report.diagnostics()[0].action(),
+        CssRecoveryAction::DropDescriptor,
+    );
+    let [CssRule::FontFace(face)] = report.syntax().rules() else {
+        panic!("expected the retained font face");
+    };
+    assert!(
+        face.descriptors()
+            .effective(CssFontFaceDescriptorKind::Src)
+            .is_none()
+    );
+
+    for (name, decoded) in [("\"system-ui\"", "system-ui"), ("menu", "menu")] {
+        let report = parse_sheet(&format!("@font-face {{ src: local({name}); }}"));
+        assert!(report.is_clean());
+        let [CssRule::FontFace(face)] = report.syntax().rules() else {
+            panic!("expected a retained font face");
+        };
+        let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(CssFontFaceDescriptorValue::Src(
+            source,
+        ))) = face
+            .descriptors()
+            .effective(CssFontFaceDescriptorKind::Src)
+            .map(|record| record.value())
+        else {
+            panic!("expected ordinary source descriptor");
+        };
+        let [surgeist_css::CssFontFaceSource::Local(local)] = source.sources() else {
+            panic!("expected the local name");
+        };
+        assert_eq!(local.as_str(), decoded);
+    }
+    let report = parse_sheet("@font-face { src: url(demo.woff2) format(\"woff2-variations\"); }");
+    assert!(report.is_clean());
+    let [CssRule::FontFace(face)] = report.syntax().rules() else {
+        panic!("expected a retained font face");
+    };
+    let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(CssFontFaceDescriptorValue::Src(value))) =
+        face.descriptors()
+            .effective(CssFontFaceDescriptorKind::Src)
+            .map(|record| record.value())
+    else {
+        panic!("expected ordinary source descriptor");
+    };
+    let [surgeist_css::CssFontFaceSource::Url(source)] = value.sources() else {
+        panic!("expected a retained URL source");
+    };
+    assert_eq!(
+        source.formats().unwrap().formats()[0].as_str(),
+        "woff2-variations"
+    );
+    assert_eq!(
+        source.format(),
+        Some(&surgeist_css::CssFontFormatHint::Woff2)
+    );
+    assert!(source.tech().is_empty());
+    assert_eq!(
+        source.required_technologies().collect::<Vec<_>>(),
+        [surgeist_css::CssFontTechHint::Variations]
+    );
+}
+
+#[test]
 fn source_registry_lookups_are_exact_and_preserve_provenance_xor() {
+    let url = specification_source("I-VALUES4-20240312").expect("dated URL source");
+    assert_eq!(url.tier(), CssSpecificationTier::SurgeistExtension);
+    assert_eq!(url.level(), "4");
+    assert_eq!(
+        url.url(),
+        Some("https://www.w3.org/TR/2024/WD-css-values-4-20240312/")
+    );
+    assert_eq!(url.repository_provenance(), None);
+
     let filter = specification_source("X-FILTER2-BASE").expect("filter baseline source");
     assert_eq!(filter.module(), "Filter Effects");
     assert_eq!(filter.level(), "2 baseline subset");

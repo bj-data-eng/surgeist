@@ -487,8 +487,9 @@
 //!
 //! Family, font, source-list, and font-face records cite `I-FONTS4-20260907`.
 //! Family grammar, the font shorthand, and modern source hints are Complete;
-//! source list and font-face rule remain Partial. Selected descriptors and the
-//! Values 4 `src()` URL function are unfinished.
+//! source list is Complete; the font-face rule remains Partial because selected
+//! descriptors remain unfinished. Values 4 `url()` and `src()` preserve authored
+//! function identity and modifiers without loading resources.
 //! Older immutable source identities retain their original editions.
 //! Family models do not yet provide canonical CSS serialization. Font loading,
 //! matching, fallback, shaping, cascade, substitution, computed values, and

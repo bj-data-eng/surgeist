@@ -1865,8 +1865,8 @@ and modern-source-hint records cite the September 7, 2026 edition as
 `I-FONTS4-20260907`. The family property and descriptor and the narrowly named
 modern-source-hint record are `Complete`; the weight, style and width properties
 and descriptors and the size property are also `Complete` for their authored
-grammars. The shorthand,
-rule and source-list records remain `Partial`.
+grammars. The shorthand and source-list records are `Complete` for their
+authored grammars; the broader `@font-face` rule remains `Partial`.
 The older `I-FONTS4` identity keeps its April 22 edition; `O-FONTS3` also
 remains available for historical source records. These immutable identities
 must not be repointed when adopting a newer production.
@@ -1917,9 +1917,10 @@ replacement components and returns an ordinary value; residual `var()` or
 This API never executes substitution. Intrinsic `font` shorthand expansion/reset
 semantics remain unfinished.
 Selected descriptors including `font-named-instance` and metric overrides remain unfinished.
-The source-list URL branch accepts `url()` but does not yet implement `src()`
-from the referenced Values 4 `<url>` production. These are CSS implementation
-gaps. Other historical Fonts 3 and Fonts 4 support records
+The source-list URL branch accepts both `url()` and `src()` from the referenced
+Values 4 `<url>` production, retaining their authored function identity and
+ordered modifiers without resolving or loading the resource. Other historical
+Fonts 3 and Fonts 4 support records
 retain their existing classifications pending reconciliation with the complete
 selected profile; their dates bound those claims. These authored models do
 not load or match fonts, resolve fallback or feature application, shape glyphs,
@@ -3125,10 +3126,13 @@ An empty URL resolves to an invalid resource; that downstream result does not
 invalidate its authored syntax. Serialization here preserves authored target
 spelling, rather than performing computed-value URL serialization.
 
-Ordinary property values share this authored URL rule: `url()`, `url("")`, and
-`url('')` retain an empty decoded string, while quoted whitespace remains data.
-`CssUrl::try_new("")` likewise constructs an authored value. URL modifiers on
-quoted forms remain typed and ordered; resource validity belongs downstream.
+Ordinary property values and font sources share this authored URL rule:
+`url()`, `url("")`, `url('')`, and `src("")` retain an empty decoded string,
+while quoted whitespace remains data. `CssUrl::try_new("")` constructs the
+legacy `Url` form; `CssUrl::from_parts` selects `CssUrlFunction::Url` or `Src`
+and preserves ordered modifiers. `CssImportUrl::url()` and
+`CssFontFaceUrlSource::authored_url()` expose that shared value alongside their
+existing decoded-string accessors. Resource validity belongs downstream.
 
 These models are authored syntax only. `surgeist-css` does not evaluate media or
 supports conditions, match selectors, resolve URLs, load imported resources,

@@ -1,6 +1,6 @@
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
-use super::background::parse_url;
+use super::url::parse_url;
 use super::values::parse_integer;
 use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;

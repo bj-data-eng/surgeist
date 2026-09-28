@@ -226,8 +226,12 @@ fn c14_remaining_shared_values_are_typed() {
         ("official.value.custom-ident", "O-VALUES3", "#custom-idents"),
         ("official.value.ident", "O-VALUES3", "#custom-idents"),
         ("official.value.string", "O-VALUES3", "#strings"),
-        ("official.value.url", "O-VALUES3", "#urls"),
-        ("official.value.url-modifier", "O-VALUES3", "#url-modifiers"),
+        ("official.value.url", "I-VALUES4-20240312", "#urls"),
+        (
+            "official.value.url-modifier",
+            "I-VALUES4-20240312",
+            "#url-modifiers",
+        ),
     ] {
         let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing metadata for {id}"));
         assert_eq!(metadata.source().id().as_str(), source, "{id}");

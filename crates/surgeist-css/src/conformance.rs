@@ -1108,6 +1108,14 @@ const X_VALUES4: CssSpecificationSource = CssSpecificationSource::from_repositor
     "720ea2863696971ea6a6744e0f23acbb3e6936bd:css-values-4/Overview.bs",
 );
 profile_source!(
+    I_VALUES4_20240312,
+    "I-VALUES4-20240312",
+    "CSS Values and Units",
+    "4",
+    CssSpecificationTier::SurgeistExtension,
+    "https://www.w3.org/TR/2024/WD-css-values-4-20240312/"
+);
+profile_source!(
     X_MEDIA5,
     "X-MEDIA5",
     "Media Queries",
@@ -1286,6 +1294,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     X_CASCADE6,
     X_PSEUDO4,
     X_VALUES4,
+    I_VALUES4_20240312,
     X_MEDIA5,
     X_OVERFLOW3,
     X_SIZING4,
@@ -2259,9 +2268,6 @@ const KEYFRAMES_SUBSET: &str = "Keyframe names, literal selectors, empty rules a
 const KEYFRAMES_REMAINDER: &str = "Calculation selectors, string names, and declaration-processing grammar not selected by C07 remain unsupported.";
 const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range, feature-settings and variation-settings descriptors have typed ordinary representations and admit pending whole values for valid env(); invalid descriptors recover independently.";
 const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-named-instance and metric overrides remain unsupported.";
-const FONT_SOURCE_SUBSET: &str = "url() and local() sources preserve authored order, including empty URL strings, the selected literal family-name grammar, a single format hint and technology hints. Invalid source members recover independently, while invalid descriptor annotations or all-invalid lists discard the descriptor. The four legacy variation strings project to base formats and required variations without changing authored hints; TrueType and OpenType have explicit format equivalence.";
-const FONT_SOURCE_REMAINDER: &str =
-    "The src() function from the referenced Values 4 <url> production remains unsupported.";
 
 const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
     match property {
@@ -3017,14 +3023,14 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 623] = [
         "official.value.url",
         CssFeatureKind::Value,
         "<url>",
-        O_VALUES3,
+        I_VALUES4_20240312,
         "#urls",
     ),
     CssFeatureMetadata::complete(
         "official.value.url-modifier",
         CssFeatureKind::Value,
         "<url-modifier>",
-        O_VALUES3,
+        I_VALUES4_20240312,
         "#url-modifiers",
     ),
     CssFeatureMetadata::complete(
@@ -3998,14 +4004,12 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 623] = [
         I_FONTS4_20260907,
         "#font-family-desc",
     ),
-    CssFeatureMetadata::partial(
+    CssFeatureMetadata::complete(
         "baseline.descriptor.src",
         CssFeatureKind::Descriptor,
         "src in @font-face",
         I_FONTS4_20260907,
         "#font-face-src-parsing",
-        FONT_SOURCE_SUBSET,
-        FONT_SOURCE_REMAINDER,
     ),
     CssFeatureMetadata::complete(
         "baseline.descriptor.font-weight",
@@ -4056,14 +4060,12 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 623] = [
         I_FONTS4_20260907,
         "#descdef-font-face-font-variation-settings",
     ),
-    CssFeatureMetadata::partial(
+    CssFeatureMetadata::complete(
         "official.value.font-source",
         CssFeatureKind::Value,
         "@font-face source list",
         I_FONTS4_20260907,
         "#font-face-src-parsing",
-        FONT_SOURCE_SUBSET,
-        FONT_SOURCE_REMAINDER,
     ),
     CssFeatureMetadata::complete(
         "official.value.opentype-tag",

@@ -1,7 +1,7 @@
 use super::CssSourcePosition;
 use crate::{
     CssAuthoredFontFeatureSettings, CssComponentValues, CssFontFaceStyle, CssFontFaceWeight,
-    CssFontFaceWidth, CssFontVariationSettings,
+    CssFontFaceWidth, CssFontVariationSettings, CssUrl,
 };
 
 mod pending;
@@ -245,9 +245,9 @@ pub enum CssFontFaceSource {
     Local(CssFontLocalName),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct CssFontFaceUrlSource {
-    url: String,
+    url: CssUrl,
     format: Option<CssFontFormatHint>,
     formats: Option<CssFontFormatList>,
     tech: Vec<CssFontTechHint>,
@@ -281,9 +281,19 @@ impl CssFontFaceUrlSource {
         formats: Option<CssFontFormatList>,
         tech: Vec<CssFontTechHint>,
     ) -> Self {
+        Self::new_with_url(CssUrl::new(url), formats, tech)
+    }
+
+    /// Preserves a shared authored URL, one checked format hint, and technologies.
+    #[must_use]
+    pub fn new_with_url(
+        url: CssUrl,
+        formats: Option<CssFontFormatList>,
+        tech: Vec<CssFontTechHint>,
+    ) -> Self {
         let format = formats.as_ref().and_then(CssFontFormatList::recognized);
         Self {
-            url: url.into(),
+            url,
             format,
             formats,
             tech,
@@ -292,6 +302,12 @@ impl CssFontFaceUrlSource {
 
     #[must_use]
     pub fn url(&self) -> &str {
+        self.url.as_str()
+    }
+
+    /// Returns the shared authored URL, including function identity and modifiers.
+    #[must_use]
+    pub const fn authored_url(&self) -> &CssUrl {
         &self.url
     }
 
@@ -350,6 +366,18 @@ impl CssFontFaceUrlSource {
                     true
                 }
             })
+    }
+}
+
+impl std::fmt::Debug for CssFontFaceUrlSource {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CssFontFaceUrlSource")
+            .field("url", &self.url())
+            .field("format", &self.format)
+            .field("formats", &self.formats)
+            .field("tech", &self.tech)
+            .finish()
     }
 }
 
