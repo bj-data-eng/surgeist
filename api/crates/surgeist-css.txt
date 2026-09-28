@@ -6555,6 +6555,8 @@ pub struct surgeist_css::CssGradientColorStop
 impl surgeist_css::CssGradientColorStop
 pub const fn surgeist_css::CssGradientColorStop::color(&self) -> &surgeist_css::CssAuthoredColor
 pub const fn surgeist_css::CssGradientColorStop::position(&self) -> core::option::Option<&surgeist_css::CssGradientLinePosition>
+impl surgeist_css::CssGradientColorStop
+pub fn surgeist_css::CssGradientColorStop::from_color(color: surgeist_css::CssAuthoredColor, position: core::option::Option<surgeist_css::CssGradientLinePosition>) -> Self
 pub struct surgeist_css::CssGradientLinePosition
 impl surgeist_css::CssGradientLinePosition
 pub fn surgeist_css::CssGradientLinePosition::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
@@ -6707,6 +6709,10 @@ pub const fn surgeist_css::CssHwbColor::whiteness(&self) -> core::option::Option
 pub struct surgeist_css::CssIdent
 impl surgeist_css::CssIdent
 pub fn surgeist_css::CssIdent::as_str(&self) -> &str
+pub struct surgeist_css::CssImage
+impl surgeist_css::CssImage
+pub fn surgeist_css::CssImage::try_new(value: surgeist_css::CssImageValue) -> core::option::Option<Self>
+pub const fn surgeist_css::CssImage::value(&self) -> &surgeist_css::CssImageValue
 pub struct surgeist_css::CssImageLayerList
 impl surgeist_css::CssImageLayerList
 pub fn surgeist_css::CssImageLayerList::layers(&self) -> &[surgeist_css::CssImageLayer]
@@ -7021,6 +7027,8 @@ pub struct surgeist_css::CssLinearGradient
 impl surgeist_css::CssLinearGradient
 pub const fn surgeist_css::CssLinearGradient::direction(&self) -> core::option::Option<&surgeist_css::CssLinearGradientDirection>
 pub const fn surgeist_css::CssLinearGradient::stops(&self) -> &surgeist_css::CssColorStopList
+impl surgeist_css::CssLinearGradient
+pub const fn surgeist_css::CssLinearGradient::new(direction: core::option::Option<surgeist_css::CssLinearGradientDirection>, stops: surgeist_css::CssColorStopList) -> Self
 pub struct surgeist_css::CssListStyle
 impl surgeist_css::CssListStyle
 pub const fn surgeist_css::CssListStyle::image(&self) -> core::option::Option<&surgeist_css::CssListStyleImage>
@@ -7785,6 +7793,7 @@ pub const fn surgeist_css::CssPositionPropertyValue::current(&self) -> &surgeist
 pub struct surgeist_css::CssPositionValue
 impl surgeist_css::CssPositionValue
 pub const fn surgeist_css::CssPositionValue::horizontal(&self) -> &surgeist_css::CssHorizontalPosition
+pub fn surgeist_css::CssPositionValue::try_new(horizontal: surgeist_css::CssHorizontalPosition, vertical: surgeist_css::CssVerticalPosition) -> core::option::Option<Self>
 pub const fn surgeist_css::CssPositionValue::vertical(&self) -> &surgeist_css::CssVerticalPosition
 pub struct surgeist_css::CssPositiveInteger
 impl surgeist_css::CssPositiveInteger
@@ -7909,6 +7918,8 @@ pub const fn surgeist_css::CssRadialGradient::position(&self) -> core::option::O
 pub const fn surgeist_css::CssRadialGradient::shape(&self) -> core::option::Option<surgeist_css::CssRadialShape>
 pub const fn surgeist_css::CssRadialGradient::size(&self) -> core::option::Option<&surgeist_css::CssRadialSize>
 pub const fn surgeist_css::CssRadialGradient::stops(&self) -> &surgeist_css::CssColorStopList
+impl surgeist_css::CssRadialGradient
+pub fn surgeist_css::CssRadialGradient::try_new(shape: core::option::Option<surgeist_css::CssRadialShape>, size: core::option::Option<surgeist_css::CssRadialSize>, position: core::option::Option<surgeist_css::CssPositionValue>, stops: surgeist_css::CssColorStopList) -> core::option::Option<Self>
 pub struct surgeist_css::CssRangeFeature<T>
 impl<T> surgeist_css::CssRangeFeature<T>
 pub const fn surgeist_css::CssRangeFeature<T>::comparison(&self) -> core::option::Option<surgeist_css::CssQueryComparison>

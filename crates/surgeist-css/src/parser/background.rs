@@ -1023,7 +1023,13 @@ fn parse_radial_gradient<'i, 't>(
     };
     let (shape, size, position) = prelude.unwrap_or((None, None, None));
     let stops = parse_color_stop_list(input, numeric)?;
-    Ok(CssRadialGradient::new(shape, size, position, stops))
+    CssRadialGradient::try_new(shape, size, position, stops).ok_or_else(|| {
+        unsupported_value(
+            input,
+            None,
+            "radial-gradient shape and size are incompatible",
+        )
+    })
 }
 
 fn next_starts_radial_prelude<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
@@ -1178,8 +1184,8 @@ fn validate_radial_size<'i>(
     match size {
         ParsedRadialSize::Extent(extent) => Ok(CssRadialSize::Extent(extent)),
         ParsedRadialSize::Explicit { values, location } => match values.as_slice() {
-            [radius] if shape != Some(CssRadialShape::Ellipse) => {
-                CssRadialCircleSize::try_new(radius.clone())
+            [radius] => {
+                let size = CssRadialCircleSize::try_new(radius.clone())
                     .map(CssRadialSize::Circle)
                     .ok_or_else(|| {
                         unsupported_value_at(
@@ -1187,10 +1193,19 @@ fn validate_radial_size<'i>(
                             None,
                             "radial-gradient circle size requires a non-negative length",
                         )
+                    })?;
+                CssRadialGradient::allows_shape_size(shape, Some(&size))
+                    .then_some(size)
+                    .ok_or_else(|| {
+                        unsupported_value_at(
+                            location,
+                            None,
+                            "ellipse radial-gradient requires two explicit radii",
+                        )
                     })
             }
-            [horizontal, vertical] if shape != Some(CssRadialShape::Circle) => {
-                CssRadialEllipseSize::try_new(horizontal.clone(), vertical.clone())
+            [horizontal, vertical] => {
+                let size = CssRadialEllipseSize::try_new(horizontal.clone(), vertical.clone())
                     .map(CssRadialSize::Ellipse)
                     .ok_or_else(|| {
                         unsupported_value_at(
@@ -1198,18 +1213,17 @@ fn validate_radial_size<'i>(
                             None,
                             "radial-gradient ellipse size requires two non-negative length-percentages",
                         )
+                    })?;
+                CssRadialGradient::allows_shape_size(shape, Some(&size))
+                    .then_some(size)
+                    .ok_or_else(|| {
+                        unsupported_value_at(
+                            location,
+                            None,
+                            "circle radial-gradient requires one explicit radius",
+                        )
                     })
             }
-            [_] => Err(unsupported_value_at(
-                location,
-                None,
-                "ellipse radial-gradient requires two explicit radii",
-            )),
-            [_, _] => Err(unsupported_value_at(
-                location,
-                None,
-                "circle radial-gradient requires one explicit radius",
-            )),
             _ => Err(unsupported_value_at(
                 location,
                 None,

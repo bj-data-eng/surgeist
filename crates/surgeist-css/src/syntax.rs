@@ -8320,21 +8320,14 @@ impl CssGradientLinePosition {
 /// One authored color stop in a gradient color-stop list.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssGradientColorStop {
-    color: CssParsedColor,
+    color: CssAuthoredColor,
     position: Option<CssGradientLinePosition>,
 }
 
 impl CssGradientColorStop {
-    pub(crate) const fn new(
-        color: CssParsedColor,
-        position: Option<CssGradientLinePosition>,
-    ) -> Self {
-        Self { color, position }
-    }
-
     #[must_use]
     pub const fn color(&self) -> &CssAuthoredColor {
-        self.color.current()
+        &self.color
     }
 
     #[must_use]
@@ -8389,13 +8382,6 @@ pub struct CssLinearGradient {
 }
 
 impl CssLinearGradient {
-    pub(crate) const fn new(
-        direction: Option<CssLinearGradientDirection>,
-        stops: CssColorStopList,
-    ) -> Self {
-        Self { direction, stops }
-    }
-
     #[must_use]
     pub const fn direction(&self) -> Option<&CssLinearGradientDirection> {
         self.direction.as_ref()
@@ -8506,20 +8492,6 @@ pub struct CssRadialGradient {
 }
 
 impl CssRadialGradient {
-    pub(crate) const fn new(
-        shape: Option<CssRadialShape>,
-        size: Option<CssRadialSize>,
-        position: Option<CssPositionValue>,
-        stops: CssColorStopList,
-    ) -> Self {
-        Self {
-            shape,
-            size,
-            position,
-            stops,
-        }
-    }
-
     #[must_use]
     pub const fn shape(&self) -> Option<CssRadialShape> {
         self.shape
@@ -8619,10 +8591,10 @@ pub enum CssVerticalPosition {
     BottomOffset(CssPositionOffset),
 }
 
-/// A parser-produced authored generic CSS `<position>`.
+/// A checked authored generic CSS `<position>`.
 ///
 /// Both axes are explicit in this model, including axes omitted and therefore centered by the
-/// grammar. Construction is parser-owned so invalid cross-axis combinations cannot be forged.
+/// grammar. Paired edge offsets are valid; a lone edge offset is not.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssPositionValue {
     horizontal: CssHorizontalPosition,
@@ -8630,15 +8602,28 @@ pub struct CssPositionValue {
 }
 
 impl CssPositionValue {
+    /// Constructs the generic position when both axes use edge offsets or neither does.
+    /// Background's separate three-component position grammar is not admitted here.
     #[must_use]
-    pub(crate) const fn new(
+    pub fn try_new(
         horizontal: CssHorizontalPosition,
         vertical: CssVerticalPosition,
-    ) -> Self {
-        Self {
+    ) -> Option<Self> {
+        let horizontal_edge = matches!(
+            horizontal,
+            CssHorizontalPosition::LeftOffset(_) | CssHorizontalPosition::RightOffset(_)
+        );
+        let vertical_edge = matches!(
+            vertical,
+            CssVerticalPosition::TopOffset(_) | CssVerticalPosition::BottomOffset(_)
+        );
+        if horizontal_edge != vertical_edge {
+            return None;
+        }
+        Some(Self {
             horizontal,
             vertical,
-        }
+        })
     }
 
     /// Returns the authored horizontal position, including its offset origin.
@@ -8653,6 +8638,9 @@ impl CssPositionValue {
         &self.vertical
     }
 }
+
+mod images;
+pub use images::CssImage;
 
 /// One parser-produced authored layer of `background-position`.
 ///

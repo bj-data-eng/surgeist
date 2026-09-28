@@ -2325,6 +2325,17 @@ URLs, and typed linear, radial, and repeating gradients. Border-image values
 preserve their source, slice, width, outset, and repeat components without
 loading an image or resolving any geometry.
 
+`CssImage::try_new` checks the image-only grammar and rejects the property
+keyword `CssImageValue::None`; its borrowed `value()` retains a URL or gradient.
+Programmatic gradients use `CssGradientColorStop::from_color`, checked
+`CssColorStopList::try_new`, and `CssLinearGradient::new` or
+`CssRadialGradient::try_new`. The radial constructor rejects incompatible
+explicit radius forms, permits omitted size and extents, and preserves authored
+omissions. `CssPositionValue::try_new` checks the generic
+position grammar: explicit edge offsets occur on both axes or neither. These
+constructors retain authored symbolic values; they do not serialize images or
+resolve colors, percentages, URLs, or positions.
+
 ```rust
 use surgeist_css::{
     CssGradient, CssImageValue, CssKnownPropertyValueRef, CssSupportStatus,

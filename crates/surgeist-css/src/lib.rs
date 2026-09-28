@@ -200,9 +200,9 @@
 //! assert!(CssPositionOffset::try_new(CssLength::Auto).is_none());
 //! ```
 //!
-//! [`CssPositionValue`] is parser-produced with private fields. Its borrowed horizontal and
-//! vertical views make omitted centered axes and authored edge origins explicit without allowing
-//! callers to forge an invalid cross-axis combination. `object-position` and every
+//! [`CssPositionValue::try_new`] checks the generic position's cross-axis pairing of edge
+//! offsets. Its borrowed horizontal and vertical views make omitted centered axes and authored
+//! edge origins explicit. `object-position` and every
 //! `mask-position` layer use this exact generic grammar. `background-position` instead exposes a
 //! nonempty [`CssBackgroundPositionList`] whose layers also admit the background-only
 //! three-component form. `transform-origin` exposes the directed 2D split plus an optional checked

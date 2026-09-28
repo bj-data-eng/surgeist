@@ -469,10 +469,8 @@ fn build_generic_position(
         _ => return None,
     };
 
-    Some((
-        CssPositionValue::new(horizontal, vertical),
-        CssPosition::new(components),
-    ))
+    CssPositionValue::try_new(horizontal, vertical)
+        .map(|value| (value, CssPosition::new(components)))
 }
 
 fn invalid_background_atom_index(atoms: &[GenericPositionAtom]) -> usize {
