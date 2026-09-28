@@ -1047,7 +1047,7 @@ use surgeist_css::{
 let report = parse_style_attribute(concat!(
     "background-position: left 10px top; ",
     "object-position: right 5% bottom 2px; ",
-    "transform-origin: top 50px",
+    "transform-origin: left top 50px",
 ));
 assert!(report.is_clean());
 
@@ -1079,6 +1079,18 @@ assert!(matches!(
     Some(CssLength::Px(value)) if value.value() == 50.0
 ));
 ```
+
+For `transform-origin`, one planar token or a valid planar pair is accepted;
+an authored Z length requires the pair. `left 50px` is a planar pair with no Z,
+and `left top 50px` has a Z length. The selected parser rejects `top 50px`,
+`bottom 0`, and their length-calculation equivalents. This follows the pinned
+WebKit consumer at revision `73aa6c89e2cb77c46184a81aec944e4ab99d114d`
+(`CSSPropertyParserConsumer+Position.cpp` and `CSSPropertyParserCustom.h`) and
+the [Transforms 1 grammar](https://www.w3.org/TR/2019/CR-css-transforms-1-20190214/#transform-origin-property).
+[CSS Values 4 §8.3.1](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#position)
+explicitly gives the conflicting `top 50px` example as one planar value plus
+Z. The source discrepancy remains tracked separately from the selected
+operational behavior.
 
 The `background-position`, `mask-position`, and `transform-origin` wrappers keep
 `i01_subset()` as a frozen compatibility view. Every I01 value retains its exact

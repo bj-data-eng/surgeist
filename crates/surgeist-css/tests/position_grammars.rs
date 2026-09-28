@@ -142,8 +142,8 @@ fn deferred_background_position_preserves_three_component_legacy_projection() {
 }
 
 #[test]
-fn deferred_transform_origin_preserves_vertical_length_legacy_projection() {
-    let report = parse_style_attribute("transform-origin: top 10px");
+fn deferred_transform_origin_preserves_two_planar_plus_z_legacy_projection() {
+    let report = parse_style_attribute("transform-origin: left top 10px");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = report.syntax()[0]
         .known()
@@ -160,6 +160,7 @@ fn deferred_transform_origin_preserves_vertical_length_legacy_projection() {
     assert!(matches!(
         position.components(),
         [
+            CssPositionComponent::Horizontal(CssHorizontalPositionKeyword::Left),
             CssPositionComponent::Vertical(CssVerticalPositionKeyword::Top),
             CssPositionComponent::Length(CssLength::Px(length)),
         ] if length.value() == 10.0
@@ -249,10 +250,6 @@ fn transform_origin_accepts_every_directed_two_dimension_and_z_branch() {
         "50px top",
         "50px center",
         "50px 75%",
-        "top 50px",
-        "bottom 50px",
-        "top calc(1px * 2)",
-        "bottom calc(1px * 2)",
         "left calc(1px * 2)",
         "center calc(1px * 2)",
         "left top 50px",
@@ -293,11 +290,11 @@ fn transform_origin_exposes_the_directed_two_dimension_and_optional_z_split() {
     }
 
     for (value, vertical) in [
-        ("top 50px", CssVerticalPositionKeyword::Top),
-        ("bottom 50px", CssVerticalPositionKeyword::Bottom),
+        ("left top 50px", CssVerticalPositionKeyword::Top),
+        ("left bottom 50px", CssVerticalPositionKeyword::Bottom),
     ] {
         let origin = transform_origin(value);
-        assert!(matches!(origin.horizontal(), CssHorizontalPosition::Center));
+        assert!(matches!(origin.horizontal(), CssHorizontalPosition::Left));
         assert!(matches!(
             (origin.vertical(), vertical),
             (CssVerticalPosition::Top, CssVerticalPositionKeyword::Top)
@@ -324,7 +321,7 @@ fn transform_origin_exposes_the_directed_two_dimension_and_optional_z_split() {
     for value in ["left calc(1px * 2)", "center calc(1px * 2)"] {
         assert!(transform_origin(value).z().is_none(), "{value}");
     }
-    for value in ["top calc(1px * 2)", "bottom calc(1px * 2)"] {
+    for value in ["left top calc(1px * 2)", "left bottom calc(1px * 2)"] {
         assert!(matches!(
             transform_origin(value).z().map(CssTransformOriginZ::value),
             Some(CssLength::Calc(CssCalcLength::Typed(calculation)))

@@ -2674,7 +2674,7 @@ fn object_position_property_metadata_matches_current_accessor_behavior() {
 
 #[test]
 fn transform_origin_property_metadata_matches_directed_z_behavior() {
-    let report = parse_style_attribute("transform-origin: top 50px");
+    let report = parse_style_attribute("transform-origin: left top 50px");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = report.syntax()[0].known().expect("known transform-origin");
     assert_eq!(declaration.property(), CssKnownProperty::TransformOrigin);
@@ -2686,7 +2686,7 @@ fn transform_origin_property_metadata_matches_directed_z_behavior() {
     };
     assert!(matches!(
         value.origin().horizontal(),
-        CssHorizontalPosition::Center
+        CssHorizontalPosition::Left
     ));
     assert!(matches!(
         value.origin().vertical(),

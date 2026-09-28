@@ -101,7 +101,9 @@ pub(super) fn parse_transform_origin<'i, 't>(
         return Ok(CssTransformOrigin::new(position, None, legacy));
     }
 
-    if (2..=3).contains(&atoms.len()) {
+    // The selected transform-origin grammar requires two planar atoms before Z.
+    // A vertical keyword followed by a length is not reinterpreted as planar + Z.
+    if atoms.len() == 3 {
         let z_index = atoms.len() - 1;
         if let Some((position, _)) = build_generic_position(&atoms[..z_index]) {
             let z = transform_origin_z(&atoms[z_index])

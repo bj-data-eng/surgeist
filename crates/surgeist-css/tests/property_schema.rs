@@ -948,7 +948,7 @@ fn layered_position_wrappers_keep_current_global_and_substitution_branches_disti
 fn object_and_transform_origin_wrappers_keep_current_global_and_substitution_branches_distinct() {
     let report = parse_style_attribute(concat!(
         "object-position: left 10px bottom 20%; ",
-        "transform-origin: top 5px; ",
+        "transform-origin: left top 5px; ",
         "object-position: inherit; ",
         "object-position: var(--position); ",
         "transform-origin: var(--origin)",

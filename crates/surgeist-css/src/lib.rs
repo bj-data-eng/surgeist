@@ -218,7 +218,7 @@
 //!     "background-position: left 10px top; ",
 //!     "mask-position: right 5% bottom 2px; ",
 //!     "object-position: center 25%; ",
-//!     "transform-origin: top 50px",
+//!     "transform-origin: left top 50px",
 //! ));
 //! assert!(report.is_clean());
 //!
@@ -256,6 +256,12 @@
 //!     Some(CssLength::Px(value)) if value.value() == 50.0
 //! ));
 //! ```
+//!
+//! A vertical-only planar keyword followed by a length (`top 50px` or
+//! `bottom calc(1px * 2)`) is rejected. A planar pair may be followed by a
+//! checked Z length, as in `left top 50px`. This follows the selected pinned
+//! WebKit transform-origin consumer; CSS Values 4 gives a conflicting example
+//! for the two-token form, recorded in the reference guide.
 //!
 //! The `background-position`, `mask-position`, and `transform-origin` wrappers retain
 //! `i01_subset()` as a frozen compatibility view. Newly accepted current syntax returns `None`
