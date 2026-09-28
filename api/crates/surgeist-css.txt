@@ -4322,7 +4322,6 @@ pub struct surgeist_css::CssBackgroundAttachmentPropertyValue
 impl surgeist_css::CssBackgroundAttachmentPropertyValue
 pub fn surgeist_css::CssBackgroundAttachmentPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBackgroundAttachmentPropertyValue::attachments(&self) -> &surgeist_css::CssBackgroundAttachmentList
-pub const fn surgeist_css::CssBackgroundAttachmentPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssBackgroundAttachmentList>
 pub struct surgeist_css::CssBackgroundBlendModePropertyValue
 impl surgeist_css::CssBackgroundBlendModePropertyValue
 pub fn surgeist_css::CssBackgroundBlendModePropertyValue::as_css(&self) -> &str
@@ -4335,7 +4334,6 @@ pub struct surgeist_css::CssBackgroundClipPropertyValue
 impl surgeist_css::CssBackgroundClipPropertyValue
 pub fn surgeist_css::CssBackgroundClipPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBackgroundClipPropertyValue::boxes(&self) -> &surgeist_css::CssBackgroundBoxList
-pub const fn surgeist_css::CssBackgroundClipPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssBackgroundBox>
 pub struct surgeist_css::CssBackgroundColorPropertyValue
 impl surgeist_css::CssBackgroundColorPropertyValue
 pub fn surgeist_css::CssBackgroundColorPropertyValue::as_css(&self) -> &str
@@ -4358,7 +4356,6 @@ pub struct surgeist_css::CssBackgroundOriginPropertyValue
 impl surgeist_css::CssBackgroundOriginPropertyValue
 pub fn surgeist_css::CssBackgroundOriginPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBackgroundOriginPropertyValue::boxes(&self) -> &surgeist_css::CssBackgroundBoxList
-pub const fn surgeist_css::CssBackgroundOriginPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssBackgroundBox>
 pub struct surgeist_css::CssBackgroundPosition
 impl surgeist_css::CssBackgroundPosition
 pub const fn surgeist_css::CssBackgroundPosition::horizontal(&self) -> &surgeist_css::CssHorizontalPosition
@@ -4384,7 +4381,6 @@ pub fn surgeist_css::CssBackgroundRepeatList::try_new(repeats: alloc::vec::Vec<s
 pub struct surgeist_css::CssBackgroundRepeatPropertyValue
 impl surgeist_css::CssBackgroundRepeatPropertyValue
 pub fn surgeist_css::CssBackgroundRepeatPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBackgroundRepeatPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssBackgroundRepeatList>
 pub const fn surgeist_css::CssBackgroundRepeatPropertyValue::repeats(&self) -> &surgeist_css::CssBackgroundRepeatList
 pub struct surgeist_css::CssBackgroundSizeList
 impl surgeist_css::CssBackgroundSizeList
@@ -4393,7 +4389,6 @@ pub fn surgeist_css::CssBackgroundSizeList::try_new(sizes: alloc::vec::Vec<surge
 pub struct surgeist_css::CssBackgroundSizePropertyValue
 impl surgeist_css::CssBackgroundSizePropertyValue
 pub fn surgeist_css::CssBackgroundSizePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBackgroundSizePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssBackgroundSizeList>
 pub const fn surgeist_css::CssBackgroundSizePropertyValue::sizes(&self) -> &surgeist_css::CssBackgroundSizeList
 pub struct surgeist_css::CssBlendModeList
 impl surgeist_css::CssBlendModeList
@@ -7164,11 +7159,11 @@ pub const fn surgeist_css::CssMaskPropertyValue::value(&self) -> &surgeist_css::
 pub struct surgeist_css::CssMaskRepeatPropertyValue
 impl surgeist_css::CssMaskRepeatPropertyValue
 pub fn surgeist_css::CssMaskRepeatPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMaskRepeatPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssBackgroundRepeatList>
+pub const fn surgeist_css::CssMaskRepeatPropertyValue::repeats(&self) -> &surgeist_css::CssBackgroundRepeatList
 pub struct surgeist_css::CssMaskSizePropertyValue
 impl surgeist_css::CssMaskSizePropertyValue
 pub fn surgeist_css::CssMaskSizePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMaskSizePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssBackgroundSizeList>
+pub const fn surgeist_css::CssMaskSizePropertyValue::sizes(&self) -> &surgeist_css::CssBackgroundSizeList
 pub struct surgeist_css::CssMaxBlockSizePropertyValue
 impl surgeist_css::CssMaxBlockSizePropertyValue
 pub fn surgeist_css::CssMaxBlockSizePropertyValue::as_css(&self) -> &str

@@ -2739,6 +2739,100 @@ fn assert_known_property_value(
     };
     let migrated_authored = match (property, &value) {
         (
+            surgeist_css::CssKnownProperty::BackgroundSize,
+            surgeist_css::CssKnownPropertyValueRef::BackgroundSize(value),
+        ) => {
+            use surgeist_css::{CssBackgroundSize as Size, CssBackgroundSizeComponent as Part};
+            assert_eq!(authored.value, "cover, 10px auto");
+            assert!(matches!(value.sizes().sizes(), [
+                Size::Cover,
+                Size::Explicit {
+                    width: Part::Length(surgeist_css::CssLength::Px(length)),
+                    height: Some(Part::Auto),
+                },
+            ] if length.value() == 10.0));
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::MaskSize,
+            surgeist_css::CssKnownPropertyValueRef::MaskSize(value),
+        ) => {
+            assert_eq!(authored.value, "contain");
+            assert!(matches!(
+                value.sizes().sizes(),
+                [surgeist_css::CssBackgroundSize::Contain]
+            ));
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::BackgroundRepeat,
+            surgeist_css::CssKnownPropertyValueRef::BackgroundRepeat(value),
+        ) => {
+            use surgeist_css::{CssBackgroundRepeat as Repeat, CssBackgroundRepeatStyle as Style};
+            assert_eq!(authored.value, "repeat-x, no-repeat round");
+            assert!(matches!(
+                value.repeats().repeats(),
+                [
+                    Repeat::RepeatX,
+                    Repeat::Axes {
+                        x: Style::NoRepeat,
+                        y: Style::Round
+                    },
+                ]
+            ));
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::MaskRepeat,
+            surgeist_css::CssKnownPropertyValueRef::MaskRepeat(value),
+        ) => {
+            assert_eq!(authored.value, "repeat");
+            assert!(matches!(
+                value.repeats().repeats(),
+                [surgeist_css::CssBackgroundRepeat::Axes {
+                    x: surgeist_css::CssBackgroundRepeatStyle::Repeat,
+                    y: surgeist_css::CssBackgroundRepeatStyle::Repeat,
+                },]
+            ));
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::BackgroundOrigin,
+            surgeist_css::CssKnownPropertyValueRef::BackgroundOrigin(value),
+        ) => {
+            assert_eq!(authored.value, "content-box");
+            assert_eq!(
+                value.boxes().boxes(),
+                [surgeist_css::CssBackgroundBox::ContentBox]
+            );
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::BackgroundClip,
+            surgeist_css::CssKnownPropertyValueRef::BackgroundClip(value),
+        ) => {
+            assert_eq!(authored.value, "padding-box");
+            assert_eq!(
+                value.boxes().boxes(),
+                [surgeist_css::CssBackgroundBox::PaddingBox]
+            );
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::BackgroundAttachment,
+            surgeist_css::CssKnownPropertyValueRef::BackgroundAttachment(value),
+        ) => {
+            assert_eq!(authored.value, "fixed, local");
+            assert_eq!(
+                value.attachments().attachments(),
+                [
+                    surgeist_css::CssBackgroundAttachment::Fixed,
+                    surgeist_css::CssBackgroundAttachment::Local,
+                ]
+            );
+            Some(value.as_css())
+        }
+        (
             surgeist_css::CssKnownProperty::Transform,
             surgeist_css::CssKnownPropertyValueRef::Transform(value),
         ) => {
@@ -4423,11 +4517,6 @@ fn assert_known_property_value(
             BorderBottomWidth,
             BorderLeftWidth,
             BackgroundImage,
-            BackgroundSize,
-            BackgroundRepeat,
-            BackgroundOrigin,
-            BackgroundClip,
-            BackgroundAttachment,
             BorderStyle,
             BorderTopStyle,
             BorderRightStyle,
@@ -4456,8 +4545,6 @@ fn assert_known_property_value(
             Rotate,
             Scale,
             MaskImage,
-            MaskSize,
-            MaskRepeat,
     );
 }
 fn global_keyword_css(keyword: surgeist_css::CssGlobalKeyword) -> &'static str {

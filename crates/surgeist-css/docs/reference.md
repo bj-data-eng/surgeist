@@ -2414,6 +2414,14 @@ URLs, and typed linear, radial, and repeating gradients. Border-image values
 preserve their source, slice, width, outset, and repeat components without
 loading an image or resolving any geometry.
 
+The `background-size` and `mask-size` wrappers expose their ordered
+`CssBackgroundSizeList` through `sizes()`; `background-repeat` and `mask-repeat`
+expose `CssBackgroundRepeatList` through `repeats()`. `background-origin` and
+`background-clip` expose the full `CssBackgroundBoxList` through `boxes()`, and
+`background-attachment` exposes its ordered list through `attachments()`.
+These are the authored semantic values, including symbolic size calculations;
+global keywords and substitution-dependent declarations remain separate branches.
+
 `CssImage::try_new` checks the image-only grammar and rejects the property
 keyword `CssImageValue::None`; its borrowed `value()` retains a URL or gradient.
 Programmatic gradients use `CssGradientColorStop::from_color`, checked

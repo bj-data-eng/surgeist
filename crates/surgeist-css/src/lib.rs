@@ -855,6 +855,9 @@
 //! Background and image values preserve authored layer, image, gradient, stop,
 //! border-image, and object-sizing structure. They do not resolve URLs, load or
 //! decode images, compute geometry, or paint.
+//! Background and mask size/repeat longhands expose ordered semantic lists through
+//! `sizes()` and `repeats()`; background origin/clip expose all authored boxes
+//! through `boxes()`, and background attachment exposes `attachments()`.
 //!
 //! ```
 //! use surgeist_css::{

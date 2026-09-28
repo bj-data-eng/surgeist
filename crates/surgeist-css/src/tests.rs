@@ -115,10 +115,25 @@ macro_rules! declaration_value {
         semantic_value!($input, Mask)
     };
     ($input:expr, BackgroundPosition) => {
-        position_value!($input, BackgroundPosition, positions)
+        semantic_accessor_value!($input, BackgroundPosition, positions)
+    };
+    ($input:expr, BackgroundSize) => {
+        semantic_accessor_value!($input, BackgroundSize, sizes)
+    };
+    ($input:expr, BackgroundRepeat) => {
+        semantic_accessor_value!($input, BackgroundRepeat, repeats)
+    };
+    ($input:expr, BackgroundOrigin) => {
+        semantic_accessor_value!($input, BackgroundOrigin, boxes)
+    };
+    ($input:expr, BackgroundClip) => {
+        semantic_accessor_value!($input, BackgroundClip, boxes)
+    };
+    ($input:expr, BackgroundAttachment) => {
+        semantic_accessor_value!($input, BackgroundAttachment, attachments)
     };
     ($input:expr, TransformOrigin) => {
-        position_value!($input, TransformOrigin, origin)
+        semantic_accessor_value!($input, TransformOrigin, origin)
     };
     ($input:expr, $variant:ident) => {{
         let declaration = declaration($input, CssProperty::$variant);
@@ -133,15 +148,15 @@ macro_rules! declaration_value {
     }};
 }
 
-macro_rules! position_value {
+macro_rules! semantic_accessor_value {
     ($input:expr, $variant:ident, $accessor:ident) => {{
         let declaration = declaration($input, CssProperty::$variant);
         let CssKnownPropertyValueRef::$variant(value) = declaration
             .known()
             .and_then(|known| known.property_value())
-            .expect("ordinary position value")
+            .expect("ordinary semantic value")
         else {
-            panic!("position wrapper did not match requested property");
+            panic!("semantic wrapper did not match requested property");
         };
         value.$accessor().clone()
     }};
@@ -8919,11 +8934,11 @@ fn parses_background_properties_as_authored_syntax() {
             ".panel { background-origin: content-box; }",
             BackgroundOrigin
         ),
-        CssBackgroundBox::ContentBox
+        CssBackgroundBoxList::try_new(vec![CssBackgroundBox::ContentBox]).unwrap()
     );
     assert_eq!(
         declaration_value!(".panel { background-clip: padding-box; }", BackgroundClip),
-        CssBackgroundBox::PaddingBox
+        CssBackgroundBoxList::try_new(vec![CssBackgroundBox::PaddingBox]).unwrap()
     );
     assert_eq!(
         declaration_value!(

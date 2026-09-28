@@ -1,9 +1,9 @@
 use surgeist_css::{
     CssBackgroundAttachment, CssBackgroundBox, CssBackgroundBoxList, CssBackgroundLayerBoxes,
     CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize, CssBackgroundSizeComponent,
-    CssErrorCode, CssGlobalKeyword, CssHorizontalPosition, CssImageValue, CssKnownDeclaredValueRef,
-    CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssRecoveryAction, CssVerticalPosition,
-    ErrorKind, parse_style_attribute,
+    CssCalcLength, CssErrorCode, CssGlobalKeyword, CssHorizontalPosition, CssImageValue,
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
+    CssRecoveryAction, CssVerticalPosition, ErrorKind, parse_style_attribute,
 };
 
 #[test]
@@ -93,7 +93,7 @@ fn c13_background_layers_retain_typed_structure() {
 }
 
 #[test]
-fn background_longhands_preserve_comma_lists_and_current_accessors() {
+fn background_longhands_preserve_ordered_semantic_lists() {
     assert!(CssBackgroundBoxList::try_new(Vec::new()).is_none());
 
     let report = parse_style_attribute(concat!(
@@ -148,14 +148,27 @@ fn background_longhands_preserve_comma_lists_and_current_accessors() {
     let CssKnownPropertyValueRef::BackgroundSize(sizes) = values[2] else {
         panic!("expected background-size");
     };
-    assert_eq!(sizes.sizes().sizes().len(), 2);
-    assert!(sizes.i01_subset().is_some());
+    assert!(matches!(sizes.sizes().sizes(), [
+        CssBackgroundSize::Cover,
+        CssBackgroundSize::Explicit {
+            width: CssBackgroundSizeComponent::Length(CssLength::Px(length)),
+            height: Some(CssBackgroundSizeComponent::Auto),
+        },
+    ] if length.value() == 10.0));
 
     let CssKnownPropertyValueRef::BackgroundRepeat(repeats) = values[3] else {
         panic!("expected background-repeat");
     };
-    assert_eq!(repeats.repeats().repeats().len(), 2);
-    assert!(repeats.i01_subset().is_some());
+    assert!(matches!(
+        repeats.repeats().repeats(),
+        [
+            CssBackgroundRepeat::RepeatX,
+            CssBackgroundRepeat::Axes {
+                x: CssBackgroundRepeatStyle::NoRepeat,
+                y: CssBackgroundRepeatStyle::Round,
+            },
+        ]
+    ));
 
     let CssKnownPropertyValueRef::BackgroundOrigin(origin) = values[4] else {
         panic!("expected background-origin");
@@ -164,13 +177,11 @@ fn background_longhands_preserve_comma_lists_and_current_accessors() {
         origin.boxes().boxes(),
         [CssBackgroundBox::BorderBox, CssBackgroundBox::ContentBox]
     );
-    assert!(origin.i01_subset().is_none());
 
     let CssKnownPropertyValueRef::BackgroundClip(clip) = values[5] else {
         panic!("expected background-clip");
     };
     assert_eq!(clip.boxes().boxes(), [CssBackgroundBox::PaddingBox]);
-    assert_eq!(clip.i01_subset(), Some(&CssBackgroundBox::PaddingBox));
 
     let CssKnownPropertyValueRef::BackgroundAttachment(attachments) = values[6] else {
         panic!("expected background-attachment");
@@ -182,7 +193,57 @@ fn background_longhands_preserve_comma_lists_and_current_accessors() {
             CssBackgroundAttachment::Local,
         ]
     );
-    assert!(attachments.i01_subset().is_some());
+}
+
+#[test]
+fn mask_size_and_repeat_expose_ordered_symbolic_lists() {
+    let report = parse_style_attribute(concat!(
+        "mask-size: cover, calc(10% + 2px) auto; ",
+        "mask-repeat: repeat-x, no-repeat round; ",
+        "mask-size: inherit; mask-repeat: var(--repeat)",
+    ));
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    let CssKnownDeclaredValueRef::Property(CssKnownPropertyValueRef::MaskSize(sizes)) =
+        report.syntax()[0].known().unwrap().declared_value()
+    else {
+        panic!("ordinary mask-size list");
+    };
+    let [
+        CssBackgroundSize::Cover,
+        CssBackgroundSize::Explicit { width, height },
+    ] = sizes.sizes().sizes()
+    else {
+        panic!("ordered cover and symbolic explicit mask sizes");
+    };
+    assert!(
+        matches!(width, CssBackgroundSizeComponent::Length(CssLength::Calc(CssCalcLength::Typed(calc)))
+        if calc.components().serialize().unwrap().as_css() == "calc(10% + 2px)")
+    );
+    assert!(matches!(height, Some(CssBackgroundSizeComponent::Auto)));
+
+    let CssKnownDeclaredValueRef::Property(CssKnownPropertyValueRef::MaskRepeat(repeats)) =
+        report.syntax()[1].known().unwrap().declared_value()
+    else {
+        panic!("ordinary mask-repeat list");
+    };
+    assert!(matches!(
+        repeats.repeats().repeats(),
+        [
+            CssBackgroundRepeat::RepeatX,
+            CssBackgroundRepeat::Axes {
+                x: CssBackgroundRepeatStyle::NoRepeat,
+                y: CssBackgroundRepeatStyle::Round,
+            },
+        ]
+    ));
+    assert!(matches!(
+        report.syntax()[2].known().unwrap().declared_value(),
+        CssKnownDeclaredValueRef::Global(CssGlobalKeyword::Inherit)
+    ));
+    assert!(matches!(
+        report.syntax()[3].known().unwrap().declared_value(),
+        CssKnownDeclaredValueRef::SubstitutionDependent(_)
+    ));
 }
 
 #[test]

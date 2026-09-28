@@ -292,8 +292,8 @@ macro_rules! property_schema {
             ObjectPosition, "object-position", [], "official.property.object-position", CssPosition, CssObjectPositionPropertyValue, CssObjectPositionPropertyValueRepresentation, parse_object_position, { parse_object_position($input, $numeric)? };
             BackgroundSize, "background-size", [], "baseline.property.background-size", CssBackgroundSizeList, CssBackgroundSizePropertyValue, CssBackgroundSizePropertyValueRepresentation, parse_background_size_list, { parse_background_size_list($input, $numeric)? };
             BackgroundRepeat, "background-repeat", [], "baseline.property.background-repeat", CssBackgroundRepeatList, CssBackgroundRepeatPropertyValue, CssBackgroundRepeatPropertyValueRepresentation, parse_background_repeat_list, { parse_background_repeat_list($input)? };
-            BackgroundOrigin, "background-origin", [], "baseline.property.background-origin", CssBackgroundBox, CssBackgroundOriginPropertyValue, CssBackgroundOriginPropertyValueRepresentation, parse_background_box_list, { parse_background_box_list($input)? };
-            BackgroundClip, "background-clip", [], "baseline.property.background-clip", CssBackgroundBox, CssBackgroundClipPropertyValue, CssBackgroundClipPropertyValueRepresentation, parse_background_box_list, { parse_background_box_list($input)? };
+            BackgroundOrigin, "background-origin", [], "baseline.property.background-origin", CssBackgroundBoxList, CssBackgroundOriginPropertyValue, CssBackgroundOriginPropertyValueRepresentation, parse_background_box_list, { parse_background_box_list($input)? };
+            BackgroundClip, "background-clip", [], "baseline.property.background-clip", CssBackgroundBoxList, CssBackgroundClipPropertyValue, CssBackgroundClipPropertyValueRepresentation, parse_background_box_list, { parse_background_box_list($input)? };
             BackgroundAttachment, "background-attachment", [], "baseline.property.background-attachment", CssBackgroundAttachmentList, CssBackgroundAttachmentPropertyValue, CssBackgroundAttachmentPropertyValueRepresentation, parse_background_attachment_list, { parse_background_attachment_list($input)? };
             BorderImage, "border-image", [], "official.property.border-image", CssBorderImage, CssBorderImagePropertyValue, CssBorderImagePropertyValueRepresentation, parse_border_image, { parse_border_image($input, $numeric)? };
             BorderImageOutset, "border-image-outset", [], "official.property.border-image-outset", CssBorderImageOutset, CssBorderImageOutsetPropertyValue, CssBorderImageOutsetPropertyValueRepresentation, parse_border_image_outset, { parse_border_image_outset($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssBorderImageOutset, accessor: outsets, inherited: false, initial_kind: value, initial: CssBorderImageOutset::try_new(vec![CssBorderImageOutsetComponent::Number(CssNonNegativeNumber::try_new(0.0).expect("0 is non-negative"))]).expect("one outset component is valid") };
@@ -578,17 +578,6 @@ fn flex_i01_projection(value: &CssFlexValue) -> Option<CssFlex> {
             ))
         }
     }
-}
-
-fn background_box_list_i01_projection(value: &CssBackgroundBoxList) -> Option<CssBackgroundBox> {
-    match value.boxes() {
-        [value] => Some(*value),
-        _ => None,
-    }
-}
-
-fn exact_i01_projection<T: Clone>(value: &T) -> Option<T> {
-    Some(value.clone())
 }
 
 macro_rules! define_current_property_value {
@@ -2173,70 +2162,78 @@ macro_rules! define_property_value {
         BackgroundSize, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
             CssBackgroundSizeList,
-            CssBackgroundSizeList,
-            sizes,
-            exact_i01_projection
+            sizes
         );
     };
     (
         BackgroundRepeat, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
             CssBackgroundRepeatList,
+            repeats
+        );
+    };
+    (MaskSize, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_semantic_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssBackgroundSizeList,
+            sizes
+        );
+    };
+    (MaskRepeat, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_semantic_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
             CssBackgroundRepeatList,
-            repeats,
-            exact_i01_projection
+            repeats
         );
     };
     (
         BackgroundOrigin, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
             CssBackgroundBoxList,
-            CssBackgroundBox,
-            boxes,
-            background_box_list_i01_projection
+            boxes
         );
     };
     (
         BackgroundClip, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
             CssBackgroundBoxList,
-            CssBackgroundBox,
-            boxes,
-            background_box_list_i01_projection
+            boxes
         );
     };
     (
         BackgroundAttachment, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
             CssBackgroundAttachmentList,
-            CssBackgroundAttachmentList,
-            attachments,
-            exact_i01_projection
+            attachments
         );
     };
     (
