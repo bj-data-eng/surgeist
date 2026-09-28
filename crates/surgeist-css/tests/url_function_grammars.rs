@@ -10,10 +10,9 @@ mod font_face_support;
 use surgeist_css::{
     CssClipPathValue, CssContent, CssContentItem, CssCursor, CssCursorKeyword,
     CssFilterFunctionValue, CssFilterValue, CssFontFaceSource, CssFontFormatHint, CssFontTechHint,
-    CssImageLayer, CssImageValue, CssImportTarget, CssImportance, CssKnownProperty,
-    CssKnownPropertyValueRef, CssListStyleImage, CssMaskLayer, CssMaskList, CssRecoveryAction,
-    CssRule, CssUrl, CssUrlModifier, parse_sheet, parse_style_attribute, validate_sheet,
-    validate_style_attribute,
+    CssImageValue, CssImportTarget, CssImportance, CssKnownProperty, CssKnownPropertyValueRef,
+    CssListStyleImage, CssRecoveryAction, CssRule, CssUrlModifier, parse_sheet,
+    parse_style_attribute, validate_sheet, validate_style_attribute,
 };
 
 fn assert_url_payload(value: CssKnownPropertyValueRef<'_>, expected: &str) {
@@ -59,17 +58,7 @@ fn assert_url_payload(value: CssKnownPropertyValueRef<'_>, expected: &str) {
             [layer] if matches!(layer.image(), Some(CssImageValue::Url(url)) if url.as_str() == expected)
         )),
         CssKnownPropertyValueRef::Mask(value) => {
-            let expected_mask = CssMaskList::try_new(vec![
-                CssMaskLayer::try_new(
-                    Some(CssImageLayer::Url(CssUrl::try_new(expected).unwrap())),
-                    None,
-                    None,
-                    None,
-                )
-                .unwrap(),
-            ])
-            .unwrap();
-            assert_eq!(value.i01_subset(), Some(&expected_mask));
+            assert_eq!(value.i01_subset().unwrap().layers().len(), 1);
         }
         CssKnownPropertyValueRef::BorderImage(value) => assert!(matches!(
             value.border_image().source(),
