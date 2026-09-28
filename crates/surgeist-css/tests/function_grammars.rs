@@ -6,12 +6,11 @@ use surgeist_css::{
     CssFilterPropertyValue, CssFiniteNumber, CssHorizontalPosition, CssKnownDeclaredValueRef,
     CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssPolygonFillRule, CssRadialExtent,
     CssRecoveryAction, CssShapeLength, CssShapeLengthPercentage, CssStepCount, CssStepPosition,
-    CssSteps, CssTransform, CssTransformAngle, CssTransformFunctionKind, CssTransformFunctionValue,
-    CssTransformFunctionValueList, CssTransformLength, CssTransformLengthPercentage,
+    CssSteps, CssTransform, CssTransformAngle, CssTransformFunction, CssTransformFunctionKind,
+    CssTransformFunctionList, CssTransformLength, CssTransformLengthPercentage,
     CssTransformNonNegativeLength, CssTransformNumber, CssTransformPercentage,
     CssTransformPerspective, CssTransformPropertyValue, CssTransformScaleComponent,
-    CssTransformValue, CssTransitionTimingFunctionPropertyValue, CssVerticalPosition,
-    parse_style_attribute,
+    CssTransitionTimingFunctionPropertyValue, CssVerticalPosition, parse_style_attribute,
 };
 
 fn parsed_transform_property(value: &str) -> CssTransformPropertyValue {
@@ -935,31 +934,17 @@ fn easing_symbolic_math_preserves_the_exact_depth_boundary() {
     }
 }
 
-fn assert_function_sequence(value: &str, expected: &[(CssTransformFunctionKind, &str)]) {
+fn assert_function_sequence(value: &str, expected: &[CssTransformFunctionKind]) {
     let property = parsed_transform_property(value);
-    let CssTransform::Functions(functions) = property
-        .i01_subset()
-        .expect("transform compatibility projection")
-    else {
+    let CssTransform::Functions(functions) = property.value() else {
         panic!("expected transform function list");
     };
     let actual = functions
         .functions()
         .iter()
-        .map(|function| (function.kind(), function.arguments().as_css()))
+        .map(CssTransformFunction::kind)
         .collect::<Vec<_>>();
     assert_eq!(actual, expected);
-
-    let CssTransformValue::Functions(current) = property.current() else {
-        panic!("expected current transform function list");
-    };
-    let current_kinds = current
-        .functions()
-        .iter()
-        .map(CssTransformFunctionValue::kind)
-        .collect::<Vec<_>>();
-    let expected_kinds = expected.iter().map(|(kind, _)| *kind).collect::<Vec<_>>();
-    assert_eq!(current_kinds, expected_kinds);
 }
 
 #[test]
@@ -972,37 +957,60 @@ fn every_selected_two_dimensional_transform_function_preserves_authored_order() 
             "rotate(calc(1turn - 90deg)) skew(10deg, 0) skewX(.25turn) skewY(0)"
         ),
         &[
-            (CssTransformFunctionKind::Matrix, "1, 0, 0, 1, 10, 20"),
-            (CssTransformFunctionKind::Translate, "1px, 2%"),
-            (CssTransformFunctionKind::TranslateX, "calc(1px + 2%)"),
-            (CssTransformFunctionKind::TranslateY, "3em"),
-            (CssTransformFunctionKind::Scale, "1.5, calc(1 + 0.5)"),
-            (CssTransformFunctionKind::ScaleX, "calc(1 + 0.5)"),
-            (CssTransformFunctionKind::ScaleY, "0.75"),
-            (CssTransformFunctionKind::Rotate, "calc(1turn - 90deg)"),
-            (CssTransformFunctionKind::Skew, "10deg, 0"),
-            (CssTransformFunctionKind::SkewX, "0.25turn"),
-            (CssTransformFunctionKind::SkewY, "0"),
+            CssTransformFunctionKind::Matrix,
+            CssTransformFunctionKind::Translate,
+            CssTransformFunctionKind::TranslateX,
+            CssTransformFunctionKind::TranslateY,
+            CssTransformFunctionKind::Scale,
+            CssTransformFunctionKind::ScaleX,
+            CssTransformFunctionKind::ScaleY,
+            CssTransformFunctionKind::Rotate,
+            CssTransformFunctionKind::Skew,
+            CssTransformFunctionKind::SkewX,
+            CssTransformFunctionKind::SkewY,
         ],
     );
+    let property = parsed_transform_property(
+        "matrix(1, 0, 0, 1, 10, 20) translate(1px, 2%) scale(1.5, calc(1 + 0.5)) rotate(calc(1turn - 90deg))",
+    );
+    let CssTransform::Functions(functions) = property.value() else {
+        panic!("expected ordered typed transform functions");
+    };
+    assert!(matches!(
+        &functions.functions()[0],
+        CssTransformFunction::Matrix(matrix)
+            if matches!(matrix.components()[4], CssTransformNumber::Literal(value) if value.value() == 10.0)
+    ));
+    assert!(matches!(
+        &functions.functions()[1],
+        CssTransformFunction::Translate(translation)
+            if matches!(translation.x().value(), CssLength::Px(value) if value.value() == 1.0)
+                && matches!(translation.y().unwrap().value(), CssLength::Percent(value) if value.value() == 2.0)
+    ));
+    assert!(matches!(
+        &functions.functions()[2],
+        CssTransformFunction::Scale(scale)
+            if matches!(scale.y(), Some(CssTransformNumber::Calculation(_)))
+    ));
+    assert!(matches!(
+        functions.functions()[3],
+        CssTransformFunction::Rotate(CssTransformAngle::Calculation(_))
+    ));
 }
 
 #[test]
 fn transform_matrix3d_exposes_sixteen_finite_components() {
     assert_function_sequence(
         "matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1)",
-        &[(
-            (CssTransformFunctionKind::Matrix3d),
-            "1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1",
-        )],
+        &[CssTransformFunctionKind::Matrix3d],
     );
 
     let property =
         parsed_transform_property("matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1)");
-    let CssTransformValue::Functions(functions) = property.current() else {
-        panic!("expected current transform function list");
+    let CssTransform::Functions(functions) = property.value() else {
+        panic!("expected transform function list");
     };
-    let CssTransformFunctionValue::Matrix3d(matrix) = &functions.functions()[0] else {
+    let CssTransformFunction::Matrix3d(matrix) = &functions.functions()[0] else {
         panic!("expected typed matrix3d");
     };
     assert!(matches!(
@@ -1020,9 +1028,9 @@ fn transform_perspective_accepts_none_and_zero_and_rejects_invalid_dimensions() 
     assert_function_sequence(
         "perspective(none) perspective(0) perspective(12px)",
         &[
-            (CssTransformFunctionKind::Perspective, "none"),
-            (CssTransformFunctionKind::Perspective, "0"),
-            (CssTransformFunctionKind::Perspective, "12px"),
+            CssTransformFunctionKind::Perspective,
+            CssTransformFunctionKind::Perspective,
+            CssTransformFunctionKind::Perspective,
         ],
     );
 
@@ -1037,16 +1045,16 @@ fn transform_perspective_accepts_none_and_zero_and_rejects_invalid_dimensions() 
     }
 
     let property = parsed_transform_property("perspective(none) perspective(0)");
-    let CssTransformValue::Functions(functions) = property.current() else {
-        panic!("expected current transform function list");
+    let CssTransform::Functions(functions) = property.value() else {
+        panic!("expected transform function list");
     };
     assert!(matches!(
         functions.functions()[0],
-        CssTransformFunctionValue::Perspective(CssTransformPerspective::None)
+        CssTransformFunction::Perspective(CssTransformPerspective::None)
     ));
     assert!(matches!(
         &functions.functions()[1],
-        CssTransformFunctionValue::Perspective(CssTransformPerspective::Length(length))
+        CssTransformFunction::Perspective(CssTransformPerspective::Length(length))
             if matches!(length.value(), CssLength::Zero)
     ));
 }
@@ -1056,25 +1064,25 @@ fn transform_three_dimensional_rotations_are_typed() {
     assert_function_sequence(
         "rotate3d(1, 0, -1, 45deg) rotateX(10deg) rotateY(0) rotateZ(calc(1turn / 2))",
         &[
-            (CssTransformFunctionKind::Rotate3d, "1, 0, -1, 45deg"),
-            (CssTransformFunctionKind::RotateX, "10deg"),
-            (CssTransformFunctionKind::RotateY, "0"),
-            (CssTransformFunctionKind::RotateZ, "calc(1turn / 2)"),
+            CssTransformFunctionKind::Rotate3d,
+            CssTransformFunctionKind::RotateX,
+            CssTransformFunctionKind::RotateY,
+            CssTransformFunctionKind::RotateZ,
         ],
     );
 
     let property = parsed_transform_property("rotate3d(1, 0, -1, 45deg) rotateZ(calc(1turn / 2))");
-    let CssTransformValue::Functions(functions) = property.current() else {
-        panic!("expected current transform function list");
+    let CssTransform::Functions(functions) = property.value() else {
+        panic!("expected transform function list");
     };
-    let CssTransformFunctionValue::Rotate3d(rotation) = &functions.functions()[0] else {
+    let CssTransformFunction::Rotate3d(rotation) = &functions.functions()[0] else {
         panic!("expected typed rotate3d");
     };
     assert!(matches!(rotation.z(), CssTransformNumber::Literal(value) if value.value() == -1.0));
     assert!(matches!(rotation.angle(), CssTransformAngle::Literal(value) if value.value() == 45.0));
     assert!(matches!(
         functions.functions()[1],
-        CssTransformFunctionValue::RotateZ(CssTransformAngle::Calculation(_))
+        CssTransformFunction::RotateZ(CssTransformAngle::Calculation(_))
     ));
 }
 
@@ -1128,12 +1136,12 @@ fn transform_angles_reject_percentage_calculations_and_recover_siblings() {
     );
 
     let property = parsed_transform_property("rotate(calc(1turn - 90deg))");
-    let CssTransformValue::Functions(functions) = property.current() else {
-        panic!("expected current transform function list");
+    let CssTransform::Functions(functions) = property.value() else {
+        panic!("expected transform function list");
     };
     assert!(matches!(
         functions.functions()[0],
-        CssTransformFunctionValue::Rotate(CssTransformAngle::Calculation(_))
+        CssTransformFunction::Rotate(CssTransformAngle::Calculation(_))
     ));
 }
 
@@ -1142,18 +1150,18 @@ fn transform_three_dimensional_scales_preserve_number_and_percentage_operands() 
     assert_function_sequence(
         "scale3d(1, 50%, calc(1 + .5)) scaleZ(2) scaleZ(125%)",
         &[
-            (CssTransformFunctionKind::Scale3d, "1, 50%, calc(1 + 0.5)"),
-            (CssTransformFunctionKind::ScaleZ, "2"),
-            (CssTransformFunctionKind::ScaleZ, "125%"),
+            CssTransformFunctionKind::Scale3d,
+            CssTransformFunctionKind::ScaleZ,
+            CssTransformFunctionKind::ScaleZ,
         ],
     );
 
     let property =
         parsed_transform_property("scale3d(1, 50%, calc(1 + .5)) scaleZ(2) scaleZ(125%)");
-    let CssTransformValue::Functions(functions) = property.current() else {
-        panic!("expected current transform function list");
+    let CssTransform::Functions(functions) = property.value() else {
+        panic!("expected transform function list");
     };
-    let CssTransformFunctionValue::Scale3d(scale) = &functions.functions()[0] else {
+    let CssTransformFunction::Scale3d(scale) = &functions.functions()[0] else {
         panic!("expected typed scale3d");
     };
     assert!(matches!(
@@ -1172,13 +1180,13 @@ fn transform_three_dimensional_scales_preserve_number_and_percentage_operands() 
     ));
     assert!(matches!(
         functions.functions()[1],
-        CssTransformFunctionValue::ScaleZ(CssTransformScaleComponent::Number(
+        CssTransformFunction::ScaleZ(CssTransformScaleComponent::Number(
             CssTransformNumber::Literal(value)
         )) if value.value() == 2.0
     ));
     assert!(matches!(
         functions.functions()[2],
-        CssTransformFunctionValue::ScaleZ(CssTransformScaleComponent::Percentage(
+        CssTransformFunction::ScaleZ(CssTransformScaleComponent::Percentage(
             CssTransformPercentage::Literal(value)
         )) if value.value() == 125.0
     ));
@@ -1189,11 +1197,8 @@ fn transform_three_dimensional_translations_keep_z_length_only() {
     assert_function_sequence(
         "translate3d(10%, calc(2px + 3%), 4em) translateZ(calc(1px + 2em))",
         &[
-            (
-                CssTransformFunctionKind::Translate3d,
-                "10%, calc(2px + 3%), 4em",
-            ),
-            (CssTransformFunctionKind::TranslateZ, "calc(1px + 2em)"),
+            CssTransformFunctionKind::Translate3d,
+            CssTransformFunctionKind::TranslateZ,
         ],
     );
 
@@ -1202,10 +1207,10 @@ fn transform_three_dimensional_translations_keep_z_length_only() {
     }
 
     let property = parsed_transform_property("translate3d(10%, calc(2px + 3%), 4em)");
-    let CssTransformValue::Functions(functions) = property.current() else {
-        panic!("expected current transform function list");
+    let CssTransform::Functions(functions) = property.value() else {
+        panic!("expected transform function list");
     };
-    let CssTransformFunctionValue::Translate3d(translation) = &functions.functions()[0] else {
+    let CssTransformFunction::Translate3d(translation) = &functions.functions()[0] else {
         panic!("expected typed translate3d");
     };
     assert!(matches!(translation.x().value(), CssLength::Percent(value) if value.value() == 10.0));
@@ -1253,9 +1258,9 @@ fn transform_function_lists_reject_empty_unknown_and_trailing_mutations() {
     assert_function_sequence(
         "translateX(1px) rotate(2deg) scaleY(3)",
         &[
-            (CssTransformFunctionKind::TranslateX, "1px"),
-            (CssTransformFunctionKind::Rotate, "2deg"),
-            (CssTransformFunctionKind::ScaleY, "3"),
+            CssTransformFunctionKind::TranslateX,
+            CssTransformFunctionKind::Rotate,
+            CssTransformFunctionKind::ScaleY,
         ],
     );
 }
@@ -1273,7 +1278,7 @@ fn transform_checked_scalars_and_lists_reject_unrepresentable_states() {
         )
         .is_none()
     );
-    assert!(CssTransformFunctionValueList::try_new(Vec::new()).is_none());
+    assert!(CssTransformFunctionList::try_new(Vec::new()).is_none());
 }
 
 #[test]

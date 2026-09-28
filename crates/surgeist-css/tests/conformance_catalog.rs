@@ -7,11 +7,10 @@ use surgeist_css::{
     CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssLengthCalculation,
     CssLengthDimension, CssLengthUnit, CssNumberCalculation, CssPercentageCalculation,
     CssRecoveryAction, CssResolution, CssResolutionUnit, CssRule, CssSpecificationTier,
-    CssSupportStatus, CssSupportsConditionKind, CssTimeCalculation, CssTimeUnit,
-    CssTransformFunctionValue, CssTransformPerspective, CssTransformScaleComponent,
-    CssTransformValue, CssVerticalPosition, ErrorKind, conformance_exclusion,
-    conformance_exclusions, feature_metadata, parse_sheet, parse_style_attribute,
-    property_support_metadata, specification_source, specification_sources,
+    CssSupportStatus, CssSupportsConditionKind, CssTimeCalculation, CssTimeUnit, CssTransform,
+    CssTransformFunction, CssTransformPerspective, CssTransformScaleComponent, CssVerticalPosition,
+    ErrorKind, conformance_exclusion, conformance_exclusions, feature_metadata, parse_sheet,
+    parse_style_attribute, property_support_metadata, specification_source, specification_sources,
 };
 
 #[test]
@@ -4619,23 +4618,23 @@ fn official_two_dimensional_transform_metadata_matches_typed_functions() {
     else {
         panic!("expected transform value");
     };
-    let CssTransformValue::Functions(functions) = transform.current() else {
+    let CssTransform::Functions(functions) = transform.value() else {
         panic!("expected typed transform functions");
     };
     assert!(matches!(
         functions.functions(),
         [
-            CssTransformFunctionValue::Matrix(_),
-            CssTransformFunctionValue::Translate(_),
-            CssTransformFunctionValue::TranslateX(_),
-            CssTransformFunctionValue::TranslateY(_),
-            CssTransformFunctionValue::Scale(_),
-            CssTransformFunctionValue::ScaleX(_),
-            CssTransformFunctionValue::ScaleY(_),
-            CssTransformFunctionValue::Rotate(_),
-            CssTransformFunctionValue::Skew(_),
-            CssTransformFunctionValue::SkewX(_),
-            CssTransformFunctionValue::SkewY(_),
+            CssTransformFunction::Matrix(_),
+            CssTransformFunction::Translate(_),
+            CssTransformFunction::TranslateX(_),
+            CssTransformFunction::TranslateY(_),
+            CssTransformFunction::Scale(_),
+            CssTransformFunction::ScaleX(_),
+            CssTransformFunction::ScaleY(_),
+            CssTransformFunction::Rotate(_),
+            CssTransformFunction::Skew(_),
+            CssTransformFunction::SkewX(_),
+            CssTransformFunction::SkewY(_),
         ]
     ));
 
@@ -4733,10 +4732,10 @@ fn transform_matrix3d_exposes_sixteen_finite_components() {
     else {
         panic!("expected transform");
     };
-    let CssTransformValue::Functions(functions) = transform.current() else {
+    let CssTransform::Functions(functions) = transform.value() else {
         panic!("expected transform functions");
     };
-    let CssTransformFunctionValue::Matrix3d(matrix) = &functions.functions()[0] else {
+    let CssTransformFunction::Matrix3d(matrix) = &functions.functions()[0] else {
         panic!("expected matrix3d");
     };
     assert_eq!(matrix.components().len(), 16);
@@ -4760,16 +4759,16 @@ fn transform_perspective_accepts_none_and_zero_and_rejects_invalid_dimensions() 
     else {
         panic!("expected transform");
     };
-    let CssTransformValue::Functions(functions) = transform.current() else {
+    let CssTransform::Functions(functions) = transform.value() else {
         panic!("expected transform functions");
     };
     assert!(matches!(
         functions.functions()[0],
-        CssTransformFunctionValue::Perspective(CssTransformPerspective::None)
+        CssTransformFunction::Perspective(CssTransformPerspective::None)
     ));
     assert!(matches!(
         &functions.functions()[1],
-        CssTransformFunctionValue::Perspective(CssTransformPerspective::Length(length))
+        CssTransformFunction::Perspective(CssTransformPerspective::Length(length))
             if matches!(length.value(), CssLength::Zero)
     ));
     assert!(!parse_style_attribute("transform: perspective(10%)").is_clean());
@@ -4796,16 +4795,16 @@ fn transform_three_dimensional_rotations_are_typed() {
     else {
         panic!("expected transform");
     };
-    let CssTransformValue::Functions(functions) = transform.current() else {
+    let CssTransform::Functions(functions) = transform.value() else {
         panic!("expected transform functions");
     };
     assert!(matches!(
         functions.functions(),
         [
-            CssTransformFunctionValue::Rotate3d(_),
-            CssTransformFunctionValue::RotateX(_),
-            CssTransformFunctionValue::RotateY(_),
-            CssTransformFunctionValue::RotateZ(_),
+            CssTransformFunction::Rotate3d(_),
+            CssTransformFunction::RotateX(_),
+            CssTransformFunction::RotateY(_),
+            CssTransformFunction::RotateZ(_),
         ]
     ));
     assert_complete_function_metadata(
@@ -4846,10 +4845,10 @@ fn transform_three_dimensional_scales_preserve_number_and_percentage_operands() 
     else {
         panic!("expected transform");
     };
-    let CssTransformValue::Functions(functions) = transform.current() else {
+    let CssTransform::Functions(functions) = transform.value() else {
         panic!("expected transform functions");
     };
-    let CssTransformFunctionValue::Scale3d(scale) = &functions.functions()[0] else {
+    let CssTransformFunction::Scale3d(scale) = &functions.functions()[0] else {
         panic!("expected scale3d");
     };
     assert!(matches!(scale.x(), CssTransformScaleComponent::Number(_)));
@@ -4859,7 +4858,7 @@ fn transform_three_dimensional_scales_preserve_number_and_percentage_operands() 
     ));
     assert!(matches!(
         functions.functions()[1],
-        CssTransformFunctionValue::ScaleZ(CssTransformScaleComponent::Percentage(_))
+        CssTransformFunction::ScaleZ(CssTransformScaleComponent::Percentage(_))
     ));
     assert_complete_function_metadata(
         "ext.value.transform.scale3d",
@@ -4887,14 +4886,14 @@ fn transform_three_dimensional_translations_keep_z_length_only() {
     else {
         panic!("expected transform");
     };
-    let CssTransformValue::Functions(functions) = transform.current() else {
+    let CssTransform::Functions(functions) = transform.value() else {
         panic!("expected transform functions");
     };
     assert!(matches!(
         functions.functions(),
         [
-            CssTransformFunctionValue::Translate3d(_),
-            CssTransformFunctionValue::TranslateZ(_),
+            CssTransformFunction::Translate3d(_),
+            CssTransformFunction::TranslateZ(_),
         ]
     ));
     assert!(!parse_style_attribute("transform: translate3d(1px, 2px, 3%)").is_clean());
@@ -5318,7 +5317,7 @@ fn completed_function_property_metadata_matches_public_current_accessors() {
             .property_value()
             .unwrap(),
         CssKnownPropertyValueRef::Transform(value)
-            if matches!(value.current(), CssTransformValue::Functions(_))
+            if matches!(value.value(), CssTransform::Functions(_))
     ));
     assert!(matches!(
         report.syntax()[1]

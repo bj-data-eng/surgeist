@@ -257,8 +257,9 @@
 //! ));
 //! ```
 //!
-//! The background, mask, and transform wrappers retain `i01_subset()` as a frozen compatibility
-//! view. Newly accepted current syntax returns `None` when it cannot be represented without loss;
+//! The `background-position`, `mask-position`, and `transform-origin` wrappers retain
+//! `i01_subset()` as a frozen compatibility view. Newly accepted current syntax returns `None`
+//! when it cannot be represented without loss;
 //! `object-position` is additive and has no I01 projection. Function-specific position grammars,
 //! cascade, substitution, contextual resolution, layout, painting, transforms, and cross-crate
 //! lowering remain outside this surface.
@@ -267,14 +268,14 @@
 //!
 //! Property accessors expose dedicated typed function families. Timing-function
 //! wrappers expose the sole [`CssEasingList`] through `timing_functions()`.
-//! Transform wrappers return [`CssTransformValue`], filter and backdrop-filter
-//! wrappers return [`CssFilter`], box-shadow returns [`CssBoxShadow`], and
-//! clip-path returns an optional [`CssClipPathValue`]. The transform and clip-path families retain their documented projections.
+//! Transform wrappers expose the sole [`CssTransform`] through `value()`; filter and
+//! backdrop-filter wrappers return [`CssFilter`], box-shadow returns [`CssBoxShadow`], and
+//! clip-path returns an optional [`CssClipPathValue`]. Clip-path retains its documented projection.
 //!
 //! ```
 //! use surgeist_css::{
 //!     CssBasicShapeValue, CssClipPathValue, CssFilterFunction, CssFilter,
-//!     CssKnownPropertyValueRef, CssTransformFunctionValue, CssTransformValue,
+//!     CssKnownPropertyValueRef, CssTransformFunction, CssTransform,
 //!     parse_style_attribute,
 //! };
 //!
@@ -290,9 +291,9 @@
 //!     .property_value().expect("ordinary transform")
 //! else { panic!("expected transform") };
 //! assert!(matches!(
-//!     transform.current(),
-//!     CssTransformValue::Functions(functions)
-//!         if matches!(functions.functions()[0], CssTransformFunctionValue::Translate3d(_))
+//!     transform.value(),
+//!     CssTransform::Functions(functions)
+//!         if matches!(functions.functions()[0], CssTransformFunction::Translate3d(_))
 //! ));
 //!
 //! let CssKnownPropertyValueRef::Filter(filter) = report.syntax()[1]
@@ -317,7 +318,7 @@
 //! ```
 //!
 //! The typed transform family covers the selected two-dimensional Transforms 1
-//! functions and the preserved I01 three-dimensional subset with exact arity,
+//! functions and the selected three-dimensional subset with exact arity,
 //! separators, and dimensions. Easing values distinguish keywords,
 //! `cubic-bezier()`, and `steps()`. Box shadows and filter `drop-shadow()` have
 //! separate models, filter lists preserve URL/function order, and the selected

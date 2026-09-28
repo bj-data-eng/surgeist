@@ -193,87 +193,33 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
 pub(super) fn parse_transform<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssParsedTransform, ParseError<'i, Error>> {
+) -> std::result::Result<CssTransform, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
         .is_ok()
     {
-        return Ok(CssParsedTransform::new(
-            CssTransformValue::None,
-            CssTransform::None,
-        ));
+        return Ok(CssTransform::None);
     }
-    let mut current_functions = Vec::new();
-    let mut legacy_functions = Vec::new();
+    let mut functions = Vec::new();
     while !input.is_exhausted() {
-        let (current, legacy) = parse_transform_function(input, numeric)?;
-        current_functions.push(current);
-        legacy_functions.push(legacy);
+        functions.push(parse_transform_function(input, numeric)?);
     }
-    let current = CssTransformFunctionValueList::try_new(current_functions)
-        .map(CssTransformValue::Functions)
-        .ok_or_else(|| unsupported_value(input, None, "transform function list is empty"))?;
-    let legacy = CssTransformFunctionList::try_new(legacy_functions)
+    CssTransformFunctionList::try_new(functions)
         .map(CssTransform::Functions)
-        .ok_or_else(|| unsupported_value(input, None, "transform function list is empty"))?;
-    Ok(CssParsedTransform::new(current, legacy))
+        .ok_or_else(|| unsupported_value(input, None, "transform function list is empty"))
 }
 
 fn parse_transform_function<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<(CssTransformFunctionValue, CssTransformFunction), ParseError<'i, Error>> {
+) -> std::result::Result<CssTransformFunction, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let name = match input.next().map_err(basic)? {
         Token::Function(name) => name.clone(),
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     };
     let kind = parse_transform_function_kind(input, name.as_ref())?;
-    let (current, arguments) = input.parse_nested_block(|input| {
-        let state = input.state();
-        let authored = collect_transform_authored_tokens(input)?;
-        input.reset(&state);
-        let current = parse_transform_function_value(input, numeric, kind)?;
-        Ok((
-            current,
-            CssTransformArguments::new(CssAuthoredFunctionArguments::new(authored)),
-        ))
-    })?;
-    Ok((current, CssTransformFunction::new(kind, arguments)))
-}
-
-fn collect_transform_authored_tokens<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<String, ParseError<'i, Error>> {
-    let mut value = String::new();
-    while !input.is_exhausted() {
-        let token = input.next().map_err(basic)?.clone();
-        let token_css = match token {
-            Token::Function(_) => {
-                let mut css = token.to_css_string();
-                css.push_str(&input.parse_nested_block(collect_transform_authored_tokens)?);
-                css.push(')');
-                css
-            }
-            Token::ParenthesisBlock => {
-                let nested = input.parse_nested_block(collect_transform_authored_tokens)?;
-                format!("({nested})")
-            }
-            _ => token.to_css_string(),
-        };
-        if matches!(token, Token::Comma) {
-            if value.ends_with(' ') {
-                value.pop();
-            }
-            value.push_str(", ");
-        } else {
-            if !value.is_empty() && !value.ends_with(' ') {
-                value.push(' ');
-            }
-            value.push_str(&token_css);
-        }
-    }
-    Ok(value.trim().to_owned())
+    input.parse_nested_block(|input| parse_transform_function_value(input, numeric, kind))
 }
 
 pub(super) fn parse_transform_function_kind<'i, 't>(
@@ -314,7 +260,7 @@ fn parse_transform_function_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
     kind: CssTransformFunctionKind,
-) -> std::result::Result<CssTransformFunctionValue, ParseError<'i, Error>> {
+) -> std::result::Result<CssTransformFunction, ParseError<'i, Error>> {
     let value = match kind {
         CssTransformFunctionKind::Matrix => {
             let components =
@@ -322,7 +268,7 @@ fn parse_transform_function_value<'i, 't>(
             let components = components.try_into().map_err(|_| {
                 unsupported_value(input, None, "matrix() requires exactly six numbers")
             })?;
-            CssTransformFunctionValue::Matrix(CssTransformMatrix::new(components))
+            CssTransformFunction::Matrix(CssTransformMatrix::new(components))
         }
         CssTransformFunctionKind::Matrix3d => {
             let components =
@@ -330,7 +276,7 @@ fn parse_transform_function_value<'i, 't>(
             let components = components.try_into().map_err(|_| {
                 unsupported_value(input, None, "matrix3d() requires exactly sixteen numbers")
             })?;
-            CssTransformFunctionValue::Matrix3d(Box::new(CssTransformMatrix3d::new(components)))
+            CssTransformFunction::Matrix3d(Box::new(CssTransformMatrix3d::new(components)))
         }
         CssTransformFunctionKind::Perspective => {
             let perspective = if input
@@ -352,10 +298,10 @@ fn parse_transform_function_value<'i, 't>(
                 CssTransformPerspective::Length(length)
             };
             input.expect_exhausted().map_err(basic)?;
-            CssTransformFunctionValue::Perspective(perspective)
+            CssTransformFunction::Perspective(perspective)
         }
         CssTransformFunctionKind::Rotate => {
-            CssTransformFunctionValue::Rotate(parse_one(input, |input| {
+            CssTransformFunction::Rotate(parse_one(input, |input| {
                 parse_transform_angle(input, numeric)
             })?)
         }
@@ -368,26 +314,26 @@ fn parse_transform_function_value<'i, 't>(
             input.expect_comma().map_err(basic)?;
             let angle = parse_transform_angle(input, numeric)?;
             input.expect_exhausted().map_err(basic)?;
-            CssTransformFunctionValue::Rotate3d(CssTransformRotate3d::new(x, y, z, angle))
+            CssTransformFunction::Rotate3d(CssTransformRotate3d::new(x, y, z, angle))
         }
         CssTransformFunctionKind::RotateX => {
-            CssTransformFunctionValue::RotateX(parse_one(input, |input| {
+            CssTransformFunction::RotateX(parse_one(input, |input| {
                 parse_transform_angle(input, numeric)
             })?)
         }
         CssTransformFunctionKind::RotateY => {
-            CssTransformFunctionValue::RotateY(parse_one(input, |input| {
+            CssTransformFunction::RotateY(parse_one(input, |input| {
                 parse_transform_angle(input, numeric)
             })?)
         }
         CssTransformFunctionKind::RotateZ => {
-            CssTransformFunctionValue::RotateZ(parse_one(input, |input| {
+            CssTransformFunction::RotateZ(parse_one(input, |input| {
                 parse_transform_angle(input, numeric)
             })?)
         }
         CssTransformFunctionKind::Scale => {
             let (x, y) = parse_one_or_two(input, |input| parse_transform_number(input, numeric))?;
-            CssTransformFunctionValue::Scale(CssTransformScale::new(x, y))
+            CssTransformFunction::Scale(CssTransformScale::new(x, y))
         }
         CssTransformFunctionKind::Scale3d => {
             let mut components = parse_exact_comma_list(input, 3, |input| {
@@ -402,34 +348,34 @@ fn parse_transform_function_value<'i, 't>(
             let x = components.pop().ok_or_else(|| {
                 unsupported_value(input, None, "scale3d() requires exactly three operands")
             })?;
-            CssTransformFunctionValue::Scale3d(CssTransformScale3d::new(x, y, z))
+            CssTransformFunction::Scale3d(CssTransformScale3d::new(x, y, z))
         }
         CssTransformFunctionKind::ScaleX => {
-            CssTransformFunctionValue::ScaleX(parse_one(input, |input| {
+            CssTransformFunction::ScaleX(parse_one(input, |input| {
                 parse_transform_number(input, numeric)
             })?)
         }
         CssTransformFunctionKind::ScaleY => {
-            CssTransformFunctionValue::ScaleY(parse_one(input, |input| {
+            CssTransformFunction::ScaleY(parse_one(input, |input| {
                 parse_transform_number(input, numeric)
             })?)
         }
         CssTransformFunctionKind::ScaleZ => {
-            CssTransformFunctionValue::ScaleZ(parse_one(input, |input| {
+            CssTransformFunction::ScaleZ(parse_one(input, |input| {
                 parse_transform_scale_component(input, numeric)
             })?)
         }
         CssTransformFunctionKind::Skew => {
             let (x, y) = parse_one_or_two(input, |input| parse_transform_angle(input, numeric))?;
-            CssTransformFunctionValue::Skew(CssTransformSkew::new(x, y))
+            CssTransformFunction::Skew(CssTransformSkew::new(x, y))
         }
         CssTransformFunctionKind::SkewX => {
-            CssTransformFunctionValue::SkewX(parse_one(input, |input| {
+            CssTransformFunction::SkewX(parse_one(input, |input| {
                 parse_transform_angle(input, numeric)
             })?)
         }
         CssTransformFunctionKind::SkewY => {
-            CssTransformFunctionValue::SkewY(parse_one(input, |input| {
+            CssTransformFunction::SkewY(parse_one(input, |input| {
                 parse_transform_angle(input, numeric)
             })?)
         }
@@ -437,7 +383,7 @@ fn parse_transform_function_value<'i, 't>(
             let (x, y) = parse_one_or_two(input, |input| {
                 parse_transform_length_percentage(input, numeric)
             })?;
-            CssTransformFunctionValue::Translate(CssTransformTranslate::new(x, y))
+            CssTransformFunction::Translate(CssTransformTranslate::new(x, y))
         }
         CssTransformFunctionKind::Translate3d => {
             let x = parse_transform_length_percentage(input, numeric)?;
@@ -446,20 +392,20 @@ fn parse_transform_function_value<'i, 't>(
             input.expect_comma().map_err(basic)?;
             let z = parse_transform_length(input, numeric)?;
             input.expect_exhausted().map_err(basic)?;
-            CssTransformFunctionValue::Translate3d(CssTransformTranslate3d::new(x, y, z))
+            CssTransformFunction::Translate3d(CssTransformTranslate3d::new(x, y, z))
         }
         CssTransformFunctionKind::TranslateX => {
-            CssTransformFunctionValue::TranslateX(parse_one(input, |input| {
+            CssTransformFunction::TranslateX(parse_one(input, |input| {
                 parse_transform_length_percentage(input, numeric)
             })?)
         }
         CssTransformFunctionKind::TranslateY => {
-            CssTransformFunctionValue::TranslateY(parse_one(input, |input| {
+            CssTransformFunction::TranslateY(parse_one(input, |input| {
                 parse_transform_length_percentage(input, numeric)
             })?)
         }
         CssTransformFunctionKind::TranslateZ => {
-            CssTransformFunctionValue::TranslateZ(parse_one(input, |input| {
+            CssTransformFunction::TranslateZ(parse_one(input, |input| {
                 parse_transform_length(input, numeric)
             })?)
         }
@@ -1488,7 +1434,7 @@ mod transform_tests {
 
     use super::*;
 
-    fn parse(value: &str) -> Result<CssParsedTransform, ParseError<'_, Error>> {
+    fn parse(value: &str) -> Result<CssTransform, ParseError<'_, Error>> {
         let mut input = ParserInput::new(value);
         let snapshot = crate::CssSourceSnapshot::new(value);
         let numeric = crate::numeric::NumericInputContext::parsed(&snapshot);
@@ -1506,23 +1452,22 @@ mod transform_tests {
     fn transform_parser_builds_checked_percentage_scale_and_length_only_z_values() {
         let parsed =
             parse("scale3d(1, 50%, 2) translate3d(10%, 20%, 3px)").expect("valid typed transforms");
-        let (current, legacy) = parsed.into_parts();
-        let CssTransformValue::Functions(functions) = current else {
-            panic!("expected current transform functions");
+        let CssTransform::Functions(functions) = parsed else {
+            panic!("expected transform functions");
         };
         assert!(matches!(
             &functions.functions()[0],
-            CssTransformFunctionValue::Scale3d(scale)
+            CssTransformFunction::Scale3d(scale)
                 if matches!(scale.y(), CssTransformScaleComponent::Percentage(_))
         ));
         assert!(matches!(
             &functions.functions()[1],
-            CssTransformFunctionValue::Translate3d(translation)
+            CssTransformFunction::Translate3d(translation)
                 if matches!(translation.z().value(), CssLength::Px(value) if value.value() == 3.0)
         ));
-        let CssTransform::Functions(legacy) = legacy else {
-            panic!("expected legacy transform projection");
-        };
-        assert_eq!(legacy.functions()[0].arguments().as_css(), "1, 50%, 2");
+        assert_eq!(
+            functions.functions()[0].kind(),
+            CssTransformFunctionKind::Scale3d
+        );
     }
 }

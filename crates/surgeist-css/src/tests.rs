@@ -105,6 +105,9 @@ macro_rules! declaration_value {
     ($input:expr, BoxShadow) => {
         semantic_value!($input, BoxShadow)
     };
+    ($input:expr, Transform) => {
+        semantic_value!($input, Transform)
+    };
     ($input:expr, $variant:ident) => {{
         let declaration = declaration($input, CssProperty::$variant);
         let value = declaration
@@ -8996,10 +8999,7 @@ fn parses_transform_effect_and_mask_properties_as_authored_syntax() {
 }
 
 #[test]
-fn authored_transform_filter_and_basic_shape_arguments_preserve_css_with_family_context() {
-    fn transform_css(arguments: &CssTransformArguments) -> &str {
-        arguments.as_css()
-    }
+fn authored_transform_filter_and_basic_shape_values_preserve_family_context() {
     fn basic_shape_css(arguments: &CssBasicShapeArguments) -> &str {
         arguments.as_css()
     }
@@ -9010,10 +9010,17 @@ fn authored_transform_filter_and_basic_shape_arguments_preserve_css_with_family_
     ) else {
         panic!("expected transform functions");
     };
-    assert_eq!(
-        transform_css(functions.functions()[0].arguments()),
-        "10px, 20px"
+    let CssTransformFunction::Translate(translation) = &functions.functions()[0] else {
+        panic!("typed translate function");
+    };
+    assert!(matches!(translation.x().value(), CssLength::Px(value) if value.value() == 10.0));
+    assert!(
+        matches!(translation.y().unwrap().value(), CssLength::Px(value) if value.value() == 20.0)
     );
+    assert!(matches!(
+        functions.functions()[1],
+        CssTransformFunction::Rotate(CssTransformAngle::Literal(_))
+    ));
 
     let CssFilter::Functions(functions) =
         declaration_value!(".panel { filter: blur(4px) opacity(50%); }", Filter)

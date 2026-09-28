@@ -3902,6 +3902,30 @@ pub surgeist_css::CssTransform::None
 pub surgeist_css::CssTransformAngle::Calculation(surgeist_css::CssAngleCalculation)
 pub surgeist_css::CssTransformAngle::Literal(surgeist_css::CssAngleLiteral)
 pub surgeist_css::CssTransformAngle::Zero
+#[non_exhaustive] pub enum surgeist_css::CssTransformFunction
+pub surgeist_css::CssTransformFunction::Matrix(surgeist_css::CssTransformMatrix)
+pub surgeist_css::CssTransformFunction::Matrix3d(alloc::boxed::Box<surgeist_css::CssTransformMatrix3d>)
+pub surgeist_css::CssTransformFunction::Perspective(surgeist_css::CssTransformPerspective)
+pub surgeist_css::CssTransformFunction::Rotate(surgeist_css::CssTransformAngle)
+pub surgeist_css::CssTransformFunction::Rotate3d(surgeist_css::CssTransformRotate3d)
+pub surgeist_css::CssTransformFunction::RotateX(surgeist_css::CssTransformAngle)
+pub surgeist_css::CssTransformFunction::RotateY(surgeist_css::CssTransformAngle)
+pub surgeist_css::CssTransformFunction::RotateZ(surgeist_css::CssTransformAngle)
+pub surgeist_css::CssTransformFunction::Scale(surgeist_css::CssTransformScale)
+pub surgeist_css::CssTransformFunction::Scale3d(surgeist_css::CssTransformScale3d)
+pub surgeist_css::CssTransformFunction::ScaleX(surgeist_css::CssTransformNumber)
+pub surgeist_css::CssTransformFunction::ScaleY(surgeist_css::CssTransformNumber)
+pub surgeist_css::CssTransformFunction::ScaleZ(surgeist_css::CssTransformScaleComponent)
+pub surgeist_css::CssTransformFunction::Skew(surgeist_css::CssTransformSkew)
+pub surgeist_css::CssTransformFunction::SkewX(surgeist_css::CssTransformAngle)
+pub surgeist_css::CssTransformFunction::SkewY(surgeist_css::CssTransformAngle)
+pub surgeist_css::CssTransformFunction::Translate(surgeist_css::CssTransformTranslate)
+pub surgeist_css::CssTransformFunction::Translate3d(surgeist_css::CssTransformTranslate3d)
+pub surgeist_css::CssTransformFunction::TranslateX(surgeist_css::CssTransformLengthPercentage)
+pub surgeist_css::CssTransformFunction::TranslateY(surgeist_css::CssTransformLengthPercentage)
+pub surgeist_css::CssTransformFunction::TranslateZ(surgeist_css::CssTransformLength)
+impl surgeist_css::CssTransformFunction
+pub const fn surgeist_css::CssTransformFunction::kind(&self) -> surgeist_css::CssTransformFunctionKind
 #[non_exhaustive] pub enum surgeist_css::CssTransformFunctionKind
 pub surgeist_css::CssTransformFunctionKind::Matrix
 pub surgeist_css::CssTransformFunctionKind::Matrix3d
@@ -3924,30 +3948,6 @@ pub surgeist_css::CssTransformFunctionKind::Translate3d
 pub surgeist_css::CssTransformFunctionKind::TranslateX
 pub surgeist_css::CssTransformFunctionKind::TranslateY
 pub surgeist_css::CssTransformFunctionKind::TranslateZ
-#[non_exhaustive] pub enum surgeist_css::CssTransformFunctionValue
-pub surgeist_css::CssTransformFunctionValue::Matrix(surgeist_css::CssTransformMatrix)
-pub surgeist_css::CssTransformFunctionValue::Matrix3d(alloc::boxed::Box<surgeist_css::CssTransformMatrix3d>)
-pub surgeist_css::CssTransformFunctionValue::Perspective(surgeist_css::CssTransformPerspective)
-pub surgeist_css::CssTransformFunctionValue::Rotate(surgeist_css::CssTransformAngle)
-pub surgeist_css::CssTransformFunctionValue::Rotate3d(surgeist_css::CssTransformRotate3d)
-pub surgeist_css::CssTransformFunctionValue::RotateX(surgeist_css::CssTransformAngle)
-pub surgeist_css::CssTransformFunctionValue::RotateY(surgeist_css::CssTransformAngle)
-pub surgeist_css::CssTransformFunctionValue::RotateZ(surgeist_css::CssTransformAngle)
-pub surgeist_css::CssTransformFunctionValue::Scale(surgeist_css::CssTransformScale)
-pub surgeist_css::CssTransformFunctionValue::Scale3d(surgeist_css::CssTransformScale3d)
-pub surgeist_css::CssTransformFunctionValue::ScaleX(surgeist_css::CssTransformNumber)
-pub surgeist_css::CssTransformFunctionValue::ScaleY(surgeist_css::CssTransformNumber)
-pub surgeist_css::CssTransformFunctionValue::ScaleZ(surgeist_css::CssTransformScaleComponent)
-pub surgeist_css::CssTransformFunctionValue::Skew(surgeist_css::CssTransformSkew)
-pub surgeist_css::CssTransformFunctionValue::SkewX(surgeist_css::CssTransformAngle)
-pub surgeist_css::CssTransformFunctionValue::SkewY(surgeist_css::CssTransformAngle)
-pub surgeist_css::CssTransformFunctionValue::Translate(surgeist_css::CssTransformTranslate)
-pub surgeist_css::CssTransformFunctionValue::Translate3d(surgeist_css::CssTransformTranslate3d)
-pub surgeist_css::CssTransformFunctionValue::TranslateX(surgeist_css::CssTransformLengthPercentage)
-pub surgeist_css::CssTransformFunctionValue::TranslateY(surgeist_css::CssTransformLengthPercentage)
-pub surgeist_css::CssTransformFunctionValue::TranslateZ(surgeist_css::CssTransformLength)
-impl surgeist_css::CssTransformFunctionValue
-pub const fn surgeist_css::CssTransformFunctionValue::kind(&self) -> surgeist_css::CssTransformFunctionKind
 #[non_exhaustive] pub enum surgeist_css::CssTransformNumber
 pub surgeist_css::CssTransformNumber::Calculation(surgeist_css::CssNumberCalculation)
 pub surgeist_css::CssTransformNumber::Literal(surgeist_css::CssFiniteNumber)
@@ -3960,9 +3960,6 @@ pub surgeist_css::CssTransformPerspective::None
 #[non_exhaustive] pub enum surgeist_css::CssTransformScaleComponent
 pub surgeist_css::CssTransformScaleComponent::Number(surgeist_css::CssTransformNumber)
 pub surgeist_css::CssTransformScaleComponent::Percentage(surgeist_css::CssTransformPercentage)
-#[non_exhaustive] pub enum surgeist_css::CssTransformValue
-pub surgeist_css::CssTransformValue::Functions(surgeist_css::CssTransformFunctionValueList)
-pub surgeist_css::CssTransformValue::None
 #[non_exhaustive] pub enum surgeist_css::CssTransitionProperty
 pub surgeist_css::CssTransitionProperty::All
 pub surgeist_css::CssTransitionProperty::Custom(surgeist_css::CssCustomIdent)
@@ -8744,9 +8741,6 @@ pub const fn surgeist_css::CssTopPropertyValue::current(&self) -> &surgeist_css:
 pub const fn surgeist_css::CssTopPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
 impl core::cmp::PartialEq for surgeist_css::CssTopPropertyValue
 pub fn surgeist_css::CssTopPropertyValue::eq(&self, other: &Self) -> bool
-pub struct surgeist_css::CssTransformArguments
-impl surgeist_css::CssTransformArguments
-pub fn surgeist_css::CssTransformArguments::as_css(&self) -> &str
 pub struct surgeist_css::CssTransformBox
 impl surgeist_css::CssTransformBox
 pub const fn surgeist_css::CssTransformBox::edge(&self) -> surgeist_css::CssBoxEdgeKeyword
@@ -8755,19 +8749,10 @@ pub struct surgeist_css::CssTransformBoxPropertyValue
 impl surgeist_css::CssTransformBoxPropertyValue
 pub fn surgeist_css::CssTransformBoxPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTransformBoxPropertyValue::reference_box(&self) -> &surgeist_css::CssTransformBox
-pub struct surgeist_css::CssTransformFunction
-impl surgeist_css::CssTransformFunction
-pub const fn surgeist_css::CssTransformFunction::arguments(&self) -> &surgeist_css::CssTransformArguments
-pub const fn surgeist_css::CssTransformFunction::kind(&self) -> surgeist_css::CssTransformFunctionKind
-pub const fn surgeist_css::CssTransformFunction::new(kind: surgeist_css::CssTransformFunctionKind, arguments: surgeist_css::CssTransformArguments) -> Self
 pub struct surgeist_css::CssTransformFunctionList
 impl surgeist_css::CssTransformFunctionList
 pub fn surgeist_css::CssTransformFunctionList::functions(&self) -> &[surgeist_css::CssTransformFunction]
 pub fn surgeist_css::CssTransformFunctionList::try_new(functions: alloc::vec::Vec<surgeist_css::CssTransformFunction>) -> core::option::Option<Self>
-pub struct surgeist_css::CssTransformFunctionValueList
-impl surgeist_css::CssTransformFunctionValueList
-pub fn surgeist_css::CssTransformFunctionValueList::functions(&self) -> &[surgeist_css::CssTransformFunctionValue]
-pub fn surgeist_css::CssTransformFunctionValueList::try_new(functions: alloc::vec::Vec<surgeist_css::CssTransformFunctionValue>) -> core::option::Option<Self>
 pub struct surgeist_css::CssTransformLength
 impl surgeist_css::CssTransformLength
 pub fn surgeist_css::CssTransformLength::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
@@ -8779,9 +8764,11 @@ pub const fn surgeist_css::CssTransformLengthPercentage::value(&self) -> &surgei
 pub struct surgeist_css::CssTransformMatrix
 impl surgeist_css::CssTransformMatrix
 pub const fn surgeist_css::CssTransformMatrix::components(&self) -> &[surgeist_css::CssTransformNumber; 6]
+pub const fn surgeist_css::CssTransformMatrix::new(components: [surgeist_css::CssTransformNumber; 6]) -> Self
 pub struct surgeist_css::CssTransformMatrix3d
 impl surgeist_css::CssTransformMatrix3d
 pub const fn surgeist_css::CssTransformMatrix3d::components(&self) -> &[surgeist_css::CssTransformNumber; 16]
+pub const fn surgeist_css::CssTransformMatrix3d::new(components: [surgeist_css::CssTransformNumber; 16]) -> Self
 pub struct surgeist_css::CssTransformNonNegativeLength
 impl surgeist_css::CssTransformNonNegativeLength
 pub fn surgeist_css::CssTransformNonNegativeLength::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
@@ -8803,33 +8790,38 @@ pub const fn surgeist_css::CssTransformOriginZ::value(&self) -> &surgeist_css::C
 pub struct surgeist_css::CssTransformPropertyValue
 impl surgeist_css::CssTransformPropertyValue
 pub fn surgeist_css::CssTransformPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssTransformPropertyValue::current(&self) -> &surgeist_css::CssTransformValue
-pub const fn surgeist_css::CssTransformPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTransform>
+pub const fn surgeist_css::CssTransformPropertyValue::value(&self) -> &surgeist_css::CssTransform
 pub struct surgeist_css::CssTransformRotate3d
 impl surgeist_css::CssTransformRotate3d
 pub const fn surgeist_css::CssTransformRotate3d::angle(&self) -> &surgeist_css::CssTransformAngle
+pub const fn surgeist_css::CssTransformRotate3d::new(x: surgeist_css::CssTransformNumber, y: surgeist_css::CssTransformNumber, z: surgeist_css::CssTransformNumber, angle: surgeist_css::CssTransformAngle) -> Self
 pub const fn surgeist_css::CssTransformRotate3d::x(&self) -> &surgeist_css::CssTransformNumber
 pub const fn surgeist_css::CssTransformRotate3d::y(&self) -> &surgeist_css::CssTransformNumber
 pub const fn surgeist_css::CssTransformRotate3d::z(&self) -> &surgeist_css::CssTransformNumber
 pub struct surgeist_css::CssTransformScale
 impl surgeist_css::CssTransformScale
+pub const fn surgeist_css::CssTransformScale::new(x: surgeist_css::CssTransformNumber, y: core::option::Option<surgeist_css::CssTransformNumber>) -> Self
 pub const fn surgeist_css::CssTransformScale::x(&self) -> &surgeist_css::CssTransformNumber
 pub const fn surgeist_css::CssTransformScale::y(&self) -> core::option::Option<&surgeist_css::CssTransformNumber>
 pub struct surgeist_css::CssTransformScale3d
 impl surgeist_css::CssTransformScale3d
+pub const fn surgeist_css::CssTransformScale3d::new(x: surgeist_css::CssTransformScaleComponent, y: surgeist_css::CssTransformScaleComponent, z: surgeist_css::CssTransformScaleComponent) -> Self
 pub const fn surgeist_css::CssTransformScale3d::x(&self) -> &surgeist_css::CssTransformScaleComponent
 pub const fn surgeist_css::CssTransformScale3d::y(&self) -> &surgeist_css::CssTransformScaleComponent
 pub const fn surgeist_css::CssTransformScale3d::z(&self) -> &surgeist_css::CssTransformScaleComponent
 pub struct surgeist_css::CssTransformSkew
 impl surgeist_css::CssTransformSkew
+pub const fn surgeist_css::CssTransformSkew::new(x: surgeist_css::CssTransformAngle, y: core::option::Option<surgeist_css::CssTransformAngle>) -> Self
 pub const fn surgeist_css::CssTransformSkew::x(&self) -> &surgeist_css::CssTransformAngle
 pub const fn surgeist_css::CssTransformSkew::y(&self) -> core::option::Option<&surgeist_css::CssTransformAngle>
 pub struct surgeist_css::CssTransformTranslate
 impl surgeist_css::CssTransformTranslate
+pub const fn surgeist_css::CssTransformTranslate::new(x: surgeist_css::CssTransformLengthPercentage, y: core::option::Option<surgeist_css::CssTransformLengthPercentage>) -> Self
 pub const fn surgeist_css::CssTransformTranslate::x(&self) -> &surgeist_css::CssTransformLengthPercentage
 pub const fn surgeist_css::CssTransformTranslate::y(&self) -> core::option::Option<&surgeist_css::CssTransformLengthPercentage>
 pub struct surgeist_css::CssTransformTranslate3d
 impl surgeist_css::CssTransformTranslate3d
+pub const fn surgeist_css::CssTransformTranslate3d::new(x: surgeist_css::CssTransformLengthPercentage, y: surgeist_css::CssTransformLengthPercentage, z: surgeist_css::CssTransformLength) -> Self
 pub const fn surgeist_css::CssTransformTranslate3d::x(&self) -> &surgeist_css::CssTransformLengthPercentage
 pub const fn surgeist_css::CssTransformTranslate3d::y(&self) -> &surgeist_css::CssTransformLengthPercentage
 pub const fn surgeist_css::CssTransformTranslate3d::z(&self) -> &surgeist_css::CssTransformLength

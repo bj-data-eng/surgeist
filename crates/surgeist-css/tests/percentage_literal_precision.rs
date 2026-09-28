@@ -7,9 +7,9 @@ use surgeist_css::{
     CssErrorCode, CssFilter, CssFilterAmount, CssFilterFunction, CssFilterPercentage, CssGradient,
     CssGridGeneralTrackComponent, CssHorizontalPosition, CssImageValue, CssImportance,
     CssKeyframeSelector, CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssPropertyNameRef,
-    CssRecoveryAction, CssRule, CssTransformFunctionValue, CssTransformPercentage,
-    CssTransformScaleComponent, CssTransformValue, parse_component_values, parse_property_value,
-    parse_sheet, parse_style_attribute,
+    CssRecoveryAction, CssRule, CssTransform, CssTransformFunction, CssTransformPercentage,
+    CssTransformScaleComponent, parse_component_values, parse_property_value, parse_sheet,
+    parse_style_attribute,
 };
 
 fn first_object_position_percent(source: &str) -> f32 {
@@ -144,10 +144,10 @@ fn transform_scale_keeps_authored_thirty_percent() {
     else {
         panic!("expected transform");
     };
-    let CssTransformValue::Functions(functions) = transform.current() else {
+    let CssTransform::Functions(functions) = transform.value() else {
         panic!("expected transform functions");
     };
-    let CssTransformFunctionValue::Scale3d(scale) = &functions.functions()[0] else {
+    let CssTransformFunction::Scale3d(scale) = &functions.functions()[0] else {
         panic!("expected scale3d");
     };
     assert!(

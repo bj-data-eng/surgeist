@@ -2739,6 +2739,40 @@ fn assert_known_property_value(
     };
     let migrated_authored = match (property, &value) {
         (
+            surgeist_css::CssKnownProperty::Transform,
+            surgeist_css::CssKnownPropertyValueRef::Transform(value),
+        ) => {
+            use surgeist_css::{
+                CssAngleUnit, CssLength, CssTransform, CssTransformAngle, CssTransformFunction,
+                CssTransformNumber,
+            };
+            let CssTransform::Functions(functions) = value.value() else {
+                panic!("captured transform function list");
+            };
+            let [
+                CssTransformFunction::Translate(translation),
+                CssTransformFunction::Rotate(angle),
+                CssTransformFunction::Scale(scale),
+            ] = functions.functions()
+            else {
+                panic!("captured translate, rotate, scale order");
+            };
+            assert!(
+                matches!(translation.x().value(), CssLength::Px(number) if number.value() == 10.0)
+            );
+            assert!(
+                matches!(translation.y().unwrap().value(), CssLength::Px(number) if number.value() == 20.0)
+            );
+            assert!(
+                matches!(angle, CssTransformAngle::Literal(literal) if literal.value() == 45.0 && literal.unit() == CssAngleUnit::Degrees)
+            );
+            assert!(
+                matches!(scale.x(), CssTransformNumber::Literal(number) if number.value() == 1.5)
+            );
+            assert!(scale.y().is_none());
+            Some(value.as_css())
+        }
+        (
             surgeist_css::CssKnownProperty::Color,
             surgeist_css::CssKnownPropertyValueRef::Color(value),
         ) => {
@@ -4305,7 +4339,6 @@ fn assert_known_property_value(
             UserSelect,
             OutlineStyle,
             OutlineWidth,
-            Transform,
             TransformOrigin,
             Translate,
             Rotate,

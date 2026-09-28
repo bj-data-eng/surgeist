@@ -9,8 +9,8 @@ use surgeist_css::{
     CssKnownPropertyValueRef, CssLength, CssOutlineStyle, CssPredefinedColorSpace,
     CssRecoveryAction, CssRelativeColorChannel, CssRelativeColorEnvironment,
     CssRelativeColorExpressionValue, CssRelativeColorFunction, CssRule, CssSystemColor,
-    CssTextDecorationLineComponent, CssTransformFunctionValue, CssTransformValue, ErrorKind,
-    parse_sheet, parse_style_attribute,
+    CssTextDecorationLineComponent, CssTransform, CssTransformFunction, ErrorKind, parse_sheet,
+    parse_style_attribute,
 };
 
 #[test]
@@ -1179,7 +1179,7 @@ fn typed_length_calculations_are_accepted_by_the_exact_current_consumer_set() {
 }
 
 #[test]
-fn transform_wrapper_keeps_current_global_and_substitution_branches_distinct() {
+fn transform_wrapper_keeps_value_global_and_substitution_branches_distinct() {
     let report = parse_style_attribute(concat!(
         "transform: translate(calc((1px + 2%) * 3), 4px) rotate(0); ",
         "transform: none; transform: inherit; transform: var(--transform)",
@@ -1195,18 +1195,17 @@ fn transform_wrapper_keeps_current_global_and_substitution_branches_distinct() {
     else {
         panic!("expected transform property value");
     };
-    let CssTransformValue::Functions(functions) = value.current() else {
-        panic!("expected current transform function list");
+    let CssTransform::Functions(functions) = value.value() else {
+        panic!("expected transform function list");
     };
     assert!(matches!(
         functions.functions()[0],
-        CssTransformFunctionValue::Translate(_)
+        CssTransformFunction::Translate(_)
     ));
     assert!(matches!(
         functions.functions()[1],
-        CssTransformFunctionValue::Rotate(_)
+        CssTransformFunction::Rotate(_)
     ));
-    assert!(value.i01_subset().is_some());
     assert!(ordinary.global().is_none());
     assert!(ordinary.substitution_dependent().is_none());
 
@@ -1216,7 +1215,7 @@ fn transform_wrapper_keeps_current_global_and_substitution_branches_distinct() {
     else {
         panic!("expected transform none value");
     };
-    assert!(matches!(value.current(), CssTransformValue::None));
+    assert!(matches!(value.value(), CssTransform::None));
 
     let global = report.syntax()[2].known().expect("global declaration");
     assert!(global.property_value().is_none());

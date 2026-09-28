@@ -7557,23 +7557,6 @@ impl CssAuthoredFunctionArguments {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssTransformArguments {
-    authored: CssAuthoredFunctionArguments,
-}
-
-impl CssTransformArguments {
-    #[must_use]
-    pub(crate) const fn new(authored: CssAuthoredFunctionArguments) -> Self {
-        Self { authored }
-    }
-
-    #[must_use]
-    pub fn as_css(&self) -> &str {
-        self.authored.as_css()
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssBasicShapeArguments {
     authored: CssAuthoredFunctionArguments,
 }
@@ -9369,7 +9352,7 @@ pub struct CssTransformMatrix {
 }
 
 impl CssTransformMatrix {
-    pub(crate) const fn new(components: [CssTransformNumber; 6]) -> Self {
+    pub const fn new(components: [CssTransformNumber; 6]) -> Self {
         Self { components }
     }
 
@@ -9385,7 +9368,7 @@ pub struct CssTransformMatrix3d {
 }
 
 impl CssTransformMatrix3d {
-    pub(crate) const fn new(components: [CssTransformNumber; 16]) -> Self {
+    pub const fn new(components: [CssTransformNumber; 16]) -> Self {
         Self { components }
     }
 
@@ -9411,7 +9394,7 @@ pub struct CssTransformRotate3d {
 }
 
 impl CssTransformRotate3d {
-    pub(crate) const fn new(
+    pub const fn new(
         x: CssTransformNumber,
         y: CssTransformNumber,
         z: CssTransformNumber,
@@ -9448,7 +9431,7 @@ pub struct CssTransformScale {
 }
 
 impl CssTransformScale {
-    pub(crate) const fn new(x: CssTransformNumber, y: Option<CssTransformNumber>) -> Self {
+    pub const fn new(x: CssTransformNumber, y: Option<CssTransformNumber>) -> Self {
         Self { x, y }
     }
 
@@ -9471,7 +9454,7 @@ pub struct CssTransformScale3d {
 }
 
 impl CssTransformScale3d {
-    pub(crate) const fn new(
+    pub const fn new(
         x: CssTransformScaleComponent,
         y: CssTransformScaleComponent,
         z: CssTransformScaleComponent,
@@ -9502,7 +9485,7 @@ pub struct CssTransformSkew {
 }
 
 impl CssTransformSkew {
-    pub(crate) const fn new(x: CssTransformAngle, y: Option<CssTransformAngle>) -> Self {
+    pub const fn new(x: CssTransformAngle, y: Option<CssTransformAngle>) -> Self {
         Self { x, y }
     }
 
@@ -9524,7 +9507,7 @@ pub struct CssTransformTranslate {
 }
 
 impl CssTransformTranslate {
-    pub(crate) const fn new(
+    pub const fn new(
         x: CssTransformLengthPercentage,
         y: Option<CssTransformLengthPercentage>,
     ) -> Self {
@@ -9550,7 +9533,7 @@ pub struct CssTransformTranslate3d {
 }
 
 impl CssTransformTranslate3d {
-    pub(crate) const fn new(
+    pub const fn new(
         x: CssTransformLengthPercentage,
         y: CssTransformLengthPercentage,
         z: CssTransformLength,
@@ -9574,10 +9557,10 @@ impl CssTransformTranslate3d {
     }
 }
 
-/// A parser-produced authored transform function with an exact typed payload.
+/// An authored transform function with an exact typed payload.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub enum CssTransformFunctionValue {
+pub enum CssTransformFunction {
     Matrix(CssTransformMatrix),
     Matrix3d(Box<CssTransformMatrix3d>),
     Perspective(CssTransformPerspective),
@@ -9601,7 +9584,7 @@ pub enum CssTransformFunctionValue {
     TranslateZ(CssTransformLength),
 }
 
-impl CssTransformFunctionValue {
+impl CssTransformFunction {
     #[must_use]
     pub const fn kind(&self) -> CssTransformFunctionKind {
         match self {
@@ -9630,72 +9613,8 @@ impl CssTransformFunctionValue {
     }
 }
 
-/// A non-empty ordered list of current authored transform functions.
+/// A non-empty ordered list of authored transform functions.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssTransformFunctionValueList {
-    functions: Vec<CssTransformFunctionValue>,
-}
-
-impl CssTransformFunctionValueList {
-    #[must_use]
-    pub fn try_new(functions: Vec<CssTransformFunctionValue>) -> Option<Self> {
-        (!functions.is_empty()).then_some(Self { functions })
-    }
-
-    #[must_use]
-    pub fn functions(&self) -> &[CssTransformFunctionValue] {
-        &self.functions
-    }
-}
-
-/// The current authored value of the `transform` property.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssTransformValue {
-    None,
-    Functions(CssTransformFunctionValueList),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct CssParsedTransform {
-    current: CssTransformValue,
-    legacy: CssTransform,
-}
-
-impl CssParsedTransform {
-    pub(crate) const fn new(current: CssTransformValue, legacy: CssTransform) -> Self {
-        Self { current, legacy }
-    }
-
-    pub(crate) fn into_parts(self) -> (CssTransformValue, CssTransform) {
-        (self.current, self.legacy)
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssTransformFunction {
-    kind: CssTransformFunctionKind,
-    arguments: CssTransformArguments,
-}
-
-impl CssTransformFunction {
-    #[must_use]
-    pub const fn new(kind: CssTransformFunctionKind, arguments: CssTransformArguments) -> Self {
-        Self { kind, arguments }
-    }
-
-    #[must_use]
-    pub const fn kind(&self) -> CssTransformFunctionKind {
-        self.kind
-    }
-
-    #[must_use]
-    pub const fn arguments(&self) -> &CssTransformArguments {
-        &self.arguments
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssTransformFunctionList {
     functions: Vec<CssTransformFunction>,
 }
@@ -9703,16 +9622,7 @@ pub struct CssTransformFunctionList {
 impl CssTransformFunctionList {
     #[must_use]
     pub fn try_new(functions: Vec<CssTransformFunction>) -> Option<Self> {
-        if functions.is_empty() {
-            None
-        } else {
-            Some(Self::new(functions))
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn new(functions: Vec<CssTransformFunction>) -> Self {
-        Self { functions }
+        (!functions.is_empty()).then_some(Self { functions })
     }
 
     #[must_use]
@@ -9721,7 +9631,8 @@ impl CssTransformFunctionList {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// The authored value of the `transform` property.
+#[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssTransform {
     None,
