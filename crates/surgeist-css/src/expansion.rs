@@ -15,6 +15,7 @@ use crate::border_style::*;
 use crate::border_width::*;
 use crate::box_spacing::*;
 use crate::contain_intrinsic_size::*;
+use crate::flex::CssFlexBasisValue;
 use crate::font_controls::*;
 use crate::font_settings::*;
 use crate::font_variant::*;
@@ -36,7 +37,7 @@ use crate::{
 use crate::{
     CssComponentValues, CssContainer, CssContainerNames, CssContainerType, CssKnownProperty,
     CssPropertyValueParseError, CssSpecifiedLengthPercentage,
-    CssSpecifiedNonNegativeLengthPercentage,
+    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
 };
 
 /// Why intrinsic expansion could not produce completed contributions.

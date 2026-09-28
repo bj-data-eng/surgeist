@@ -368,7 +368,7 @@ pub enum surgeist_css::CssBoxSideKind
 pub surgeist_css::CssBoxSideKind::Logical
 pub surgeist_css::CssBoxSideKind::Physical
 #[non_exhaustive] pub enum surgeist_css::CssBoxSize
-pub surgeist_css::CssBoxSize::CalcSize(surgeist_css::CssCalcSize)
+pub surgeist_css::CssBoxSize::CalcSize(surgeist_css::CssBoxCalcSize)
 pub surgeist_css::CssBoxSize::Contain
 pub surgeist_css::CssBoxSize::FitContent
 pub surgeist_css::CssBoxSize::FitContentFunction(surgeist_css::CssSpecifiedNonNegativeLengthPercentage)
@@ -1191,6 +1191,10 @@ pub surgeist_css::CssFlex::Components::shrink: core::option::Option<surgeist_css
 pub surgeist_css::CssFlex::None
 impl surgeist_css::CssFlex
 pub const fn surgeist_css::CssFlex::components(grow: surgeist_css::CssFlexFactor, shrink: core::option::Option<surgeist_css::CssFlexFactor>, basis: core::option::Option<surgeist_css::CssLength>) -> Self
+#[non_exhaustive] pub enum surgeist_css::CssFlexBasisRef<'a>
+pub surgeist_css::CssFlexBasisRef::CalcSize(&'a surgeist_css::CssCalcSize)
+pub surgeist_css::CssFlexBasisRef::Content
+pub surgeist_css::CssFlexBasisRef::Size(&'a surgeist_css::CssSizeValue)
 #[non_exhaustive] pub enum surgeist_css::CssFlexDirection
 pub surgeist_css::CssFlexDirection::Column
 pub surgeist_css::CssFlexDirection::ColumnReverse
@@ -1200,6 +1204,9 @@ pub surgeist_css::CssFlexDirection::RowReverse
 pub surgeist_css::CssFlexValue::Auto
 pub surgeist_css::CssFlexValue::Components(surgeist_css::CssFlexComponents)
 pub surgeist_css::CssFlexValue::None
+impl surgeist_css::CssFlexValue
+pub fn surgeist_css::CssFlexValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFlexValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFlexWrap
 pub surgeist_css::CssFlexWrap::NoWrap
 pub surgeist_css::CssFlexWrap::Wrap
@@ -1790,6 +1797,7 @@ pub fn surgeist_css::CssIntegerValue::serialize_specified_with_limits(&self, lim
 #[non_exhaustive] pub enum surgeist_css::CssIntrinsicSizeKeyword
 pub surgeist_css::CssIntrinsicSizeKeyword::Auto
 pub surgeist_css::CssIntrinsicSizeKeyword::Contain
+pub surgeist_css::CssIntrinsicSizeKeyword::Content
 pub surgeist_css::CssIntrinsicSizeKeyword::FitContent
 pub surgeist_css::CssIntrinsicSizeKeyword::MaxContent
 pub surgeist_css::CssIntrinsicSizeKeyword::MinContent
@@ -2660,6 +2668,9 @@ pub surgeist_css::CssLonghandValueRef::ContainerType(&'a surgeist_css::CssContai
 pub surgeist_css::CssLonghandValueRef::Direction(&'a surgeist_css::CssDirection)
 pub surgeist_css::CssLonghandValueRef::Display(&'a surgeist_css::CssDisplayValue)
 pub surgeist_css::CssLonghandValueRef::EmptyCells(&'a surgeist_css::CssEmptyCells)
+pub surgeist_css::CssLonghandValueRef::FlexBasis(&'a surgeist_css::CssFlexBasisValue)
+pub surgeist_css::CssLonghandValueRef::FlexGrow(&'a surgeist_css::CssSpecifiedNonNegativeNumber)
+pub surgeist_css::CssLonghandValueRef::FlexShrink(&'a surgeist_css::CssSpecifiedNonNegativeNumber)
 pub surgeist_css::CssLonghandValueRef::Float(&'a surgeist_css::CssFloat)
 pub surgeist_css::CssLonghandValueRef::FlowTolerance(&'a surgeist_css::CssFlowTolerance)
 pub surgeist_css::CssLonghandValueRef::FontFamily(&'a surgeist_css::CssFontFamilyList)
@@ -3553,6 +3564,8 @@ impl surgeist_css::CssSizeValue
 pub fn surgeist_css::CssSizeValue::box_size(&self) -> core::option::Option<&surgeist_css::CssBoxSize>
 pub fn surgeist_css::CssSizeValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssSizeValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::convert::From<surgeist_css::CssSizeValue> for surgeist_css::CssFlexBasisValue
+pub fn surgeist_css::CssFlexBasisValue::from(value: surgeist_css::CssSizeValue) -> Self
 #[non_exhaustive] pub enum surgeist_css::CssSpecificationTier
 pub surgeist_css::CssSpecificationTier::LaterStandard
 pub surgeist_css::CssSpecificationTier::Snapshot2026Interop
@@ -4931,6 +4944,15 @@ pub const fn surgeist_css::CssBottomPropertyValue::current(&self) -> &surgeist_c
 pub const fn surgeist_css::CssBottomPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
 impl core::cmp::PartialEq for surgeist_css::CssBottomPropertyValue
 pub fn surgeist_css::CssBottomPropertyValue::eq(&self, other: &Self) -> bool
+pub struct surgeist_css::CssBoxCalcSize(_)
+impl surgeist_css::CssBoxCalcSize
+pub fn surgeist_css::CssBoxCalcSize::as_calc_size(&self) -> &surgeist_css::CssCalcSize
+pub fn surgeist_css::CssBoxCalcSize::into_calc_size(self) -> surgeist_css::CssCalcSize
+pub fn surgeist_css::CssBoxCalcSize::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBoxCalcSize::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::convert::TryFrom<surgeist_css::CssCalcSize> for surgeist_css::CssBoxCalcSize
+pub type surgeist_css::CssBoxCalcSize::Error = surgeist_css::CssNumericConstructionError
+pub fn surgeist_css::CssBoxCalcSize::try_from(value: surgeist_css::CssCalcSize) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub struct surgeist_css::CssBoxDecorationBreakPropertyValue
 impl surgeist_css::CssBoxDecorationBreakPropertyValue
 pub fn surgeist_css::CssBoxDecorationBreakPropertyValue::as_css(&self) -> &str
@@ -4977,6 +4999,11 @@ pub fn surgeist_css::CssCalcSize::try_from_component_with_limits(component: surg
 impl core::cmp::Eq for surgeist_css::CssCalcSize
 impl core::cmp::PartialEq for surgeist_css::CssCalcSize
 pub fn surgeist_css::CssCalcSize::eq(&self, other: &Self) -> bool
+impl core::convert::From<surgeist_css::CssCalcSize> for surgeist_css::CssFlexBasisValue
+pub fn surgeist_css::CssFlexBasisValue::from(value: surgeist_css::CssCalcSize) -> Self
+impl core::convert::TryFrom<surgeist_css::CssCalcSize> for surgeist_css::CssBoxCalcSize
+pub type surgeist_css::CssBoxCalcSize::Error = surgeist_css::CssNumericConstructionError
+pub fn surgeist_css::CssBoxCalcSize::try_from(value: surgeist_css::CssCalcSize) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub struct surgeist_css::CssCalculationConstantRef<'a>
 impl<'a> surgeist_css::CssCalculationConstantRef<'a>
 pub fn surgeist_css::CssCalculationConstantRef<'a>::numeric_type(self) -> surgeist_css::CssNumericType
@@ -5924,12 +5951,26 @@ pub const fn surgeist_css::CssFiniteNumber::value(self) -> f32
 pub struct surgeist_css::CssFlexBasisPropertyValue
 impl surgeist_css::CssFlexBasisPropertyValue
 pub fn surgeist_css::CssFlexBasisPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssFlexBasisPropertyValue::current(&self) -> &surgeist_css::CssFlexBasisValue
 pub const fn surgeist_css::CssFlexBasisPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
+pub struct surgeist_css::CssFlexBasisValue(_)
+impl surgeist_css::CssFlexBasisValue
+pub const fn surgeist_css::CssFlexBasisValue::content() -> Self
+pub fn surgeist_css::CssFlexBasisValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFlexBasisValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFlexBasisValue::view(&self) -> surgeist_css::CssFlexBasisRef<'_>
+impl core::cmp::PartialEq for surgeist_css::CssFlexBasisValue
+pub fn surgeist_css::CssFlexBasisValue::eq(&self, other: &Self) -> bool
+impl core::convert::From<surgeist_css::CssCalcSize> for surgeist_css::CssFlexBasisValue
+pub fn surgeist_css::CssFlexBasisValue::from(value: surgeist_css::CssCalcSize) -> Self
+impl core::convert::From<surgeist_css::CssSizeValue> for surgeist_css::CssFlexBasisValue
+pub fn surgeist_css::CssFlexBasisValue::from(value: surgeist_css::CssSizeValue) -> Self
 pub struct surgeist_css::CssFlexComponents
 impl surgeist_css::CssFlexComponents
-pub const fn surgeist_css::CssFlexComponents::basis(&self) -> core::option::Option<&surgeist_css::CssLength>
-pub const fn surgeist_css::CssFlexComponents::grow(&self) -> &surgeist_css::CssNonNegativeNumberValue
-pub const fn surgeist_css::CssFlexComponents::shrink(&self) -> core::option::Option<&surgeist_css::CssNonNegativeNumberValue>
+pub fn surgeist_css::CssFlexComponents::basis(&self) -> core::option::Option<&surgeist_css::CssFlexBasisValue>
+pub fn surgeist_css::CssFlexComponents::grow(&self) -> core::option::Option<&surgeist_css::CssSpecifiedNonNegativeNumber>
+pub fn surgeist_css::CssFlexComponents::shrink(&self) -> core::option::Option<&surgeist_css::CssSpecifiedNonNegativeNumber>
+pub fn surgeist_css::CssFlexComponents::try_new(grow: core::option::Option<surgeist_css::CssSpecifiedNonNegativeNumber>, shrink: core::option::Option<surgeist_css::CssSpecifiedNonNegativeNumber>, basis: core::option::Option<surgeist_css::CssFlexBasisValue>) -> core::option::Option<Self>
 pub struct surgeist_css::CssFlexDirectionPropertyValue
 impl surgeist_css::CssFlexDirectionPropertyValue
 pub fn surgeist_css::CssFlexDirectionPropertyValue::as_css(&self) -> &str
@@ -5949,7 +5990,7 @@ pub const fn surgeist_css::CssFlexFlowPropertyValue::flow(&self) -> &surgeist_cs
 pub struct surgeist_css::CssFlexGrowPropertyValue
 impl surgeist_css::CssFlexGrowPropertyValue
 pub fn surgeist_css::CssFlexGrowPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssFlexGrowPropertyValue::factor(&self) -> &surgeist_css::CssNonNegativeNumberValue
+pub const fn surgeist_css::CssFlexGrowPropertyValue::factor(&self) -> &surgeist_css::CssSpecifiedNonNegativeNumber
 pub const fn surgeist_css::CssFlexGrowPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssFlexFactor>
 pub struct surgeist_css::CssFlexPropertyValue
 impl surgeist_css::CssFlexPropertyValue
@@ -5959,7 +6000,7 @@ pub const fn surgeist_css::CssFlexPropertyValue::value(&self) -> &surgeist_css::
 pub struct surgeist_css::CssFlexShrinkPropertyValue
 impl surgeist_css::CssFlexShrinkPropertyValue
 pub fn surgeist_css::CssFlexShrinkPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssFlexShrinkPropertyValue::factor(&self) -> &surgeist_css::CssNonNegativeNumberValue
+pub const fn surgeist_css::CssFlexShrinkPropertyValue::factor(&self) -> &surgeist_css::CssSpecifiedNonNegativeNumber
 pub const fn surgeist_css::CssFlexShrinkPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssFlexFactor>
 pub struct surgeist_css::CssFlexWrapPropertyValue
 impl surgeist_css::CssFlexWrapPropertyValue

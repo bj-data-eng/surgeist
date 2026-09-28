@@ -5411,51 +5411,6 @@ pub enum CssFlex {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssFlexComponents {
-    grow: CssNonNegativeNumberValue,
-    shrink: Option<CssNonNegativeNumberValue>,
-    basis: Option<CssLength>,
-}
-
-impl CssFlexComponents {
-    #[must_use]
-    pub(crate) const fn new(
-        grow: CssNonNegativeNumberValue,
-        shrink: Option<CssNonNegativeNumberValue>,
-        basis: Option<CssLength>,
-    ) -> Self {
-        Self {
-            grow,
-            shrink,
-            basis,
-        }
-    }
-
-    #[must_use]
-    pub const fn grow(&self) -> &CssNonNegativeNumberValue {
-        &self.grow
-    }
-
-    #[must_use]
-    pub const fn shrink(&self) -> Option<&CssNonNegativeNumberValue> {
-        self.shrink.as_ref()
-    }
-
-    #[must_use]
-    pub const fn basis(&self) -> Option<&CssLength> {
-        self.basis.as_ref()
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssFlexValue {
-    None,
-    Auto,
-    Components(CssFlexComponents),
-}
-
-#[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssIntegerValue {
     Literal(i32),

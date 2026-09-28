@@ -4514,7 +4514,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 622] = [
         "contain-intrinsic-size",
         "ext.property.contain-intrinsic-size"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::FlexBasis,
         "flex-basis",
         "baseline.property.flex-basis"
@@ -5505,18 +5505,18 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 622] = [
         "#propdef-opacity",
         &[],
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::FlexGrow,
         "flex-grow",
         "baseline.property.flex-grow"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::FlexShrink,
         "flex-shrink",
         "baseline.property.flex-shrink"
     ),
     complete_property_feature!(CssKnownProperty::Order, "order", "baseline.property.order"),
-    property_feature!(CssKnownProperty::Flex, "flex", "baseline.property.flex"),
+    complete_property_feature!(CssKnownProperty::Flex, "flex", "baseline.property.flex"),
     property_feature!(
         CssKnownProperty::JustifyTracks,
         "justify-tracks",

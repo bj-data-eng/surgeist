@@ -17,6 +17,7 @@ mod box_spacing;
 mod contain_intrinsic_size;
 mod counter_style;
 mod effects;
+mod flex;
 mod font_controls;
 pub(crate) mod font_face;
 mod font_feature_values;
@@ -111,6 +112,7 @@ pub(crate) use container_query::{
 };
 use counter_style::{parse_counter_style_name, parse_counter_style_rule};
 use effects::*;
+use flex::*;
 use font_controls::*;
 use font_face::parse_font_face_rule;
 use font_settings::*;
@@ -148,7 +150,6 @@ pub(crate) mod named_supports;
 use text_alignment::*;
 use timing::*;
 use typography::*;
-use values::*;
 pub(crate) use variables::contains_substitution;
 use variables::{
     collect_authored_declaration_value, parse_custom_property_name, parse_custom_property_value,

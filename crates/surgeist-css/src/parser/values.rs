@@ -62,13 +62,6 @@ pub(crate) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("ext.value.color-mix"),
 ];
 
-pub(super) fn parse_box_size_value<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssLength, ParseError<'i, Error>> {
-    parse_length_with(input, numeric, LengthGrammar::BoxSize)
-}
-
 pub(super) fn parse_shadow_length<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
@@ -85,7 +78,6 @@ pub(super) fn parse_shadow_blur_length<'i, 't>(
 
 #[derive(Clone, Copy)]
 pub(super) enum LengthGrammar {
-    BoxSize,
     FlowTolerance,
     BorderWidth,
     ShadowOffset,
@@ -108,8 +100,7 @@ impl LengthGrammar {
     const fn allows_percent(self) -> bool {
         matches!(
             self,
-            Self::BoxSize
-                | Self::FlowTolerance
+            Self::FlowTolerance
                 | Self::TextIndent
                 | Self::VerticalAlign
                 | Self::TextDecorationThickness
@@ -119,14 +110,6 @@ impl LengthGrammar {
         )
     }
 
-    const fn allows_auto(self) -> bool {
-        matches!(self, Self::BoxSize)
-    }
-
-    const fn allows_intrinsic(self) -> bool {
-        matches!(self, Self::BoxSize)
-    }
-
     const fn allows_line_width_keyword(self) -> bool {
         matches!(self, Self::BorderWidth)
     }
@@ -134,8 +117,7 @@ impl LengthGrammar {
     const fn allows_calc_percent(self) -> bool {
         matches!(
             self,
-            Self::BoxSize
-                | Self::FlowTolerance
+            Self::FlowTolerance
                 | Self::TextIndent
                 | Self::VerticalAlign
                 | Self::TextDecorationThickness
@@ -148,8 +130,7 @@ impl LengthGrammar {
     const fn requires_non_negative(self) -> bool {
         matches!(
             self,
-            Self::BoxSize
-                | Self::BorderWidth
+            Self::BorderWidth
                 | Self::ShadowBlur
                 | Self::BorderSpacing
                 | Self::TextDecorationThickness
@@ -161,7 +142,6 @@ impl LengthGrammar {
 
     const fn context(self) -> &'static str {
         match self {
-            Self::BoxSize => "box size",
             Self::FlowTolerance => "flow-tolerance",
             Self::BorderWidth => "border-width",
             Self::ShadowOffset => "box-shadow",
@@ -277,13 +257,9 @@ pub(super) fn parse_literal_length_with_context<'i, 't>(
         }
         Token::Number { value, .. } if *value == 0.0 => Ok(CssLength::Zero),
         Token::Ident(ident) => match_ignore_ascii_case! { ident,
-            "auto" if grammar.allows_auto() => Ok(CssLength::Auto),
             "thin" if grammar.allows_line_width_keyword() => Ok(CssLength::Thin),
             "medium" if grammar.allows_line_width_keyword() => Ok(CssLength::Medium),
             "thick" if grammar.allows_line_width_keyword() => Ok(CssLength::Thick),
-            "min-content" if grammar.allows_intrinsic() => Ok(CssLength::MinContent),
-            "max-content" if grammar.allows_intrinsic() => Ok(CssLength::MaxContent),
-            "fit-content" if grammar.allows_intrinsic() => Ok(CssLength::FitContent),
             _ => Err(unsupported_value_at(
                 location,
                 None,

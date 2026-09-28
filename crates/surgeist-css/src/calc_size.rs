@@ -23,6 +23,7 @@ type SerializationResult<T> = std::result::Result<T, CssSpecifiedValueSerializat
 #[non_exhaustive]
 pub enum CssIntrinsicSizeKeyword {
     Auto,
+    Content,
     Stretch,
     Contain,
     MinContent,
@@ -33,6 +34,7 @@ impl CssIntrinsicSizeKeyword {
     fn parse(name: &str) -> Option<Self> {
         Some(match name.to_ascii_lowercase().as_str() {
             "auto" => Self::Auto,
+            "content" => Self::Content,
             "stretch" => Self::Stretch,
             "contain" => Self::Contain,
             "min-content" => Self::MinContent,
@@ -44,6 +46,7 @@ impl CssIntrinsicSizeKeyword {
     fn as_css(self) -> &'static str {
         match self {
             Self::Auto => "auto",
+            Self::Content => "content",
             Self::Stretch => "stretch",
             Self::Contain => "contain",
             Self::MinContent => "min-content",
@@ -302,6 +305,24 @@ impl CssCalcSize {
         }
     }
 
+    /// Checks that no nested basis is the flex-only `content` keyword.
+    pub(crate) fn validate_box_context(&self) -> Result<()> {
+        let mut current = self;
+        loop {
+            match &current.data.basis {
+                Basis::Keyword(CssIntrinsicSizeKeyword::Content) => {
+                    return Err(CssNumericConstructionError::at_origin(
+                        CssNumericConstructionErrorKind::InvalidArgumentType,
+                        current.data.basis_origin.clone(),
+                    )
+                    .with_path(Some(current.data.basis_path.clone())));
+                }
+                Basis::Nested(child) => current = child,
+                _ => return Ok(()),
+            }
+        }
+    }
+
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
@@ -357,6 +378,62 @@ impl CssCalcSize {
     }
 }
 
+/// A checked `calc-size()` whose complete basis chain is valid for box sizing.
+///
+/// The flex-only `content` basis cannot enter width, height, or their min/max
+/// counterparts through nested typed construction.
+///
+/// ```compile_fail
+/// use surgeist_css::{CssBoxSize, CssCalcSize, parse_component_values};
+/// let values = parse_component_values("calc-size(content, size)").unwrap();
+/// let generic = CssCalcSize::try_from_component(values.items()[0].clone()).unwrap();
+/// let _box_size = CssBoxSize::CalcSize(generic);
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssBoxCalcSize(CssCalcSize);
+
+impl TryFrom<CssCalcSize> for CssBoxCalcSize {
+    type Error = CssNumericConstructionError;
+
+    fn try_from(value: CssCalcSize) -> Result<Self> {
+        value.validate_box_context()?;
+        Ok(Self(value))
+    }
+}
+
+impl CssBoxCalcSize {
+    pub fn as_calc_size(&self) -> &CssCalcSize {
+        &self.0
+    }
+
+    pub fn into_calc_size(self) -> CssCalcSize {
+        self.0
+    }
+
+    pub fn serialize_specified(&self) -> SerializationResult<String> {
+        self.0.serialize_specified()
+    }
+
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult<String> {
+        self.0.serialize_specified_with_limits(limits)
+    }
+
+    pub(crate) fn serialize_specified_into(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> SerializationResult<()> {
+        self.0.serialize_specified_into(context, output)
+    }
+
+    pub(crate) fn validate_maximum_context(&self) -> Result<()> {
+        self.0.validate_maximum_context()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -381,6 +458,49 @@ mod tests {
         assert_eq!(
             location.column as usize,
             serialized.as_css().find("auto").unwrap() + 1
+        );
+    }
+
+    #[test]
+    fn box_context_reports_nested_content_with_duplicate_programmatic_origins() {
+        use crate::numeric::NumericInputContext;
+
+        let content = CssComponentValue::try_ident("content").unwrap();
+        let size = CssComponentValue::try_ident("size").unwrap();
+        let comma = CssComponentValue::try_token(",").unwrap();
+        let nested = CssComponentValue::try_function(
+            "calc-size",
+            CssComponentValues::try_new(vec![content.clone(), comma.clone(), size.clone()])
+                .unwrap(),
+        )
+        .unwrap();
+        let outer = CssComponentValue::try_function(
+            "calc-size",
+            CssComponentValues::try_new(vec![nested, comma, size]).unwrap(),
+        )
+        .unwrap();
+        let graph = CssComponentValues::try_new(vec![outer.clone()]).unwrap();
+        let serialized = graph.serialize().unwrap();
+        let value = CssCalcSize::try_from_component(outer).unwrap();
+        let CssCalcSizeBasisRef::Nested(child) = value.basis() else {
+            panic!("nested basis")
+        };
+        assert_eq!(child.basis_origin(), content.origin());
+        let error = CssBoxCalcSize::try_from(value).unwrap_err();
+        assert_eq!(
+            error.kind(),
+            &CssNumericConstructionErrorKind::InvalidArgumentType
+        );
+        assert_eq!(error.origin(), Some(content.origin()));
+        let location = NumericInputContext::components(&graph, &serialized).error_location(
+            &error,
+            cssparser::SourceLocation { line: 0, column: 1 },
+            0,
+        );
+        assert_eq!(location.line, 0);
+        assert_eq!(
+            location.column as usize,
+            serialized.as_css().find("content").unwrap() + 1
         );
     }
 

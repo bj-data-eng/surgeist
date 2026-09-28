@@ -6,8 +6,9 @@ use super::values::{CalculationRoot, is_math_function, parse_numeric_function};
 use crate::error::{Error, basic, unsupported_value_at};
 use crate::numeric::NumericInputContext;
 use crate::{
-    CssBoxSize, CssCalcSize, CssComponentValueLimits, CssLengthPercentageCalculation,
-    CssMaxSizeValue, CssSizeValue, CssSpecifiedNonNegativeLengthPercentage,
+    CssBoxCalcSize, CssBoxSize, CssCalcSize, CssComponentValueLimits,
+    CssLengthPercentageCalculation, CssMaxSizeValue, CssSizeValue,
+    CssSpecifiedNonNegativeLengthPercentage,
 };
 
 pub(super) fn parse_size_value<'i, 't>(
@@ -92,7 +93,15 @@ fn parse_box_size<'i, 't>(
                     "invalid calc-size basis or calculation",
                 )
             })?;
-            Ok(CssBoxSize::CalcSize(value))
+            CssBoxCalcSize::try_from(value)
+                .map(CssBoxSize::CalcSize)
+                .map_err(|error| {
+                    unsupported_value_at(
+                        numeric.error_location(&error, location, root_offset),
+                        None,
+                        "calc-size basis is invalid for box sizing",
+                    )
+                })
         }
         Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
             input.reset(&state);

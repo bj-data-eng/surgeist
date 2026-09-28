@@ -85,7 +85,7 @@ fn programmatic_checked_values_preserve_their_typed_boundary() {
     assert_eq!(preferred.serialize_specified().unwrap(), "2.5%");
     let calc = CssCalcSize::try_from_component(component("calc-size(min-content, size + 1px)"))
         .expect("checked calc-size");
-    let maximum = CssMaxSizeValue::try_box_size(CssBoxSize::CalcSize(calc))
+    let maximum = CssMaxSizeValue::try_box_size(CssBoxSize::CalcSize(calc.try_into().unwrap()))
         .expect("maximum permits intrinsic basis");
     assert_eq!(
         maximum.serialize_specified().unwrap(),
@@ -102,7 +102,8 @@ fn maximum_constructor_rejects_auto_in_nested_calc_size_basis() {
         panic!("nested basis")
     };
     let auto_origin = child.basis_origin().clone();
-    let error = CssMaxSizeValue::try_box_size(CssBoxSize::CalcSize(nested)).unwrap_err();
+    let error = CssMaxSizeValue::try_box_size(CssBoxSize::CalcSize(nested.try_into().unwrap()))
+        .unwrap_err();
     assert_eq!(error.origin(), Some(&auto_origin));
     let max = CssMaxSizeValue::try_box_size(CssBoxSize::Contain).unwrap();
     assert_eq!(max.box_size(), Some(&CssBoxSize::Contain));
@@ -145,7 +146,7 @@ fn checked_maximum_reports_nested_auto_origin_after_programmatic_trivia() {
     let CssSizeValue::BoxSize(CssBoxSize::CalcSize(calc)) = value.current() else {
         panic!("parsed nested calc-size")
     };
-    let surgeist_css::CssCalcSizeBasisRef::Nested(child) = calc.basis() else {
+    let surgeist_css::CssCalcSizeBasisRef::Nested(child) = calc.as_calc_size().basis() else {
         panic!("nested calc-size basis")
     };
     let expected_origin = child.basis_origin().clone();
@@ -223,7 +224,10 @@ fn sizing_equality_preserves_structure_across_distinct_origins() {
 
     let authored_calc = size("inline-size", "calc-size(min-content, size + 1px)");
     let checked_calc = CssSizeValue::BoxSize(CssBoxSize::CalcSize(
-        CssCalcSize::try_from_component(component("calc-size(min-content, size + 1px)")).unwrap(),
+        CssCalcSize::try_from_component(component("calc-size(min-content, size + 1px)"))
+            .unwrap()
+            .try_into()
+            .unwrap(),
     ));
     assert_eq!(authored_calc, checked_calc);
 

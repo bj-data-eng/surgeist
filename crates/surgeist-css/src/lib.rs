@@ -1174,7 +1174,7 @@ pub use box_spacing::{
     CssBoxSideKind, CssMarginPair, CssMarginShorthand, CssMarginValue, CssPaddingPair,
     CssPaddingShorthand, CssPaddingValue,
 };
-pub use calc_size::{CssCalcSize, CssCalcSizeBasisRef, CssIntrinsicSizeKeyword};
+pub use calc_size::{CssBoxCalcSize, CssCalcSize, CssCalcSizeBasisRef, CssIntrinsicSizeKeyword};
 pub use color_scalar::{
     CssColorAngleLiteral, CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError,
     CssColorScalarErrorKind,
@@ -1202,7 +1202,9 @@ pub use font_settings::{
 };
 mod font_size;
 pub use font_size::CssFontSize;
+mod flex;
 mod font_shorthand;
+pub use flex::{CssFlexBasisRef, CssFlexBasisValue, CssFlexComponents, CssFlexValue};
 mod line_height;
 pub use line_height::CssLineHeight;
 mod font_style;

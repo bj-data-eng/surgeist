@@ -716,18 +716,18 @@ fn ordered_terminal_payloads() {
 }
 
 fn atomic_unsupported_declaration() {
-    let css = ".a { margin-block:0; @media screen { flex-basis:1px; padding-block:1px } }";
+    let css = ".a { margin-block:0; @media screen { flex-direction:row; padding-block:1px } }";
     let report = parse_sheet(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     let error =
-        normalize_sheet(report.syntax()).expect_err("flex-basis expansion is not yet selected");
+        normalize_sheet(report.syntax()).expect_err("flex-direction expansion is not yet selected");
     let CssNormalizationErrorKind::UnsupportedDeclaration(expansion) = error.kind() else {
         panic!("typed expansion capability failure: {error:?}")
     };
     assert_eq!(
         expansion.kind(),
-        &CssExpansionErrorKind::UnsupportedProperty(Property::FlexBasis)
+        &CssExpansionErrorKind::UnsupportedProperty(Property::FlexDirection)
     );
     let [CssRule::Media(media)] = style(&report.syntax().rules()[0]).rules() else {
         unreachable!()
@@ -744,7 +744,7 @@ fn atomic_unsupported_declaration() {
     assert_eq!(error.declaration_order(), Some(1));
     assert_eq!(
         error.position().unwrap().byte_offset().value(),
-        css.find("flex-basis:").unwrap()
+        css.find("flex-direction:").unwrap()
     );
     assert_eq!(
         ancestors(error.rule_context().unwrap()),

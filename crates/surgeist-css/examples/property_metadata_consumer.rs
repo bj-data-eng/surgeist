@@ -160,6 +160,9 @@ const LONGHANDS: &[P] = &[
     P::ScrollMarginInlineStart,
     P::ScrollMarginInlineEnd,
     P::Order,
+    P::FlexBasis,
+    P::FlexGrow,
+    P::FlexShrink,
     P::AspectRatio,
     P::Visibility,
     P::OverflowWrap,
@@ -169,6 +172,7 @@ const LONGHANDS: &[P] = &[
     P::TextCombineUpright,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
+    (P::Flex, &[P::FlexGrow, P::FlexShrink, P::FlexBasis], &[]),
     (P::Gap, &[P::RowGap, P::ColumnGap], &[]),
     (
         P::Font,
@@ -462,6 +466,18 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::ContainerName(v) => assert_eq!(*v, CssContainerNames::None),
         CssLonghandValueRef::ContainerType(v) => assert_eq!(*v, CssContainerType::Normal),
         CssLonghandValueRef::Position(v) => assert_eq!(*v, CssLayoutPosition::Static),
+        CssLonghandValueRef::FlexBasis(v) => {
+            assert!(matches!(
+                v.view(),
+                CssFlexBasisRef::Size(CssSizeValue::Auto)
+            ))
+        }
+        CssLonghandValueRef::FlexGrow(v) => {
+            assert_eq!(v.serialize_specified().unwrap(), "0")
+        }
+        CssLonghandValueRef::FlexShrink(v) => {
+            assert_eq!(v.serialize_specified().unwrap(), "1")
+        }
         CssLonghandValueRef::FrameSizing(v) => assert_eq!(*v, CssFrameSizing::Auto),
         CssLonghandValueRef::MinIntrinsicSizing(v) => assert_eq!(*v, CssMinIntrinsicSizing::Legacy),
         CssLonghandValueRef::Top(v)
@@ -730,7 +746,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 199);
+    assert_eq!(expected.len(), 203);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {
@@ -850,9 +866,10 @@ fn metadata_and_initials() {
         P::Width.metadata().unwrap().kind(),
         CssPropertyKindRef::Longhand(_)
     ));
-    assert!(
-        matches!(P::FlexBasis.metadata(), Err(CssPropertyMetadataError::Unavailable(g)) if g == P::FlexBasis.grammar())
-    );
+    assert!(matches!(
+        P::FlexBasis.metadata().unwrap().kind(),
+        CssPropertyKindRef::Longhand(_)
+    ));
     let CssPropertyKindRef::Shorthand(alignment) = P::TextAlign.metadata().unwrap().kind() else {
         panic!("text-align is a two-member shorthand")
     };

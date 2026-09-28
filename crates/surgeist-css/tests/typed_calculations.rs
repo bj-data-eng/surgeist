@@ -3,11 +3,11 @@ use surgeist_css::{
     CssAuthoredHue, CssBoxSize, CssCalcLength, CssCalculationExpressionRef,
     CssCalculationProductOperator, CssCalculationType, CssCalculationValueRef, CssErrorCode,
     CssFilterAmount, CssFilterFunctionValue, CssFilterNumber, CssFilterPercentage, CssFilterValue,
-    CssFlexValue, CssFlowToleranceRef, CssFontSize, CssFrequencyCalculation, CssFrequencyUnit,
-    CssIntegerCalculation, CssIntegerValue, CssKnownPropertyValueRef, CssLength,
+    CssFlexBasisRef, CssFlexValue, CssFlowToleranceRef, CssFontSize, CssFrequencyCalculation,
+    CssFrequencyUnit, CssIntegerCalculation, CssIntegerValue, CssKnownPropertyValueRef, CssLength,
     CssLengthCalculation, CssLengthPercentageCalculation, CssLengthUnit, CssLineHeight,
-    CssNonNegativeNumberValue, CssNumberCalculation, CssOpacityValue, CssPercentageCalculation,
-    CssPositiveNumber, CssPositiveNumberValue, CssRecoveryAction, CssRelativeColorChannel,
+    CssNumberCalculation, CssOpacityValue, CssPercentageCalculation, CssPositiveNumber,
+    CssPositiveNumberValue, CssRecoveryAction, CssRelativeColorChannel,
     CssRelativeColorExpressionValue, CssRelativeColorResultDomain, CssSizeValue,
     CssTimeCalculation, CssTimeUnit, CssZIndexValue, parse_style_attribute,
 };
@@ -488,10 +488,7 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
     else {
         panic!("expected flex-grow wrapper");
     };
-    assert!(matches!(
-        value.factor(),
-        CssNonNegativeNumberValue::Calculation(_)
-    ));
+    assert!(value.factor().calculation().is_some());
     assert!(value.i01_subset().is_none());
 
     let CssKnownPropertyValueRef::FlexShrink(value) = report.syntax()[2]
@@ -502,10 +499,7 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
     else {
         panic!("expected flex-shrink wrapper");
     };
-    assert!(matches!(
-        value.factor(),
-        CssNonNegativeNumberValue::Calculation(_)
-    ));
+    assert!(value.factor().calculation().is_some());
 
     let CssKnownPropertyValueRef::Order(value) = report.syntax()[3]
         .known()
@@ -559,17 +553,12 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
     let CssFlexValue::Components(components) = value.value() else {
         panic!("expected flex components");
     };
+    assert!(components.grow().unwrap().calculation().is_some());
+    assert!(components.shrink().unwrap().calculation().is_some());
     assert!(matches!(
-        components.grow(),
-        CssNonNegativeNumberValue::Calculation(_)
-    ));
-    assert!(matches!(
-        components.shrink(),
-        Some(CssNonNegativeNumberValue::Calculation(_))
-    ));
-    assert!(matches!(
-        components.basis(),
-        Some(CssLength::Calc(CssCalcLength::Typed(_)))
+        components.basis().map(|value| value.view()),
+        Some(CssFlexBasisRef::Size(CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(value))))
+            if value.calculation().is_some()
     ));
     assert!(value.i01_subset().is_none());
 
@@ -662,9 +651,7 @@ fn scalar_property_accessors_preserve_literal_compatibility_projections() {
     else {
         panic!("expected flex-grow wrapper");
     };
-    assert!(
-        matches!(value.factor(), CssNonNegativeNumberValue::Literal(value) if value.value() == 2.0)
-    );
+    assert_eq!(value.factor().serialize_specified().unwrap(), "2");
     assert_eq!(value.i01_subset().unwrap().value(), 2.0);
 
     let CssKnownPropertyValueRef::FlexShrink(value) = report.syntax()[2]
@@ -675,9 +662,7 @@ fn scalar_property_accessors_preserve_literal_compatibility_projections() {
     else {
         panic!("expected flex-shrink wrapper");
     };
-    assert!(
-        matches!(value.factor(), CssNonNegativeNumberValue::Literal(value) if value.value() == 0.0)
-    );
+    assert_eq!(value.factor().serialize_specified().unwrap(), "0");
     assert_eq!(value.i01_subset().unwrap().value(), 0.0);
 
     let CssKnownPropertyValueRef::Order(value) = report.syntax()[3]
@@ -732,11 +717,13 @@ fn scalar_property_accessors_preserve_literal_compatibility_projections() {
     let CssFlexValue::Components(components) = value.value() else {
         panic!("expected literal flex components");
     };
-    assert!(
-        matches!(components.grow(), CssNonNegativeNumberValue::Literal(value) if value.value() == 2.0)
+    assert_eq!(
+        components.grow().unwrap().serialize_specified().unwrap(),
+        "2"
     );
-    assert!(
-        matches!(components.shrink(), Some(CssNonNegativeNumberValue::Literal(value)) if value.value() == 0.0)
+    assert_eq!(
+        components.shrink().unwrap().serialize_specified().unwrap(),
+        "0"
     );
     assert!(value.i01_subset().is_some());
 }

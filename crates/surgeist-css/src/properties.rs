@@ -4,6 +4,7 @@
 //! frozen property set. Public identity values describe authored property names;
 //! they do not apply cascade, substitute variables, or resolve authored values.
 
+use crate::CssSpecifiedNonNegativeNumber;
 use crate::border_color::{
     CssBorderColorPair, CssBorderColorShorthand, CssParsedBorderColorShorthand,
 };
@@ -13,6 +14,7 @@ use crate::border_width::*;
 use crate::box_spacing::*;
 use crate::contain_intrinsic_size::*;
 use crate::display::*;
+use crate::flex::{CssFlexBasisRef, CssFlexBasisValue, CssFlexValue};
 use crate::font_controls::*;
 use crate::font_settings::*;
 use crate::font_variant::*;
@@ -135,7 +137,7 @@ macro_rules! property_schema {
             ContainIntrinsicInlineSize, "contain-intrinsic-inline-size", [], "ext.property.contain-intrinsic-inline-size", CssContainIntrinsicSizeValue, CssContainIntrinsicInlineSizePropertyValue, CssContainIntrinsicInlineSizePropertyValueRepresentation, parse_contain_intrinsic_size_value, { parse_contain_intrinsic_size_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssContainIntrinsicSizeValue, accessor: current, inherited: false, initial_kind: value, initial: CssContainIntrinsicSizeValue::new(CssContainIntrinsicSizeFallback::None) };
             ContainIntrinsicBlockSize, "contain-intrinsic-block-size", [], "ext.property.contain-intrinsic-block-size", CssContainIntrinsicSizeValue, CssContainIntrinsicBlockSizePropertyValue, CssContainIntrinsicBlockSizePropertyValueRepresentation, parse_contain_intrinsic_size_value, { parse_contain_intrinsic_size_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssContainIntrinsicSizeValue, accessor: current, inherited: false, initial_kind: value, initial: CssContainIntrinsicSizeValue::new(CssContainIntrinsicSizeFallback::None) };
             ContainIntrinsicSize, "contain-intrinsic-size", [], "ext.property.contain-intrinsic-size", CssContainIntrinsicSize, CssContainIntrinsicSizePropertyValue, CssContainIntrinsicSizePropertyValueRepresentation, parse_contain_intrinsic_size, { parse_contain_intrinsic_size($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: current, members: [ ContainIntrinsicWidth => |value: &CssContainIntrinsicSize| Some(value.width().clone()), ContainIntrinsicHeight => |value: &CssContainIntrinsicSize| Some(value.height().clone()) ], reset_only: [] };
-            FlexBasis, "flex-basis", [], "baseline.property.flex-basis", CssLength, CssFlexBasisPropertyValue, CssFlexBasisPropertyValueRepresentation, parse_box_size_value, { parse_box_size_value($input, $numeric)? };
+            FlexBasis, "flex-basis", [], "baseline.property.flex-basis", CssLength, CssFlexBasisPropertyValue, CssFlexBasisPropertyValueRepresentation, parse_flex_basis, { parse_flex_basis($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssFlexBasisValue, accessor: current, inherited: false, initial_kind: value, initial: CssFlexBasisValue::from(CssSizeValue::Auto) };
             Gap, "gap", ["grid-gap"], "baseline.property.gap", CssGapShorthand, CssGapPropertyValue, CssGapPropertyValueRepresentation, parse_gap_shorthand, { parse_gap_shorthand($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: current, members: [ RowGap => |value: &CssGapShorthand| Some(value.row().clone()), ColumnGap => |value: &CssGapShorthand| Some(value.column().clone()) ], reset_only: [] };
             RowGap, "row-gap", ["grid-row-gap"], "baseline.property.row-gap", CssGapValue, CssRowGapPropertyValue, CssRowGapPropertyValueRepresentation, parse_gap_value, { parse_gap_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssGapValue, accessor: current, inherited: false, initial_kind: value, initial: CssGapValue::Normal };
             ColumnGap, "column-gap", ["grid-column-gap"], "baseline.property.column-gap", CssGapValue, CssColumnGapPropertyValue, CssColumnGapPropertyValueRepresentation, parse_gap_value, { parse_gap_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssGapValue, accessor: current, inherited: false, initial_kind: value, initial: CssGapValue::Normal };
@@ -317,10 +319,10 @@ macro_rules! property_schema {
             BorderEndEndRadius, "border-end-end-radius", [], "official.property.border-end-end-radius", CssCornerRadiusValue, CssBorderEndEndRadiusPropertyValue, CssBorderEndEndRadiusPropertyValueRepresentation, parse_exact_corner_radius, { parse_exact_corner_radius($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssCornerRadiusValue, accessor: current, inherited: false, initial_kind: value, initial: CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None) };
             BoxShadow, "box-shadow", [], "baseline.property.box-shadow", CssBoxShadow, CssBoxShadowPropertyValue, CssBoxShadowPropertyValueRepresentation, parse_box_shadow, { parse_box_shadow($input, $numeric)? };
             Opacity, "opacity", [], "baseline.property.opacity", CssOpacity, CssOpacityPropertyValue, CssOpacityPropertyValueRepresentation, parse_opacity, { parse_opacity($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssOpacityValue, accessor: value, inherited: false, initial_kind: value, initial: CssOpacityValue::Literal(CssOpacity::try_new(1.0).expect("one is a valid opacity")) };
-            FlexGrow, "flex-grow", [], "baseline.property.flex-grow", CssFlexFactor, CssFlexGrowPropertyValue, CssFlexGrowPropertyValueRepresentation, parse_flex_factor, { parse_flex_factor($input, $numeric, "flex-grow")? };
-            FlexShrink, "flex-shrink", [], "baseline.property.flex-shrink", CssFlexFactor, CssFlexShrinkPropertyValue, CssFlexShrinkPropertyValueRepresentation, parse_flex_factor, { parse_flex_factor($input, $numeric, "flex-shrink")? };
+            FlexGrow, "flex-grow", [], "baseline.property.flex-grow", CssFlexFactor, CssFlexGrowPropertyValue, CssFlexGrowPropertyValueRepresentation, parse_flex_factor, { parse_flex_factor($input, $numeric, "flex-grow")? }, expansion = longhand { wrapper: existing, value: CssSpecifiedNonNegativeNumber, accessor: factor, inherited: false, initial_kind: value, initial: crate::flex::initial_grow() };
+            FlexShrink, "flex-shrink", [], "baseline.property.flex-shrink", CssFlexFactor, CssFlexShrinkPropertyValue, CssFlexShrinkPropertyValueRepresentation, parse_flex_factor, { parse_flex_factor($input, $numeric, "flex-shrink")? }, expansion = longhand { wrapper: existing, value: CssSpecifiedNonNegativeNumber, accessor: factor, inherited: false, initial_kind: value, initial: crate::flex::initial_shrink() };
             Order, "order", [], "baseline.property.order", CssOrder, CssOrderPropertyValue, CssOrderPropertyValueRepresentation, parse_order, { parse_order($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssIntegerValue, accessor: value, inherited: false, initial_kind: value, initial: CssIntegerValue::Literal(0) };
-            Flex, "flex", [], "baseline.property.flex", CssFlex, CssFlexPropertyValue, CssFlexPropertyValueRepresentation, parse_flex, { parse_flex($input, $numeric)? };
+            Flex, "flex", [], "baseline.property.flex", CssFlex, CssFlexPropertyValue, CssFlexPropertyValueRepresentation, parse_flex, { parse_flex($input, $numeric)? }, expansion = shorthand { wrapper: existing, accessor: value, members: [ FlexGrow => crate::flex::effective_grow, FlexShrink => crate::flex::effective_shrink, FlexBasis => crate::flex::effective_basis ], reset_only: [] };
             JustifyTracks, "justify-tracks", [], "baseline.property.justify-tracks", CssAlignment, CssJustifyTracksPropertyValue, CssJustifyTracksPropertyValueRepresentation, parse_content_alignment, { parse_content_alignment($input)? };
             AlignTracks, "align-tracks", [], "baseline.property.align-tracks", CssAlignment, CssAlignTracksPropertyValue, CssAlignTracksPropertyValueRepresentation, parse_content_alignment, { parse_content_alignment($input)? };
             AspectRatio, "aspect-ratio", [], "baseline.property.aspect-ratio", CssAspectRatio, CssAspectRatioPropertyValue, CssAspectRatioPropertyValueRepresentation, parse_aspect_ratio, { parse_aspect_ratio($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssAspectRatioValue, accessor: ratio, inherited: false, initial_kind: value, initial: CssAspectRatioValue::Auto };
@@ -450,10 +452,49 @@ fn opacity_i01_projection(value: &CssOpacityValue) -> Option<CssOpacity> {
     }
 }
 
-fn flex_factor_i01_projection(value: &CssNonNegativeNumberValue) -> Option<CssFlexFactor> {
-    match value {
-        CssNonNegativeNumberValue::Literal(value) => CssFlexFactor::try_new(value.value()),
-        CssNonNegativeNumberValue::Calculation(_) => None,
+fn flex_factor_i01_projection(value: &CssSpecifiedNonNegativeNumber) -> Option<CssFlexFactor> {
+    let component = value.literal_component()?;
+    let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = component.view() else {
+        return None;
+    };
+    CssFlexFactor::try_new(crate::exact_decimal::exact_legacy_value(
+        number.representation(),
+    )?)
+}
+
+fn flex_basis_i01_projection(value: &CssFlexBasisValue) -> Option<CssLength> {
+    match value.view() {
+        CssFlexBasisRef::Content | CssFlexBasisRef::CalcSize(_) => None,
+        CssFlexBasisRef::Size(CssSizeValue::Auto) => Some(CssLength::Auto),
+        CssFlexBasisRef::Size(CssSizeValue::BoxSize(box_size)) => match box_size {
+            CssBoxSize::MinContent => Some(CssLength::MinContent),
+            CssBoxSize::MaxContent => Some(CssLength::MaxContent),
+            CssBoxSize::FitContent => Some(CssLength::FitContent),
+            CssBoxSize::LengthPercentage(value) => {
+                if let Some(calculation) = value.calculation() {
+                    return Some(CssLength::Calc(CssCalcLength::Typed(calculation.clone())));
+                }
+                match value.literal_component()?.view() {
+                    CssComponentValueRef::Token(CssValueTokenRef::Number(number)) => {
+                        (crate::exact_decimal::exact_legacy_value(number.representation())? == 0.0)
+                            .then_some(CssLength::Zero)
+                    }
+                    CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) => {
+                        CssLength::try_percent(crate::exact_decimal::exact_legacy_value(
+                            number.representation(),
+                        )?)
+                    }
+                    CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) => {
+                        CssLength::try_dimension(
+                            crate::exact_decimal::exact_legacy_value(number.representation())?,
+                            CssLengthUnit::from_css_unit(unit)?,
+                        )
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        },
     }
 }
 
@@ -481,7 +522,7 @@ fn flex_i01_projection(value: &CssFlexValue) -> Option<CssFlex> {
         CssFlexValue::None => Some(CssFlex::None),
         CssFlexValue::Auto => Some(CssFlex::Auto),
         CssFlexValue::Components(components) => {
-            let grow = flex_factor_i01_projection(components.grow())?;
+            let grow = flex_factor_i01_projection(components.grow()?)?;
             let shrink = match components.shrink() {
                 Some(value) => Some(flex_factor_i01_projection(value)?),
                 None => None,
@@ -489,7 +530,10 @@ fn flex_i01_projection(value: &CssFlexValue) -> Option<CssFlex> {
             Some(CssFlex::components(
                 grow,
                 shrink,
-                components.basis().cloned(),
+                match components.basis() {
+                    Some(basis) => Some(flex_basis_i01_projection(basis)?),
+                    None => None,
+                },
             ))
         }
     }
@@ -2859,6 +2903,20 @@ macro_rules! define_property_value {
         );
     };
     (
+        FlexBasis, $canonical:literal, $value:ty, $wrapper:ident,
+        $representation:ident
+    ) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssFlexBasisValue,
+            CssLength,
+            current,
+            flex_basis_i01_projection
+        );
+    };
+    (
         FlexGrow, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
@@ -2866,7 +2924,7 @@ macro_rules! define_property_value {
             $canonical,
             $wrapper,
             $representation,
-            CssNonNegativeNumberValue,
+            CssSpecifiedNonNegativeNumber,
             CssFlexFactor,
             factor,
             flex_factor_i01_projection
@@ -2880,7 +2938,7 @@ macro_rules! define_property_value {
             $canonical,
             $wrapper,
             $representation,
-            CssNonNegativeNumberValue,
+            CssSpecifiedNonNegativeNumber,
             CssFlexFactor,
             factor,
             flex_factor_i01_projection

@@ -1,8 +1,6 @@
 use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
 
-use super::values::{
-    CalculationRoot, LengthGrammar, parse_box_size_value, parse_length_with, parse_numeric_function,
-};
+use super::values::{CalculationRoot, LengthGrammar, parse_length_with, parse_numeric_function};
 use crate::CssOverflowValue;
 use crate::display::*;
 use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
@@ -867,32 +865,6 @@ pub(super) fn parse_opacity<'i, 't>(
     }
 }
 
-pub(super) fn parse_flex_factor<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-    context: &str,
-) -> std::result::Result<CssNonNegativeNumberValue, ParseError<'i, Error>> {
-    let numeric_start = input.state();
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Number { value, .. } => CssNonNegativeNumber::try_new(*value)
-            .map(CssNonNegativeNumberValue::Literal)
-            .ok_or_else(|| {
-                unsupported_value_at(
-                    location,
-                    None,
-                    format!("{context} must be a finite non-negative number"),
-                )
-            }),
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)
-                .map(CssNumberCalculation::from_expression)
-                .map(CssNonNegativeNumberValue::Calculation)
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
-}
-
 pub(super) fn parse_aspect_ratio<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
@@ -1009,42 +981,6 @@ pub(super) fn parse_order<'i, 't>(
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
-}
-
-pub(super) fn parse_flex<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssFlexValue, ParseError<'i, Error>> {
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        return match_ignore_ascii_case! { &ident,
-            "none" => Ok(CssFlexValue::None),
-            "auto" => Ok(CssFlexValue::Auto),
-            _ => Err(unsupported_value(
-                input,
-                None,
-                unsupported_keyword_reason("flex", ident.as_ref()),
-            )),
-        };
-    }
-
-    let grow = parse_flex_factor(input, numeric, "flex-grow")?;
-    let mut shrink = None;
-    let mut basis = None;
-    if !input.is_exhausted() {
-        if let Ok(parsed_shrink) =
-            input.try_parse(|input| parse_flex_factor(input, numeric, "flex-shrink"))
-        {
-            shrink = Some(parsed_shrink);
-            if !input.is_exhausted() {
-                basis = Some(parse_box_size_value(input, numeric)?);
-            }
-        } else {
-            basis = Some(parse_box_size_value(input, numeric)?);
-        }
-    }
-    Ok(CssFlexValue::Components(CssFlexComponents::new(
-        grow, shrink, basis,
-    )))
 }
 
 pub(super) fn parse_z_index<'i, 't>(

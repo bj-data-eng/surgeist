@@ -2,7 +2,7 @@
 
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssCalcSize, CssNumericConstructionError, CssSpecifiedNonNegativeLengthPercentage,
+    CssBoxCalcSize, CssNumericConstructionError, CssSpecifiedNonNegativeLengthPercentage,
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
 };
 
@@ -19,7 +19,7 @@ pub enum CssBoxSize {
     MaxContent,
     FitContent,
     FitContentFunction(CssSpecifiedNonNegativeLengthPercentage),
-    CalcSize(CssCalcSize),
+    CalcSize(CssBoxCalcSize),
 }
 
 // A specified sizing value is comparable across separately parsed or checked
@@ -44,7 +44,9 @@ impl PartialEq for CssBoxSize {
             | (Self::MinContent, Self::MinContent)
             | (Self::MaxContent, Self::MaxContent)
             | (Self::FitContent, Self::FitContent) => true,
-            (Self::CalcSize(left), Self::CalcSize(right)) => left.structural_eq(right),
+            (Self::CalcSize(left), Self::CalcSize(right)) => {
+                left.as_calc_size().structural_eq(right.as_calc_size())
+            }
             _ => false,
         }
     }

@@ -2290,11 +2290,31 @@ lower values into another Surgeist crate.
 
 ## Flexbox, multicolumn, and catalog coverage
 
-Flexbox 1 `flex-flow` and all nine Multicolumn 1 properties expose typed authored
-values. `flex-flow` preserves the direction/wrap combination; `columns` retains
+Flexbox 1 `flex-flow`, `flex-basis`, `flex-grow`, `flex-shrink`, and `flex`, and all
+nine Multicolumn 1 properties expose typed authored values. `flex-flow` preserves
+the direction/wrap combination; `columns` retains
 the effective width and count, with omitted components set to `auto`, while its
 wrapper preserves the original spelling and order. `column-rule` preserves
 width, style, and color without performing layout, pagination, or painting.
+
+`flex-basis` accepts the width sizing grammar plus `content`, including
+`calc-size(content, …)`; the generic `CssCalcSize` graph retains that flex-only
+basis. Box properties use `CssBoxCalcSize`, whose checked conversion rejects
+`content` even when nested in another `calc-size()`. `CssFlexBasisValue` keeps
+`content`, an ordinary size, or a root `calc-size()` in one canonical form, and
+`CssFlexBasisRef` exposes a borrowed view. `CssFlexComponents::try_new()` stores
+authored optional grow, shrink, and basis components; its accessors return
+`Option`; the constructor rejects an empty or shrink-only value. Grow and shrink use exact
+nonnegative specified numbers. The shorthand expands to grow, shrink, and basis
+only: omitted factors are `1`, an omitted basis is specified unitless `0`,
+`none` expands to `0 0 auto`, and `auto` to `1 1 auto`. Its initial longhand
+values are `0`, `1`, and `auto`, respectively. Serialization of a component
+shorthand emits its full effective triple, so authored omission is not inferred
+from that output. The frozen I01 view is available only when its older numeric
+and basis types represent the value exactly. These contracts follow
+[Flexbox 1 §7](https://www.w3.org/TR/2025/CRD-css-flexbox-1-20251014/#flex-property),
+[Flexbox 1 §7.2.3](https://www.w3.org/TR/2025/CRD-css-flexbox-1-20251014/#flex-basis-property),
+and the selected Sizing 3/4 and Values 5 sizing productions.
 
 Multicolumn 1 defines `column-width` as `auto | <length [0,∞]>`, `column-count`
 as `auto | <integer [1,∞]>`, and the unordered `columns` shorthand. The selected
@@ -2984,7 +3004,8 @@ and minimum sizes start at `auto`; maximum sizes start at `none`.
 
 `CssBoxSize` preserves nonnegative ordinary length-percentages, deferred math,
 `stretch`, `contain`, intrinsic size keywords, `fit-content`,
-`fit-content(<length-percentage>)`, and `calc-size()`. Its checked ordinary
+`fit-content(<length-percentage>)`, and `calc-size()` through the checked
+`CssBoxCalcSize` wrapper. Its checked ordinary
 length-percentage constructor rejects even tiny negative literals without
 rounding them through a floating-point representation. A calculation remains
 symbolic until the owning layout layer can resolve it. The opaque

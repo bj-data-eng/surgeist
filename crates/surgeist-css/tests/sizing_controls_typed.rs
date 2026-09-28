@@ -128,7 +128,8 @@ fn exact_and_symbolic_values_share_a_pair_budget() {
         .unwrap(),
     )
     .unwrap();
-    let maximum = CssMaxSizeValue::try_box_size(CssBoxSize::CalcSize(calc)).unwrap();
+    let maximum =
+        CssMaxSizeValue::try_box_size(CssBoxSize::CalcSize(calc.try_into().unwrap())).unwrap();
     let pair = CssMaxSizePair::new(CssMaxSizeValue::NONE, Some(maximum));
     let text = "none calc-size(min-content, 1px + size)";
     assert_eq!(pair.serialize_specified().unwrap(), text);
@@ -202,7 +203,10 @@ fn exact_and_symbolic_values_share_a_pair_budget() {
     ) else {
         panic!("two symbolic maximum sizes")
     };
-    assert_ne!(direct.origin(), from_source.origin());
+    assert_ne!(
+        direct.as_calc_size().origin(),
+        from_source.as_calc_size().origin()
+    );
 }
 
 #[test]
