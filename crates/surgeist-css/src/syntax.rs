@@ -12253,7 +12253,7 @@ impl CssCalcLength {
     }
 }
 
-fn format_css_number(value: f32) -> String {
+pub(crate) fn format_css_number(value: f32) -> String {
     if value.fract() == 0.0 {
         format!("{value:.0}")
     } else {

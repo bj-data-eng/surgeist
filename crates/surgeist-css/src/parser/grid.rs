@@ -351,6 +351,8 @@ fn parse_grid_track_breadth<'i, 't>(
 ) -> std::result::Result<CssAuthoredGridTrackBreadth, ParseError<'i, Error>> {
     let numeric_start = input.state();
     let location = input.current_source_location();
+    input.skip_whitespace();
+    let token_start = input.position();
     match input.next().map_err(basic)? {
         Token::Dimension { value, .. } if !value.is_finite() => Err(unsupported_value_at(
             location,
@@ -385,10 +387,10 @@ fn parse_grid_track_breadth<'i, 't>(
                 format!("unknown grid track unit `{unit}`"),
             )),
         },
-        Token::Percentage { unit_value, .. } => {
+        Token::Percentage { .. } => {
             let value = checked_percentage_value(
                 location,
-                *unit_value,
+                input.slice_from(token_start),
                 "unsupported non-finite grid track percentage",
             )?;
             if value < 0.0 {

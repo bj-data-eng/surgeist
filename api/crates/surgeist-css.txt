@@ -1649,6 +1649,9 @@ pub surgeist_css::CssGradient::Linear(surgeist_css::CssLinearGradient)
 pub surgeist_css::CssGradient::Radial(surgeist_css::CssRadialGradient)
 pub surgeist_css::CssGradient::RepeatingLinear(surgeist_css::CssLinearGradient)
 pub surgeist_css::CssGradient::RepeatingRadial(surgeist_css::CssRadialGradient)
+impl surgeist_css::CssGradient
+pub fn surgeist_css::CssGradient::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssGradient::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssGradientAngle
 pub surgeist_css::CssGradientAngle::Calculation(surgeist_css::CssAngleCalculation)
 pub surgeist_css::CssGradientAngle::Literal(surgeist_css::CssAngleLiteral)
@@ -1761,6 +1764,9 @@ pub surgeist_css::CssImageRendering::Pixelated
 pub surgeist_css::CssImageValue::Gradient(surgeist_css::CssGradient)
 pub surgeist_css::CssImageValue::None
 pub surgeist_css::CssImageValue::Url(surgeist_css::CssUrl)
+impl surgeist_css::CssImageValue
+pub fn surgeist_css::CssImageValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssImageValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssImportConstructionError
 pub surgeist_css::CssImportConstructionError::Component(surgeist_css::CssComponentValueError)
 pub surgeist_css::CssImportConstructionError::InvalidRuleGrammar
@@ -6720,6 +6726,9 @@ pub fn surgeist_css::CssIdent::as_str(&self) -> &str
 pub fn surgeist_css::CssIdent::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
 pub struct surgeist_css::CssImage
 impl surgeist_css::CssImage
+pub fn surgeist_css::CssImage::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssImage::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssImage
 pub fn surgeist_css::CssImage::try_new(value: surgeist_css::CssImageValue) -> core::option::Option<Self>
 pub const fn surgeist_css::CssImage::value(&self) -> &surgeist_css::CssImageValue
 pub struct surgeist_css::CssImageLayerList
@@ -6738,6 +6747,9 @@ pub struct surgeist_css::CssImageValueList
 impl surgeist_css::CssImageValueList
 pub fn surgeist_css::CssImageValueList::images(&self) -> &[surgeist_css::CssImageValue]
 pub fn surgeist_css::CssImageValueList::try_new(images: alloc::vec::Vec<surgeist_css::CssImageValue>) -> core::option::Option<Self>
+impl surgeist_css::CssImageValueList
+pub fn surgeist_css::CssImageValueList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssImageValueList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssImportRule
 impl surgeist_css::CssImportRule
 pub const fn surgeist_css::CssImportRule::layer(&self) -> core::option::Option<&surgeist_css::CssImportLayer>
@@ -7808,6 +7820,9 @@ impl surgeist_css::CssPositionValue
 pub const fn surgeist_css::CssPositionValue::horizontal(&self) -> &surgeist_css::CssHorizontalPosition
 pub fn surgeist_css::CssPositionValue::try_new(horizontal: surgeist_css::CssHorizontalPosition, vertical: surgeist_css::CssVerticalPosition) -> core::option::Option<Self>
 pub const fn surgeist_css::CssPositionValue::vertical(&self) -> &surgeist_css::CssVerticalPosition
+impl surgeist_css::CssPositionValue
+pub fn surgeist_css::CssPositionValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPositionValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssPositiveInteger
 impl surgeist_css::CssPositiveInteger
 pub const fn surgeist_css::CssPositiveInteger::try_new(value: i32) -> core::option::Option<Self>

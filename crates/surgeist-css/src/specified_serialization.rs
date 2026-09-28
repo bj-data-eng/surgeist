@@ -248,6 +248,22 @@ pub(crate) fn serialize_checked_pure_length_into(
     }
 }
 
+/// Streams a previously checked length-percentage without resolving its percentage basis.
+/// The caller must first admit the value through its own grammar-specific constructor.
+pub(crate) fn serialize_checked_length_percentage_into(
+    value: &CssLength,
+    context: &mut SpecifiedSerializationContext,
+    output: &mut String,
+) -> Result<()> {
+    if let CssLength::Percent(value) = value {
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        context.append(output, &CssCalcLength::Percent(*value).to_css_string())
+    } else {
+        serialize_checked_pure_length_into(value, context, output)
+    }
+}
+
 impl crate::CssOverflowWrap {
     /// Serializes the specified overflow wrapping keyword before layout resolution.
     pub fn serialize_specified(&self) -> Result<String> {

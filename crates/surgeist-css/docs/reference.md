@@ -2334,8 +2334,20 @@ Programmatic gradients use `CssGradientColorStop::from_color`, checked
 explicit radius forms, permits omitted size and extents, and preserves authored
 omissions. `CssPositionValue::try_new` checks the generic
 position grammar: explicit edge offsets occur on both axes or neither. These
-constructors retain authored symbolic values; they do not serialize images or
-resolve colors, percentages, URLs, or positions.
+constructors retain authored symbolic values without resolving colors,
+percentages, URLs, or positions.
+
+The selected [Images 3 specified serialization](https://www.w3.org/TR/2023/CRD-css-images-3-20231218/#serialization)
+is available on `CssImage`, `CssImageValue`, `CssGradient`, and
+`CssImageValueList` through `serialize_specified()` and a limits variant.
+They write lowercase gradient function names, checked colors, symbolic numeric
+values, and URL functions without loading resources or resolving layout.
+Only context-independent defaults are omitted: a linear direction of `to bottom`
+or a directly authored exact half-turn, an initial direct numeric zero stop,
+a final direct `100%` stop, and the corresponding radial default shape, size,
+and ordinary center position. Calculations and four-component positions remain
+explicit. Nested images share one input-node, projection-node, and output-byte
+budget; an exhausted budget returns an error without a partial CSS result.
 
 ```rust
 use surgeist_css::{
@@ -3194,6 +3206,15 @@ their normalized checked kinds. Property wrappers still retain original
 `as_css()` spelling, so differently authored declarations remain distinct.
 
 ## Authored positioning and insets
+
+The selected [Values 4 generic `<position>` serialization](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#position-serialization)
+is available on `CssPositionValue::serialize_specified()` and its limits variant.
+It writes the checked horizontal and vertical axes in that order: a parsed
+`top` becomes `center top`, while `bottom 2% right 1px` becomes
+`right 1px bottom 2%`. Paired edge offsets retain their edge keywords and
+symbolic lengths, percentages, and calculations. The operation shares one
+input, projection, and output budget across both axes; it does not resolve a
+percentage against a box or use the separate background three-component form.
 
 The selected [Position 3 draft](https://www.w3.org/TR/2025/WD-css-position-3-20251007/#position-property)
 defines the five `position` keywords and the physical and flow-relative inset

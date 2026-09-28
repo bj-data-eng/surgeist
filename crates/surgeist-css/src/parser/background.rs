@@ -7,8 +7,8 @@ use super::position::{
 };
 use super::url::parse_url;
 use super::values::{
-    CalculationRoot, LengthGrammar, next_is_comma, parse_length_with, parse_length_with_context,
-    parse_numeric_function,
+    CalculationRoot, LengthGrammar, checked_percentage_value, next_is_comma, parse_length_with,
+    parse_length_with_context, parse_numeric_function,
 };
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
@@ -352,17 +352,26 @@ fn parse_border_image_slice_component<'i, 't>(
 ) -> std::result::Result<CssBorderImageSliceComponent, ParseError<'i, Error>> {
     let numeric_start = input.state();
     let location = input.current_source_location();
+    input.skip_whitespace();
+    let token_start = input.position();
     match input.next().map_err(basic)?.clone() {
         Token::Number { value, .. } => CssNonNegativeNumber::try_new(value)
             .map(CssBorderImageSliceComponent::Number)
             .ok_or_else(|| {
                 unsupported_value_at(location, None, "border-image-slice must be non-negative")
             }),
-        Token::Percentage { unit_value, .. } => CssNonNegativeNumber::try_new(unit_value * 100.0)
-            .map(CssBorderImageSliceComponent::Percentage)
-            .ok_or_else(|| {
-                unsupported_value_at(location, None, "border-image-slice must be non-negative")
-            }),
+        Token::Percentage { .. } => {
+            let value = checked_percentage_value(
+                location,
+                input.slice_from(token_start),
+                "border-image-slice must be non-negative",
+            )?;
+            CssNonNegativeNumber::try_new(value)
+                .map(CssBorderImageSliceComponent::Percentage)
+                .ok_or_else(|| {
+                    unsupported_value_at(location, None, "border-image-slice must be non-negative")
+                })
+        }
         Token::Function(name) if crate::numeric::is_math_function(&name) => {
             if let Ok(expression) = input.try_parse(|input| {
                 parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)

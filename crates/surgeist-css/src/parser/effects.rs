@@ -532,11 +532,13 @@ fn parse_transform_percentage<'i, 't>(
 ) -> std::result::Result<CssTransformPercentage, ParseError<'i, Error>> {
     let numeric_start = input.state();
     let location = input.current_source_location();
+    input.skip_whitespace();
+    let token_start = input.position();
     match input.next().map_err(basic)? {
-        Token::Percentage { unit_value, .. } => {
+        Token::Percentage { .. } => {
             let value = checked_percentage_value(
                 location,
-                *unit_value,
+                input.slice_from(token_start),
                 "transform percentage must be finite",
             )?;
             CssFiniteNumber::try_new(value)
@@ -1187,11 +1189,13 @@ fn parse_filter_percentage<'i, 't>(
 ) -> std::result::Result<CssFilterPercentage, ParseError<'i, Error>> {
     let numeric_start = input.state();
     let location = input.current_source_location();
+    input.skip_whitespace();
+    let token_start = input.position();
     match input.next().map_err(basic)? {
-        Token::Percentage { unit_value, .. } => {
+        Token::Percentage { .. } => {
             let value = checked_percentage_value(
                 location,
-                *unit_value,
+                input.slice_from(token_start),
                 "filter percentage must be finite",
             )?;
             CssNonNegativeNumber::try_new(value)
@@ -1359,10 +1363,12 @@ fn parse_frozen_circle_percentage<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<(), ParseError<'i, Error>> {
     let location = input.current_source_location();
+    input.skip_whitespace();
+    let token_start = input.position();
     let value = match input.next().map_err(basic)? {
-        Token::Percentage { unit_value, .. } => checked_percentage_value(
+        Token::Percentage { .. } => checked_percentage_value(
             location,
-            *unit_value,
+            input.slice_from(token_start),
             "circle percentage radius must be finite",
         )?,
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),

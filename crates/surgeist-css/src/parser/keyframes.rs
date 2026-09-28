@@ -4,7 +4,7 @@ use cssparser::{
 };
 
 use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
-use super::values::parse_custom_ident_from_str_at;
+use super::values::{checked_percentage_value, parse_custom_ident_from_str_at};
 use super::{
     DeclarationMode, block_item_diagnostic, consume_failed_rule_block,
     is_declaration_recovery_unit, parse_declaration_core, structural_recovery_production,
@@ -233,6 +233,8 @@ fn parse_keyframe_selector<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssKeyframeSelector, ParseError<'i, Error>> {
     let location = input.current_source_location();
+    input.skip_whitespace();
+    let token_start = input.position();
     match input.next().map_err(basic)? {
         Token::Ident(ident) => match_ignore_ascii_case! { ident,
             "from" => Ok(CssKeyframeSelector::From),
@@ -243,8 +245,12 @@ fn parse_keyframe_selector<'i, 't>(
                 format!("unsupported keyframe selector `{ident}`"),
             )),
         },
-        Token::Percentage { unit_value, .. } => {
-            let value = *unit_value * 100.0;
+        Token::Percentage { .. } => {
+            let value = checked_percentage_value(
+                location,
+                input.slice_from(token_start),
+                "keyframe selector must be 0% through 100%",
+            )?;
             CssKeyframePercent::try_new(value)
                 .map(CssKeyframeSelector::Percent)
                 .ok_or_else(|| {

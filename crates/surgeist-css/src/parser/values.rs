@@ -160,15 +160,17 @@ impl LengthGrammar {
 
 pub(super) fn checked_percentage_value<'i>(
     location: cssparser::SourceLocation,
-    unit_value: f32,
+    token_css: &str,
     non_finite_reason: impl Into<String>,
 ) -> std::result::Result<f32, ParseError<'i, Error>> {
-    let value = unit_value * 100.0;
-    if value.is_finite() {
-        Ok(value)
-    } else {
-        Err(unsupported_value_at(location, None, non_finite_reason))
-    }
+    // cssparser exposes percentages after dividing by 100 and rounding to f32.
+    // Re-multiplication can change the authored magnitude (30% -> 30.000002).
+    // The caller passes exactly the consumed percentage token, without trivia.
+    let value = token_css
+        .strip_suffix('%')
+        .and_then(|numeric| numeric.parse::<f32>().ok())
+        .filter(|value| value.is_finite());
+    value.ok_or_else(|| unsupported_value_at(location, None, non_finite_reason))
 }
 
 pub(super) fn parse_length_with<'i, 't>(
@@ -208,6 +210,8 @@ pub(super) fn parse_literal_length_with_context<'i, 't>(
     context: &str,
 ) -> std::result::Result<CssLength, ParseError<'i, Error>> {
     let location = input.current_source_location();
+    input.skip_whitespace();
+    let token_start = input.position();
     match input.next().map_err(basic)? {
         Token::Dimension { value, .. } if !value.is_finite() => Err(unsupported_value_at(
             location,
@@ -229,10 +233,10 @@ pub(super) fn parse_literal_length_with_context<'i, 't>(
                 format!("unknown {context} unit `{unit}`"),
             )),
         },
-        Token::Percentage { unit_value, .. } => {
+        Token::Percentage { .. } => {
             let value = checked_percentage_value(
                 location,
-                *unit_value,
+                input.slice_from(token_start),
                 format!("unsupported non-finite {context} percentage"),
             )?;
             if grammar.requires_non_negative() && value < 0.0 {
