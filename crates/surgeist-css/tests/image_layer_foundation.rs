@@ -34,6 +34,15 @@ fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
     items.items().to_vec()
 }
 
+fn expanded_images(value: &CssLonghandValue) -> &CssImageValueList {
+    match value.view() {
+        CssLonghandValueRef::BackgroundImage(images) | CssLonghandValueRef::MaskImage(images) => {
+            images
+        }
+        _ => panic!("typed image-list contribution"),
+    }
+}
+
 #[test]
 fn background_image_is_one_noninherited_longhand_initially_none() {
     let CssPropertyKindRef::Longhand(metadata) =
@@ -54,12 +63,21 @@ fn background_image_is_one_noninherited_longhand_initially_none() {
         initial.property().known_property(),
         CssKnownProperty::BackgroundImage
     );
+    let CssLonghandValueRef::BackgroundImage(initial_images) = initial.view() else {
+        panic!("typed background-image initial")
+    };
+    assert!(matches!(initial_images.images(), [CssImageValue::None]));
+    assert_eq!(initial_images.serialize_specified().unwrap(), "none");
     let source = declaration("background-image:none");
     assert!(matches!(authored(&source).images(), [CssImageValue::None]));
     let [contribution] = expanded(&source)
         .try_into()
         .unwrap_or_else(|_| panic!("one item"));
     assert_eq!(initial, contribution.ordinary_value().unwrap());
+    assert_eq!(
+        expanded_images(contribution.ordinary_value().unwrap()),
+        authored(&source)
+    );
 }
 
 #[test]
@@ -82,12 +100,21 @@ fn mask_image_is_one_noninherited_longhand_initially_none() {
         initial.property().known_property(),
         CssKnownProperty::MaskImage
     );
+    let CssLonghandValueRef::MaskImage(initial_images) = initial.view() else {
+        panic!("typed mask-image initial")
+    };
+    assert!(matches!(initial_images.images(), [CssImageValue::None]));
+    assert_eq!(initial_images.serialize_specified().unwrap(), "none");
     let source = declaration("mask-image:none");
     assert!(matches!(authored(&source).images(), [CssImageValue::None]));
     let [contribution] = expanded(&source)
         .try_into()
         .unwrap_or_else(|_| panic!("one item"));
     assert_eq!(initial, contribution.ordinary_value().unwrap());
+    assert_eq!(
+        expanded_images(contribution.ordinary_value().unwrap()),
+        authored(&source)
+    );
 }
 
 #[test]
@@ -121,6 +148,17 @@ fn ordered_current_images_expand_once_with_source_and_importance() {
         .unwrap_or_else(|_| panic!("one terminal"));
     assert_eq!(item.property(), CssKnownProperty::BackgroundImage);
     assert!(item.ordinary_value().is_some());
+    let contributed = expanded_images(item.ordinary_value().unwrap());
+    assert_eq!(contributed, current);
+    assert_eq!(
+        contributed.serialize_specified().unwrap(),
+        concat!(
+            "none, src(\"hero.svg\"), linear-gradient(red, blue), ",
+            "radial-gradient(circle, red, blue), ",
+            "repeating-linear-gradient(45deg, red, blue), ",
+            "repeating-radial-gradient(red, blue)"
+        )
+    );
     assert!(item.source().same_occurrence(&source));
     assert_eq!(item.source().importance(), CssImportance::Important);
     assert!(item.replacement_components().is_none());
@@ -148,6 +186,12 @@ fn ordered_mask_sources_and_gradients_expand_once_with_source_and_importance() {
         .unwrap_or_else(|_| panic!("one terminal"));
     assert_eq!(item.property(), CssKnownProperty::MaskImage);
     assert!(item.ordinary_value().is_some());
+    let contributed = expanded_images(item.ordinary_value().unwrap());
+    assert_eq!(contributed, current);
+    assert_eq!(
+        contributed.serialize_specified().unwrap(),
+        "url(\"#clip\"), src(\"#mask\"), none, linear-gradient(red, blue)"
+    );
     assert!(item.source().same_occurrence(&source));
     assert_eq!(item.source().importance(), CssImportance::Important);
     assert!(item.replacement_components().is_none());
@@ -377,6 +421,54 @@ fn image_components_keep_parsed_and_checked_programmatic_origins() {
     assert!(
         matches!(authored(&checked_mask).images(), [CssImageValue::Url(url)] if url.as_str() == "#mask")
     );
+}
+
+#[test]
+fn both_initial_image_lists_use_one_cumulative_serialization_budget() {
+    for property in [
+        CssKnownProperty::BackgroundImage,
+        CssKnownProperty::MaskImage,
+    ] {
+        let CssPropertyKindRef::Longhand(metadata) = property.metadata().unwrap().kind() else {
+            panic!("image list longhand")
+        };
+        let initial = metadata.initial_value();
+        let CssInitialValueRef::Value(initial) = initial.view() else {
+            panic!("ordinary image-list initial")
+        };
+        let list = expanded_images(initial);
+        // A checked list aggregate and its one `none` leaf each charge one
+        // input and projection node; the complete specified text is four bytes.
+        assert_eq!(
+            list.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                2, 2, 4
+            ))
+            .unwrap(),
+            "none"
+        );
+        for (limits, expected) in [
+            (
+                CssSpecifiedValueSerializationLimits::new(1, 2, 4),
+                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            ),
+            (
+                CssSpecifiedValueSerializationLimits::new(2, 1, 4),
+                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            ),
+            (
+                CssSpecifiedValueSerializationLimits::new(2, 2, 3),
+                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            ),
+        ] {
+            assert_eq!(
+                list.serialize_specified_with_limits(limits)
+                    .unwrap_err()
+                    .kind(),
+                expected
+            );
+        }
+        assert_eq!(list.serialize_specified().unwrap(), "none");
+    }
 }
 
 #[test]

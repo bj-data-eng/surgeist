@@ -2349,6 +2349,14 @@ and ordinary center position. Calculations and four-component positions remain
 explicit. Nested images share one input-node, projection-node, and output-byte
 budget; an exhausted budget returns an error without a partial CSS result.
 
+The selected Backgrounds 3 `background-image` and Masking 1 `mask-image`
+longhands each contribute one ordered `CssImageValueList`. Both are
+noninherited and initially contain one `CssImageValue::None`. Their parsed
+wrappers expose that list through `images()`, while `i01_subset()` retains the
+older URL/`none` compatibility view when available. Intrinsic expansion and
+normalization preserve source occurrence, importance, and pending replacement
+components; they do not load images or match layers with sibling properties.
+
 ```rust
 use surgeist_css::{
     CssGradient, CssImageValue, CssKnownPropertyValueRef, CssSupportStatus,
