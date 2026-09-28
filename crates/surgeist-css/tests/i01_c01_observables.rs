@@ -27,6 +27,10 @@ const FIXTURE: &str = include_str!("fixtures/i01-c01-observables.tsv");
 // CSS Text 4 §8.2 retains 0.1em exactly; its historical rounded f32 I01
 // payload is no longer an exact projection of that specified value.
 // https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-letter-spacing
+// Lists 3 accepts functional symbols() styles and positional-keyword custom
+// style names after the position slot is filled; the two archived inputs are
+// unchanged while their selected acceptance observables follow that grammar.
+// https://www.w3.org/TR/2020/WD-css-lists-3-20201117/#propdef-list-style
 const HEADER: &str =
     "case_id\tentry\tfeature\tinput\tclean\tretained\tvalues\tauthored_declarations\tdiagnostics";
 
@@ -2677,6 +2681,65 @@ fn assert_known_property_value(
     frozen: &mut FrozenDeclarationCursor<'_>,
 ) {
     match (property, &value) {
+        (
+            surgeist_css::CssKnownProperty::ListStyleType,
+            surgeist_css::CssKnownPropertyValueRef::ListStyleType(value),
+        ) if frozen.case_id == "catalog.property.baseline.property.list-style-type.boundary" => {
+            assert_eq!(authored.id, property.stable_id());
+            assert_eq!(authored.value_capability, "public");
+            assert_eq!(authored.value, "symbols(cyclic \"*\" \"+\")");
+            assert_eq!(value.as_css(), authored.value);
+            assert!(value.i01_subset().is_none());
+            assert_eq!(
+                value.current().serialize_specified().unwrap(),
+                "symbols(cyclic \"*\" \"+\")"
+            );
+            let semantic = semantic.expect("new current list-style-type value");
+            assert_eq!(semantic.id, property.stable_id());
+            assert_eq!(semantic.payload, "typed:symbols(cyclic \"*\" \"+\")");
+            return;
+        }
+        (
+            surgeist_css::CssKnownProperty::ListStyle,
+            surgeist_css::CssKnownPropertyValueRef::ListStyle(value),
+        ) if frozen.case_id == "catalog.property.baseline.property.list-style.boundary" => {
+            assert_eq!(authored.id, property.stable_id());
+            assert_eq!(authored.value_capability, "public");
+            assert_eq!(authored.value, "inside outside");
+            assert_eq!(value.as_css(), authored.value);
+            assert_eq!(
+                value.current().position(),
+                Some(surgeist_css::CssListStylePosition::Inside)
+            );
+            let Some(surgeist_css::CssListStyleTypeValue::CounterStyle(style)) =
+                value.current().style_type()
+            else {
+                panic!("custom style name after positional keyword")
+            };
+            assert_eq!(style.named().unwrap().as_str(), "outside");
+            let old = value
+                .i01_subset()
+                .expect("current pair is representable in I01");
+            assert_eq!(
+                old.position(),
+                Some(surgeist_css::CssListStylePosition::Inside)
+            );
+            let Some(surgeist_css::CssListStyleType::CounterStyle(
+                surgeist_css::CssCounterStyle::Named(name),
+            )) = old.style_type()
+            else {
+                panic!("legacy representable named style")
+            };
+            assert_eq!(name.as_str(), "outside");
+            assert_eq!(
+                value.current().serialize_specified().unwrap(),
+                "inside outside"
+            );
+            let semantic = semantic.expect("new current list-style value");
+            assert_eq!(semantic.id, property.stable_id());
+            assert_eq!(semantic.payload, "typed:inside outside");
+            return;
+        }
         // The archived gap witnesses carried a single CssLength Debug payload.
         // Keep that historical observation in this fixture adapter while the
         // current property API exposes exact one/two-value gap models.

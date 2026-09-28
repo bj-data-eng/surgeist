@@ -2282,10 +2282,6 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::CaptionSide
         | CssKnownProperty::EmptyCells
         | CssKnownProperty::TableLayout
-        | CssKnownProperty::ListStyleType
-        | CssKnownProperty::ListStylePosition
-        | CssKnownProperty::ListStyleImage
-        | CssKnownProperty::ListStyle
         | CssKnownProperty::CounterReset
         | CssKnownProperty::CounterIncrement
         | CssKnownProperty::LineHeight
@@ -2495,7 +2491,11 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::JustifyTracks
         | CssKnownProperty::AlignTracks => S_ALIGN3,
         CssKnownProperty::ContentVisibility => I_CONTAIN2,
-        CssKnownProperty::CounterSet => I_LISTS3,
+        CssKnownProperty::CounterSet
+        | CssKnownProperty::ListStyleType
+        | CssKnownProperty::ListStylePosition
+        | CssKnownProperty::ListStyleImage
+        | CssKnownProperty::ListStyle => I_LISTS3,
         CssKnownProperty::FlowTolerance => X_GRID3_20260121,
         CssKnownProperty::GridTemplateRows
         | CssKnownProperty::GridTemplateColumns
@@ -2626,20 +2626,15 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
         CssKnownProperty::WordSpacing => "#propdef-word-spacing",
         CssKnownProperty::LetterSpacing => "#propdef-letter-spacing",
         CssKnownProperty::ZIndex => "visuren.html#propdef-z-index",
-        CssKnownProperty::CounterIncrement
-        | CssKnownProperty::CounterReset
-        | CssKnownProperty::ListStyle
-        | CssKnownProperty::ListStyleImage
-        | CssKnownProperty::ListStylePosition
-        | CssKnownProperty::ListStyleType => match property {
+        CssKnownProperty::CounterIncrement | CssKnownProperty::CounterReset => match property {
             CssKnownProperty::CounterIncrement => "generate.html#propdef-counter-increment",
             CssKnownProperty::CounterReset => "generate.html#propdef-counter-reset",
-            CssKnownProperty::ListStyle => "generate.html#propdef-list-style",
-            CssKnownProperty::ListStyleImage => "generate.html#propdef-list-style-image",
-            CssKnownProperty::ListStylePosition => "generate.html#propdef-list-style-position",
-            CssKnownProperty::ListStyleType => "generate.html#propdef-list-style-type",
             _ => default,
         },
+        CssKnownProperty::ListStyle => "#propdef-list-style",
+        CssKnownProperty::ListStyleImage => "#propdef-list-style-image",
+        CssKnownProperty::ListStylePosition => "#propdef-list-style-position",
+        CssKnownProperty::ListStyleType => "#propdef-list-style-type",
         CssKnownProperty::LineHeight | CssKnownProperty::VerticalAlign => match property {
             CssKnownProperty::LineHeight => "visudet.html#propdef-line-height",
             CssKnownProperty::VerticalAlign => "visudet.html#propdef-vertical-align",
@@ -4396,22 +4391,22 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 623] = [
         "content-visibility",
         "baseline.property.content-visibility"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::ListStyleType,
         "list-style-type",
         "baseline.property.list-style-type"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::ListStylePosition,
         "list-style-position",
         "baseline.property.list-style-position"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::ListStyleImage,
         "list-style-image",
         "baseline.property.list-style-image"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::ListStyle,
         "list-style",
         "baseline.property.list-style"

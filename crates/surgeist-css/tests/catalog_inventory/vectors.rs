@@ -819,7 +819,7 @@ pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
     vector!(
         "baseline.property.list-style-type",
         "list-style-type",
-        "symbols(cyclic \"*\" \"+\")"
+        "symbols(numeric \"*\")"
     ),
     vector!(
         "baseline.property.list-style-position",
@@ -834,7 +834,7 @@ pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
     vector!(
         "baseline.property.list-style",
         "list-style",
-        "inside outside"
+        "inside outside square"
     ),
     vector!(
         "baseline.property.counter-reset",

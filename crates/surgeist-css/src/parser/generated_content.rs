@@ -1,10 +1,8 @@
 use cssparser::{ParseError, Parser, match_ignore_ascii_case};
 
-use super::url::parse_url;
 use super::values::parse_integer;
 use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
-use crate::validation::unsupported_keyword_reason;
 
 pub(super) fn parse_quotes<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -49,131 +47,6 @@ pub(super) fn parse_content<'i, 't>(
     super::content_values::parse_content_value(input, numeric)
 }
 
-pub(super) fn parse_list_style_type<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssListStyleType, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("none"))
-        .is_ok()
-    {
-        return Ok(CssListStyleType::None);
-    }
-    if let Ok(value) = input.try_parse(parse_content_string) {
-        return Ok(CssListStyleType::String(value));
-    }
-    parse_counter_style(input).map(CssListStyleType::CounterStyle)
-}
-
-pub(super) fn parse_list_style_position<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssListStylePosition, ParseError<'i, Error>> {
-    let ident = input.expect_ident_cloned().map_err(basic)?;
-    match_ignore_ascii_case! { &ident,
-        "inside" => Ok(CssListStylePosition::Inside),
-        "outside" => Ok(CssListStylePosition::Outside),
-        _ => Err(unsupported_value(input, None, unsupported_keyword_reason("list-style-position", ident.as_ref()))),
-    }
-}
-
-pub(super) fn parse_list_style_image<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssListStyleImage, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("none"))
-        .is_ok()
-    {
-        return Ok(CssListStyleImage::None);
-    }
-    parse_url(input, numeric)
-        .map(CssListStyleImage::Url)
-        .map_err(|_| {
-            unsupported_value(
-                input,
-                None,
-                "list-style-image only supports `none` or url(...)",
-            )
-        })
-}
-
-pub(super) fn parse_list_style<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssListStyle, ParseError<'i, Error>> {
-    let mut style_type = None;
-    let mut position = None;
-    let mut image = None;
-    let mut has_ambiguous_none = false;
-
-    while !input.is_exhausted() {
-        let component = parse_list_style_component(input, numeric)?;
-        match component {
-            ListStyleComponent::None => {
-                if has_ambiguous_none {
-                    return Err(unsupported_value(
-                        input,
-                        None,
-                        "list-style has duplicate `none` components",
-                    ));
-                }
-                has_ambiguous_none = true;
-            }
-            ListStyleComponent::Type(value) => {
-                if style_type.replace(value).is_some() {
-                    return Err(unsupported_value(
-                        input,
-                        None,
-                        "list-style has duplicate type components",
-                    ));
-                }
-            }
-            ListStyleComponent::Position(value) => {
-                if position.replace(value).is_some() {
-                    return Err(unsupported_value(
-                        input,
-                        None,
-                        "list-style has duplicate position components",
-                    ));
-                }
-            }
-            ListStyleComponent::Image(value) => {
-                if image.replace(value).is_some() {
-                    return Err(unsupported_value(
-                        input,
-                        None,
-                        "list-style has duplicate image components",
-                    ));
-                }
-            }
-        }
-    }
-
-    if has_ambiguous_none {
-        match (style_type.is_some(), image.is_some()) {
-            (false, false) => {
-                style_type = Some(CssListStyleType::None);
-                image = Some(CssListStyleImage::None);
-            }
-            (false, true) => {
-                style_type = Some(CssListStyleType::None);
-            }
-            (true, false) => {
-                image = Some(CssListStyleImage::None);
-            }
-            (true, true) => {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "`none` duplicates a list-style type or image component",
-                ));
-            }
-        }
-    }
-
-    CssListStyle::try_new(style_type, position, image)
-        .ok_or_else(|| unsupported_value(input, None, "list-style shorthand is empty"))
-}
-
 pub(super) fn parse_counter_changes<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssCounterChanges, ParseError<'i, Error>> {
@@ -204,35 +77,6 @@ pub(super) fn parse_counter_changes<'i, 't>(
         .ok_or_else(|| unsupported_value(input, None, "counter change list is empty"))
 }
 
-enum ListStyleComponent {
-    None,
-    Type(CssListStyleType),
-    Position(CssListStylePosition),
-    Image(CssListStyleImage),
-}
-
-fn parse_list_style_component<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<ListStyleComponent, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("none"))
-        .is_ok()
-    {
-        return Ok(ListStyleComponent::None);
-    }
-
-    if let Ok(position) = input.try_parse(parse_list_style_position) {
-        return Ok(ListStyleComponent::Position(position));
-    }
-
-    if let Ok(image) = input.try_parse(|input| parse_list_style_image(input, numeric)) {
-        return Ok(ListStyleComponent::Image(image));
-    }
-
-    parse_list_style_type(input).map(ListStyleComponent::Type)
-}
-
 pub(super) fn parse_content_string<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssContentString, ParseError<'i, Error>> {
@@ -252,40 +96,4 @@ fn parse_counter_name<'i, 't>(
     CssCounterName::try_new(name.to_string()).ok_or_else(|| {
         unsupported_value_at(location, None, format!("unsupported counter name `{name}`"))
     })
-}
-
-fn parse_counter_style<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssCounterStyle, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
-    if let Some(style) = parse_builtin_counter_style(ident.as_ref()) {
-        return Ok(CssCounterStyle::BuiltIn(style));
-    }
-    CssCounterStyleName::try_new(ident.to_string())
-        .map(CssCounterStyle::Named)
-        .ok_or_else(|| {
-            unsupported_value_at(
-                location,
-                None,
-                format!("unsupported counter style `{ident}`"),
-            )
-        })
-}
-
-fn parse_builtin_counter_style(value: &str) -> Option<CssBuiltInCounterStyle> {
-    match value.to_ascii_lowercase().as_str() {
-        "disc" => Some(CssBuiltInCounterStyle::Disc),
-        "circle" => Some(CssBuiltInCounterStyle::Circle),
-        "square" => Some(CssBuiltInCounterStyle::Square),
-        "decimal" => Some(CssBuiltInCounterStyle::Decimal),
-        "decimal-leading-zero" => Some(CssBuiltInCounterStyle::DecimalLeadingZero),
-        "lower-alpha" => Some(CssBuiltInCounterStyle::LowerAlpha),
-        "upper-alpha" => Some(CssBuiltInCounterStyle::UpperAlpha),
-        "lower-latin" => Some(CssBuiltInCounterStyle::LowerLatin),
-        "upper-latin" => Some(CssBuiltInCounterStyle::UpperLatin),
-        "lower-roman" => Some(CssBuiltInCounterStyle::LowerRoman),
-        "upper-roman" => Some(CssBuiltInCounterStyle::UpperRoman),
-        _ => None,
-    }
 }

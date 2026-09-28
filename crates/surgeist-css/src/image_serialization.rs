@@ -56,7 +56,7 @@ impl CssImageValue {
         Ok(writer.css)
     }
 
-    fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+    pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::None => {
                 charge(writer, 1)?;

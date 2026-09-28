@@ -188,7 +188,7 @@ fn parse_counters<'i, 't>(
     Ok(CssContentCounters::new(name, separator, style))
 }
 
-fn parse_style<'i, 't>(
+pub(super) fn parse_style<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<'i, CssCounterStyleValue> {

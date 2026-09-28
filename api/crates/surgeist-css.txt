@@ -2708,10 +2708,22 @@ pub surgeist_css::CssListStyleImage::Url(surgeist_css::CssUrl)
 #[non_exhaustive] pub enum surgeist_css::CssListStylePosition
 pub surgeist_css::CssListStylePosition::Inside
 pub surgeist_css::CssListStylePosition::Outside
+impl surgeist_css::CssListStylePosition
+pub fn surgeist_css::CssListStylePosition::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssListStylePosition::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssListStyleType
 pub surgeist_css::CssListStyleType::CounterStyle(surgeist_css::CssCounterStyle)
 pub surgeist_css::CssListStyleType::None
 pub surgeist_css::CssListStyleType::String(surgeist_css::CssContentString)
+#[non_exhaustive] pub enum surgeist_css::CssListStyleTypeValue
+pub surgeist_css::CssListStyleTypeValue::CounterStyle(surgeist_css::CssCounterStyleValue)
+pub surgeist_css::CssListStyleTypeValue::None
+pub surgeist_css::CssListStyleTypeValue::String(surgeist_css::CssContentString)
+impl surgeist_css::CssListStyleTypeValue
+pub fn surgeist_css::CssListStyleTypeValue::initial() -> Self
+impl surgeist_css::CssListStyleTypeValue
+pub fn surgeist_css::CssListStyleTypeValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssListStyleTypeValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssLonghandValueRef<'a>
 pub surgeist_css::CssLonghandValueRef::AlignContent(&'a surgeist_css::CssAlignContentValue)
 pub surgeist_css::CssLonghandValueRef::AlignItems(&'a surgeist_css::CssAlignItemsValue)
@@ -2818,6 +2830,9 @@ pub surgeist_css::CssLonghandValueRef::JustifySelf(&'a surgeist_css::CssJustifyS
 pub surgeist_css::CssLonghandValueRef::Left(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::LetterSpacing(&'a surgeist_css::CssTextSpacingAdjustment)
 pub surgeist_css::CssLonghandValueRef::LineHeight(&'a surgeist_css::CssLineHeight)
+pub surgeist_css::CssLonghandValueRef::ListStyleImage(&'a surgeist_css::CssImageValue)
+pub surgeist_css::CssLonghandValueRef::ListStylePosition(&'a surgeist_css::CssListStylePosition)
+pub surgeist_css::CssLonghandValueRef::ListStyleType(&'a surgeist_css::CssListStyleTypeValue)
 pub surgeist_css::CssLonghandValueRef::MarginBlockEnd(&'a surgeist_css::CssMarginValue)
 pub surgeist_css::CssLonghandValueRef::MarginBlockStart(&'a surgeist_css::CssMarginValue)
 pub surgeist_css::CssLonghandValueRef::MarginBottom(&'a surgeist_css::CssMarginValue)
@@ -7172,19 +7187,32 @@ pub fn surgeist_css::CssListStyle::try_new(style_type: core::option::Option<surg
 pub struct surgeist_css::CssListStyleImagePropertyValue
 impl surgeist_css::CssListStyleImagePropertyValue
 pub fn surgeist_css::CssListStyleImagePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssListStyleImagePropertyValue::current(&self) -> &surgeist_css::CssImageValue
 pub const fn surgeist_css::CssListStyleImagePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssListStyleImage>
 pub struct surgeist_css::CssListStylePositionPropertyValue
 impl surgeist_css::CssListStylePositionPropertyValue
 pub fn surgeist_css::CssListStylePositionPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssListStylePositionPropertyValue::current(&self) -> &surgeist_css::CssListStylePosition
 pub const fn surgeist_css::CssListStylePositionPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssListStylePosition>
 pub struct surgeist_css::CssListStylePropertyValue
 impl surgeist_css::CssListStylePropertyValue
 pub fn surgeist_css::CssListStylePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssListStylePropertyValue::current(&self) -> &surgeist_css::CssListStyleValue
 pub const fn surgeist_css::CssListStylePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssListStyle>
 pub struct surgeist_css::CssListStyleTypePropertyValue
 impl surgeist_css::CssListStyleTypePropertyValue
 pub fn surgeist_css::CssListStyleTypePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssListStyleTypePropertyValue::current(&self) -> &surgeist_css::CssListStyleTypeValue
 pub const fn surgeist_css::CssListStyleTypePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssListStyleType>
+pub struct surgeist_css::CssListStyleValue
+impl surgeist_css::CssListStyleValue
+pub const fn surgeist_css::CssListStyleValue::image(&self) -> core::option::Option<&surgeist_css::CssImageValue>
+pub const fn surgeist_css::CssListStyleValue::position(&self) -> core::option::Option<surgeist_css::CssListStylePosition>
+pub const fn surgeist_css::CssListStyleValue::style_type(&self) -> core::option::Option<&surgeist_css::CssListStyleTypeValue>
+pub fn surgeist_css::CssListStyleValue::try_new(style_type: core::option::Option<surgeist_css::CssListStyleTypeValue>, position: core::option::Option<surgeist_css::CssListStylePosition>, image: core::option::Option<surgeist_css::CssImageValue>) -> core::option::Option<Self>
+impl surgeist_css::CssListStyleValue
+pub fn surgeist_css::CssListStyleValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssListStyleValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssLonghandContribution
 impl surgeist_css::CssLonghandContribution
 pub fn surgeist_css::CssLonghandContribution::ordinary_value(&self) -> core::option::Option<&surgeist_css::CssLonghandValue>

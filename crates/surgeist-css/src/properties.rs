@@ -115,10 +115,10 @@ macro_rules! property_schema {
             Visibility, "visibility", [], "baseline.property.visibility", CssVisibility, CssVisibilityPropertyValue, CssVisibilityPropertyValueRepresentation, parse_visibility, { parse_visibility($input)? }, expansion = longhand { wrapper: fallback, value: CssVisibility, accessor: current, inherited: true, initial_kind: value, initial: CssVisibility::Visible };
             Content, "content", [], "baseline.property.content", crate::CssContentValue, CssContentPropertyValue, CssContentPropertyValueRepresentation, parse_content, { parse_content($input, $numeric)? }, expansion = longhand { wrapper: existing, value: crate::CssContentValue, accessor: current, inherited: false, initial_kind: value, initial: crate::CssContentValue::Normal };
             ContentVisibility, "content-visibility", [], "baseline.property.content-visibility", CssContentVisibility, CssContentVisibilityPropertyValue, CssContentVisibilityPropertyValueRepresentation, parse_content_visibility, { parse_content_visibility($input)? };
-            ListStyleType, "list-style-type", [], "baseline.property.list-style-type", CssListStyleType, CssListStyleTypePropertyValue, CssListStyleTypePropertyValueRepresentation, parse_list_style_type, { parse_list_style_type($input)? };
-            ListStylePosition, "list-style-position", [], "baseline.property.list-style-position", CssListStylePosition, CssListStylePositionPropertyValue, CssListStylePositionPropertyValueRepresentation, parse_list_style_position, { parse_list_style_position($input)? };
-            ListStyleImage, "list-style-image", [], "baseline.property.list-style-image", CssListStyleImage, CssListStyleImagePropertyValue, CssListStyleImagePropertyValueRepresentation, parse_list_style_image, { parse_list_style_image($input, $numeric)? };
-            ListStyle, "list-style", [], "baseline.property.list-style", CssListStyle, CssListStylePropertyValue, CssListStylePropertyValueRepresentation, parse_list_style, { parse_list_style($input, $numeric)? };
+            ListStyleType, "list-style-type", [], "baseline.property.list-style-type", crate::CssListStyleTypeValue, CssListStyleTypePropertyValue, CssListStyleTypePropertyValueRepresentation, parse_list_style_type, { parse_list_style_type($input, $numeric)? }, expansion = longhand { wrapper: existing, value: crate::CssListStyleTypeValue, accessor: current, inherited: true, initial_kind: value, initial: crate::CssListStyleTypeValue::initial() };
+            ListStylePosition, "list-style-position", [], "baseline.property.list-style-position", CssListStylePosition, CssListStylePositionPropertyValue, CssListStylePositionPropertyValueRepresentation, parse_list_style_position, { parse_list_style_position($input)? }, expansion = longhand { wrapper: existing, value: CssListStylePosition, accessor: current, inherited: true, initial_kind: value, initial: CssListStylePosition::Outside };
+            ListStyleImage, "list-style-image", [], "baseline.property.list-style-image", CssImageValue, CssListStyleImagePropertyValue, CssListStyleImagePropertyValueRepresentation, parse_list_style_image, { parse_list_style_image($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssImageValue, accessor: current, inherited: true, initial_kind: value, initial: CssImageValue::None };
+            ListStyle, "list-style", [], "baseline.property.list-style", crate::CssListStyleValue, CssListStylePropertyValue, CssListStylePropertyValueRepresentation, parse_list_style, { parse_list_style($input, $numeric)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ ListStylePosition => |value: &crate::CssListStyleValue| value.position(), ListStyleImage => |value: &crate::CssListStyleValue| value.image().cloned(), ListStyleType => |value: &crate::CssListStyleValue| value.style_type().cloned() ], reset_only: [] };
             CounterReset, "counter-reset", [], "baseline.property.counter-reset", CssCounterChanges, CssCounterResetPropertyValue, CssCounterResetPropertyValueRepresentation, parse_counter_changes, { parse_counter_changes($input)? };
             CounterIncrement, "counter-increment", [], "baseline.property.counter-increment", CssCounterChanges, CssCounterIncrementPropertyValue, CssCounterIncrementPropertyValueRepresentation, parse_counter_changes, { parse_counter_changes($input)? };
             CounterSet, "counter-set", [], "baseline.property.counter-set", CssCounterChanges, CssCounterSetPropertyValue, CssCounterSetPropertyValueRepresentation, parse_counter_changes, { parse_counter_changes($input)? };
@@ -1188,6 +1188,50 @@ fn overflow_i01_projection(value: CssOverflow) -> Option<CssOverflow> {
 }
 
 macro_rules! define_property_value {
+    (ListStyleType, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            crate::CssListStyleTypeValue,
+            CssListStyleType,
+            current,
+            crate::list_styles::type_i01
+        );
+    };
+    (ListStylePosition, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssListStylePosition,
+            CssListStylePosition,
+            current,
+            |value: &CssListStylePosition| Some(*value)
+        );
+    };
+    (ListStyleImage, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssImageValue,
+            CssListStyleImage,
+            current,
+            crate::list_styles::image_i01
+        );
+    };
+    (ListStyle, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            crate::CssListStyleValue,
+            CssListStyle,
+            current,
+            crate::list_styles::shorthand_i01
+        );
+    };
     (Content, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
         define_current_property_value!(
             $canonical,

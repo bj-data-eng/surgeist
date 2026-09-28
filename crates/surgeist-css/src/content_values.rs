@@ -556,7 +556,7 @@ fn legacy_item(item: &CssContentValueItem) -> Option<CssContentItem> {
     })
 }
 
-fn legacy_style(style: &CssCounterStyleValue) -> Option<CssCounterStyle> {
+pub(crate) fn legacy_style(style: &CssCounterStyleValue) -> Option<CssCounterStyle> {
     let CssCounterStyleValue::Named(name) = style else {
         return None;
     };

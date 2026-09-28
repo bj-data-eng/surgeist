@@ -2266,6 +2266,20 @@ Target-text selector and target-counter style omissions remain distinct from
 explicit arguments. Counter lookup, target retrieval, repeated-content
 processing, generated boxes, resources, and painting remain downstream.
 
+[CSS Lists 3 §3](https://www.w3.org/TR/2020/WD-css-lists-3-20201117/#propdef-list-style)
+defines inherited `list-style-type`, `list-style-position`, and
+`list-style-image` with `disc`, `outside`, and `none` initials. The `list-style`
+shorthand resets omitted members and accepts type, position, and image in
+their selected grammar, including a checked `symbols()` counter style and
+Images 3 images. Each wrapper exposes `current()` for the complete authored
+value; `i01_subset()` retains only exactly representable legacy values.
+`CssListStyleValue` retains which components were authored. Its bounded
+specified serializer emits position, image, then type, omits only
+meaning-preserving initials, and inserts `outside` when a custom type named
+`inside` or `outside` would otherwise parse as a position. Explicit authored
+initials still consume node budget. Marker construction, image loading, and
+painting remain downstream.
+
 [CSS Text 4 §§8.1–8.2](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#word-spacing-property)
 defines `word-spacing` and `letter-spacing` as inherited longhands with
 `normal` initials and signed `<length-percentage>` values. Their shared

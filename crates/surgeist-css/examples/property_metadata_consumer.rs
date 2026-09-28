@@ -92,6 +92,9 @@ const LONGHANDS: &[P] = &[
     P::BackgroundImage,
     P::MaskImage,
     P::Content,
+    P::ListStyleType,
+    P::ListStylePosition,
+    P::ListStyleImage,
     P::FlowTolerance,
     P::Color,
     P::FontFamily,
@@ -194,6 +197,11 @@ const SHORTHANDS: &[(P, &[P], &[P])] = &[
     (P::PlaceItems, &[P::AlignItems, P::JustifyItems], &[]),
     (P::PlaceSelf, &[P::AlignSelf, P::JustifySelf], &[]),
     (P::Gap, &[P::RowGap, P::ColumnGap], &[]),
+    (
+        P::ListStyle,
+        &[P::ListStylePosition, P::ListStyleImage, P::ListStyleType],
+        &[],
+    ),
     (
         P::Font,
         &[
@@ -487,6 +495,13 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::ContainerType(v) => assert_eq!(*v, CssContainerType::Normal),
         CssLonghandValueRef::Position(v) => assert_eq!(*v, CssLayoutPosition::Static),
         CssLonghandValueRef::Quotes(v) => assert_eq!(v, &CssQuotes::Auto),
+        CssLonghandValueRef::ListStyleType(v) => {
+            assert_eq!(v.serialize_specified().unwrap(), "disc")
+        }
+        CssLonghandValueRef::ListStylePosition(v) => {
+            assert_eq!(*v, CssListStylePosition::Outside)
+        }
+        CssLonghandValueRef::ListStyleImage(v) => assert_eq!(v, &CssImageValue::None),
         CssLonghandValueRef::WordSpacing(v) | CssLonghandValueRef::LetterSpacing(v) => {
             assert_eq!(v, &CssTextSpacingAdjustment::Normal)
         }
@@ -795,7 +810,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 223);
+    assert_eq!(expected.len(), 227);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {
@@ -863,6 +878,9 @@ fn metadata_and_initials() {
                     | P::FontFamily
                     | P::FontSize
                     | P::LineHeight
+                    | P::ListStyleType
+                    | P::ListStylePosition
+                    | P::ListStyleImage
                     | P::FontWeight
                     | P::FontStyle
                     | P::FontWidth

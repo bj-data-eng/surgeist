@@ -61,7 +61,7 @@ fn target(writer: &mut SpecifiedRuleWriter, value: &CssContentTarget) -> Result<
     }
 }
 
-fn style(writer: &mut SpecifiedRuleWriter, value: &CssCounterStyleValue) -> Result<()> {
+pub(crate) fn style(writer: &mut SpecifiedRuleWriter, value: &CssCounterStyleValue) -> Result<()> {
     match value {
         CssCounterStyleValue::Named(name) => ident(writer, name.as_str()),
         CssCounterStyleValue::Symbols(symbols) => {
