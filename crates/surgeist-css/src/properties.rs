@@ -415,11 +415,21 @@ fn inset_i01_projection(value: &CssInsetValue) -> Option<CssLength> {
     }
 }
 
+fn spacing_length_i01_projection(value: &CssSpecifiedLengthPercentage) -> Option<CssLength> {
+    let length = length_percentage_i01_projection(value)?;
+    // The historical pure-length constructors can re-admit a calculation under
+    // a length root, so reject percentage context before that reconstruction.
+    if matches!(&length, CssLength::Calc(calculation) if calculation.uses_percentage()) {
+        return None;
+    }
+    Some(length)
+}
+
 fn word_spacing_i01_projection(value: &CssTextSpacingAdjustment) -> Option<CssWordSpacing> {
     match value {
         CssTextSpacingAdjustment::Normal => Some(CssWordSpacing::Normal),
         CssTextSpacingAdjustment::LengthPercentage(value) => {
-            CssWordSpacingLength::try_new(length_percentage_i01_projection(value)?)
+            CssWordSpacingLength::try_new(spacing_length_i01_projection(value)?)
                 .map(CssWordSpacing::Length)
         }
     }
@@ -429,7 +439,7 @@ fn letter_spacing_i01_projection(value: &CssTextSpacingAdjustment) -> Option<Css
     match value {
         CssTextSpacingAdjustment::Normal => Some(CssLetterSpacing::Normal),
         CssTextSpacingAdjustment::LengthPercentage(value) => {
-            CssLetterSpacingLength::try_new(length_percentage_i01_projection(value)?)
+            CssLetterSpacingLength::try_new(spacing_length_i01_projection(value)?)
                 .map(CssLetterSpacing::Length)
         }
     }
