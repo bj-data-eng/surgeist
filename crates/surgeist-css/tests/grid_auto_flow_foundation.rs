@@ -59,7 +59,9 @@ fn existing_explicit_axis_spelling_remains_a_parsing_control() {
             else {
                 panic!("grid-auto-flow typed wrapper")
             };
-            let flow = value.i01_subset().expect("explicit axis I01 payload");
+            let CssGridAutoFlow::ExplicitAxis(flow) = value.value() else {
+                panic!("explicit axis")
+            };
             assert_eq!(flow.axis(), axis);
             assert_eq!(flow.dense(), dense);
         }

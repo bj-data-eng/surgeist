@@ -88,7 +88,6 @@ pub(super) enum LengthGrammar {
     TextIndent,
     VerticalAlign,
     TextDecorationThickness,
-    GridTrack,
     BackgroundSize,
     Position,
 }
@@ -101,7 +100,6 @@ impl LengthGrammar {
                 | Self::TextIndent
                 | Self::VerticalAlign
                 | Self::TextDecorationThickness
-                | Self::GridTrack
                 | Self::BackgroundSize
                 | Self::Position
         )
@@ -118,7 +116,6 @@ impl LengthGrammar {
                 | Self::TextIndent
                 | Self::VerticalAlign
                 | Self::TextDecorationThickness
-                | Self::GridTrack
                 | Self::BackgroundSize
                 | Self::Position
         )
@@ -131,7 +128,6 @@ impl LengthGrammar {
                 | Self::ShadowBlur
                 | Self::BorderSpacing
                 | Self::TextDecorationThickness
-                | Self::GridTrack
                 | Self::BackgroundSize
         )
     }
@@ -148,7 +144,6 @@ impl LengthGrammar {
             Self::TextIndent => "text-indent",
             Self::VerticalAlign => "vertical-align",
             Self::TextDecorationThickness => "text-decoration-thickness",
-            Self::GridTrack => "grid track",
             Self::BackgroundSize => "background-size",
             Self::Position => "position",
         }

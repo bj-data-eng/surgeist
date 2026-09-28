@@ -16,22 +16,22 @@ fn parsed(value: &str) -> CssDeclaration {
 #[test]
 fn direct_construction_covers_six_distinct_states_with_canonical_text() {
     let cases = [
-        (CssGridAutoFlowValue::Normal, "normal"),
-        (CssGridAutoFlowValue::Dense, "dense"),
+        (CssGridAutoFlow::Normal, "normal"),
+        (CssGridAutoFlow::Dense, "dense"),
         (
-            CssGridAutoFlowValue::explicit_axis(CssGridAutoFlowAxis::Row, false),
+            CssGridAutoFlow::explicit_axis(CssGridAutoFlowAxis::Row, false),
             "row",
         ),
         (
-            CssGridAutoFlowValue::explicit_axis(CssGridAutoFlowAxis::Row, true),
+            CssGridAutoFlow::explicit_axis(CssGridAutoFlowAxis::Row, true),
             "row dense",
         ),
         (
-            CssGridAutoFlowValue::explicit_axis(CssGridAutoFlowAxis::Column, false),
+            CssGridAutoFlow::explicit_axis(CssGridAutoFlowAxis::Column, false),
             "column",
         ),
         (
-            CssGridAutoFlowValue::explicit_axis(CssGridAutoFlowAxis::Column, true),
+            CssGridAutoFlow::explicit_axis(CssGridAutoFlowAxis::Column, true),
             "column dense",
         ),
     ];
@@ -44,25 +44,25 @@ fn direct_construction_covers_six_distinct_states_with_canonical_text() {
         }
     }
     assert_ne!(
-        CssGridAutoFlowValue::Dense,
-        CssGridAutoFlowValue::explicit_axis(CssGridAutoFlowAxis::Row, true)
+        CssGridAutoFlow::Dense,
+        CssGridAutoFlow::explicit_axis(CssGridAutoFlowAxis::Row, true)
     );
 }
 
 #[test]
 fn parsed_keyword_orders_canonicalize_without_losing_authored_slice() {
     for (authored, expected, state) in [
-        ("NoRmAl", "normal", CssGridAutoFlowValue::Normal),
-        ("DENSE", "dense", CssGridAutoFlowValue::Dense),
+        ("NoRmAl", "normal", CssGridAutoFlow::Normal),
+        ("DENSE", "dense", CssGridAutoFlow::Dense),
         (
             "DENSE rOw",
             "row dense",
-            CssGridAutoFlowValue::explicit_axis(CssGridAutoFlowAxis::Row, true),
+            CssGridAutoFlow::explicit_axis(CssGridAutoFlowAxis::Row, true),
         ),
         (
             "d\\65 nse c\\6f lumn",
             "column dense",
-            CssGridAutoFlowValue::explicit_axis(CssGridAutoFlowAxis::Column, true),
+            CssGridAutoFlow::explicit_axis(CssGridAutoFlowAxis::Column, true),
         ),
     ] {
         let source = parsed(authored);
@@ -72,23 +72,23 @@ fn parsed_keyword_orders_canonicalize_without_losing_authored_slice() {
             panic!("typed grid-auto-flow")
         };
         assert_eq!(wrapper.as_css(), authored);
-        assert_eq!(*wrapper.current(), state);
-        assert_eq!(wrapper.current().serialize_specified().unwrap(), expected);
+        assert_eq!(*wrapper.value(), state);
+        assert_eq!(wrapper.value().serialize_specified().unwrap(), expected);
     }
 }
 
 #[test]
-fn only_explicit_axes_project_to_frozen_i01_and_initial_is_directly_normal() {
+fn authored_axes_and_initial_are_directly_represented() {
     for (text, expected) in [
         ("normal", None),
         ("dense", None),
         (
             "row dense",
-            Some(CssGridAutoFlow::new(CssGridAutoFlowAxis::Row, true)),
+            Some(CssGridAutoFlowMode::new(CssGridAutoFlowAxis::Row, true)),
         ),
         (
             "dense column",
-            Some(CssGridAutoFlow::new(CssGridAutoFlowAxis::Column, true)),
+            Some(CssGridAutoFlowMode::new(CssGridAutoFlowAxis::Column, true)),
         ),
     ] {
         let source = parsed(text);
@@ -97,8 +97,13 @@ fn only_explicit_axes_project_to_frozen_i01_and_initial_is_directly_normal() {
         else {
             panic!("typed grid-auto-flow")
         };
-        assert_eq!(wrapper.i01_subset().copied(), expected);
-        assert_eq!(wrapper.current().i01_subset(), expected);
+        match expected {
+            Some(flow) => assert_eq!(*wrapper.value(), CssGridAutoFlow::ExplicitAxis(flow)),
+            None => assert!(matches!(
+                wrapper.value(),
+                CssGridAutoFlow::Normal | CssGridAutoFlow::Dense
+            )),
+        }
     }
     let CssPropertyKindRef::Longhand(metadata) =
         CssKnownProperty::GridAutoFlow.metadata().unwrap().kind()
@@ -113,12 +118,12 @@ fn only_explicit_axes_project_to_frozen_i01_and_initial_is_directly_normal() {
     let CssLonghandValueRef::GridAutoFlow(initial) = initial.view() else {
         panic!("typed grid-auto-flow initial")
     };
-    assert_eq!(*initial, CssGridAutoFlowValue::Normal);
+    assert_eq!(*initial, CssGridAutoFlow::Normal);
 }
 
 #[test]
 fn canonical_serializer_charges_each_keyword_and_exact_output_bytes() {
-    let value = CssGridAutoFlowValue::explicit_axis(CssGridAutoFlowAxis::Column, true);
+    let value = CssGridAutoFlow::explicit_axis(CssGridAutoFlowAxis::Column, true);
     for (limits, error) in [
         (
             CssSpecifiedValueSerializationLimits::new(1, 2, 12),

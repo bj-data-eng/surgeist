@@ -77,6 +77,16 @@ impl<'a> NumericInputContext<'a> {
         };
         construct_with_policy(values, root, limits, policy)
     }
+    pub(crate) fn admit_grid_track_math(
+        &self,
+        values: CssComponentValues,
+    ) -> Result<GridTrackMath> {
+        let policy = match self {
+            Self::Parsed(_) => AdmissionPolicy::RecoveredSyntax,
+            Self::Components(..) => AdmissionPolicy::Strict,
+        };
+        construct_grid_track_math(values, CssComponentValueLimits::default(), policy)
+    }
     pub(crate) fn origin_at(&self, offset: usize) -> Option<CssValueOrigin> {
         match self {
             Self::Components(_, serialized) => serialized.value_origin_at(offset).cloned(),
@@ -1436,6 +1446,7 @@ pub(crate) enum CalculationRoot {
     Percentage,
     Length,
     LengthPercentage,
+    Flex,
     Angle,
     Time,
     Frequency,
@@ -1459,6 +1470,7 @@ impl CalculationRoot {
             Self::Percentage => t.is(CssNumericDimension::Percentage) && t.hint.is_none(),
             Self::Length => t.is(CssNumericDimension::Length) && t.hint.is_none(),
             Self::LengthPercentage => t.is(CssNumericDimension::Length),
+            Self::Flex => t.is(CssNumericDimension::Flex) && t.hint.is_none(),
             Self::Angle => t.is(CssNumericDimension::Angle) && t.hint.is_none(),
             Self::Time => t.is(CssNumericDimension::Time) && t.hint.is_none(),
             Self::Frequency => t.is(CssNumericDimension::Frequency) && t.hint.is_none(),
@@ -2167,6 +2179,17 @@ fn construct_with_context(
     context: NumericAdmissionContext,
 ) -> Result<CssCalculationExpression> {
     validate_components(&values, limits, policy)?;
+    let mut expression = construct_validated(&values, root, limits, context)?;
+    expression.components = Some(values);
+    Ok(expression)
+}
+
+fn construct_validated(
+    values: &CssComponentValues,
+    root: CalculationRoot,
+    limits: CssComponentValueLimits,
+    context: NumericAdmissionContext,
+) -> Result<CssCalculationExpression> {
     let mut significant = values.items().iter().filter(|c| !trivia(c));
     let c = significant.next().ok_or_else(|| {
         CssNumericConstructionError::at(CssNumericConstructionErrorKind::EmptyValue, None)
@@ -2189,6 +2212,13 @@ fn construct_with_context(
         return Err(CssNumericConstructionError::at(
             CssNumericConstructionErrorKind::RootDomainMismatch,
             Some(c),
+        )
+        .with_path(
+            values
+                .items()
+                .iter()
+                .position(|item| std::ptr::eq(item, c))
+                .map(|index| vec![index].into_boxed_slice()),
         ));
     }
     let root_index = values
@@ -2217,7 +2247,8 @@ fn construct_with_context(
         return Err(CssNumericConstructionError::at(
             CssNumericConstructionErrorKind::RootDomainMismatch,
             Some(c),
-        ));
+        )
+        .with_path(Some(vec![root_index].into_boxed_slice())));
     }
     let canonical_bytes = result.canonical_len(usize::MAX).ok_or_else(|| {
         CssNumericConstructionError::component(CssComponentValueError::new(
@@ -2230,8 +2261,199 @@ fn construct_with_context(
             CssComponentValueError::new(CssComponentValueErrorKind::ByteLimit, c.origin().clone()),
         ));
     }
-    result.components = Some(values);
     Ok(result)
+}
+
+#[derive(Debug)]
+pub(crate) enum GridTrackMath {
+    Flex(CssCalculationExpression),
+    LengthPercentage(CssCalculationExpression),
+}
+
+#[cfg(test)]
+mod grid_track_math_tests {
+    use super::*;
+
+    fn selected(source: &str) -> Result<GridTrackMath> {
+        construct_grid_track_math(
+            crate::parse_component_values(source).unwrap(),
+            CssComponentValueLimits::default(),
+            AdmissionPolicy::Strict,
+        )
+    }
+
+    #[test]
+    fn flex_and_percentage_hinted_length_are_distinct_contextual_results() {
+        for source in ["calc(2 * 1fr)", "calc(1fr * (1% / 1%))"] {
+            let GridTrackMath::Flex(value) = selected(source).unwrap() else {
+                panic!("flex result: {source}");
+            };
+            assert_eq!(value.result_type(), CssCalculationType::Flex);
+            assert_eq!(value.ty.percent_hint(), None);
+        }
+        let GridTrackMath::LengthPercentage(value) = selected("calc(10px + 5%)").unwrap() else {
+            panic!("length-percentage result");
+        };
+        assert_eq!(value.ty.percent_hint(), Some(CssNumericDimension::Length));
+    }
+
+    #[test]
+    fn failed_alternatives_report_typed_error_with_origin_and_path() {
+        for (source, kind, path, offset) in [
+            (
+                "calc(1fr + 10px)",
+                CssNumericConstructionErrorKind::IncompatibleTypes,
+                &[0, 4][..],
+                11,
+            ),
+            (
+                "calc(1fr + 1%)",
+                CssNumericConstructionErrorKind::IncompatibleTypes,
+                &[0, 4][..],
+                11,
+            ),
+            (
+                "round(1fr)",
+                CssNumericConstructionErrorKind::InvalidArgumentType,
+                &[0][..],
+                0,
+            ),
+            (
+                "calc((1% + 1px) / 1px)",
+                CssNumericConstructionErrorKind::RootDomainMismatch,
+                &[0][..],
+                0,
+            ),
+            (
+                "calc(1fr * sin(1% / 1px))",
+                CssNumericConstructionErrorKind::InvalidArgumentType,
+                &[0, 4][..],
+                11,
+            ),
+        ] {
+            let error = selected(source).unwrap_err();
+            assert_eq!(error.kind(), &kind, "{source}");
+            let Some(CssValueOrigin::Parsed(origin)) = error.origin() else {
+                panic!("parsed diagnostic origin: {source}: {error:?}");
+            };
+            assert_eq!(
+                origin.span().start().byte_offset().value(),
+                offset,
+                "{source}"
+            );
+            assert_eq!(error.path.as_deref(), Some(path), "{source}: {error:?}");
+        }
+    }
+
+    #[test]
+    fn terminal_grid_errors_do_not_fall_through_to_another_numeric_root() {
+        for (source, kind) in [
+            (
+                "unknown(1fr)",
+                CssNumericConstructionErrorKind::UnknownFunction,
+            ),
+            (
+                "calc(1fr + )",
+                CssNumericConstructionErrorKind::MalformedExpression,
+            ),
+            (
+                "calc(1fr",
+                CssNumericConstructionErrorKind::RecoveredComponent,
+            ),
+        ] {
+            let error = selected(source).unwrap_err();
+            assert_eq!(error.kind(), &kind, "{source}: {error:?}");
+            assert!(
+                matches!(
+                    error.origin(),
+                    Some(CssValueOrigin::Parsed(_) | CssValueOrigin::ImplicitClosure { .. })
+                ),
+                "{source}: {error:?}"
+            );
+        }
+
+        let values = crate::parse_component_values("calc(1fr)").unwrap();
+        let error = construct_grid_track_math(
+            values,
+            CssComponentValueLimits::try_new(256, 1, 100).unwrap(),
+            AdmissionPolicy::Strict,
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.kind(),
+            &CssNumericConstructionErrorKind::ResourceLimit
+        );
+
+        let programmatic =
+            CssComponentValues::try_new(vec![CssComponentValue::try_dimension("1", "s").unwrap()])
+                .unwrap();
+        let error = construct_grid_track_math(
+            programmatic,
+            CssComponentValueLimits::default(),
+            AdmissionPolicy::Strict,
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.kind(),
+            &CssNumericConstructionErrorKind::RootDomainMismatch
+        );
+        assert_eq!(error.path.as_deref(), Some(&[0][..]));
+        assert!(matches!(error.origin(), Some(CssValueOrigin::Programmatic)));
+    }
+}
+
+fn construct_grid_track_math(
+    values: CssComponentValues,
+    limits: CssComponentValueLimits,
+    policy: AdmissionPolicy,
+) -> Result<GridTrackMath> {
+    validate_components(&values, limits, policy)?;
+    let flex = construct_validated(
+        &values,
+        CalculationRoot::Flex,
+        limits,
+        NumericAdmissionContext::Pure,
+    );
+    let mut selected = match flex {
+        Ok(expression) => Ok(GridTrackMath::Flex(expression)),
+        Err(flex_error) => {
+            if !matches!(
+                flex_error.kind(),
+                CssNumericConstructionErrorKind::RootDomainMismatch
+                    | CssNumericConstructionErrorKind::IncompatibleTypes
+                    | CssNumericConstructionErrorKind::InvalidArgumentType
+            ) {
+                return Err(flex_error);
+            }
+            match construct_validated(
+                &values,
+                CalculationRoot::LengthPercentage,
+                limits,
+                NumericAdmissionContext::Pure,
+            ) {
+                Ok(expression) => Ok(GridTrackMath::LengthPercentage(expression)),
+                Err(length_error) => {
+                    if matches!(
+                        length_error.kind(),
+                        CssNumericConstructionErrorKind::RootDomainMismatch
+                    ) && !matches!(
+                        flex_error.kind(),
+                        CssNumericConstructionErrorKind::RootDomainMismatch
+                    ) {
+                        Err(flex_error)
+                    } else {
+                        Err(length_error)
+                    }
+                }
+            }
+        }
+    }?;
+    match &mut selected {
+        GridTrackMath::Flex(expression) | GridTrackMath::LengthPercentage(expression) => {
+            expression.components = Some(values);
+        }
+    }
+    Ok(selected)
 }
 
 macro_rules! root {
@@ -2294,6 +2516,7 @@ root!(CssIntegerCalculation, Integer);
 root!(CssPercentageCalculation, Percentage);
 root!(CssLengthCalculation, Length);
 root!(CssLengthPercentageCalculation, LengthPercentage);
+root!(CssFlexCalculation, Flex);
 root!(CssAngleCalculation, Angle);
 root!(CssTimeCalculation, Time);
 root!(CssFrequencyCalculation, Frequency);

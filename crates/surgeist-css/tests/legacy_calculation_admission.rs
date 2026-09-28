@@ -3,8 +3,9 @@
 //! Malformed raw sums are no longer constructible after their API retirement;
 //! checked assembly rejection is covered by typed_sum_construction.
 use surgeist_css::{
-    CssCalcLength, CssCalculationSumOperator as Op, CssComponentValueRef, CssLength,
-    CssLengthPercentageCalculation as Calculation, CssNonNegativeLength, CssTransformLength,
+    CssCalcLength, CssCalculationSumOperator as Op, CssComponentValueRef, CssGridTrackBreadth,
+    CssGridTrackSize, CssLength, CssLengthPercentageCalculation as Calculation,
+    CssNonNegativeLength, CssSpecifiedNonNegativeLengthPercentage, CssTransformLength,
     CssTransformLengthPercentage, CssTransformNonNegativeLength, CssValueOrigin,
     parse_component_values,
 };
@@ -209,37 +210,29 @@ fn checked_owners() -> Vec<CheckedOwner> {
             }])
             .is_some()
         }),
-        ("grid fit content", |v| {
-            CssGridTrackList::try_new(vec![CssGridTrackComponent::TrackSize(
-                CssGridTrackSize::FitContent(v),
-            )])
-            .is_some()
-        }),
-        ("grid breadth", |v| {
-            CssGridTrackList::try_new(vec![CssGridTrackComponent::TrackSize(
-                CssGridTrackSize::Breadth(CssGridTrackBreadth::Length(v)),
-            )])
-            .is_some()
-        }),
-        ("grid minimum", |v| {
-            CssGridTrackList::try_new(vec![CssGridTrackComponent::TrackSize(
-                CssGridTrackSize::MinMax {
-                    min: CssGridTrackBreadth::Length(v),
-                    max: CssGridTrackBreadth::Auto,
-                },
-            )])
-            .is_some()
-        }),
-        ("grid maximum", |v| {
-            CssGridTrackList::try_new(vec![CssGridTrackComponent::TrackSize(
-                CssGridTrackSize::MinMax {
-                    min: CssGridTrackBreadth::Auto,
-                    max: CssGridTrackBreadth::Length(v),
-                },
-            )])
-            .is_some()
-        }),
+        ("grid fit content", |v| grid_track_accepts(v, 0)),
+        ("grid breadth", |v| grid_track_accepts(v, 1)),
+        ("grid minimum", |v| grid_track_accepts(v, 2)),
+        ("grid maximum", |v| grid_track_accepts(v, 3)),
     ]
+}
+
+fn grid_track_accepts(value: CssLength, mode: u8) -> bool {
+    let CssLength::Calc(CssCalcLength::Typed(calculation)) = value else {
+        return false;
+    };
+    let Ok(scalar) = CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(calculation)
+    else {
+        return false;
+    };
+    let breadth = CssGridTrackBreadth::from_length_percentage(scalar);
+    let size = match mode {
+        0 => CssGridTrackSize::from_fit_content(breadth.length_percentage().unwrap().clone()),
+        1 => CssGridTrackSize::from_breadth(breadth),
+        2 => CssGridTrackSize::try_minmax(breadth, CssGridTrackBreadth::auto()).unwrap(),
+        _ => CssGridTrackSize::try_minmax(CssGridTrackBreadth::auto(), breadth).unwrap(),
+    };
+    size.serialize_specified().is_ok()
 }
 
 #[test]

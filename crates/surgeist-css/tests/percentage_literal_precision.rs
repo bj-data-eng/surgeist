@@ -3,13 +3,13 @@
 //! f32 consumers must not round `unit_value` and then multiply it back by 100.
 
 use surgeist_css::{
-    CssAuthoredGridGeneralTrackComponent, CssBorderImageSliceComponent, CssColorStopListItem,
-    CssComponentValue, CssComponentValues, CssErrorCode, CssFilterAmount, CssFilterFunctionValue,
-    CssFilterPercentage, CssFilterValue, CssGradient, CssHorizontalPosition, CssImageValue,
-    CssImportance, CssKeyframeSelector, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
-    CssPropertyNameRef, CssRecoveryAction, CssRule, CssTransformFunctionValue,
-    CssTransformPercentage, CssTransformScaleComponent, CssTransformValue, parse_component_values,
-    parse_property_value, parse_sheet, parse_style_attribute,
+    CssBorderImageSliceComponent, CssColorStopListItem, CssComponentValue, CssComponentValues,
+    CssErrorCode, CssFilterAmount, CssFilterFunctionValue, CssFilterPercentage, CssFilterValue,
+    CssGradient, CssGridGeneralTrackComponent, CssHorizontalPosition, CssImageValue, CssImportance,
+    CssKeyframeSelector, CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssPropertyNameRef,
+    CssRecoveryAction, CssRule, CssTransformFunctionValue, CssTransformPercentage,
+    CssTransformScaleComponent, CssTransformValue, parse_component_values, parse_property_value,
+    parse_sheet, parse_style_attribute,
 };
 
 fn first_object_position_percent(source: &str) -> f32 {
@@ -116,13 +116,19 @@ fn grid_track_keeps_authored_thirty_percent() {
     else {
         panic!("expected grid track");
     };
-    let CssAuthoredGridGeneralTrackComponent::TrackSize(size) =
-        &grid.current().general_list().unwrap().components()[0]
+    let CssGridGeneralTrackComponent::TrackSize(size) =
+        &grid.value().general_list().unwrap().components()[0]
     else {
         panic!("expected general track size");
     };
-    assert!(
-        matches!(size.breadth().unwrap().length(), Some(CssLength::Percent(number)) if number.value() == 30.0)
+    assert_eq!(
+        size.breadth()
+            .unwrap()
+            .length_percentage()
+            .unwrap()
+            .serialize_specified()
+            .unwrap(),
+        "30%"
     );
 }
 

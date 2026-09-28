@@ -528,15 +528,15 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::ContainerName(v) => assert_eq!(*v, CssContainerNames::None),
         CssLonghandValueRef::ContainerType(v) => assert_eq!(*v, CssContainerType::Normal),
         CssLonghandValueRef::Position(v) => assert_eq!(*v, CssLayoutPosition::Static),
-        CssLonghandValueRef::GridAutoFlow(v) => assert_eq!(*v, CssGridAutoFlowValue::Normal),
+        CssLonghandValueRef::GridAutoFlow(v) => assert_eq!(*v, CssGridAutoFlow::Normal),
         CssLonghandValueRef::GridTemplateAreas(v) => {
-            assert_eq!(v, &CssAuthoredGridTemplateAreas::None)
+            assert_eq!(v, &CssGridTemplateAreas::None)
         }
         CssLonghandValueRef::GridRowStart(v)
         | CssLonghandValueRef::GridRowEnd(v)
         | CssLonghandValueRef::GridColumnStart(v)
         | CssLonghandValueRef::GridColumnEnd(v) => {
-            assert_eq!(*v, CssAuthoredGridLine::Auto)
+            assert_eq!(*v, CssGridLine::Auto)
         }
         CssLonghandValueRef::Quotes(v) => assert_eq!(v, &CssQuotes::Auto),
         CssLonghandValueRef::CounterReset(v)

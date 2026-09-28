@@ -2,11 +2,11 @@ use surgeist_css::{
     CssAnimationIterationCount, CssAnimationIterationNumber, CssAspectRatio, CssComponentValue,
     CssErrorCode, CssFiniteNumber, CssFlexFactor, CssFlowTolerance, CssFlowToleranceRef,
     CssFontObliqueAngle, CssFontSizeAdjust, CssFontWeightNumber, CssGridRepeatInteger,
-    CssGridTrackBreadth, CssKeyframePercent, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
-    CssLengthDimension, CssLengthUnit, CssNonNegativeNumber, CssOpacity, CssOpacityScalarKind,
-    CssOpacityValue, CssRatio, CssRecoveryAction, CssResolution, CssResolutionUnit, CssRule,
-    CssScaleValues, CssSpecifiedNonNegativeNumber, CssTime, CssTimeUnit, CssTokenKind, ErrorKind,
-    parse_sheet, parse_style_attribute,
+    CssKeyframePercent, CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssLengthDimension,
+    CssLengthUnit, CssNonNegativeNumber, CssOpacity, CssOpacityScalarKind, CssOpacityValue,
+    CssRatio, CssRecoveryAction, CssResolution, CssResolutionUnit, CssRule, CssScaleValues,
+    CssSpecifiedNonNegativeNumber, CssTime, CssTimeUnit, CssTokenKind, ErrorKind, parse_sheet,
+    parse_style_attribute,
 };
 
 #[test]
@@ -23,7 +23,6 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         assert_eq!(CssLength::try_px(value), None);
         assert_eq!(CssLength::try_percent(value), None);
         assert_eq!(CssLengthDimension::try_new(value, CssLengthUnit::Rem), None);
-        assert_eq!(CssGridTrackBreadth::try_fraction(value), None);
         assert_eq!(CssScaleValues::try_new(vec![value]), None);
         assert_eq!(CssResolution::try_new(value, CssResolutionUnit::Dppx), None);
         assert_eq!(CssTime::try_new(value, CssTimeUnit::Seconds), None);
@@ -298,21 +297,13 @@ fn non_finite_iteration_parse_retains_sheet_siblings_with_exact_diagnostic() {
 }
 
 #[test]
-fn percentage_conversion_overflow_drops_each_declaration_and_retains_siblings() {
-    let cases = [
-        (
-            "flow-tolerance",
-            "3.5e38%",
-            CssKnownProperty::FlowTolerance,
-            0,
-        ),
-        (
-            "grid-template-columns",
-            "3.5e38%",
-            CssKnownProperty::GridTemplateColumns,
-            0,
-        ),
-    ];
+fn flow_tolerance_percentage_conversion_overflow_drops_declaration_and_retains_siblings() {
+    let cases = [(
+        "flow-tolerance",
+        "3.5e38%",
+        CssKnownProperty::FlowTolerance,
+        0,
+    )];
 
     for (property, value, expected_property, responsible_offset) in cases {
         let invalid = format!("{property}: {value};");

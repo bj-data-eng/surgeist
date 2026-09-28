@@ -5,16 +5,15 @@
 //! https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#intrinsic-auto-repeat
 //! https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#typedef-auto-track-list
 //! The explicit borrowed return type below is a public consumer contract.
-//! Before that API change, compilation fails and none of these assertions runs.
+//! The authored model is the sole public Grid payload.
 
 use surgeist_css::{
-    CssAuthoredGridAutoRepeat, CssAuthoredGridAutoRepeatKind, CssAuthoredGridAutoTrackComponent,
-    CssAuthoredGridFixedRepeatComponent, CssAuthoredGridTrackBreadthKind as BreadthKind,
-    CssAuthoredGridTrackList, CssAuthoredGridTrackRepeatComponent as Member,
-    CssAuthoredGridTrackRepeatContent, CssAuthoredGridTrackSize, CssCalcLength,
     CssCalculationExpressionRef, CssCalculationProductOperator, CssCalculationType,
-    CssCalculationValueRef, CssDeclaration, CssGridAutoFlowAxis, CssImportance,
-    CssKnownProperty as Property, CssKnownPropertyValueRef, CssLength, CssPropertyNameRef,
+    CssCalculationValueRef, CssDeclaration, CssGridAutoFlowAxis, CssGridAutoRepeat,
+    CssGridAutoRepeatKind, CssGridAutoTrackComponent, CssGridFixedRepeatComponent,
+    CssGridTrackBreadthKind as BreadthKind, CssGridTrackList,
+    CssGridTrackRepeatComponent as Member, CssGridTrackRepeatContent, CssGridTrackSize,
+    CssImportance, CssKnownProperty as Property, CssKnownPropertyValueRef, CssPropertyNameRef,
     parse_component_values, parse_property_value, parse_style_attribute,
 };
 
@@ -27,15 +26,15 @@ fn columns(declaration: &CssDeclaration) -> &surgeist_css::CssGridTemplateColumn
     value
 }
 
-fn general_body(repeat: &CssAuthoredGridAutoRepeat) -> &CssAuthoredGridTrackRepeatContent {
+fn general_body(repeat: &CssGridAutoRepeat) -> &CssGridTrackRepeatContent {
     // This annotation must compile for an external consumer after the migration.
-    let content: &CssAuthoredGridTrackRepeatContent = repeat.content();
+    let content: &CssGridTrackRepeatContent = repeat.content();
     content
 }
 
-fn single_repeat(list: &CssAuthoredGridTrackList) -> &CssAuthoredGridAutoRepeat {
+fn single_repeat(list: &CssGridTrackList) -> &CssGridAutoRepeat {
     assert!(list.general_list().is_none());
-    let [CssAuthoredGridAutoTrackComponent::AutoRepeat(value)] =
+    let [CssGridAutoTrackComponent::AutoRepeat(value)] =
         list.auto_list().expect("an auto track list").components()
     else {
         panic!("one automatic repetition without surrounding tracks");
@@ -43,14 +42,14 @@ fn single_repeat(list: &CssAuthoredGridTrackList) -> &CssAuthoredGridAutoRepeat 
     value
 }
 
-fn track(body: &CssAuthoredGridTrackRepeatContent, index: usize) -> &CssAuthoredGridTrackSize {
+fn track(body: &CssGridTrackRepeatContent, index: usize) -> &CssGridTrackSize {
     let Member::TrackSize(size) = &body.components()[index] else {
         panic!("track-size at authored component {index}");
     };
     size
 }
 
-fn assert_name(body: &CssAuthoredGridTrackRepeatContent, index: usize, expected: &str) {
+fn assert_name(body: &CssGridTrackRepeatContent, index: usize, expected: &str) {
     let Member::LineNames(names) = &body.components()[index] else {
         panic!("line names at authored component {index}");
     };
@@ -60,11 +59,11 @@ fn assert_name(body: &CssAuthoredGridTrackRepeatContent, index: usize, expected:
     assert_eq!(name.as_str(), expected);
 }
 
-fn assert_keyword(size: &CssAuthoredGridTrackSize, expected: BreadthKind) {
+fn assert_keyword(size: &CssGridTrackSize, expected: BreadthKind) {
     let breadth = size.breadth().expect("a keyword track breadth");
     assert_eq!(breadth.kind(), expected);
-    assert!(breadth.length().is_none());
-    assert!(breadth.fraction().is_none());
+    assert!(breadth.length_percentage().is_none());
+    assert!(breadth.flex().is_none());
 }
 
 fn intrinsic_body_and_fixed_surroundings_remain_distinct() {
@@ -81,14 +80,14 @@ fn intrinsic_body_and_fixed_surroundings_remain_distinct() {
     assert_eq!(declaration.importance(), CssImportance::Important);
     let value = columns(declaration);
     assert_eq!(value.as_css(), authored);
-    assert!(value.current().general_list().is_none());
+    assert!(value.value().general_list().is_none());
     let [
-        CssAuthoredGridAutoTrackComponent::LineNames(outer),
-        CssAuthoredGridAutoTrackComponent::FixedSize(before),
-        CssAuthoredGridAutoTrackComponent::AutoRepeat(repeat),
-        CssAuthoredGridAutoTrackComponent::Repeat(after),
-        CssAuthoredGridAutoTrackComponent::LineNames(end),
-    ] = value.current().auto_list().unwrap().components()
+        CssGridAutoTrackComponent::LineNames(outer),
+        CssGridAutoTrackComponent::FixedSize(before),
+        CssGridAutoTrackComponent::AutoRepeat(repeat),
+        CssGridAutoTrackComponent::Repeat(after),
+        CssGridAutoTrackComponent::LineNames(end),
+    ] = value.value().auto_list().unwrap().components()
     else {
         panic!("fixed surroundings and automatic body retain their distinct branches");
     };
@@ -97,19 +96,31 @@ fn intrinsic_body_and_fixed_surroundings_remain_distinct() {
     assert_eq!(end.names().len(), 1);
     assert_eq!(end.names()[0].as_str(), "end");
     assert_eq!(
-        before.size().breadth().unwrap().length(),
-        Some(&CssLength::try_px(10.0).unwrap())
+        before
+            .size()
+            .breadth()
+            .unwrap()
+            .length_percentage()
+            .unwrap()
+            .serialize_specified()
+            .unwrap(),
+        "10px"
     );
     assert_eq!(after.count().value(), 2);
-    let [CssAuthoredGridFixedRepeatComponent::FixedSize(size)] = after.content().components()
-    else {
+    let [CssGridFixedRepeatComponent::FixedSize(size)] = after.content().components() else {
         panic!("surrounding integer repetition retains fixed-size content");
     };
     assert_eq!(
-        size.size().breadth().unwrap().length(),
-        Some(&CssLength::try_px(5.0).unwrap())
+        size.size()
+            .breadth()
+            .unwrap()
+            .length_percentage()
+            .unwrap()
+            .serialize_specified()
+            .unwrap(),
+        "5px"
     );
-    assert_eq!(repeat.kind(), CssAuthoredGridAutoRepeatKind::AutoFill);
+    assert_eq!(repeat.kind(), CssGridAutoRepeatKind::AutoFill);
     let body = general_body(repeat);
     assert_eq!(body.components().len(), 13);
     for (index, name) in [
@@ -128,14 +139,21 @@ fn intrinsic_body_and_fixed_surroundings_remain_distinct() {
     assert_keyword(track(body, 5), BreadthKind::MaxContent);
     let flex = track(body, 7).breadth().unwrap();
     assert_eq!(flex.kind(), BreadthKind::Fraction);
-    assert_eq!(flex.fraction().unwrap().value(), 1.0);
+    assert_eq!(flex.flex().unwrap().serialize_specified().unwrap(), "1fr");
     let (minimum, maximum) = track(body, 9).minmax().unwrap();
     assert_eq!(minimum.kind(), BreadthKind::Auto);
     assert_eq!(maximum.kind(), BreadthKind::Fraction);
-    assert_eq!(maximum.fraction().unwrap().value(), 1.0);
     assert_eq!(
-        track(body, 11).fit_content(),
-        Some(&CssLength::try_percent(20.0).unwrap())
+        maximum.flex().unwrap().serialize_specified().unwrap(),
+        "1fr"
+    );
+    assert_eq!(
+        track(body, 11)
+            .fit_content()
+            .unwrap()
+            .serialize_specified()
+            .unwrap(),
+        "20%"
     );
     println!("general automatic body and fixed surroundings: ok");
 }
@@ -146,18 +164,19 @@ fn automatic_calculations_and_names_remain_symbolic() {
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let value = columns(&report.syntax()[0]);
-    assert!(value.i01_subset().is_none());
-    let repeat = single_repeat(value.current());
-    assert_eq!(repeat.kind(), CssAuthoredGridAutoRepeatKind::AutoFit);
+    let repeat = single_repeat(value.value());
+    assert_eq!(repeat.kind(), CssGridAutoRepeatKind::AutoFit);
     let body = general_body(repeat);
     assert_eq!(body.components().len(), 3);
     assert_name(body, 0, "start");
     assert_name(body, 2, "end");
-    let Some(CssLength::Calc(CssCalcLength::Typed(calculation))) =
-        track(body, 1).breadth().unwrap().length()
-    else {
-        panic!("the authored typed calculation is preserved");
-    };
+    let calculation = track(body, 1)
+        .breadth()
+        .unwrap()
+        .length_percentage()
+        .unwrap()
+        .calculation()
+        .expect("the authored typed calculation is preserved");
     assert_eq!(calculation.result_type(), CssCalculationType::Length);
     let CssCalculationExpressionRef::NestedCalc(root) = calculation.expression() else {
         panic!("expected calc root")
@@ -219,8 +238,8 @@ fn checked_components_preserve_general_body_values_and_origins() {
     assert!(retained.source().same_snapshot(original.source()));
     let value = columns(&declaration);
     assert_eq!(value.as_css(), authored);
-    let repeat = single_repeat(value.current());
-    assert_eq!(repeat.kind(), CssAuthoredGridAutoRepeatKind::AutoFit);
+    let repeat = single_repeat(value.value());
+    assert_eq!(repeat.kind(), CssGridAutoRepeatKind::AutoFit);
     let body = general_body(repeat);
     assert_eq!(body.components().len(), 3);
     assert_name(body, 0, "Start");
@@ -228,7 +247,10 @@ fn checked_components_preserve_general_body_values_and_origins() {
     let (minimum, maximum) = track(body, 1).minmax().unwrap();
     assert_eq!(minimum.kind(), BreadthKind::MinContent);
     assert_eq!(maximum.kind(), BreadthKind::Fraction);
-    assert_eq!(maximum.fraction().unwrap().value(), 2.0);
+    assert_eq!(
+        maximum.flex().unwrap().serialize_specified().unwrap(),
+        "2fr"
+    );
     println!("checked component grammar and preserved origins: ok");
 }
 
@@ -244,23 +266,24 @@ fn shorthand_axes_keep_their_explicit_and_implicit_roles() {
     else {
         panic!("the template shorthand");
     };
-    let rows = single_repeat(value.current().rows().unwrap());
-    assert_eq!(rows.kind(), CssAuthoredGridAutoRepeatKind::AutoFill);
+    let rows = single_repeat(value.value().rows().unwrap());
+    assert_eq!(rows.kind(), CssGridAutoRepeatKind::AutoFill);
     let rows_body = general_body(rows);
     assert_eq!(rows_body.components().len(), 1);
     assert_keyword(track(rows_body, 0), BreadthKind::Auto);
-    let columns = single_repeat(value.current().columns().unwrap());
-    assert_eq!(columns.kind(), CssAuthoredGridAutoRepeatKind::AutoFit);
+    let columns = single_repeat(value.value().columns().unwrap());
+    assert_eq!(columns.kind(), CssGridAutoRepeatKind::AutoFit);
     let columns_body = general_body(columns);
     assert_eq!(columns_body.components().len(), 1);
     assert_eq!(
         track(columns_body, 0)
             .breadth()
             .unwrap()
-            .fraction()
+            .flex()
             .unwrap()
-            .value(),
-        1.0
+            .serialize_specified()
+            .unwrap(),
+        "1fr"
     );
 
     let Some(CssKnownPropertyValueRef::Grid(value)) =
@@ -268,24 +291,34 @@ fn shorthand_axes_keep_their_explicit_and_implicit_roles() {
     else {
         panic!("the auto-flow grid shorthand");
     };
-    assert!(value.current().template_value().is_none());
-    let flow = value.current().auto_flow().unwrap();
+    assert!(value.value().template_value().is_none());
+    let flow = value.value().auto_flow().unwrap();
     assert_eq!(flow.axis(), CssGridAutoFlowAxis::Row);
     assert!(flow.dense());
-    let [implicit] = value.current().auto_tracks().unwrap().sizes() else {
+    let [implicit] = value.value().auto_tracks().unwrap().sizes() else {
         panic!("one implicit track size without repetition");
     };
     assert_eq!(
-        implicit.breadth().unwrap().length(),
-        Some(&CssLength::try_px(12.0).unwrap())
+        implicit
+            .breadth()
+            .unwrap()
+            .length_percentage()
+            .unwrap()
+            .serialize_specified()
+            .unwrap(),
+        "12px"
     );
-    let explicit = single_repeat(value.current().explicit_tracks().unwrap());
-    assert_eq!(explicit.kind(), CssAuthoredGridAutoRepeatKind::AutoFit);
+    let explicit = single_repeat(value.value().explicit_tracks().unwrap());
+    assert_eq!(explicit.kind(), CssGridAutoRepeatKind::AutoFit);
     let body = general_body(explicit);
     assert_eq!(body.components().len(), 1);
     assert_eq!(
-        track(body, 0).fit_content(),
-        Some(&CssLength::try_percent(20.0).unwrap())
+        track(body, 0)
+            .fit_content()
+            .unwrap()
+            .serialize_specified()
+            .unwrap(),
+        "20%"
     );
     println!("explicit axes and implicit track roles: ok");
 }

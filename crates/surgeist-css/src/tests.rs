@@ -4738,7 +4738,7 @@ fn rejection_negative_numbers_and_public_constructor_invariants_matrix() {
     ]);
 
     assert_eq!(CssFontFamilyList::try_new(Vec::new()), None);
-    assert_eq!(CssGridTrackList::try_new(Vec::new()), None);
+    assert_eq!(CssGridGeneralTrackList::try_new(Vec::new()), None);
     assert_eq!(
         CssPosition::try_new(vec![
             CssPositionComponent::Horizontal(CssHorizontalPositionKeyword::Left),
@@ -4876,13 +4876,6 @@ fn constructor_invariants_reject_invalid_public_numeric_values() {
     assert_eq!(
         CssLength::try_dimension(4.0, CssLengthUnit::Px).unwrap(),
         CssLength::px(4.0)
-    );
-
-    assert_eq!(CssGridTrackBreadth::try_fraction(f32::NAN), None);
-    assert_eq!(CssGridTrackBreadth::try_fraction(-0.1), None);
-    assert_eq!(
-        CssGridTrackBreadth::try_fraction(1.0).unwrap(),
-        CssGridTrackBreadth::try_fraction(1.0).unwrap()
     );
 
     assert_eq!(CssScaleValues::try_new(vec![1.0, f32::NAN]), None);
@@ -9731,132 +9724,146 @@ fn box_model_properties_reject_cross_family_values() {
 
 #[test]
 fn parses_grid_track_lists_and_template_areas() {
-    assert_eq!(
-        declaration_value!(
-            ".panel { grid-template-columns: [main] repeat(2, minmax(10px, 1fr)) fit-content(20%); }",
-            GridTemplateColumns
-        ),
-        CssGridTrackList::new(vec![
-            CssGridTrackComponent::LineNames(CssGridLineNames::new(vec![CssCustomIdent::new(
-                "main"
-            )])),
-            CssGridTrackComponent::Repeat(CssGridRepeat::new(
-                CssGridRepeatCount::integer(2),
-                CssGridTrackList::new(vec![CssGridTrackComponent::TrackSize(
-                    CssGridTrackSize::minmax(
-                        CssGridTrackBreadth::length(CssLength::px(10.0)),
-                        CssGridTrackBreadth::try_fraction(1.0).unwrap(),
-                    )
-                )]),
-            )),
-            CssGridTrackComponent::TrackSize(CssGridTrackSize::fit_content(CssLength::percent(
-                20.0
-            ))),
-        ])
+    let columns = declaration(
+        ".panel { grid-template-columns: [main] repeat(2, minmax(10px, 1fr)) fit-content(20%); }",
+        CssProperty::GridTemplateColumns,
     );
+    let Some(CssKnownPropertyValueRef::GridTemplateColumns(value)) =
+        columns.known().unwrap().property_value()
+    else {
+        panic!("grid columns")
+    };
     assert_eq!(
-        declaration_value!(
-            ".panel { grid-template-areas: \"header header\" \"nav main\"; }",
-            GridTemplateAreas
-        ),
-        CssGridTemplateAreas::rows(vec![
-            CssGridTemplateAreaRow::new(vec![
-                CssGridTemplateAreaCell::Named(CssCustomIdent::new("header")),
-                CssGridTemplateAreaCell::Named(CssCustomIdent::new("header")),
-            ]),
-            CssGridTemplateAreaRow::new(vec![
-                CssGridTemplateAreaCell::Named(CssCustomIdent::new("nav")),
-                CssGridTemplateAreaCell::Named(CssCustomIdent::new("main")),
-            ]),
-        ])
+        value.value().serialize_specified().unwrap(),
+        "[main] repeat(2, minmax(10px, 1fr)) fit-content(20%)"
     );
+    let areas = declaration(
+        ".panel { grid-template-areas: \"header header\" \"nav main\"; }",
+        CssProperty::GridTemplateAreas,
+    );
+    let Some(CssKnownPropertyValueRef::GridTemplateAreas(value)) =
+        areas.known().unwrap().property_value()
+    else {
+        panic!("grid areas")
+    };
     assert_eq!(
-        declaration_value!(".panel { grid-template-areas: none; }", GridTemplateAreas),
-        CssGridTemplateAreas::None
+        value.value().serialize_specified().unwrap(),
+        "\"header header\" \"nav main\""
     );
+    let none = declaration(
+        ".panel { grid-template-areas: none; }",
+        CssProperty::GridTemplateAreas,
+    );
+    let Some(CssKnownPropertyValueRef::GridTemplateAreas(value)) =
+        none.known().unwrap().property_value()
+    else {
+        panic!("grid areas none")
+    };
+    assert_eq!(value.value(), &CssGridTemplateAreas::None);
 }
 
 #[test]
 fn parses_grid_flow_lines_and_shorthands() {
-    assert_eq!(
-        declaration_value!(".panel { grid-auto-flow: column dense; }", GridAutoFlow),
-        CssGridAutoFlow::new(CssGridAutoFlowAxis::Column, true)
+    let flow = declaration(
+        ".panel { grid-auto-flow: column dense; }",
+        CssProperty::GridAutoFlow,
     );
+    let Some(CssKnownPropertyValueRef::GridAutoFlow(value)) =
+        flow.known().unwrap().property_value()
+    else {
+        panic!("grid flow")
+    };
     assert_eq!(
-        declaration_value!(".panel { grid-row-start: span 2 main; }", GridRowStart),
-        CssGridLine::span(Some(2), Some(CssCustomIdent::new("main")))
+        *value.value(),
+        CssGridAutoFlow::explicit_axis(CssGridAutoFlowAxis::Column, true)
     );
-    assert_eq!(
-        declaration_value!(".panel { grid-column: nav / span 3; }", GridColumn),
-        CssGridLineRange::new(
-            CssGridLine::CustomIdent(CssCustomIdent::new("nav")),
-            Some(CssGridLine::span(Some(3), None)),
-        )
-    );
-    assert_eq!(
-        declaration_value!(
-            ".panel { grid-area: header / 1 / span 2 / main; }",
-            GridArea
+    for (property, css, expected) in [
+        (
+            CssProperty::GridRowStart,
+            ".panel { grid-row-start: span 2 main; }",
+            "span 2 main",
         ),
-        CssGridArea::new(
-            CssGridLine::CustomIdent(CssCustomIdent::new("header")),
-            Some(CssGridLine::integer(1)),
-            Some(CssGridLine::span(Some(2), None)),
-            Some(CssGridLine::CustomIdent(CssCustomIdent::new("main"))),
-        )
-    );
+        (
+            CssProperty::GridColumn,
+            ".panel { grid-column: nav / span 3; }",
+            "nav / span 3",
+        ),
+        (
+            CssProperty::GridArea,
+            ".panel { grid-area: header / 1 / span 2 / main; }",
+            "header / 1 / span 2 / main",
+        ),
+    ] {
+        let declaration = declaration(css, property);
+        let value = declaration.known().unwrap().property_value().unwrap();
+        let serialized = match value {
+            CssKnownPropertyValueRef::GridRowStart(value) => {
+                value.value().serialize_specified().unwrap()
+            }
+            CssKnownPropertyValueRef::GridColumn(value) => {
+                value.value().serialize_specified().unwrap()
+            }
+            CssKnownPropertyValueRef::GridArea(value) => {
+                value.value().serialize_specified().unwrap()
+            }
+            _ => panic!("grid placement"),
+        };
+        assert_eq!(serialized, expected);
+    }
 }
 
 #[test]
 fn parses_grid_template_and_grid_shorthands() {
+    let template = declaration(
+        ".panel { grid-template: 100px 1fr / repeat(2, minmax(10px, 1fr)); }",
+        CssProperty::GridTemplate,
+    );
+    let Some(CssKnownPropertyValueRef::GridTemplate(value)) =
+        template.known().unwrap().property_value()
+    else {
+        panic!("grid template")
+    };
     assert_eq!(
-        declaration_value!(
-            ".panel { grid-template: 100px 1fr / repeat(2, minmax(10px, 1fr)); }",
-            GridTemplate
-        ),
-        CssGridTemplate::RowsColumns {
-            rows: CssGridTrackList::new(vec![
-                CssGridTrackComponent::TrackSize(CssGridTrackSize::breadth(
-                    CssGridTrackBreadth::length(CssLength::px(100.0))
-                )),
-                CssGridTrackComponent::TrackSize(CssGridTrackSize::breadth(
-                    CssGridTrackBreadth::try_fraction(1.0).unwrap()
-                )),
-            ]),
-            columns: Some(CssGridTrackList::new(vec![CssGridTrackComponent::Repeat(
-                CssGridRepeat::new(
-                    CssGridRepeatCount::integer(2),
-                    CssGridTrackList::new(vec![CssGridTrackComponent::TrackSize(
-                        CssGridTrackSize::minmax(
-                            CssGridTrackBreadth::length(CssLength::px(10.0)),
-                            CssGridTrackBreadth::try_fraction(1.0).unwrap(),
-                        )
-                    )]),
-                )
-            )])),
-        }
+        value.value().rows().unwrap().serialize_specified().unwrap(),
+        "100px 1fr"
     );
     assert_eq!(
-        declaration_value!(
-            ".panel { grid: auto-flow dense 12px / repeat(auto-fit, 10px); }",
-            Grid
-        ),
-        CssGrid::AutoFlow {
-            flow: CssGridAutoFlow::new(CssGridAutoFlowAxis::Row, true),
-            auto_tracks: Some(CssGridTrackList::new(vec![
-                CssGridTrackComponent::TrackSize(CssGridTrackSize::breadth(
-                    CssGridTrackBreadth::length(CssLength::px(12.0))
-                ),)
-            ])),
-            explicit_tracks: CssGridTrackList::new(vec![CssGridTrackComponent::Repeat(
-                CssGridRepeat::new(
-                    CssGridRepeatCount::AutoFit,
-                    CssGridTrackList::new(vec![CssGridTrackComponent::TrackSize(
-                        CssGridTrackSize::breadth(CssGridTrackBreadth::length(CssLength::px(10.0)))
-                    )]),
-                )
-            )]),
-        }
+        value
+            .value()
+            .columns()
+            .unwrap()
+            .serialize_specified()
+            .unwrap(),
+        "repeat(2, minmax(10px, 1fr))"
+    );
+    let grid = declaration(
+        ".panel { grid: auto-flow dense 12px / repeat(auto-fit, 10px); }",
+        CssProperty::Grid,
+    );
+    let Some(CssKnownPropertyValueRef::Grid(value)) = grid.known().unwrap().property_value() else {
+        panic!("grid")
+    };
+    assert_eq!(
+        value.value().auto_flow(),
+        Some(CssGridAutoFlowMode::new(CssGridAutoFlowAxis::Row, true))
+    );
+    assert_eq!(
+        value
+            .value()
+            .auto_tracks()
+            .unwrap()
+            .serialize_specified()
+            .unwrap(),
+        "12px"
+    );
+    assert_eq!(
+        value
+            .value()
+            .explicit_tracks()
+            .unwrap()
+            .serialize_specified()
+            .unwrap(),
+        "repeat(auto-fit, 10px)"
     );
 }
 
@@ -9976,54 +9983,18 @@ fn checked_grid_constructors_reject_parser_invalid_states() {
     assert_eq!(CssCustomIdent::try_new(""), None);
     assert_eq!(CssCustomIdent::try_new("auto"), None);
     assert_eq!(
-        CssCustomIdent::try_new("main"),
-        Some(CssCustomIdent::new("main"))
-    );
-    assert_eq!(
         CssGridLineNames::try_new(Vec::new()),
         Some(CssGridLineNames::new(Vec::new()))
     );
-    assert_eq!(CssGridTrackList::try_new(Vec::new()), None);
-    assert_eq!(CssGridRepeatCount::try_integer(0), None);
+    assert_eq!(CssGridGeneralTrackList::try_new(Vec::new()), None);
+    assert_eq!(CssGridRepeatInteger::try_new(0), None);
+    assert_eq!(CssGridTrackSizeList::try_new(Vec::new()), None);
+    assert!(CssGridTemplateAreas::try_rows(Vec::new()).is_err());
     assert_eq!(
-        CssGridRepeat::try_new(
-            CssGridRepeatCount::integer(1),
-            CssGridTrackList::new(vec![CssGridTrackComponent::TrackSize(
-                CssGridTrackSize::breadth(CssGridTrackBreadth::try_fraction(1.0).unwrap())
-            )])
-        ),
-        Some(CssGridRepeat::new(
-            CssGridRepeatCount::integer(1),
-            CssGridTrackList::new(vec![CssGridTrackComponent::TrackSize(
-                CssGridTrackSize::breadth(CssGridTrackBreadth::try_fraction(1.0).unwrap())
-            )])
-        ))
-    );
-    assert_eq!(
-        CssGridRepeat::try_new(
-            CssGridRepeatCount::integer(1),
-            CssGridTrackList::new(vec![])
-        ),
+        CssGridLine::try_indexed(CssIntegerValue::Literal(0), None),
         None
     );
-    assert_eq!(CssGridTemplateAreaRow::try_new(Vec::new()), None);
-    assert_eq!(CssGridTemplateAreas::try_rows(Vec::new()), None);
-    assert_eq!(
-        CssGridTemplateAreas::try_rows(vec![
-            CssGridTemplateAreaRow::new(vec![
-                CssGridTemplateAreaCell::Named(CssCustomIdent::new("a")),
-                CssGridTemplateAreaCell::Named(CssCustomIdent::new("a")),
-            ]),
-            CssGridTemplateAreaRow::new(vec![
-                CssGridTemplateAreaCell::Named(CssCustomIdent::new("a")),
-                CssGridTemplateAreaCell::Empty,
-            ]),
-        ]),
-        None
-    );
-    assert_eq!(CssGridLine::try_integer(0), None);
-    assert_eq!(CssGridLineSpan::try_new(None, None), None);
-    assert_eq!(CssGridLineSpan::try_new(Some(0), None), None);
+    assert_eq!(CssGridLine::try_span(None, None), None);
 }
 
 #[test]

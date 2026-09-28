@@ -11,9 +11,9 @@
 //! Surgeist's exact authored-numeric contract requires range checks before float narrowing.
 
 use surgeist_css::{
-    CssErrorCode, CssImportance, CssKnownProperty as Property, CssKnownPropertyValueRef,
-    CssPropertyNameRef, CssRecoveryAction, parse_component_values, parse_property_value,
-    parse_style_attribute, validate_style_attribute,
+    CssErrorCode, CssImportance, CssKnownProperty as Property, CssPropertyNameRef,
+    CssRecoveryAction, parse_component_values, parse_property_value, parse_style_attribute,
+    validate_style_attribute,
 };
 
 const AXES: [Property; 2] = [Property::GridTemplateRows, Property::GridTemplateColumns];
@@ -23,7 +23,7 @@ const IMPLICIT: [Property; 2] = [Property::GridAutoRows, Property::GridAutoColum
 fn finite_decimal_track_literals_survive_without_float_narrowing() {
     for property in AXES.into_iter().chain(IMPLICIT) {
         for authored in ["1e50fr", "1e-50fr", "1e50px", "1e-50px", "1e50%", "1e-50%"] {
-            assert_accepted(property, authored, false);
+            assert_accepted(property, authored);
         }
     }
 
@@ -37,7 +37,7 @@ fn finite_decimal_track_literals_survive_without_float_narrowing() {
         (Property::GridTemplate, "1e-50fr / 10px"),
         (Property::Grid, "auto-flow 1e50fr / 10px"),
     ] {
-        assert_accepted(property, authored, false);
+        assert_accepted(property, authored);
     }
 }
 
@@ -64,10 +64,10 @@ fn ordinary_track_range_checks_use_authored_decimal_not_rounded_float() {
 fn lexical_zero_and_length_percentage_math_remain_admitted_controls() {
     for property in AXES.into_iter().chain(IMPLICIT) {
         for authored in ["-0fr", "-0px", "-0%", "0"] {
-            assert_accepted(property, authored, true);
+            assert_accepted(property, authored);
         }
-        // The existing length-percentage branch retains its percentage hint.
-        assert_accepted(property, "calc(10px + 5%)", false);
+        // The length-percentage branch retains its percentage hint.
+        assert_accepted(property, "calc(10px + 5%)");
     }
 }
 
@@ -81,7 +81,7 @@ fn flex_result_math_is_selected_across_grid_track_consumers() {
             "calc(1fr * (1% / 1%))",
             "minmax(auto, max(1fr, 2fr))",
         ] {
-            assert_accepted(property, authored, false);
+            assert_accepted(property, authored);
         }
     }
 
@@ -94,7 +94,7 @@ fn flex_result_math_is_selected_across_grid_track_consumers() {
         (Property::GridTemplate, "calc(2 * 1fr) / 10px"),
         (Property::Grid, "auto-flow calc(2 * 1fr) / 10px"),
     ] {
-        assert_accepted(property, authored, false);
+        assert_accepted(property, authored);
     }
 }
 
@@ -116,7 +116,7 @@ fn flex_math_does_not_enter_inflexible_or_length_percentage_slots() {
     }
 }
 
-fn assert_accepted(property: Property, authored: &str, legacy_exact: bool) {
+fn assert_accepted(property: Property, authored: &str) {
     let source = format!(
         "color:red;{}:{authored};width:3px",
         property.canonical_name()
@@ -130,18 +130,9 @@ fn assert_accepted(property: Property, authored: &str, legacy_exact: bool) {
         property,
         "{source}"
     );
-    let projected = match declaration.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::GridTemplateRows(value) => value.i01_subset().is_some(),
-        CssKnownPropertyValueRef::GridTemplateColumns(value) => value.i01_subset().is_some(),
-        CssKnownPropertyValueRef::GridAutoRows(value) => value.i01_subset().is_some(),
-        CssKnownPropertyValueRef::GridAutoColumns(value) => value.i01_subset().is_some(),
-        CssKnownPropertyValueRef::GridTemplate(value) => value.i01_subset().is_some(),
-        CssKnownPropertyValueRef::Grid(value) => value.i01_subset().is_some(),
-        _ => panic!("expected Grid property: {source}"),
-    };
-    assert_eq!(
-        projected, legacy_exact,
-        "exact-only I01 projection: {source}"
+    assert!(
+        declaration.known().unwrap().property_value().is_some(),
+        "{source}"
     );
     assert!(validate_style_attribute(&source).is_ok(), "{source}");
     let checked = parse_property_value(

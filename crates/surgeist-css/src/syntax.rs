@@ -5289,9 +5289,6 @@ fn is_valid_custom_ident(value: &str) -> bool {
 mod grid;
 pub use grid::*;
 mod grid_placement;
-pub(crate) use grid::{
-    CssParsedGrid, CssParsedGridTemplate, CssParsedGridTrackList, CssParsedGridTrackSizeList,
-};
 pub use grid_placement::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

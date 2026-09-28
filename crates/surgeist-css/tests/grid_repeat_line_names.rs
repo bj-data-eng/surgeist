@@ -7,18 +7,15 @@
 //! https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#typedef-fixed-breadth
 //! Selected Grid2 source SHA256:
 //! 05aa64853c4428146973943b35caf121e44c1076bdf5b8c29f8896dba9b778e2
-//! Authored spelling, semantic inspection, importance, and exact optional I01
-//! projection are Surgeist public contracts. No calculation is evaluated here.
+//! Authored spelling, semantic inspection, and importance are Surgeist public contracts.
+//! No calculation is evaluated here.
 
 use surgeist_css::{
-    CssAuthoredGridAutoRepeatKind, CssAuthoredGridAutoTrackComponent,
-    CssAuthoredGridGeneralTrackComponent, CssAuthoredGridTrackList,
-    CssAuthoredGridTrackRepeatComponent, CssAuthoredGridTrackSize, CssCalcLength,
     CssCalculationExpressionRef, CssCalculationProductOperator, CssCalculationType,
-    CssCalculationValueRef, CssCustomIdent, CssGridLineNames, CssGridRepeat, CssGridRepeatCount,
-    CssGridTrackBreadth, CssGridTrackComponent, CssGridTrackList, CssGridTrackSize, CssImportance,
-    CssKnownProperty, CssKnownPropertyValueRef, CssLength, parse_style_attribute,
-    validate_style_attribute,
+    CssCalculationValueRef, CssGridAutoRepeatKind, CssGridAutoTrackComponent,
+    CssGridGeneralTrackComponent, CssGridLineNames, CssGridTrackList, CssGridTrackRepeatComponent,
+    CssGridTrackSize, CssImportance, CssKnownProperty, CssKnownPropertyValueRef,
+    CssSpecifiedNonNegativeLengthPercentage, parse_style_attribute, validate_style_attribute,
 };
 
 #[derive(Clone, Copy)]
@@ -116,7 +113,7 @@ fn assert_repeat(authored: &str, mode: RepeatMode, case: ContentCase) {
     };
     assert_eq!(value.as_css(), authored);
 
-    let (names, size) = ordered_repeat_content(value.current(), mode, case);
+    let (names, size) = ordered_repeat_content(value.value(), mode, case);
     let [name] = names.names() else {
         panic!("{source}: exactly one authored line name must remain");
     };
@@ -128,15 +125,24 @@ fn assert_repeat(authored: &str, mode: RepeatMode, case: ContentCase) {
         }
     );
     let breadth = size.breadth().expect("a direct length track breadth");
-    let length = breadth.length().expect("a length-valued track");
+    let length = breadth.length_percentage().expect("a length-valued track");
     match case {
         ContentCase::LiteralTrailing => {
-            assert_eq!(length, &CssLength::try_px(2.0).unwrap());
-            assert_eq!(value.i01_subset(), Some(&literal_projection(mode)));
+            assert_eq!(length.serialize_specified().unwrap(), "2px");
+            assert_eq!(
+                value.value().serialize_specified().unwrap(),
+                "repeat(2, 2px [end])".replace(
+                    "2,",
+                    match mode {
+                        RepeatMode::Integer => "2,",
+                        RepeatMode::AutoFill => "auto-fill,",
+                        RepeatMode::AutoFit => "auto-fit,",
+                    }
+                )
+            );
         }
         ContentCase::TypedLeading | ContentCase::TypedTrailing => {
             assert_one_pixel_times_two(length);
-            assert!(value.i01_subset().is_none());
         }
     }
 
@@ -153,17 +159,17 @@ fn assert_repeat(authored: &str, mode: RepeatMode, case: ContentCase) {
 }
 
 fn ordered_repeat_content(
-    value: &CssAuthoredGridTrackList,
+    value: &CssGridTrackList,
     mode: RepeatMode,
     case: ContentCase,
-) -> (&CssGridLineNames, &CssAuthoredGridTrackSize) {
+) -> (&CssGridLineNames, &CssGridTrackSize) {
     match mode {
         RepeatMode::Integer => {
             assert!(value.auto_list().is_none());
             let list = value
                 .general_list()
                 .expect("integer repeat in a general list");
-            let [CssAuthoredGridGeneralTrackComponent::Repeat(repeat)] = list.components() else {
+            let [CssGridGeneralTrackComponent::Repeat(repeat)] = list.components() else {
                 panic!("exactly one integer repeat must remain");
             };
             assert_eq!(repeat.count().value(), 2);
@@ -171,15 +177,15 @@ fn ordered_repeat_content(
                 (
                     ContentCase::TypedLeading,
                     [
-                        CssAuthoredGridTrackRepeatComponent::LineNames(names),
-                        CssAuthoredGridTrackRepeatComponent::TrackSize(size),
+                        CssGridTrackRepeatComponent::LineNames(names),
+                        CssGridTrackRepeatComponent::TrackSize(size),
                     ],
                 )
                 | (
                     ContentCase::LiteralTrailing | ContentCase::TypedTrailing,
                     [
-                        CssAuthoredGridTrackRepeatComponent::TrackSize(size),
-                        CssAuthoredGridTrackRepeatComponent::LineNames(names),
+                        CssGridTrackRepeatComponent::TrackSize(size),
+                        CssGridTrackRepeatComponent::LineNames(names),
                     ],
                 ) => (names, size),
                 _ => panic!("integer repetition must preserve the exact two-component order"),
@@ -190,14 +196,14 @@ fn ordered_repeat_content(
             let list = value
                 .auto_list()
                 .expect("automatic repeat in an auto track list");
-            let [CssAuthoredGridAutoTrackComponent::AutoRepeat(repeat)] = list.components() else {
+            let [CssGridAutoTrackComponent::AutoRepeat(repeat)] = list.components() else {
                 panic!("exactly one automatic repeat must remain");
             };
             assert_eq!(
                 repeat.kind(),
                 match mode {
-                    RepeatMode::AutoFill => CssAuthoredGridAutoRepeatKind::AutoFill,
-                    RepeatMode::AutoFit => CssAuthoredGridAutoRepeatKind::AutoFit,
+                    RepeatMode::AutoFill => CssGridAutoRepeatKind::AutoFill,
+                    RepeatMode::AutoFit => CssGridAutoRepeatKind::AutoFit,
                     RepeatMode::Integer => unreachable!("integer branch handled above"),
                 }
             );
@@ -205,15 +211,15 @@ fn ordered_repeat_content(
                 (
                     ContentCase::TypedLeading,
                     [
-                        CssAuthoredGridTrackRepeatComponent::LineNames(names),
-                        CssAuthoredGridTrackRepeatComponent::TrackSize(size),
+                        CssGridTrackRepeatComponent::LineNames(names),
+                        CssGridTrackRepeatComponent::TrackSize(size),
                     ],
                 )
                 | (
                     ContentCase::LiteralTrailing | ContentCase::TypedTrailing,
                     [
-                        CssAuthoredGridTrackRepeatComponent::TrackSize(size),
-                        CssAuthoredGridTrackRepeatComponent::LineNames(names),
+                        CssGridTrackRepeatComponent::TrackSize(size),
+                        CssGridTrackRepeatComponent::LineNames(names),
                     ],
                 ) => (names, size),
                 _ => panic!("automatic repetition must preserve the exact two-component order"),
@@ -222,10 +228,8 @@ fn ordered_repeat_content(
     }
 }
 
-fn assert_one_pixel_times_two(length: &CssLength) {
-    let CssLength::Calc(CssCalcLength::Typed(calculation)) = length else {
-        panic!("retain the typed calculation rather than evaluating it to a literal");
-    };
+fn assert_one_pixel_times_two(length: &CssSpecifiedNonNegativeLengthPercentage) {
+    let calculation = length.calculation().expect("retain typed calculation");
     assert_eq!(calculation.result_type(), CssCalculationType::Length);
     let CssCalculationExpressionRef::NestedCalc(root) = calculation.expression() else {
         panic!("expected calc root")
@@ -252,25 +256,4 @@ fn assert_one_pixel_times_two(length: &CssLength) {
         second.expression(),
         CssCalculationExpressionRef::Value(CssCalculationValueRef::Integer(v)) if v.representation() == "2"
     ));
-}
-
-fn literal_projection(mode: RepeatMode) -> CssGridTrackList {
-    let count = match mode {
-        RepeatMode::Integer => CssGridRepeatCount::try_integer(2).unwrap(),
-        RepeatMode::AutoFill => CssGridRepeatCount::AutoFill,
-        RepeatMode::AutoFit => CssGridRepeatCount::AutoFit,
-    };
-    let tracks = CssGridTrackList::try_new(vec![
-        CssGridTrackComponent::TrackSize(CssGridTrackSize::Breadth(CssGridTrackBreadth::Length(
-            CssLength::try_px(2.0).unwrap(),
-        ))),
-        CssGridTrackComponent::LineNames(
-            CssGridLineNames::try_new(vec![CssCustomIdent::try_new("end").unwrap()]).unwrap(),
-        ),
-    ])
-    .unwrap();
-    CssGridTrackList::try_new(vec![CssGridTrackComponent::Repeat(
-        CssGridRepeat::try_new(count, tracks).unwrap(),
-    )])
-    .unwrap()
 }

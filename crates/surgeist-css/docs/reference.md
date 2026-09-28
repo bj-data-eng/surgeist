@@ -422,7 +422,7 @@ literal lengths only. Calculation-bearing current values still parse through the
 numeric owner but have no projection through that frozen grammar. Literal
 projections, including `circle(50% at center)`, remain available. This does not
 retire unrelated generic wrapper accessors that already expose typed calculations.
-Grid and position compatibility checks exclude every `CssLength::Calc` variant.
+Position compatibility checks exclude every `CssLength::Calc` variant.
 
 ## Authored preferred aspect ratios
 
@@ -1403,14 +1403,21 @@ crate.
 
 ## Authored Grid repetition and keyframe structure
 
+Grid property wrappers expose authored values through `value()`. The parallel
+Grid graphs and `i01_subset()` methods are removed. Checked `CssGrid*` models
+are the sole Grid API. Track breadth and size accessors expose exact scalars
+through `length_percentage()`, `flex()`, and
+`fit_content()`.
+
 `grid-auto-flow` accepts six authored meanings: `normal`, `dense`, `row`,
 `row dense`, `column`, and `column dense`. The axis and `dense` keywords may be
-authored in either order; `CssGridAutoFlowValue::serialize_specified()` emits
+authored in either order; `CssGridAutoFlow::serialize_specified()` emits
 the canonical order. `normal` and bare `dense` leave direction unspecified, and
-the `CssGridAutoFlowPropertyValue::current()` accessor preserves that difference.
-Its `i01_subset()` projects only explicit row or column forms into the older
-`CssGridAutoFlow` type. The intrinsic initial is `normal`, and the longhand is
-not inherited. CSS-wide values, `all`, and pending substitutions remain
+the `CssGridAutoFlowPropertyValue::value()` accessor preserves that difference.
+The `ExplicitAxis` branch contains a `CssGridAutoFlowMode`, the explicit axis
+and dense selection. The intrinsic
+initial is `normal`, and the longhand is not inherited. CSS-wide values,
+`all`, and pending substitutions remain
 symbolic through intrinsic expansion.
 
 This initial differs from the `row` initial in the selected
@@ -1423,8 +1430,8 @@ leaves open whether its orientation belongs on `grid-auto-flow` or a separate
 property. This CSS layer does not choose the resulting layout direction or
 change the existing `grid` shorthand's explicit row/dense branch.
 
-`grid-template-areas` exposes `CssAuthoredGridTemplateAreas` through its
-property wrapper's `current()` accessor. Its `None` initial is not inherited.
+`grid-template-areas` exposes `CssGridTemplateAreas` through its
+property wrapper's `value()` accessor. Its `None` initial is not inherited.
 Each decoded string row follows [Grid 2 §7.3](https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#grid-template-areas-property):
 the longest run of ident code points makes one named cell, the longest run of
 periods makes one empty cell, and decoded space, tab, and line feed separate
@@ -1433,10 +1440,9 @@ and form feed produced by an escape, invalidate the declaration. Non-ASCII
 code points such as NBSP remain part of an area name. The checked row and
 matrix constructors require nonempty rows, equal widths, and a filled rectangle
 for each case-sensitive name. Area names have their own checked type so leading
-digits and CSS-wide keyword spellings remain valid within a string. The older
-`CssGridTemplateAreas` view projects only names admitted by its existing
-checked `CssCustomIdent` constructor and valid shape constructors; its
-`i01_subset()` can therefore be `None` for a valid current value.
+digits and CSS-wide keyword spellings remain valid within a string. The
+decoded area name is the sole typed representation, including names that
+would be reserved in ordinary custom identifiers.
 
 `serialize_specified_with_limits()` emits canonical quoted rows with one space
 between cells and one period for each empty cell under cumulative input-node,
@@ -1448,9 +1454,9 @@ ASCII-art grammar or perform layout.
 
 The four Grid placement longhands (`grid-row-start`, `grid-row-end`,
 `grid-column-start`, and `grid-column-end`) and the `grid-row`, `grid-column`,
-and `grid-area` shorthands expose `CssAuthoredGridLine`,
-`CssAuthoredGridLineRange`, and `CssAuthoredGridArea` through their property
-wrappers' `current()` accessors. These are the authored [Grid 2 line placement
+and `grid-area` shorthands expose `CssGridLine`,
+`CssGridLineRange`, and `CssGridArea` through their property
+wrappers' `value()` accessors. These are the authored [Grid 2 line placement
 values](https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#line-placement),
 which [Grid 3 §4.1](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#grid-lanes-placement)
 also uses. A line may be `auto`, a bare name, a nonzero signed integer with an
@@ -1467,14 +1473,12 @@ longhand contributions: an omitted partner copies only a bare line name and is
 otherwise `auto`. In `grid-area`, the member order is row start, column start,
 row end, column end, and an omitted column end follows the effective column
 start. These accessors do not resolve conflicting line placements; that needs
-layout context. `i01_subset()` continues to return the original Grid types only
-when every authored member fits their frozen representation. Canonical
+layout context. Canonical
 `serialize_specified_with_limits()` applies one cumulative resource budget to
 the complete line or shorthand.
 
-The six Grid repetition consumers expose a parser-owned current value through
-`current()` while preserving their existing `i01_subset()` compatibility view.
-Current Grid track lists distinguish general lists from lists containing exactly
+The six Grid repetition consumers expose their authored value through `value()`.
+Grid track lists distinguish general lists from lists containing exactly
 one automatic repetition. Integer and automatic repetitions are non-recursive.
 The [selected Grid 3 publication](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#intrinsic-auto-repeat)
 admits general track sizes inside automatic repetition, including intrinsic
@@ -1484,14 +1488,13 @@ and integer repetitions retain the fixed-size restrictions of Grid 2's
 `grid-auto-rows` and `grid-auto-columns` still accept track sizes without
 `repeat()`. Each explicit axis has its own limit of one automatic repetition.
 
-`CssAuthoredGridAutoRepeat::content()` now returns
-`&CssAuthoredGridTrackRepeatContent`. Consumers inspect its ordered `LineNames`
+`CssGridAutoRepeat::content()` now returns
+`&CssGridTrackRepeatContent`. Consumers inspect its ordered `LineNames`
 and `TrackSize` members; the former fixed-body return type no longer describes
 the selected grammar. Surrounding integer fixed repeats continue to expose
-`CssAuthoredGridFixedRepeatContent`. Exact expressible I01 projections remain
-available. Typed calculations retain their current symbolic structure when no
-exact I01 projection exists. Historical captured inputs and observations remain
-unchanged; their explicit current-model witnesses apply the selected grammar.
+`CssGridFixedRepeatContent`. Typed calculations retain their symbolic
+structure. Historical captured inputs
+and observations remain unchanged; semantic witnesses apply the selected grammar.
 
 The shared repeat feature cites the Grid 3 extension. The containing property
 records retain their Grid 2 property grammar sources and document the extension
@@ -1507,13 +1510,34 @@ observables replace older expectations that accepted structurally invalid Grid
 cross-products or discarded valid empty keyframe parents.
 
 Empty `[]` line-name groups are retained as ordered authored components in
-explicit tracks and repetitions, including their exact I01 projections.
+explicit tracks and repetitions.
 `CssGridLineNames::try_new(Vec::new())` accepts the same empty group. A group
 does not supply a required track size; reserved line names remain rejected.
+Two adjacent `[...]` groups cannot occupy one track boundary, including inside
+integer and automatic repetitions.
+
+The shared Grid track-size model keeps exact ordinary nonnegative `fr`, length,
+and percentage quantities until a consumer has a finite conversion policy.
+For example, `1e50fr` and `1e-50fr` remain distinct, while `-1e-50fr` fails
+ordinary range admission before floating-point rounding. Its checked Flex and
+length-percentage calculations remain symbolic. The selected [Grid 2 `fr`
+wording](https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#fr-unit) conflicts
+with [Values 4 calculation typing](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking)
+for flex-result math. Following the product's browser tiebreaker, pinned
+[WebKit Grid consumption](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/parser/CSSPropertyParserConsumer%2BGrid.cpp)
+selects checked Flex first, then length-percentage for contextual type failures.
+This is an operational parser choice, not a claim that the two specifications
+agree. Flex results are excluded from inflexible `minmax()` minima and
+`fit-content()` arguments. `length_percentage()`,
+`flex()`, and `fit_content()` expose the retained checked
+scalar without floating-point narrowing.
+`serialize_specified()` on typed track sizes and lists emits bounded canonical
+CSS from retained values, whereas declaration `as_css()` preserves authored text.
 
 The Grid repetition value, the six Grid property records, and the keyframe rule
-record remain `Partial`. Subgrid name-repeat, wider Values
-math functions, and other unselected Grid property grammar remain unsupported.
+record remain `Partial`. Subgrid name-repeat, remaining `grid`/`grid-template`
+shorthand alternatives, and implicit-track lifecycle metadata and expansion
+remain unfinished.
 Calculation keyframe selectors, string names, and unselected declaration-processing
 grammar remain outside the keyframe boundary. Repetition counts and used track
 sizes remain unresolved. This crate does not perform Grid layout, cascade

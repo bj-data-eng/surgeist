@@ -1,9 +1,6 @@
-//! Authored Grid placement values, kept separate from the frozen I01 projection.
+//! Authored Grid placement values.
 
-use super::{
-    CssCustomIdent, CssGridArea, CssGridLine, CssGridLineRange, CssIdent, CssIntegerValue,
-    CssPositiveIntegerValue,
-};
+use super::{CssIdent, CssIntegerValue, CssPositiveIntegerValue};
 use crate::{
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
     specified_rule_serialization::SpecifiedRuleWriter,
@@ -90,12 +87,12 @@ impl CssGridLineIndex {
 
 /// A Grid span containing a positive ordinary index, a name, or both.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssGridLineSpanValue {
+pub struct CssGridLineSpan {
     integer: Option<CssPositiveIntegerValue>,
     name: Option<CssGridLineName>,
 }
 
-impl CssGridLineSpanValue {
+impl CssGridLineSpan {
     #[must_use]
     pub fn try_new(
         integer: Option<CssPositiveIntegerValue>,
@@ -115,17 +112,17 @@ impl CssGridLineSpanValue {
     }
 }
 
-/// One current authored Grid line, before placement conflict resolution.
+/// One authored Grid line, before placement conflict resolution.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub enum CssAuthoredGridLine {
+pub enum CssGridLine {
     Auto,
     Name(CssGridLineName),
     Indexed(CssGridLineIndex),
-    Span(CssGridLineSpanValue),
+    Span(CssGridLineSpan),
 }
 
-impl CssAuthoredGridLine {
+impl CssGridLine {
     #[must_use]
     pub fn try_indexed(value: CssIntegerValue, name: Option<CssGridLineName>) -> Option<Self> {
         CssGridLineIndex::try_new(value, name).map(Self::Indexed)
@@ -136,43 +133,7 @@ impl CssAuthoredGridLine {
         integer: Option<CssPositiveIntegerValue>,
         name: Option<CssGridLineName>,
     ) -> Option<Self> {
-        CssGridLineSpanValue::try_new(integer, name).map(Self::Span)
-    }
-
-    #[must_use]
-    pub fn i01_subset(&self) -> Option<CssGridLine> {
-        match self {
-            Self::Auto => Some(CssGridLine::Auto),
-            Self::Name(name) => Some(CssGridLine::CustomIdent(CssCustomIdent::try_new(
-                name.ident().as_str(),
-            )?)),
-            Self::Indexed(index) if index.name.is_none() => match &index.value {
-                CssIntegerValue::Literal(value) => CssGridLine::try_integer(*value),
-                CssIntegerValue::ExactLiteral(value) => {
-                    crate::integer_value::exact_i32(value.numeric().representation())
-                        .and_then(CssGridLine::try_integer)
-                }
-                _ => None,
-            },
-            Self::Indexed(_) => None,
-            Self::Span(span) => {
-                let integer = match &span.integer {
-                    Some(CssPositiveIntegerValue::Literal(value)) => Some(value.value()),
-                    Some(CssPositiveIntegerValue::ExactLiteral(value)) => {
-                        Some(crate::integer_value::exact_i32(
-                            value.integer().numeric().representation(),
-                        )?)
-                    }
-                    None => None,
-                    _ => return None,
-                };
-                let name = match &span.name {
-                    Some(name) => Some(CssCustomIdent::try_new(name.ident().as_str())?),
-                    None => None,
-                };
-                CssGridLine::try_span(integer, name)
-            }
-        }
+        CssGridLineSpan::try_new(integer, name).map(Self::Span)
     }
 
     fn omitted_partner(&self) -> Self {
@@ -256,36 +217,29 @@ fn append_name(
 
 /// An authored row or column shorthand; an absent end remains distinguishable.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssAuthoredGridLineRange {
-    start: CssAuthoredGridLine,
-    end: Option<CssAuthoredGridLine>,
+pub struct CssGridLineRange {
+    start: CssGridLine,
+    end: Option<CssGridLine>,
 }
 
-impl CssAuthoredGridLineRange {
+impl CssGridLineRange {
     #[must_use]
-    pub const fn new(start: CssAuthoredGridLine, end: Option<CssAuthoredGridLine>) -> Self {
+    pub const fn new(start: CssGridLine, end: Option<CssGridLine>) -> Self {
         Self { start, end }
     }
     #[must_use]
-    pub const fn start(&self) -> &CssAuthoredGridLine {
+    pub const fn start(&self) -> &CssGridLine {
         &self.start
     }
     #[must_use]
-    pub const fn authored_end(&self) -> Option<&CssAuthoredGridLine> {
+    pub const fn authored_end(&self) -> Option<&CssGridLine> {
         self.end.as_ref()
     }
     #[must_use]
-    pub fn effective_end(&self) -> CssAuthoredGridLine {
+    pub fn effective_end(&self) -> CssGridLine {
         self.end
             .clone()
             .unwrap_or_else(|| self.start.omitted_partner())
-    }
-    #[must_use]
-    pub fn i01_subset(&self) -> Option<CssGridLineRange> {
-        Some(CssGridLineRange::new(
-            self.start.i01_subset()?,
-            project_optional_line(self.end.as_ref())?,
-        ))
     }
     pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
@@ -306,20 +260,20 @@ impl CssAuthoredGridLineRange {
 
 /// An authored area shorthand in row-start, column-start, row-end, column-end order.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssAuthoredGridArea {
-    row_start: CssAuthoredGridLine,
-    column_start: Option<CssAuthoredGridLine>,
-    row_end: Option<CssAuthoredGridLine>,
-    column_end: Option<CssAuthoredGridLine>,
+pub struct CssGridArea {
+    row_start: CssGridLine,
+    column_start: Option<CssGridLine>,
+    row_end: Option<CssGridLine>,
+    column_end: Option<CssGridLine>,
 }
 
-impl CssAuthoredGridArea {
+impl CssGridArea {
     #[must_use]
     pub fn try_new(
-        row_start: CssAuthoredGridLine,
-        column_start: Option<CssAuthoredGridLine>,
-        row_end: Option<CssAuthoredGridLine>,
-        column_end: Option<CssAuthoredGridLine>,
+        row_start: CssGridLine,
+        column_start: Option<CssGridLine>,
+        row_end: Option<CssGridLine>,
+        column_end: Option<CssGridLine>,
     ) -> Option<Self> {
         if (row_end.is_some() && column_start.is_none())
             || (column_end.is_some() && row_end.is_none())
@@ -334,47 +288,38 @@ impl CssAuthoredGridArea {
         })
     }
     #[must_use]
-    pub const fn row_start(&self) -> &CssAuthoredGridLine {
+    pub const fn row_start(&self) -> &CssGridLine {
         &self.row_start
     }
     #[must_use]
-    pub const fn authored_column_start(&self) -> Option<&CssAuthoredGridLine> {
+    pub const fn authored_column_start(&self) -> Option<&CssGridLine> {
         self.column_start.as_ref()
     }
     #[must_use]
-    pub const fn authored_row_end(&self) -> Option<&CssAuthoredGridLine> {
+    pub const fn authored_row_end(&self) -> Option<&CssGridLine> {
         self.row_end.as_ref()
     }
     #[must_use]
-    pub const fn authored_column_end(&self) -> Option<&CssAuthoredGridLine> {
+    pub const fn authored_column_end(&self) -> Option<&CssGridLine> {
         self.column_end.as_ref()
     }
     #[must_use]
-    pub fn effective_column_start(&self) -> CssAuthoredGridLine {
+    pub fn effective_column_start(&self) -> CssGridLine {
         self.column_start
             .clone()
             .unwrap_or_else(|| self.row_start.omitted_partner())
     }
     #[must_use]
-    pub fn effective_row_end(&self) -> CssAuthoredGridLine {
+    pub fn effective_row_end(&self) -> CssGridLine {
         self.row_end
             .clone()
             .unwrap_or_else(|| self.row_start.omitted_partner())
     }
     #[must_use]
-    pub fn effective_column_end(&self) -> CssAuthoredGridLine {
+    pub fn effective_column_end(&self) -> CssGridLine {
         self.column_end
             .clone()
             .unwrap_or_else(|| self.effective_column_start().omitted_partner())
-    }
-    #[must_use]
-    pub fn i01_subset(&self) -> Option<CssGridArea> {
-        Some(CssGridArea::new(
-            self.row_start.i01_subset()?,
-            project_optional_line(self.column_start.as_ref())?,
-            project_optional_line(self.row_end.as_ref())?,
-            project_optional_line(self.column_end.as_ref())?,
-        ))
     }
     pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
@@ -393,12 +338,5 @@ impl CssAuthoredGridArea {
             line.append_specified(&mut writer)?;
         }
         Ok(writer.css)
-    }
-}
-
-fn project_optional_line(line: Option<&CssAuthoredGridLine>) -> Option<Option<CssGridLine>> {
-    match line {
-        Some(line) => Some(Some(line.i01_subset()?)),
-        None => Some(None),
     }
 }

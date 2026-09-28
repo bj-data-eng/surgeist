@@ -48,14 +48,14 @@ fn terminal(source: &CssDeclaration) -> CssLonghandContributions {
     values
 }
 
-fn i01_rows(source: &CssDeclaration) -> Vec<Vec<String>> {
+fn authored_rows(source: &CssDeclaration) -> Vec<Vec<String>> {
     let CssKnownPropertyValueRef::GridTemplateAreas(value) =
         source.known().unwrap().property_value().unwrap()
     else {
         panic!("typed area value")
     };
-    let Some(CssGridTemplateAreas::Rows(rows)) = value.i01_subset() else {
-        panic!("representable area rows")
+    let CssGridTemplateAreas::Rows(rows) = value.value() else {
+        panic!("authored area rows")
     };
     rows.rows()
         .iter()
@@ -107,26 +107,29 @@ fn none_and_existing_rectangular_rows_remain_valid_controls() {
         else {
             panic!("typed area value")
         };
-        assert_eq!(value.i01_subset(), Some(&CssGridTemplateAreas::None));
+        assert_eq!(value.value(), &CssGridTemplateAreas::None);
     }
     for source in [
         parsed("\"header header\" \"nav main\""),
         checked("\"header header\" \"nav main\""),
     ] {
-        assert_eq!(i01_rows(&source), [["header", "header"], ["nav", "main"]]);
+        assert_eq!(
+            authored_rows(&source),
+            [["header", "header"], ["nav", "main"]]
+        );
     }
 }
 
 #[test]
 fn adjacent_named_and_dot_runs_create_independent_cells() {
     for source in [parsed("\"a...b\""), checked("\"a...b\"")] {
-        assert_eq!(i01_rows(&source), [["a", ".", "b"]]);
+        assert_eq!(authored_rows(&source), [["a", ".", "b"]]);
     }
     for source in [parsed("\"a.b\""), checked("\"a.b\"")] {
-        assert_eq!(i01_rows(&source), [["a", ".", "b"]]);
+        assert_eq!(authored_rows(&source), [["a", ".", "b"]]);
     }
     for source in [parsed("\"....\""), checked("\"....\"")] {
-        assert_eq!(i01_rows(&source), [["."]]);
+        assert_eq!(authored_rows(&source), [["."]]);
     }
 }
 
@@ -136,20 +139,20 @@ fn digit_names_case_and_css_whitespace_are_preserved_after_string_decoding() {
         parsed("\"1st\\a A\\9 b C\""),
         checked("\"1st\\a A\\9 b C\""),
     ] {
-        assert_eq!(i01_rows(&source), [["1st", "A", "b", "C"]]);
+        assert_eq!(authored_rows(&source), [["1st", "A", "b", "C"]]);
     }
     for source in [parsed("\"a A\""), checked("\"a A\"")] {
-        assert_eq!(i01_rows(&source), [["a", "A"]]);
+        assert_eq!(authored_rows(&source), [["a", "A"]]);
     }
     // The terminated hex escape decodes to NBSP, an ident code point, not
     // CSS whitespace. The whole string denotes one named cell.
     for source in [parsed("\"a\\a0 b\""), checked("\"a\\a0 b\"")] {
-        assert_eq!(i01_rows(&source), [["a\u{a0}b"]]);
+        assert_eq!(authored_rows(&source), [["a\u{a0}b"]]);
     }
 }
 
 #[test]
-fn area_names_accept_reserved_spellings_without_custom_ident_projection() {
+fn area_names_accept_reserved_spellings() {
     for source in [
         parsed("\"auto span inherit revert-layer\""),
         checked("\"auto span inherit revert-layer\""),
@@ -159,7 +162,10 @@ fn area_names_accept_reserved_spellings_without_custom_ident_projection() {
         else {
             panic!("typed area value")
         };
-        assert!(value.i01_subset().is_none());
+        assert_eq!(
+            value.value().serialize_specified().unwrap(),
+            "\"auto span inherit revert-layer\""
+        );
         terminal(&source);
     }
 }

@@ -3,10 +3,7 @@
 use std::collections::BTreeMap;
 
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{
-    CssCustomIdent, CssGridTemplateAreaCell, CssGridTemplateAreaRow, CssGridTemplateAreas,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-};
+use crate::{CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits};
 
 /// A semantic failure in a decoded template-area name or row matrix.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -57,21 +54,19 @@ impl CssGridTemplateAreaName {
 /// One decoded template cell.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssAuthoredGridTemplateAreaCell {
+pub enum CssGridTemplateAreaCell {
     Empty,
     Named(CssGridTemplateAreaName),
 }
 
 /// A nonempty sequence of decoded template cells.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssAuthoredGridTemplateAreaRow {
-    cells: Vec<CssAuthoredGridTemplateAreaCell>,
+pub struct CssGridTemplateAreaRow {
+    cells: Vec<CssGridTemplateAreaCell>,
 }
 
-impl CssAuthoredGridTemplateAreaRow {
-    pub fn try_new(
-        cells: Vec<CssAuthoredGridTemplateAreaCell>,
-    ) -> Result<Self, CssGridTemplateAreaError> {
+impl CssGridTemplateAreaRow {
+    pub fn try_new(cells: Vec<CssGridTemplateAreaCell>) -> Result<Self, CssGridTemplateAreaError> {
         if cells.is_empty() {
             Err(CssGridTemplateAreaError::EmptyRow)
         } else {
@@ -80,79 +75,43 @@ impl CssAuthoredGridTemplateAreaRow {
     }
 
     #[must_use]
-    pub fn cells(&self) -> &[CssAuthoredGridTemplateAreaCell] {
+    pub fn cells(&self) -> &[CssGridTemplateAreaCell] {
         &self.cells
     }
 }
 
 /// A checked nonempty matrix with equal row widths and filled rectangular names.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssAuthoredGridTemplateAreaRows {
-    rows: Vec<CssAuthoredGridTemplateAreaRow>,
+pub struct CssGridTemplateAreaRows {
+    rows: Vec<CssGridTemplateAreaRow>,
 }
 
-impl CssAuthoredGridTemplateAreaRows {
-    pub fn try_new(
-        rows: Vec<CssAuthoredGridTemplateAreaRow>,
-    ) -> Result<Self, CssGridTemplateAreaError> {
-        validate_area_matrix(
-            &rows,
-            CssAuthoredGridTemplateAreaRow::cells,
-            |cell| match cell {
-                CssAuthoredGridTemplateAreaCell::Empty => None,
-                CssAuthoredGridTemplateAreaCell::Named(name) => Some(name.as_str()),
-            },
-        )?;
+impl CssGridTemplateAreaRows {
+    pub fn try_new(rows: Vec<CssGridTemplateAreaRow>) -> Result<Self, CssGridTemplateAreaError> {
+        validate_area_matrix(&rows, CssGridTemplateAreaRow::cells, |cell| match cell {
+            CssGridTemplateAreaCell::Empty => None,
+            CssGridTemplateAreaCell::Named(name) => Some(name.as_str()),
+        })?;
         Ok(Self { rows })
     }
 
     #[must_use]
-    pub fn rows(&self) -> &[CssAuthoredGridTemplateAreaRow] {
+    pub fn rows(&self) -> &[CssGridTemplateAreaRow] {
         &self.rows
     }
 }
 
-/// Current authored grid-template-areas value.
+/// An authored `grid-template-areas` value.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssAuthoredGridTemplateAreas {
+pub enum CssGridTemplateAreas {
     None,
-    Rows(CssAuthoredGridTemplateAreaRows),
+    Rows(CssGridTemplateAreaRows),
 }
 
-impl CssAuthoredGridTemplateAreas {
-    pub fn try_rows(
-        rows: Vec<CssAuthoredGridTemplateAreaRow>,
-    ) -> Result<Self, CssGridTemplateAreaError> {
-        CssAuthoredGridTemplateAreaRows::try_new(rows).map(Self::Rows)
-    }
-
-    /// Projects only names admitted by the frozen checked I01 constructor.
-    #[must_use]
-    pub fn i01_subset(&self) -> Option<CssGridTemplateAreas> {
-        let Self::Rows(rows) = self else {
-            return Some(CssGridTemplateAreas::None);
-        };
-        let rows = rows
-            .rows()
-            .iter()
-            .map(|row| {
-                row.cells()
-                    .iter()
-                    .map(|cell| match cell {
-                        CssAuthoredGridTemplateAreaCell::Empty => {
-                            Some(CssGridTemplateAreaCell::Empty)
-                        }
-                        CssAuthoredGridTemplateAreaCell::Named(name) => {
-                            CssCustomIdent::try_new(name.as_str())
-                                .map(CssGridTemplateAreaCell::Named)
-                        }
-                    })
-                    .collect::<Option<Vec<_>>>()
-                    .and_then(CssGridTemplateAreaRow::try_new)
-            })
-            .collect::<Option<Vec<_>>>()?;
-        CssGridTemplateAreas::try_rows(rows)
+impl CssGridTemplateAreas {
+    pub fn try_rows(rows: Vec<CssGridTemplateAreaRow>) -> Result<Self, CssGridTemplateAreaError> {
+        CssGridTemplateAreaRows::try_new(rows).map(Self::Rows)
     }
 
     pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
@@ -186,14 +145,12 @@ impl CssAuthoredGridTemplateAreas {
                             context.append(&mut output, " ")?;
                         }
                         match cell {
-                            CssAuthoredGridTemplateAreaCell::Empty => {
-                                context.append(&mut output, ".")?
-                            }
+                            CssGridTemplateAreaCell::Empty => context.append(&mut output, ".")?,
                             // Checked names contain only ident code points: no ASCII
                             // quote, backslash, line break, or CSS whitespace can
                             // disturb the enclosing CSS string token. Non-ASCII
                             // code points, including U+0085 and NBSP, remain data.
-                            CssAuthoredGridTemplateAreaCell::Named(name) => {
+                            CssGridTemplateAreaCell::Named(name) => {
                                 context.append(&mut output, name.as_str())?
                             }
                         }
@@ -209,7 +166,7 @@ impl CssAuthoredGridTemplateAreas {
 /// Tokenizes a decoded CSS string with Grid 2 longest-run semantics.
 pub(crate) fn parse_decoded_row(
     source: &str,
-) -> Result<CssAuthoredGridTemplateAreaRow, CssGridTemplateAreaError> {
+) -> Result<CssGridTemplateAreaRow, CssGridTemplateAreaError> {
     let mut characters = source.chars().peekable();
     let mut cells = Vec::new();
     while let Some(&next) = characters.peek() {
@@ -220,7 +177,7 @@ pub(crate) fn parse_decoded_row(
             {}
         } else if next == '.' {
             while characters.next_if_eq(&'.').is_some() {}
-            cells.push(CssAuthoredGridTemplateAreaCell::Empty);
+            cells.push(CssGridTemplateAreaCell::Empty);
         } else if is_ident_code_point(next) {
             let mut name = String::new();
             while let Some(character) =
@@ -228,14 +185,14 @@ pub(crate) fn parse_decoded_row(
             {
                 name.push(character);
             }
-            cells.push(CssAuthoredGridTemplateAreaCell::Named(
+            cells.push(CssGridTemplateAreaCell::Named(
                 CssGridTemplateAreaName::try_new(name)?,
             ));
         } else {
             return Err(CssGridTemplateAreaError::TrashCharacter(next));
         }
     }
-    CssAuthoredGridTemplateAreaRow::try_new(cells)
+    CssGridTemplateAreaRow::try_new(cells)
 }
 
 #[derive(Clone, Copy)]
@@ -247,7 +204,7 @@ struct AreaBounds {
     count: usize,
 }
 
-/// Shared intrinsic matrix validation for current and frozen I01 rows.
+/// Intrinsic validation for decoded area rows.
 pub(crate) fn validate_area_matrix<R, C>(
     rows: &[R],
     cells: impl Fn(&R) -> &[C],

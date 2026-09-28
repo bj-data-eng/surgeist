@@ -1,12 +1,10 @@
 #![forbid(unsafe_code)]
 
 use surgeist_css::{
-    CssAuthoredGridTemplateAreaCell as Cell, CssAuthoredGridTemplateAreaRow as Row,
-    CssAuthoredGridTemplateAreas as Areas, CssCustomIdent, CssGridTemplateAreaCell,
-    CssGridTemplateAreaError as AreaError, CssGridTemplateAreaName as Name, CssGridTemplateAreaRow,
-    CssGridTemplateAreas, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
-    CssLonghandValueRef, CssPropertyKindRef,
-    CssSpecifiedValueSerializationErrorKind as SerializationError,
+    CssGridTemplateAreaCell as Cell, CssGridTemplateAreaError as AreaError,
+    CssGridTemplateAreaName as Name, CssGridTemplateAreaRow as Row, CssGridTemplateAreas as Areas,
+    CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef,
+    CssPropertyKindRef, CssSpecifiedValueSerializationErrorKind as SerializationError,
     CssSpecifiedValueSerializationLimits as Limits, parse_style_attribute,
 };
 
@@ -40,12 +38,11 @@ fn parsed_current_and_authored_text_remain_distinct_and_initial_is_none() {
         named("b"),
     ])])
     .unwrap();
-    assert_eq!(wrapper.current(), &expected);
+    assert_eq!(wrapper.value(), &expected);
     assert_eq!(
-        wrapper.current().serialize_specified().unwrap(),
+        wrapper.value().serialize_specified().unwrap(),
         "\"1st . auto A b\""
     );
-    assert_eq!(wrapper.i01_subset(), None);
 
     for (authored, decoded) in [("\"a\\a0 b\"", "a\u{a0}b"), ("\"a\u{85}b\"", "a\u{85}b")] {
         let report = parse_style_attribute(&format!("grid-template-areas:{authored}"));
@@ -64,11 +61,11 @@ fn parsed_current_and_authored_text_remain_distinct_and_initial_is_none() {
         };
         assert_eq!(wrapper.as_css(), authored);
         assert_eq!(
-            wrapper.current(),
+            wrapper.value(),
             &Areas::try_rows(vec![row(vec![named(decoded)])]).unwrap()
         );
         assert_eq!(
-            wrapper.current().serialize_specified().unwrap(),
+            wrapper.value().serialize_specified().unwrap(),
             format!("\"{decoded}\"")
         );
     }
@@ -83,16 +80,10 @@ fn parsed_current_and_authored_text_remain_distinct_and_initial_is_none() {
     else {
         panic!("ordinary area wrapper")
     };
-    let expected_i01 = CssGridTemplateAreas::try_rows(vec![
-        CssGridTemplateAreaRow::try_new(vec![
-            CssGridTemplateAreaCell::Named(CssCustomIdent::try_new("A").unwrap()),
-            CssGridTemplateAreaCell::Empty,
-            CssGridTemplateAreaCell::Named(CssCustomIdent::try_new("b").unwrap()),
-        ])
-        .unwrap(),
-    ])
-    .unwrap();
-    assert_eq!(wrapper.i01_subset(), Some(&expected_i01));
+    assert_eq!(
+        wrapper.value(),
+        &Areas::try_rows(vec![row(vec![named("A"), Cell::Empty, named("b")])]).unwrap()
+    );
 
     let CssPropertyKindRef::Longhand(metadata) = CssKnownProperty::GridTemplateAreas
         .metadata()
@@ -130,11 +121,11 @@ fn lexer_replacement_of_null_remains_an_ident_code_point() {
             panic!("typed area wrapper")
         };
         assert_eq!(
-            wrapper.current(),
+            wrapper.value(),
             &Areas::try_rows(vec![row(vec![named("a\u{fffd}b")])]).unwrap()
         );
         assert_eq!(
-            wrapper.current().serialize_specified().unwrap(),
+            wrapper.value().serialize_specified().unwrap(),
             "\"a\u{fffd}b\""
         );
     }
@@ -206,18 +197,8 @@ fn canonical_serialization_uses_one_cell_separator_and_bounded_css_strings() {
     .unwrap();
     let expected = "\"a . B\" \"auto a\u{a0}b a\u{85}b\"";
     assert_eq!(areas.serialize_specified().unwrap(), expected);
-    assert_eq!(
-        areas.i01_subset(),
-        None,
-        "reserved name cannot project to I01"
-    );
-
     let ordinary = Areas::try_rows(vec![row(vec![named("A"), Cell::Empty, named("b")])]).unwrap();
     assert_eq!(ordinary.serialize_specified().unwrap(), "\"A . b\"");
-    assert!(matches!(
-        ordinary.i01_subset(),
-        Some(CssGridTemplateAreas::Rows(_))
-    ));
 }
 
 #[test]

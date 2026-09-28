@@ -5,8 +5,8 @@
 //! Empty groups are authored components, not absent components or empty tracks.
 
 use surgeist_css::{
-    CssAuthoredGridGeneralTrackComponent, CssCustomIdent, CssGridLineNames, CssGridTrackComponent,
-    CssImportance, CssKnownPropertyValueRef, parse_style_attribute,
+    CssCustomIdent, CssGridAutoTrackComponent, CssGridGeneralTrackComponent, CssGridLineNames,
+    CssGridTrackRepeatComponent, CssImportance, CssKnownPropertyValueRef, parse_style_attribute,
 };
 
 #[test]
@@ -37,10 +37,10 @@ fn explicit_tracks_retain_both_empty_groups_and_importance() {
     };
     assert_eq!(value.as_css(), "[] 2px [/* end */]");
     let [
-        CssAuthoredGridGeneralTrackComponent::LineNames(first),
-        CssAuthoredGridGeneralTrackComponent::TrackSize(_),
-        CssAuthoredGridGeneralTrackComponent::LineNames(last),
-    ] = value.current().general_list().unwrap().components()
+        CssGridGeneralTrackComponent::LineNames(first),
+        CssGridGeneralTrackComponent::TrackSize(_),
+        CssGridGeneralTrackComponent::LineNames(last),
+    ] = value.value().general_list().unwrap().components()
     else {
         panic!("empty groups retain their ordered authored positions");
     };
@@ -50,7 +50,7 @@ fn explicit_tracks_retain_both_empty_groups_and_importance() {
 }
 
 #[test]
-fn repetition_preserves_empty_groups_in_its_compatibility_projection() {
+fn repetition_preserves_empty_groups_in_authored_graph() {
     for count in ["2", "auto-fill", "auto-fit"] {
         let source = format!("grid-template-columns: repeat({count}, [] 2px [])");
         let report = parse_style_attribute(&source);
@@ -63,17 +63,28 @@ fn repetition_preserves_empty_groups_in_its_compatibility_projection() {
         else {
             panic!("typed columns");
         };
-        let [CssGridTrackComponent::Repeat(repeat)] = value.i01_subset().unwrap().components()
-        else {
-            panic!("one literal repeat");
+        let content = if count == "2" {
+            let [CssGridGeneralTrackComponent::Repeat(repeat)] =
+                value.value().general_list().unwrap().components()
+            else {
+                panic!("integer repeat")
+            };
+            repeat.content()
+        } else {
+            let [CssGridAutoTrackComponent::AutoRepeat(repeat)] =
+                value.value().auto_list().unwrap().components()
+            else {
+                panic!("automatic repeat")
+            };
+            repeat.content()
         };
         let [
-            CssGridTrackComponent::LineNames(first),
-            CssGridTrackComponent::TrackSize(_),
-            CssGridTrackComponent::LineNames(last),
-        ] = repeat.tracks().components()
+            CssGridTrackRepeatComponent::LineNames(first),
+            CssGridTrackRepeatComponent::TrackSize(_),
+            CssGridTrackRepeatComponent::LineNames(last),
+        ] = content.components()
         else {
-            panic!("projection preserves three ordered components");
+            panic!("three ordered components")
         };
         assert!(first.names().is_empty());
         assert!(last.names().is_empty());

@@ -1,53 +1,12 @@
-use super::{CssCustomIdent, CssLength, CssNonNegativeNumber};
+use super::CssCustomIdent;
+use crate::{CssSpecifiedNonNegativeFlex, CssSpecifiedNonNegativeLengthPercentage};
 
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssGridTrackBreadth {
-    Length(CssLength),
-    Fraction(CssNonNegativeNumber),
-    MinContent,
-    MaxContent,
-    Auto,
-}
-
-impl CssGridTrackBreadth {
-    #[must_use]
-    pub const fn length(length: CssLength) -> Self {
-        Self::Length(length)
-    }
-
-    #[must_use]
-    pub fn try_fraction(value: f32) -> Option<Self> {
-        CssNonNegativeNumber::try_new(value).map(Self::Fraction)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssGridTrackSize {
-    Breadth(CssGridTrackBreadth),
-    MinMax {
-        min: CssGridTrackBreadth,
-        max: CssGridTrackBreadth,
-    },
-    FitContent(CssLength),
-}
-
-impl CssGridTrackSize {
-    #[must_use]
-    pub const fn breadth(breadth: CssGridTrackBreadth) -> Self {
-        Self::Breadth(breadth)
-    }
-
-    #[must_use]
-    pub const fn minmax(min: CssGridTrackBreadth, max: CssGridTrackBreadth) -> Self {
-        Self::MinMax { min, max }
-    }
-
-    #[must_use]
-    pub const fn fit_content(limit: CssLength) -> Self {
-        Self::FitContent(limit)
-    }
+pub(crate) fn adjacent_line_names<T>(
+    previous: Option<&T>,
+    next: &T,
+    is_line_names: impl Fn(&T) -> bool,
+) -> bool {
+    previous.is_some_and(|previous| is_line_names(previous) && is_line_names(next))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -73,48 +32,6 @@ impl CssGridLineNames {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssGridTrackComponent {
-    LineNames(CssGridLineNames),
-    TrackSize(CssGridTrackSize),
-    Repeat(CssGridRepeat),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssGridTrackList {
-    components: Vec<CssGridTrackComponent>,
-}
-
-impl CssGridTrackList {
-    #[must_use]
-    pub fn try_new(components: Vec<CssGridTrackComponent>) -> Option<Self> {
-        if components.is_empty() {
-            None
-        } else {
-            Some(Self::new(components))
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn new(components: Vec<CssGridTrackComponent>) -> Self {
-        Self { components }
-    }
-
-    #[must_use]
-    pub fn components(&self) -> &[CssGridTrackComponent] {
-        &self.components
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssGridRepeatCount {
-    Integer(CssGridRepeatInteger),
-    AutoFill,
-    AutoFit,
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssGridRepeatInteger {
     value: i32,
@@ -136,159 +53,6 @@ impl CssGridRepeatInteger {
     }
 }
 
-impl CssGridRepeatCount {
-    #[must_use]
-    pub const fn try_integer(value: i32) -> Option<Self> {
-        match CssGridRepeatInteger::try_new(value) {
-            Some(value) => Some(Self::Integer(value)),
-            None => None,
-        }
-    }
-
-    #[must_use]
-    pub(crate) const fn integer(value: i32) -> Self {
-        match Self::try_integer(value) {
-            Some(value) => value,
-            None => panic!("grid repeat integer must be positive"),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssGridRepeat {
-    count: CssGridRepeatCount,
-    tracks: CssGridTrackList,
-}
-
-impl CssGridRepeat {
-    #[must_use]
-    pub fn try_new(count: CssGridRepeatCount, tracks: CssGridTrackList) -> Option<Self> {
-        if tracks.components().is_empty() {
-            None
-        } else {
-            Some(Self::new(count, tracks))
-        }
-    }
-
-    #[must_use]
-    pub(crate) const fn new(count: CssGridRepeatCount, tracks: CssGridTrackList) -> Self {
-        Self { count, tracks }
-    }
-
-    #[must_use]
-    pub const fn count(&self) -> CssGridRepeatCount {
-        self.count
-    }
-
-    #[must_use]
-    pub const fn tracks(&self) -> &CssGridTrackList {
-        &self.tracks
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssGridTemplateAreaCell {
-    Empty,
-    Named(CssCustomIdent),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssGridTemplateAreaRow {
-    cells: Vec<CssGridTemplateAreaCell>,
-}
-
-impl CssGridTemplateAreaRow {
-    #[must_use]
-    pub fn try_new(cells: Vec<CssGridTemplateAreaCell>) -> Option<Self> {
-        if cells.is_empty() {
-            None
-        } else {
-            Some(Self::new(cells))
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn new(cells: Vec<CssGridTemplateAreaCell>) -> Self {
-        Self { cells }
-    }
-
-    #[must_use]
-    pub fn cells(&self) -> &[CssGridTemplateAreaCell] {
-        &self.cells
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssGridTemplateAreas {
-    None,
-    Rows(CssGridTemplateAreaRows),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssGridTemplateAreaRows {
-    rows: Vec<CssGridTemplateAreaRow>,
-}
-
-impl CssGridTemplateAreaRows {
-    #[must_use]
-    pub fn try_new(rows: Vec<CssGridTemplateAreaRow>) -> Option<Self> {
-        if validate_grid_template_area_rows(&rows).is_ok() {
-            Some(Self { rows })
-        } else {
-            None
-        }
-    }
-
-    #[cfg(test)]
-    #[must_use]
-    pub(crate) fn new_unchecked(rows: Vec<CssGridTemplateAreaRow>) -> Self {
-        Self { rows }
-    }
-
-    #[must_use]
-    pub fn rows(&self) -> &[CssGridTemplateAreaRow] {
-        &self.rows
-    }
-}
-
-impl CssGridTemplateAreas {
-    #[must_use]
-    pub fn try_rows(rows: Vec<CssGridTemplateAreaRow>) -> Option<Self> {
-        CssGridTemplateAreaRows::try_new(rows).map(Self::Rows)
-    }
-
-    #[cfg(test)]
-    #[must_use]
-    pub(crate) fn rows(rows: Vec<CssGridTemplateAreaRow>) -> Self {
-        Self::Rows(CssGridTemplateAreaRows::new_unchecked(rows))
-    }
-}
-
-pub(crate) use crate::grid_template_areas::CssGridTemplateAreaError as GridAreaValidationError;
-
-pub(crate) fn validate_grid_template_area_rows(
-    rows: &[CssGridTemplateAreaRow],
-) -> Result<(), GridAreaValidationError> {
-    crate::grid_template_areas::validate_area_matrix(rows, CssGridTemplateAreaRow::cells, |cell| {
-        match cell {
-            CssGridTemplateAreaCell::Empty => None,
-            CssGridTemplateAreaCell::Named(name) => Some(name.as_str()),
-        }
-    })
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssGridTemplate {
-    None,
-    RowsColumns {
-        rows: CssGridTrackList,
-        columns: Option<CssGridTrackList>,
-    },
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssGridAutoFlowAxis {
@@ -297,12 +61,13 @@ pub enum CssGridAutoFlowAxis {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssGridAutoFlow {
+/// An explicit Grid auto-flow axis and dense selection.
+pub struct CssGridAutoFlowMode {
     axis: CssGridAutoFlowAxis,
     dense: bool,
 }
 
-impl CssGridAutoFlow {
+impl CssGridAutoFlowMode {
     #[must_use]
     pub const fn new(axis: CssGridAutoFlowAxis, dense: bool) -> Self {
         Self { axis, dense }
@@ -323,36 +88,27 @@ impl CssGridAutoFlow {
 /// symbolic for the layout layer; in particular, bare `dense` is not `row dense`.
 ///
 /// ```
-/// use surgeist_css::{CssGridAutoFlowAxis, CssGridAutoFlowValue};
+/// use surgeist_css::{CssGridAutoFlowAxis, CssGridAutoFlow};
 ///
-/// let dense = CssGridAutoFlowValue::Dense;
-/// let row_dense = CssGridAutoFlowValue::explicit_axis(CssGridAutoFlowAxis::Row, true);
+/// let dense = CssGridAutoFlow::Dense;
+/// let row_dense = CssGridAutoFlow::explicit_axis(CssGridAutoFlowAxis::Row, true);
 /// assert_ne!(dense, row_dense);
 /// assert_eq!(dense.serialize_specified().unwrap(), "dense");
 /// assert_eq!(row_dense.serialize_specified().unwrap(), "row dense");
 /// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssGridAutoFlowValue {
+pub enum CssGridAutoFlow {
     Normal,
     Dense,
-    ExplicitAxis(CssGridAutoFlow),
+    ExplicitAxis(CssGridAutoFlowMode),
 }
 
-impl CssGridAutoFlowValue {
+impl CssGridAutoFlow {
     /// Constructs an explicit row or column choice, with optional dense packing.
     #[must_use]
     pub const fn explicit_axis(axis: CssGridAutoFlowAxis, dense: bool) -> Self {
-        Self::ExplicitAxis(CssGridAutoFlow::new(axis, dense))
-    }
-
-    /// Returns the frozen I01 value only when an axis was explicitly authored.
-    #[must_use]
-    pub const fn i01_subset(self) -> Option<CssGridAutoFlow> {
-        match self {
-            Self::ExplicitAxis(value) => Some(value),
-            Self::Normal | Self::Dense => None,
-        }
+        Self::ExplicitAxis(CssGridAutoFlowMode::new(axis, dense))
     }
 
     /// Emits the canonical authored spelling without resolving the direction.
@@ -385,210 +141,10 @@ impl CssGridAutoFlowValue {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssGridLine {
-    Auto,
-    Integer(CssGridLineInteger),
-    CustomIdent(CssCustomIdent),
-    Span(CssGridLineSpan),
-}
-
-impl CssGridLine {
-    #[must_use]
-    pub fn try_integer(value: i32) -> Option<Self> {
-        CssGridLineInteger::try_new(value).map(Self::Integer)
-    }
-
-    #[cfg(test)]
-    #[must_use]
-    pub(crate) fn integer(value: i32) -> Self {
-        match Self::try_integer(value) {
-            Some(value) => value,
-            None => panic!("grid line integer must be non-zero"),
-        }
-    }
-
-    #[must_use]
-    pub fn try_span(integer: Option<i32>, name: Option<CssCustomIdent>) -> Option<Self> {
-        CssGridLineSpan::try_new(integer, name).map(Self::Span)
-    }
-
-    #[cfg(test)]
-    #[must_use]
-    pub(crate) fn span(integer: Option<i32>, name: Option<CssCustomIdent>) -> Self {
-        Self::Span(CssGridLineSpan::new(integer, name))
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssGridLineInteger {
-    value: i32,
-}
-
-impl CssGridLineInteger {
-    #[must_use]
-    pub const fn try_new(value: i32) -> Option<Self> {
-        if value != 0 {
-            Some(Self { value })
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub const fn value(self) -> i32 {
-        self.value
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssGridLineSpan {
-    integer: Option<CssGridSpanInteger>,
-    name: Option<CssCustomIdent>,
-}
-
-impl CssGridLineSpan {
-    #[must_use]
-    pub fn try_new(integer: Option<i32>, name: Option<CssCustomIdent>) -> Option<Self> {
-        let integer = match integer {
-            Some(value) => Some(CssGridSpanInteger::try_new(value)?),
-            None => None,
-        };
-        if integer.is_none() && name.is_none() {
-            None
-        } else {
-            Some(Self { integer, name })
-        }
-    }
-
-    #[cfg(test)]
-    #[must_use]
-    pub(crate) fn new(integer: Option<i32>, name: Option<CssCustomIdent>) -> Self {
-        match Self::try_new(integer, name) {
-            Some(value) => value,
-            None => panic!("grid span must include a positive integer or name"),
-        }
-    }
-
-    #[must_use]
-    pub const fn integer(&self) -> Option<i32> {
-        match self.integer {
-            Some(value) => Some(value.value()),
-            None => None,
-        }
-    }
-
-    #[must_use]
-    pub const fn name(&self) -> Option<&CssCustomIdent> {
-        self.name.as_ref()
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssGridSpanInteger {
-    value: i32,
-}
-
-impl CssGridSpanInteger {
-    #[must_use]
-    pub const fn try_new(value: i32) -> Option<Self> {
-        if value > 0 {
-            Some(Self { value })
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub const fn value(self) -> i32 {
-        self.value
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssGridLineRange {
-    start: CssGridLine,
-    end: Option<CssGridLine>,
-}
-
-impl CssGridLineRange {
-    #[must_use]
-    pub const fn new(start: CssGridLine, end: Option<CssGridLine>) -> Self {
-        Self { start, end }
-    }
-
-    #[must_use]
-    pub const fn start(&self) -> &CssGridLine {
-        &self.start
-    }
-
-    #[must_use]
-    pub const fn end(&self) -> Option<&CssGridLine> {
-        self.end.as_ref()
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssGridArea {
-    row_start: CssGridLine,
-    column_start: Option<CssGridLine>,
-    row_end: Option<CssGridLine>,
-    column_end: Option<CssGridLine>,
-}
-
-impl CssGridArea {
-    #[must_use]
-    pub const fn new(
-        row_start: CssGridLine,
-        column_start: Option<CssGridLine>,
-        row_end: Option<CssGridLine>,
-        column_end: Option<CssGridLine>,
-    ) -> Self {
-        Self {
-            row_start,
-            column_start,
-            row_end,
-            column_end,
-        }
-    }
-
-    #[must_use]
-    pub const fn row_start(&self) -> &CssGridLine {
-        &self.row_start
-    }
-
-    #[must_use]
-    pub const fn column_start(&self) -> Option<&CssGridLine> {
-        self.column_start.as_ref()
-    }
-
-    #[must_use]
-    pub const fn row_end(&self) -> Option<&CssGridLine> {
-        self.row_end.as_ref()
-    }
-
-    #[must_use]
-    pub const fn column_end(&self) -> Option<&CssGridLine> {
-        self.column_end.as_ref()
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssGrid {
-    Template(CssGridTemplate),
-    AutoFlow {
-        flow: CssGridAutoFlow,
-        auto_tracks: Option<CssGridTrackList>,
-        explicit_tracks: CssGridTrackList,
-    },
-}
-
-/// The semantic branch of a parser-owned current Grid track breadth.
+/// The semantic branch of an authored Grid track breadth.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssAuthoredGridTrackBreadthKind {
+pub enum CssGridTrackBreadthKind {
     Length,
     Fraction,
     MinContent,
@@ -596,248 +152,186 @@ pub enum CssAuthoredGridTrackBreadthKind {
     Auto,
 }
 
-/// A parser-owned current authored Grid track breadth.
+/// A checked authored Grid track breadth.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub struct CssAuthoredGridTrackBreadth {
-    representation: CssAuthoredGridTrackBreadthRepresentation,
+pub struct CssGridTrackBreadth {
+    representation: CssGridTrackBreadthRepresentation,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum CssAuthoredGridTrackBreadthRepresentation {
-    Length(CssLength),
-    Fraction(CssNonNegativeNumber),
+enum CssGridTrackBreadthRepresentation {
+    Length(CssSpecifiedNonNegativeLengthPercentage),
+    Fraction(CssSpecifiedNonNegativeFlex),
     MinContent,
     MaxContent,
     Auto,
 }
 
-impl CssAuthoredGridTrackBreadth {
-    pub(crate) const fn from_length(value: CssLength) -> Self {
+impl CssGridTrackBreadth {
+    pub fn from_length_percentage(value: CssSpecifiedNonNegativeLengthPercentage) -> Self {
         Self {
-            representation: CssAuthoredGridTrackBreadthRepresentation::Length(value),
+            representation: CssGridTrackBreadthRepresentation::Length(value),
+        }
+    }
+    pub fn from_flex(value: CssSpecifiedNonNegativeFlex) -> Self {
+        Self {
+            representation: CssGridTrackBreadthRepresentation::Fraction(value),
         }
     }
 
-    pub(crate) const fn from_fraction(value: CssNonNegativeNumber) -> Self {
+    pub const fn min_content() -> Self {
         Self {
-            representation: CssAuthoredGridTrackBreadthRepresentation::Fraction(value),
+            representation: CssGridTrackBreadthRepresentation::MinContent,
         }
     }
 
-    pub(crate) const fn min_content() -> Self {
+    pub const fn max_content() -> Self {
         Self {
-            representation: CssAuthoredGridTrackBreadthRepresentation::MinContent,
+            representation: CssGridTrackBreadthRepresentation::MaxContent,
         }
     }
 
-    pub(crate) const fn max_content() -> Self {
+    pub const fn auto() -> Self {
         Self {
-            representation: CssAuthoredGridTrackBreadthRepresentation::MaxContent,
-        }
-    }
-
-    pub(crate) const fn auto() -> Self {
-        Self {
-            representation: CssAuthoredGridTrackBreadthRepresentation::Auto,
+            representation: CssGridTrackBreadthRepresentation::Auto,
         }
     }
 
     #[must_use]
-    pub const fn kind(&self) -> CssAuthoredGridTrackBreadthKind {
+    pub const fn kind(&self) -> CssGridTrackBreadthKind {
         match self.representation {
-            CssAuthoredGridTrackBreadthRepresentation::Length(_) => {
-                CssAuthoredGridTrackBreadthKind::Length
-            }
-            CssAuthoredGridTrackBreadthRepresentation::Fraction(_) => {
-                CssAuthoredGridTrackBreadthKind::Fraction
-            }
-            CssAuthoredGridTrackBreadthRepresentation::MinContent => {
-                CssAuthoredGridTrackBreadthKind::MinContent
-            }
-            CssAuthoredGridTrackBreadthRepresentation::MaxContent => {
-                CssAuthoredGridTrackBreadthKind::MaxContent
-            }
-            CssAuthoredGridTrackBreadthRepresentation::Auto => {
-                CssAuthoredGridTrackBreadthKind::Auto
-            }
+            CssGridTrackBreadthRepresentation::Length(_) => CssGridTrackBreadthKind::Length,
+            CssGridTrackBreadthRepresentation::Fraction(_) => CssGridTrackBreadthKind::Fraction,
+            CssGridTrackBreadthRepresentation::MinContent => CssGridTrackBreadthKind::MinContent,
+            CssGridTrackBreadthRepresentation::MaxContent => CssGridTrackBreadthKind::MaxContent,
+            CssGridTrackBreadthRepresentation::Auto => CssGridTrackBreadthKind::Auto,
         }
     }
 
-    #[must_use]
-    pub const fn length(&self) -> Option<&CssLength> {
+    pub fn length_percentage(&self) -> Option<&CssSpecifiedNonNegativeLengthPercentage> {
         match &self.representation {
-            CssAuthoredGridTrackBreadthRepresentation::Length(value) => Some(value),
-            CssAuthoredGridTrackBreadthRepresentation::Fraction(_)
-            | CssAuthoredGridTrackBreadthRepresentation::MinContent
-            | CssAuthoredGridTrackBreadthRepresentation::MaxContent
-            | CssAuthoredGridTrackBreadthRepresentation::Auto => None,
+            CssGridTrackBreadthRepresentation::Length(specified) => Some(specified),
+            _ => None,
         }
     }
 
-    #[must_use]
-    pub const fn fraction(&self) -> Option<CssNonNegativeNumber> {
-        match self.representation {
-            CssAuthoredGridTrackBreadthRepresentation::Fraction(value) => Some(value),
-            CssAuthoredGridTrackBreadthRepresentation::Length(_)
-            | CssAuthoredGridTrackBreadthRepresentation::MinContent
-            | CssAuthoredGridTrackBreadthRepresentation::MaxContent
-            | CssAuthoredGridTrackBreadthRepresentation::Auto => None,
+    pub fn flex(&self) -> Option<&CssSpecifiedNonNegativeFlex> {
+        match &self.representation {
+            CssGridTrackBreadthRepresentation::Fraction(specified) => Some(specified),
+            _ => None,
         }
-    }
-
-    pub(crate) fn i01_projection(&self) -> Option<CssGridTrackBreadth> {
-        Some(match &self.representation {
-            CssAuthoredGridTrackBreadthRepresentation::Length(value) => {
-                if matches!(value, CssLength::Calc(_)) {
-                    return None;
-                }
-                CssGridTrackBreadth::length(value.clone())
-            }
-            CssAuthoredGridTrackBreadthRepresentation::Fraction(value) => {
-                CssGridTrackBreadth::Fraction(*value)
-            }
-            CssAuthoredGridTrackBreadthRepresentation::MinContent => {
-                CssGridTrackBreadth::MinContent
-            }
-            CssAuthoredGridTrackBreadthRepresentation::MaxContent => {
-                CssGridTrackBreadth::MaxContent
-            }
-            CssAuthoredGridTrackBreadthRepresentation::Auto => CssGridTrackBreadth::Auto,
-        })
     }
 
     pub(crate) const fn is_fixed(&self) -> bool {
         matches!(
             self.representation,
-            CssAuthoredGridTrackBreadthRepresentation::Length(_)
+            CssGridTrackBreadthRepresentation::Length(_)
         )
     }
 
     pub(crate) const fn is_inflexible(&self) -> bool {
         !matches!(
             self.representation,
-            CssAuthoredGridTrackBreadthRepresentation::Fraction(_)
+            CssGridTrackBreadthRepresentation::Fraction(_)
         )
     }
 }
 
-/// The semantic branch of a current authored Grid track size.
+/// The semantic branch of an authored Grid track size.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssAuthoredGridTrackSizeKind {
+pub enum CssGridTrackSizeKind {
     Breadth,
     MinMax,
     FitContent,
 }
 
-/// A parser-owned current authored Grid track size.
+/// A checked authored Grid track size.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub struct CssAuthoredGridTrackSize {
-    representation: CssAuthoredGridTrackSizeRepresentation,
+pub struct CssGridTrackSize {
+    representation: CssGridTrackSizeRepresentation,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum CssAuthoredGridTrackSizeRepresentation {
-    Breadth(CssAuthoredGridTrackBreadth),
+enum CssGridTrackSizeRepresentation {
+    Breadth(CssGridTrackBreadth),
     MinMax {
-        min: CssAuthoredGridTrackBreadth,
-        max: CssAuthoredGridTrackBreadth,
+        min: CssGridTrackBreadth,
+        max: CssGridTrackBreadth,
     },
-    FitContent(CssLength),
+    FitContent(CssSpecifiedNonNegativeLengthPercentage),
 }
 
-impl CssAuthoredGridTrackSize {
-    pub(crate) const fn from_breadth(value: CssAuthoredGridTrackBreadth) -> Self {
+impl CssGridTrackSize {
+    pub const fn from_breadth(value: CssGridTrackBreadth) -> Self {
         Self {
-            representation: CssAuthoredGridTrackSizeRepresentation::Breadth(value),
+            representation: CssGridTrackSizeRepresentation::Breadth(value),
         }
     }
 
-    pub(crate) const fn from_minmax(
-        min: CssAuthoredGridTrackBreadth,
-        max: CssAuthoredGridTrackBreadth,
-    ) -> Self {
+    pub(crate) const fn from_minmax(min: CssGridTrackBreadth, max: CssGridTrackBreadth) -> Self {
         Self {
-            representation: CssAuthoredGridTrackSizeRepresentation::MinMax { min, max },
+            representation: CssGridTrackSizeRepresentation::MinMax { min, max },
         }
     }
 
-    pub(crate) const fn from_fit_content(value: CssLength) -> Self {
+    pub fn try_minmax(min: CssGridTrackBreadth, max: CssGridTrackBreadth) -> Option<Self> {
+        if min.is_inflexible() {
+            Some(Self::from_minmax(min, max))
+        } else {
+            None
+        }
+    }
+
+    pub fn from_fit_content(value: CssSpecifiedNonNegativeLengthPercentage) -> Self {
         Self {
-            representation: CssAuthoredGridTrackSizeRepresentation::FitContent(value),
+            representation: CssGridTrackSizeRepresentation::FitContent(value),
         }
     }
 
     #[must_use]
-    pub const fn kind(&self) -> CssAuthoredGridTrackSizeKind {
+    pub const fn kind(&self) -> CssGridTrackSizeKind {
         match self.representation {
-            CssAuthoredGridTrackSizeRepresentation::Breadth(_) => {
-                CssAuthoredGridTrackSizeKind::Breadth
-            }
-            CssAuthoredGridTrackSizeRepresentation::MinMax { .. } => {
-                CssAuthoredGridTrackSizeKind::MinMax
-            }
-            CssAuthoredGridTrackSizeRepresentation::FitContent(_) => {
-                CssAuthoredGridTrackSizeKind::FitContent
-            }
+            CssGridTrackSizeRepresentation::Breadth(_) => CssGridTrackSizeKind::Breadth,
+            CssGridTrackSizeRepresentation::MinMax { .. } => CssGridTrackSizeKind::MinMax,
+            CssGridTrackSizeRepresentation::FitContent(_) => CssGridTrackSizeKind::FitContent,
         }
     }
 
     #[must_use]
-    pub const fn breadth(&self) -> Option<&CssAuthoredGridTrackBreadth> {
+    pub const fn breadth(&self) -> Option<&CssGridTrackBreadth> {
         match &self.representation {
-            CssAuthoredGridTrackSizeRepresentation::Breadth(value) => Some(value),
-            CssAuthoredGridTrackSizeRepresentation::MinMax { .. }
-            | CssAuthoredGridTrackSizeRepresentation::FitContent(_) => None,
+            CssGridTrackSizeRepresentation::Breadth(value) => Some(value),
+            CssGridTrackSizeRepresentation::MinMax { .. }
+            | CssGridTrackSizeRepresentation::FitContent(_) => None,
         }
     }
 
     #[must_use]
-    pub const fn minmax(
-        &self,
-    ) -> Option<(&CssAuthoredGridTrackBreadth, &CssAuthoredGridTrackBreadth)> {
+    pub const fn minmax(&self) -> Option<(&CssGridTrackBreadth, &CssGridTrackBreadth)> {
         match &self.representation {
-            CssAuthoredGridTrackSizeRepresentation::MinMax { min, max } => Some((min, max)),
-            CssAuthoredGridTrackSizeRepresentation::Breadth(_)
-            | CssAuthoredGridTrackSizeRepresentation::FitContent(_) => None,
+            CssGridTrackSizeRepresentation::MinMax { min, max } => Some((min, max)),
+            CssGridTrackSizeRepresentation::Breadth(_)
+            | CssGridTrackSizeRepresentation::FitContent(_) => None,
         }
     }
 
-    #[must_use]
-    pub const fn fit_content(&self) -> Option<&CssLength> {
+    pub fn fit_content(&self) -> Option<&CssSpecifiedNonNegativeLengthPercentage> {
         match &self.representation {
-            CssAuthoredGridTrackSizeRepresentation::FitContent(value) => Some(value),
-            CssAuthoredGridTrackSizeRepresentation::Breadth(_)
-            | CssAuthoredGridTrackSizeRepresentation::MinMax { .. } => None,
+            CssGridTrackSizeRepresentation::FitContent(specified) => Some(specified),
+            _ => None,
         }
-    }
-
-    pub(crate) fn i01_projection(&self) -> Option<CssGridTrackSize> {
-        Some(match &self.representation {
-            CssAuthoredGridTrackSizeRepresentation::Breadth(value) => {
-                CssGridTrackSize::breadth(value.i01_projection()?)
-            }
-            CssAuthoredGridTrackSizeRepresentation::MinMax { min, max } => {
-                CssGridTrackSize::minmax(min.i01_projection()?, max.i01_projection()?)
-            }
-            CssAuthoredGridTrackSizeRepresentation::FitContent(value) => {
-                if matches!(value, CssLength::Calc(_)) {
-                    return None;
-                }
-                CssGridTrackSize::fit_content(value.clone())
-            }
-        })
     }
 
     pub(crate) const fn is_fixed(&self) -> bool {
         match &self.representation {
-            CssAuthoredGridTrackSizeRepresentation::Breadth(value) => value.is_fixed(),
-            CssAuthoredGridTrackSizeRepresentation::MinMax { min, max } => {
+            CssGridTrackSizeRepresentation::Breadth(value) => value.is_fixed(),
+            CssGridTrackSizeRepresentation::MinMax { min, max } => {
                 min.is_fixed() || (min.is_inflexible() && max.is_fixed())
             }
-            CssAuthoredGridTrackSizeRepresentation::FitContent(_) => false,
+            CssGridTrackSizeRepresentation::FitContent(_) => false,
         }
     }
 }
@@ -845,17 +339,25 @@ impl CssAuthoredGridTrackSize {
 /// A fixed size admitted around automatic repetition or in an integer fixed-repeat.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub struct CssAuthoredGridFixedSize {
-    size: CssAuthoredGridTrackSize,
+pub struct CssGridFixedSize {
+    size: CssGridTrackSize,
 }
 
-impl CssAuthoredGridFixedSize {
-    pub(crate) const fn new(size: CssAuthoredGridTrackSize) -> Self {
+impl CssGridFixedSize {
+    pub fn try_new(size: CssGridTrackSize) -> Option<Self> {
+        if size.is_fixed() {
+            Some(Self::new(size))
+        } else {
+            None
+        }
+    }
+
+    pub(crate) const fn new(size: CssGridTrackSize) -> Self {
         Self { size }
     }
 
     #[must_use]
-    pub const fn size(&self) -> &CssAuthoredGridTrackSize {
+    pub const fn size(&self) -> &CssGridTrackSize {
         &self.size
     }
 }
@@ -863,25 +365,37 @@ impl CssAuthoredGridFixedSize {
 /// One non-recursive member of integer or automatic track-repeat content.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub enum CssAuthoredGridTrackRepeatComponent {
+pub enum CssGridTrackRepeatComponent {
     LineNames(CssGridLineNames),
-    TrackSize(CssAuthoredGridTrackSize),
+    TrackSize(CssGridTrackSize),
 }
 
 /// Non-empty, non-recursive integer or automatic track-repeat content.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub struct CssAuthoredGridTrackRepeatContent {
-    components: Vec<CssAuthoredGridTrackRepeatComponent>,
+pub struct CssGridTrackRepeatContent {
+    components: Vec<CssGridTrackRepeatComponent>,
 }
 
-impl CssAuthoredGridTrackRepeatContent {
-    pub(crate) const fn new(components: Vec<CssAuthoredGridTrackRepeatComponent>) -> Self {
+impl CssGridTrackRepeatContent {
+    pub fn try_new(components: Vec<CssGridTrackRepeatComponent>) -> Option<Self> {
+        (components
+            .iter()
+            .any(|item| matches!(item, CssGridTrackRepeatComponent::TrackSize(_)))
+            && !components.windows(2).any(|pair| {
+                adjacent_line_names(Some(&pair[0]), &pair[1], |item| {
+                    matches!(item, CssGridTrackRepeatComponent::LineNames(_))
+                })
+            }))
+        .then(|| Self::new(components))
+    }
+
+    pub(crate) const fn new(components: Vec<CssGridTrackRepeatComponent>) -> Self {
         Self { components }
     }
 
     #[must_use]
-    pub fn components(&self) -> &[CssAuthoredGridTrackRepeatComponent] {
+    pub fn components(&self) -> &[CssGridTrackRepeatComponent] {
         &self.components
     }
 }
@@ -889,25 +403,37 @@ impl CssAuthoredGridTrackRepeatContent {
 /// One non-recursive member of fixed-repeat content.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub enum CssAuthoredGridFixedRepeatComponent {
+pub enum CssGridFixedRepeatComponent {
     LineNames(CssGridLineNames),
-    FixedSize(CssAuthoredGridFixedSize),
+    FixedSize(CssGridFixedSize),
 }
 
 /// Non-empty, non-recursive fixed-repeat content.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub struct CssAuthoredGridFixedRepeatContent {
-    components: Vec<CssAuthoredGridFixedRepeatComponent>,
+pub struct CssGridFixedRepeatContent {
+    components: Vec<CssGridFixedRepeatComponent>,
 }
 
-impl CssAuthoredGridFixedRepeatContent {
-    pub(crate) const fn new(components: Vec<CssAuthoredGridFixedRepeatComponent>) -> Self {
+impl CssGridFixedRepeatContent {
+    pub fn try_new(components: Vec<CssGridFixedRepeatComponent>) -> Option<Self> {
+        (components
+            .iter()
+            .any(|item| matches!(item, CssGridFixedRepeatComponent::FixedSize(_)))
+            && !components.windows(2).any(|pair| {
+                adjacent_line_names(Some(&pair[0]), &pair[1], |item| {
+                    matches!(item, CssGridFixedRepeatComponent::LineNames(_))
+                })
+            }))
+        .then(|| Self::new(components))
+    }
+
+    pub(crate) const fn new(components: Vec<CssGridFixedRepeatComponent>) -> Self {
         Self { components }
     }
 
     #[must_use]
-    pub fn components(&self) -> &[CssAuthoredGridFixedRepeatComponent] {
+    pub fn components(&self) -> &[CssGridFixedRepeatComponent] {
         &self.components
     }
 }
@@ -915,16 +441,13 @@ impl CssAuthoredGridFixedRepeatContent {
 /// A positive-integer repetition whose content may use any track size.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub struct CssAuthoredGridIntegerTrackRepeat {
+pub struct CssGridIntegerTrackRepeat {
     count: CssGridRepeatInteger,
-    content: CssAuthoredGridTrackRepeatContent,
+    content: CssGridTrackRepeatContent,
 }
 
-impl CssAuthoredGridIntegerTrackRepeat {
-    pub(crate) const fn new(
-        count: CssGridRepeatInteger,
-        content: CssAuthoredGridTrackRepeatContent,
-    ) -> Self {
+impl CssGridIntegerTrackRepeat {
+    pub const fn new(count: CssGridRepeatInteger, content: CssGridTrackRepeatContent) -> Self {
         Self { count, content }
     }
 
@@ -934,7 +457,7 @@ impl CssAuthoredGridIntegerTrackRepeat {
     }
 
     #[must_use]
-    pub const fn content(&self) -> &CssAuthoredGridTrackRepeatContent {
+    pub const fn content(&self) -> &CssGridTrackRepeatContent {
         &self.content
     }
 }
@@ -942,16 +465,13 @@ impl CssAuthoredGridIntegerTrackRepeat {
 /// A positive-integer repetition constrained to fixed-size content.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub struct CssAuthoredGridIntegerFixedRepeat {
+pub struct CssGridIntegerFixedRepeat {
     count: CssGridRepeatInteger,
-    content: CssAuthoredGridFixedRepeatContent,
+    content: CssGridFixedRepeatContent,
 }
 
-impl CssAuthoredGridIntegerFixedRepeat {
-    pub(crate) const fn new(
-        count: CssGridRepeatInteger,
-        content: CssAuthoredGridFixedRepeatContent,
-    ) -> Self {
+impl CssGridIntegerFixedRepeat {
+    pub const fn new(count: CssGridRepeatInteger, content: CssGridFixedRepeatContent) -> Self {
         Self { count, content }
     }
 
@@ -961,7 +481,7 @@ impl CssAuthoredGridIntegerFixedRepeat {
     }
 
     #[must_use]
-    pub const fn content(&self) -> &CssAuthoredGridFixedRepeatContent {
+    pub const fn content(&self) -> &CssGridFixedRepeatContent {
         &self.content
     }
 }
@@ -969,7 +489,7 @@ impl CssAuthoredGridIntegerFixedRepeat {
 /// The automatic repetition mode in an authored Grid track list.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssAuthoredGridAutoRepeatKind {
+pub enum CssGridAutoRepeatKind {
     AutoFill,
     AutoFit,
 }
@@ -980,26 +500,23 @@ pub enum CssAuthoredGridAutoRepeatKind {
 /// tracks and integer repetitions in the same list remain constrained to fixed sizes.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub struct CssAuthoredGridAutoRepeat {
-    kind: CssAuthoredGridAutoRepeatKind,
-    content: CssAuthoredGridTrackRepeatContent,
+pub struct CssGridAutoRepeat {
+    kind: CssGridAutoRepeatKind,
+    content: CssGridTrackRepeatContent,
 }
 
-impl CssAuthoredGridAutoRepeat {
-    pub(crate) const fn new(
-        kind: CssAuthoredGridAutoRepeatKind,
-        content: CssAuthoredGridTrackRepeatContent,
-    ) -> Self {
+impl CssGridAutoRepeat {
+    pub const fn new(kind: CssGridAutoRepeatKind, content: CssGridTrackRepeatContent) -> Self {
         Self { kind, content }
     }
 
     #[must_use]
-    pub const fn kind(&self) -> CssAuthoredGridAutoRepeatKind {
+    pub const fn kind(&self) -> CssGridAutoRepeatKind {
         self.kind
     }
 
     #[must_use]
-    pub const fn content(&self) -> &CssAuthoredGridTrackRepeatContent {
+    pub const fn content(&self) -> &CssGridTrackRepeatContent {
         &self.content
     }
 }
@@ -1007,26 +524,38 @@ impl CssAuthoredGridAutoRepeat {
 /// One component of a general track list, which never contains automatic repetition.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub enum CssAuthoredGridGeneralTrackComponent {
+pub enum CssGridGeneralTrackComponent {
     LineNames(CssGridLineNames),
-    TrackSize(CssAuthoredGridTrackSize),
-    Repeat(CssAuthoredGridIntegerTrackRepeat),
+    TrackSize(CssGridTrackSize),
+    Repeat(CssGridIntegerTrackRepeat),
 }
 
 /// A non-empty general Grid track list.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub struct CssAuthoredGridGeneralTrackList {
-    components: Vec<CssAuthoredGridGeneralTrackComponent>,
+pub struct CssGridGeneralTrackList {
+    components: Vec<CssGridGeneralTrackComponent>,
 }
 
-impl CssAuthoredGridGeneralTrackList {
-    pub(crate) const fn new(components: Vec<CssAuthoredGridGeneralTrackComponent>) -> Self {
+impl CssGridGeneralTrackList {
+    pub fn try_new(components: Vec<CssGridGeneralTrackComponent>) -> Option<Self> {
+        (components
+            .iter()
+            .any(|item| !matches!(item, CssGridGeneralTrackComponent::LineNames(_)))
+            && !components.windows(2).any(|pair| {
+                adjacent_line_names(Some(&pair[0]), &pair[1], |item| {
+                    matches!(item, CssGridGeneralTrackComponent::LineNames(_))
+                })
+            }))
+        .then(|| Self::new(components))
+    }
+
+    pub(crate) const fn new(components: Vec<CssGridGeneralTrackComponent>) -> Self {
         Self { components }
     }
 
     #[must_use]
-    pub fn components(&self) -> &[CssAuthoredGridGeneralTrackComponent] {
+    pub fn components(&self) -> &[CssGridGeneralTrackComponent] {
         &self.components
     }
 }
@@ -1034,70 +563,84 @@ impl CssAuthoredGridGeneralTrackList {
 /// One component of an auto track list.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub enum CssAuthoredGridAutoTrackComponent {
+pub enum CssGridAutoTrackComponent {
     LineNames(CssGridLineNames),
-    FixedSize(CssAuthoredGridFixedSize),
-    Repeat(CssAuthoredGridIntegerFixedRepeat),
-    AutoRepeat(CssAuthoredGridAutoRepeat),
+    FixedSize(CssGridFixedSize),
+    Repeat(CssGridIntegerFixedRepeat),
+    AutoRepeat(CssGridAutoRepeat),
 }
 
 /// A Grid track list containing exactly one automatic repetition.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub struct CssAuthoredGridAutoTrackList {
-    components: Vec<CssAuthoredGridAutoTrackComponent>,
+pub struct CssGridAutoTrackList {
+    components: Vec<CssGridAutoTrackComponent>,
 }
 
-impl CssAuthoredGridAutoTrackList {
-    pub(crate) const fn new(components: Vec<CssAuthoredGridAutoTrackComponent>) -> Self {
+impl CssGridAutoTrackList {
+    pub fn try_new(components: Vec<CssGridAutoTrackComponent>) -> Option<Self> {
+        (components
+            .iter()
+            .filter(|item| matches!(item, CssGridAutoTrackComponent::AutoRepeat(_)))
+            .count()
+            == 1
+            && !components.windows(2).any(|pair| {
+                adjacent_line_names(Some(&pair[0]), &pair[1], |item| {
+                    matches!(item, CssGridAutoTrackComponent::LineNames(_))
+                })
+            }))
+        .then(|| Self::new(components))
+    }
+
+    pub(crate) const fn new(components: Vec<CssGridAutoTrackComponent>) -> Self {
         Self { components }
     }
 
     #[must_use]
-    pub fn components(&self) -> &[CssAuthoredGridAutoTrackComponent] {
+    pub fn components(&self) -> &[CssGridAutoTrackComponent] {
         &self.components
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum CssAuthoredGridTrackListRepresentation {
-    General(CssAuthoredGridGeneralTrackList),
-    Auto(CssAuthoredGridAutoTrackList),
+enum CssGridTrackListRepresentation {
+    General(CssGridGeneralTrackList),
+    Auto(CssGridAutoTrackList),
 }
 
-/// A parser-owned current Grid track list, classified as general or automatic.
+/// An authored Grid track list, classified as general or automatic.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub struct CssAuthoredGridTrackList {
-    representation: CssAuthoredGridTrackListRepresentation,
+pub struct CssGridTrackList {
+    representation: CssGridTrackListRepresentation,
 }
 
-impl CssAuthoredGridTrackList {
-    pub(crate) const fn general(value: CssAuthoredGridGeneralTrackList) -> Self {
+impl CssGridTrackList {
+    pub const fn general(value: CssGridGeneralTrackList) -> Self {
         Self {
-            representation: CssAuthoredGridTrackListRepresentation::General(value),
+            representation: CssGridTrackListRepresentation::General(value),
         }
     }
 
-    pub(crate) const fn auto(value: CssAuthoredGridAutoTrackList) -> Self {
+    pub const fn auto(value: CssGridAutoTrackList) -> Self {
         Self {
-            representation: CssAuthoredGridTrackListRepresentation::Auto(value),
+            representation: CssGridTrackListRepresentation::Auto(value),
         }
     }
 
     #[must_use]
-    pub const fn general_list(&self) -> Option<&CssAuthoredGridGeneralTrackList> {
+    pub const fn general_list(&self) -> Option<&CssGridGeneralTrackList> {
         match &self.representation {
-            CssAuthoredGridTrackListRepresentation::General(value) => Some(value),
-            CssAuthoredGridTrackListRepresentation::Auto(_) => None,
+            CssGridTrackListRepresentation::General(value) => Some(value),
+            CssGridTrackListRepresentation::Auto(_) => None,
         }
     }
 
     #[must_use]
-    pub const fn auto_list(&self) -> Option<&CssAuthoredGridAutoTrackList> {
+    pub const fn auto_list(&self) -> Option<&CssGridAutoTrackList> {
         match &self.representation {
-            CssAuthoredGridTrackListRepresentation::Auto(value) => Some(value),
-            CssAuthoredGridTrackListRepresentation::General(_) => None,
+            CssGridTrackListRepresentation::Auto(value) => Some(value),
+            CssGridTrackListRepresentation::General(_) => None,
         }
     }
 }
@@ -1105,109 +648,110 @@ impl CssAuthoredGridTrackList {
 /// A non-empty authored list for `grid-auto-rows` or `grid-auto-columns`.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub struct CssAuthoredGridTrackSizeList {
-    sizes: Vec<CssAuthoredGridTrackSize>,
+pub struct CssGridTrackSizeList {
+    sizes: Vec<CssGridTrackSize>,
 }
 
-impl CssAuthoredGridTrackSizeList {
-    pub(crate) const fn new(sizes: Vec<CssAuthoredGridTrackSize>) -> Self {
+impl CssGridTrackSizeList {
+    pub fn try_new(sizes: Vec<CssGridTrackSize>) -> Option<Self> {
+        (!sizes.is_empty()).then(|| Self::new(sizes))
+    }
+
+    pub(crate) const fn new(sizes: Vec<CssGridTrackSize>) -> Self {
         Self { sizes }
     }
 
     #[must_use]
-    pub fn sizes(&self) -> &[CssAuthoredGridTrackSize] {
+    pub fn sizes(&self) -> &[CssGridTrackSize] {
         &self.sizes
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum CssAuthoredGridTemplateRepresentation {
+enum CssGridTemplateRepresentation {
     None,
     RowsColumns {
-        rows: CssAuthoredGridTrackList,
-        columns: Option<CssAuthoredGridTrackList>,
+        rows: CssGridTrackList,
+        columns: Option<CssGridTrackList>,
     },
 }
 
-/// The parser-owned current authored `grid-template` aggregate.
+/// The authored `grid-template` aggregate.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub struct CssAuthoredGridTemplateValue {
-    representation: CssAuthoredGridTemplateRepresentation,
+pub struct CssGridTemplate {
+    representation: CssGridTemplateRepresentation,
 }
 
-impl CssAuthoredGridTemplateValue {
+impl CssGridTemplate {
     pub(crate) const fn none() -> Self {
         Self {
-            representation: CssAuthoredGridTemplateRepresentation::None,
+            representation: CssGridTemplateRepresentation::None,
         }
     }
 
     pub(crate) const fn rows_columns(
-        rows: CssAuthoredGridTrackList,
-        columns: Option<CssAuthoredGridTrackList>,
+        rows: CssGridTrackList,
+        columns: Option<CssGridTrackList>,
     ) -> Self {
         Self {
-            representation: CssAuthoredGridTemplateRepresentation::RowsColumns { rows, columns },
+            representation: CssGridTemplateRepresentation::RowsColumns { rows, columns },
         }
     }
 
     #[must_use]
     pub const fn is_none(&self) -> bool {
-        matches!(
-            self.representation,
-            CssAuthoredGridTemplateRepresentation::None
-        )
+        matches!(self.representation, CssGridTemplateRepresentation::None)
     }
 
     #[must_use]
-    pub const fn rows(&self) -> Option<&CssAuthoredGridTrackList> {
+    pub const fn rows(&self) -> Option<&CssGridTrackList> {
         match &self.representation {
-            CssAuthoredGridTemplateRepresentation::RowsColumns { rows, .. } => Some(rows),
-            CssAuthoredGridTemplateRepresentation::None => None,
+            CssGridTemplateRepresentation::RowsColumns { rows, .. } => Some(rows),
+            CssGridTemplateRepresentation::None => None,
         }
     }
 
     #[must_use]
-    pub const fn columns(&self) -> Option<&CssAuthoredGridTrackList> {
+    pub const fn columns(&self) -> Option<&CssGridTrackList> {
         match &self.representation {
-            CssAuthoredGridTemplateRepresentation::RowsColumns { columns, .. } => columns.as_ref(),
-            CssAuthoredGridTemplateRepresentation::None => None,
+            CssGridTemplateRepresentation::RowsColumns { columns, .. } => columns.as_ref(),
+            CssGridTemplateRepresentation::None => None,
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum CssAuthoredGridRepresentation {
-    Template(CssAuthoredGridTemplateValue),
+enum CssGridRepresentation {
+    Template(CssGridTemplate),
     AutoFlow {
-        flow: CssGridAutoFlow,
-        auto_tracks: Option<CssAuthoredGridTrackSizeList>,
-        explicit_tracks: CssAuthoredGridTrackList,
+        flow: CssGridAutoFlowMode,
+        auto_tracks: Option<CssGridTrackSizeList>,
+        explicit_tracks: CssGridTrackList,
     },
 }
 
-/// The parser-owned current authored `grid` aggregate.
+/// The authored `grid` aggregate.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub struct CssAuthoredGridValue {
-    representation: CssAuthoredGridRepresentation,
+pub struct CssGrid {
+    representation: CssGridRepresentation,
 }
 
-impl CssAuthoredGridValue {
-    pub(crate) const fn template(value: CssAuthoredGridTemplateValue) -> Self {
+impl CssGrid {
+    pub(crate) const fn template(value: CssGridTemplate) -> Self {
         Self {
-            representation: CssAuthoredGridRepresentation::Template(value),
+            representation: CssGridRepresentation::Template(value),
         }
     }
 
     pub(crate) const fn from_auto_flow(
-        flow: CssGridAutoFlow,
-        auto_tracks: Option<CssAuthoredGridTrackSizeList>,
-        explicit_tracks: CssAuthoredGridTrackList,
+        flow: CssGridAutoFlowMode,
+        auto_tracks: Option<CssGridTrackSizeList>,
+        explicit_tracks: CssGridTrackList,
     ) -> Self {
         Self {
-            representation: CssAuthoredGridRepresentation::AutoFlow {
+            representation: CssGridRepresentation::AutoFlow {
                 flow,
                 auto_tracks,
                 explicit_tracks,
@@ -1216,121 +760,307 @@ impl CssAuthoredGridValue {
     }
 
     #[must_use]
-    pub const fn template_value(&self) -> Option<&CssAuthoredGridTemplateValue> {
+    pub const fn template_value(&self) -> Option<&CssGridTemplate> {
         match &self.representation {
-            CssAuthoredGridRepresentation::Template(value) => Some(value),
-            CssAuthoredGridRepresentation::AutoFlow { .. } => None,
+            CssGridRepresentation::Template(value) => Some(value),
+            CssGridRepresentation::AutoFlow { .. } => None,
         }
     }
 
     #[must_use]
-    pub const fn auto_flow(&self) -> Option<CssGridAutoFlow> {
+    pub const fn auto_flow(&self) -> Option<CssGridAutoFlowMode> {
         match self.representation {
-            CssAuthoredGridRepresentation::AutoFlow { flow, .. } => Some(flow),
-            CssAuthoredGridRepresentation::Template(_) => None,
+            CssGridRepresentation::AutoFlow { flow, .. } => Some(flow),
+            CssGridRepresentation::Template(_) => None,
         }
     }
 
     #[must_use]
-    pub const fn auto_tracks(&self) -> Option<&CssAuthoredGridTrackSizeList> {
+    pub const fn auto_tracks(&self) -> Option<&CssGridTrackSizeList> {
         match &self.representation {
-            CssAuthoredGridRepresentation::AutoFlow { auto_tracks, .. } => auto_tracks.as_ref(),
-            CssAuthoredGridRepresentation::Template(_) => None,
+            CssGridRepresentation::AutoFlow { auto_tracks, .. } => auto_tracks.as_ref(),
+            CssGridRepresentation::Template(_) => None,
         }
     }
 
     #[must_use]
-    pub const fn explicit_tracks(&self) -> Option<&CssAuthoredGridTrackList> {
+    pub const fn explicit_tracks(&self) -> Option<&CssGridTrackList> {
         match &self.representation {
-            CssAuthoredGridRepresentation::AutoFlow {
+            CssGridRepresentation::AutoFlow {
                 explicit_tracks, ..
             } => Some(explicit_tracks),
-            CssAuthoredGridRepresentation::Template(_) => None,
+            CssGridRepresentation::Template(_) => None,
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct CssParsedGridTrackList {
-    current: CssAuthoredGridTrackList,
-    i01_subset: Option<CssGridTrackList>,
+type GridSerializationResult<T> = Result<T, crate::CssSpecifiedValueSerializationError>;
+
+trait GridSpecified {
+    fn write_grid(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> GridSerializationResult<()>;
 }
 
-impl CssParsedGridTrackList {
-    pub(crate) const fn new(
-        current: CssAuthoredGridTrackList,
-        i01_subset: Option<CssGridTrackList>,
-    ) -> Self {
-        Self {
-            current,
-            i01_subset,
+macro_rules! grid_serialization {
+    ($($name:ident),+ $(,)?) => {$ (
+        impl $name {
+            pub fn serialize_specified(&self) -> GridSerializationResult<String> {
+                self.serialize_specified_with_limits(crate::CssSpecifiedValueSerializationLimits::default())
+            }
+
+            pub fn serialize_specified_with_limits(
+                &self,
+                limits: crate::CssSpecifiedValueSerializationLimits,
+            ) -> GridSerializationResult<String> {
+                let mut context = crate::specified_serialization::SpecifiedSerializationContext::new(limits);
+                let mut output = String::new();
+                self.write_grid(&mut context, &mut output)?;
+                Ok(output)
+            }
+        }
+    )+};
+}
+
+grid_serialization!(
+    CssGridTrackBreadth,
+    CssGridTrackSize,
+    CssGridTrackSizeList,
+    CssGridTrackList,
+);
+
+fn grid_node(
+    context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+) -> GridSerializationResult<()> {
+    context.charge_input(1)?;
+    context.charge_projection(1)
+}
+
+impl GridSpecified for CssGridTrackBreadth {
+    fn write_grid(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> GridSerializationResult<()> {
+        match &self.representation {
+            CssGridTrackBreadthRepresentation::Length(specified) => {
+                let captured = specified.capture_specified(context)?;
+                context.append(output, &captured)
+            }
+            CssGridTrackBreadthRepresentation::Fraction(specified) => {
+                let captured = specified.capture_specified(context)?;
+                context.append(output, &captured)
+            }
+            other => {
+                grid_node(context)?;
+                context.append(
+                    output,
+                    match other {
+                        CssGridTrackBreadthRepresentation::MinContent => "min-content",
+                        CssGridTrackBreadthRepresentation::MaxContent => "max-content",
+                        CssGridTrackBreadthRepresentation::Auto => "auto",
+                        _ => unreachable!(),
+                    },
+                )
+            }
         }
     }
-
-    pub(crate) fn into_parts(self) -> (CssAuthoredGridTrackList, Option<CssGridTrackList>) {
-        (self.current, self.i01_subset)
-    }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct CssParsedGridTrackSizeList {
-    current: CssAuthoredGridTrackSizeList,
-    i01_subset: Option<CssGridTrackList>,
-}
-
-impl CssParsedGridTrackSizeList {
-    pub(crate) const fn new(
-        current: CssAuthoredGridTrackSizeList,
-        i01_subset: Option<CssGridTrackList>,
-    ) -> Self {
-        Self {
-            current,
-            i01_subset,
+impl GridSpecified for CssGridTrackSize {
+    fn write_grid(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> GridSerializationResult<()> {
+        match &self.representation {
+            CssGridTrackSizeRepresentation::Breadth(value) => value.write_grid(context, output),
+            CssGridTrackSizeRepresentation::MinMax { min, max } => {
+                grid_node(context)?;
+                context.append(output, "minmax(")?;
+                min.write_grid(context, output)?;
+                context.append(output, ", ")?;
+                max.write_grid(context, output)?;
+                context.append(output, ")")
+            }
+            CssGridTrackSizeRepresentation::FitContent(specified) => {
+                grid_node(context)?;
+                context.append(output, "fit-content(")?;
+                let captured = specified.capture_specified(context)?;
+                context.append(output, &captured)?;
+                context.append(output, ")")
+            }
         }
     }
+}
 
-    pub(crate) fn into_parts(self) -> (CssAuthoredGridTrackSizeList, Option<CssGridTrackList>) {
-        (self.current, self.i01_subset)
+impl GridSpecified for CssGridLineNames {
+    fn write_grid(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> GridSerializationResult<()> {
+        grid_node(context)?;
+        context.append(output, "[")?;
+        for (index, name) in self.names.iter().enumerate() {
+            if index != 0 {
+                context.append(output, " ")?;
+            }
+            grid_node(context)?;
+            let escaped = crate::numeric::capture_identifier(name.as_str(), context)?;
+            context.append(output, &escaped)?;
+        }
+        context.append(output, "]")
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct CssParsedGridTemplate {
-    current: CssAuthoredGridTemplateValue,
-    i01_subset: Option<CssGridTemplate>,
+fn grid_items<T: GridSpecified>(
+    items: &[T],
+    context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+    output: &mut String,
+) -> GridSerializationResult<()> {
+    for (index, item) in items.iter().enumerate() {
+        if index != 0 {
+            context.append(output, " ")?;
+        }
+        item.write_grid(context, output)?;
+    }
+    Ok(())
 }
 
-impl CssParsedGridTemplate {
-    pub(crate) const fn new(
-        current: CssAuthoredGridTemplateValue,
-        i01_subset: Option<CssGridTemplate>,
-    ) -> Self {
-        Self {
-            current,
-            i01_subset,
+impl GridSpecified for CssGridTrackRepeatComponent {
+    fn write_grid(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> GridSerializationResult<()> {
+        match self {
+            Self::LineNames(value) => value.write_grid(context, output),
+            Self::TrackSize(value) => value.write_grid(context, output),
         }
     }
-
-    pub(crate) fn into_parts(self) -> (CssAuthoredGridTemplateValue, Option<CssGridTemplate>) {
-        (self.current, self.i01_subset)
-    }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct CssParsedGrid {
-    current: CssAuthoredGridValue,
-    i01_subset: Option<CssGrid>,
-}
-
-impl CssParsedGrid {
-    pub(crate) const fn new(current: CssAuthoredGridValue, i01_subset: Option<CssGrid>) -> Self {
-        Self {
-            current,
-            i01_subset,
+impl GridSpecified for CssGridFixedRepeatComponent {
+    fn write_grid(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> GridSerializationResult<()> {
+        match self {
+            Self::LineNames(value) => value.write_grid(context, output),
+            Self::FixedSize(value) => value.size.write_grid(context, output),
         }
     }
+}
 
-    pub(crate) fn into_parts(self) -> (CssAuthoredGridValue, Option<CssGrid>) {
-        (self.current, self.i01_subset)
+impl GridSpecified for CssGridIntegerTrackRepeat {
+    fn write_grid(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> GridSerializationResult<()> {
+        grid_node(context)?;
+        context.append(output, "repeat(")?;
+        context.append(output, &self.count.value().to_string())?;
+        context.append(output, ", ")?;
+        grid_items(&self.content.components, context, output)?;
+        context.append(output, ")")
+    }
+}
+
+impl GridSpecified for CssGridIntegerFixedRepeat {
+    fn write_grid(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> GridSerializationResult<()> {
+        grid_node(context)?;
+        context.append(output, "repeat(")?;
+        context.append(output, &self.count.value().to_string())?;
+        context.append(output, ", ")?;
+        grid_items(&self.content.components, context, output)?;
+        context.append(output, ")")
+    }
+}
+
+impl GridSpecified for CssGridAutoRepeat {
+    fn write_grid(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> GridSerializationResult<()> {
+        grid_node(context)?;
+        context.append(output, "repeat(")?;
+        context.append(
+            output,
+            match self.kind {
+                CssGridAutoRepeatKind::AutoFill => "auto-fill",
+                CssGridAutoRepeatKind::AutoFit => "auto-fit",
+            },
+        )?;
+        context.append(output, ", ")?;
+        grid_items(&self.content.components, context, output)?;
+        context.append(output, ")")
+    }
+}
+
+impl GridSpecified for CssGridGeneralTrackComponent {
+    fn write_grid(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> GridSerializationResult<()> {
+        match self {
+            Self::LineNames(value) => value.write_grid(context, output),
+            Self::TrackSize(value) => value.write_grid(context, output),
+            Self::Repeat(value) => value.write_grid(context, output),
+        }
+    }
+}
+
+impl GridSpecified for CssGridAutoTrackComponent {
+    fn write_grid(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> GridSerializationResult<()> {
+        match self {
+            Self::LineNames(value) => value.write_grid(context, output),
+            Self::FixedSize(value) => value.size.write_grid(context, output),
+            Self::Repeat(value) => value.write_grid(context, output),
+            Self::AutoRepeat(value) => value.write_grid(context, output),
+        }
+    }
+}
+
+impl GridSpecified for CssGridTrackList {
+    fn write_grid(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> GridSerializationResult<()> {
+        grid_node(context)?;
+        match &self.representation {
+            CssGridTrackListRepresentation::General(value) => {
+                grid_items(&value.components, context, output)
+            }
+            CssGridTrackListRepresentation::Auto(value) => {
+                grid_items(&value.components, context, output)
+            }
+        }
+    }
+}
+
+impl GridSpecified for CssGridTrackSizeList {
+    fn write_grid(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> GridSerializationResult<()> {
+        grid_node(context)?;
+        grid_items(&self.sizes, context, output)
     }
 }

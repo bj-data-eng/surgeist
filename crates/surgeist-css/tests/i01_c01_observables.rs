@@ -1248,11 +1248,9 @@ fn assert_archived_container_opaque_acceptance(row: &Row) -> bool {
 // https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#intrinsic-auto-repeat
 fn assert_archived_intrinsic_auto_repeat_acceptance(row: &Row) -> bool {
     use surgeist_css::{
-        CssAuthoredGridAutoRepeatKind, CssAuthoredGridAutoTrackComponent,
-        CssAuthoredGridTrackBreadthKind, CssAuthoredGridTrackRepeatComponent, CssGrid,
-        CssGridAutoFlow, CssGridAutoFlowAxis, CssGridRepeat, CssGridRepeatCount,
-        CssGridTrackBreadth, CssGridTrackComponent, CssGridTrackList, CssGridTrackSize,
-        CssKnownProperty, CssKnownPropertyValueRef, CssLength,
+        CssGridAutoFlowAxis, CssGridAutoRepeatKind, CssGridAutoTrackComponent,
+        CssGridTrackBreadthKind, CssGridTrackRepeatComponent, CssKnownProperty,
+        CssKnownPropertyValueRef,
     };
 
     let (entry, input, retained, diagnostics, importance) = match row.case_id.as_str() {
@@ -1362,56 +1360,41 @@ fn assert_archived_intrinsic_auto_repeat_acceptance(row: &Row) -> bool {
         panic!("a complete current Grid value");
     };
     assert_eq!(value.as_css(), authored);
-    assert!(value.current().template_value().is_none());
-    let flow = value.current().auto_flow().unwrap();
+    assert!(value.value().template_value().is_none());
+    let flow = value.value().auto_flow().unwrap();
     assert_eq!(flow.axis(), CssGridAutoFlowAxis::Row);
     assert!(flow.dense());
-    let [implicit] = value.current().auto_tracks().unwrap().sizes() else {
+    let [implicit] = value.value().auto_tracks().unwrap().sizes() else {
         panic!("one original implicit track size");
     };
     assert_eq!(
-        implicit.breadth().unwrap().length(),
-        Some(&CssLength::try_px(12.0).unwrap())
+        implicit
+            .breadth()
+            .unwrap()
+            .length_percentage()
+            .unwrap()
+            .serialize_specified()
+            .unwrap(),
+        "12px"
     );
-    let explicit = value.current().explicit_tracks().unwrap();
+    let explicit = value.value().explicit_tracks().unwrap();
     assert!(explicit.general_list().is_none());
-    let [CssAuthoredGridAutoTrackComponent::AutoRepeat(repeat)] =
+    let [CssGridAutoTrackComponent::AutoRepeat(repeat)] =
         explicit.auto_list().unwrap().components()
     else {
         panic!("one automatic repeat in the explicit column axis");
     };
-    assert_eq!(repeat.kind(), CssAuthoredGridAutoRepeatKind::AutoFit);
-    let [CssAuthoredGridTrackRepeatComponent::TrackSize(size)] = repeat.content().components()
-    else {
+    assert_eq!(repeat.kind(), CssGridAutoRepeatKind::AutoFit);
+    let [CssGridTrackRepeatComponent::TrackSize(size)] = repeat.content().components() else {
         panic!("one nonrecursive general track size");
     };
     let breadth = size.breadth().unwrap();
-    assert_eq!(breadth.kind(), CssAuthoredGridTrackBreadthKind::Fraction);
-    assert_eq!(breadth.fraction().unwrap().value(), 1.0);
+    assert_eq!(breadth.kind(), CssGridTrackBreadthKind::Fraction);
+    assert_eq!(
+        breadth.flex().unwrap().serialize_specified().unwrap(),
+        "1fr"
+    );
 
-    let expected = CssGrid::AutoFlow {
-        flow: CssGridAutoFlow::new(CssGridAutoFlowAxis::Row, true),
-        auto_tracks: Some(
-            CssGridTrackList::try_new(vec![CssGridTrackComponent::TrackSize(
-                CssGridTrackSize::Breadth(CssGridTrackBreadth::Length(
-                    CssLength::try_px(12.0).unwrap(),
-                )),
-            )])
-            .unwrap(),
-        ),
-        explicit_tracks: CssGridTrackList::try_new(vec![CssGridTrackComponent::Repeat(
-            CssGridRepeat::try_new(
-                CssGridRepeatCount::AutoFit,
-                CssGridTrackList::try_new(vec![CssGridTrackComponent::TrackSize(
-                    CssGridTrackSize::Breadth(CssGridTrackBreadth::try_fraction(1.0).unwrap()),
-                )])
-                .unwrap(),
-            )
-            .unwrap(),
-        )])
-        .unwrap(),
-    };
-    assert_eq!(value.i01_subset(), Some(&expected));
     true
 }
 
@@ -2383,6 +2366,28 @@ macro_rules! assert_property_specific_value {
             ),
         }
     };
+}
+
+fn assert_captured_grid_columns(list: &surgeist_css::CssGridTrackList) {
+    use surgeist_css::{
+        CssGridGeneralTrackComponent as GeneralTrack, CssGridTrackRepeatComponent as RepeatMember,
+    };
+    let [GeneralTrack::Repeat(repeat)] = list.general_list().unwrap().components() else {
+        panic!("one captured integer repeat")
+    };
+    assert_eq!(repeat.count().value(), 2);
+    let [RepeatMember::TrackSize(size)] = repeat.content().components() else {
+        panic!("one repeated minmax")
+    };
+    let (min, max) = size.minmax().expect("captured minmax");
+    assert_eq!(
+        min.length_percentage()
+            .unwrap()
+            .serialize_specified()
+            .unwrap(),
+        "10px"
+    );
+    assert_eq!(max.flex().unwrap().serialize_specified().unwrap(), "1fr");
 }
 
 // The captured font witnesses have one fixed literal/generic list. Their old
@@ -3456,6 +3461,298 @@ fn assert_known_property_value(
         }
         _ => {}
     }
+    // The archive keeps the old Debug payload. Assert each captured Grid value
+    // against the authored model's branch and independently fixed constituents.
+    use surgeist_css::{
+        CssGridAutoFlowAxis, CssGridAutoRepeatKind as RepeatKind,
+        CssGridAutoTrackComponent as AutoTrack, CssGridGeneralTrackComponent as GeneralTrack,
+        CssGridLine as GridLine, CssGridTemplateAreaCell as AreaCell,
+        CssGridTemplateAreas as Areas, CssGridTrackBreadthKind as BreadthKind,
+        CssGridTrackRepeatComponent as RepeatMember, CssGridTrackSizeKind as SizeKind,
+    };
+    let grid_authored = match (property, value) {
+        (
+            surgeist_css::CssKnownProperty::GridTemplateRows,
+            surgeist_css::CssKnownPropertyValueRef::GridTemplateRows(value),
+        ) => {
+            let [
+                GeneralTrack::LineNames(names),
+                GeneralTrack::TrackSize(length),
+                GeneralTrack::TrackSize(flex),
+            ] = value.value().general_list().unwrap().components()
+            else {
+                panic!("captured row tracks")
+            };
+            assert_eq!(names.names()[0].as_str(), "top");
+            assert_eq!(
+                length
+                    .breadth()
+                    .unwrap()
+                    .length_percentage()
+                    .unwrap()
+                    .serialize_specified()
+                    .unwrap(),
+                "100px"
+            );
+            assert_eq!(
+                flex.breadth()
+                    .unwrap()
+                    .flex()
+                    .unwrap()
+                    .serialize_specified()
+                    .unwrap(),
+                "1fr"
+            );
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::GridTemplateColumns,
+            surgeist_css::CssKnownPropertyValueRef::GridTemplateColumns(value),
+        ) => {
+            assert_captured_grid_columns(value.value());
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::GridTemplateAreas,
+            surgeist_css::CssKnownPropertyValueRef::GridTemplateAreas(value),
+        ) => {
+            let Areas::Rows(rows) = value.value() else {
+                panic!("captured area matrix")
+            };
+            let [top, bottom] = rows.rows() else {
+                panic!("two captured area rows")
+            };
+            for (row, expected) in [(top, ["header", "header"]), (bottom, ["nav", "main"])] {
+                let [AreaCell::Named(first), AreaCell::Named(second)] = row.cells() else {
+                    panic!("two named cells")
+                };
+                assert_eq!([first.as_str(), second.as_str()], expected);
+            }
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::GridTemplate,
+            surgeist_css::CssKnownPropertyValueRef::GridTemplate(value),
+        ) => {
+            let rows = value.value().rows().expect("captured template rows");
+            let [
+                GeneralTrack::TrackSize(length),
+                GeneralTrack::TrackSize(flex),
+            ] = rows.general_list().unwrap().components()
+            else {
+                panic!("two row tracks")
+            };
+            assert_eq!(
+                length
+                    .breadth()
+                    .unwrap()
+                    .length_percentage()
+                    .unwrap()
+                    .serialize_specified()
+                    .unwrap(),
+                "100px"
+            );
+            assert_eq!(
+                flex.breadth()
+                    .unwrap()
+                    .flex()
+                    .unwrap()
+                    .serialize_specified()
+                    .unwrap(),
+                "1fr"
+            );
+            assert_captured_grid_columns(value.value().columns().unwrap());
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::GridAutoRows,
+            surgeist_css::CssKnownPropertyValueRef::GridAutoRows(value),
+        ) => {
+            let [size] = value.value().sizes() else {
+                panic!("one implicit row track")
+            };
+            let (min, max) = size.minmax().expect("captured minmax");
+            assert_eq!(
+                min.length_percentage()
+                    .unwrap()
+                    .serialize_specified()
+                    .unwrap(),
+                "10px"
+            );
+            assert_eq!(max.kind(), BreadthKind::Auto);
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::GridAutoColumns,
+            surgeist_css::CssKnownPropertyValueRef::GridAutoColumns(value),
+        ) => {
+            let [size] = value.value().sizes() else {
+                panic!("one implicit column track")
+            };
+            assert_eq!(size.kind(), SizeKind::FitContent);
+            assert_eq!(
+                size.fit_content().unwrap().serialize_specified().unwrap(),
+                "20%"
+            );
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::GridAutoFlow,
+            surgeist_css::CssKnownPropertyValueRef::GridAutoFlow(value),
+        ) => {
+            let surgeist_css::CssGridAutoFlow::ExplicitAxis(flow) = value.value() else {
+                panic!("explicit flow")
+            };
+            assert_eq!(flow.axis(), CssGridAutoFlowAxis::Column);
+            assert!(flow.dense());
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::GridRowStart,
+            surgeist_css::CssKnownPropertyValueRef::GridRowStart(value),
+        ) => {
+            let GridLine::Span(span) = value.value() else {
+                panic!("row start span")
+            };
+            assert!(span.integer().is_some());
+            assert_eq!(span.name().unwrap().ident().as_str(), "main");
+            assert_eq!(value.value().serialize_specified().unwrap(), "span 2 main");
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::GridRowEnd,
+            surgeist_css::CssKnownPropertyValueRef::GridRowEnd(value),
+        ) => {
+            assert!(matches!(value.value(), GridLine::Auto));
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::GridColumnStart,
+            surgeist_css::CssKnownPropertyValueRef::GridColumnStart(value),
+        ) => {
+            let GridLine::Name(name) = value.value() else {
+                panic!("named column start")
+            };
+            assert_eq!(name.ident().as_str(), "nav");
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::GridColumnEnd,
+            surgeist_css::CssKnownPropertyValueRef::GridColumnEnd(value),
+        ) => {
+            let GridLine::Indexed(index) = value.value() else {
+                panic!("indexed column end")
+            };
+            assert!(index.name().is_none());
+            assert_eq!(value.value().serialize_specified().unwrap(), "4");
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::GridRow,
+            surgeist_css::CssKnownPropertyValueRef::GridRow(value),
+        ) => {
+            let range = value.value();
+            assert!(matches!(range.start(), GridLine::Indexed(_)));
+            assert!(matches!(range.authored_end(), Some(GridLine::Span(_))));
+            assert_eq!(range.serialize_specified().unwrap(), "1 / span 2");
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::GridColumn,
+            surgeist_css::CssKnownPropertyValueRef::GridColumn(value),
+        ) => {
+            let range = value.value();
+            let GridLine::Name(start) = range.start() else {
+                panic!("named column start")
+            };
+            let Some(GridLine::Name(end)) = range.authored_end() else {
+                panic!("named column end")
+            };
+            assert_eq!(
+                (start.ident().as_str(), end.ident().as_str()),
+                ("nav", "main")
+            );
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::GridArea,
+            surgeist_css::CssKnownPropertyValueRef::GridArea(value),
+        ) => {
+            let area = value.value();
+            let GridLine::Name(start) = area.row_start() else {
+                panic!("named area row")
+            };
+            assert_eq!(start.ident().as_str(), "header");
+            assert!(matches!(
+                area.authored_column_start(),
+                Some(GridLine::Indexed(_))
+            ));
+            assert!(matches!(area.authored_row_end(), Some(GridLine::Span(_))));
+            let Some(GridLine::Name(end)) = area.authored_column_end() else {
+                panic!("named area column")
+            };
+            assert_eq!(end.ident().as_str(), "main");
+            assert_eq!(
+                area.serialize_specified().unwrap(),
+                "header / 1 / span 2 / main"
+            );
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::Grid,
+            surgeist_css::CssKnownPropertyValueRef::Grid(value),
+        ) => {
+            let grid = value.value();
+            assert!(grid.template_value().is_none());
+            let flow = grid.auto_flow().unwrap();
+            assert_eq!(flow.axis(), CssGridAutoFlowAxis::Row);
+            assert!(flow.dense());
+            let [implicit] = grid.auto_tracks().unwrap().sizes() else {
+                panic!("one implicit track")
+            };
+            assert_eq!(
+                implicit
+                    .breadth()
+                    .unwrap()
+                    .length_percentage()
+                    .unwrap()
+                    .serialize_specified()
+                    .unwrap(),
+                "12px"
+            );
+            let [AutoTrack::AutoRepeat(repeat)] = grid
+                .explicit_tracks()
+                .unwrap()
+                .auto_list()
+                .unwrap()
+                .components()
+            else {
+                panic!("one explicit repeat")
+            };
+            assert_eq!(repeat.kind(), RepeatKind::AutoFit);
+            let [RepeatMember::TrackSize(size)] = repeat.content().components() else {
+                panic!("one repeated track")
+            };
+            assert_eq!(
+                size.breadth()
+                    .unwrap()
+                    .flex()
+                    .unwrap()
+                    .serialize_specified()
+                    .unwrap(),
+                "1fr"
+            );
+            Some(value.as_css())
+        }
+        _ => None,
+    };
+    if let Some(css) = grid_authored {
+        assert_eq!(authored.id, property.stable_id());
+        assert_eq!(authored.value_capability, "deferred-i01");
+        assert_eq!(css, authored.value);
+        assert!(semantic.is_some_and(|item| item.id == property.stable_id()));
+        return;
+    }
     assert_property_specific_value!(
         property,
         value,
@@ -3494,21 +3791,6 @@ fn assert_known_property_value(
             CounterIncrement,
             CounterSet,
             FlexBasis,
-            GridTemplateRows,
-            GridTemplateColumns,
-            GridTemplateAreas,
-            GridTemplate,
-            GridAutoRows,
-            GridAutoColumns,
-            GridAutoFlow,
-            GridRowStart,
-            GridRowEnd,
-            GridColumnStart,
-            GridColumnEnd,
-            GridRow,
-            GridColumn,
-            GridArea,
-            Grid,
             WritingMode,
             TextAlign,
             TextAlignLast,

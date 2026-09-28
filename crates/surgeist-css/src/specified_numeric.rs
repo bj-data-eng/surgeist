@@ -1,16 +1,130 @@
 //! Exact, checked authored number, length, and percentage domains with shared numeric helpers.
 
 use crate::{
-    CssComponentValue, CssComponentValueRef, CssLengthCalculation, CssLengthPercentageCalculation,
-    CssLengthUnit, CssNumberCalculation, CssNumericConstructionError,
-    CssNumericConstructionErrorKind, CssPercentageCalculation, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
-    CssValueTokenRef,
+    CssComponentValue, CssComponentValueRef, CssFlexCalculation, CssLengthCalculation,
+    CssLengthPercentageCalculation, CssLengthUnit, CssNumberCalculation,
+    CssNumericConstructionError, CssNumericConstructionErrorKind, CssPercentageCalculation,
+    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
+    CssSpecifiedValueSerializationLimits, CssValueOrigin, CssValueTokenRef,
     specified_serialization::{SpecifiedSerializationContext, format_lexical_shift},
 };
 
 type ConstructionResult<T> = Result<T, CssNumericConstructionError>;
 type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+
+/// A nonnegative Grid flex breadth retaining an exact `fr` token or checked flex math.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssSpecifiedNonNegativeFlex {
+    value: SpecifiedNumericValue<CssFlexCalculation>,
+}
+
+impl CssSpecifiedNonNegativeFlex {
+    pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
+        let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
+            component.view()
+        else {
+            return Err(CssNumericConstructionError::at(
+                CssNumericConstructionErrorKind::RootDomainMismatch,
+                Some(&component),
+            ));
+        };
+        if !unit.eq_ignore_ascii_case("fr") {
+            return Err(CssNumericConstructionError::at(
+                CssNumericConstructionErrorKind::RootDomainMismatch,
+                Some(&component),
+            ));
+        }
+        if crate::exact_decimal::LexicalDecimal::new(number.representation()).negative {
+            return Err(CssNumericConstructionError::at(
+                CssNumericConstructionErrorKind::OutOfRange,
+                Some(&component),
+            ));
+        }
+        Ok(Self {
+            value: SpecifiedNumericValue::Literal(Box::new(component)),
+        })
+    }
+
+    pub fn try_from_calculation(calculation: CssFlexCalculation) -> ConstructionResult<Self> {
+        let root = significant_root(calculation.components())?;
+        if matches!(root.view(), CssComponentValueRef::Token(_)) {
+            return Self::try_from_component(root.clone());
+        }
+        if !matches!(root.view(), CssComponentValueRef::Function(_)) {
+            return Err(CssNumericConstructionError::at(
+                CssNumericConstructionErrorKind::RootDomainMismatch,
+                Some(root),
+            ));
+        }
+        Ok(Self {
+            value: SpecifiedNumericValue::Calculation(calculation),
+        })
+    }
+
+    pub fn literal_component(&self) -> Option<&CssComponentValue> {
+        match &self.value {
+            SpecifiedNumericValue::Literal(value) => Some(value),
+            SpecifiedNumericValue::Calculation(_) => None,
+        }
+    }
+
+    pub fn calculation(&self) -> Option<&CssFlexCalculation> {
+        match &self.value {
+            SpecifiedNumericValue::Literal(_) => None,
+            SpecifiedNumericValue::Calculation(value) => Some(value),
+        }
+    }
+
+    pub fn origin(&self) -> &CssValueOrigin {
+        match &self.value {
+            SpecifiedNumericValue::Literal(value) => value.origin(),
+            SpecifiedNumericValue::Calculation(value) => value.origin(),
+        }
+    }
+
+    pub fn serialize_specified(&self) -> SerializationResult<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult<String> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let captured = self.capture_specified(&mut context)?;
+        let mut output = String::new();
+        context.append(&mut output, &captured)?;
+        Ok(output)
+    }
+
+    pub(crate) fn capture_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> SerializationResult<String> {
+        match &self.value {
+            SpecifiedNumericValue::Literal(value) => {
+                context.charge_input(1)?;
+                context.charge_projection(1)?;
+                let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, .. }) =
+                    value.view()
+                else {
+                    unreachable!("checked fr token")
+                };
+                let limit = context.remaining_bytes().checked_sub(2).ok_or_else(|| {
+                    CssSpecifiedValueSerializationError::new(
+                        CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                    )
+                })?;
+                let mut output = format_lexical_shift(number.representation(), 0, limit)?;
+                context.append_temporary(&mut output, "fr")?;
+                Ok(output)
+            }
+            SpecifiedNumericValue::Calculation(value) => {
+                crate::numeric::capture_specified(&value.expression, context).map(|(text, _)| text)
+            }
+        }
+    }
+}
 
 pub(crate) fn significant_root(
     calculation: &crate::CssComponentValues,

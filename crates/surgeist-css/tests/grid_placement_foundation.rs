@@ -409,54 +409,53 @@ fn grid_line_identifiers_preserve_case_and_decoded_escapes() {
 }
 
 #[test]
-fn frozen_i01_projections_keep_exactly_the_old_representable_forms() {
+fn authored_placement_preserves_omission_and_full_line_forms() {
     let bare = declaration("grid-row", "hero");
     let CssKnownPropertyValueRef::GridRow(value) = bare.known().unwrap().property_value().unwrap()
     else {
-        panic!("grid-row ordinary wrapper")
+        panic!("grid row")
     };
-    let old = value.i01_subset().expect("bare name belongs to I01");
-    assert!(old.end().is_none(), "authored omission stays omitted");
-
+    assert!(value.value().authored_end().is_none());
+    assert_eq!(value.value().serialize_specified().unwrap(), "hero");
     let explicit = declaration("grid-row", "hero / auto");
     let CssKnownPropertyValueRef::GridRow(value) =
         explicit.known().unwrap().property_value().unwrap()
     else {
-        panic!("grid-row ordinary wrapper")
+        panic!("grid row")
     };
     assert!(matches!(
-        value.i01_subset().unwrap().end(),
+        value.value().authored_end(),
         Some(CssGridLine::Auto)
     ));
-
     let area = declaration("grid-area", "hero / nav");
     let CssKnownPropertyValueRef::GridArea(value) = area.known().unwrap().property_value().unwrap()
     else {
-        panic!("grid-area ordinary wrapper")
+        panic!("grid area")
     };
-    let old = value.i01_subset().expect("simple area belongs to I01");
-    assert!(old.row_end().is_none());
-    assert!(old.column_end().is_none());
-
-    for (name, authored) in [
-        ("grid-row-start", "main 2"),
-        ("grid-row-start", "2147483648"),
-        ("grid-row-start", "calc(2)"),
-        ("grid-row", "main 2 / auto"),
-        ("grid-area", "main 2 / nav"),
+    assert!(value.value().authored_row_end().is_none());
+    assert!(value.value().authored_column_end().is_none());
+    for (name, authored, expected) in [
+        ("grid-row-start", "main 2", "2 main"),
+        ("grid-row-start", "2147483648", "2147483648"),
+        ("grid-row-start", "calc(2)", "calc(2)"),
+        ("grid-row", "main 2 / auto", "2 main / auto"),
+        ("grid-area", "main 2 / nav", "2 main / nav"),
     ] {
         let source = declaration(name, authored);
         let value = source.known().unwrap().property_value().unwrap();
-        let projected = match value {
-            CssKnownPropertyValueRef::GridRowStart(value) => value.i01_subset().is_some(),
-            CssKnownPropertyValueRef::GridRow(value) => value.i01_subset().is_some(),
-            CssKnownPropertyValueRef::GridArea(value) => value.i01_subset().is_some(),
+        let serialized = match value {
+            CssKnownPropertyValueRef::GridRowStart(value) => {
+                value.value().serialize_specified().unwrap()
+            }
+            CssKnownPropertyValueRef::GridRow(value) => {
+                value.value().serialize_specified().unwrap()
+            }
+            CssKnownPropertyValueRef::GridArea(value) => {
+                value.value().serialize_specified().unwrap()
+            }
             _ => panic!("selected placement wrapper"),
         };
-        assert!(
-            !projected,
-            "{name}: {authored} cannot project to frozen I01"
-        );
+        assert_eq!(serialized, expected, "{name}: {authored}");
     }
 }
 

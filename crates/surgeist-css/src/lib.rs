@@ -399,19 +399,26 @@
 //!
 //! # Authored Grid repetition and keyframe structure
 //!
-//! The six Grid repetition consumers expose parser-owned current values through
-//! their `current()` accessors while retaining the frozen `i01_subset()`
-//! compatibility view. [`CssAuthoredGridTrackList`] distinguishes general track
-//! lists from lists containing exactly one [`CssAuthoredGridAutoRepeat`]. Integer
+//! The six Grid repetition consumers expose authored values through
+//! their `value()` accessors. [`CssGridTrackList`] distinguishes general track
+//! lists from lists containing exactly one [`CssGridAutoRepeat`]. Integer
 //! and automatic repetition are non-recursive. Under the
 //! [selected Grid 3 grammar](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#intrinsic-auto-repeat),
 //! automatic bodies admit general track sizes, including intrinsic and flexible
 //! sizes, while surrounding tracks and integer repeats retain fixed sizes.
 //! `grid-auto-rows` and `grid-auto-columns` expose
-//! [`CssAuthoredGridTrackSizeList`] values without `repeat()`.
-//! [`CssAuthoredGridAutoRepeat::content`] therefore borrows
-//! [`CssAuthoredGridTrackRepeatContent`], while surrounding fixed repeats retain
-//! [`CssAuthoredGridFixedRepeatContent`].
+//! [`CssGridTrackSizeList`] values without `repeat()`.
+//! [`CssGridAutoRepeat::content`] therefore borrows
+//! [`CssGridTrackRepeatContent`], while surrounding fixed repeats retain
+//! [`CssGridFixedRepeatContent`].
+//! Track breadths retain exact ordinary `fr`, length, and percentage quantities
+//! in checked specified scalars. Flex-result math follows the pinned WebKit
+//! behavior where [Grid 2's `fr` rule](https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#fr-unit)
+//! and [Values 4 math typing](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking)
+//! conflict. A flex calculation remains symbolic and cannot enter an inflexible
+//! `minmax()` minimum or `fit-content()`. Grid track models provide checked
+//! constructors and bounded canonical `serialize_specified()` separately from
+//! declaration `as_css()`.
 //!
 //! [`CssKeyframesRule`] and [`CssKeyframeBlock`] preserve source structure. Empty
 //! rules and blocks remain present, while repeated selector blocks, equivalent
@@ -422,8 +429,8 @@
 //! keyframes.
 //!
 //! Grid repetition and the six consuming Grid properties remain Partial for
-//! subgrid name-repeat, empty line-name sets, wider Values math functions, and
-//! other unselected Grid property grammar. Repetition counts and used track
+//! subgrid name-repeat, remaining `grid`/`grid-template` shorthand alternatives,
+//! and implicit-track lifecycle work. Repetition counts and used track
 //! sizes require downstream layout context and remain unresolved here.
 //! `@keyframes` remains Partial for calculation selectors, string names, and
 //! unselected declaration-processing grammar. This crate does not perform Grid
@@ -1211,9 +1218,8 @@ pub use display::{
 };
 pub use gap::{CssGapShorthand, CssGapValue};
 pub use grid_template_areas::{
-    CssAuthoredGridTemplateAreaCell, CssAuthoredGridTemplateAreaRow,
-    CssAuthoredGridTemplateAreaRows, CssAuthoredGridTemplateAreas, CssGridTemplateAreaError,
-    CssGridTemplateAreaName,
+    CssGridTemplateAreaCell, CssGridTemplateAreaError, CssGridTemplateAreaName,
+    CssGridTemplateAreaRow, CssGridTemplateAreaRows, CssGridTemplateAreas,
 };
 mod font_width;
 pub use font_width::{CssFontFaceWidth, CssFontStretch, CssFontWidth, CssFontWidthKeyword};
@@ -1271,9 +1277,9 @@ mod specified_serialization;
 mod writing_modes;
 pub use opacity_scalar::{CssOpacityScalar, CssOpacityScalarKind};
 pub use specified_numeric::{
-    CssSpecifiedLength, CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeLength,
-    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
-    CssSpecifiedNonNegativePercentage, CssSpecifiedNumber,
+    CssSpecifiedLength, CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeFlex,
+    CssSpecifiedNonNegativeLength, CssSpecifiedNonNegativeLengthPercentage,
+    CssSpecifiedNonNegativeNumber, CssSpecifiedNonNegativePercentage, CssSpecifiedNumber,
 };
 pub use specified_serialization::{
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
@@ -1291,7 +1297,7 @@ pub use numeric::{
     CssCalculationProductRef, CssCalculationProfileChannelRef, CssCalculationSizeRef,
     CssCalculationSumOperator, CssCalculationSumRef, CssCalculationSumTermRef,
     CssCalculationTreeCountingRef, CssCalculationType, CssCalculationUnaryRef,
-    CssCalculationValueRef, CssCalculationVariableRef, CssFrequencyCalculation,
+    CssCalculationValueRef, CssCalculationVariableRef, CssFlexCalculation, CssFrequencyCalculation,
     CssIntegerCalculation, CssLengthCalculation, CssLengthPercentageCalculation, CssMathFunction,
     CssNumberCalculation, CssNumericConstant, CssNumericConstructionError,
     CssNumericConstructionErrorKind, CssNumericDimension, CssNumericLiteralRef, CssNumericType,

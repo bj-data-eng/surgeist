@@ -1,7 +1,7 @@
 use surgeist_css::{
-    CssAuthoredGridAutoRepeatKind, CssAuthoredGridAutoTrackComponent,
-    CssAuthoredGridGeneralTrackComponent, CssErrorCode, CssGridRepeatCount, CssKnownProperty,
-    CssKnownPropertyValueRef, CssRecoveryAction, CssTokenKind, ErrorKind, parse_style_attribute,
+    CssErrorCode, CssGridAutoRepeatKind, CssGridAutoTrackComponent, CssGridGeneralTrackComponent,
+    CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction, CssTokenKind, ErrorKind,
+    parse_style_attribute,
 };
 
 #[test]
@@ -34,7 +34,7 @@ fn grid_repeat_models_reject_invalid_cross_products() {
 }
 
 #[test]
-fn grid_repeat_models_accept_each_structural_language_and_project_exact_i01_values() {
+fn grid_repeat_models_accept_each_structural_language() {
     let report = parse_style_attribute(concat!(
         "grid-template-columns: [a] repeat(2, minmax(10px, 1fr) [b]) 1fr; ",
         "grid-template-rows: 20px repeat(auto-fill, minmax(auto, 10px)) repeat(2, 5px); ",
@@ -53,21 +53,15 @@ fn grid_repeat_models_accept_each_structural_language_and_project_exact_i01_valu
     else {
         panic!("expected grid-template-columns");
     };
-    let general = columns
-        .current()
-        .general_list()
-        .expect("general track list");
+    let general = columns.value().general_list().expect("general track list");
     assert!(matches!(
         general.components()[1],
-        CssAuthoredGridGeneralTrackComponent::Repeat(_)
+        CssGridGeneralTrackComponent::Repeat(_)
     ));
-    let old = columns
-        .i01_subset()
-        .expect("legacy-compatible general list");
-    let surgeist_css::CssGridTrackComponent::Repeat(repeat) = &old.components()[1] else {
-        panic!("expected projected repeat");
+    let CssGridGeneralTrackComponent::Repeat(repeat) = &general.components()[1] else {
+        panic!("integer repeat")
     };
-    assert!(matches!(repeat.count(), CssGridRepeatCount::Integer(value) if value.value() == 2));
+    assert_eq!(repeat.count().value(), 2);
 
     let CssKnownPropertyValueRef::GridTemplateRows(rows) = report.syntax()[1]
         .known()
@@ -77,17 +71,16 @@ fn grid_repeat_models_accept_each_structural_language_and_project_exact_i01_valu
     else {
         panic!("expected grid-template-rows");
     };
-    let auto = rows.current().auto_list().expect("auto track list");
+    let auto = rows.value().auto_list().expect("auto track list");
     let auto_repeat = auto
         .components()
         .iter()
         .find_map(|component| match component {
-            CssAuthoredGridAutoTrackComponent::AutoRepeat(value) => Some(value),
+            CssGridAutoTrackComponent::AutoRepeat(value) => Some(value),
             _ => None,
         })
         .expect("single automatic repetition");
-    assert_eq!(auto_repeat.kind(), CssAuthoredGridAutoRepeatKind::AutoFill);
-    assert!(rows.i01_subset().is_some());
+    assert_eq!(auto_repeat.kind(), CssGridAutoRepeatKind::AutoFill);
 
     let CssKnownPropertyValueRef::GridAutoRows(auto_rows) = report.syntax()[2]
         .known()
@@ -97,8 +90,7 @@ fn grid_repeat_models_accept_each_structural_language_and_project_exact_i01_valu
     else {
         panic!("expected grid-auto-rows");
     };
-    assert_eq!(auto_rows.current().sizes().len(), 2);
-    assert!(auto_rows.i01_subset().is_some());
+    assert_eq!(auto_rows.value().sizes().len(), 2);
 
     let CssKnownPropertyValueRef::GridTemplate(template) = report.syntax()[3]
         .known()
@@ -108,9 +100,8 @@ fn grid_repeat_models_accept_each_structural_language_and_project_exact_i01_valu
     else {
         panic!("expected grid-template");
     };
-    assert!(template.current().rows().unwrap().general_list().is_some());
-    assert!(template.current().columns().unwrap().auto_list().is_some());
-    assert!(template.i01_subset().is_some());
+    assert!(template.value().rows().unwrap().general_list().is_some());
+    assert!(template.value().columns().unwrap().auto_list().is_some());
 
     let CssKnownPropertyValueRef::Grid(grid) = report.syntax()[4]
         .known()
@@ -120,15 +111,14 @@ fn grid_repeat_models_accept_each_structural_language_and_project_exact_i01_valu
     else {
         panic!("expected grid");
     };
-    assert!(grid.current().auto_flow().unwrap().dense());
+    assert!(grid.value().auto_flow().unwrap().dense());
     assert!(
-        grid.current()
+        grid.value()
             .explicit_tracks()
             .unwrap()
             .auto_list()
             .is_some()
     );
-    assert!(grid.i01_subset().is_some());
 }
 
 #[test]
@@ -255,7 +245,7 @@ fn flexible_minmax_minimums_are_rejected_at_the_first_responsible_token() {
 }
 
 #[test]
-fn grid_repeat_typed_calculation_stays_symbolic_and_outside_i01_projection() {
+fn grid_repeat_typed_calculation_stays_symbolic() {
     let report = parse_style_attribute(
         "grid-template-columns: repeat(auto-fit, calc((10px + 5%) * 2)); color: red",
     );
@@ -268,8 +258,11 @@ fn grid_repeat_typed_calculation_stays_symbolic_and_outside_i01_projection() {
     else {
         panic!("expected grid-template-columns");
     };
-    assert!(value.current().auto_list().is_some());
-    assert!(value.i01_subset().is_none());
+    assert!(value.value().auto_list().is_some());
+    assert_eq!(
+        value.value().serialize_specified().unwrap(),
+        "repeat(auto-fit, calc(10% + 20px))"
+    );
 }
 
 #[test]
