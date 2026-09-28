@@ -7635,14 +7635,11 @@ pub struct CssUrl {
 }
 
 impl CssUrl {
+    /// Preserves a decoded authored URL, including empty or whitespace values.
+    /// Resource resolution and usability belong to downstream consumers.
     #[must_use]
     pub fn try_new(value: impl Into<String>) -> Option<Self> {
-        let value = value.into();
-        if value.is_empty() {
-            None
-        } else {
-            Some(Self::new(value))
-        }
+        Some(Self::new(value))
     }
 
     #[must_use]

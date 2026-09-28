@@ -1083,7 +1083,7 @@ pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
     vector!(
         "baseline.property.background-image",
         "background-image",
-        "url(\"\")"
+        "url(foo bar)"
     ),
     vector!(
         "baseline.property.background-position",
@@ -1214,7 +1214,7 @@ pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
     ),
     vector!("baseline.property.clip-path", "clip-path", "circle(red)"),
     vector!("baseline.property.mask", "mask", "solid"),
-    vector!("baseline.property.mask-image", "mask-image", "url(\"\")"),
+    vector!("baseline.property.mask-image", "mask-image", "url(foo bar)"),
     vector!("baseline.property.mask-size", "mask-size", "solid"),
     vector!(
         "baseline.property.mask-position",

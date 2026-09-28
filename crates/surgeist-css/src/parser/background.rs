@@ -1236,8 +1236,7 @@ pub(super) fn parse_url<'i, 't>(
 ) -> std::result::Result<CssUrl, ParseError<'i, Error>> {
     let location = input.current_source_location();
     match input.next().map_err(basic)?.clone() {
-        Token::UnquotedUrl(value) => CssUrl::try_new(value.to_string())
-            .ok_or_else(|| unsupported_value(input, None, "URL is empty")),
+        Token::UnquotedUrl(value) => Ok(CssUrl::new(value.to_string())),
         Token::Function(name) if name.eq_ignore_ascii_case("url") => {
             let (value, modifiers) = input.parse_nested_block(|input| {
                 let value = input.expect_string_cloned().map_err(basic)?.to_string();
@@ -1270,11 +1269,7 @@ pub(super) fn parse_url<'i, 't>(
                 }
                 Ok((value, modifiers))
             })?;
-            if value.is_empty() {
-                Err(unsupported_value(input, None, "URL is empty"))
-            } else {
-                Ok(CssUrl::with_modifiers(value, modifiers))
-            }
+            Ok(CssUrl::with_modifiers(value, modifiers))
         }
         token => Err(location.new_unexpected_token_error::<Error>(token)),
     }

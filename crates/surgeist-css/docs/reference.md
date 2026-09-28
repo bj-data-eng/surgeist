@@ -3109,10 +3109,15 @@ Import targets accept empty and whitespace-only decoded strings and URLs without
 trimming their contents. This follows the authored grammar in
 [Cascade 5](https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/#at-import)
 and the empty URL definition in
-[Values 4](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#empty-urls).
+[Values 4](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#url-empty).
 An empty URL resolves to an invalid resource; that downstream result does not
 invalidate its authored syntax. Serialization here preserves authored target
 spelling, rather than performing computed-value URL serialization.
+
+Ordinary property values share this authored URL rule: `url()`, `url("")`, and
+`url('')` retain an empty decoded string, while quoted whitespace remains data.
+`CssUrl::try_new("")` likewise constructs an authored value. URL modifiers on
+quoted forms remain typed and ordered; resource validity belongs downstream.
 
 These models are authored syntax only. `surgeist-css` does not evaluate media or
 supports conditions, match selectors, resolve URLs, load imported resources,
