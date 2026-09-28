@@ -260,6 +260,8 @@ fn css2_residual_keyword_numeric_list_and_separator_domains_are_complete() {
         "widows: 2147483647",
         "widows: calc(4 - 1)",
         "quotes: none",
+        "quotes: auto",
+        "quotes: match-parent",
         "quotes: \"\" \"\"",
         "quotes: \"[\" \"]\" \"«\" \"»\"",
         "word-spacing: normal",

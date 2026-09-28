@@ -10,18 +10,24 @@ pub(super) fn parse_quotes<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssQuotes, ParseError<'i, Error>> {
     let state = input.state();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned)
-        && ident.eq_ignore_ascii_case("none")
-    {
-        return if input.is_exhausted() {
-            Ok(CssQuotes::None)
-        } else {
-            Err(unsupported_value(
-                input,
-                None,
-                "`none` cannot be combined with quotation pairs",
-            ))
+    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+        let keyword = match_ignore_ascii_case! { &ident,
+            "auto" => Some(CssQuotes::Auto),
+            "none" => Some(CssQuotes::None),
+            "match-parent" => Some(CssQuotes::MatchParent),
+            _ => None,
         };
+        if let Some(keyword) = keyword {
+            return if input.is_exhausted() {
+                Ok(keyword)
+            } else {
+                Err(unsupported_value(
+                    input,
+                    None,
+                    "a `quotes` keyword cannot be combined with quotation pairs",
+                ))
+            };
+        }
     }
     input.reset(&state);
 
@@ -33,7 +39,7 @@ pub(super) fn parse_quotes<'i, 't>(
     }
     CssQuotePairList::try_new(pairs)
         .map(CssQuotes::Pairs)
-        .ok_or_else(|| unsupported_value(input, None, "quotes requires `none` or string pairs"))
+        .ok_or_else(|| unsupported_value(input, None, "quotes requires a keyword or string pairs"))
 }
 
 pub(super) fn parse_content<'i, 't>(

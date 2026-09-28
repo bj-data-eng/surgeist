@@ -2260,11 +2260,11 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::ContainerType => X_CONDITIONAL5,
         CssKnownProperty::All => O_CASCADE4,
         CssKnownProperty::Display | CssKnownProperty::Visibility => S_DISPLAY3,
+        CssKnownProperty::Quotes => X_CONTENT3,
         CssKnownProperty::BorderCollapse
         | CssKnownProperty::BorderSpacing
         | CssKnownProperty::CaptionSide
         | CssKnownProperty::EmptyCells
-        | CssKnownProperty::Quotes
         | CssKnownProperty::TableLayout
         | CssKnownProperty::Content
         | CssKnownProperty::ListStyleType
@@ -2606,7 +2606,7 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
             CssKnownProperty::Widows => "#propdef-widows",
             _ => default,
         },
-        CssKnownProperty::Quotes => "generate.html#propdef-quotes",
+        CssKnownProperty::Quotes => "#propdef-quotes",
         CssKnownProperty::WordSpacing => "#propdef-word-spacing",
         CssKnownProperty::LetterSpacing => "#propdef-letter-spacing",
         CssKnownProperty::ZIndex => "visuren.html#propdef-z-index",
@@ -5817,7 +5817,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 622] = [
         "official.property.quotes",
         CssKnownProperty::Quotes,
         "quotes",
-        "generate.html#propdef-quotes",
+        "#propdef-quotes",
         &[],
     ),
     CssFeatureMetadata::complete_property(

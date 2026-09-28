@@ -5892,11 +5892,14 @@ impl CssQuotePairList {
     }
 }
 
-/// The authored CSS2 `quotes` value.
+/// The authored CSS Generated Content 3 `quotes` value. Language-dependent
+/// quotation marks remain unresolved until the element's context is known.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssQuotes {
+    Auto,
     None,
+    MatchParent,
     Pairs(CssQuotePairList),
 }
 

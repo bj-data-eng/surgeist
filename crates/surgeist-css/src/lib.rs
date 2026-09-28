@@ -1117,6 +1117,7 @@ mod font_palette_values;
 mod font_variant;
 mod font_variant_serialization;
 mod imports;
+mod quotes;
 pub use imports::*;
 mod custom_media;
 pub use custom_media::*;

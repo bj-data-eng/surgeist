@@ -2789,6 +2789,7 @@ pub surgeist_css::CssLonghandValueRef::PaddingLeft(&'a surgeist_css::CssPaddingV
 pub surgeist_css::CssLonghandValueRef::PaddingRight(&'a surgeist_css::CssPaddingValue)
 pub surgeist_css::CssLonghandValueRef::PaddingTop(&'a surgeist_css::CssPaddingValue)
 pub surgeist_css::CssLonghandValueRef::Position(&'a surgeist_css::CssLayoutPosition)
+pub surgeist_css::CssLonghandValueRef::Quotes(&'a surgeist_css::CssQuotes)
 pub surgeist_css::CssLonghandValueRef::Right(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::RowGap(&'a surgeist_css::CssGapValue)
 pub surgeist_css::CssLonghandValueRef::ScrollBehavior(&'a surgeist_css::CssScrollBehavior)
@@ -3362,8 +3363,13 @@ pub surgeist_css::CssQueryComparison::GreaterThanOrEqual
 pub surgeist_css::CssQueryComparison::LessThan
 pub surgeist_css::CssQueryComparison::LessThanOrEqual
 #[non_exhaustive] pub enum surgeist_css::CssQuotes
+pub surgeist_css::CssQuotes::Auto
+pub surgeist_css::CssQuotes::MatchParent
 pub surgeist_css::CssQuotes::None
 pub surgeist_css::CssQuotes::Pairs(surgeist_css::CssQuotePairList)
+impl surgeist_css::CssQuotes
+pub fn surgeist_css::CssQuotes::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssQuotes::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssRadialExtent
 pub surgeist_css::CssRadialExtent::ClosestCorner
 pub surgeist_css::CssRadialExtent::ClosestSide
@@ -7874,10 +7880,16 @@ impl surgeist_css::CssQuotePair
 pub const fn surgeist_css::CssQuotePair::close(&self) -> &surgeist_css::CssContentString
 pub const fn surgeist_css::CssQuotePair::new(open: surgeist_css::CssContentString, close: surgeist_css::CssContentString) -> Self
 pub const fn surgeist_css::CssQuotePair::open(&self) -> &surgeist_css::CssContentString
+impl surgeist_css::CssQuotePair
+pub fn surgeist_css::CssQuotePair::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssQuotePair::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssQuotePairList
 impl surgeist_css::CssQuotePairList
 pub fn surgeist_css::CssQuotePairList::pairs(&self) -> &[surgeist_css::CssQuotePair]
 pub fn surgeist_css::CssQuotePairList::try_new(pairs: alloc::vec::Vec<surgeist_css::CssQuotePair>) -> core::option::Option<Self>
+impl surgeist_css::CssQuotePairList
+pub fn surgeist_css::CssQuotePairList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssQuotePairList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssQuotesPropertyValue
 impl surgeist_css::CssQuotesPropertyValue
 pub fn surgeist_css::CssQuotesPropertyValue::as_css(&self) -> &str

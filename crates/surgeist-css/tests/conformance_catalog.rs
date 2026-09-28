@@ -3681,8 +3681,8 @@ fn c12_property_metadata_is_truthful() {
         (
             "official.property.quotes",
             "quotes",
-            "O-CSS2",
-            "generate.html#propdef-quotes",
+            "X-CONTENT3",
+            "#propdef-quotes",
             "\"open\" \"close\"",
         ),
         (

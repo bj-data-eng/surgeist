@@ -2168,8 +2168,9 @@ these authored models into another Surgeist crate.
 
 ## CSS2 residual, writing, UI, containment, and compositing properties
 
-This property family provides the selected authored grammars for eleven CSS2
-residual properties, the deprecated `clip` property in Masking 1 Appendix A,
+This property family provides the selected authored grammars for ten CSS2
+residual properties, `quotes` in CSS Generated Content 3, the deprecated `clip`
+property in Masking 1 Appendix A,
 Writing Modes 3 `text-combine-upright`,
 `text-orientation`, and `unicode-bidi`, UI3 `caret-color`, `outline-offset`, and
 `resize`, Containment 1 `contain`, Transforms 1 `transform-box`, and Compositing
@@ -2187,6 +2188,13 @@ and whitespace-only authored separators are accepted. `CssClipLength`,
 values under one cumulative budget, with commas in canonical rectangles and
 symbolic calculations left unresolved. Applying a clipping region and the
 separate `clip-path` property remain outside this authored-value contract.
+
+[CSS Generated Content 3 §2.4.1](https://www.w3.org/TR/2025/WD-css-content-3-20251204/#propdef-quotes)
+defines `quotes` as an inherited longhand with initial `auto`. `CssQuotes`
+retains `auto`, `none`, `match-parent`, or a nonempty ordered list of checked
+opening/closing string pairs. Its bounded specified serializer escapes decoded
+strings and charges one cumulative resource budget across every pair. Language
+selection for `auto` and parent matching remain downstream.
 
 [CSS Text 4 §§8.1–8.2](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#word-spacing-property)
 defines `word-spacing` and `letter-spacing` as inherited longhands with
