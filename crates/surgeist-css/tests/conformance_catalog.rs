@@ -634,6 +634,51 @@ fn environment_metadata_includes_font_face_without_claiming_execution() {
     );
 }
 
+#[test]
+fn attribute_substitution_metadata_matches_pending_known_property_behavior() {
+    let record = feature_metadata("required.value.attribute-substitution").unwrap();
+    assert_eq!(record.kind(), CssFeatureKind::Value);
+    assert_eq!(record.source().id().as_str(), "D-VALUES5-ATTR");
+    assert_eq!(record.source().tier(), CssSpecificationTier::LaterStandard);
+    assert_eq!(record.status(), CssSupportStatus::Partial);
+    assert_eq!(
+        record.production(),
+        "#component-function-commas,#typedef-syntax,#attr-notation,#attr-substitution,#attr-security"
+    );
+    assert!(
+        record
+            .supported_subset()
+            .unwrap()
+            .contains("whole-value pending")
+    );
+    assert!(
+        record
+            .unsupported_remainder()
+            .unwrap()
+            .contains("downstream")
+    );
+
+    let source = specification_source("D-VALUES5-ATTR").unwrap();
+    assert_eq!(
+        source.url(),
+        Some("https://www.w3.org/TR/2024/WD-css-values-5-20241111/")
+    );
+    for authored in [
+        "width: attr(data-width <length>, 1px)",
+        "content: attr(data-label)",
+    ] {
+        let report = parse_style_attribute(authored);
+        assert!(report.is_clean(), "{authored}: {:?}", report.diagnostics());
+        assert_eq!(report.syntax().len(), 1, "{authored}");
+        let pending = report.syntax()[0]
+            .known()
+            .unwrap()
+            .substitution_dependent()
+            .expect("valid attr() is pending");
+        assert!(pending.as_css().contains("attr("), "{authored}");
+    }
+}
+
 fn assert_clean_color(authored: &str) {
     let source = format!("color: {authored}");
     let report = parse_style_attribute(&source);

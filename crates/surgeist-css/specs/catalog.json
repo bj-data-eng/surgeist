@@ -170,6 +170,17 @@
         "source_resolution": "Latest published edition before the cutoff, confirmed from the latest-publication metadata and history on 2026-09-13. The selected immutable Fullscreen snapshot explicitly moves its backdrop definition to Position 4. Import only the backdrop identity and fully-styleable classification required to compose selected pseudo-element grammar; Position 4 is not selected in full."
       },
       {
+        "id": "css-values-5-attribute-substitution-definitions",
+        "kind": "w3c-dated-publication",
+        "date": "2024-11-11",
+        "url": "https://www.w3.org/TR/2024/WD-css-values-5-20241111/",
+        "sha256": "af984ef26b3954143b0f270253e3373f06b5255a5ac00aad919a4cb1b334a8ad",
+        "bytes": 661889,
+        "latest_published_url": "https://www.w3.org/TR/css-values-5/",
+        "publication_history_url": "https://www.w3.org/standards/history/css-values-5/",
+        "source_resolution": "The selected Content 3 content-list grammar directly references attr(). Import only Values 5 sections 3.1.1, 3.3 and 7.7 for comma-containing function arguments, syntax and ordinary-property pending substitution behavior. Optional-comma omission follows the already selected Values 4 section 2.1. The 2024-11-11 publication is already pinned for other narrow definitions; this does not select Values 5 in full. Its illustrative <number px> spellings are inconsistent with the normative <syntax> production and are not adopted."
+      },
+      {
         "id": "css-values-5-tree-counting-definitions",
         "kind": "w3c-dated-publication",
         "date": "2024-11-11",
@@ -731,6 +742,59 @@
           "root"
         ],
         "downstream_requirements": "Mutable CSSOM objects and identity, matching, cascade execution, invalidation and application of conditional rules remain downstream. Authored ordering and intrinsic recovery remain CSS responsibilities."
+      },
+      {
+        "id": "attribute-value-authored-substitution",
+        "source_id": "css-values-5-attribute-substitution-definitions",
+        "signatures": [
+          "attr( <attr-name> <syntax>? , <declaration-value>? )",
+          "<syntax> = '*' | <syntax-component> [ '|' <syntax-component> ]* | <syntax-string>"
+        ],
+        "sections": [
+          {
+            "anchor": "component-function-commas",
+            "url": "https://www.w3.org/TR/2024/WD-css-values-5-20241111/#component-function-commas"
+          },
+          {
+            "anchor": "typedef-syntax",
+            "url": "https://www.w3.org/TR/2024/WD-css-values-5-20241111/#typedef-syntax"
+          },
+          {
+            "anchor": "attr-notation",
+            "url": "https://www.w3.org/TR/2024/WD-css-values-5-20241111/#attr-notation"
+          },
+          {
+            "anchor": "attr-substitution",
+            "url": "https://www.w3.org/TR/2024/WD-css-values-5-20241111/#attr-substitution"
+          },
+          {
+            "anchor": "attr-security",
+            "url": "https://www.w3.org/TR/2024/WD-css-values-5-20241111/#attr-security"
+          }
+        ],
+        "required_by": [
+          {
+            "module_id": "css-content-3",
+            "section_url": "https://www.w3.org/TR/2025/WD-css-content-3-20251204/#propdef-content",
+            "requirement": "The selected content property includes attr() as authored generated content."
+          },
+          {
+            "module_id": "css-content-3",
+            "section_url": "https://www.w3.org/TR/2025/WD-css-content-3-20251204/#typedef-content-content-list",
+            "requirement": "The content-list production directly references attr(), importing its authored argument grammar."
+          }
+        ],
+        "authored_owner": "css",
+        "authored_requirements": [
+          "Admit the selected attr-name, optional direct <syntax> and optional comma/fallback grammar in ordinary known-property values. A present fallback needs one or more declaration-value component tokens; whitespace counts as fallback content, while comments alone do not. Braced fallback tokens must satisfy the strict declaration-value grammar.",
+          "Interpret bracketed type names and bare keyword alternatives ASCII case-insensitively under the selected Values 4 keyword rules; a quoted syntax string decodes and parses as the same <syntax>. Do not admit later type() syntax or the publication's illustrative <number px> spelling as normative grammar.",
+          "Retain complete original components, source origin and importance for qualifying whole-property pending values. Strict checked replacement reentry rejects residual attr() and ordinary invalid grammar without resolving attributes, selecting fallbacks or changing descriptor/query admission policies."
+        ],
+        "downstream_owners": [
+          "style",
+          "root"
+        ],
+        "downstream_requirements": "Style supplies attribute lookup with the applicable namespace environment, syntax-directed value substitution, fallback choice, URL-taint enforcement, computed-value invalidation and cascade. Root integration supplies host context. A reusable authored syntax model remains CSS-owned work; this slice uses checked retained components without claiming that model is complete. The import does not select all of Values 5."
       },
       {
         "id": "environment-variable-authored-substitution",

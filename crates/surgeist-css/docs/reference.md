@@ -316,6 +316,14 @@ combined from separate parsed inputs. `CssPropertyValueParseError` carries a typ
 grammar or component error and a `CssSerializedOrigin`; generated parsing offsets
 are mapped back to those original tokens or to programmatic provenance.
 
+For checked `parse_property_value` construction, a nested resource failure with
+`NestingLimit`, `ComponentLimit`, `ByteLimit`, or `CapacityOverflow` remains
+`CssPropertyValueErrorKind::Component` with the offending original token origin.
+Ordinary property-grammar rejection remains `CssPropertyValueErrorKind::Grammar`.
+This preserves the typed resource exception through the known-property parser;
+callers migrating from a generic invalid-property error can inspect `kind()` and
+`origin()` without treating generated serialization coordinates as authored ones.
+
 Declarations read by `parse_sheet` and `parse_style_attribute` expose
 `parsed_name()` and `parsed_value()` with original spans and a shared input
 snapshot. The value span excludes the importance annotation and declaration
@@ -681,7 +689,7 @@ it does not select cascade targets.
 A substitution-dependent declaration returns `CssExpansion::Pending`. Once the
 downstream substitution owner supplies complete replacement components,
 `CssPendingSubstitution::reenter` returns `CssContributions` or a typed error,
-never another pending result. It rejects residual `var()` or `env()` at any nesting depth
+never another pending result. It rejects residual `var()`, `env()` or `attr()` at any nesting depth
 before applying the original property grammar. Grammar and component failures
 retain the same origin mapping as `parse_property_value`. Failure publishes no
 partial contributions, and the pending handle remains available for another
@@ -709,7 +717,8 @@ the first has no fallback; the second does not match the intrinsic production.
 
 Whole-property pending admission considers each function family independently.
 A family qualifies when at least one occurrence exists and every occurrence of
-that family matches its grammar. Either qualifying family defers the property:
+that family matches its grammar. Either qualifying `var()` or `env()` family
+defers the property:
 `env(var(--name))` is pending through `var()`, while `var(env(foo))` is pending
 through `env()`. This preserves authored syntax without choosing substitution order.
 Otherwise-permitted custom-property and style-query token streams can retain
@@ -724,6 +733,42 @@ standards-track source outside the selected whole-module profile. Its shared-val
 record remains partial for other Env1 contexts and execution; the selected
 font-palette descriptor consumer is included. This does not add Env1 as a
 selected whole module.
+
+## Authored attribute substitutions
+
+The required [Values 5 `attr()` and `<syntax>` definitions](https://www.w3.org/TR/2024/WD-css-values-5-20241111/#attr-notation),
+imported through the selected [Content 3 `content` grammar](https://www.w3.org/TR/2025/WD-css-content-3-20251204/#typedef-content-content-list),
+admit syntactically valid `attr()` in ordinary known-property values. Such a
+declaration retains its original component tree, source origin and importance
+as a whole-value pending substitution. It remains symbolic: CSS does not read
+an element's attributes, parse an attribute value, choose a fallback, or
+produce a computed value. The context-free `parse_property_value` checked
+constructor uses the same admission rule. `CssPendingSubstitution::reenter`
+requires a complete replacement component tree and rejects residual `attr()`
+before checking the ordinary property grammar; it cannot return another
+pending value. Parsed `content` with a valid `attr()` now exposes
+`substitution_dependent()` rather than typed `CssContent`; the existing checked
+typed content constructors remain available for concrete values.
+
+The selected grammar is `attr(<attr-name> <syntax>?, <declaration-value>?)`.
+The optional syntax is direct `<syntax>`, including bracketed type names, bare
+keyword alternatives, `|` combinations, and an equivalent decoded quoted
+syntax string; it has no `type()` wrapper. Type-name and keyword terminals
+follow the selected Values 4 ASCII case-insensitive keyword rule. A present
+fallback requires one or more declaration-value component tokens; whitespace
+is a token, while a comment alone is not. The comma is omitted when there is
+no fallback. A braced fallback must satisfy the strict
+declaration-value grammar. The dated Values 5 publication contains illustrative
+`<number px>` spellings that conflict with its normative `<syntax>` production;
+they are not admitted. Decoded syntax strings have a bounded 256-pass limit;
+exhaustion reports `NestingLimit`. This slice uses checked retained components
+without claiming a reusable public syntax AST.
+
+Custom-property, descriptor and query admission retain their own policies.
+Style supplies the namespace environment for attribute lookup and enforces
+the selected [URL-taint restrictions](https://www.w3.org/TR/2024/WD-css-values-5-20241111/#attr-security)
+during substitution; CSS does not execute that operation. This narrow import
+does not select the rest of Values 5.
 
 ## Intrinsic metadata and authored grammar identity
 

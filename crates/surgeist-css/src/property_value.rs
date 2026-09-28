@@ -55,6 +55,11 @@ impl CssPropertyValueParseError {
     }
 
     fn from_grammar(error: Error, serialized: &CssSerializedValue) -> Self {
+        if let ErrorKind::InvalidComponentValue(detail) = error.kind()
+            && crate::error::is_component_resource_error(detail)
+        {
+            return Self::from_component((**detail).clone());
+        }
         let origin = serialized
             .origin_at(error.position().byte_offset().value())
             .expect("the property parser reports a cursor within its serialized input or at EOF")

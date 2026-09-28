@@ -587,7 +587,7 @@ impl CssPendingSubstitution {
     /// or an error, never another pending state. It preserves the caller's token
     /// origins and the original declaration's identity and importance.
     ///
-    /// A decoded `var()` or `env()` at any component depth returns `ResidualSubstitution`
+    /// A decoded `var()`, `env()`, or `attr()` at any component depth returns `ResidualSubstitution`
     /// before grammar checking. Other invalid values retain the same mapped
     /// error as [`crate::parse_property_value`], including source resource limits.
     pub fn reenter(

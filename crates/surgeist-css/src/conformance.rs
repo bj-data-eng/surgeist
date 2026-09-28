@@ -716,6 +716,14 @@ const D_ENV1: CssSpecificationSource = dated_source!(
     CssSpecificationTier::LaterStandard,
     "https://www.w3.org/TR/2025/WD-css-env-1-20250923/"
 );
+// Required Content 3 attr() definitions only; Values 5 is not selected in full.
+const D_VALUES5_ATTR: CssSpecificationSource = dated_source!(
+    "D-VALUES5-ATTR",
+    "CSS Values and Units",
+    "5",
+    CssSpecificationTier::LaterStandard,
+    "https://www.w3.org/TR/2024/WD-css-values-5-20241111/"
+);
 const O_BOX3: CssSpecificationSource = dated_source!(
     "O-BOX3",
     "CSS Box Model",
@@ -1228,6 +1236,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     O_VALUES3,
     O_VARIABLES1,
     D_ENV1,
+    D_VALUES5_ATTR,
     O_BOX3,
     O_COLOR4,
     O_BACKGROUNDS3,
@@ -2071,6 +2080,7 @@ static OFFICIAL_NON_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
     active_coverage!("official.value.calc"),
     active_coverage!("baseline.value.substitution-dependent"),
     active_coverage!("required.value.environment-substitution"),
+    active_coverage!("required.value.attribute-substitution"),
     active_coverage!("official.value.box-edge-keywords"),
     active_coverage!("official.value.color"),
     active_coverage!("official.value.alpha"),
@@ -2714,7 +2724,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 622] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 623] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -2965,6 +2975,15 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 622] = [
         "#funcdef-env,#env-function,#env-in-shorthands",
         "Known-property, font-palette and recognized font-face descriptor values qualify for pending substitution through valid env() functions, including exact integer indices, symbolic integer calculations and token-preserving fallbacks. Strict replacement reentry rejects residual env().",
         "Other Env1 contexts and environment lookup/substitution execution remain outside this authored subset; this record does not select the complete Env1 module.",
+    ),
+    CssFeatureMetadata::partial(
+        "required.value.attribute-substitution",
+        CssFeatureKind::Value,
+        "attr() in authored known-property values",
+        D_VALUES5_ATTR,
+        "#component-function-commas,#typedef-syntax,#attr-notation,#attr-substitution,#attr-security",
+        "Known-property values with syntactically valid attr() references remain whole-value pending, retaining original components and provenance. Strict replacement reentry rejects residual attr() and checks the ordinary property grammar.",
+        "Attribute lookup, fallback choice and computed-value substitution remain downstream; descriptor and query admission and the rest of Values 5 are not selected here.",
     ),
     CssFeatureMetadata::complete(
         "official.value.css-wide-keyword",

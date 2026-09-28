@@ -1647,11 +1647,17 @@ pub(crate) fn with_property_context<'i>(
         return error;
     };
     if matches!(
-        error.kind,
+        &error.kind,
         ParseErrorKind::Custom(Error {
             kind: ErrorKind::InvalidColorSyntax(_),
             ..
         })
+    ) || matches!(
+        &error.kind,
+        ParseErrorKind::Custom(Error {
+            kind: ErrorKind::InvalidComponentValue(detail),
+            ..
+        }) if is_component_resource_error(detail)
     ) {
         return error;
     }
@@ -1665,6 +1671,18 @@ pub(crate) fn with_property_context<'i>(
         }),
     ));
     error
+}
+
+/// Resource failures are component invariants even when found during a
+/// property-specific preflight. Keep their typed kind and original token origin.
+pub(crate) fn is_component_resource_error(detail: &crate::CssComponentValueError) -> bool {
+    matches!(
+        detail.kind(),
+        crate::CssComponentValueErrorKind::NestingLimit
+            | crate::CssComponentValueErrorKind::ComponentLimit
+            | crate::CssComponentValueErrorKind::ByteLimit
+            | crate::CssComponentValueErrorKind::CapacityOverflow
+    )
 }
 
 pub(crate) fn with_descriptor_context<'i>(

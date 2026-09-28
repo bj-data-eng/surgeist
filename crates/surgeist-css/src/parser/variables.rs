@@ -15,12 +15,15 @@ use crate::syntax::{
 };
 use crate::validation::parse_global_keyword;
 
+mod attr;
+
 pub(super) static IMPLEMENTED_DECLARATIONS: &[CssFeatureId] =
     &[CssFeatureId::new("baseline.declaration.custom-property")];
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("baseline.value.substitution-dependent"),
     CssFeatureId::new("required.value.environment-substitution"),
+    CssFeatureId::new("required.value.attribute-substitution"),
 ];
 
 pub(crate) fn parse_custom_property_name(name: &str) -> Option<CssCustomPropertyName> {
@@ -53,6 +56,7 @@ impl Family {
 struct Summary {
     var: Family,
     env: Family,
+    attr: Family,
     invalid_var: Option<Issue>,
 }
 struct Issue {
@@ -70,6 +74,7 @@ impl Summary {
     fn merge(&mut self, other: Self) {
         self.var.merge(other.var);
         self.env.merge(other.env);
+        self.attr.merge(other.attr);
         if self.invalid_var.is_none() {
             self.invalid_var = other.invalid_var;
         }
@@ -143,14 +148,18 @@ pub(crate) fn collect_authored_declaration_value<'i, 't>(
                 }
                 invalid_syntax(location, "invalid substitution component")
             })?;
-            let local = summarize(std::slice::from_ref(&component), Some(numeric), true).map_err(
-                |error| {
-                    invalid_component_value(
-                        issue_location(numeric, error.origin(), &[], false, offset, location),
-                        error,
-                    )
-                },
-            )?;
+            let local = summarize(
+                std::slice::from_ref(&component),
+                Some(numeric),
+                true,
+                matches!(context, SubstitutionContext::KnownProperty),
+            )
+            .map_err(|error| {
+                invalid_component_value(
+                    issue_location(numeric, error.origin(), &[], false, offset, location),
+                    error,
+                )
+            })?;
             if invalid_var_error.is_none()
                 && let Some(issue) = &local.invalid_var
             {
@@ -177,7 +186,7 @@ pub(crate) fn collect_authored_declaration_value<'i, 't>(
         }
         end = input.position();
     }
-    let qualifies = summary.var.qualifies() || summary.env.qualifies();
+    let qualifies = summary.var.qualifies() || summary.env.qualifies() || summary.attr.qualifies();
     if summary.var.invalid
         && (matches!(context, SubstitutionContext::CustomProperty) || !qualifies)
         && let Some(error) = invalid_var_error
@@ -392,6 +401,7 @@ fn summarize(
     items: &[CssComponentValue],
     numeric: Option<&NumericInputContext<'_>>,
     classify_env: bool,
+    classify_attr: bool,
 ) -> Result<Summary, CssComponentValueError> {
     let mut summary = Summary::default();
     let mut stack = vec![(items, 0_usize)];
@@ -436,6 +446,10 @@ fn summarize(
                     }
                     _ => {}
                 }
+                if classify_attr && function.name().eq_ignore_ascii_case("attr") {
+                    summary.attr.seen = true;
+                    summary.attr.invalid |= !attr::valid(function.values().items())?;
+                }
                 Some(function.values().items())
             }
             Component::Block(block) => Some(block.values().items()),
@@ -458,7 +472,7 @@ pub(super) fn checked_variable_components(
 ) -> Option<bool> {
     match context {
         SubstitutionContext::ExistingVarOnlyQuery | SubstitutionContext::PermissiveStyleOperand => {
-            let summary = summarize(items, None, false).ok()?;
+            let summary = summarize(items, None, false, false).ok()?;
             if summary.var.invalid {
                 None
             } else {
@@ -477,7 +491,7 @@ pub(crate) fn descriptor_substitution_qualifies(
     items: &[CssComponentValue],
     numeric: &NumericInputContext<'_>,
 ) -> Result<bool, CssComponentValueError> {
-    let summary = summarize(items, Some(numeric), true)?;
+    let summary = summarize(items, Some(numeric), true, false)?;
     Ok(summary.var.qualifies() || summary.env.qualifies())
 }
 
@@ -486,7 +500,9 @@ pub(crate) fn font_face_env_qualifies(
     items: &[CssComponentValue],
     numeric: &NumericInputContext<'_>,
 ) -> Result<bool, CssComponentValueError> {
-    Ok(summarize(items, Some(numeric), true)?.env.qualifies())
+    Ok(summarize(items, Some(numeric), true, false)?
+        .env
+        .qualifies())
 }
 
 #[derive(Clone, Copy)]
@@ -510,7 +526,9 @@ pub(crate) fn contains_substitution(values: &CssComponentValues) -> bool {
         for item in items {
             match item.view() {
                 Component::Function(function) => {
-                    if substitution_kind(function.name()).is_some() {
+                    if substitution_kind(function.name()).is_some()
+                        || function.name().eq_ignore_ascii_case("attr")
+                    {
                         return true;
                     }
                     stack.push(function.values().items());

@@ -1786,16 +1786,6 @@ fn parses_generated_content_values_symbolically() {
             ),
         ),
         (
-            "content attr",
-            "attr(data-label)",
-            CssContent::Items(
-                CssContentList::try_new(vec![CssContentItem::Attr(
-                    CssAttributeName::try_new("data-label").unwrap(),
-                )])
-                .unwrap(),
-            ),
-        ),
-        (
             "content quote keywords",
             "open-quote close-quote no-open-quote no-close-quote",
             CssContent::Items(
@@ -1813,6 +1803,32 @@ fn parses_generated_content_values_symbolically() {
     for (label, authored_value, expected_value) in cases {
         let actual = single_declaration_value!("content", Content, authored_value);
         assert_eq!(actual, expected_value, "{label}");
+    }
+}
+
+#[test]
+fn content_attribute_reference_retains_pending_authored_components() {
+    for authored in [
+        "attr(data-label)",
+        "target-counter(attr(href), page)",
+        "\"Chapter \" counter(section, upper-roman) counters(item, \".\", lower-alpha) attr(data-label) open-quote",
+    ] {
+        let input = format!(".chapter::before {{ content: {authored}; }}");
+        let declaration = single_declaration(&input);
+        assert_eq!(declaration.property(), &CssProperty::Content);
+        let pending = declaration
+            .known()
+            .unwrap()
+            .substitution_dependent()
+            .expect("valid attr() remains pending until attribute substitution");
+        assert_eq!(pending.as_css(), authored);
+        let components = declaration.value_components();
+        assert!(!components.items().is_empty());
+        assert_eq!(components.serialize().unwrap().as_css().trim(), authored);
+        assert!(components.items().iter().all(|component| matches!(
+            component.origin(),
+            CssValueOrigin::Parsed(origin) if origin.source().as_str() == input.as_str()
+        )));
     }
 }
 
@@ -1942,7 +1958,7 @@ fn public_api_exposes_generated_content_list_style_and_counter_values() {
     let sheet = parse_sheet(
         r#"
             .chapter::before {
-                content: "Chapter " counter(section, upper-roman) counters(item, ".", lower-alpha) attr(data-label) open-quote;
+                content: "Chapter " counter(section, upper-roman) counters(item, ".", lower-alpha) open-quote;
                 list-style: url(marker.svg) inside square;
                 counter-reset: section 1 page -1 item;
             }
@@ -1963,7 +1979,6 @@ fn public_api_exposes_generated_content_list_style_and_counter_values() {
         CssContentItem::String(prefix),
         CssContentItem::Counter(counter),
         CssContentItem::Counters(counters),
-        CssContentItem::Attr(attribute),
         CssContentItem::OpenQuote,
     ] = content_list.items()
     else {
@@ -1981,7 +1996,6 @@ fn public_api_exposes_generated_content_list_style_and_counter_values() {
         counters.style(),
         Some(CssCounterStyle::BuiltIn(CssBuiltInCounterStyle::LowerAlpha))
     ));
-    assert_eq!(attribute.as_str(), "data-label");
 
     let CssSelector::Compound(selector) = style.selectors().selectors()[0].selector() else {
         panic!("expected compound pseudo-element selector");
@@ -2039,7 +2053,6 @@ fn rejects_unsupported_generated_content_list_and_counter_forms() {
         ("content", "\"x\" / \"alt\""),
         ("content", "contents"),
         ("content", "linear-gradient(red, blue)"),
-        ("content", "target-counter(attr(href), page)"),
         ("content", "counter(item, symbols(cyclic \"*\" \"+\"))"),
         ("list-style-position", "center"),
         ("list-style-image", "red"),
