@@ -1,9 +1,8 @@
-use super::color::parse_color;
+use super::border_style::parse_border_style;
+use super::border_width::{parse_exact_line_triple, parse_exact_line_width};
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
-use super::values::{
-    CalculationRoot, LengthGrammar, parse_length_with_context, parse_numeric_function,
-};
+use super::values::{CalculationRoot, parse_numeric_function};
 use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
@@ -85,102 +84,26 @@ pub(super) fn parse_column_fill<'i, 't>(
 pub(super) fn parse_line_style<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssLineStyle, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
-    match_ignore_ascii_case! { &ident,
-        "none" => Ok(CssLineStyle::None),
-        "hidden" => Ok(CssLineStyle::Hidden),
-        "dotted" => Ok(CssLineStyle::Dotted),
-        "dashed" => Ok(CssLineStyle::Dashed),
-        "solid" => Ok(CssLineStyle::Solid),
-        "double" => Ok(CssLineStyle::Double),
-        "groove" => Ok(CssLineStyle::Groove),
-        "ridge" => Ok(CssLineStyle::Ridge),
-        "inset" => Ok(CssLineStyle::Inset),
-        "outset" => Ok(CssLineStyle::Outset),
-        _ => Err(unsupported_value_at(
-            location,
-            None,
-            unsupported_keyword_reason("line-style", ident.as_ref()),
-        )),
-    }
+    parse_border_style(input)
 }
 
 pub(super) fn parse_line_width<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssLineWidth, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        return match_ignore_ascii_case! { &ident,
-            "thin" => Ok(CssLineWidth::Thin),
-            "medium" => Ok(CssLineWidth::Medium),
-            "thick" => Ok(CssLineWidth::Thick),
-            _ => Err(unsupported_value_at(
-                location,
-                None,
-                unsupported_keyword_reason("line-width", ident.as_ref()),
-            )),
-        };
-    }
-
-    parse_non_negative_length(input, numeric, "column-rule-width").map(CssLineWidth::Length)
-}
-
-fn parse_non_negative_length<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-    context: &str,
-) -> Result<CssNonNegativeLength, ParseError<'i, Error>> {
-    let value =
-        parse_length_with_context(input, numeric, LengthGrammar::NonNegativeLength, context)?;
-    CssNonNegativeLength::try_new(value)
-        .ok_or_else(|| unsupported_value(input, None, format!("invalid {context}")))
+    parse_exact_line_width(input, numeric, "column-rule-width")
 }
 
 pub(super) fn parse_column_rule<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssColumnRule, ParseError<'i, Error>> {
-    let mut width = None;
-    let mut style = None;
-    let mut color = None;
-
-    while !input.is_exhausted() {
-        if width.is_none()
-            && let Ok(value) = input.try_parse(|input| parse_line_width(input, numeric))
-        {
-            width = Some(value);
-            continue;
-        }
-        if style.is_none()
-            && let Ok(value) = input.try_parse(parse_line_style)
-        {
-            style = Some(value);
-            continue;
-        }
-        if color.is_none()
-            && let Ok(value) = input.try_parse(|input| parse_color(input, numeric))
-        {
-            color = Some(value);
-            continue;
-        }
-        return Err(unsupported_value(
-            input,
-            None,
-            "unsupported or duplicate column-rule component",
-        ));
-    }
-
-    if width.is_none() && style.is_none() && color.is_none() {
-        Err(unsupported_value(
-            input,
-            None,
-            "column-rule shorthand is missing a component",
-        ))
-    } else {
-        Ok(CssColumnRule::new(width, style, color))
-    }
+    let (width, style, color) =
+        parse_exact_line_triple(input, numeric, "column-rule", "column-rule-width")?;
+    Ok(
+        CssColumnRule::try_new(width, style, color.map(|value| value.into_parts().0))
+            .expect("parsed nonempty column rule"),
+    )
 }
 
 pub(super) fn parse_column_span<'i, 't>(

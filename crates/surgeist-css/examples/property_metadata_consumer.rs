@@ -148,6 +148,11 @@ const LONGHANDS: &[P] = &[
     P::ContainIntrinsicBlockSize,
     P::ColumnWidth,
     P::ColumnCount,
+    P::ColumnFill,
+    P::ColumnRuleColor,
+    P::ColumnRuleStyle,
+    P::ColumnRuleWidth,
+    P::ColumnSpan,
     P::BorderCollapse,
     P::BorderSpacing,
     P::Quotes,
@@ -247,6 +252,11 @@ const SHORTHANDS: &[(P, &[P], &[P])] = &[
     ),
     (P::TextAlign, &[P::TextAlignAll, P::TextAlignLast], &[]),
     (P::Columns, &[P::ColumnWidth, P::ColumnCount], &[]),
+    (
+        P::ColumnRule,
+        &[P::ColumnRuleWidth, P::ColumnRuleStyle, P::ColumnRuleColor],
+        &[],
+    ),
     (P::Size, &[P::Width, P::Height], &[]),
     (P::MinSize, &[P::MinWidth, P::MinHeight], &[]),
     (P::MaxSize, &[P::MaxWidth, P::MaxHeight], &[]),
@@ -715,6 +725,11 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         }
         CssLonghandValueRef::ColumnWidth(v) => assert_eq!(*v, CssSizeValue::Auto),
         CssLonghandValueRef::ColumnCount(v) => assert_eq!(*v, CssColumnCount::Auto),
+        CssLonghandValueRef::ColumnFill(v) => assert_eq!(*v, CssColumnFill::Balance),
+        CssLonghandValueRef::ColumnRuleWidth(v) => assert_eq!(*v, CssBorderWidth::Medium),
+        CssLonghandValueRef::ColumnRuleStyle(v) => assert_eq!(*v, CssBorderStyle::None),
+        CssLonghandValueRef::ColumnRuleColor(v) => assert!(v.is_current_color()),
+        CssLonghandValueRef::ColumnSpan(v) => assert_eq!(*v, CssColumnSpan::None),
         CssLonghandValueRef::BorderCollapse(v) => assert_eq!(*v, CssBorderCollapse::Separate),
         CssLonghandValueRef::BorderSpacing(v) => {
             assert_eq!(v.horizontal().value(), &CssLength::Zero);
@@ -818,7 +833,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 231);
+    assert_eq!(expected.len(), 237);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {

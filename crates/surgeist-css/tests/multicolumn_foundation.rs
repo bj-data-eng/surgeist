@@ -102,6 +102,25 @@ fn one_value(name: &str, value: &str) -> CssLonghandValue {
     item.ordinary_value().unwrap().clone()
 }
 
+fn authored_color(value: &str) -> CssAuthoredColor {
+    let source = declaration("column-rule-color", value);
+    let CssKnownPropertyValueRef::ColumnRuleColor(color) =
+        source.known().unwrap().property_value().unwrap()
+    else {
+        panic!("typed color")
+    };
+    color.current().clone()
+}
+
+fn programmatic_width(number: &str) -> CssBorderWidth {
+    CssBorderWidth::Length(
+        CssSpecifiedNonNegativeLength::try_from_component(
+            CssComponentValue::try_dimension(number, "px").unwrap(),
+        )
+        .unwrap(),
+    )
+}
+
 #[test]
 fn six_properties_have_dated_provenance_and_intrinsic_longhand_or_shorthand_shapes() {
     let mut seen = Vec::new();
@@ -399,5 +418,409 @@ fn normalization_keeps_mixed_order_and_fails_atomically_at_contribution_limit() 
     assert_eq!(
         error.declaration().unwrap().known().unwrap().property(),
         CssKnownProperty::ColumnRule
+    );
+}
+
+#[test]
+fn direct_rule_construction_keeps_exact_width_and_modern_color_without_legacy_projection() {
+    assert!(CssColumnRule::try_new(None, None, None).is_none());
+    assert!(
+        CssSpecifiedNonNegativeLength::try_from_component(
+            CssComponentValue::try_dimension("-1e-100", "px").unwrap()
+        )
+        .is_err()
+    );
+    let width = programmatic_width("1e100");
+    let color = authored_color("color-mix(in srgb, red, green, blue)");
+    let rule = CssColumnRule::try_new(
+        Some(width.clone()),
+        Some(CssBorderStyle::Dashed),
+        Some(color.clone()),
+    )
+    .unwrap();
+    assert_eq!(rule.width(), Some(&width));
+    assert_eq!(rule.style(), Some(CssBorderStyle::Dashed));
+    assert_eq!(rule.color(), Some(&color));
+    assert!(matches!(
+        rule.width().unwrap().origin(),
+        Some(CssValueOrigin::Programmatic)
+    ));
+    let CssBorderWidth::Length(length) = rule.width().unwrap() else {
+        panic!("exact width")
+    };
+    assert!(matches!(
+        length.literal_component().map(CssComponentValue::view),
+        Some(CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }))
+            if number.representation() == "1e100" && unit == "px"
+    ));
+    assert!(length.calculation().is_none());
+    let source = declaration(
+        "column-rule",
+        "1e100px dashed color-mix(in srgb, red, green, blue)",
+    );
+    let CssKnownPropertyValueRef::ColumnRule(parsed) =
+        source.known().unwrap().property_value().unwrap()
+    else {
+        panic!("typed parsed column rule")
+    };
+    assert_eq!(parsed.rule(), &rule);
+    assert!(matches!(
+        parsed.rule().width().unwrap().origin(),
+        Some(CssValueOrigin::Parsed(_))
+    ));
+    let CssValueOrigin::Parsed(origin) = parsed.rule().width().unwrap().origin().unwrap() else {
+        unreachable!()
+    };
+    assert_eq!(origin.span().start().byte_offset().value(), 12);
+    assert_eq!(origin.span().end().byte_offset().value(), 19);
+    let modern_source = declaration("column-rule-color", "color-mix(in srgb, red, green, blue)");
+    let CssKnownPropertyValueRef::ColumnRuleColor(modern) =
+        modern_source.known().unwrap().property_value().unwrap()
+    else {
+        panic!("modern color wrapper")
+    };
+    assert!(modern.i01_subset().is_none());
+    let legacy_source = declaration("column-rule-color", "red");
+    let CssKnownPropertyValueRef::ColumnRuleColor(legacy) =
+        legacy_source.known().unwrap().property_value().unwrap()
+    else {
+        panic!("I01-compatible color wrapper")
+    };
+    assert!(legacy.i01_subset().is_some());
+}
+
+#[test]
+fn calculated_rule_width_preserves_expression_and_source_origin() {
+    let source = declaration("column-rule", "solid calc(1px * 2)");
+    let CssKnownPropertyValueRef::ColumnRule(value) =
+        source.known().unwrap().property_value().unwrap()
+    else {
+        panic!("typed calculated rule")
+    };
+    assert_eq!(value.rule().style(), Some(CssBorderStyle::Solid));
+    let programmatic_calc = CssComponentValue::try_function(
+        "calc",
+        CssComponentValues::try_new(vec![
+            CssComponentValue::try_dimension("1", "px").unwrap(),
+            CssComponentValue::try_token(" ").unwrap(),
+            CssComponentValue::try_token("*").unwrap(),
+            CssComponentValue::try_token(" ").unwrap(),
+            CssComponentValue::try_token("2").unwrap(),
+        ])
+        .unwrap(),
+    )
+    .unwrap();
+    let calculation = CssLengthCalculation::try_from_components(
+        CssComponentValues::try_new(vec![programmatic_calc]).unwrap(),
+    )
+    .unwrap();
+    let constructed = CssColumnRule::try_new(
+        Some(CssBorderWidth::Length(
+            CssSpecifiedNonNegativeLength::try_from_calculation(calculation).unwrap(),
+        )),
+        Some(CssBorderStyle::Solid),
+        None,
+    )
+    .unwrap();
+    for (rule, parsed_origin) in [(value.rule(), true), (&constructed, false)] {
+        let Some(CssBorderWidth::Length(length)) = rule.width() else {
+            panic!("exact calculated width")
+        };
+        assert!(length.literal_component().is_none());
+        assert!(length.calculation().is_some());
+        assert!(
+            matches!(
+                length.origin(),
+                CssValueOrigin::Parsed(_) if parsed_origin
+            ) || matches!(
+                length.origin(),
+                CssValueOrigin::Programmatic if !parsed_origin
+            )
+        );
+        if let CssValueOrigin::Parsed(origin) = length.origin() {
+            assert_eq!(origin.span().start().byte_offset().value(), 18);
+            assert_eq!(origin.span().end().byte_offset().value(), 23);
+        }
+    }
+}
+
+#[test]
+fn typed_initials_and_shorthand_contributions_are_independent_of_parsed_reference_values() {
+    for name in NAMES.into_iter().filter(|name| *name != "column-rule") {
+        let CssPropertyKindRef::Longhand(metadata) = grammar(name).metadata().unwrap().kind()
+        else {
+            panic!("{name} longhand")
+        };
+        let initial = metadata.initial_value();
+        let CssInitialValueRef::Value(value) = initial.view() else {
+            panic!("{name} fixed initial")
+        };
+        match (name, value.view()) {
+            ("column-fill", CssLonghandValueRef::ColumnFill(CssColumnFill::Balance))
+            | ("column-rule-style", CssLonghandValueRef::ColumnRuleStyle(CssBorderStyle::None))
+            | ("column-rule-width", CssLonghandValueRef::ColumnRuleWidth(CssBorderWidth::Medium))
+            | ("column-span", CssLonghandValueRef::ColumnSpan(CssColumnSpan::None)) => {}
+            ("column-rule-color", CssLonghandValueRef::ColumnRuleColor(color))
+                if color.is_current_color() => {}
+            _ => panic!("wrong intrinsic initial for {name}"),
+        }
+    }
+    let source = declaration("column-rule", "dashed");
+    let items = expanded(&source);
+    let [width, style, color] = items.as_slice() else {
+        panic!("three rule members")
+    };
+    assert!(matches!(
+        width.value(),
+        CssContributionValueRef::Ordinary(CssLonghandValueRef::ColumnRuleWidth(
+            CssBorderWidth::Medium
+        ))
+    ));
+    assert!(matches!(
+        style.value(),
+        CssContributionValueRef::Ordinary(CssLonghandValueRef::ColumnRuleStyle(
+            CssBorderStyle::Dashed
+        ))
+    ));
+    assert!(matches!(
+        color.value(),
+        CssContributionValueRef::Ordinary(CssLonghandValueRef::ColumnRuleColor(value))
+            if value.is_current_color()
+    ));
+}
+
+#[test]
+fn column_rule_canonical_output_omits_initials_and_charges_one_cumulative_budget() {
+    let source = declaration("column-rule", "red solid 2px");
+    let CssKnownPropertyValueRef::ColumnRule(reordered) =
+        source.known().unwrap().property_value().unwrap()
+    else {
+        panic!("typed reordered rule")
+    };
+    assert_eq!(
+        reordered.rule().serialize_specified().unwrap(),
+        "2px solid red"
+    );
+    let current = authored_color("currentcolor");
+    let all_initial = CssColumnRule::try_new(
+        Some(CssBorderWidth::Medium),
+        Some(CssBorderStyle::None),
+        Some(current.clone()),
+    )
+    .unwrap();
+    assert_eq!(all_initial.serialize_specified().unwrap(), "medium");
+    assert_eq!(
+        all_initial
+            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(4, 4, 6))
+            .unwrap(),
+        "medium"
+    );
+    for (limits, expected) in [
+        (
+            CssSpecifiedValueSerializationLimits::new(3, 4, 6),
+            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+        ),
+        (
+            CssSpecifiedValueSerializationLimits::new(4, 3, 6),
+            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+        ),
+        (
+            CssSpecifiedValueSerializationLimits::new(4, 4, 5),
+            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+        ),
+    ] {
+        assert_eq!(
+            all_initial
+                .serialize_specified_with_limits(limits)
+                .unwrap_err()
+                .kind(),
+            expected
+        );
+    }
+    let synthetic = CssColumnRule::try_new(None, Some(CssBorderStyle::None), None).unwrap();
+    assert_eq!(synthetic.serialize_specified().unwrap(), "medium");
+    assert_eq!(
+        synthetic
+            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 3, 6))
+            .unwrap(),
+        "medium"
+    );
+    assert_eq!(
+        synthetic
+            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 6))
+            .unwrap_err()
+            .kind(),
+        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+    );
+    let rule = CssColumnRule::try_new(
+        Some(programmatic_width("2")),
+        Some(CssBorderStyle::None),
+        Some(authored_color("red")),
+    )
+    .unwrap();
+    assert_eq!(rule.serialize_specified().unwrap(), "2px red");
+    assert_eq!(
+        rule.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(4, 4, 7))
+            .unwrap(),
+        "2px red"
+    );
+}
+
+#[test]
+fn fill_and_span_keyword_output_is_bounded() {
+    for (fill, text) in [
+        (CssColumnFill::Auto, "auto"),
+        (CssColumnFill::Balance, "balance"),
+        (CssColumnFill::BalanceAll, "balance-all"),
+    ] {
+        assert_eq!(fill.serialize_specified().unwrap(), text);
+        assert_eq!(
+            fill.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                1,
+                1,
+                text.len(),
+            ))
+            .unwrap(),
+            text
+        );
+        assert_eq!(
+            fill.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                1,
+                1,
+                text.len() - 1,
+            ))
+            .unwrap_err()
+            .kind(),
+            CssSpecifiedValueSerializationErrorKind::ByteLimit
+        );
+    }
+    for (span, text) in [(CssColumnSpan::None, "none"), (CssColumnSpan::All, "all")] {
+        assert_eq!(span.serialize_specified().unwrap(), text);
+        assert_eq!(
+            span.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                1,
+                1,
+                text.len(),
+            ))
+            .unwrap(),
+            text
+        );
+        assert_eq!(
+            span.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                1,
+                1,
+                text.len() - 1
+            ))
+            .unwrap_err()
+            .kind(),
+            CssSpecifiedValueSerializationErrorKind::ByteLimit
+        );
+    }
+    for (input_limit, projection_limit, error) in [
+        (
+            0,
+            1,
+            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+        ),
+        (
+            1,
+            0,
+            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+        ),
+    ] {
+        let limits = CssSpecifiedValueSerializationLimits::new(input_limit, projection_limit, 32);
+        for fill in [
+            CssColumnFill::Auto,
+            CssColumnFill::Balance,
+            CssColumnFill::BalanceAll,
+        ] {
+            assert_eq!(
+                fill.serialize_specified_with_limits(limits)
+                    .unwrap_err()
+                    .kind(),
+                error
+            );
+        }
+        for span in [CssColumnSpan::None, CssColumnSpan::All] {
+            assert_eq!(
+                span.serialize_specified_with_limits(limits)
+                    .unwrap_err()
+                    .kind(),
+                error
+            );
+        }
+    }
+}
+
+#[test]
+fn nested_math_and_modern_color_share_the_rule_budget() {
+    let source = declaration("column-rule-width", "calc(1px * 2)");
+    let CssKnownPropertyValueRef::ColumnRuleWidth(width) =
+        source.known().unwrap().property_value().unwrap()
+    else {
+        panic!("calculated exact width")
+    };
+    let color = authored_color("color-mix(in srgb, red, green, blue)");
+    let width_only = CssColumnRule::try_new(Some(width.width().clone()), None, None).unwrap();
+    let color_only = CssColumnRule::try_new(None, None, Some(color.clone())).unwrap();
+    let combined = CssColumnRule::try_new(Some(width.width().clone()), None, Some(color)).unwrap();
+    let minimum_nodes = |rule: &CssColumnRule, input: bool| {
+        (1..=256)
+            .find(|count| {
+                let limits = if input {
+                    CssSpecifiedValueSerializationLimits::new(*count, usize::MAX, usize::MAX)
+                } else {
+                    CssSpecifiedValueSerializationLimits::new(usize::MAX, *count, usize::MAX)
+                };
+                rule.serialize_specified_with_limits(limits).is_ok()
+            })
+            .unwrap()
+    };
+    for input in [true, false] {
+        let width_nodes = minimum_nodes(&width_only, input);
+        let color_nodes = minimum_nodes(&color_only, input);
+        let combined_nodes = minimum_nodes(&combined, input);
+        assert!(width_nodes > 2, "calculation has nested nodes");
+        assert!(color_nodes > 2, "modern color has nested nodes");
+        assert_eq!(combined_nodes, width_nodes + color_nodes - 1);
+        let limits = if input {
+            CssSpecifiedValueSerializationLimits::new(combined_nodes - 1, usize::MAX, usize::MAX)
+        } else {
+            CssSpecifiedValueSerializationLimits::new(usize::MAX, combined_nodes - 1, usize::MAX)
+        };
+        assert_eq!(
+            combined
+                .serialize_specified_with_limits(limits)
+                .unwrap_err()
+                .kind(),
+            if input {
+                CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            } else {
+                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            }
+        );
+    }
+    let expected = "calc(2px) color-mix(in srgb, red, green, blue)";
+    assert_eq!(combined.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        combined
+            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                usize::MAX,
+                usize::MAX,
+                expected.len(),
+            ))
+            .unwrap(),
+        expected
+    );
+    assert_eq!(
+        combined
+            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                usize::MAX,
+                usize::MAX,
+                expected.len() - 1,
+            ))
+            .unwrap_err()
+            .kind(),
+        CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
 }

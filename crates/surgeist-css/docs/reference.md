@@ -2511,8 +2511,20 @@ these compatibility names; other UAs may. Authors should use them only where
 legacy compatibility requires them.
 `columns` retains
 the effective width and count, with omitted components set to `auto`, while its
-wrapper preserves the original spelling and order. `column-rule` preserves
-width, style, and color without performing layout, pagination, or painting.
+wrapper preserves the original spelling and order. `column-rule` retains its
+explicitly authored width, style, and color in the shared exact border domains.
+Its intrinsic expansion contributes all three rule longhands in width, style,
+color order, resetting omitted members to `medium`, `none`, and `currentcolor`.
+The shorthand's specified serializer omits initial components and emits
+`medium` when all components are initial; it shares one resource budget across
+the complete rule. `column-fill` and `column-span` have noninherited `balance`
+and `none` initials. This authored model does not perform column balancing,
+spanner layout, rule painting, or style-dependent width computation. The
+breaking public rule migration makes `CssLineWidth` an alias of
+`CssBorderWidth`, so its `Length` variant contains
+`CssSpecifiedNonNegativeLength`. `CssColumnRule::color()` now returns the exact
+`CssAuthoredColor`; the former `current_color()` synonym is removed. The
+`column-rule-color` wrapper still exposes its optional I01 color projection.
 
 `flex-basis` accepts the width sizing grammar plus `content`, including
 `calc-size(content, …)`; the generic `CssCalcSize` graph retains that flex-only

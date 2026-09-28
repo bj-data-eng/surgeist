@@ -1161,6 +1161,7 @@ mod break_controls;
 mod calc_size;
 mod clip;
 mod color_scalar;
+mod column_rule;
 mod column_sizing;
 mod contain_intrinsic_size;
 mod display;

@@ -4620,83 +4620,9 @@ impl CssNonNegativeLength {
 pub type CssLineStyle = CssBorderStyle;
 
 /// The shared authored `<line-width>` domain.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssLineWidth {
-    Thin,
-    Medium,
-    Thick,
-    Length(CssNonNegativeLength),
-}
+pub type CssLineWidth = crate::CssBorderWidth;
 
-/// The authored components present in a `column-rule` shorthand.
-#[derive(Clone)]
-pub struct CssColumnRule {
-    width: Option<CssLineWidth>,
-    style: Option<CssLineStyle>,
-    color: Option<Box<CssParsedColor>>,
-}
-
-impl std::fmt::Debug for CssColumnRule {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("CssColumnRule")
-            .field("width", &self.width)
-            .field("style", &self.style)
-            .field("color", &self.current_color())
-            .finish()
-    }
-}
-
-impl PartialEq for CssColumnRule {
-    fn eq(&self, other: &Self) -> bool {
-        self.width == other.width
-            && self.style == other.style
-            && parsed_color_options_equal(self.color.as_deref(), other.color.as_deref())
-    }
-}
-
-impl CssColumnRule {
-    pub(crate) fn new(
-        width: Option<CssLineWidth>,
-        style: Option<CssLineStyle>,
-        color: Option<CssParsedColor>,
-    ) -> Self {
-        Self {
-            width,
-            style,
-            color: color.map(Box::new),
-        }
-    }
-
-    #[must_use]
-    pub const fn width(&self) -> Option<&CssLineWidth> {
-        self.width.as_ref()
-    }
-
-    #[must_use]
-    pub const fn style(&self) -> Option<CssLineStyle> {
-        self.style
-    }
-
-    /// Returns the exact authored color component, when present.
-    #[must_use]
-    pub const fn current_color(&self) -> Option<&CssAuthoredColor> {
-        match self.color.as_ref() {
-            Some(color) => Some(color.current()),
-            None => None,
-        }
-    }
-
-    /// Returns the frozen I01 color representation when one exists.
-    #[must_use]
-    pub const fn color(&self) -> Option<&CssColor> {
-        match self.color.as_ref() {
-            Some(color) => color.i01_subset(),
-            None => None,
-        }
-    }
-}
+pub use crate::column_rule::CssColumnRule;
 
 /// The authored `column-span` keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

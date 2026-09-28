@@ -1,4 +1,4 @@
-//! Exact border-width grammar and physical border triples.
+//! Shared exact line-width and unordered width/style/color grammar for borders and column rules.
 
 use cssparser::{ParseError, Parser, Token};
 
@@ -13,9 +13,23 @@ use crate::{
     CssLengthCalculation, CssSpecifiedNonNegativeLength,
 };
 
+type ParsedLineTriple = (
+    Option<CssBorderWidth>,
+    Option<CssBorderStyle>,
+    Option<crate::syntax::CssParsedColor>,
+);
+
 pub(super) fn parse_exact_border_width<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
+) -> Result<CssBorderWidth, ParseError<'i, Error>> {
+    parse_exact_line_width(input, numeric, "border width")
+}
+
+pub(super) fn parse_exact_line_width<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
+    context: &'static str,
 ) -> Result<CssBorderWidth, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("thin"))
@@ -44,7 +58,7 @@ pub(super) fn parse_exact_border_width<'i, 't>(
             input.reset(&state);
             let component = numeric
                 .collect(input)
-                .map_err(|_| unsupported_value_at(location, None, "invalid border width"))?;
+                .map_err(|_| unsupported_value_at(location, None, format!("invalid {context}")))?;
             CssSpecifiedNonNegativeLength::try_from_component(component)
         }
         Token::Function(name) if is_math_function(name) => {
@@ -60,7 +74,7 @@ pub(super) fn parse_exact_border_width<'i, 't>(
         unsupported_value_at(
             numeric.error_location(&error, location, root_offset),
             None,
-            "border width requires a nonnegative length or line-width keyword",
+            format!("{context} requires a nonnegative length or line-width keyword"),
         )
     })
 }
@@ -109,40 +123,64 @@ pub(super) fn parse_exact_border<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssParsedBorderValue, ParseError<'i, Error>> {
+    let (width, style, color) = parse_exact_line_triple(input, numeric, "border", "border width")?;
+    Ok(CssParsedBorderValue::new(width, style, color))
+}
+
+pub(super) fn parse_exact_line_triple<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
+    context: &'static str,
+    width_context: &'static str,
+) -> Result<ParsedLineTriple, ParseError<'i, Error>> {
     let mut width = None;
     let mut style: Option<CssBorderStyle> = None;
     let mut color = None;
     while !input.is_exhausted() {
-        if let Ok(value) = input.try_parse(|input| parse_exact_border_width(input, numeric)) {
+        if let Ok(value) =
+            input.try_parse(|input| parse_exact_line_width(input, numeric, width_context))
+        {
             if width.replace(value).is_some() {
-                return Err(unsupported_value(input, None, "duplicate border width"));
+                return Err(unsupported_value(
+                    input,
+                    None,
+                    format!("duplicate {context} width"),
+                ));
             }
             continue;
         }
         if let Ok(value) = input.try_parse(parse_border_style) {
             if style.replace(value).is_some() {
-                return Err(unsupported_value(input, None, "duplicate border style"));
+                return Err(unsupported_value(
+                    input,
+                    None,
+                    format!("duplicate {context} style"),
+                ));
             }
             continue;
         }
         if let Ok(value) = input.try_parse(|input| parse_color(input, numeric)) {
             if color.replace(value).is_some() {
-                return Err(unsupported_value(input, None, "duplicate border color"));
+                return Err(unsupported_value(
+                    input,
+                    None,
+                    format!("duplicate {context} color"),
+                ));
             }
             continue;
         }
         return Err(unsupported_value(
             input,
             None,
-            "unsupported border component",
+            format!("unsupported {context} component"),
         ));
     }
     if width.is_none() && style.is_none() && color.is_none() {
         return Err(unsupported_value(
             input,
             None,
-            "border shorthand is missing a component",
+            format!("{context} shorthand is missing a component"),
         ));
     }
-    Ok(CssParsedBorderValue::new(width, style, color))
+    Ok((width, style, color))
 }

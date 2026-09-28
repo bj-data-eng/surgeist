@@ -619,9 +619,15 @@ pub fn surgeist_css::CssColumnCount::serialize_specified_with_limits(&self, limi
 pub surgeist_css::CssColumnFill::Auto
 pub surgeist_css::CssColumnFill::Balance
 pub surgeist_css::CssColumnFill::BalanceAll
+impl surgeist_css::CssColumnFill
+pub fn surgeist_css::CssColumnFill::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssColumnFill::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssColumnSpan
 pub surgeist_css::CssColumnSpan::All
 pub surgeist_css::CssColumnSpan::None
+impl surgeist_css::CssColumnSpan
+pub fn surgeist_css::CssColumnSpan::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssColumnSpan::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssComponentValueErrorKind
 pub surgeist_css::CssComponentValueErrorKind::BadString
 pub surgeist_css::CssComponentValueErrorKind::BadUrl
@@ -2700,11 +2706,6 @@ pub fn surgeist_css::CssLineHeight::serialize_specified_with_limits(&self, limit
 impl core::cmp::Eq for surgeist_css::CssLineHeight
 impl core::cmp::PartialEq for surgeist_css::CssLineHeight
 pub fn surgeist_css::CssLineHeight::eq(&self, other: &Self) -> bool
-#[non_exhaustive] pub enum surgeist_css::CssLineWidth
-pub surgeist_css::CssLineWidth::Length(surgeist_css::CssNonNegativeLength)
-pub surgeist_css::CssLineWidth::Medium
-pub surgeist_css::CssLineWidth::Thick
-pub surgeist_css::CssLineWidth::Thin
 #[non_exhaustive] pub enum surgeist_css::CssLinearGradientDirection
 pub surgeist_css::CssLinearGradientDirection::Angle(surgeist_css::CssGradientAngle)
 pub surgeist_css::CssLinearGradientDirection::SideOrCorner(surgeist_css::CssSideOrCorner)
@@ -2786,7 +2787,12 @@ pub surgeist_css::CssLonghandValueRef::Clear(&'a surgeist_css::CssClear)
 pub surgeist_css::CssLonghandValueRef::Clip(&'a surgeist_css::CssClip)
 pub surgeist_css::CssLonghandValueRef::Color(&'a surgeist_css::CssAuthoredColor)
 pub surgeist_css::CssLonghandValueRef::ColumnCount(&'a surgeist_css::CssColumnCount)
+pub surgeist_css::CssLonghandValueRef::ColumnFill(&'a surgeist_css::CssColumnFill)
 pub surgeist_css::CssLonghandValueRef::ColumnGap(&'a surgeist_css::CssGapValue)
+pub surgeist_css::CssLonghandValueRef::ColumnRuleColor(&'a surgeist_css::CssAuthoredColor)
+pub surgeist_css::CssLonghandValueRef::ColumnRuleStyle(&'a surgeist_css::CssLineStyle)
+pub surgeist_css::CssLonghandValueRef::ColumnRuleWidth(&'a surgeist_css::CssLineWidth)
+pub surgeist_css::CssLonghandValueRef::ColumnSpan(&'a surgeist_css::CssColumnSpan)
 pub surgeist_css::CssLonghandValueRef::ColumnWidth(&'a surgeist_css::CssColumnWidth)
 pub surgeist_css::CssLonghandValueRef::ContainIntrinsicBlockSize(&'a surgeist_css::CssContainIntrinsicSizeValue)
 pub surgeist_css::CssLonghandValueRef::ContainIntrinsicHeight(&'a surgeist_css::CssContainIntrinsicSizeValue)
@@ -5126,12 +5132,12 @@ impl core::cmp::PartialEq for surgeist_css::CssBorderTopWidthPropertyValue
 pub fn surgeist_css::CssBorderTopWidthPropertyValue::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssBorderValue
 impl surgeist_css::CssBorderValue
-pub fn surgeist_css::CssBorderValue::color(&self) -> core::option::Option<&surgeist_css::CssAuthoredColor>
+pub const fn surgeist_css::CssBorderValue::color(&self) -> core::option::Option<&surgeist_css::CssAuthoredColor>
 pub fn surgeist_css::CssBorderValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssBorderValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-pub fn surgeist_css::CssBorderValue::style(&self) -> core::option::Option<surgeist_css::CssBorderStyle>
+pub const fn surgeist_css::CssBorderValue::style(&self) -> core::option::Option<surgeist_css::CssBorderStyle>
 pub fn surgeist_css::CssBorderValue::try_new(width: core::option::Option<surgeist_css::CssBorderWidth>, style: core::option::Option<surgeist_css::CssBorderStyle>, color: core::option::Option<surgeist_css::CssAuthoredColor>) -> core::option::Option<Self>
-pub fn surgeist_css::CssBorderValue::width(&self) -> core::option::Option<&surgeist_css::CssBorderWidth>
+pub const fn surgeist_css::CssBorderValue::width(&self) -> core::option::Option<&surgeist_css::CssBorderWidth>
 pub struct surgeist_css::CssBorderWidthPair
 impl surgeist_css::CssBorderWidthPair
 pub fn surgeist_css::CssBorderWidthPair::authored_end(&self) -> core::option::Option<&surgeist_css::CssBorderWidth>
@@ -5436,14 +5442,12 @@ pub fn surgeist_css::CssColumnGapPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssColumnGapPropertyValue::current(&self) -> &surgeist_css::CssGapValue
 pub struct surgeist_css::CssColumnRule
 impl surgeist_css::CssColumnRule
-pub const fn surgeist_css::CssColumnRule::color(&self) -> core::option::Option<&surgeist_css::CssColor>
-pub const fn surgeist_css::CssColumnRule::current_color(&self) -> core::option::Option<&surgeist_css::CssAuthoredColor>
-pub const fn surgeist_css::CssColumnRule::style(&self) -> core::option::Option<surgeist_css::CssLineStyle>
-pub const fn surgeist_css::CssColumnRule::width(&self) -> core::option::Option<&surgeist_css::CssLineWidth>
-impl core::cmp::PartialEq for surgeist_css::CssColumnRule
-pub fn surgeist_css::CssColumnRule::eq(&self, other: &Self) -> bool
-impl core::fmt::Debug for surgeist_css::CssColumnRule
-pub fn surgeist_css::CssColumnRule::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub const fn surgeist_css::CssColumnRule::color(&self) -> core::option::Option<&surgeist_css::CssAuthoredColor>
+pub fn surgeist_css::CssColumnRule::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssColumnRule::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub const fn surgeist_css::CssColumnRule::style(&self) -> core::option::Option<surgeist_css::CssBorderStyle>
+pub fn surgeist_css::CssColumnRule::try_new(width: core::option::Option<surgeist_css::CssBorderWidth>, style: core::option::Option<surgeist_css::CssBorderStyle>, color: core::option::Option<surgeist_css::CssAuthoredColor>) -> core::option::Option<Self>
+pub const fn surgeist_css::CssColumnRule::width(&self) -> core::option::Option<&surgeist_css::CssBorderWidth>
 pub struct surgeist_css::CssColumnRuleColorPropertyValue
 impl surgeist_css::CssColumnRuleColorPropertyValue
 pub fn surgeist_css::CssColumnRuleColorPropertyValue::as_css(&self) -> &str
@@ -9283,3 +9287,4 @@ pub fn surgeist_css::validate_style_attribute(input: &str) -> core::result::Resu
 pub type surgeist_css::CssColumnWidth = surgeist_css::CssSizeValue
 pub type surgeist_css::CssFontStretch = surgeist_css::CssFontWidthKeyword
 pub type surgeist_css::CssLineStyle = surgeist_css::CssBorderStyle
+pub type surgeist_css::CssLineWidth = surgeist_css::CssBorderWidth

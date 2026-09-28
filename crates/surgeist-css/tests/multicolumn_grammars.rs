@@ -1,8 +1,9 @@
 use surgeist_css::{
-    CssBoxSize, CssColumnCount, CssColumnFill, CssColumnSpan, CssColumnWidth, CssErrorCode,
-    CssGlobalKeyword, CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
-    CssLength, CssLengthUnit, CssLineStyle, CssLineWidth, CssPositiveIntegerValue,
-    CssRecoveryAction, ErrorKind, parse_style_attribute,
+    CssBoxSize, CssColumnCount, CssColumnFill, CssColumnSpan, CssColumnWidth, CssComponentValue,
+    CssComponentValueRef, CssErrorCode, CssGlobalKeyword, CssKnownDeclaredValueRef,
+    CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssLengthUnit, CssLineStyle,
+    CssLineWidth, CssPositiveIntegerValue, CssRecoveryAction, CssValueTokenRef, ErrorKind,
+    parse_style_attribute,
 };
 
 #[test]
@@ -42,7 +43,7 @@ fn c14_multicolumn_properties_retain_typed_structure() {
     assert_eq!(rule.rule().style(), Some(CssLineStyle::Dashed));
     assert_eq!(
         rule.rule()
-            .current_color()
+            .color()
             .and_then(|color| color.named())
             .map(|color| color.name()),
         Some("rebeccapurple"),
@@ -64,7 +65,12 @@ fn c14_multicolumn_properties_retain_typed_structure() {
     assert!(matches!(
         width.width(),
         CssLineWidth::Length(value)
-            if matches!(value.value(), CssLength::Px(value) if value.value() == 2.0)
+            if value.calculation().is_none()
+                && matches!(
+                    value.literal_component().map(CssComponentValue::view),
+                    Some(CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }))
+                        if number.representation() == "2" && unit == "px"
+                )
     ));
 
     let CssKnownPropertyValueRef::ColumnSpan(span) = ordinary(&report.syntax()[6]) else {
@@ -132,14 +138,14 @@ fn multicolumn_shorthands_accept_permutations_and_preserve_omitted_components() 
     };
     assert!(complete.rule().width().is_some());
     assert!(complete.rule().style().is_some());
-    assert!(complete.rule().current_color().is_some());
+    assert!(complete.rule().color().is_some());
 
     let CssKnownPropertyValueRef::ColumnRule(style_only) = ordinary(&report.syntax()[7]) else {
         panic!("expected column-rule");
     };
     assert!(style_only.rule().width().is_none());
     assert_eq!(style_only.rule().style(), Some(CssLineStyle::Dashed));
-    assert!(style_only.rule().current_color().is_none());
+    assert!(style_only.rule().color().is_none());
 
     let CssKnownPropertyValueRef::ColumnRule(width_color) = ordinary(&report.syntax()[8]) else {
         panic!("expected column-rule");
@@ -149,7 +155,7 @@ fn multicolumn_shorthands_accept_permutations_and_preserve_omitted_components() 
         Some(CssLineWidth::Thin)
     ));
     assert!(width_color.rule().style().is_none());
-    assert!(width_color.rule().current_color().is_some());
+    assert!(width_color.rule().color().is_some());
 }
 
 #[test]
@@ -181,7 +187,7 @@ fn multicolumn_calculations_remain_symbolic_and_checked_constructors_reject_lite
     };
     assert!(matches!(
         width.width(),
-        CssLineWidth::Length(value) if matches!(value.value(), CssLength::Calc(_))
+        CssLineWidth::Length(value) if value.calculation().is_some()
     ));
 
     assert!(surgeist_css::CssPositiveInteger::try_new(0).is_none());

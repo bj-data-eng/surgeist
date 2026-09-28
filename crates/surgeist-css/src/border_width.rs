@@ -258,14 +258,14 @@ impl CssBorderValue {
             color,
         })
     }
-    pub fn width(&self) -> Option<&CssBorderWidth> {
+    pub const fn width(&self) -> Option<&CssBorderWidth> {
         self.width.as_ref()
     }
-    pub fn style(&self) -> Option<CssBorderStyle> {
+    pub const fn style(&self) -> Option<CssBorderStyle> {
         self.style
     }
     /// Borrows the exact authored color. Unlike `CssBorder::color`, this is not an I01 projection.
-    pub fn color(&self) -> Option<&CssAuthoredColor> {
+    pub const fn color(&self) -> Option<&CssAuthoredColor> {
         self.color.as_ref()
     }
     pub fn serialize_specified(&self) -> Result<String> {
