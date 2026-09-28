@@ -768,6 +768,7 @@ fn unescape(field: &str) -> Result<String, String> {
 #[test]
 fn authored_css_cases_match_selected_public_report_observables() {
     let rows = parse_fixture(FIXTURE).expect("valid I01 observable fixture");
+    let mut migrated_content_cases = 0;
     let mut migrated_container_cases = 0;
     let mut migrated_tolerance_cases = 0;
     let mut migrated_auto_repeat_cases = 0;
@@ -779,6 +780,11 @@ fn authored_css_cases_match_selected_public_report_observables() {
     for row in rows {
         // Fixture feature labels record the original capture profile. Validation is
         // now unconditional, so every historical profile runs through the same API.
+        if assert_content3_contents_acceptance(&row) {
+            migrated_content_cases += 1;
+            assert_strict_parity(&row);
+            continue;
+        }
         if assert_archived_inline_display_rejection(&row) {
             migrated_display_cases += 1;
             assert_strict_parity(&row);
@@ -850,6 +856,63 @@ fn authored_css_cases_match_selected_public_report_observables() {
     assert_eq!(migrated_display_cases, 1);
     assert_eq!(migrated_overflow_auto_cases, 3);
     assert_eq!(migrated_alignment_cases, 1);
+    assert_eq!(migrated_content_cases, 1);
+}
+
+// Content 3 admits `contents` as one generated-content item. The unchanged
+// I01 input now has a current typed value, but no exact historical CssContent
+// projection; validate both rather than inventing a legacy enum variant.
+// https://www.w3.org/TR/2025/WD-css-content-3-20251204/#valdef-content-contents
+fn assert_content3_contents_acceptance(row: &Row) -> bool {
+    if row.case_id != "catalog.property.baseline.property.content.boundary" {
+        return false;
+    }
+    assert_eq!(row.entry, "style");
+    assert_eq!(row.feature, "both");
+    assert_eq!(row.input, "content: contents");
+    assert_eq!(row.clean, "true");
+    assert_eq!(row.retained, "property:baseline.property.content");
+    assert_eq!(
+        row.values,
+        "baseline.property.content=typed:contents@normal"
+    );
+    assert_eq!(
+        row.authored_declarations,
+        "baseline.property.content=deferred-i01:contents@public:normal"
+    );
+    assert_eq!(row.diagnostics, "-");
+    let report = parse_style_attribute(&row.input);
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    let [declaration] = report.syntax().as_slice() else {
+        panic!("one current content declaration")
+    };
+    assert_eq!(declaration.importance(), CssImportance::Normal);
+    let Some(surgeist_css::CssKnownPropertyValueRef::Content(value)) =
+        declaration.known().unwrap().property_value()
+    else {
+        panic!("checked content wrapper")
+    };
+    let surgeist_css::CssContentValue::Generated(generated) = value.current() else {
+        panic!("generated contents")
+    };
+    assert!(matches!(
+        generated.items(),
+        [surgeist_css::CssContentValueItem::Contents]
+    ));
+    assert!(matches!(
+        generated.body(),
+        surgeist_css::CssGeneratedContentBodyRef::List([
+            surgeist_css::CssContentValueItem::Contents
+        ])
+    ));
+    assert!(value.i01_subset().is_none());
+    assert_eq!(value.as_css(), "contents");
+    assert_eq!(value.current().serialize_specified().unwrap(), "contents");
+    assert!(matches!(
+        declaration.value_components().items()[0].origin(),
+        surgeist_css::CssValueOrigin::Parsed(_)
+    ));
+    true
 }
 
 // The checked current tag grammar rejects the malformed quoted tag itself.

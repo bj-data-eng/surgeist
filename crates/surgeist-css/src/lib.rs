@@ -1110,6 +1110,8 @@
 mod border_color;
 mod component_values;
 mod conformance;
+mod content_serialization;
+mod content_values;
 mod error;
 mod expansion;
 mod font_feature_values;
@@ -1298,6 +1300,7 @@ pub use component_values::{
     CssValueOrigin, CssValueTokenRef, parse_component_values, parse_component_values_with_limits,
 };
 pub use conformance::*;
+pub use content_values::*;
 pub use error::*;
 pub use expansion::{
     CssContributionValueRef, CssContributions, CssCustomPropertyContribution, CssExpansion,

@@ -810,7 +810,7 @@ pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
         "space-between"
     ),
     vector!("baseline.property.visibility", "visibility", "auto"),
-    vector!("baseline.property.content", "content", "contents"),
+    vector!("baseline.property.content", "content", "contents normal"),
     vector!(
         "baseline.property.content-visibility",
         "content-visibility",

@@ -1,4 +1,4 @@
-use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
+use cssparser::{ParseError, Parser, match_ignore_ascii_case};
 
 use super::url::parse_url;
 use super::values::parse_integer;
@@ -45,25 +45,8 @@ pub(super) fn parse_quotes<'i, 't>(
 pub(super) fn parse_content<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssContent, ParseError<'i, Error>> {
-    let state = input.state();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        match_ignore_ascii_case! { &ident,
-            "normal" if input.is_exhausted() => return Ok(CssContent::Normal),
-            "normal" => return Err(unsupported_value(input, None, "`normal` cannot be combined with content items")),
-            "none" if input.is_exhausted() => return Ok(CssContent::None),
-            "none" => return Err(unsupported_value(input, None, "`none` cannot be combined with content items")),
-            _ => input.reset(&state),
-        };
-    }
-
-    let mut items = Vec::new();
-    while !input.is_exhausted() {
-        items.push(parse_content_item(input, numeric)?);
-    }
-    CssContentList::try_new(items)
-        .map(CssContent::Items)
-        .ok_or_else(|| unsupported_value(input, None, "content item list is empty"))
+) -> std::result::Result<crate::CssContentValue, ParseError<'i, Error>> {
+    super::content_values::parse_content_value(input, numeric)
 }
 
 pub(super) fn parse_list_style_type<'i, 't>(
@@ -250,90 +233,7 @@ fn parse_list_style_component<'i, 't>(
     parse_list_style_type(input).map(ListStyleComponent::Type)
 }
 
-fn parse_content_item<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssContentItem, ParseError<'i, Error>> {
-    if let Ok(value) = input.try_parse(parse_content_string) {
-        return Ok(CssContentItem::String(value));
-    }
-    if let Ok(url) = input.try_parse(|input| parse_url(input, numeric)) {
-        return Ok(CssContentItem::Url(url));
-    }
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        return match_ignore_ascii_case! { &ident,
-            "open-quote" => Ok(CssContentItem::OpenQuote),
-            "close-quote" => Ok(CssContentItem::CloseQuote),
-            "no-open-quote" => Ok(CssContentItem::NoOpenQuote),
-            "no-close-quote" => Ok(CssContentItem::NoCloseQuote),
-            _ => Err(unsupported_value(input, None, unsupported_keyword_reason("content", ident.as_ref()))),
-        };
-    }
-
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Function(name) if name.eq_ignore_ascii_case("counter") => input
-            .parse_nested_block(parse_counter_function)
-            .map(CssContentItem::Counter),
-        Token::Function(name) if name.eq_ignore_ascii_case("counters") => input
-            .parse_nested_block(parse_counters_function)
-            .map(CssContentItem::Counters),
-        Token::Function(name) if name.eq_ignore_ascii_case("attr") => input
-            .parse_nested_block(parse_attr_function)
-            .map(CssContentItem::Attr),
-        Token::Function(name) => Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported content function `{name}()`"),
-        )),
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
-}
-
-fn parse_counter_function<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssCounterFunction, ParseError<'i, Error>> {
-    let name = parse_counter_name(input)?;
-    let style = if input.try_parse(Parser::expect_comma).is_ok() {
-        Some(parse_counter_style(input)?)
-    } else {
-        None
-    };
-    input.expect_exhausted().map_err(basic)?;
-    Ok(CssCounterFunction::new(name, style))
-}
-
-fn parse_counters_function<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssCountersFunction, ParseError<'i, Error>> {
-    let name = parse_counter_name(input)?;
-    input.expect_comma().map_err(basic)?;
-    let separator = parse_content_string(input)?;
-    let style = if input.try_parse(Parser::expect_comma).is_ok() {
-        Some(parse_counter_style(input)?)
-    } else {
-        None
-    };
-    input.expect_exhausted().map_err(basic)?;
-    Ok(CssCountersFunction::new(name, separator, style))
-}
-
-fn parse_attr_function<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssAttributeName, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let name = input.expect_ident_cloned().map_err(basic)?;
-    input.expect_exhausted().map_err(basic)?;
-    CssAttributeName::try_new(name.to_string()).ok_or_else(|| {
-        unsupported_value_at(
-            location,
-            None,
-            format!("unsupported attr() attribute name `{name}`"),
-        )
-    })
-}
-
-fn parse_content_string<'i, 't>(
+pub(super) fn parse_content_string<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssContentString, ParseError<'i, Error>> {
     let location = input.current_source_location();

@@ -2044,16 +2044,12 @@ fn public_api_exposes_generated_content_list_style_and_counter_values() {
 }
 
 #[test]
-fn rejects_unsupported_generated_content_list_and_counter_forms() {
+fn rejects_invalid_generated_content_and_list_counter_forms() {
     for (property_name, authored_value) in [
         ("content", "normal \"x\""),
         ("content", "counter()"),
         ("content", "counters(item)"),
         ("content", "attr()"),
-        ("content", "\"x\" / \"alt\""),
-        ("content", "contents"),
-        ("content", "linear-gradient(red, blue)"),
-        ("content", "counter(item, symbols(cyclic \"*\" \"+\"))"),
         ("list-style-position", "center"),
         ("list-style-image", "red"),
         ("list-style-image", "linear-gradient(red, blue)"),
@@ -2075,6 +2071,30 @@ fn rejects_unsupported_generated_content_list_and_counter_forms() {
             property_name_should_be_recognized: true,
         }
         .assert_rejects();
+    }
+}
+
+#[test]
+fn current_content_accepts_generated_lists_replacement_and_symbols_style() {
+    for (authored, expected) in [
+        ("\"x\" / \"alt\"", "\"x\" / \"alt\""),
+        ("contents", "contents"),
+        ("linear-gradient(red, blue)", "linear-gradient(red, blue)"),
+        (
+            "counter(item, symbols(cyclic \"*\" \"+\"))",
+            "counter(item, symbols(cyclic \"*\" \"+\"))",
+        ),
+    ] {
+        let declaration = parse_single_declaration("content", authored);
+        let CssKnownPropertyValueRef::Content(wrapper) = declaration
+            .known()
+            .and_then(|known| known.property_value())
+            .expect("typed content value")
+        else {
+            panic!("expected typed content for {authored}");
+        };
+        assert!(matches!(wrapper.current(), CssContentValue::Generated(_)));
+        assert_eq!(wrapper.current().serialize_specified().unwrap(), expected);
     }
 }
 

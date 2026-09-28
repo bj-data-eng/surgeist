@@ -841,6 +841,10 @@ pub surgeist_css::CssContainerValueDomain::Stuck
 pub surgeist_css::CssContent::Items(surgeist_css::CssContentList)
 pub surgeist_css::CssContent::None
 pub surgeist_css::CssContent::Normal
+#[non_exhaustive] pub enum surgeist_css::CssContentAlternativeItem
+pub surgeist_css::CssContentAlternativeItem::Counter(surgeist_css::CssContentCounter)
+pub surgeist_css::CssContentAlternativeItem::Counters(surgeist_css::CssContentCounters)
+pub surgeist_css::CssContentAlternativeItem::String(surgeist_css::CssContentString)
 #[non_exhaustive] pub enum surgeist_css::CssContentItem
 pub surgeist_css::CssContentItem::Attr(surgeist_css::CssAttributeName)
 pub surgeist_css::CssContentItem::CloseQuote
@@ -851,6 +855,38 @@ pub surgeist_css::CssContentItem::NoOpenQuote
 pub surgeist_css::CssContentItem::OpenQuote
 pub surgeist_css::CssContentItem::String(surgeist_css::CssContentString)
 pub surgeist_css::CssContentItem::Url(surgeist_css::CssUrl)
+#[non_exhaustive] pub enum surgeist_css::CssContentReferenceMode
+pub surgeist_css::CssContentReferenceMode::After
+pub surgeist_css::CssContentReferenceMode::Before
+pub surgeist_css::CssContentReferenceMode::FirstLetter
+pub surgeist_css::CssContentReferenceMode::Marker
+pub surgeist_css::CssContentReferenceMode::Text
+#[non_exhaustive] pub enum surgeist_css::CssContentTarget
+pub surgeist_css::CssContentTarget::String(surgeist_css::CssContentString)
+pub surgeist_css::CssContentTarget::Url(surgeist_css::CssUrl)
+#[non_exhaustive] pub enum surgeist_css::CssContentValue
+pub surgeist_css::CssContentValue::Generated(surgeist_css::CssGeneratedContent)
+pub surgeist_css::CssContentValue::None
+pub surgeist_css::CssContentValue::Normal
+impl surgeist_css::CssContentValue
+pub fn surgeist_css::CssContentValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssContentValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssContentValueItem
+pub surgeist_css::CssContentValueItem::CloseQuote
+pub surgeist_css::CssContentValueItem::Content(core::option::Option<surgeist_css::CssContentReferenceMode>)
+pub surgeist_css::CssContentValueItem::Contents
+pub surgeist_css::CssContentValueItem::Counter(surgeist_css::CssContentCounter)
+pub surgeist_css::CssContentValueItem::Counters(surgeist_css::CssContentCounters)
+pub surgeist_css::CssContentValueItem::Image(surgeist_css::CssImage)
+pub surgeist_css::CssContentValueItem::Leader(surgeist_css::CssLeaderValue)
+pub surgeist_css::CssContentValueItem::NamedString(surgeist_css::CssNamedString)
+pub surgeist_css::CssContentValueItem::NoCloseQuote
+pub surgeist_css::CssContentValueItem::NoOpenQuote
+pub surgeist_css::CssContentValueItem::OpenQuote
+pub surgeist_css::CssContentValueItem::String(surgeist_css::CssContentString)
+pub surgeist_css::CssContentValueItem::TargetCounter(surgeist_css::CssTargetCounter)
+pub surgeist_css::CssContentValueItem::TargetCounters(surgeist_css::CssTargetCounters)
+pub surgeist_css::CssContentValueItem::TargetText(surgeist_css::CssTargetText)
 #[non_exhaustive] pub enum surgeist_css::CssContentVisibility
 pub surgeist_css::CssContentVisibility::Auto
 pub surgeist_css::CssContentVisibility::Hidden
@@ -909,10 +945,22 @@ pub surgeist_css::CssCounterStyleSystem::Extends(surgeist_css::CssCounterStyleNa
 pub surgeist_css::CssCounterStyleSystem::Fixed(surgeist_css::CssCounterStyleFixedSystem)
 pub surgeist_css::CssCounterStyleSystem::Numeric
 pub surgeist_css::CssCounterStyleSystem::Symbolic
+#[non_exhaustive] pub enum surgeist_css::CssCounterStyleValue
+pub surgeist_css::CssCounterStyleValue::Named(surgeist_css::CssCounterStyleReference)
+pub surgeist_css::CssCounterStyleValue::Symbols(surgeist_css::CssSymbolsStyleValue)
+impl surgeist_css::CssCounterStyleValue
+pub fn surgeist_css::CssCounterStyleValue::named(&self) -> core::option::Option<&surgeist_css::CssCounterStyleReference>
+pub fn surgeist_css::CssCounterStyleValue::try_named(name: surgeist_css::CssIdent) -> core::option::Option<Self>
+impl surgeist_css::CssCounterStyleValue
+pub fn surgeist_css::CssCounterStyleValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCounterStyleValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssCounterSymbol
 pub surgeist_css::CssCounterSymbol::Ident(surgeist_css::CssCounterSymbolIdent)
 pub surgeist_css::CssCounterSymbol::String(surgeist_css::CssContentString)
 pub surgeist_css::CssCounterSymbol::Url(surgeist_css::CssUrl)
+#[non_exhaustive] pub enum surgeist_css::CssCounterSymbolValue
+pub surgeist_css::CssCounterSymbolValue::Image(surgeist_css::CssImage)
+pub surgeist_css::CssCounterSymbolValue::String(surgeist_css::CssContentString)
 #[non_exhaustive] pub enum surgeist_css::CssCursor
 pub surgeist_css::CssCursor::Keyword(surgeist_css::CssCursorKeyword)
 pub surgeist_css::CssCursor::Urls(surgeist_css::CssCursorUrls)
@@ -1622,6 +1670,9 @@ impl core::error::Error for surgeist_css::CssGeneralEnclosedError
 pub fn surgeist_css::CssGeneralEnclosedError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_css::CssGeneralEnclosedError
 pub fn surgeist_css::CssGeneralEnclosedError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+#[non_exhaustive] pub enum surgeist_css::CssGeneratedContentBodyRef<'a>
+pub surgeist_css::CssGeneratedContentBodyRef::List(&'a [surgeist_css::CssContentValueItem])
+pub surgeist_css::CssGeneratedContentBodyRef::Replacement(&'a surgeist_css::CssImage)
 #[non_exhaustive] pub enum surgeist_css::CssGenericFontFamily
 pub surgeist_css::CssGenericFontFamily::Cursive
 pub surgeist_css::CssGenericFontFamily::Fangsong
@@ -2551,6 +2602,11 @@ pub surgeist_css::CssLayoutPosition::Sticky
 impl surgeist_css::CssLayoutPosition
 pub fn surgeist_css::CssLayoutPosition::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssLayoutPosition::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssLeaderValue
+pub surgeist_css::CssLeaderValue::Dotted
+pub surgeist_css::CssLeaderValue::Solid
+pub surgeist_css::CssLeaderValue::Space
+pub surgeist_css::CssLeaderValue::String(surgeist_css::CssContentString)
 #[non_exhaustive] pub enum surgeist_css::CssLegacyAlignment
 pub surgeist_css::CssLegacyAlignment::Center
 pub surgeist_css::CssLegacyAlignment::Left
@@ -2720,6 +2776,7 @@ pub surgeist_css::CssLonghandValueRef::ContainIntrinsicInlineSize(&'a surgeist_c
 pub surgeist_css::CssLonghandValueRef::ContainIntrinsicWidth(&'a surgeist_css::CssContainIntrinsicSizeValue)
 pub surgeist_css::CssLonghandValueRef::ContainerName(&'a surgeist_css::CssContainerNames)
 pub surgeist_css::CssLonghandValueRef::ContainerType(&'a surgeist_css::CssContainerType)
+pub surgeist_css::CssLonghandValueRef::Content(&'a surgeist_css::CssContentValue)
 pub surgeist_css::CssLonghandValueRef::Direction(&'a surgeist_css::CssDirection)
 pub surgeist_css::CssLonghandValueRef::Display(&'a surgeist_css::CssDisplayValue)
 pub surgeist_css::CssLonghandValueRef::EmptyCells(&'a surgeist_css::CssEmptyCells)
@@ -3097,6 +3154,11 @@ pub surgeist_css::CssMinIntrinsicSizing::ZeroIfScrollAndExtrinsic
 impl surgeist_css::CssMinIntrinsicSizing
 pub fn surgeist_css::CssMinIntrinsicSizing::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssMinIntrinsicSizing::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssNamedStringMode
+pub surgeist_css::CssNamedStringMode::First
+pub surgeist_css::CssNamedStringMode::FirstExcept
+pub surgeist_css::CssNamedStringMode::Last
+pub surgeist_css::CssNamedStringMode::Start
 #[non_exhaustive] pub enum surgeist_css::CssNamedSupportsConstructionError
 pub surgeist_css::CssNamedSupportsConstructionError::Component(surgeist_css::CssComponentValueError)
 pub surgeist_css::CssNamedSupportsConstructionError::InvalidBodyGrammar
@@ -3703,6 +3765,12 @@ pub fn surgeist_css::CssSupportsConstructionError::fmt(&self, f: &mut core::fmt:
 pub surgeist_css::CssSupportsTestItem::AtRule(surgeist_css::CssSupportsAtRuleTest)
 pub surgeist_css::CssSupportsTestItem::Declarations(surgeist_css::CssSupportsTestDeclarations)
 pub surgeist_css::CssSupportsTestItem::QualifiedRule(surgeist_css::CssSupportsQualifiedRuleTest)
+#[non_exhaustive] pub enum surgeist_css::CssSymbolsSystem
+pub surgeist_css::CssSymbolsSystem::Alphabetic
+pub surgeist_css::CssSymbolsSystem::Cyclic
+pub surgeist_css::CssSymbolsSystem::Fixed
+pub surgeist_css::CssSymbolsSystem::Numeric
+pub surgeist_css::CssSymbolsSystem::Symbolic
 #[non_exhaustive] pub enum surgeist_css::CssSystemColor
 pub surgeist_css::CssSystemColor::AccentColor
 pub surgeist_css::CssSystemColor::AccentColorText
@@ -3736,6 +3804,11 @@ pub surgeist_css::CssTableLayout::Fixed
 impl surgeist_css::CssTableLayout
 pub fn surgeist_css::CssTableLayout::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssTableLayout::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTargetTextMode
+pub surgeist_css::CssTargetTextMode::After
+pub surgeist_css::CssTargetTextMode::Before
+pub surgeist_css::CssTargetTextMode::Content
+pub surgeist_css::CssTargetTextMode::FirstLetter
 #[non_exhaustive] pub enum surgeist_css::CssTextAlign
 pub surgeist_css::CssTextAlign::Center
 pub surgeist_css::CssTextAlign::End
@@ -5671,13 +5744,37 @@ pub struct surgeist_css::CssContainerTypePropertyValue
 impl surgeist_css::CssContainerTypePropertyValue
 pub fn surgeist_css::CssContainerTypePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssContainerTypePropertyValue::container_type(&self) -> &surgeist_css::CssContainerType
+pub struct surgeist_css::CssContentAlternative
+impl surgeist_css::CssContentAlternative
+pub fn surgeist_css::CssContentAlternative::items(&self) -> &[surgeist_css::CssContentAlternativeItem]
+pub fn surgeist_css::CssContentAlternative::try_new(items: alloc::vec::Vec<surgeist_css::CssContentAlternativeItem>) -> core::option::Option<Self>
+pub struct surgeist_css::CssContentCounter
+impl surgeist_css::CssContentCounter
+pub const fn surgeist_css::CssContentCounter::name(&self) -> &surgeist_css::CssContentCounterName
+pub const fn surgeist_css::CssContentCounter::new(name: surgeist_css::CssContentCounterName, style: core::option::Option<surgeist_css::CssCounterStyleValue>) -> Self
+pub const fn surgeist_css::CssContentCounter::style(&self) -> core::option::Option<&surgeist_css::CssCounterStyleValue>
+pub struct surgeist_css::CssContentCounterName(_)
+impl surgeist_css::CssContentCounterName
+pub fn surgeist_css::CssContentCounterName::as_str(&self) -> &str
+pub fn surgeist_css::CssContentCounterName::try_new(name: surgeist_css::CssIdent) -> core::option::Option<Self>
+pub struct surgeist_css::CssContentCounters
+impl surgeist_css::CssContentCounters
+pub const fn surgeist_css::CssContentCounters::name(&self) -> &surgeist_css::CssContentCounterName
+pub const fn surgeist_css::CssContentCounters::new(name: surgeist_css::CssContentCounterName, separator: surgeist_css::CssContentString, style: core::option::Option<surgeist_css::CssCounterStyleValue>) -> Self
+pub const fn surgeist_css::CssContentCounters::separator(&self) -> &surgeist_css::CssContentString
+pub const fn surgeist_css::CssContentCounters::style(&self) -> core::option::Option<&surgeist_css::CssCounterStyleValue>
 pub struct surgeist_css::CssContentList
 impl surgeist_css::CssContentList
 pub fn surgeist_css::CssContentList::items(&self) -> &[surgeist_css::CssContentItem]
 pub fn surgeist_css::CssContentList::try_new(items: alloc::vec::Vec<surgeist_css::CssContentItem>) -> core::option::Option<Self>
+pub struct surgeist_css::CssContentName(_)
+impl surgeist_css::CssContentName
+pub fn surgeist_css::CssContentName::as_str(&self) -> &str
+pub fn surgeist_css::CssContentName::try_new(name: surgeist_css::CssIdent) -> core::option::Option<Self>
 pub struct surgeist_css::CssContentPropertyValue
 impl surgeist_css::CssContentPropertyValue
 pub fn surgeist_css::CssContentPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssContentPropertyValue::current(&self) -> &surgeist_css::CssContentValue
 pub const fn surgeist_css::CssContentPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssContent>
 pub struct surgeist_css::CssContentString
 impl surgeist_css::CssContentString
@@ -5775,6 +5872,10 @@ pub const fn surgeist_css::CssCounterStyleRangeInterval::upper(self) -> surgeist
 pub struct surgeist_css::CssCounterStyleRanges
 impl surgeist_css::CssCounterStyleRanges
 pub fn surgeist_css::CssCounterStyleRanges::ranges(&self) -> &[surgeist_css::CssCounterStyleRangeInterval]
+pub struct surgeist_css::CssCounterStyleReference(_)
+impl surgeist_css::CssCounterStyleReference
+pub fn surgeist_css::CssCounterStyleReference::as_str(&self) -> &str
+pub fn surgeist_css::CssCounterStyleReference::try_new(name: surgeist_css::CssIdent) -> core::option::Option<Self>
 pub struct surgeist_css::CssCounterStyleRule
 impl surgeist_css::CssCounterStyleRule
 pub const fn surgeist_css::CssCounterStyleRule::descriptors(&self) -> &surgeist_css::CssCounterStyleDescriptors
@@ -6567,6 +6668,12 @@ pub fn surgeist_css::CssGeneralEnclosed::serialize(&self) -> core::result::Resul
 pub fn surgeist_css::CssGeneralEnclosed::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssGeneralEnclosedError>
 pub fn surgeist_css::CssGeneralEnclosed::try_function(name: impl core::convert::Into<alloc::string::String>, values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssGeneralEnclosedError>
 pub fn surgeist_css::CssGeneralEnclosed::try_parenthesized(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssGeneralEnclosedError>
+pub struct surgeist_css::CssGeneratedContent
+impl surgeist_css::CssGeneratedContent
+pub const fn surgeist_css::CssGeneratedContent::alternative(&self) -> core::option::Option<&surgeist_css::CssContentAlternative>
+pub fn surgeist_css::CssGeneratedContent::body(&self) -> surgeist_css::CssGeneratedContentBodyRef<'_>
+pub fn surgeist_css::CssGeneratedContent::items(&self) -> &[surgeist_css::CssContentValueItem]
+pub fn surgeist_css::CssGeneratedContent::try_new(items: alloc::vec::Vec<surgeist_css::CssContentValueItem>, alternative: core::option::Option<surgeist_css::CssContentAlternative>) -> core::option::Option<Self>
 pub struct surgeist_css::CssGradientColorStop
 impl surgeist_css::CssGradientColorStop
 pub const fn surgeist_css::CssGradientColorStop::color(&self) -> &surgeist_css::CssAuthoredColor
@@ -7322,6 +7429,11 @@ pub const fn surgeist_css::CssMixBlendModePropertyValue::mode(&self) -> &surgeis
 pub struct surgeist_css::CssNamedColor
 impl surgeist_css::CssNamedColor
 pub fn surgeist_css::CssNamedColor::name(&self) -> &str
+pub struct surgeist_css::CssNamedString
+impl surgeist_css::CssNamedString
+pub const fn surgeist_css::CssNamedString::mode(&self) -> core::option::Option<surgeist_css::CssNamedStringMode>
+pub const fn surgeist_css::CssNamedString::name(&self) -> &surgeist_css::CssContentName
+pub const fn surgeist_css::CssNamedString::new(name: surgeist_css::CssContentName, mode: core::option::Option<surgeist_css::CssNamedStringMode>) -> Self
 pub struct surgeist_css::CssNamespaceContext(_)
 impl surgeist_css::CssNamespaceContext
 pub fn surgeist_css::CssNamespaceContext::default_namespace(&self) -> core::option::Option<&surgeist_css::CssNamespaceName>
@@ -8583,10 +8695,33 @@ pub fn surgeist_css::CssSupportsTestDeclaration::value_components(&self) -> &[su
 pub struct surgeist_css::CssSupportsTestDeclarations
 impl surgeist_css::CssSupportsTestDeclarations
 pub fn surgeist_css::CssSupportsTestDeclarations::declarations(&self) -> &[surgeist_css::CssSupportsTestDeclaration]
+pub struct surgeist_css::CssSymbolsStyleValue
+impl surgeist_css::CssSymbolsStyleValue
+pub fn surgeist_css::CssSymbolsStyleValue::symbols(&self) -> &[surgeist_css::CssCounterSymbolValue]
+pub const fn surgeist_css::CssSymbolsStyleValue::system(&self) -> core::option::Option<surgeist_css::CssSymbolsSystem>
+pub fn surgeist_css::CssSymbolsStyleValue::try_new(system: core::option::Option<surgeist_css::CssSymbolsSystem>, symbols: alloc::vec::Vec<surgeist_css::CssCounterSymbolValue>) -> core::option::Option<Self>
 pub struct surgeist_css::CssTableLayoutPropertyValue
 impl surgeist_css::CssTableLayoutPropertyValue
 pub fn surgeist_css::CssTableLayoutPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTableLayoutPropertyValue::layout(&self) -> &surgeist_css::CssTableLayout
+pub struct surgeist_css::CssTargetCounter
+impl surgeist_css::CssTargetCounter
+pub const fn surgeist_css::CssTargetCounter::name(&self) -> &surgeist_css::CssContentName
+pub const fn surgeist_css::CssTargetCounter::new(target: surgeist_css::CssContentTarget, name: surgeist_css::CssContentName, style: core::option::Option<surgeist_css::CssCounterStyleValue>) -> Self
+pub const fn surgeist_css::CssTargetCounter::style(&self) -> core::option::Option<&surgeist_css::CssCounterStyleValue>
+pub const fn surgeist_css::CssTargetCounter::target(&self) -> &surgeist_css::CssContentTarget
+pub struct surgeist_css::CssTargetCounters
+impl surgeist_css::CssTargetCounters
+pub const fn surgeist_css::CssTargetCounters::name(&self) -> &surgeist_css::CssContentName
+pub const fn surgeist_css::CssTargetCounters::new(target: surgeist_css::CssContentTarget, name: surgeist_css::CssContentName, separator: surgeist_css::CssContentString, style: core::option::Option<surgeist_css::CssCounterStyleValue>) -> Self
+pub const fn surgeist_css::CssTargetCounters::separator(&self) -> &surgeist_css::CssContentString
+pub const fn surgeist_css::CssTargetCounters::style(&self) -> core::option::Option<&surgeist_css::CssCounterStyleValue>
+pub const fn surgeist_css::CssTargetCounters::target(&self) -> &surgeist_css::CssContentTarget
+pub struct surgeist_css::CssTargetText
+impl surgeist_css::CssTargetText
+pub const fn surgeist_css::CssTargetText::mode(&self) -> core::option::Option<surgeist_css::CssTargetTextMode>
+pub const fn surgeist_css::CssTargetText::new(target: surgeist_css::CssContentTarget, mode: core::option::Option<surgeist_css::CssTargetTextMode>) -> Self
+pub const fn surgeist_css::CssTargetText::target(&self) -> &surgeist_css::CssContentTarget
 pub struct surgeist_css::CssTextAlignAllPropertyValue
 impl surgeist_css::CssTextAlignAllPropertyValue
 pub fn surgeist_css::CssTextAlignAllPropertyValue::as_css(&self) -> &str

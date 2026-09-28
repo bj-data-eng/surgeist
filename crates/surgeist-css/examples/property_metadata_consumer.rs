@@ -91,6 +91,7 @@ const LONGHANDS: &[P] = &[
     P::BorderImageRepeat,
     P::BackgroundImage,
     P::MaskImage,
+    P::Content,
     P::FlowTolerance,
     P::Color,
     P::FontFamily,
@@ -699,6 +700,7 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::BackgroundImage(v) | CssLonghandValueRef::MaskImage(v) => {
             assert!(matches!(v.images(), [CssImageValue::None]));
         }
+        CssLonghandValueRef::Content(v) => assert_eq!(v, &CssContentValue::Normal),
         CssLonghandValueRef::CaptionSide(v) => assert_eq!(*v, CssCaptionSide::Top),
         CssLonghandValueRef::Clip(v) => assert_eq!(*v, CssClip::Auto),
         CssLonghandValueRef::EmptyCells(v) => assert_eq!(*v, CssEmptyCells::Show),
@@ -793,7 +795,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 222);
+    assert_eq!(expected.len(), 223);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {

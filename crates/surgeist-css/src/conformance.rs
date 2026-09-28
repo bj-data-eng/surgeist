@@ -2276,13 +2276,12 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::ContainerType => X_CONDITIONAL5,
         CssKnownProperty::All => O_CASCADE4,
         CssKnownProperty::Display | CssKnownProperty::Visibility => S_DISPLAY3,
-        CssKnownProperty::Quotes => X_CONTENT3,
+        CssKnownProperty::Quotes | CssKnownProperty::Content => X_CONTENT3,
         CssKnownProperty::BorderCollapse
         | CssKnownProperty::BorderSpacing
         | CssKnownProperty::CaptionSide
         | CssKnownProperty::EmptyCells
         | CssKnownProperty::TableLayout
-        | CssKnownProperty::Content
         | CssKnownProperty::ListStyleType
         | CssKnownProperty::ListStylePosition
         | CssKnownProperty::ListStyleImage
@@ -2623,17 +2622,16 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
             _ => default,
         },
         CssKnownProperty::Quotes => "#propdef-quotes",
+        CssKnownProperty::Content => "#propdef-content",
         CssKnownProperty::WordSpacing => "#propdef-word-spacing",
         CssKnownProperty::LetterSpacing => "#propdef-letter-spacing",
         CssKnownProperty::ZIndex => "visuren.html#propdef-z-index",
-        CssKnownProperty::Content
-        | CssKnownProperty::CounterIncrement
+        CssKnownProperty::CounterIncrement
         | CssKnownProperty::CounterReset
         | CssKnownProperty::ListStyle
         | CssKnownProperty::ListStyleImage
         | CssKnownProperty::ListStylePosition
         | CssKnownProperty::ListStyleType => match property {
-            CssKnownProperty::Content => "generate.html#propdef-content",
             CssKnownProperty::CounterIncrement => "generate.html#propdef-counter-increment",
             CssKnownProperty::CounterReset => "generate.html#propdef-counter-reset",
             CssKnownProperty::ListStyle => "generate.html#propdef-list-style",
@@ -4388,7 +4386,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 623] = [
         "visibility",
         "baseline.property.visibility"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::Content,
         "content",
         "baseline.property.content"

@@ -38,6 +38,7 @@ mod container_properties;
 mod container_query;
 mod container_scroll;
 mod container_style;
+mod content_values;
 mod generated_content;
 mod grid;
 mod inset;

@@ -14,6 +14,7 @@ use crate::border_style::*;
 use crate::border_width::*;
 use crate::box_spacing::*;
 use crate::contain_intrinsic_size::*;
+use crate::content_values::{CssContentValue, content_i01};
 use crate::display::*;
 use crate::flex::{
     CssFlexBasisRef, CssFlexBasisValue, CssFlexDirection, CssFlexFlow, CssFlexValue, CssFlexWrap,
@@ -112,7 +113,7 @@ macro_rules! property_schema {
             PlaceItems, "place-items", [], "baseline.property.place-items", CssPlaceAlignment, CssPlaceItemsPropertyValue, CssPlaceItemsPropertyValueRepresentation, parse_place_items_value, { parse_place_items_value($input)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ AlignItems => |value: &CssPlaceItemsValue| Some(value.align()), JustifyItems => |value: &CssPlaceItemsValue| Some(value.justify()) ], reset_only: [] };
             PlaceSelf, "place-self", [], "baseline.property.place-self", CssPlaceAlignment, CssPlaceSelfPropertyValue, CssPlaceSelfPropertyValueRepresentation, parse_place_self_value, { parse_place_self_value($input)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ AlignSelf => |value: &CssPlaceSelfValue| Some(value.align()), JustifySelf => |value: &CssPlaceSelfValue| Some(value.justify()) ], reset_only: [] };
             Visibility, "visibility", [], "baseline.property.visibility", CssVisibility, CssVisibilityPropertyValue, CssVisibilityPropertyValueRepresentation, parse_visibility, { parse_visibility($input)? }, expansion = longhand { wrapper: fallback, value: CssVisibility, accessor: current, inherited: true, initial_kind: value, initial: CssVisibility::Visible };
-            Content, "content", [], "baseline.property.content", CssContent, CssContentPropertyValue, CssContentPropertyValueRepresentation, parse_content, { parse_content($input, $numeric)? };
+            Content, "content", [], "baseline.property.content", crate::CssContentValue, CssContentPropertyValue, CssContentPropertyValueRepresentation, parse_content, { parse_content($input, $numeric)? }, expansion = longhand { wrapper: existing, value: crate::CssContentValue, accessor: current, inherited: false, initial_kind: value, initial: crate::CssContentValue::Normal };
             ContentVisibility, "content-visibility", [], "baseline.property.content-visibility", CssContentVisibility, CssContentVisibilityPropertyValue, CssContentVisibilityPropertyValueRepresentation, parse_content_visibility, { parse_content_visibility($input)? };
             ListStyleType, "list-style-type", [], "baseline.property.list-style-type", CssListStyleType, CssListStyleTypePropertyValue, CssListStyleTypePropertyValueRepresentation, parse_list_style_type, { parse_list_style_type($input)? };
             ListStylePosition, "list-style-position", [], "baseline.property.list-style-position", CssListStylePosition, CssListStylePositionPropertyValue, CssListStylePositionPropertyValueRepresentation, parse_list_style_position, { parse_list_style_position($input)? };
@@ -1187,6 +1188,17 @@ fn overflow_i01_projection(value: CssOverflow) -> Option<CssOverflow> {
 }
 
 macro_rules! define_property_value {
+    (Content, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
+        define_current_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssContentValue,
+            CssContent,
+            current,
+            content_i01
+        );
+    };
     (AlignContent, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident) => {
         define_current_property_value!(
             $canonical,

@@ -2242,6 +2242,30 @@ opening/closing string pairs. Its bounded specified serializer escapes decoded
 strings and charges one cumulative resource budget across every pair. Language
 selection for `auto` and parent matching remain downstream.
 
+[CSS Generated Content 3 §2](https://www.w3.org/TR/2025/WD-css-content-3-20251204/#propdef-content)
+defines `content` as a noninherited longhand with initial `normal`. Its current
+`CssContentValue` distinguishes `normal`, `none`, and checked generated content.
+The generated body classifies a sole image as replacement, retains ordered
+content items, and permits a separate nonempty alternative of strings and
+counter functions. `CssCounterStyleValue` retains checked named styles or
+`symbols()` with string/image symbols; all predefined style names normalize to
+lowercase while custom names keep their case. The older `CssContent` and
+`CssCounterStyle` values remain exact conditional I01 projections through
+`CssContentPropertyValue::i01_subset()`; use `current()` for the complete
+authored grammar. A valid `attr()` keeps the whole declaration pending, as
+described above.
+
+Specified serialization uses one cumulative input-node, projection-node, and
+CSS-byte budget. Generated and alternative lists, functions, and `symbols()`
+each charge one aggregate plus checked children; nested URLs and images share
+the same writer. Defined meaning-preserving defaults are omitted in canonical
+text: decimal in `counter()`/`counters()`, first in `string()`, text in
+`content()`, and symbolic in `symbols()`. Explicit omitted defaults still
+consume node budget. Leader keywords emit their equivalent string forms.
+Target-text selector and target-counter style omissions remain distinct from
+explicit arguments. Counter lookup, target retrieval, repeated-content
+processing, generated boxes, resources, and painting remain downstream.
+
 [CSS Text 4 §§8.1–8.2](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#word-spacing-property)
 defines `word-spacing` and `letter-spacing` as inherited longhands with
 `normal` initials and signed `<length-percentage>` values. Their shared
