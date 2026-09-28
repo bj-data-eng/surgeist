@@ -53,7 +53,7 @@ fn assert_recovered(invalid: &str) {
 
 #[test]
 fn content_is_one_noninherited_longhand_with_symbolic_normal_initial() {
-    let feature = feature_metadata("official.property.content").unwrap();
+    let feature = feature_metadata("baseline.property.content").unwrap();
     assert_eq!(feature.status(), CssSupportStatus::Complete);
     assert_eq!(feature.source().id().as_str(), "X-CONTENT3");
     assert_eq!(feature.production(), "#propdef-content");
