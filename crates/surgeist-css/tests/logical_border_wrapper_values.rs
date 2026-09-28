@@ -2,7 +2,7 @@
 
 use surgeist_css::*;
 
-fn checked_color(value: &str) -> CssAuthoredColor {
+fn checked_color(value: &str) -> CssColor {
     let report = parse_style_attribute(&format!("border-top-color:{value}"));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let Some(CssKnownPropertyValueRef::BorderTopColor(color)) =
@@ -10,34 +10,32 @@ fn checked_color(value: &str) -> CssAuthoredColor {
     else {
         panic!("checked border color");
     };
-    color.current().clone()
+    color.value().clone()
 }
 
-fn logical_current<'a>(name: &str, value: CssKnownPropertyValueRef<'a>) -> &'a CssBorderValue {
+fn logical_current<'a>(name: &str, value: CssKnownPropertyValueRef<'a>) -> &'a CssBorder {
     match (name, value) {
-        ("border-block-start", CssKnownPropertyValueRef::BorderBlockStart(value)) => {
-            value.current()
-        }
-        ("border-block-end", CssKnownPropertyValueRef::BorderBlockEnd(value)) => value.current(),
+        ("border-block-start", CssKnownPropertyValueRef::BorderBlockStart(value)) => value.value(),
+        ("border-block-end", CssKnownPropertyValueRef::BorderBlockEnd(value)) => value.value(),
         ("border-inline-start", CssKnownPropertyValueRef::BorderInlineStart(value)) => {
-            value.current()
+            value.value()
         }
-        ("border-inline-end", CssKnownPropertyValueRef::BorderInlineEnd(value)) => value.current(),
-        ("border-block", CssKnownPropertyValueRef::BorderBlock(value)) => value.current(),
-        ("border-inline", CssKnownPropertyValueRef::BorderInline(value)) => value.current(),
+        ("border-inline-end", CssKnownPropertyValueRef::BorderInlineEnd(value)) => value.value(),
+        ("border-block", CssKnownPropertyValueRef::BorderBlock(value)) => value.value(),
+        ("border-inline", CssKnownPropertyValueRef::BorderInline(value)) => value.value(),
         _ => panic!("logical border wrapper for {name}"),
     }
 }
 
 #[test]
 fn six_logical_wrappers_expose_the_shared_checked_triple_and_preserve_omission() {
-    let expected = CssBorderValue::try_new(
+    let expected = CssBorder::try_new(
         Some(CssBorderWidth::Thin),
         Some(CssBorderStyle::Solid),
         Some(checked_color("red")),
     )
     .unwrap();
-    let omitted = CssBorderValue::try_new(None, Some(CssBorderStyle::Solid), None).unwrap();
+    let omitted = CssBorder::try_new(None, Some(CssBorderStyle::Solid), None).unwrap();
     for name in [
         "border-block-start",
         "border-block-end",

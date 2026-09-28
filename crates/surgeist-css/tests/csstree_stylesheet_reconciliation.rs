@@ -8,8 +8,8 @@ use std::{collections::BTreeSet, fs, path::Path};
 
 use serde_json::{Value, json};
 use surgeist_css::{
-    CssColor, CssDeclarationList, CssImportance, CssKnownPropertyValueRef, CssRgbaColor, CssRule,
-    CssSelector, parse_sheet, validate_sheet,
+    CssDeclarationList, CssImportance, CssKnownPropertyValueRef, CssRule, CssSelector, parse_sheet,
+    validate_sheet,
 };
 
 #[path = "support/digest.rs"]
@@ -31,12 +31,7 @@ fn declarations(actual: &CssDeclarationList) -> Value {
                 assert_eq!(declaration.importance(), CssImportance::Normal);
                 match declaration.known().and_then(|known| known.property_value()) {
                     Some(CssKnownPropertyValueRef::Color(value)) => {
-                        assert_eq!(
-                            value.i01_subset(),
-                            Some(&CssColor::Rgba(
-                                CssRgbaColor::try_new(255, 0, 0, 1.0).unwrap()
-                            ))
-                        );
+                        assert_eq!(value.value().named().expect("named color").name(), "red");
                         json!(["color", "red"])
                     }
                     Some(CssKnownPropertyValueRef::Width(value)) => {

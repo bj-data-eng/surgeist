@@ -74,12 +74,11 @@ pub(super) fn parse_image_layer_list<'i, 't>(
 pub(super) fn parse_background<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssParsedBackground, ParseError<'i, Error>> {
+) -> std::result::Result<CssBackground, ParseError<'i, Error>> {
     let mut layers = Vec::new();
-    let mut color_projections = Vec::new();
 
     loop {
-        let (layer, color_projection, color_location) = parse_background_layer(input, numeric)?;
+        let (layer, color_location) = parse_background_layer(input, numeric)?;
         let has_comma = input.try_parse(Parser::expect_comma).is_ok();
         if has_comma && let Some(location) = color_location {
             return Err(unsupported_value_at(
@@ -89,7 +88,6 @@ pub(super) fn parse_background<'i, 't>(
             ));
         }
         layers.push(layer);
-        color_projections.push(color_projection);
         if !has_comma {
             break;
         }
@@ -102,25 +100,14 @@ pub(super) fn parse_background<'i, 't>(
         }
     }
 
-    let i01_subset = match (layers.as_slice(), color_projections.as_slice()) {
-        ([layer], [projection]) if layer.has_only_color() => projection.clone(),
-        _ => None,
-    };
-    Ok(CssParsedBackground::new(
-        CssBackground::new(layers),
-        i01_subset,
-    ))
+    Ok(CssBackground::new(layers))
 }
 
 fn parse_background_layer<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<
-    (
-        CssBackgroundLayer,
-        Option<CssColor>,
-        Option<cssparser::SourceLocation>,
-    ),
+    (CssBackgroundLayer, Option<cssparser::SourceLocation>),
     ParseError<'i, Error>,
 > {
     let mut image = None;
@@ -130,7 +117,6 @@ fn parse_background_layer<'i, 't>(
     let mut attachment = None;
     let mut boxes = Vec::new();
     let mut color = None;
-    let mut color_projection = None;
     let mut color_location = None;
 
     while !input.is_exhausted() && !next_is_comma(input) {
@@ -164,9 +150,7 @@ fn parse_background_layer<'i, 't>(
         if color.is_none() {
             let location = input.current_source_location();
             if let Ok(parsed) = input.try_parse(|input| parse_color(input, numeric)) {
-                let (current, i01_subset) = parsed.into_parts();
-                color = Some(current);
-                color_projection = i01_subset;
+                color = Some(parsed);
                 color_location = Some(location);
                 continue;
             }
@@ -199,7 +183,6 @@ fn parse_background_layer<'i, 't>(
     };
     Ok((
         CssBackgroundLayer::new(image, position, size, repeat, attachment, boxes, color),
-        color_projection,
         color_location,
     ))
 }
@@ -997,7 +980,7 @@ fn parse_gradient_color_stop<'i, 't>(
     let position = input
         .try_parse(|input| parse_gradient_line_position(input, numeric))
         .ok();
-    Ok(CssGradientColorStop::new(color, position))
+    Ok(CssGradientColorStop::from_color(color, position))
 }
 
 fn parse_gradient_line_position<'i, 't>(
@@ -1596,7 +1579,7 @@ pub(super) fn parse_outline<'i, 't>(
     if width.is_none() && style.is_none() && color.is_none() {
         None
     } else {
-        Some(CssOutline::new_current(width, style, color))
+        Some(CssOutline::try_new(width, style, color).expect("nonempty parsed outline"))
     }
     .ok_or_else(|| unsupported_value(input, None, "outline shorthand is empty"))
 }

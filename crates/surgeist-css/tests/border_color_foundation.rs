@@ -109,6 +109,76 @@ fn one_value(name: &str, value: &str) -> CssLonghandValue {
     item.ordinary_value().unwrap().clone()
 }
 
+fn assert_color_token_origin(
+    item: &CssLonghandContribution,
+    origin: &CssValueOrigin,
+    expected: &str,
+) {
+    let CssValueOrigin::Parsed(token) = origin else {
+        panic!("expanded color token retains a parsed origin");
+    };
+    let value = item
+        .source()
+        .parsed_value()
+        .expect("parsed declaration value");
+    assert!(token.source().same_snapshot(value.source()));
+    let start = token.span().start().byte_offset().value();
+    let end = token.span().end().byte_offset().value();
+    assert_eq!(&token.source().as_str()[start..end], expected);
+}
+
+fn assert_color_contribution(item: &CssLonghandContribution, expected: &str) {
+    let color = match item.ordinary_value().expect("ordinary color").view() {
+        CssLonghandValueRef::BorderTopColor(color)
+        | CssLonghandValueRef::BorderRightColor(color)
+        | CssLonghandValueRef::BorderBottomColor(color)
+        | CssLonghandValueRef::BorderLeftColor(color)
+        | CssLonghandValueRef::BorderBlockStartColor(color)
+        | CssLonghandValueRef::BorderBlockEndColor(color)
+        | CssLonghandValueRef::BorderInlineStartColor(color)
+        | CssLonghandValueRef::BorderInlineEndColor(color) => color,
+        _ => panic!("color contribution for {expected}"),
+    };
+    match expected {
+        "currentcolor" => assert!(color.is_current_color()),
+        "red" => assert_eq!(color.named().unwrap().name(), "red"),
+        "black" => assert_eq!(color.named().unwrap().name(), "black"),
+        "#12abef" => assert_eq!(color.hex_value().unwrap().digits(), "12abef"),
+        "rgb(1 2 3 / none)" => {
+            let rgb = color.rgb_value().expect("modern rgb color");
+            assert_eq!(rgb.syntax(), CssColorSyntax::Modern);
+            for (channel, expected) in rgb.channels().iter().zip(["1", "2", "3"]) {
+                let CssColorComponent::Number(number) = channel else {
+                    panic!("numeric rgb channel");
+                };
+                assert_eq!(number.numeric().representation(), expected);
+                assert_color_token_origin(item, number.origin(), expected);
+            }
+            assert!(matches!(rgb.alpha(), Some(CssColorComponent::None)));
+        }
+        "lab(50% 20 -30)" => {
+            let lab = color.lab_value().expect("lab color");
+            let CssColorComponent::Percentage(lightness) = lab.lightness() else {
+                panic!("percentage lab lightness");
+            };
+            assert_eq!(lightness.numeric().representation(), "50");
+            assert_color_token_origin(item, lightness.origin(), "50%");
+            let CssColorComponent::Number(a) = lab.a() else {
+                panic!("number lab a");
+            };
+            assert_eq!(a.numeric().representation(), "20");
+            assert_color_token_origin(item, a.origin(), "20");
+            let CssColorComponent::Number(b) = lab.b() else {
+                panic!("number lab b");
+            };
+            assert_eq!(b.numeric().representation(), "-30");
+            assert_color_token_origin(item, b.origin(), "-30");
+            assert!(lab.alpha().is_none());
+        }
+        _ => panic!("uncatalogued expanded color {expected}"),
+    }
+}
+
 fn unresolved_kind() -> CssExpansionErrorKind {
     CssExpansionErrorKind::UnresolvedStandard {
         property: grammar(FOUR_SIDE).target_property(),
@@ -203,13 +273,25 @@ fn eight_color_longhands_reuse_complete_authored_colors_and_symbolic_initial() {
 }
 
 #[test]
-fn border_color_i01_is_single_compatible_physical_only() {
-    for (authored, expected) in [
-        ("black", Some(CssColor::BLACK)),
-        ("currentcolor", Some(CssColor::CurrentColor)),
-        ("black black", None),
-        ("logical black", None),
-        ("logical currentcolor", None),
+fn border_color_keeps_authored_arity_and_physical_or_logical_roles() {
+    for (authored, kind, colors) in [
+        ("black", CssBoxSideKind::Physical, &["black"][..]),
+        (
+            "currentcolor",
+            CssBoxSideKind::Physical,
+            &["currentcolor"][..],
+        ),
+        (
+            "black black",
+            CssBoxSideKind::Physical,
+            &["black", "black"][..],
+        ),
+        ("logical black", CssBoxSideKind::Logical, &["black"][..]),
+        (
+            "logical currentcolor",
+            CssBoxSideKind::Logical,
+            &["currentcolor"][..],
+        ),
     ] {
         let source = declaration(FOUR_SIDE, authored);
         let CssKnownPropertyValueRef::BorderColor(value) =
@@ -217,7 +299,23 @@ fn border_color_i01_is_single_compatible_physical_only() {
         else {
             panic!("typed border-color for {authored}")
         };
-        assert_eq!(value.i01_subset(), expected.as_ref(), "{authored}");
+        let border = value.value();
+        assert_eq!(border.kind(), kind, "{authored}");
+        assert_eq!(border.authored_values().len(), colors.len(), "{authored}");
+        for (color, expected) in border.authored_values().iter().zip(colors) {
+            match *expected {
+                "black" => assert_eq!(color.named().unwrap().name(), "black"),
+                "currentcolor" => assert!(color.is_current_color()),
+                _ => unreachable!("captured color"),
+            }
+        }
+        for color in border.assigned_values() {
+            match colors[0] {
+                "black" => assert_eq!(color.named().unwrap().name(), "black"),
+                "currentcolor" => assert!(color.is_current_color()),
+                _ => unreachable!("captured color"),
+            }
+        }
     }
 }
 
@@ -264,7 +362,7 @@ fn logical_color_pairs_assign_exact_start_and_end_with_omission() {
                 (second, members[1].as_str(), end),
             ] {
                 assert_eq!(item.property(), grammar(member).target_property());
-                assert_eq!(item.ordinary_value(), Some(&one_value(member, expected)));
+                assert_color_contribution(item, expected);
                 assert!(item.source().same_occurrence(&source));
                 assert_eq!(item.source().importance(), CssImportance::Important);
                 assert!(item.replacement_components().is_none());
@@ -380,7 +478,7 @@ fn physical_border_triples_preserve_color_and_currentcolor_default() {
             {
                 let member = format!("border-{side}-color");
                 assert_eq!(item.property(), grammar(&member).target_property());
-                assert_eq!(item.ordinary_value(), Some(&one_value(&member, expected)));
+                assert_color_contribution(item, expected);
                 assert!(item.source().same_occurrence(&source));
             }
             assert_eq!(values.items().len(), if name == "border" { 17 } else { 3 });
@@ -474,13 +572,7 @@ fn globals_all_and_pending_reentry_keep_color_members_and_occurrence() {
                 assert_eq!(values.items().len(), members.len());
                 for (index, (item, member)) in values.items().iter().zip(&members).enumerate() {
                     assert_eq!(item.property(), grammar(member).target_property());
-                    assert_eq!(
-                        item.ordinary_value(),
-                        Some(&one_value(
-                            member,
-                            if index == 1 { "#12abef" } else { "red" }
-                        ))
-                    );
+                    assert_color_contribution(item, if index == 1 { "#12abef" } else { "red" });
                     assert!(item.source().same_occurrence(&source));
                     assert_eq!(item.source().importance(), CssImportance::Important);
                     assert_eq!(item.replacement_components(), Some(&components));

@@ -101,7 +101,19 @@ fn checked_owners() -> Vec<CheckedOwner> {
         ("filter blur", |v| CssFilterBlur::try_new(v).is_some()),
         ("shape length", |v| CssShapeLength::try_new(v).is_some()),
         ("border", |v| {
-            CssBorder::try_new(Some(v), None, None).is_some()
+            let CssLength::Calc(CssCalcLength::Typed(calculation)) = v else {
+                return false;
+            };
+            let Ok(calculation) =
+                CssLengthCalculation::try_from_components(calculation.components().clone())
+            else {
+                return false;
+            };
+            let Ok(length) = CssSpecifiedNonNegativeLength::try_from_calculation(calculation)
+            else {
+                return false;
+            };
+            CssBorder::try_new(Some(CssBorderWidth::Length(length)), None, None).is_some()
         }),
         ("shadow x", |v| {
             CssShadow::try_new(false, v, CssLength::Zero, None, None, None).is_some()

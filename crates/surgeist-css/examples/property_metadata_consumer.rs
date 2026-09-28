@@ -679,7 +679,7 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
             assert_eq!(v.vertical(), CssBorderImageRepeatKeyword::Stretch);
         }
         CssLonghandValueRef::Color(v) => {
-            assert_eq!(v.system(), Some(CssAuthoredSystemColor::CanvasText))
+            assert_eq!(v.system(), Some(CssSystemColor::CanvasText))
         }
         CssLonghandValueRef::TextOrientation(v) => assert_eq!(*v, CssTextOrientation::Mixed),
         CssLonghandValueRef::FlowTolerance(v) => assert_eq!(v, &CssFlowTolerance::normal()),
@@ -1329,7 +1329,7 @@ fn construction_provenance_and_normalization() {
             panic!("authored color")
         };
         if index == 0 {
-            assert_eq!(color.system(), Some(CssAuthoredSystemColor::CanvasText));
+            assert_eq!(color.system(), Some(CssSystemColor::CanvasText));
             assert_eq!(value.source().importance(), CssImportance::Important);
         } else {
             assert_eq!(

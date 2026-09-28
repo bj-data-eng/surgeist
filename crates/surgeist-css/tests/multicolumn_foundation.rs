@@ -102,14 +102,14 @@ fn one_value(name: &str, value: &str) -> CssLonghandValue {
     item.ordinary_value().unwrap().clone()
 }
 
-fn authored_color(value: &str) -> CssAuthoredColor {
+fn authored_color(value: &str) -> CssColor {
     let source = declaration("column-rule-color", value);
     let CssKnownPropertyValueRef::ColumnRuleColor(color) =
         source.known().unwrap().property_value().unwrap()
     else {
         panic!("typed color")
     };
-    color.current().clone()
+    color.value().clone()
 }
 
 fn programmatic_width(number: &str) -> CssBorderWidth {
@@ -479,14 +479,17 @@ fn direct_rule_construction_keeps_exact_width_and_modern_color_without_legacy_pr
     else {
         panic!("modern color wrapper")
     };
-    assert!(modern.i01_subset().is_none());
+    assert_eq!(
+        modern.value().color_mix_value().unwrap().components().len(),
+        3
+    );
     let legacy_source = declaration("column-rule-color", "red");
     let CssKnownPropertyValueRef::ColumnRuleColor(legacy) =
         legacy_source.known().unwrap().property_value().unwrap()
     else {
-        panic!("I01-compatible color wrapper")
+        panic!("named color wrapper")
     };
-    assert!(legacy.i01_subset().is_some());
+    assert_eq!(legacy.value().named().unwrap().name(), "red");
 }
 
 #[test]

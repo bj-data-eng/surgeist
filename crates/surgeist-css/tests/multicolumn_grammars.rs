@@ -52,7 +52,7 @@ fn c14_multicolumn_properties_retain_typed_structure() {
     let CssKnownPropertyValueRef::ColumnRuleColor(color) = ordinary(&report.syntax()[3]) else {
         panic!("expected column-rule-color");
     };
-    assert!(color.current().is_current_color());
+    assert!(color.value().is_current_color());
 
     let CssKnownPropertyValueRef::ColumnRuleStyle(style) = ordinary(&report.syntax()[4]) else {
         panic!("expected column-rule-style");

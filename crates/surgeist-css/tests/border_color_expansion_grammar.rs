@@ -1,7 +1,7 @@
 use surgeist_css::{
-    CssAuthoredColor, CssAuthoredColorComponent, CssBorderColorShorthand, CssBorderColors,
-    CssBoxSideKind, CssColor, CssGlobalKeyword, CssKnownDeclaredValueRef, CssKnownProperty,
-    CssKnownPropertyValueRef, parse_style_attribute,
+    CssBorderColorShorthand, CssBorderColors, CssBoxSideKind, CssColor, CssColorComponent,
+    CssGlobalKeyword, CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    parse_style_attribute,
 };
 
 // CSS Backgrounds and Borders 3, 2024-03-11, section 3.1 defines <color>{1,4}.
@@ -37,7 +37,7 @@ fn one_through_four_border_colors_are_retained_with_their_valid_sibling() {
 }
 
 #[test]
-fn single_border_color_preserves_its_typed_compatibility_value() {
+fn single_border_color_preserves_its_typed_value() {
     let report = parse_style_attribute("border-color: currentcolor");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1);
@@ -49,7 +49,8 @@ fn single_border_color_preserves_its_typed_compatibility_value() {
     else {
         panic!("expected border-color wrapper");
     };
-    assert_eq!(value.i01_subset(), Some(&CssColor::CurrentColor));
+    assert_eq!(value.value().authored_values().len(), 1);
+    assert!(value.value().authored_values()[0].is_current_color());
 }
 
 #[test]
@@ -148,8 +149,8 @@ fn border_color_components_expand_in_top_right_bottom_left_order() {
         ("red blue green black", ["red", "blue", "green", "black"]),
     ] {
         let value = border_color_value(authored);
-        assert_eq!(value.current().kind(), CssBoxSideKind::Physical);
-        assert_eq!(named_assignments(value.current()), expected, "{authored}");
+        assert_eq!(value.value().kind(), CssBoxSideKind::Physical);
+        assert_eq!(named_assignments(value.value()), expected, "{authored}");
     }
 }
 
@@ -161,39 +162,49 @@ fn border_color_sides_preserve_current_color_and_exact_authored_color_components
     );
     let value = border_color_value(authored);
     assert_eq!(value.as_css(), authored);
-    let colors = value.current();
+    let colors = value.value();
     let [top, right, bottom, left] = colors.assigned_values();
     assert_eq!(top.named().unwrap().name(), "red");
     let rgb = right.rgb_value().expect("authored rgb side");
     let [
-        CssAuthoredColorComponent::Number(red),
-        CssAuthoredColorComponent::Number(green),
-        CssAuthoredColorComponent::Number(blue),
+        CssColorComponent::Number(red),
+        CssColorComponent::Number(green),
+        CssColorComponent::Number(blue),
     ] = rgb.channels()
     else {
         panic!("expected three authored numeric RGB channels");
     };
-    assert_eq!([red.value(), green.value(), blue.value()], [1.0, 2.0, 3.0]);
-    assert!(matches!(rgb.alpha(), Some(CssAuthoredColorComponent::None)));
+    assert_eq!(
+        [
+            red.numeric().representation(),
+            green.numeric().representation(),
+            blue.numeric().representation()
+        ],
+        ["1", "2", "3"]
+    );
+    assert!(matches!(rgb.alpha(), Some(CssColorComponent::None)));
     assert!(bottom.is_current_color());
     let lab = left.lab_value().expect("authored lab side");
     assert!(matches!(
         lab.lightness(),
-        CssAuthoredColorComponent::PercentageCalculation(_)
+        CssColorComponent::PercentageCalculation(_)
     ));
-    assert!(matches!(lab.a(), CssAuthoredColorComponent::Number(value) if value.value() == 20.0));
-    assert!(matches!(lab.b(), CssAuthoredColorComponent::Number(value) if value.value() == -30.0));
+    assert!(
+        matches!(lab.a(), CssColorComponent::Number(value) if value.numeric().representation() == "20")
+    );
+    assert!(
+        matches!(lab.b(), CssColorComponent::Number(value) if value.numeric().representation() == "-30")
+    );
     assert!(matches!(
         lab.alpha(),
-        Some(CssAuthoredColorComponent::Percentage(value)) if (value.value() - 120.0).abs() < 0.001
+        Some(CssColorComponent::Percentage(value)) if value.numeric().representation() == "120"
     ));
-    assert!(value.i01_subset().is_none());
 }
 
 #[test]
 fn checked_border_colors_enforce_component_count_and_the_same_side_expansion() {
-    let values: Vec<CssAuthoredColor> = ["red", "blue", "green", "black"]
-        .map(|name| border_color_value(name).current().authored_values()[0].clone())
+    let values: Vec<CssColor> = ["red", "blue", "green", "black"]
+        .map(|name| border_color_value(name).value().authored_values()[0].clone())
         .into();
 
     assert!(CssBorderColors::try_new(Vec::new()).is_none());
@@ -211,20 +222,17 @@ fn checked_border_colors_enforce_component_count_and_the_same_side_expansion() {
 }
 
 #[test]
-fn border_color_compatibility_requires_one_exactly_representable_authored_component() {
+fn border_color_preserves_arity_and_currentcolor_expansion() {
+    let single = border_color_value("black");
+    assert_eq!(single.value().authored_values().len(), 1);
     assert_eq!(
-        border_color_value("black").i01_subset(),
-        Some(&CssColor::BLACK)
+        single.value().authored_values()[0].named().unwrap().name(),
+        "black"
     );
-    for authored in ["black black", "lab(calc(50% + 10%) 20 -30 / 120%)"] {
-        assert!(
-            border_color_value(authored).i01_subset().is_none(),
-            "{authored}"
-        );
-    }
+    let pair = border_color_value("black black");
+    assert_eq!(pair.value().authored_values().len(), 2);
     let value = border_color_value("currentcolor");
-    let colors = value.current();
-    for side in colors.assigned_values() {
+    for side in value.value().assigned_values() {
         assert!(side.is_current_color());
     }
 }

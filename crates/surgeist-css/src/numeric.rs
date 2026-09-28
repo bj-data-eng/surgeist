@@ -392,6 +392,9 @@ impl CssNumericConstructionError {
     pub fn origin(&self) -> Option<&CssValueOrigin> {
         self.origin.as_ref()
     }
+    pub fn path(&self) -> Option<&[usize]> {
+        self.path.as_deref()
+    }
     pub(crate) fn component_error(&self) -> Option<&CssComponentValueError> {
         self.source.as_deref()
     }
@@ -2976,6 +2979,153 @@ impl<'a> CssCalculationProfileChannelRef<'a> {
     }
 }
 
+/// Checked authored expression in a relative color's result slot.
+impl crate::CssRelativeColorExpression {
+    pub fn try_from_components(
+        values: CssComponentValues,
+        environment: crate::CssRelativeColorEnvironment,
+        result_domain: crate::CssRelativeColorResultDomain,
+    ) -> Result<Self> {
+        Self::try_from_components_with_limits(
+            values,
+            environment,
+            result_domain,
+            CssComponentValueLimits::default(),
+        )
+    }
+    pub fn try_from_components_with_limits(
+        values: CssComponentValues,
+        environment: crate::CssRelativeColorEnvironment,
+        result_domain: crate::CssRelativeColorResultDomain,
+        limits: CssComponentValueLimits,
+    ) -> Result<Self> {
+        construct_relative_color_expression(
+            values,
+            environment,
+            result_domain,
+            limits,
+            AdmissionPolicy::Strict,
+        )
+    }
+    pub(crate) fn from_parser_components(
+        values: CssComponentValues,
+        context: &NumericInputContext<'_>,
+        environment: crate::CssRelativeColorEnvironment,
+        result_domain: crate::CssRelativeColorResultDomain,
+    ) -> Result<Self> {
+        let policy = match context {
+            NumericInputContext::Parsed(_) => AdmissionPolicy::RecoveredSyntax,
+            NumericInputContext::Components(..) => AdmissionPolicy::Strict,
+        };
+        construct_relative_color_expression(
+            values,
+            environment,
+            result_domain,
+            CssComponentValueLimits::default(),
+            policy,
+        )
+    }
+}
+fn construct_relative_color_expression(
+    values: CssComponentValues,
+    environment: crate::CssRelativeColorEnvironment,
+    result_domain: crate::CssRelativeColorResultDomain,
+    limits: CssComponentValueLimits,
+    policy: AdmissionPolicy,
+) -> Result<crate::CssRelativeColorExpression> {
+    use crate::{CssRelativeColorExpressionValue as V, CssRelativeColorResultDomain as D};
+    validate_components(&values, limits, policy)?;
+    let mut significant = values
+        .items()
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| !trivia(c));
+    let (index, component) = significant.next().ok_or_else(|| {
+        CssNumericConstructionError::at(CssNumericConstructionErrorKind::EmptyValue, None)
+    })?;
+    if let Some((extra_index, extra)) = significant.next() {
+        return Err(CssNumericConstructionError::at(
+            CssNumericConstructionErrorKind::MultipleValues,
+            Some(extra),
+        )
+        .with_path(Some(vec![extra_index].into_boxed_slice())));
+    }
+    let fail = |kind| {
+        CssNumericConstructionError::at(kind, Some(component))
+            .with_path(Some(vec![index].into_boxed_slice()))
+    };
+    if !environment.is_consistent()
+        || (environment == crate::CssRelativeColorEnvironment::Alpha && result_domain != D::Alpha)
+    {
+        return Err(fail(CssNumericConstructionErrorKind::InvalidArgumentType));
+    }
+    let origin = component.origin().clone();
+    let value = match component.view() {
+        CssComponentValueRef::Token(CssValueTokenRef::Ident(name))
+            if name.eq_ignore_ascii_case("none") =>
+        {
+            V::None
+        }
+        CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) => {
+            let (channel, _) = crate::parser::numeric_relative_channel(environment, name)
+                .ok_or_else(|| fail(CssNumericConstructionErrorKind::InvalidArgumentType))?;
+            V::Channel(channel)
+        }
+        CssComponentValueRef::Token(CssValueTokenRef::Number(_)) => V::Number(
+            crate::CssColorNumberLiteral::try_from_component(component.clone()).map_err(
+                |error| {
+                    CssNumericConstructionError::component(error)
+                        .with_path(Some(vec![index].into_boxed_slice()))
+                },
+            )?,
+        ),
+        CssComponentValueRef::Token(CssValueTokenRef::Percentage(_)) if result_domain != D::Hue => {
+            V::Percentage(
+                crate::CssColorPercentageLiteral::try_from_component(component.clone()).map_err(
+                    |error| {
+                        CssNumericConstructionError::component(error)
+                            .with_path(Some(vec![index].into_boxed_slice()))
+                    },
+                )?,
+            )
+        }
+        CssComponentValueRef::Token(CssValueTokenRef::Dimension { .. })
+            if result_domain == D::Hue =>
+        {
+            V::Angle(
+                crate::CssColorAngleLiteral::try_from_component(component.clone()).map_err(
+                    |error| {
+                        CssNumericConstructionError::component(error)
+                            .with_path(Some(vec![index].into_boxed_slice()))
+                    },
+                )?,
+            )
+        }
+        CssComponentValueRef::Function(_) => {
+            let serialized = values
+                .serialize()
+                .map_err(CssNumericConstructionError::component)?;
+            let authored = crate::CssAuthoredDeclarationValue::new(serialized.as_css());
+            let expression = construct_with_policy(
+                values,
+                CalculationRoot::Relative(environment, result_domain),
+                limits,
+                policy,
+            )?;
+            V::Calculation(crate::CssRelativeColorCalculation::from_expression(
+                authored, expression,
+            ))
+        }
+        _ => return Err(fail(CssNumericConstructionErrorKind::RootDomainMismatch)),
+    };
+    Ok(crate::CssRelativeColorExpression::new(
+        environment,
+        result_domain,
+        value,
+        origin,
+    ))
+}
+
 /// One nonbinding expression in a custom profile's component environment.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssProfileColorExpression {
@@ -2985,14 +3135,14 @@ pub struct CssProfileColorExpression {
 }
 #[derive(Clone, Debug, PartialEq)]
 enum ProfileExpression {
-    Literal(crate::CssAuthoredColorComponent),
+    Literal(crate::CssColorComponent),
     Reference(crate::CssColorProfileComponentName),
     Calculation(CssProfileColorCalculation),
 }
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum CssProfileColorExpressionRef<'a> {
-    Literal(&'a crate::CssAuthoredColorComponent),
+    Literal(&'a crate::CssColorComponent),
     Reference(&'a crate::CssColorProfileComponentName),
     Calculation(&'a CssProfileColorCalculation),
 }
@@ -3029,7 +3179,7 @@ impl CssProfileColorExpression {
             CssComponentValueRef::Token(CssValueTokenRef::Ident(name))
                 if name.eq_ignore_ascii_case("none") =>
             {
-                ProfileExpression::Literal(crate::CssAuthoredColorComponent::None)
+                ProfileExpression::Literal(crate::CssColorComponent::None)
             }
             CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) => {
                 ProfileExpression::Reference(
@@ -3173,69 +3323,6 @@ pub(crate) fn capture_calculation_specified_scaled(
         SpecifiedCalculationRef::Profile(value) => &value.expression,
     };
     capture_specified_scaled(expression, scale, context)
-}
-
-impl crate::CssTypedRelativeColorExpression {
-    /// Checks an expression in the alpha-only origin environment.
-    pub fn try_alpha_from_components(values: CssComponentValues) -> Result<Self> {
-        use crate::{
-            CssAuthoredColorComponent as C, CssRelativeColorEnvironment as E,
-            CssRelativeColorExpressionValue as V, CssRelativeColorResultDomain as D,
-        };
-        validate_components(
-            &values,
-            CssComponentValueLimits::default(),
-            AdmissionPolicy::Strict,
-        )?;
-        let mut significant = values.items().iter().filter(|c| !trivia(c));
-        let component = significant.next().ok_or_else(|| {
-            CssNumericConstructionError::at(CssNumericConstructionErrorKind::EmptyValue, None)
-        })?;
-        if let Some(extra) = significant.next() {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::MultipleValues,
-                Some(extra),
-            ));
-        }
-        let value = match component.view() {
-            CssComponentValueRef::Token(CssValueTokenRef::Ident(name))
-                if name.eq_ignore_ascii_case("none") =>
-            {
-                V::None
-            }
-            CssComponentValueRef::Token(CssValueTokenRef::Ident(name))
-                if name.eq_ignore_ascii_case("alpha") =>
-            {
-                V::Channel(CssRelativeColorChannel::Alpha)
-            }
-            CssComponentValueRef::Token(
-                CssValueTokenRef::Number(_) | CssValueTokenRef::Percentage(_),
-            ) => match crate::color_scalar::component(component.clone())
-                .map_err(CssNumericConstructionError::component)?
-            {
-                C::Number(v) => V::Number(v),
-                C::Percentage(v) => V::Percentage(v),
-                C::ExactNumber(v) => V::ExactNumber(v),
-                C::ExactPercentage(v) => V::ExactPercentage(v),
-                _ => unreachable!("scalar token"),
-            },
-            _ => {
-                let authored = values
-                    .serialize()
-                    .map_err(CssNumericConstructionError::component)?;
-                let authored = crate::CssAuthoredDeclarationValue::new(authored.as_css());
-                let expression = construct(
-                    values,
-                    CalculationRoot::Relative(E::Alpha, D::Alpha),
-                    CssComponentValueLimits::default(),
-                )?;
-                V::Calculation(crate::CssRelativeColorCalculation::from_expression(
-                    authored, expression,
-                ))
-            }
-        };
-        Ok(Self::new(E::Alpha, D::Alpha, value))
-    }
 }
 
 #[cfg(test)]

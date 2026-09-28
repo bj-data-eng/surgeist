@@ -32,7 +32,7 @@ subset; it does not establish complete support for all CSS syntax.
 The [manifest](../Cargo.toml) declares package `surgeist-css`, library
 `surgeist_css`, version `0.1.0`, Rust edition 2024, and no default features.
 Clean-report validation is always available. Production dependencies are pinned to
-`cssparser = 0.37.0` and `cssparser-color = 0.5.0`; test-only JSON support uses
+`cssparser = 0.37.0`; test-only JSON support uses
 `serde = 1.0.228` and `serde_json = 1.0.145`.
 
 `parse_sheet` receives decoded Unicode text. A leading U+FEFF is preserved as
@@ -1092,15 +1092,14 @@ function grammar boundary.
 
 Property accessors expose dedicated typed function families. Timing-function
 wrappers expose the sole `CssEasingList` through `timing_functions()`.
-`transform.current()` returns `CssTransformValue`, `filter.current()` and
-`backdrop-filter.current()` return `CssFilterValue`, `box-shadow.current()`
+`transform.current()` returns `CssTransformValue`, `filter.value()` and
+`backdrop-filter.value()` return `CssFilter`, `box-shadow.value()`
 returns `CssBoxShadow`, and `clip-path.current()` returns an optional
-`CssClipPathValue`. Those other families retain their documented I01
-projections independently of timing.
+`CssClipPathValue`. Transform and clip-path retain their documented projections.
 
 ```rust
 use surgeist_css::{
-    CssBasicShapeValue, CssClipPathValue, CssFilterFunctionValue, CssFilterValue,
+    CssBasicShapeValue, CssClipPathValue, CssFilterFunction, CssFilter,
     CssKnownPropertyValueRef, CssTransformFunctionValue, CssTransformValue,
     parse_style_attribute,
 };
@@ -1127,9 +1126,9 @@ let CssKnownPropertyValueRef::Filter(filter) = report.syntax()[1]
     .property_value().expect("ordinary filter")
 else { panic!("expected filter") };
 assert!(matches!(
-    filter.current(),
-    CssFilterValue::Functions(functions)
-        if matches!(functions.functions()[1], CssFilterFunctionValue::DropShadow(_))
+    filter.value(),
+    CssFilter::Functions(functions)
+        if matches!(functions.functions()[1], CssFilterFunction::DropShadow(_))
 ));
 
 let CssKnownPropertyValueRef::ClipPath(clip) = report.syntax()[2]
@@ -1161,88 +1160,112 @@ reference-box combinations remain outside the selected shape subset.
 their explicit Partial catalog boundaries; support for one typed function does
 not promote an aggregate or an unselected production.
 
-## Authored colors and frozen I01 compatibility
+## Authored colors
 
-The current color model retains supported authored Color 4 forms. It
-distinguishes named, transparent, current, hexadecimal,
-current and deprecated system, legacy and modern RGB/HSL, HWB, Lab/LCH,
-Oklab/Oklch, and predefined `color()` branches. Finite specified components
-remain authored even when they are outside a computed range, and typed
-calculations remain symbolic. Modern HSL/HSLA saturation and lightness, and
-HWB whiteness and blackness, accept numbers, percentages, `none`, and typed
-calculations. Their number and percentage domains remain distinct; legacy
-comma-separated HSL/HSLA keeps percentage-only saturation and lightness.
-The HSL/HWB catalog entries remain Partial because canonical color
-serialization is unfinished.
+`CssColor` is the sole authored semantic color graph. It distinguishes named,
+transparent, `currentcolor`, hexadecimal, current and deprecated system,
+legacy and modern RGB/HSL, HWB, Lab/LCH, Oklab/Oklch, and predefined
+`color()` branches. The color-bearing wrappers expose `value()`; aggregates
+such as `CssBorder`, `CssTextDecoration`, `CssOutline`, `CssShadow`, and
+`CssDropShadow` borrow their optional color through `color()`. `CssBackground`
+retains its ordered layers and the final layer's optional color. The filter
+wrappers expose the sole `CssFilter` function list through `value()`.
 
-Ordinary color numbers, percentages, and hue dimensions retain their exact
-finite decimal coefficients, including values beyond the tokenizer's float
-range. Exactly representable binary32 coefficients keep the existing finite
-variants. Other coefficients use `ExactNumber`, `ExactPercentage`, or
-`ExactAngle` in the appropriate channel model. Their checked
+Ordinary number, percentage, and angle components hold checked
 `CssColorNumberLiteral`, `CssColorPercentageLiteral`, and
-`CssColorAngleLiteral` payloads retain the original component and provenance;
-the angle payload also retains its unit. Percentages classify the authored
-coefficient directly. Typed calculations keep their separate binary64
-semantics. `display-p3-linear` uses the same current predefined-color model as
-the other spaces, including `none`, calculations, and exact literals.
+`CssColorAngleLiteral` values. Each keeps the exact finite decimal token and
+origin, even when its magnitude overflows or underflows a binary32 cache. The
+angle also retains its authored unit. `CssColorComponent` has number,
+percentage, `none`, and typed calculation branches; `CssColorHue` has number,
+angle, `none`, and calculation branches. Modern RGB/HSL/HWB accept their
+selected mixed domains and `none`. Legacy comma RGB requires homogeneous
+number or percentage channels without `none`; legacy HSL requires percentage
+saturation/lightness and no missing component. Out-of-range authored channels
+remain valid. Pure color math is retained symbolically until the appropriate
+computed-value phase.
 
-`CssAuthoredColorMixPercentage` no longer implements `Copy`. Its `value()`
-returns `Option<f32>`; use `exact_literal()` for a retained exact percentage.
-`CssAuthoredColorMixComponent::weight()` borrows its optional weight;
-`literal_value()` distinguishes a literal from a calculated weight.
-Existing finite `try_new` construction keeps its range contract, while
-`try_from_component` distinguishes an invalid component from an out-of-range
-percentage through `CssColorScalarError`. Exact literal range checks reject
-negative nonzero weights and weights above 100 even when the float cache
-would round them to a boundary.
+`CssHexColor::try_new` checks decoded hex digits, and
+`CssNamedColor::try_new` checks the named-color vocabulary. Each ordinary color
+family has a public checked `try_new`; `CssColor::from_*` composes checked
+payloads. `CssColor::current_color()` and `transparent()` construct the two
+keyword branches. The parser uses the same checked payload constraints.
+`CssColor::to_specified_css()` and `to_specified_css_with_limits()` emit one
+canonical specified string under cumulative input-node, projection-node, and
+UTF-8 byte limits. Failure is atomic and leaves the graph and origins intact.
+This serializer preserves unresolved context and performs only selected pure
+HSL/HWB and exact scalar conversions. It does not bind profiles, evaluate
+relative channels or a mix, or gamut-map a color.
+Origin colors nested in relative and `alpha()` forms retain unclamped authored
+component domains with modern punctuation. Ordinary direct alpha is clamped
+and rounded to six places before text emission; alpha calculations retain
+their calculation provenance.
 
-Every parsed compatibility projection checks the actual frozen payload,
-including its percentage scale and nested colors. Finite membership alone
-does not prove a lossless projection: even an exactly representable authored
-percentage can change during the old parser's divide-and-multiply sequence.
-Unproved projections return `None` while the current color remains available.
-Raw component serialization preserves authored tokens; it does not provide
-canonical color serialization.
+`border-color` accepts one to four colors and an optional leading `logical`
+marker. Its `CssBorderColorShorthand` retains authored arity and role mode;
+`assigned_values()` applies the one-to-four shorthand repetition. The logical
+axis pairs retain optional end values independently from effective repeated
+ends. The selected [Logical 1 issue 3030](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#issue-3d880eb1)
+leaves complete physical/logical reset membership unsettled, so completed
+`border-color` expansion returns `UnresolvedStandard` in either mode. Pending
+substitution remains symbolic.
 
-`CssAuthoredColor::to_specified_css()` is the canonical specified-color front
-door. `to_specified_css_with_limits()` applies the same cumulative input-node,
-projection-node, and UTF-8 output limits used by numeric specified
-serialization. Both methods borrow the checked authored graph and return one
-atomic string or `CssSpecifiedValueSerializationError`; successful and failed
-calls leave the graph and its origins unchanged.
+The selected Color 5 surface includes relative `rgb`/`rgba`, `hsl`/`hsla`,
+`hwb`, `lab`, `lch`, `oklab`, `oklch`, and predefined RGB/XYZ `color()` spaces.
+Relative origin channels are numeric in every environment. The checked
+`CssRelativeColorExpression::try_from_components` takes an environment and
+result slot and reports typed numeric errors with component path and origin.
+`CssRelativeColor::try_new` derives its environment and three result slots from
+the function; mismatched expressions are rejected. The source and expressions
+remain symbolic, including optional alpha. `CssAlphaColor::try_new` similarly
+distinguishes omitted alpha, `none`, and an `alpha` channel expression.
+`light-dark()`, `contrast-color()`, and `device-cmyk()` are not yet supported.
 
-The serializer distinguishes standalone colors, origins nested in relative and
-`alpha()` forms, declared relative expressions, and mix traversal. It preserves
-symbolic context, custom-profile identifier case, explicit relative alpha
-overrides, and missing components. It performs only the source-selected pure
-HSL/HWB and exact scalar conversions; it does not bind profiles, resolve
-relative channels, execute a mix, acquire host context, or gamut-map a color.
-Origin colors retain unclamped authored component domains with modern
-punctuation. Ordinary direct alpha is clamped and rounded to six places before
-text emission, while alpha calculations retain their calculation provenance.
+Custom-profile `color(--Profile ...)` preserves a nonempty variable channel
+list, exact numbers and percentages, missing components, and optional alpha.
+`color(from <color> --Profile ...)` retains unbound profile-channel references;
+profile existence and channel count are not grammar checks. Component names
+preserve decoded spelling and exclude only case-insensitive `none`. `calc(pi)`
+is a numeric constant, while a direct `pi` is a profile reference. Checked
+custom and alpha constructors enforce nonempty lists, expression environments,
+and combined structural depth. `absolute_eligibility()` reports authored
+eligibility, profile dependence, or the first contextual exclusion in authored
+order; it does not compute a color.
 
-The current opacity model likewise preserves a
-finite number or percentage, including signed and out-of-range specified
-values. Ordinary opacity scalars retain the exact authored decimal even when
-the tokenizer's binary32 cache underflows or overflows. `CssOpacityValue::ExactScalar`
-owns a checked `CssOpacityScalar` with numeric spelling, number/percentage kind,
-and original component provenance. Its constructor accepts only number and
-percentage components; it does not admit dimensions or calculations.
+`color-mix()` accepts a nonempty ordered list with optional interpolation.
+Omission means Oklab when resolved. Each color has an optional weight before or
+after it. Literal `CssColorMixPercentage` uses one exact checked percentage
+in the inclusive 0..100 range; a `CssColorMixWeight` calculation retains a
+symbolic percentage math root. `CssColorMixComponent::new` takes a color and
+optional weight; `CssColorMix::try_new` checks the list and composed depth.
+Hue interpolation belongs only to polar spaces. Custom interpolation profile
+names keep their case-sensitive decoded identity. Parsing does not distribute
+weights, resolve profiles, or evaluate colors. Specified serialization fills
+known omitted weights exactly before selected six-place rounding, keeps unknown
+calculation omissions, and omits equal effective shares with default Oklab.
 
+This crate does not perform color conversion, relative-channel evaluation,
+gamut mapping, contrast selection, or rendering.
+
+## Authored opacity and specified serialization
+
+`CssOpacityValue` retains a finite number or percentage, including signed
+and out-of-range specified values. Ordinary scalars retain the exact authored
+decimal even when the tokenizer's binary32 cache underflows or overflows.
+`ExactScalar` owns a checked `CssOpacityScalar` with numeric spelling,
+number/percentage kind, and original component provenance. Its constructor
+accepts only number and percentage components, not dimensions or calculations.
 Exactly representable binary32 values keep the existing `Literal`, `Number`,
 and `Percentage` branches. For example, `.5` remains `Literal`, while `.1`,
 `1e-47`, and `1e100%` use `ExactScalar`. Percentage classification uses the
-authored coefficient rather than multiplying a rounded fractional cache.
-Legacy Rust constructors retain their finite binary32 contracts. Authored
-transport does not clamp opacity.
+authored coefficient rather than a rounded fractional cache. Rust constructors
+retain their finite binary32 contracts. Authored transport does not clamp opacity.
 
 `CssOpacityValue::serialize_specified()` produces canonical specified text;
-`serialize_specified_with_limits()` supplies independent input-node,
-cumulative projection-node, and output-byte limits. Defaults are 65,536,
-262,144, and 1,048,576 respectively; zero limits are valid. Failures return a
-typed `CssSpecifiedValueSerializationError` without partial text or input
-mutation. These logical bounds do not guarantee allocator availability.
+`serialize_specified_with_limits()` supplies independent input-node, cumulative
+projection-node, and output-byte limits. Defaults are 65,536, 262,144, and
+1,048,576 respectively; zero limits are valid. Failures return a typed
+`CssSpecifiedValueSerializationError` without partial text or input mutation.
+These logical bounds do not guarantee allocator availability.
 
 Ordinary scalars use their exact retained magnitude. Percentages divide by 100
 symbolically and serialize as numbers: `.1` becomes `0.1`, `25%` becomes `0.25`,
@@ -1260,146 +1283,15 @@ range. Canonical finite math text uses shortest round-trip decimal digits,
 fixed notation, and decimal ties toward the greater number. Transcendental
 last bits may differ across platforms; bit-identical transcendental output is
 not promised. Authored component accessors and structural serialization remain
-separate and preserve their existing contracts.
+separate and preserve their contracts.
 
 The selected Values 4 section 10.13 has two localized serialization defects:
 an unclosed nonfinite result and a child loop that misserializes scalar/operator
 roots. The standards catalog records the repairs: close the nonfinite `calc`,
 and serialize scalar/operator roots as one calculation argument. These are
 explicit reconciliations with the same edition's grammar, not claims that the
-unmodified algorithm emits those outputs.
-
-Color-bearing property wrappers expose the current value through `current()`,
-and the opacity wrapper exposes its current `CssOpacityValue` through `value()`.
-Their `i01_subset()` remains a separate compatibility projection. A value
-returns `None` when the old `CssColor` or `CssOpacity` model cannot represent it
-without loss. In particular, decimal opacity such as `.1` no longer exposes a
-silently rounded I01 value. Consumers must handle the current `value()` enum;
-downstream numeric lowering must explicitly select its precision policy. A
-missing I01 projection does not make the current value invalid.
-
-`border-color` accepts one through four colors and an optional leading `logical`
-marker. Its wrapper's `current()` now returns `CssBorderColorShorthand`, replacing
-the former expanded `CssBorderColors` return type. Use `authored_values()` to
-retain the original count and `assigned_values()` with `kind()` to interpret the
-four physical or flow-relative roles. `CssBorderColors` remains a checked utility
-for physical top/right/bottom/left assignments, but is no longer the parsed
-shorthand's current model. `border-block-color` and `border-inline-color` expose
-`CssBorderColorPair`: `authored_end()` distinguishes omission from an explicitly
-repeated color, and `end()` repeats `start()` when omitted. All of these retain
-the complete specified color graph, including symbolic `currentcolor` and nested
-source origins. A color graph is not resolved against an element here.
-
-The selected [Logical 1 issue 3030](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#issue-3d880eb1)
-leaves `border-color`'s complete physical/logical target and reset membership
-unsettled. The authored grammar is accepted, but metadata and completed
-expansion return `UnresolvedStandard` in either mode, for CSS-wide values, and
-after valid substitution reentry. Pending substitutions remain symbolic. The
-logical axis pairs expand to their defined two longhands. The frozen
-`i01_subset()` remains available only for one compatible authored physical
-color; multiple components and logical mode have no projection. One physical
-`currentcolor` remains symbolic and projects exactly to `CssColor::CurrentColor`.
-
-```rust
-use surgeist_css::{
-    CssAuthoredSystemColor, CssKnownPropertyValueRef, CssOpacityValue,
-    parse_style_attribute,
-};
-
-let report = parse_style_attribute("color: ActiveBorder; opacity: 150%");
-assert!(report.is_clean());
-
-let CssKnownPropertyValueRef::Color(color) = report.syntax()[0]
-    .known().expect("known color")
-    .property_value().expect("ordinary color")
-else { panic!("expected color") };
-assert_eq!(
-    color.current().system(),
-    Some(CssAuthoredSystemColor::ActiveBorder),
-);
-assert!(color.i01_subset().is_none());
-
-let CssKnownPropertyValueRef::Opacity(opacity) = report.syntax()[1]
-    .known().expect("known opacity")
-    .property_value().expect("ordinary opacity")
-else { panic!("expected opacity") };
-assert!(matches!(opacity.value(), CssOpacityValue::Percentage(value)
-    if value.value() == 150.0));
-assert!(opacity.i01_subset().is_none());
-```
-
-The preserved Color 5 surface is intentionally narrower: relative colors cover
-`rgb`/`rgba`, `hsl`/`hsla`, `hwb`, `lab`, `lch`, `oklab`, `oklch`, and
-predefined RGB/XYZ `color()` spaces with closed per-family channel
-environments. `color-mix()` accepts a nonempty ordered list of colors, with
-an optional interpolation method. Omission is retained and means Oklab when
-resolved. Each color can have one percentage weight before or after it.
-Ordinary literals must lie within 0..100; genuine percentage calculations
-remain symbolic without specified-stage range rejection. All-zero weights
-remain valid authored input. Hue interpolation methods belong only to polar
-spaces. Custom interpolation names retain their case-sensitive decoded identity,
-including bare `--`; their availability requires a downstream profile registry.
-Custom-profile `color(--Profile ...)` preserves a nonempty variable channel
-list, exact numbers and percentages, missing components and optional alpha.
-`color(from <color> --Profile ...)` retains unbound profile-channel references;
-profile existence and channel count are not grammar checks. Component names
-preserve decoded spelling and exclude only ASCII-insensitive `none`. A direct
-`pi` is a profile reference, while `calc(pi)` is a numeric constant. A custom
-channel named `alpha` remains an unbound profile reference.
-
-`alpha(from <color> [ / <alpha-value> ]?)` preserves its source and optional
-replacement alpha. Its only channel keyword is transparency `alpha`.
-`CssTypedRelativeColorExpression::try_alpha_from_components` checks that
-vocabulary. Omitted alpha, explicit `none`, and a channel reference remain
-distinct. This crate does not yet provide `light-dark()`, `contrast-color()`,
-or `device-cmyk()`.
-
-Use `CssAuthoredCustomColor::try_new`,
-`CssAuthoredRelativeCustomColor::try_new`, and `CssAuthoredAlphaColor::try_new`
-for checked construction, then `CssAuthoredColor::from_custom`,
-`from_relative_custom`, or `from_alpha`. `CssProfileColorExpression` exposes
-literal, reference and calculation views with the supplied component graph and
-origins. Its scoped calculations do not make arbitrary names valid in ordinary
-numeric expressions. Constructors enforce nonempty channel lists, expression
-environments and combined color/calculation depth.
-
-`absolute_eligibility()` reports authored eligibility, profile dependence, or a
-contextual exclusion. It inspects every child; a contextual exclusion takes
-precedence over profile dependence, with the first exclusion in authored order
-reported. Eligibility does not establish that a profile is loaded or a color
-can be computed. All new custom and alpha forms conservatively lack an I01
-projection, including when nested inside older color forms.
-
-`CssAuthoredColorMix::components()` replaces the former `left()` and `right()`
-getters. `interpolation()` returns the optional checked authored method;
-`predefined()` and `custom_profile()` distinguish its forms. Use
-`try_from_components` for complete construction, including empty-list and
-combined color/calculation depth checks. The two-color `try_new` convenience
-remains available.
-
-`CssAuthoredColorMixComponent::with_weight` accepts either a checked literal or
-a `CssAuthoredColorMixWeight::try_calculation` result. The latter requires a
-retained math function with Percentage result type: even an in-range bare
-percentage calculation root is rejected, without fabricating `calc()` syntax.
-The literal-only `new` convenience remains available. Use `weight()` and then
-`literal_value()` or `calculation()`; an omitted weight stays distinct from a
-present calculation.
-
-Frozen compatibility remains limited to proved explicit two-color forms with
-predefined methods and literal weights. New list forms remain available through
-the current model even when `i01_subset()` is `None`. Pending substitution and
-strict grammar reentry share the ordinary mix parser; parsing does not distribute
-weights, resolve profiles, or evaluate colors. Canonical mix serialization remains
-declared rather than computed: explicit weights remain explicit, known omitted
-weights are filled exactly before selected six-place rounding, calculation
-weights keep unknown omissions, and equal effective shares plus the default
-`oklab` interpolation are omitted.
-
-These values remain authored syntax. This crate does not clamp computed color
-or opacity values, resolve `currentcolor` or system colors, evaluate relative
-channels or calculations, perform color conversion or gamut mapping, resolve a
-mix, apply contrast, serialize computed colors, or lower colors into a sibling
-crate.
+unmodified algorithm emits those outputs. Computed opacity clamping belongs
+to a later phase.
 
 ## Authored Grid repetition and keyframe structure
 
@@ -2630,8 +2522,7 @@ spanner layout, rule painting, or style-dependent width computation. The
 breaking public rule migration makes `CssLineWidth` an alias of
 `CssBorderWidth`, so its `Length` variant contains
 `CssSpecifiedNonNegativeLength`. `CssColumnRule::color()` now returns the exact
-`CssAuthoredColor`; the former `current_color()` synonym is removed. The
-`column-rule-color` wrapper still exposes its optional I01 color projection.
+`CssColor`, and the `column-rule-color` wrapper exposes the same value through `value()`.
 
 `flex-basis` accepts the width sizing grammar plus `content`, including
 `calc-size(content, …)`; the generic `CssCalcSize` graph retains that flex-only
@@ -3606,13 +3497,13 @@ belong to their downstream owners.
 
 The selected [Backgrounds 3 border-width definitions](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#border-width)
 and [Logical 1 logical width definitions](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#propdef-border-block-start-width)
-provide exact `thin | medium | thick | <length [0,∞]>` widths for four physical and four logical longhands, with noninherited `medium` initials. The logical block/inline pairs retain one or two authored values and contribute their respective two longhands. `CssBorderWidth` retains exact numeric spelling and symbolic math, and `CssBorderValue` retains each authored width, style, and color component of the five physical and six logical border triples; omitted components contribute their defined initials. `CssBorderValue::color()` is the exact authored color, while the older `CssBorder::color()` is an I01 compatibility projection.
+provide exact `thin | medium | thick | <length [0,∞]>` widths for four physical and four logical longhands, with noninherited `medium` initials. The logical block/inline pairs retain one or two authored values and contribute their respective two longhands. `CssBorderWidth` retains exact numeric spelling and symbolic math, and `CssBorder` retains each authored width, style, and color component of the five physical and six logical border triples; omitted components contribute their defined initials. `CssBorder::color()` borrows the authored color.
 
 The four-side `border-width` grammar accepts one to four values, with an optional leading `logical` switch. `CssBorderWidthShorthand::assigned_values()` exposes the physical or logical role assignments. The selected [Logical 1 §4.7 issue 3030](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#issue-3d880eb1) leaves the complete complementary reset membership undefined, so completed `border-width` expansion returns `UnresolvedStandard` in **both** modes, including CSS-wide values and valid substitution reentry. Pending substitution remains symbolic. Physical `border` and side-border triples still expand to their defined members; `border` also resets the five border-image members.
 
-The [Logical 1 side and axis border shorthands](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#border-shorthands) accept the same unordered width, style, and color triple. `border-block-start`, `border-block-end`, `border-inline-start`, and `border-inline-end` contribute only their three matching flow-relative longhands. `border-block` and `border-inline` contribute both sides of their axis in width, style, color order, with no border-image reset. Their current-only wrappers expose `CssBorderValue` through `current()`; omitted width, style, and color contribute `medium`, `none`, and `currentcolor` respectively. No physical-side projection or writing-mode mapping occurs in this crate.
+The [Logical 1 side and axis border shorthands](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#border-shorthands) accept the same unordered width, style, and color triple. `border-block-start`, `border-block-end`, `border-inline-start`, and `border-inline-end` contribute only their three matching flow-relative longhands. `border-block` and `border-inline` contribute both sides of their axis in width, style, color order, with no border-image reset. Their wrappers expose `CssBorder` through `value()`; omitted width, style, and color contribute `medium`, `none`, and `currentcolor` respectively. No physical-side projection or writing-mode mapping occurs in this crate.
 
-The affected physical wrappers expose `current()` for exact checked values. Their `i01_subset()` remains a compatibility view where the original width and color can be projected without loss; it does not approximate very large or tiny nonzero numeric values. `as_css()` retains authored spelling, while bounded `serialize_specified()` emits the checked canonical value. Layout, writing-mode mapping, and cascade remain downstream.
+The affected physical wrappers expose `value()` for exact checked border triples. `as_css()` retains authored spelling, while bounded `serialize_specified()` emits the checked canonical value. Layout, writing-mode mapping, and cascade remain downstream.
 
 ## Authored border styles
 

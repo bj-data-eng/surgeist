@@ -4,8 +4,8 @@
 
 use surgeist_css::{
     CssBorderImageSliceComponent, CssColorStopListItem, CssComponentValue, CssComponentValues,
-    CssErrorCode, CssFilterAmount, CssFilterFunctionValue, CssFilterPercentage, CssFilterValue,
-    CssGradient, CssGridGeneralTrackComponent, CssHorizontalPosition, CssImageValue, CssImportance,
+    CssErrorCode, CssFilter, CssFilterAmount, CssFilterFunction, CssFilterPercentage, CssGradient,
+    CssGridGeneralTrackComponent, CssHorizontalPosition, CssImageValue, CssImportance,
     CssKeyframeSelector, CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssPropertyNameRef,
     CssRecoveryAction, CssRule, CssTransformFunctionValue, CssTransformPercentage,
     CssTransformScaleComponent, CssTransformValue, parse_component_values, parse_property_value,
@@ -167,11 +167,11 @@ fn filter_amount_keeps_authored_thirty_percent() {
     else {
         panic!("expected filter");
     };
-    let CssFilterValue::Functions(functions) = filter.current() else {
+    let CssFilter::Functions(functions) = filter.value() else {
         panic!("expected filter functions");
     };
     assert!(
-        matches!(functions.functions()[0], CssFilterFunctionValue::Grayscale(CssFilterAmount::Percentage(CssFilterPercentage::Literal(number))) if number.value() == 30.0)
+        matches!(functions.functions()[0], CssFilterFunction::Grayscale(CssFilterAmount::Percentage(CssFilterPercentage::Literal(number))) if number.value() == 30.0)
     );
 }
 

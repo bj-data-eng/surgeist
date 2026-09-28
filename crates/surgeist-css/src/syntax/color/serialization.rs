@@ -18,20 +18,19 @@ enum Mode {
 }
 
 enum Work<'a> {
-    Color(&'a CssAuthoredColor, Mode),
-    Frozen(&'a CssColor, Mode),
+    Color(&'a CssColor, Mode),
     Text(&'static str),
     Owned(String),
 }
 
-pub(super) fn serialize(value: &CssAuthoredColor, limits: Limits) -> Result<String> {
+pub(super) fn serialize(value: &CssColor, limits: Limits) -> Result<String> {
     let mut context = SpecifiedSerializationContext::new(limits);
     let mut output = String::new();
     value.append_specified(&mut context, &mut output)?;
     Ok(output)
 }
 
-impl CssAuthoredColor {
+impl CssColor {
     /// Appends one checked color to a caller's cumulative specified-CSS budget.
     /// The caller owns the output and context for its entire composed value.
     pub(crate) fn append_specified(
@@ -52,11 +51,6 @@ impl CssAuthoredColor {
                     context.charge_projection(1)?;
                     schedule_authored(color, mode, context, &mut work)?;
                 }
-                Work::Frozen(color, mode) => {
-                    context.charge_input(1)?;
-                    context.charge_projection(1)?;
-                    schedule_frozen(color, mode, context, &mut work)?;
-                }
             }
         }
         Ok(())
@@ -76,13 +70,13 @@ fn work_slots(base: usize, per_item: usize, items: usize) -> Result<usize> {
 }
 
 fn schedule_authored<'a>(
-    color: &'a CssAuthoredColor,
+    color: &'a CssColor,
     mode: Mode,
     context: &mut SpecifiedSerializationContext,
     work: &mut Vec<Work<'a>>,
 ) -> Result<()> {
     reserve_work(work, 1)?;
-    use CssAuthoredColorRepresentation as R;
+    use CssColorRepresentation as R;
     match &color.representation {
         R::CurrentColor => work.push(Work::Text("currentcolor")),
         R::Transparent => work.push(Work::Text("transparent")),
@@ -110,49 +104,12 @@ fn schedule_authored<'a>(
         R::Alpha(value) => schedule_alpha(value, Mode::DeclaredRelative, work, context)?,
         R::Relative(value) => schedule_relative(value, Mode::DeclaredRelative, work, context)?,
         R::ColorMix(value) => schedule_mix(value, work, context)?,
-        R::PreservedI01(value) => work.push(Work::Frozen(value, mode)),
-    }
-    Ok(())
-}
-
-fn schedule_frozen<'a>(
-    color: &'a CssColor,
-    mode: Mode,
-    context: &mut SpecifiedSerializationContext,
-    work: &mut Vec<Work<'a>>,
-) -> Result<()> {
-    reserve_work(work, 1)?;
-    match color {
-        CssColor::CurrentColor => work.push(Work::Text("currentcolor")),
-        CssColor::Rgba(value) => {
-            work.push(Work::Owned(serialize_frozen_rgba(value, mode, context)?));
-        }
-        CssColor::Hsl(value) => work.push(Work::Owned(serialize_frozen_hsl(value, mode, context)?)),
-        CssColor::Hwb(value) => work.push(Work::Owned(serialize_frozen_hwb(value, mode, context)?)),
-        CssColor::Lab(value) => {
-            work.push(Work::Owned(serialize_frozen_lab("lab", value, context)?));
-        }
-        CssColor::Lch(value) => {
-            work.push(Work::Owned(serialize_frozen_lch("lch", value, context)?));
-        }
-        CssColor::Oklab(value) => {
-            work.push(Work::Owned(serialize_frozen_lab("oklab", value, context)?));
-        }
-        CssColor::Oklch(value) => {
-            work.push(Work::Owned(serialize_frozen_lch("oklch", value, context)?));
-        }
-        CssColor::ColorFunction(value) => {
-            work.push(Work::Owned(serialize_frozen_predefined(value, context)?));
-        }
-        CssColor::System(value) => work.push(Work::Text(system_name(*value))),
-        CssColor::ColorMix(value) => schedule_frozen_mix(value, work, context)?,
-        CssColor::Relative(value) => schedule_frozen_relative(value, work, context)?,
     }
     Ok(())
 }
 
 fn schedule_alpha<'a>(
-    value: &'a CssAuthoredAlphaColor,
+    value: &'a CssAlphaColor,
     mode: Mode,
     work: &mut Vec<Work<'a>>,
     context: &mut SpecifiedSerializationContext,
@@ -172,7 +129,7 @@ fn schedule_alpha<'a>(
 }
 
 fn schedule_relative_custom<'a>(
-    value: &'a CssAuthoredRelativeCustomColor,
+    value: &'a CssRelativeCustomColor,
     mode: Mode,
     work: &mut Vec<Work<'a>>,
     context: &mut SpecifiedSerializationContext,
@@ -203,7 +160,7 @@ fn schedule_relative_custom<'a>(
 }
 
 fn schedule_relative<'a>(
-    value: &'a CssAuthoredRelativeColor,
+    value: &'a CssRelativeColor,
     mode: Mode,
     work: &mut Vec<Work<'a>>,
     context: &mut SpecifiedSerializationContext,
@@ -234,7 +191,7 @@ fn schedule_relative<'a>(
 }
 
 fn schedule_mix<'a>(
-    value: &'a CssAuthoredColorMix,
+    value: &'a CssColorMix,
     work: &mut Vec<Work<'a>>,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<()> {
@@ -267,195 +224,10 @@ fn schedule_mix<'a>(
     Ok(())
 }
 
-fn is_default_mix(value: &CssAuthoredColorInterpolation) -> bool {
+fn is_default_mix(value: &CssColorInterpolation) -> bool {
     value.predefined().is_some_and(|value| {
         value.space() == CssColorInterpolationSpace::Oklab && value.hue().is_none()
     })
-}
-
-fn is_default_interpolation_method(value: &CssColorInterpolationMethod) -> bool {
-    value.space() == CssColorInterpolationSpace::Oklab && value.hue().is_none()
-}
-
-fn schedule_frozen_mix<'a>(
-    value: &'a CssColorMix,
-    work: &mut Vec<Work<'a>>,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<()> {
-    reserve_work(work, 12)?;
-    context.charge_input(1)?;
-    context.charge_projection(1)?;
-    let weights = frozen_mix_weight_texts(value, context)?;
-    work.push(Work::Text(")"));
-    if let Some(weight) = weights[1].as_ref() {
-        work.push(Work::Owned(weight.clone()));
-        work.push(Work::Text(" "));
-    }
-    work.push(Work::Frozen(value.right().color(), Mode::Mix));
-    work.push(Work::Text(", "));
-    if let Some(weight) = weights[0].as_ref() {
-        work.push(Work::Owned(weight.clone()));
-        work.push(Work::Text(" "));
-    }
-    work.push(Work::Frozen(value.left().color(), Mode::Mix));
-    if !is_default_interpolation_method(value.interpolation()) {
-        work.push(Work::Text(", "));
-        work.push(Work::Owned(serialize_interpolation_method(
-            value.interpolation(),
-        )));
-        work.push(Work::Text("in "));
-    }
-    work.push(Work::Text("color-mix("));
-    Ok(())
-}
-
-fn frozen_mix_weight_texts(
-    value: &CssColorMix,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<[Option<String>; 2]> {
-    let percentages = [value.left().percentage(), value.right().percentage()];
-    if percentages.iter().all(Option::is_none)
-        || percentages.iter().flatten().all(|value| *value == 50.0)
-    {
-        return Ok([None, None]);
-    }
-
-    let explicit_index = percentages
-        .iter()
-        .position(Option::is_some)
-        .expect("at least one frozen mix weight is explicit");
-    let mut result: [Option<String>; 2] = [None, None];
-    for (index, percentage) in percentages.into_iter().enumerate() {
-        context.charge_input(usize::from(percentage.is_some()))?;
-        let exact = if let Some(percentage) = percentage {
-            crate::exact_decimal::ExactRational::from_binary32_factor(
-                percentage,
-                exact_factor(Factor::ONE),
-                context,
-            )?
-        } else {
-            let explicit = percentages[explicit_index].expect("selected weight is explicit");
-            crate::exact_decimal::ExactRational::from_binary32_factor(
-                explicit,
-                exact_factor(Factor::ONE),
-                context,
-            )?
-            .min_integer(100, context)?
-            .subtract_from_integer(100, context)?
-        };
-        let text = exact.format_exact(context.remaining_bytes(), context)?;
-        result[index] = Some(suffix_text(text, "%", context)?);
-    }
-    Ok(result)
-}
-
-fn schedule_frozen_relative<'a>(
-    value: &'a CssRelativeColor,
-    work: &mut Vec<Work<'a>>,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<()> {
-    reserve_work(work, work_slots(5, 2, value.components().len())?)?;
-    let (name, space) = relative_function(value.function());
-    let (environment, domains) = legacy_relative_signature(value.function());
-    work.push(Work::Text(")"));
-    if let Some(alpha) = value.alpha() {
-        work.push(Work::Owned(serialize_legacy_expression(
-            alpha.authored().as_css(),
-            environment,
-            CssRelativeColorResultDomain::NumberPercentage,
-            true,
-            context,
-        )?));
-        work.push(Work::Text(" / "));
-    }
-    for (index, channel) in value.components().iter().enumerate().rev() {
-        work.push(Work::Owned(serialize_legacy_expression(
-            channel.authored().as_css(),
-            environment,
-            domains[index],
-            false,
-            context,
-        )?));
-        work.push(Work::Text(" "));
-    }
-    if let Some(space) = space {
-        work.push(Work::Text(space));
-        work.push(Work::Text(" "));
-    }
-    work.push(Work::Frozen(value.source(), Mode::Origin));
-    work.push(Work::Owned(format!("{name}(from ")));
-    Ok(())
-}
-
-fn serialize_legacy_expression(
-    css: &str,
-    environment: CssRelativeColorEnvironment,
-    domain: CssRelativeColorResultDomain,
-    alpha: bool,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<String> {
-    use crate::{
-        CssComponentValueErrorKind as ComponentError,
-        CssSpecifiedValueSerializationErrorKind as SerializationError,
-    };
-
-    let limits = crate::CssComponentValueLimits::try_new(
-        crate::STRUCTURAL_NESTING_LIMIT,
-        context.remaining_input_nodes(),
-        context.remaining_bytes(),
-    )
-    .expect("repository structural ceiling is a valid component limit");
-    let values = crate::parse_component_values_with_limits(css, limits).map_err(|error| {
-        Error::new(match error.kind() {
-            ComponentError::ComponentLimit => SerializationError::InputNodeLimit,
-            ComponentError::ByteLimit => SerializationError::ByteLimit,
-            ComponentError::CapacityOverflow => SerializationError::CapacityOverflow,
-            _ => unreachable!("checked frozen relative expression"),
-        })
-    })?;
-    let serialized = values
-        .serialize_with_limit(context.remaining_bytes())
-        .map_err(|error| {
-            Error::new(match error.kind() {
-                ComponentError::ByteLimit => SerializationError::ByteLimit,
-                ComponentError::CapacityOverflow => SerializationError::CapacityOverflow,
-                _ => unreachable!("checked frozen relative expression serialization"),
-            })
-        })?;
-    if let Some(expression) =
-        crate::parser::adapt_legacy_relative_expression(&values, &serialized, environment, domain)
-    {
-        return serialize_relative_expression(&expression, alpha, context);
-    }
-    context.charge_input(values.component_count())?;
-    context.charge_projection(values.component_count())?;
-    Ok(serialized.as_css().to_owned())
-}
-
-fn legacy_relative_signature(
-    function: &CssRelativeColorFunction,
-) -> (
-    CssRelativeColorEnvironment,
-    [CssRelativeColorResultDomain; 3],
-) {
-    use CssRelativeColorEnvironment as E;
-    use CssRelativeColorResultDomain::{Hue, NumberPercentage};
-    match *function {
-        CssRelativeColorFunction::Rgb => (E::Rgb, [NumberPercentage; 3]),
-        CssRelativeColorFunction::Hsl => (E::Hsl, [Hue, NumberPercentage, NumberPercentage]),
-        CssRelativeColorFunction::Hwb => (E::Hwb, [Hue, NumberPercentage, NumberPercentage]),
-        CssRelativeColorFunction::Lab => (E::Lab, [NumberPercentage; 3]),
-        CssRelativeColorFunction::Lch => (E::Lch, [NumberPercentage, NumberPercentage, Hue]),
-        CssRelativeColorFunction::Oklab => (E::Oklab, [NumberPercentage; 3]),
-        CssRelativeColorFunction::Oklch => (E::Oklch, [NumberPercentage, NumberPercentage, Hue]),
-        CssRelativeColorFunction::Color(space) => (
-            match space {
-                CssPredefinedColorSpace::XyzD50 | CssPredefinedColorSpace::XyzD65 => E::Xyz(space),
-                _ => E::PredefinedRgb(space),
-            },
-            [NumberPercentage; 3],
-        ),
-    }
 }
 
 fn escaped_identifier(value: &str, context: &SpecifiedSerializationContext) -> Result<String> {
@@ -489,54 +261,7 @@ fn predefined_name(value: CssPredefinedColorSpace) -> &'static str {
     }
 }
 
-fn authored_system_name(value: CssAuthoredSystemColor) -> &'static str {
-    match value {
-        CssAuthoredSystemColor::Canvas => "canvas",
-        CssAuthoredSystemColor::CanvasText => "canvastext",
-        CssAuthoredSystemColor::LinkText => "linktext",
-        CssAuthoredSystemColor::VisitedText => "visitedtext",
-        CssAuthoredSystemColor::ActiveText => "activetext",
-        CssAuthoredSystemColor::ButtonFace => "buttonface",
-        CssAuthoredSystemColor::ButtonText => "buttontext",
-        CssAuthoredSystemColor::ButtonBorder => "buttonborder",
-        CssAuthoredSystemColor::Field => "field",
-        CssAuthoredSystemColor::FieldText => "fieldtext",
-        CssAuthoredSystemColor::Highlight => "highlight",
-        CssAuthoredSystemColor::HighlightText => "highlighttext",
-        CssAuthoredSystemColor::Mark => "mark",
-        CssAuthoredSystemColor::MarkText => "marktext",
-        CssAuthoredSystemColor::GrayText => "graytext",
-        CssAuthoredSystemColor::SelectedItem => "selecteditem",
-        CssAuthoredSystemColor::SelectedItemText => "selecteditemtext",
-        CssAuthoredSystemColor::AccentColor => "accentcolor",
-        CssAuthoredSystemColor::AccentColorText => "accentcolortext",
-        CssAuthoredSystemColor::ActiveBorder => "activeborder",
-        CssAuthoredSystemColor::ActiveCaption => "activecaption",
-        CssAuthoredSystemColor::AppWorkspace => "appworkspace",
-        CssAuthoredSystemColor::Background => "background",
-        CssAuthoredSystemColor::ButtonHighlight => "buttonhighlight",
-        CssAuthoredSystemColor::ButtonShadow => "buttonshadow",
-        CssAuthoredSystemColor::CaptionText => "captiontext",
-        CssAuthoredSystemColor::InactiveBorder => "inactiveborder",
-        CssAuthoredSystemColor::InactiveCaption => "inactivecaption",
-        CssAuthoredSystemColor::InactiveCaptionText => "inactivecaptiontext",
-        CssAuthoredSystemColor::InfoBackground => "infobackground",
-        CssAuthoredSystemColor::InfoText => "infotext",
-        CssAuthoredSystemColor::Menu => "menu",
-        CssAuthoredSystemColor::MenuText => "menutext",
-        CssAuthoredSystemColor::Scrollbar => "scrollbar",
-        CssAuthoredSystemColor::ThreeDDarkShadow => "threeddarkshadow",
-        CssAuthoredSystemColor::ThreeDFace => "threedface",
-        CssAuthoredSystemColor::ThreeDHighlight => "threedhighlight",
-        CssAuthoredSystemColor::ThreeDLightShadow => "threedlightshadow",
-        CssAuthoredSystemColor::ThreeDShadow => "threedshadow",
-        CssAuthoredSystemColor::Window => "window",
-        CssAuthoredSystemColor::WindowFrame => "windowframe",
-        CssAuthoredSystemColor::WindowText => "windowtext",
-    }
-}
-
-fn system_name(value: CssSystemColor) -> &'static str {
+fn authored_system_name(value: CssSystemColor) -> &'static str {
     match value {
         CssSystemColor::Canvas => "canvas",
         CssSystemColor::CanvasText => "canvastext",
@@ -557,6 +282,29 @@ fn system_name(value: CssSystemColor) -> &'static str {
         CssSystemColor::SelectedItemText => "selecteditemtext",
         CssSystemColor::AccentColor => "accentcolor",
         CssSystemColor::AccentColorText => "accentcolortext",
+        CssSystemColor::ActiveBorder => "activeborder",
+        CssSystemColor::ActiveCaption => "activecaption",
+        CssSystemColor::AppWorkspace => "appworkspace",
+        CssSystemColor::Background => "background",
+        CssSystemColor::ButtonHighlight => "buttonhighlight",
+        CssSystemColor::ButtonShadow => "buttonshadow",
+        CssSystemColor::CaptionText => "captiontext",
+        CssSystemColor::InactiveBorder => "inactiveborder",
+        CssSystemColor::InactiveCaption => "inactivecaption",
+        CssSystemColor::InactiveCaptionText => "inactivecaptiontext",
+        CssSystemColor::InfoBackground => "infobackground",
+        CssSystemColor::InfoText => "infotext",
+        CssSystemColor::Menu => "menu",
+        CssSystemColor::MenuText => "menutext",
+        CssSystemColor::Scrollbar => "scrollbar",
+        CssSystemColor::ThreeDDarkShadow => "threeddarkshadow",
+        CssSystemColor::ThreeDFace => "threedface",
+        CssSystemColor::ThreeDHighlight => "threedhighlight",
+        CssSystemColor::ThreeDLightShadow => "threedlightshadow",
+        CssSystemColor::ThreeDShadow => "threedshadow",
+        CssSystemColor::Window => "window",
+        CssSystemColor::WindowFrame => "windowframe",
+        CssSystemColor::WindowText => "windowtext",
     }
 }
 
@@ -816,29 +564,8 @@ fn exact_text(
     }
 }
 
-fn finite_text(
-    value: f32,
-    factor: Factor,
-    rounded_places: Option<usize>,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<String> {
-    let exact = crate::exact_decimal::ExactRational::from_binary32_factor(
-        value,
-        exact_factor(factor),
-        context,
-    )?;
-    match rounded_places {
-        Some(places) => exact.format_rounded(places, context.remaining_bytes(), context),
-        None => exact.format_exact(context.remaining_bytes(), context),
-    }
-}
-
-fn format_finite(value: f32, context: &mut SpecifiedSerializationContext) -> Result<String> {
-    finite_text(value, Factor::ONE, None, context)
-}
-
 fn component_projection(
-    value: &CssAuthoredColorComponent,
+    value: &CssColorComponent,
     number_factor: Factor,
     percentage_factor: Factor,
     target: ComponentTarget,
@@ -855,14 +582,14 @@ fn component_projection(
 }
 
 fn component_projection_with_text(
-    value: &CssAuthoredColorComponent,
+    value: &CssColorComponent,
     number_factor: Factor,
     percentage_factor: Factor,
     target: ComponentTarget,
     materialize_direct: bool,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<ProjectedScalar> {
-    use CssAuthoredColorComponent as C;
+    use CssColorComponent as C;
     match value {
         C::None => {
             context.charge_input(1)?;
@@ -877,75 +604,26 @@ fn component_projection_with_text(
                 calculation: false,
             })
         }
-        C::ExactNumber(value) => {
-            context.charge_input(1)?;
-            let representation = value.numeric().representation();
-            let exact = crate::exact_decimal::ExactRational::from_lexical_factor(
-                representation,
-                exact_factor(number_factor),
-                context,
-            )?;
-            let number = ScaledNumber::from_exact(&exact)?;
-            let text = if materialize_direct {
-                exact
-                    .clone_with_budget(context)?
-                    .format_exact(context.remaining_bytes(), context)?
-            } else {
-                String::new()
-            };
-            Ok(ProjectedScalar {
-                number: Some(number),
-                exact: Some(exact),
-                text,
-                contextual: false,
-                missing: false,
-                percentage: target == ComponentTarget::Percentage,
-                calculation: false,
-            })
-        }
-        C::ExactPercentage(value) => {
-            context.charge_input(1)?;
-            let representation = value.numeric().representation();
-            let exact = crate::exact_decimal::ExactRational::from_lexical_factor(
-                representation,
-                exact_factor(percentage_factor),
-                context,
-            )?;
-            let number = ScaledNumber::from_exact(&exact)?;
-            let text = if materialize_direct {
-                exact
-                    .clone_with_budget(context)?
-                    .format_exact(context.remaining_bytes(), context)?
-            } else {
-                String::new()
-            };
-            Ok(ProjectedScalar {
-                number: Some(number),
-                exact: Some(exact),
-                text,
-                contextual: false,
-                missing: false,
-                percentage: target != ComponentTarget::Number,
-                calculation: false,
-            })
-        }
         C::Number(value) => {
             context.charge_input(1)?;
-            let exact = crate::exact_decimal::ExactRational::from_binary32_factor(
-                value.value(),
+            let representation = value.numeric().representation();
+            let exact = crate::exact_decimal::ExactRational::from_lexical_factor(
+                representation,
                 exact_factor(number_factor),
                 context,
             )?;
+            let number = ScaledNumber::from_exact(&exact)?;
+            let text = if materialize_direct {
+                exact
+                    .clone_with_budget(context)?
+                    .format_exact(context.remaining_bytes(), context)?
+            } else {
+                String::new()
+            };
             Ok(ProjectedScalar {
-                text: if materialize_direct {
-                    exact
-                        .clone_with_budget(context)?
-                        .format_exact(context.remaining_bytes(), context)?
-                } else {
-                    String::new()
-                },
-                number: Some(ScaledNumber::from_exact(&exact)?),
+                number: Some(number),
                 exact: Some(exact),
+                text,
                 contextual: false,
                 missing: false,
                 percentage: target == ComponentTarget::Percentage,
@@ -954,21 +632,24 @@ fn component_projection_with_text(
         }
         C::Percentage(value) => {
             context.charge_input(1)?;
-            let exact = crate::exact_decimal::ExactRational::from_binary32_factor(
-                value.value(),
+            let representation = value.numeric().representation();
+            let exact = crate::exact_decimal::ExactRational::from_lexical_factor(
+                representation,
                 exact_factor(percentage_factor),
                 context,
             )?;
+            let number = ScaledNumber::from_exact(&exact)?;
+            let text = if materialize_direct {
+                exact
+                    .clone_with_budget(context)?
+                    .format_exact(context.remaining_bytes(), context)?
+            } else {
+                String::new()
+            };
             Ok(ProjectedScalar {
-                text: if materialize_direct {
-                    exact
-                        .clone_with_budget(context)?
-                        .format_exact(context.remaining_bytes(), context)?
-                } else {
-                    String::new()
-                },
-                number: Some(ScaledNumber::from_exact(&exact)?),
+                number: Some(number),
                 exact: Some(exact),
+                text,
                 contextual: false,
                 missing: false,
                 percentage: target != ComponentTarget::Number,
@@ -1032,7 +713,7 @@ fn component_projection_with_text(
 }
 
 fn serialize_alpha(
-    value: Option<&CssAuthoredColorComponent>,
+    value: Option<&CssColorComponent>,
     origin: bool,
     retain_explicit: bool,
     context: &mut SpecifiedSerializationContext,
@@ -1055,20 +736,20 @@ fn serialize_alpha(
         };
         return Ok(Some(suffix_text(projected.text, suffix, context)?));
     }
-    if matches!(value, CssAuthoredColorComponent::None) {
+    if matches!(value, CssColorComponent::None) {
         context.charge_input(1)?;
         context.charge_projection(1)?;
         return Ok(Some("none".into()));
     }
     match value {
-        CssAuthoredColorComponent::NumberCalculation(calculation) => {
+        CssColorComponent::NumberCalculation(calculation) => {
             let (text, _) = crate::numeric::capture_calculation_specified(
                 crate::numeric::SpecifiedCalculationRef::Number(calculation),
                 context,
             )?;
             Ok(Some(text))
         }
-        CssAuthoredColorComponent::PercentageCalculation(calculation) => {
+        CssColorComponent::PercentageCalculation(calculation) => {
             let (text, _) = crate::numeric::capture_calculation_specified_scaled(
                 crate::numeric::SpecifiedCalculationRef::Percentage(calculation),
                 crate::numeric::NumericProjectionScale::PercentageToNumber {
@@ -1079,7 +760,7 @@ fn serialize_alpha(
             )?;
             Ok(Some(text))
         }
-        CssAuthoredColorComponent::ExactNumber(value) => {
+        CssColorComponent::Number(value) => {
             context.charge_input(1)?;
             alpha_literal(
                 value.numeric().representation(),
@@ -1088,7 +769,7 @@ fn serialize_alpha(
                 context,
             )
         }
-        CssAuthoredColorComponent::ExactPercentage(value) => {
+        CssColorComponent::Percentage(value) => {
             context.charge_input(1)?;
             alpha_literal(
                 value.numeric().representation(),
@@ -1097,15 +778,7 @@ fn serialize_alpha(
                 context,
             )
         }
-        CssAuthoredColorComponent::Number(value) => {
-            context.charge_input(1)?;
-            alpha_finite(value.value(), false, retain_explicit, context)
-        }
-        CssAuthoredColorComponent::Percentage(value) => {
-            context.charge_input(1)?;
-            alpha_finite(value.value(), true, retain_explicit, context)
-        }
-        CssAuthoredColorComponent::None => unreachable!("handled above"),
+        CssColorComponent::None => unreachable!("handled above"),
     }
 }
 
@@ -1128,36 +801,6 @@ fn alpha_literal(
         exact_factor(factor),
         context,
     )?;
-    if value.equals_ratio(1, 1, context)? && !retain_explicit {
-        return Ok(None);
-    }
-    Ok(Some(value.format_rounded(
-        6,
-        context.remaining_bytes(),
-        context,
-    )?))
-}
-
-fn alpha_finite(
-    value: f32,
-    percentage: bool,
-    retain_explicit: bool,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<Option<String>> {
-    let factor = if percentage {
-        Factor {
-            numerator: 1,
-            denominator: 100,
-        }
-    } else {
-        Factor::ONE
-    };
-    let value = crate::exact_decimal::ExactRational::from_binary32_factor(
-        value,
-        exact_factor(factor),
-        context,
-    )?
-    .clamp_unit(context)?;
     if value.equals_ratio(1, 1, context)? && !retain_explicit {
         return Ok(None);
     }
@@ -1229,7 +872,7 @@ fn legacy_byte_alpha(value: u8) -> String {
 }
 
 fn serialize_rgb(
-    value: &CssAuthoredRgbColor,
+    value: &CssRgbColor,
     mode: Mode,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<String> {
@@ -1252,11 +895,7 @@ fn serialize_rgb(
     }
 
     let alpha = serialize_alpha(value.alpha(), false, false, context)?;
-    if value
-        .channels()
-        .iter()
-        .any(CssAuthoredColorComponent::is_none)
-    {
+    if value.channels().iter().any(CssColorComponent::is_none) {
         let mut channels = value
             .channels()
             .iter()
@@ -1415,11 +1054,11 @@ fn rounded_f64(value: f64, places: i32) -> String {
 }
 
 fn serialize_hsl(
-    value: &CssAuthoredHslColor,
+    value: &CssHslColor,
     mode: Mode,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<String> {
-    let missing = matches!(value.hue(), CssAuthoredHue::None)
+    let missing = matches!(value.hue(), CssColorHue::None)
         || value.saturation().is_none()
         || value.lightness().is_none();
     let target = if mode == Mode::Origin {
@@ -1615,11 +1254,11 @@ fn exact_hue_channel(
 }
 
 fn serialize_hwb(
-    value: &CssAuthoredHwbColor,
+    value: &CssHwbColor,
     mode: Mode,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<String> {
-    let missing = matches!(value.hue(), CssAuthoredHue::None)
+    let missing = matches!(value.hue(), CssColorHue::None)
         || value.whiteness().is_none()
         || value.blackness().is_none();
     let target = if mode == Mode::Origin {
@@ -1764,75 +1403,33 @@ fn clone_scalar(value: &ProjectedScalar) -> ProjectedScalar {
 }
 
 fn hue_projection(
-    value: &CssAuthoredHue,
+    value: &CssColorHue,
     origin: bool,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<ProjectedScalar> {
-    use CssAuthoredHue as H;
+    use CssColorHue as H;
     let (text, number, exact, contextual, missing, calculation) = match value {
         H::None => {
             context.charge_input(1)?;
             context.charge_projection(1)?;
             ("none".into(), None, None, false, true, false)
         }
-        H::ExactNumber(value) => {
-            context.charge_input(1)?;
-            let source = value.numeric().representation();
-            let exact = if origin {
-                crate::exact_decimal::ExactRational::from_lexical_factor(
-                    source,
-                    exact_factor(Factor::ONE),
-                    context,
-                )?
-            } else {
-                crate::exact_decimal::ExactRational::from_lexical_factor_modulo(
-                    source,
-                    exact_factor(Factor::ONE),
-                    360,
-                    context,
-                )?
-            };
-            let number = ScaledNumber::from_exact(&exact)?;
-            let text = exact
-                .clone_with_budget(context)?
-                .format_exact(context.remaining_bytes(), context)?;
-            (text, Some(number), Some(exact), false, false, false)
-        }
-        H::ExactAngle(value) => {
-            context.charge_input(1)?;
-            let factor = angle_factor(value.unit());
-            let source = value.numeric().representation();
-            let exact = if origin {
-                crate::exact_decimal::ExactRational::from_lexical_factor(
-                    source,
-                    exact_factor(factor),
-                    context,
-                )?
-            } else {
-                crate::exact_decimal::ExactRational::from_lexical_factor_modulo(
-                    source,
-                    exact_factor(factor),
-                    360,
-                    context,
-                )?
-            };
-            let number = ScaledNumber::from_exact(&exact)?;
-            let text = exact
-                .clone_with_budget(context)?
-                .format_exact(context.remaining_bytes(), context)?;
-            (text, Some(number), Some(exact), false, false, false)
-        }
         H::Number(value) => {
             context.charge_input(1)?;
-            let exact = crate::exact_decimal::ExactRational::from_binary32_factor(
-                value.value(),
-                exact_factor(Factor::ONE),
-                context,
-            )?;
+            let source = value.numeric().representation();
             let exact = if origin {
-                exact
+                crate::exact_decimal::ExactRational::from_lexical_factor(
+                    source,
+                    exact_factor(Factor::ONE),
+                    context,
+                )?
             } else {
-                exact.modulo(360, context)?
+                crate::exact_decimal::ExactRational::from_lexical_factor_modulo(
+                    source,
+                    exact_factor(Factor::ONE),
+                    360,
+                    context,
+                )?
             };
             let number = ScaledNumber::from_exact(&exact)?;
             let text = exact
@@ -1843,15 +1440,20 @@ fn hue_projection(
         H::Angle(value) => {
             context.charge_input(1)?;
             let factor = angle_factor(value.unit());
-            let exact = crate::exact_decimal::ExactRational::from_binary32_factor(
-                value.value(),
-                exact_factor(factor),
-                context,
-            )?;
+            let source = value.numeric().representation();
             let exact = if origin {
-                exact
+                crate::exact_decimal::ExactRational::from_lexical_factor(
+                    source,
+                    exact_factor(factor),
+                    context,
+                )?
             } else {
-                exact.modulo(360, context)?
+                crate::exact_decimal::ExactRational::from_lexical_factor_modulo(
+                    source,
+                    exact_factor(factor),
+                    360,
+                    context,
+                )?
             };
             let number = ScaledNumber::from_exact(&exact)?;
             let text = exact
@@ -1991,19 +1593,6 @@ fn hsl_to_rgb_scaled(
     ]
 }
 
-fn hwb_to_rgb(hue: f64, white: f64, black: f64) -> [f64; 3] {
-    if white + black >= 1.0 {
-        let gray = white / (white + black);
-        return [gray; 3];
-    }
-    let mut rgb = hsl_to_rgb(hue, 1.0, 0.5);
-    let factor = 1.0 - white - black;
-    for channel in &mut rgb {
-        *channel = *channel * factor + white;
-    }
-    rgb
-}
-
 fn hwb_to_rgb_scaled(hue: f64, white: ScaledNumber, black: ScaledNumber) -> [ScaledNumber; 3] {
     let sum = white.add(black);
     let one = ScaledNumber::from_binary64(1.0);
@@ -2022,7 +1611,7 @@ fn hwb_to_rgb_scaled(hue: f64, white: ScaledNumber, black: ScaledNumber) -> [Sca
 
 fn serialize_lab(
     name: &str,
-    value: &CssAuthoredLabColor,
+    value: &CssLabColor,
     mode: Mode,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<String> {
@@ -2072,7 +1661,7 @@ fn serialize_lab(
 
 fn serialize_lch(
     name: &str,
-    value: &CssAuthoredLchColor,
+    value: &CssLchColor,
     mode: Mode,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<String> {
@@ -2127,7 +1716,7 @@ fn serialize_lch(
 }
 
 fn serialize_predefined(
-    value: &CssAuthoredPredefinedColor,
+    value: &CssPredefinedColor,
     mode: Mode,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<String> {
@@ -2162,7 +1751,7 @@ fn serialize_predefined(
 }
 
 fn serialize_custom(
-    value: &CssAuthoredCustomColor,
+    value: &CssCustomColor,
     mode: Mode,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<String> {
@@ -2201,7 +1790,7 @@ fn serialize_custom(
 }
 
 fn serialize_relative_expression(
-    value: &CssTypedRelativeColorExpression,
+    value: &CssRelativeColorExpression,
     alpha: bool,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<String> {
@@ -2217,7 +1806,7 @@ fn serialize_relative_expression(
             context.charge_projection(1)?;
             Ok(relative_channel(*channel).into())
         }
-        V::ExactNumber(value) => {
+        V::Number(value) => {
             context.charge_input(1)?;
             if alpha {
                 Ok(
@@ -2228,7 +1817,7 @@ fn serialize_relative_expression(
                 exact_text(value.numeric().representation(), Factor::ONE, None, context)
             }
         }
-        V::ExactPercentage(value) => {
+        V::Percentage(value) => {
             context.charge_input(1)?;
             if alpha {
                 Ok(
@@ -2241,39 +1830,10 @@ fn serialize_relative_expression(
                 suffix_text(text, "%", context)
             }
         }
-        V::ExactAngle(value) => {
+        V::Angle(value) => {
             context.charge_input(1)?;
             let exact = crate::exact_decimal::ExactRational::from_lexical_factor(
                 value.numeric().representation(),
-                exact_factor(angle_factor(value.unit())),
-                context,
-            )?;
-            let text = exact.format_exact(context.remaining_bytes(), context)?;
-            suffix_text(text, "deg", context)
-        }
-        V::Number(value) => {
-            context.charge_input(1)?;
-            if alpha {
-                Ok(alpha_finite(value.value(), false, true, context)?
-                    .expect("explicit relative alpha retained"))
-            } else {
-                format_finite(value.value(), context)
-            }
-        }
-        V::Percentage(value) => {
-            context.charge_input(1)?;
-            if alpha {
-                Ok(alpha_finite(value.value(), true, true, context)?
-                    .expect("explicit relative alpha retained"))
-            } else {
-                let text = format_finite(value.value(), context)?;
-                suffix_text(text, "%", context)
-            }
-        }
-        V::Angle(value) => {
-            context.charge_input(1)?;
-            let exact = crate::exact_decimal::ExactRational::from_binary32_factor(
-                value.value(),
                 exact_factor(angle_factor(value.unit())),
                 context,
             )?;
@@ -2363,7 +1923,7 @@ fn relative_channel(value: CssRelativeColorChannel) -> &'static str {
 }
 
 fn serialize_interpolation(
-    value: &CssAuthoredColorInterpolation,
+    value: &CssColorInterpolation,
     context: &SpecifiedSerializationContext,
 ) -> Result<String> {
     if let Some(value) = value.predefined() {
@@ -2402,7 +1962,7 @@ fn serialize_interpolation_method(value: &CssColorInterpolationMethod) -> String
 }
 
 fn mix_weight_texts(
-    components: &[CssAuthoredColorMixComponent],
+    components: &[CssColorMixComponent],
     context: &mut SpecifiedSerializationContext,
 ) -> Result<Vec<Option<String>>> {
     if components.iter().any(|component| {
@@ -2443,7 +2003,7 @@ fn mix_weight_texts(
     for component in components {
         let value = component
             .weight()
-            .and_then(CssAuthoredColorMixWeight::literal_value)
+            .and_then(CssColorMixWeight::literal_value)
             .map(|value| exact_weight(value, context))
             .transpose()?;
         if let Some(value) = &value {
@@ -2509,349 +2069,20 @@ fn mix_weight_texts(
 }
 
 fn exact_weight(
-    value: &CssAuthoredColorMixPercentage,
+    value: &CssColorMixPercentage,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<crate::exact_decimal::ExactRational> {
     context.charge_input(1)?;
-    if let Some(value) = value.exact_literal() {
-        crate::exact_decimal::ExactRational::from_lexical_factor(
-            value.numeric().representation(),
-            exact_factor(Factor::ONE),
-            context,
-        )
-    } else {
-        crate::exact_decimal::ExactRational::from_binary32_factor(
-            value.value().expect("finite mix weight"),
-            exact_factor(Factor::ONE),
-            context,
-        )
-    }
+    crate::exact_decimal::ExactRational::from_lexical_factor(
+        value.literal().numeric().representation(),
+        exact_factor(Factor::ONE),
+        context,
+    )
 }
 
 fn literal_weight(
-    value: &CssAuthoredColorMixPercentage,
+    value: &CssColorMixPercentage,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<String> {
     exact_weight(value, context)?.format_exact(context.remaining_bytes(), context)
-}
-
-fn serialize_frozen_rgba(
-    value: &CssRgbaColor,
-    mode: Mode,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<String> {
-    context.charge_input(3)?;
-    context.charge_projection(3)?;
-    let channels = [
-        value.red().to_string(),
-        value.green().to_string(),
-        value.blue().to_string(),
-    ];
-    let alpha = frozen_alpha(Some(value.alpha()), context)?;
-    if mode == Mode::Origin {
-        let channels = channels.map(|text| ProjectedScalar {
-            number: text.parse().ok().map(ScaledNumber::from_binary64),
-            exact: None,
-            text,
-            contextual: false,
-            missing: false,
-            percentage: false,
-            calculation: false,
-        });
-        modern_function("rgb", &channels, alpha.as_deref(), context)
-    } else {
-        legacy_rgb(&channels, alpha.as_deref(), context)
-    }
-}
-
-fn frozen_slot(
-    value: Option<f32>,
-    percentage: bool,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<ProjectedScalar> {
-    frozen_slot_scaled(value, percentage, Factor::ONE, context)
-}
-
-fn frozen_slot_scaled(
-    value: Option<f32>,
-    percentage: bool,
-    factor: Factor,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<ProjectedScalar> {
-    context.charge_input(1)?;
-    context.charge_projection(1)?;
-    match value {
-        Some(value) => {
-            let exact = crate::exact_decimal::ExactRational::from_binary32_factor(
-                value,
-                exact_factor(factor),
-                context,
-            )?;
-            let number = ScaledNumber::from_exact(&exact)?;
-            Ok(ProjectedScalar {
-                text: exact
-                    .clone_with_budget(context)?
-                    .format_exact(context.remaining_bytes(), context)?,
-                number: Some(number),
-                exact: Some(exact),
-                contextual: false,
-                missing: false,
-                percentage,
-                calculation: false,
-            })
-        }
-        None => Ok(ProjectedScalar {
-            text: "none".into(),
-            number: None,
-            exact: None,
-            contextual: false,
-            missing: true,
-            percentage: false,
-            calculation: false,
-        }),
-    }
-}
-
-fn frozen_alpha(
-    value: Option<f32>,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<Option<String>> {
-    match value {
-        Some(value) => {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
-            alpha_finite(value, false, false, context)
-        }
-        None => {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
-            Ok(Some("none".into()))
-        }
-    }
-}
-
-fn serialize_frozen_hsl(
-    value: &CssHslColor,
-    mode: Mode,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<String> {
-    let hue = frozen_slot(value.hue(), false, context)?;
-    let saturation = frozen_slot_scaled(
-        value.saturation(),
-        true,
-        Factor {
-            numerator: 100,
-            denominator: 1,
-        },
-        context,
-    )?;
-    let lightness = frozen_slot_scaled(
-        value.lightness(),
-        true,
-        Factor {
-            numerator: 100,
-            denominator: 1,
-        },
-        context,
-    )?;
-    let alpha = frozen_alpha(value.alpha(), context)?;
-    if mode == Mode::Origin || hue.missing || saturation.missing || lightness.missing {
-        return hsl_like(
-            "hsl",
-            &hue,
-            &saturation,
-            &lightness,
-            alpha.as_deref(),
-            context,
-        );
-    }
-    let rgb = hsl_to_rgb(
-        hue.number.expect("frozen numeric hue").binary64(),
-        saturation
-            .number
-            .expect("frozen numeric saturation")
-            .binary64()
-            / 100.0,
-        lightness
-            .number
-            .expect("frozen numeric lightness")
-            .binary64()
-            / 100.0,
-    );
-    let channels = rgb.map(|channel| rounded_f64(channel.clamp(0.0, 1.0) * 255.0, 6));
-    legacy_rgb(&channels, alpha.as_deref(), context)
-}
-
-fn serialize_frozen_hwb(
-    value: &CssHwbColor,
-    mode: Mode,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<String> {
-    let hue = frozen_slot(value.hue(), false, context)?;
-    let white = frozen_slot_scaled(
-        value.whiteness(),
-        true,
-        Factor {
-            numerator: 100,
-            denominator: 1,
-        },
-        context,
-    )?;
-    let black = frozen_slot_scaled(
-        value.blackness(),
-        true,
-        Factor {
-            numerator: 100,
-            denominator: 1,
-        },
-        context,
-    )?;
-    let alpha = frozen_alpha(value.alpha(), context)?;
-    if mode == Mode::Origin || hue.missing || white.missing || black.missing {
-        return hsl_like("hwb", &hue, &white, &black, alpha.as_deref(), context);
-    }
-    let rgb = hwb_to_rgb(
-        hue.number.expect("frozen numeric hue").binary64(),
-        white.number.expect("frozen numeric whiteness").binary64() / 100.0,
-        black.number.expect("frozen numeric blackness").binary64() / 100.0,
-    );
-    let channels = rgb.map(|channel| rounded_f64(channel.clamp(0.0, 1.0) * 255.0, 6));
-    legacy_rgb(&channels, alpha.as_deref(), context)
-}
-
-fn serialize_frozen_lab(
-    name: &str,
-    value: &CssLabColor,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<String> {
-    let light_scale = if name == "lab" {
-        Factor::ONE
-    } else {
-        Factor {
-            numerator: 100,
-            denominator: 1,
-        }
-    };
-    let channels = [
-        frozen_slot_scaled(value.lightness(), false, light_scale, context)?,
-        frozen_slot(value.a(), false, context)?,
-        frozen_slot(value.b(), false, context)?,
-    ];
-    let alpha = frozen_alpha(value.alpha(), context)?;
-    modern_function(name, &channels, alpha.as_deref(), context)
-}
-
-fn serialize_frozen_lch(
-    name: &str,
-    value: &CssLchColor,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<String> {
-    let light_scale = if name == "lch" {
-        Factor::ONE
-    } else {
-        Factor {
-            numerator: 100,
-            denominator: 1,
-        }
-    };
-    let channels = [
-        frozen_slot_scaled(value.lightness(), false, light_scale, context)?,
-        frozen_slot(value.chroma(), false, context)?,
-        frozen_slot(value.hue(), false, context)?,
-    ];
-    let alpha = frozen_alpha(value.alpha(), context)?;
-    modern_function(name, &channels, alpha.as_deref(), context)
-}
-
-fn serialize_frozen_predefined(
-    value: &CssColorFunction,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<String> {
-    let channels = value
-        .components()
-        .iter()
-        .map(|value| frozen_slot(*value, false, context))
-        .collect::<Result<Vec<_>>>()?;
-    let alpha = frozen_alpha(value.alpha(), context)?;
-    let name = format!("color({}", predefined_name(value.color_space()));
-    modern_function(&name, &channels, alpha.as_deref(), context)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn legacy_expression(css: &str) -> CssColorComponentExpression {
-        CssColorComponentExpression::new(
-            CssAuthoredDeclarationValue::try_new(css).expect("nonempty expression"),
-            Vec::new(),
-        )
-    }
-
-    #[test]
-    fn frozen_leaves_use_origin_punctuation_and_the_bounded_numeric_adapter() {
-        let rgba = CssRgbaColor::try_new(1, 2, 3, 0.5).unwrap();
-        let mut context = SpecifiedSerializationContext::new(Limits::default());
-        assert_eq!(
-            serialize_frozen_rgba(&rgba, Mode::Origin, &mut context).unwrap(),
-            "rgb(1 2 3 / 0.5)"
-        );
-
-        let relative = CssRelativeColor::try_new(
-            CssRelativeColorFunction::Rgb,
-            CssColor::CurrentColor,
-            vec![
-                legacy_expression("calc(1 + 2)"),
-                legacy_expression("g"),
-                legacy_expression("b"),
-            ],
-            Some(legacy_expression("50%")),
-        )
-        .unwrap();
-        let authored = CssAuthoredColor::preserved_i01(CssColor::Relative(relative));
-        assert_eq!(
-            serialize(&authored, Limits::default()).unwrap(),
-            "rgb(from currentcolor calc(3) g b / 0.5)"
-        );
-    }
-
-    #[test]
-    fn frozen_default_mix_and_equal_weights_are_omitted() {
-        let component =
-            || CssColorMixComponent::try_new(CssColor::CurrentColor, Some(50.0)).unwrap();
-        let mix = CssColorMix::new(
-            CssColorInterpolationMethod::new(CssColorInterpolationSpace::Oklab, None),
-            component(),
-            component(),
-        );
-        let authored = CssAuthoredColor::preserved_i01(CssColor::ColorMix(mix));
-        assert_eq!(
-            serialize(&authored, Limits::default()).unwrap(),
-            "color-mix(currentcolor, currentcolor)"
-        );
-    }
-
-    #[test]
-    fn frozen_scalars_are_counted_and_scaled_before_binary32_rounding() {
-        let rgba = CssAuthoredColor::preserved_i01(CssColor::Rgba(
-            CssRgbaColor::try_new(1, 2, 3, 1.0).unwrap(),
-        ));
-        assert_eq!(
-            serialize(&rgba, Limits::new(6, usize::MAX, usize::MAX),).unwrap(),
-            "rgb(1, 2, 3)"
-        );
-        assert_eq!(
-            serialize(&rgba, Limits::new(5, usize::MAX, usize::MAX),)
-                .unwrap_err()
-                .kind(),
-            crate::CssSpecifiedValueSerializationErrorKind::InputNodeLimit
-        );
-
-        let hsl = CssHslColor::try_new(Some(0.0), Some(0.3), Some(0.5), Some(1.0)).unwrap();
-        let mut context = SpecifiedSerializationContext::new(Limits::default());
-        assert_eq!(
-            serialize_frozen_hsl(&hsl, Mode::Origin, &mut context).unwrap(),
-            "hsl(0 30.0000011920928955078125% 50%)"
-        );
-    }
 }

@@ -1,8 +1,8 @@
 use surgeist_css::{
     CssAngleCalculation, CssAngleUnit, CssAuthoredFontFaceDescriptorValue, CssBasicShapeValue,
     CssBlendMode, CssBoxEdgeKeyword, CssBoxShadow, CssCalculationType, CssClipPathValue,
-    CssDelayLiteral, CssEasing, CssErrorCode, CssExclusionReason, CssFeatureKind,
-    CssFilterFunctionValue, CssFilterValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+    CssDelayLiteral, CssEasing, CssErrorCode, CssExclusionReason, CssFeatureKind, CssFilter,
+    CssFilterFunction, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
     CssFrequencyCalculation, CssFrequencyUnit, CssHorizontalPosition, CssIntegerCalculation,
     CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssLengthCalculation,
     CssLengthDimension, CssLengthUnit, CssNumberCalculation, CssPercentageCalculation,
@@ -4972,7 +4972,7 @@ fn official_shadow_metadata_matches_typed_box_shadow() {
     else {
         panic!("expected box-shadow value");
     };
-    let CssBoxShadow::Shadows(shadows) = value.current() else {
+    let CssBoxShadow::Shadows(shadows) = value.value() else {
         panic!("expected typed shadows");
     };
     assert!(shadows.shadows()[0].inset());
@@ -4999,16 +4999,16 @@ fn filter_function_list_preserves_typed_authored_order() {
     else {
         panic!("expected filter value");
     };
-    let CssFilterValue::Functions(functions) = value.current() else {
+    let CssFilter::Functions(functions) = value.value() else {
         panic!("expected typed filter functions");
     };
     assert!(matches!(
         functions.functions(),
         [
-            CssFilterFunctionValue::Url(_),
-            CssFilterFunctionValue::Blur(_),
-            CssFilterFunctionValue::DropShadow(_),
-            CssFilterFunctionValue::Opacity(_),
+            CssFilterFunction::Url(_),
+            CssFilterFunction::Blur(_),
+            CssFilterFunction::DropShadow(_),
+            CssFilterFunction::Opacity(_),
         ]
     ));
     assert_complete_function_metadata(
@@ -5034,21 +5034,21 @@ fn every_filter_amount_function_has_exact_typed_domain() {
     else {
         panic!("expected filter value");
     };
-    let CssFilterValue::Functions(functions) = value.current() else {
+    let CssFilter::Functions(functions) = value.value() else {
         panic!("expected typed filter functions");
     };
     assert!(matches!(
         functions.functions(),
         [
-            CssFilterFunctionValue::Blur(_),
-            CssFilterFunctionValue::Brightness(_),
-            CssFilterFunctionValue::Contrast(_),
-            CssFilterFunctionValue::Grayscale(_),
-            CssFilterFunctionValue::HueRotate(_),
-            CssFilterFunctionValue::Invert(_),
-            CssFilterFunctionValue::Opacity(_),
-            CssFilterFunctionValue::Saturate(_),
-            CssFilterFunctionValue::Sepia(_),
+            CssFilterFunction::Blur(_),
+            CssFilterFunction::Brightness(_),
+            CssFilterFunction::Contrast(_),
+            CssFilterFunction::Grayscale(_),
+            CssFilterFunction::HueRotate(_),
+            CssFilterFunction::Invert(_),
+            CssFilterFunction::Opacity(_),
+            CssFilterFunction::Saturate(_),
+            CssFilterFunction::Sepia(_),
         ]
     ));
     assert_complete_function_metadata(
@@ -5119,12 +5119,12 @@ fn drop_shadow_rejects_box_shadow_only_components() {
     else {
         panic!("expected filter value");
     };
-    let CssFilterValue::Functions(functions) = value.current() else {
+    let CssFilter::Functions(functions) = value.value() else {
         panic!("expected typed filter functions");
     };
     assert!(matches!(
         functions.functions(),
-        [CssFilterFunctionValue::DropShadow(_)]
+        [CssFilterFunction::DropShadow(_)]
     ));
     assert!(!parse_style_attribute("filter: drop-shadow(inset 1px 2px)").is_clean());
     assert!(!parse_style_attribute("filter: drop-shadow(1px 2px 3px 4px)").is_clean());
@@ -5243,11 +5243,11 @@ fn backdrop_filter_preserves_exact_typed_baseline_subset() {
         panic!("expected backdrop-filter value");
     };
     assert!(matches!(
-        value.current(),
-        CssFilterValue::Functions(functions)
+        value.value(),
+        CssFilter::Functions(functions)
             if matches!(
                 functions.functions(),
-                [CssFilterFunctionValue::Blur(_), CssFilterFunctionValue::Opacity(_)]
+                [CssFilterFunction::Blur(_), CssFilterFunction::Opacity(_)]
             )
     ));
     let metadata =
@@ -5327,7 +5327,7 @@ fn completed_function_property_metadata_matches_public_current_accessors() {
             .property_value()
             .unwrap(),
         CssKnownPropertyValueRef::BoxShadow(value)
-            if matches!(value.current(), CssBoxShadow::Shadows(_))
+            if matches!(value.value(), CssBoxShadow::Shadows(_))
     ));
     assert!(matches!(
         report.syntax()[2]
@@ -5336,7 +5336,7 @@ fn completed_function_property_metadata_matches_public_current_accessors() {
             .property_value()
             .unwrap(),
         CssKnownPropertyValueRef::Filter(value)
-            if matches!(value.current(), CssFilterValue::Functions(_))
+            if matches!(value.value(), CssFilter::Functions(_))
     ));
     assert!(matches!(
         report.syntax()[3]

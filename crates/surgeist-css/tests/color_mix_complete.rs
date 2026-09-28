@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 //! Selected Color5 #funcdef-color-mix and Values4 #calc-range.
-//! Existing public boundaries only; typed list/weight APIs are tested separately.
+//! Complete authored list, interpolation, and weight grammar.
 use surgeist_css::*;
 
 fn parsed(property: &str, text: &str) -> CssDeclaration {
@@ -47,31 +47,81 @@ fn wrapper(declaration: &CssDeclaration) -> &CssColorPropertyValue {
     };
     value
 }
-fn admits_new_mix(text: &str) {
+fn admitted_mix(text: &str) -> [CssColorMix; 2] {
+    let mut mixes = Vec::new();
     for declaration in [parsed("color", text), checked(text)] {
         let value = wrapper(&declaration);
-        assert!(value.current().color_mix_value().is_some());
         assert_eq!(value.as_css(), text);
-        // New spellings are deliberately outside the unchanged frozen parser.
-        assert!(value.i01_subset().is_none(), "{text}");
+        mixes.push(value.value().color_mix_value().expect("typed mix").clone());
     }
+    mixes.try_into().unwrap()
 }
 
 #[test]
 fn omitted_interpolation_method_admits_the_default_mix() {
-    admits_new_mix("color-mix(red, blue)");
+    for mix in admitted_mix("color-mix(red, blue)") {
+        assert!(mix.interpolation().is_none());
+        assert_eq!(mix.components().len(), 2);
+        assert_eq!(mix.components()[0].color().named().unwrap().name(), "red");
+        assert_eq!(mix.components()[1].color().named().unwrap().name(), "blue");
+        assert!(mix.components().iter().all(|item| item.weight().is_none()));
+    }
 }
 #[test]
 fn a_single_color_is_a_nonempty_mix_list() {
-    admits_new_mix("color-mix(in srgb, red)");
+    for mix in admitted_mix("color-mix(in srgb, red)") {
+        assert_eq!(
+            mix.interpolation().unwrap().predefined().unwrap().space(),
+            CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb)
+        );
+        assert_eq!(mix.components().len(), 1);
+        assert_eq!(mix.components()[0].color().named().unwrap().name(), "red");
+    }
 }
 #[test]
 fn more_than_two_colors_keep_the_authored_list_and_duplicates() {
-    admits_new_mix("color-mix(in oklab, red, green, red)");
+    for mix in admitted_mix("color-mix(in oklab, red, green, red)") {
+        assert_eq!(
+            mix.interpolation().unwrap().predefined().unwrap().space(),
+            CssColorInterpolationSpace::Oklab
+        );
+        assert_eq!(
+            mix.components()
+                .iter()
+                .map(|item| item.color().named().unwrap().name())
+                .collect::<Vec<_>>(),
+            ["red", "green", "red"]
+        );
+    }
 }
 #[test]
 fn percentage_can_precede_its_color() {
-    admits_new_mix("color-mix(in srgb, 30% red, blue 70%)");
+    for mix in admitted_mix("color-mix(in srgb, 30% red, blue 70%)") {
+        assert_eq!(mix.components()[0].color().named().unwrap().name(), "red");
+        assert_eq!(mix.components()[1].color().named().unwrap().name(), "blue");
+        assert_eq!(
+            mix.components()[0]
+                .weight()
+                .unwrap()
+                .literal_value()
+                .unwrap()
+                .literal()
+                .numeric()
+                .representation(),
+            "30"
+        );
+        assert_eq!(
+            mix.components()[1]
+                .weight()
+                .unwrap()
+                .literal_value()
+                .unwrap()
+                .literal()
+                .numeric()
+                .representation(),
+            "70"
+        );
+    }
 }
 #[test]
 fn percentage_math_weights_keep_specified_range_deferral() {
@@ -80,20 +130,69 @@ fn percentage_math_weights_keep_specified_range_deferral() {
         "color-mix(in srgb, calc(30%) red, blue)",
         "color-mix(in srgb, red calc(-5%), blue calc(120%))",
     ] {
-        admits_new_mix(text);
+        for mix in admitted_mix(text) {
+            assert_eq!(mix.components().len(), 2);
+            assert!(
+                mix.components()[0]
+                    .weight()
+                    .unwrap()
+                    .calculation()
+                    .is_some()
+            );
+            assert_eq!(
+                mix.components()[0]
+                    .weight()
+                    .unwrap()
+                    .calculation()
+                    .unwrap()
+                    .components()
+                    .serialize()
+                    .unwrap()
+                    .as_css(),
+                if text.contains("-5%") {
+                    "calc(-5%)"
+                } else {
+                    "calc(30%)"
+                }
+            );
+            if text.contains("120%") {
+                assert_eq!(
+                    mix.components()[1]
+                        .weight()
+                        .unwrap()
+                        .calculation()
+                        .unwrap()
+                        .components()
+                        .serialize()
+                        .unwrap()
+                        .as_css(),
+                    "calc(120%)"
+                );
+            } else {
+                assert!(mix.components()[1].weight().is_none());
+            }
+        }
     }
 }
 #[test]
 fn custom_interpolation_names_are_symbolic_authored_references() {
-    // These checks establish grammar admission without a profile registry.
-    // Decoded case/escape identity is inspected by later typed API evidence.
-    for text in [
-        "color-mix(in --Profile, red, blue)",
-        "color-mix(in --profile, red, blue)",
-        "color-mix(in --Pr\\6f file, red, blue)",
-        "color-mix(in --, red, blue)",
+    for (text, name) in [
+        ("color-mix(in --Profile, red, blue)", "--Profile"),
+        ("color-mix(in --profile, red, blue)", "--profile"),
+        ("color-mix(in --Pr\\6f file, red, blue)", "--Profile"),
+        ("color-mix(in --, red, blue)", "--"),
     ] {
-        admits_new_mix(text);
+        for mix in admitted_mix(text) {
+            assert_eq!(
+                mix.interpolation()
+                    .unwrap()
+                    .custom_profile()
+                    .unwrap()
+                    .as_str(),
+                name
+            );
+            assert_eq!(mix.components().len(), 2);
+        }
     }
 }
 #[test]
@@ -113,15 +212,14 @@ fn one_component_border_color_uses_complete_shared_mix_grammar() {
         else {
             panic!("border color")
         };
-        let colors = value.current();
+        let colors = value.value();
         assert_eq!(colors.kind(), CssBoxSideKind::Physical);
         assert_eq!(colors.authored_values().len(), 1);
         let [top, right, bottom, left] = colors.assigned_values();
-        assert!(top.color_mix_value().is_some());
+        assert_eq!(top.color_mix_value().unwrap().components().len(), 3);
         assert_eq!(top, right);
         assert_eq!(top, bottom);
         assert_eq!(top, left);
-        assert!(value.i01_subset().is_none());
     }
 }
 
@@ -170,8 +268,27 @@ fn explicit_safe_two_color_and_all_zero_weights_remain_valid() {
         "color-mix(in srgb, red -0%, blue 100%)",
     ] {
         for declaration in [parsed("color", text), checked(text)] {
-            assert!(wrapper(&declaration).current().color_mix_value().is_some());
-            assert!(wrapper(&declaration).i01_subset().is_some(), "{text}");
+            let mix = wrapper(&declaration).value().color_mix_value().unwrap();
+            assert_eq!(mix.components().len(), 2);
+            let weights = [
+                mix.components()[0]
+                    .weight()
+                    .unwrap()
+                    .literal_value()
+                    .unwrap()
+                    .literal()
+                    .numeric()
+                    .representation(),
+                mix.components()[1]
+                    .weight()
+                    .unwrap()
+                    .literal_value()
+                    .unwrap()
+                    .literal()
+                    .numeric()
+                    .representation(),
+            ];
+            assert!(matches!(weights, ["25", "50"] | ["0", "0"] | ["-0", "100"]));
         }
     }
 }

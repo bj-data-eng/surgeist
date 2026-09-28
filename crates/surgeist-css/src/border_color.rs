@@ -1,7 +1,7 @@
-//! Authored border colors and the physical expanded compatibility utility.
+//! Authored border colors and physical side expansion.
 
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::syntax::{CssAuthoredColor, CssColor, CssParsedColor};
+use crate::syntax::CssColor;
 use crate::{
     CssBoxSideKind, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
 };
@@ -24,7 +24,7 @@ fn serialize(
 /// constructing this value does not resolve them against an element's style.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssBorderColors {
-    sides: [CssAuthoredColor; 4],
+    sides: [CssColor; 4],
 }
 
 impl CssBorderColors {
@@ -34,7 +34,7 @@ impl CssBorderColors {
     /// sides. Three set the top, horizontal sides, and bottom. Empty inputs and
     /// inputs with more than four colors are rejected.
     #[must_use]
-    pub fn try_new(colors: Vec<CssAuthoredColor>) -> Option<Self> {
+    pub fn try_new(colors: Vec<CssColor>) -> Option<Self> {
         let sides = match colors.as_slice() {
             [all] => [all.clone(), all.clone(), all.clone(), all.clone()],
             [vertical, horizontal] => [
@@ -58,22 +58,22 @@ impl CssBorderColors {
     }
 
     #[must_use]
-    pub const fn top(&self) -> &CssAuthoredColor {
+    pub const fn top(&self) -> &CssColor {
         &self.sides[0]
     }
 
     #[must_use]
-    pub const fn right(&self) -> &CssAuthoredColor {
+    pub const fn right(&self) -> &CssColor {
         &self.sides[1]
     }
 
     #[must_use]
-    pub const fn bottom(&self) -> &CssAuthoredColor {
+    pub const fn bottom(&self) -> &CssColor {
         &self.sides[2]
     }
 
     #[must_use]
-    pub const fn left(&self) -> &CssAuthoredColor {
+    pub const fn left(&self) -> &CssColor {
         &self.sides[3]
     }
 }
@@ -81,28 +81,28 @@ impl CssBorderColors {
 /// One or two authored flow-relative border colors.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssBorderColorPair {
-    start: CssAuthoredColor,
-    authored_end: Option<CssAuthoredColor>,
+    start: CssColor,
+    authored_end: Option<CssColor>,
 }
 
 impl CssBorderColorPair {
     #[must_use]
-    pub const fn new(start: CssAuthoredColor, authored_end: Option<CssAuthoredColor>) -> Self {
+    pub const fn new(start: CssColor, authored_end: Option<CssColor>) -> Self {
         Self {
             start,
             authored_end,
         }
     }
 
-    pub const fn start(&self) -> &CssAuthoredColor {
+    pub const fn start(&self) -> &CssColor {
         &self.start
     }
 
-    pub const fn authored_end(&self) -> Option<&CssAuthoredColor> {
+    pub const fn authored_end(&self) -> Option<&CssColor> {
         self.authored_end.as_ref()
     }
 
-    pub fn end(&self) -> &CssAuthoredColor {
+    pub fn end(&self) -> &CssColor {
         self.authored_end.as_ref().unwrap_or(&self.start)
     }
 
@@ -136,12 +136,12 @@ impl CssBorderColorPair {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssBorderColorShorthand {
     kind: CssBoxSideKind,
-    authored_values: Box<[CssAuthoredColor]>,
+    authored_values: Box<[CssColor]>,
 }
 
 impl CssBorderColorShorthand {
     #[must_use]
-    pub fn try_new(kind: CssBoxSideKind, values: Vec<CssAuthoredColor>) -> Option<Self> {
+    pub fn try_new(kind: CssBoxSideKind, values: Vec<CssColor>) -> Option<Self> {
         (1..=4).contains(&values.len()).then(|| Self {
             kind,
             authored_values: values.into_boxed_slice(),
@@ -152,11 +152,11 @@ impl CssBorderColorShorthand {
         self.kind
     }
 
-    pub fn authored_values(&self) -> &[CssAuthoredColor] {
+    pub fn authored_values(&self) -> &[CssColor] {
         &self.authored_values
     }
 
-    pub fn assigned_values(&self) -> [&CssAuthoredColor; 4] {
+    pub fn assigned_values(&self) -> [&CssColor; 4] {
         let v = &self.authored_values;
         match v.len() {
             1 => [&v[0], &v[0], &v[0], &v[0]],
@@ -189,35 +189,5 @@ impl CssBorderColorShorthand {
             }
             Ok(())
         })
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct CssParsedBorderColorShorthand {
-    current: CssBorderColorShorthand,
-    i01_subset: Option<CssColor>,
-}
-
-impl CssParsedBorderColorShorthand {
-    pub(crate) fn try_new(kind: CssBoxSideKind, colors: Vec<CssParsedColor>) -> Option<Self> {
-        let i01_subset = match (kind, colors.as_slice()) {
-            (CssBoxSideKind::Physical, [color]) => color.i01_subset().cloned(),
-            _ => None,
-        };
-        let current = CssBorderColorShorthand::try_new(
-            kind,
-            colors
-                .into_iter()
-                .map(|color| color.into_parts().0)
-                .collect(),
-        )?;
-        Some(Self {
-            current,
-            i01_subset,
-        })
-    }
-
-    pub(crate) fn into_parts(self) -> (CssBorderColorShorthand, Option<CssColor>) {
-        (self.current, self.i01_subset)
     }
 }

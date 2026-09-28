@@ -6,9 +6,7 @@
 
 use crate::CssSpecifiedNonNegativeNumber;
 use crate::alignment::*;
-use crate::border_color::{
-    CssBorderColorPair, CssBorderColorShorthand, CssParsedBorderColorShorthand,
-};
+use crate::border_color::{CssBorderColorPair, CssBorderColorShorthand};
 use crate::border_radius::*;
 use crate::border_style::*;
 use crate::border_width::*;
@@ -153,7 +151,7 @@ macro_rules! property_schema {
             ColumnCount, "column-count", [], "official.property.column-count", CssColumnCount, CssColumnCountPropertyValue, CssColumnCountPropertyValueRepresentation, parse_column_count, { parse_column_count($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssColumnCount, accessor: count, inherited: false, initial_kind: value, initial: CssColumnCount::Auto };
             ColumnFill, "column-fill", [], "official.property.column-fill", CssColumnFill, CssColumnFillPropertyValue, CssColumnFillPropertyValueRepresentation, parse_column_fill, { parse_column_fill($input)? }, expansion = longhand { wrapper: existing, value: CssColumnFill, accessor: fill, inherited: false, initial_kind: value, initial: CssColumnFill::Balance };
             ColumnRule, "column-rule", [], "official.property.column-rule", CssColumnRule, CssColumnRulePropertyValue, CssColumnRulePropertyValueRepresentation, parse_column_rule, { parse_column_rule($input, $numeric)? }, expansion = shorthand { wrapper: existing, accessor: rule, members: [ ColumnRuleWidth => |value: &CssColumnRule| value.width().cloned(), ColumnRuleStyle => |value: &CssColumnRule| value.style(), ColumnRuleColor => |value: &CssColumnRule| value.color().cloned() ], reset_only: [] };
-            ColumnRuleColor, "column-rule-color", [], "official.property.column-rule-color", CssParsedColor, CssColumnRuleColorPropertyValue, CssColumnRuleColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssAuthoredColor, accessor: current, inherited: false, initial_kind: value, initial: CssAuthoredColor::current_color() };
+            ColumnRuleColor, "column-rule-color", [], "official.property.column-rule-color", CssColor, CssColumnRuleColorPropertyValue, CssColumnRuleColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssColor, accessor: value, inherited: false, initial_kind: value, initial: CssColor::current_color() };
             ColumnRuleStyle, "column-rule-style", [], "official.property.column-rule-style", CssLineStyle, CssColumnRuleStylePropertyValue, CssColumnRuleStylePropertyValueRepresentation, parse_line_style, { parse_line_style($input)? }, expansion = longhand { wrapper: existing, value: CssLineStyle, accessor: style, inherited: false, initial_kind: value, initial: CssLineStyle::None };
             ColumnRuleWidth, "column-rule-width", [], "official.property.column-rule-width", CssLineWidth, CssColumnRuleWidthPropertyValue, CssColumnRuleWidthPropertyValueRepresentation, parse_line_width, { parse_line_width($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssLineWidth, accessor: width, inherited: false, initial_kind: value, initial: CssLineWidth::Medium };
             ColumnSpan, "column-span", [], "official.property.column-span", CssColumnSpan, CssColumnSpanPropertyValue, CssColumnSpanPropertyValueRepresentation, parse_column_span, { parse_column_span($input)? }, expansion = longhand { wrapper: existing, value: CssColumnSpan, accessor: span, inherited: false, initial_kind: value, initial: CssColumnSpan::None };
@@ -253,17 +251,17 @@ macro_rules! property_schema {
             PaddingInlineEnd, "padding-inline-end", [], "official.property.padding-inline-end", CssPaddingValue, CssPaddingInlineEndPropertyValue, CssPaddingInlineEndPropertyValueRepresentation, parse_box_padding_value, { parse_box_padding_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssPaddingValue, accessor: current, inherited: false, initial_kind: value, initial: CssPaddingValue::new(CssSpecifiedNonNegativeLengthPercentage::zero()) };
             PaddingBlock, "padding-block", [], "official.property.padding-block", CssPaddingPair, CssPaddingBlockPropertyValue, CssPaddingBlockPropertyValueRepresentation, parse_box_padding_pair, { parse_box_padding_pair($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: current, members: [ PaddingBlockStart => |value: &CssPaddingPair| Some(value.start().clone()), PaddingBlockEnd => |value: &CssPaddingPair| Some(value.end().clone()) ], reset_only: [] };
             PaddingInline, "padding-inline", [], "official.property.padding-inline", CssPaddingPair, CssPaddingInlinePropertyValue, CssPaddingInlinePropertyValueRepresentation, parse_box_padding_pair, { parse_box_padding_pair($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: current, members: [ PaddingInlineStart => |value: &CssPaddingPair| Some(value.start().clone()), PaddingInlineEnd => |value: &CssPaddingPair| Some(value.end().clone()) ], reset_only: [] };
-            Border, "border", [], "baseline.property.border", CssBorderValue, CssBorderPropertyValue, CssBorderPropertyValueRepresentation, parse_exact_border, { parse_exact_border($input, $numeric)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ BorderTopWidth => |value: &CssBorderValue| value.width().cloned(), BorderRightWidth => |value: &CssBorderValue| value.width().cloned(), BorderBottomWidth => |value: &CssBorderValue| value.width().cloned(), BorderLeftWidth => |value: &CssBorderValue| value.width().cloned(), BorderTopStyle => |value: &CssBorderValue| value.style(), BorderRightStyle => |value: &CssBorderValue| value.style(), BorderBottomStyle => |value: &CssBorderValue| value.style(), BorderLeftStyle => |value: &CssBorderValue| value.style(), BorderTopColor => |value: &CssBorderValue| value.color().cloned(), BorderRightColor => |value: &CssBorderValue| value.color().cloned(), BorderBottomColor => |value: &CssBorderValue| value.color().cloned(), BorderLeftColor => |value: &CssBorderValue| value.color().cloned() ], reset_only: [ BorderImageSource, BorderImageSlice, BorderImageWidth, BorderImageOutset, BorderImageRepeat ] };
-            BorderTop, "border-top", [], "baseline.property.border-top", CssBorderValue, CssBorderTopPropertyValue, CssBorderTopPropertyValueRepresentation, parse_exact_border, { parse_exact_border($input, $numeric)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ BorderTopWidth => |value: &CssBorderValue| value.width().cloned(), BorderTopStyle => |value: &CssBorderValue| value.style(), BorderTopColor => |value: &CssBorderValue| value.color().cloned() ], reset_only: [  ] };
-            BorderRight, "border-right", [], "baseline.property.border-right", CssBorderValue, CssBorderRightPropertyValue, CssBorderRightPropertyValueRepresentation, parse_exact_border, { parse_exact_border($input, $numeric)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ BorderRightWidth => |value: &CssBorderValue| value.width().cloned(), BorderRightStyle => |value: &CssBorderValue| value.style(), BorderRightColor => |value: &CssBorderValue| value.color().cloned() ], reset_only: [  ] };
-            BorderBottom, "border-bottom", [], "baseline.property.border-bottom", CssBorderValue, CssBorderBottomPropertyValue, CssBorderBottomPropertyValueRepresentation, parse_exact_border, { parse_exact_border($input, $numeric)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ BorderBottomWidth => |value: &CssBorderValue| value.width().cloned(), BorderBottomStyle => |value: &CssBorderValue| value.style(), BorderBottomColor => |value: &CssBorderValue| value.color().cloned() ], reset_only: [  ] };
-            BorderLeft, "border-left", [], "baseline.property.border-left", CssBorderValue, CssBorderLeftPropertyValue, CssBorderLeftPropertyValueRepresentation, parse_exact_border, { parse_exact_border($input, $numeric)? }, expansion = shorthand { wrapper: existing, accessor: current, members: [ BorderLeftWidth => |value: &CssBorderValue| value.width().cloned(), BorderLeftStyle => |value: &CssBorderValue| value.style(), BorderLeftColor => |value: &CssBorderValue| value.color().cloned() ], reset_only: [  ] };
-            BorderBlockStart, "border-block-start", [], "official.property.border-block-start", CssBorderValue, CssBorderBlockStartPropertyValue, CssBorderBlockStartPropertyValueRepresentation, parse_exact_border, { parse_exact_border($input, $numeric)?.into_parts().0 }, expansion = shorthand { wrapper: additive, accessor: current, members: [ BorderBlockStartWidth => |value: &CssBorderValue| value.width().cloned(), BorderBlockStartStyle => |value: &CssBorderValue| value.style(), BorderBlockStartColor => |value: &CssBorderValue| value.color().cloned() ], reset_only: [] };
-            BorderBlockEnd, "border-block-end", [], "official.property.border-block-end", CssBorderValue, CssBorderBlockEndPropertyValue, CssBorderBlockEndPropertyValueRepresentation, parse_exact_border, { parse_exact_border($input, $numeric)?.into_parts().0 }, expansion = shorthand { wrapper: additive, accessor: current, members: [ BorderBlockEndWidth => |value: &CssBorderValue| value.width().cloned(), BorderBlockEndStyle => |value: &CssBorderValue| value.style(), BorderBlockEndColor => |value: &CssBorderValue| value.color().cloned() ], reset_only: [] };
-            BorderInlineStart, "border-inline-start", [], "official.property.border-inline-start", CssBorderValue, CssBorderInlineStartPropertyValue, CssBorderInlineStartPropertyValueRepresentation, parse_exact_border, { parse_exact_border($input, $numeric)?.into_parts().0 }, expansion = shorthand { wrapper: additive, accessor: current, members: [ BorderInlineStartWidth => |value: &CssBorderValue| value.width().cloned(), BorderInlineStartStyle => |value: &CssBorderValue| value.style(), BorderInlineStartColor => |value: &CssBorderValue| value.color().cloned() ], reset_only: [] };
-            BorderInlineEnd, "border-inline-end", [], "official.property.border-inline-end", CssBorderValue, CssBorderInlineEndPropertyValue, CssBorderInlineEndPropertyValueRepresentation, parse_exact_border, { parse_exact_border($input, $numeric)?.into_parts().0 }, expansion = shorthand { wrapper: additive, accessor: current, members: [ BorderInlineEndWidth => |value: &CssBorderValue| value.width().cloned(), BorderInlineEndStyle => |value: &CssBorderValue| value.style(), BorderInlineEndColor => |value: &CssBorderValue| value.color().cloned() ], reset_only: [] };
-            BorderBlock, "border-block", [], "official.property.border-block", CssBorderValue, CssBorderBlockPropertyValue, CssBorderBlockPropertyValueRepresentation, parse_exact_border, { parse_exact_border($input, $numeric)?.into_parts().0 }, expansion = shorthand { wrapper: additive, accessor: current, members: [ BorderBlockStartWidth => |value: &CssBorderValue| value.width().cloned(), BorderBlockEndWidth => |value: &CssBorderValue| value.width().cloned(), BorderBlockStartStyle => |value: &CssBorderValue| value.style(), BorderBlockEndStyle => |value: &CssBorderValue| value.style(), BorderBlockStartColor => |value: &CssBorderValue| value.color().cloned(), BorderBlockEndColor => |value: &CssBorderValue| value.color().cloned() ], reset_only: [] };
-            BorderInline, "border-inline", [], "official.property.border-inline", CssBorderValue, CssBorderInlinePropertyValue, CssBorderInlinePropertyValueRepresentation, parse_exact_border, { parse_exact_border($input, $numeric)?.into_parts().0 }, expansion = shorthand { wrapper: additive, accessor: current, members: [ BorderInlineStartWidth => |value: &CssBorderValue| value.width().cloned(), BorderInlineEndWidth => |value: &CssBorderValue| value.width().cloned(), BorderInlineStartStyle => |value: &CssBorderValue| value.style(), BorderInlineEndStyle => |value: &CssBorderValue| value.style(), BorderInlineStartColor => |value: &CssBorderValue| value.color().cloned(), BorderInlineEndColor => |value: &CssBorderValue| value.color().cloned() ], reset_only: [] };
+            Border, "border", [], "baseline.property.border", CssBorder, CssBorderPropertyValue, CssBorderPropertyValueRepresentation, parse_border, { parse_border($input, $numeric)? }, expansion = shorthand { wrapper: existing, accessor: value, members: [ BorderTopWidth => |value: &CssBorder| value.width().cloned(), BorderRightWidth => |value: &CssBorder| value.width().cloned(), BorderBottomWidth => |value: &CssBorder| value.width().cloned(), BorderLeftWidth => |value: &CssBorder| value.width().cloned(), BorderTopStyle => |value: &CssBorder| value.style(), BorderRightStyle => |value: &CssBorder| value.style(), BorderBottomStyle => |value: &CssBorder| value.style(), BorderLeftStyle => |value: &CssBorder| value.style(), BorderTopColor => |value: &CssBorder| value.color().cloned(), BorderRightColor => |value: &CssBorder| value.color().cloned(), BorderBottomColor => |value: &CssBorder| value.color().cloned(), BorderLeftColor => |value: &CssBorder| value.color().cloned() ], reset_only: [ BorderImageSource, BorderImageSlice, BorderImageWidth, BorderImageOutset, BorderImageRepeat ] };
+            BorderTop, "border-top", [], "baseline.property.border-top", CssBorder, CssBorderTopPropertyValue, CssBorderTopPropertyValueRepresentation, parse_border, { parse_border($input, $numeric)? }, expansion = shorthand { wrapper: existing, accessor: value, members: [ BorderTopWidth => |value: &CssBorder| value.width().cloned(), BorderTopStyle => |value: &CssBorder| value.style(), BorderTopColor => |value: &CssBorder| value.color().cloned() ], reset_only: [  ] };
+            BorderRight, "border-right", [], "baseline.property.border-right", CssBorder, CssBorderRightPropertyValue, CssBorderRightPropertyValueRepresentation, parse_border, { parse_border($input, $numeric)? }, expansion = shorthand { wrapper: existing, accessor: value, members: [ BorderRightWidth => |value: &CssBorder| value.width().cloned(), BorderRightStyle => |value: &CssBorder| value.style(), BorderRightColor => |value: &CssBorder| value.color().cloned() ], reset_only: [  ] };
+            BorderBottom, "border-bottom", [], "baseline.property.border-bottom", CssBorder, CssBorderBottomPropertyValue, CssBorderBottomPropertyValueRepresentation, parse_border, { parse_border($input, $numeric)? }, expansion = shorthand { wrapper: existing, accessor: value, members: [ BorderBottomWidth => |value: &CssBorder| value.width().cloned(), BorderBottomStyle => |value: &CssBorder| value.style(), BorderBottomColor => |value: &CssBorder| value.color().cloned() ], reset_only: [  ] };
+            BorderLeft, "border-left", [], "baseline.property.border-left", CssBorder, CssBorderLeftPropertyValue, CssBorderLeftPropertyValueRepresentation, parse_border, { parse_border($input, $numeric)? }, expansion = shorthand { wrapper: existing, accessor: value, members: [ BorderLeftWidth => |value: &CssBorder| value.width().cloned(), BorderLeftStyle => |value: &CssBorder| value.style(), BorderLeftColor => |value: &CssBorder| value.color().cloned() ], reset_only: [  ] };
+            BorderBlockStart, "border-block-start", [], "official.property.border-block-start", CssBorder, CssBorderBlockStartPropertyValue, CssBorderBlockStartPropertyValueRepresentation, parse_border, { parse_border($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: value, members: [ BorderBlockStartWidth => |value: &CssBorder| value.width().cloned(), BorderBlockStartStyle => |value: &CssBorder| value.style(), BorderBlockStartColor => |value: &CssBorder| value.color().cloned() ], reset_only: [] };
+            BorderBlockEnd, "border-block-end", [], "official.property.border-block-end", CssBorder, CssBorderBlockEndPropertyValue, CssBorderBlockEndPropertyValueRepresentation, parse_border, { parse_border($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: value, members: [ BorderBlockEndWidth => |value: &CssBorder| value.width().cloned(), BorderBlockEndStyle => |value: &CssBorder| value.style(), BorderBlockEndColor => |value: &CssBorder| value.color().cloned() ], reset_only: [] };
+            BorderInlineStart, "border-inline-start", [], "official.property.border-inline-start", CssBorder, CssBorderInlineStartPropertyValue, CssBorderInlineStartPropertyValueRepresentation, parse_border, { parse_border($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: value, members: [ BorderInlineStartWidth => |value: &CssBorder| value.width().cloned(), BorderInlineStartStyle => |value: &CssBorder| value.style(), BorderInlineStartColor => |value: &CssBorder| value.color().cloned() ], reset_only: [] };
+            BorderInlineEnd, "border-inline-end", [], "official.property.border-inline-end", CssBorder, CssBorderInlineEndPropertyValue, CssBorderInlineEndPropertyValueRepresentation, parse_border, { parse_border($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: value, members: [ BorderInlineEndWidth => |value: &CssBorder| value.width().cloned(), BorderInlineEndStyle => |value: &CssBorder| value.style(), BorderInlineEndColor => |value: &CssBorder| value.color().cloned() ], reset_only: [] };
+            BorderBlock, "border-block", [], "official.property.border-block", CssBorder, CssBorderBlockPropertyValue, CssBorderBlockPropertyValueRepresentation, parse_border, { parse_border($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: value, members: [ BorderBlockStartWidth => |value: &CssBorder| value.width().cloned(), BorderBlockEndWidth => |value: &CssBorder| value.width().cloned(), BorderBlockStartStyle => |value: &CssBorder| value.style(), BorderBlockEndStyle => |value: &CssBorder| value.style(), BorderBlockStartColor => |value: &CssBorder| value.color().cloned(), BorderBlockEndColor => |value: &CssBorder| value.color().cloned() ], reset_only: [] };
+            BorderInline, "border-inline", [], "official.property.border-inline", CssBorder, CssBorderInlinePropertyValue, CssBorderInlinePropertyValueRepresentation, parse_border, { parse_border($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: value, members: [ BorderInlineStartWidth => |value: &CssBorder| value.width().cloned(), BorderInlineEndWidth => |value: &CssBorder| value.width().cloned(), BorderInlineStartStyle => |value: &CssBorder| value.style(), BorderInlineEndStyle => |value: &CssBorder| value.style(), BorderInlineStartColor => |value: &CssBorder| value.color().cloned(), BorderInlineEndColor => |value: &CssBorder| value.color().cloned() ], reset_only: [] };
             BorderWidth, "border-width", [], "baseline.property.border-width", CssBorderWidthShorthand, CssBorderWidthPropertyValue, CssBorderWidthPropertyValueRepresentation, parse_exact_border_width_shorthand, { parse_exact_border_width_shorthand($input, $numeric)? }, expansion = unresolved { wrapper: existing, reason: CssUnresolvedStandard::LogicalShorthandResetMembership };
             BorderTopWidth, "border-top-width", [], "baseline.property.border-top-width", CssBorderWidth, CssBorderTopWidthPropertyValue, CssBorderTopWidthPropertyValueRepresentation, parse_exact_border_width, { parse_exact_border_width($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssBorderWidth, accessor: current, inherited: false, initial_kind: value, initial: CssBorderWidth::Medium };
             BorderRightWidth, "border-right-width", [], "baseline.property.border-right-width", CssBorderWidth, CssBorderRightWidthPropertyValue, CssBorderRightWidthPropertyValueRepresentation, parse_exact_border_width, { parse_exact_border_width($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssBorderWidth, accessor: current, inherited: false, initial_kind: value, initial: CssBorderWidth::Medium };
@@ -275,20 +273,20 @@ macro_rules! property_schema {
             BorderInlineEndWidth, "border-inline-end-width", [], "official.property.border-inline-end-width", CssBorderWidth, CssBorderInlineEndWidthPropertyValue, CssBorderInlineEndWidthPropertyValueRepresentation, parse_exact_border_width, { parse_exact_border_width($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssBorderWidth, accessor: current, inherited: false, initial_kind: value, initial: CssBorderWidth::Medium };
             BorderBlockWidth, "border-block-width", [], "official.property.border-block-width", CssBorderWidthPair, CssBorderBlockWidthPropertyValue, CssBorderBlockWidthPropertyValueRepresentation, parse_exact_border_width_pair, { parse_exact_border_width_pair($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: current, members: [ BorderBlockStartWidth => |value: &CssBorderWidthPair| Some(value.start().clone()), BorderBlockEndWidth => |value: &CssBorderWidthPair| Some(value.end().clone()) ], reset_only: [] };
             BorderInlineWidth, "border-inline-width", [], "official.property.border-inline-width", CssBorderWidthPair, CssBorderInlineWidthPropertyValue, CssBorderInlineWidthPropertyValueRepresentation, parse_exact_border_width_pair, { parse_exact_border_width_pair($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: current, members: [ BorderInlineStartWidth => |value: &CssBorderWidthPair| Some(value.start().clone()), BorderInlineEndWidth => |value: &CssBorderWidthPair| Some(value.end().clone()) ], reset_only: [] };
-            Color, "color", [], "baseline.property.color", CssColor, CssColorPropertyValue, CssColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssAuthoredColor, accessor: current, inherited: true, initial_kind: value, initial: CssAuthoredColor::from_system(CssAuthoredSystemColor::CanvasText) };
-            Background, "background", [], "baseline.property.background", CssColor, CssBackgroundPropertyValue, CssBackgroundPropertyValueRepresentation, parse_background, { parse_background($input, $numeric)? };
+            Color, "color", [], "baseline.property.color", CssColor, CssColorPropertyValue, CssColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssColor, accessor: value, inherited: true, initial_kind: value, initial: CssColor::from_system(CssSystemColor::CanvasText) };
+            Background, "background", [], "baseline.property.background", CssBackground, CssBackgroundPropertyValue, CssBackgroundPropertyValueRepresentation, parse_background, { parse_background($input, $numeric)? };
             BackgroundColor, "background-color", [], "baseline.property.background-color", CssColor, CssBackgroundColorPropertyValue, CssBackgroundColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? };
             BorderColor, "border-color", [], "baseline.property.border-color", CssBorderColorShorthand, CssBorderColorPropertyValue, CssBorderColorPropertyValueRepresentation, parse_border_colors, { parse_border_colors($input, $numeric)? }, expansion = unresolved { wrapper: existing, reason: CssUnresolvedStandard::LogicalShorthandResetMembership };
-            BorderTopColor, "border-top-color", [], "baseline.property.border-top-color", CssColor, CssBorderTopColorPropertyValue, CssBorderTopColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssAuthoredColor, accessor: current, inherited: false, initial_kind: value, initial: CssAuthoredColor::current_color() };
-            BorderRightColor, "border-right-color", [], "baseline.property.border-right-color", CssColor, CssBorderRightColorPropertyValue, CssBorderRightColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssAuthoredColor, accessor: current, inherited: false, initial_kind: value, initial: CssAuthoredColor::current_color() };
-            BorderBottomColor, "border-bottom-color", [], "baseline.property.border-bottom-color", CssColor, CssBorderBottomColorPropertyValue, CssBorderBottomColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssAuthoredColor, accessor: current, inherited: false, initial_kind: value, initial: CssAuthoredColor::current_color() };
-            BorderLeftColor, "border-left-color", [], "baseline.property.border-left-color", CssColor, CssBorderLeftColorPropertyValue, CssBorderLeftColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssAuthoredColor, accessor: current, inherited: false, initial_kind: value, initial: CssAuthoredColor::current_color() };
-            BorderBlockStartColor, "border-block-start-color", [], "official.property.border-block-start-color", CssAuthoredColor, CssBorderBlockStartColorPropertyValue, CssBorderBlockStartColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssAuthoredColor, accessor: current, inherited: false, initial_kind: value, initial: CssAuthoredColor::current_color() };
-            BorderBlockEndColor, "border-block-end-color", [], "official.property.border-block-end-color", CssAuthoredColor, CssBorderBlockEndColorPropertyValue, CssBorderBlockEndColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssAuthoredColor, accessor: current, inherited: false, initial_kind: value, initial: CssAuthoredColor::current_color() };
-            BorderInlineStartColor, "border-inline-start-color", [], "official.property.border-inline-start-color", CssAuthoredColor, CssBorderInlineStartColorPropertyValue, CssBorderInlineStartColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssAuthoredColor, accessor: current, inherited: false, initial_kind: value, initial: CssAuthoredColor::current_color() };
-            BorderInlineEndColor, "border-inline-end-color", [], "official.property.border-inline-end-color", CssAuthoredColor, CssBorderInlineEndColorPropertyValue, CssBorderInlineEndColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssAuthoredColor, accessor: current, inherited: false, initial_kind: value, initial: CssAuthoredColor::current_color() };
-            BorderBlockColor, "border-block-color", [], "official.property.border-block-color", CssBorderColorPair, CssBorderBlockColorPropertyValue, CssBorderBlockColorPropertyValueRepresentation, parse_border_color_pair, { parse_border_color_pair($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: current, members: [ BorderBlockStartColor => |value: &CssBorderColorPair| Some(value.start().clone()), BorderBlockEndColor => |value: &CssBorderColorPair| Some(value.end().clone()) ], reset_only: [] };
-            BorderInlineColor, "border-inline-color", [], "official.property.border-inline-color", CssBorderColorPair, CssBorderInlineColorPropertyValue, CssBorderInlineColorPropertyValueRepresentation, parse_border_color_pair, { parse_border_color_pair($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: current, members: [ BorderInlineStartColor => |value: &CssBorderColorPair| Some(value.start().clone()), BorderInlineEndColor => |value: &CssBorderColorPair| Some(value.end().clone()) ], reset_only: [] };
+            BorderTopColor, "border-top-color", [], "baseline.property.border-top-color", CssColor, CssBorderTopColorPropertyValue, CssBorderTopColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssColor, accessor: value, inherited: false, initial_kind: value, initial: CssColor::current_color() };
+            BorderRightColor, "border-right-color", [], "baseline.property.border-right-color", CssColor, CssBorderRightColorPropertyValue, CssBorderRightColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssColor, accessor: value, inherited: false, initial_kind: value, initial: CssColor::current_color() };
+            BorderBottomColor, "border-bottom-color", [], "baseline.property.border-bottom-color", CssColor, CssBorderBottomColorPropertyValue, CssBorderBottomColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssColor, accessor: value, inherited: false, initial_kind: value, initial: CssColor::current_color() };
+            BorderLeftColor, "border-left-color", [], "baseline.property.border-left-color", CssColor, CssBorderLeftColorPropertyValue, CssBorderLeftColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssColor, accessor: value, inherited: false, initial_kind: value, initial: CssColor::current_color() };
+            BorderBlockStartColor, "border-block-start-color", [], "official.property.border-block-start-color", CssColor, CssBorderBlockStartColorPropertyValue, CssBorderBlockStartColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssColor, accessor: value, inherited: false, initial_kind: value, initial: CssColor::current_color() };
+            BorderBlockEndColor, "border-block-end-color", [], "official.property.border-block-end-color", CssColor, CssBorderBlockEndColorPropertyValue, CssBorderBlockEndColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssColor, accessor: value, inherited: false, initial_kind: value, initial: CssColor::current_color() };
+            BorderInlineStartColor, "border-inline-start-color", [], "official.property.border-inline-start-color", CssColor, CssBorderInlineStartColorPropertyValue, CssBorderInlineStartColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssColor, accessor: value, inherited: false, initial_kind: value, initial: CssColor::current_color() };
+            BorderInlineEndColor, "border-inline-end-color", [], "official.property.border-inline-end-color", CssColor, CssBorderInlineEndColorPropertyValue, CssBorderInlineEndColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssColor, accessor: value, inherited: false, initial_kind: value, initial: CssColor::current_color() };
+            BorderBlockColor, "border-block-color", [], "official.property.border-block-color", CssBorderColorPair, CssBorderBlockColorPropertyValue, CssBorderBlockColorPropertyValueRepresentation, parse_border_color_pair, { parse_border_color_pair($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: value, members: [ BorderBlockStartColor => |value: &CssBorderColorPair| Some(value.start().clone()), BorderBlockEndColor => |value: &CssBorderColorPair| Some(value.end().clone()) ], reset_only: [] };
+            BorderInlineColor, "border-inline-color", [], "official.property.border-inline-color", CssBorderColorPair, CssBorderInlineColorPropertyValue, CssBorderInlineColorPropertyValueRepresentation, parse_border_color_pair, { parse_border_color_pair($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: value, members: [ BorderInlineStartColor => |value: &CssBorderColorPair| Some(value.start().clone()), BorderInlineEndColor => |value: &CssBorderColorPair| Some(value.end().clone()) ], reset_only: [] };
             BackgroundImage, "background-image", [], "baseline.property.background-image", CssImageLayerList, CssBackgroundImagePropertyValue, CssBackgroundImagePropertyValueRepresentation, parse_image_layer_list, { parse_image_layer_list($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssImageValueList, accessor: images, inherited: false, initial_kind: value, initial: CssImageValueList::try_new(vec![CssImageValue::None]).expect("one initial image") };
             BackgroundPosition, "background-position", [], "baseline.property.background-position", CssBackgroundPositionList, CssBackgroundPositionPropertyValue, CssBackgroundPositionPropertyValueRepresentation, parse_background_position_list, { parse_background_position_list($input, $numeric)? };
             ObjectPosition, "object-position", [], "official.property.object-position", CssObjectPosition, CssObjectPositionPropertyValue, CssObjectPositionPropertyValueRepresentation, parse_object_position, { parse_object_position($input, $numeric)? };
@@ -762,103 +760,13 @@ macro_rules! define_semantic_property_value {
 
 macro_rules! define_color_property_value {
     ($canonical:literal, $wrapper:ident, $representation:ident) => {
-        #[derive(Clone, Debug, PartialEq)]
-        pub(crate) struct $representation {
-            current: CssAuthoredColor,
-            i01_subset: Option<CssColor>,
-        }
-
-        #[doc = concat!("A grammar-checked authored ordinary value for `", $canonical, "`.")]
-        #[derive(Clone, Debug, PartialEq)]
-        pub struct $wrapper {
-            authored: CssAuthoredDeclarationValue,
-            representation: $representation,
-        }
-
-        impl $wrapper {
-            #[must_use]
-            pub(crate) fn new(
-                authored: CssAuthoredDeclarationValue,
-                parsed: CssParsedColor,
-            ) -> Self {
-                let (current, i01_subset) = parsed.into_parts();
-                Self {
-                    authored,
-                    representation: $representation {
-                        current,
-                        i01_subset,
-                    },
-                }
-            }
-
-            #[must_use]
-            pub fn as_css(&self) -> &str {
-                self.authored.as_css()
-            }
-
-            /// Returns the exact checked current authored color.
-            #[must_use]
-            pub const fn current(&self) -> &CssAuthoredColor {
-                &self.representation.current
-            }
-
-            /// Returns the frozen I01 compatibility payload when the authored value has an exact
-            /// representation in that model.
-            #[must_use]
-            pub const fn i01_subset(&self) -> Option<&CssColor> {
-                self.representation.i01_subset.as_ref()
-            }
-        }
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssColor, value);
     };
 }
 
 macro_rules! define_authored_color_aggregate_property_value {
     ($canonical:literal, $wrapper:ident, $representation:ident, $value:ty) => {
-        #[derive(Clone, Debug, PartialEq)]
-        pub(crate) struct $representation {
-            current: $value,
-        }
-
-        #[doc = concat!("A grammar-checked authored ordinary value for `", $canonical, "`.")]
-        #[derive(Clone, Debug, PartialEq)]
-        pub struct $wrapper {
-            authored: CssAuthoredDeclarationValue,
-            representation: $representation,
-        }
-
-        impl $wrapper {
-            #[must_use]
-            pub(crate) const fn new(
-                authored: CssAuthoredDeclarationValue,
-                current: $value,
-            ) -> Self {
-                Self {
-                    authored,
-                    representation: $representation { current },
-                }
-            }
-
-            #[must_use]
-            pub fn as_css(&self) -> &str {
-                self.authored.as_css()
-            }
-
-            /// Returns the exact checked current authored aggregate value.
-            #[must_use]
-            pub const fn current(&self) -> &$value {
-                &self.representation.current
-            }
-
-            /// Returns the frozen I01 payload only when every authored component projects exactly.
-            #[must_use]
-            pub const fn i01_subset(&self) -> Option<&$value> {
-                if self.representation.current.has_exact_i01_projection() {
-                    Some(&self.representation.current)
-                } else {
-                    None
-                }
-            }
-        }
+        define_semantic_property_value!($canonical, $wrapper, $representation, $value, value);
     };
 }
 
@@ -911,51 +819,7 @@ macro_rules! define_border_width_property_value {
 
 macro_rules! define_border_triple_property_value {
     ($canonical:literal, $wrapper:ident, $representation:ident) => {
-        #[derive(Clone, Debug)]
-        pub(crate) struct $representation {
-            current: CssBorderValue,
-            i01_subset: Option<CssBorder>,
-        }
-        #[doc = concat!("A checked exact authored value for `", $canonical, "`.")]
-        #[derive(Clone, Debug)]
-        pub struct $wrapper {
-            authored: CssAuthoredDeclarationValue,
-            representation: $representation,
-        }
-        impl PartialEq for $wrapper {
-            fn eq(&self, other: &Self) -> bool {
-                self.authored == other.authored
-                    && self.representation.current == other.representation.current
-            }
-        }
-        impl $wrapper {
-            #[must_use]
-            pub(crate) fn new(
-                authored: CssAuthoredDeclarationValue,
-                parsed: CssParsedBorderValue,
-            ) -> Self {
-                let (current, i01_subset) = parsed.into_parts();
-                Self {
-                    authored,
-                    representation: $representation {
-                        current,
-                        i01_subset,
-                    },
-                }
-            }
-            #[must_use]
-            pub fn as_css(&self) -> &str {
-                self.authored.as_css()
-            }
-            #[must_use]
-            pub const fn current(&self) -> &CssBorderValue {
-                &self.representation.current
-            }
-            #[must_use]
-            pub const fn i01_subset(&self) -> Option<&CssBorder> {
-                self.representation.i01_subset.as_ref()
-            }
-        }
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssBorder, value);
     };
 }
 
@@ -1925,64 +1789,36 @@ macro_rules! define_property_value {
     ) => {
         #[derive(Clone, Debug, PartialEq)]
         pub(crate) struct $representation {
-            current: CssBackground,
-            color_component: CssAuthoredColor,
-            i01_subset: Option<CssColor>,
+            value: CssBackground,
         }
-
-        /// A grammar-checked authored ordinary value for `background`.
+        /// A checked authored `background` layer list.
         #[derive(Clone, Debug, PartialEq)]
         pub struct $wrapper {
             authored: CssAuthoredDeclarationValue,
             representation: $representation,
         }
-
         impl $wrapper {
-            #[must_use]
-            pub(crate) fn new(
+            pub(crate) const fn new(
                 authored: CssAuthoredDeclarationValue,
-                parsed: CssParsedBackground,
+                value: CssBackground,
             ) -> Self {
-                let (current, i01_subset) = parsed.into_parts();
-                let color_component = current
-                    .layers()
-                    .last()
-                    .and_then(CssBackgroundLayer::color)
-                    .cloned()
-                    .unwrap_or_else(CssAuthoredColor::transparent);
                 Self {
                     authored,
-                    representation: $representation {
-                        current,
-                        color_component,
-                        i01_subset,
-                    },
+                    representation: $representation { value },
                 }
             }
-
-            #[must_use]
             pub fn as_css(&self) -> &str {
                 self.authored.as_css()
             }
-
-            /// Returns the exact authored shorthand layers.
-            #[must_use]
             pub const fn background(&self) -> &CssBackground {
-                &self.representation.current
+                &self.representation.value
             }
-
-            /// Returns the shorthand's color component, preserving the existing
-            /// color accessor and using its specified transparent initial when omitted.
-            #[must_use]
-            pub const fn current(&self) -> &CssAuthoredColor {
-                &self.representation.color_component
-            }
-
-            /// Returns the frozen color-only I01 payload when the entire shorthand
-            /// belongs to that compatibility subset.
-            #[must_use]
-            pub const fn i01_subset(&self) -> Option<&CssColor> {
-                self.representation.i01_subset.as_ref()
+            pub fn color(&self) -> Option<&CssColor> {
+                self.representation
+                    .value
+                    .layers()
+                    .last()
+                    .and_then(CssBackgroundLayer::color)
             }
         }
     };
@@ -1996,54 +1832,13 @@ macro_rules! define_property_value {
         BorderColor, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        #[derive(Clone, Debug, PartialEq)]
-        pub(crate) struct $representation {
-            current: Box<CssBorderColorShorthand>,
-            i01_subset: Option<CssColor>,
-        }
-
-        #[doc = concat!("A grammar-checked authored ordinary value for `", $canonical, "`.")]
-        #[derive(Clone, Debug, PartialEq)]
-        pub struct $wrapper {
-            authored: CssAuthoredDeclarationValue,
-            representation: $representation,
-        }
-
-        impl $wrapper {
-            #[must_use]
-            pub(crate) fn new(
-                authored: CssAuthoredDeclarationValue,
-                parsed: CssParsedBorderColorShorthand,
-            ) -> Self {
-                let (current, i01_subset) = parsed.into_parts();
-                Self {
-                    authored,
-                    representation: $representation {
-                        current: Box::new(current),
-                        i01_subset,
-                    },
-                }
-            }
-
-            #[must_use]
-            pub fn as_css(&self) -> &str {
-                self.authored.as_css()
-            }
-
-            /// Returns authored colors and physical or flow-relative assignments;
-            /// complete shorthand expansion and reset membership remain unsettled.
-            #[must_use]
-            pub const fn current(&self) -> &CssBorderColorShorthand {
-                &self.representation.current
-            }
-
-            /// Returns the frozen I01 payload only for an exactly representable
-            /// single authored color component.
-            #[must_use]
-            pub const fn i01_subset(&self) -> Option<&CssColor> {
-                self.representation.i01_subset.as_ref()
-            }
-        }
+        define_semantic_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssBorderColorShorthand,
+            value
+        );
     };
     (
         BorderTopColor, $canonical:literal, $value:ty, $wrapper:ident,
@@ -2137,55 +1932,7 @@ macro_rules! define_property_value {
         BoxShadow, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        #[derive(Clone, Debug, PartialEq)]
-        pub(crate) struct $representation {
-            current: CssBoxShadow,
-            has_i01_subset: bool,
-        }
-
-        /// A grammar-checked authored ordinary `box-shadow` value.
-        #[derive(Clone, Debug, PartialEq)]
-        pub struct $wrapper {
-            authored: CssAuthoredDeclarationValue,
-            representation: $representation,
-        }
-
-        impl $wrapper {
-            #[must_use]
-            pub(crate) fn new(
-                authored: CssAuthoredDeclarationValue,
-                current: CssBoxShadow,
-            ) -> Self {
-                let has_i01_subset = current.has_exact_i01_projection();
-                Self {
-                    authored,
-                    representation: $representation {
-                        current,
-                        has_i01_subset,
-                    },
-                }
-            }
-
-            #[must_use]
-            pub fn as_css(&self) -> &str {
-                self.authored.as_css()
-            }
-
-            /// Returns the exact checked current authored shadow value.
-            #[must_use]
-            pub const fn current(&self) -> &CssBoxShadow {
-                &self.representation.current
-            }
-
-            #[must_use]
-            pub const fn i01_subset(&self) -> Option<&CssBoxShadow> {
-                if self.representation.has_i01_subset {
-                    Some(&self.representation.current)
-                } else {
-                    None
-                }
-            }
-        }
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssBoxShadow, value);
     };
     (
         BackgroundImage, $canonical:literal, $value:ty, $wrapper:ident,
@@ -3021,52 +2768,7 @@ macro_rules! define_property_value {
 
 macro_rules! define_filter_property_value {
     ($canonical:literal, $wrapper:ident, $representation:ident) => {
-        #[derive(Clone, Debug, PartialEq)]
-        pub(crate) struct $representation {
-            current: CssFilterValue,
-            i01_subset: Option<CssFilter>,
-        }
-
-        #[doc = concat!("A grammar-checked authored ordinary value for `", $canonical, "`.")]
-        #[derive(Clone, Debug, PartialEq)]
-        pub struct $wrapper {
-            authored: CssAuthoredDeclarationValue,
-            representation: $representation,
-        }
-
-        impl $wrapper {
-            #[must_use]
-            pub(crate) fn new(
-                authored: CssAuthoredDeclarationValue,
-                parsed: CssParsedFilter,
-            ) -> Self {
-                let (current, i01_subset) = parsed.into_parts();
-                Self {
-                    authored,
-                    representation: $representation {
-                        current,
-                        i01_subset,
-                    },
-                }
-            }
-
-            #[must_use]
-            pub fn as_css(&self) -> &str {
-                self.authored.as_css()
-            }
-
-            /// Returns the exact checked current authored filter value.
-            #[must_use]
-            pub const fn current(&self) -> &CssFilterValue {
-                &self.representation.current
-            }
-
-            /// Returns the frozen authored-arguments compatibility projection.
-            #[must_use]
-            pub const fn i01_subset(&self) -> Option<&CssFilter> {
-                self.representation.i01_subset.as_ref()
-            }
-        }
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssFilter, value);
     };
 }
 
@@ -3204,6 +2906,50 @@ macro_rules! define_property_value_from_schema {
     (BorderInlineEndColor, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
         longhand { wrapper: additive, $($metadata:tt)* }) => {
         define_color_property_value!($canonical, $wrapper, $representation);
+    };
+    (BorderBlockColor, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
+        shorthand { wrapper: additive, $($metadata:tt)* }) => {
+        define_semantic_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssBorderColorPair,
+            value
+        );
+    };
+    (BorderInlineColor, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
+        shorthand { wrapper: additive, $($metadata:tt)* }) => {
+        define_semantic_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssBorderColorPair,
+            value
+        );
+    };
+    (BorderBlockStart, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
+        shorthand { wrapper: additive, $($metadata:tt)* }) => {
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssBorder, value);
+    };
+    (BorderBlockEnd, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
+        shorthand { wrapper: additive, $($metadata:tt)* }) => {
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssBorder, value);
+    };
+    (BorderInlineStart, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
+        shorthand { wrapper: additive, $($metadata:tt)* }) => {
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssBorder, value);
+    };
+    (BorderInlineEnd, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
+        shorthand { wrapper: additive, $($metadata:tt)* }) => {
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssBorder, value);
+    };
+    (BorderBlock, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
+        shorthand { wrapper: additive, $($metadata:tt)* }) => {
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssBorder, value);
+    };
+    (BorderInline, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
+        shorthand { wrapper: additive, $($metadata:tt)* }) => {
+        define_semantic_property_value!($canonical, $wrapper, $representation, CssBorder, value);
     };
     ($variant:ident, $canonical:literal, $value:ty, $wrapper:ident, $representation:ident,
         longhand { wrapper: additive, $($metadata:tt)* }) => {

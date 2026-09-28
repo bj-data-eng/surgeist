@@ -1,8 +1,4 @@
-use cssparser::{
-    ParseError, Parser, ParserInput, ToCss, Token,
-    color::PredefinedColorSpace as ParsedPredefinedColorSpace, match_ignore_ascii_case,
-};
-use cssparser_color::{Color as ParsedColor, DefaultColorParser, parse_color_with};
+use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::values::{calculation_error, parse_numeric_function};
 use crate::error::{Error, basic, invalid_color, unsupported_value_at, with_color_context};
@@ -12,33 +8,16 @@ use crate::syntax::*;
 pub(super) fn parse_color<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssParsedColor, ParseError<'i, Error>> {
-    let start = input.position();
+) -> std::result::Result<CssColor, ParseError<'i, Error>> {
     if next_is_authored_relative_color(input) {
-        let current = parse_authored_relative_color(input, numeric)
-            .map_err(|error| with_color_context(error, None))?;
-        let i01_subset = parse_compatibility_color_text(input.slice_from(start))
-            .filter(|candidate| current.matches_i01(candidate));
-        return Ok(CssParsedColor::new(current, i01_subset));
+        return parse_authored_relative_color(input, numeric)
+            .map_err(|error| with_color_context(error, None));
     }
     if next_is_color_mix(input) {
-        let current = parse_authored_color_mix(input, numeric)
-            .map_err(|error| with_color_context(error, None))?;
-        let i01_subset = parse_compatibility_color_text(input.slice_from(start))
-            .filter(|candidate| current.matches_i01(candidate));
-        return Ok(CssParsedColor::new(current, i01_subset));
+        return parse_authored_color_mix(input, numeric)
+            .map_err(|error| with_color_context(error, None));
     }
-    let start = input.position();
-    if next_is_selected_authored_color(input) {
-        let current = parse_selected_authored_color(input, numeric)
-            .map_err(|error| with_color_context(error, None))?;
-        let i01_subset = parse_compatibility_color_text(input.slice_from(start))
-            .filter(|candidate| current.matches_i01(candidate));
-        return Ok(CssParsedColor::new(current, i01_subset));
-    }
-    parse_color_inner(input)
-        .map(CssParsedColor::from_i01)
-        .map_err(|error| with_color_context(error, None))
+    parse_selected_authored_color(input, numeric).map_err(|error| with_color_context(error, None))
 }
 
 fn next_is_color_mix<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
@@ -67,58 +46,25 @@ fn next_is_authored_relative_color<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
     is_relative
 }
 
-fn next_is_selected_authored_color<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
-    let state = input.state();
-    let selected = match input.next() {
-        Ok(Token::Ident(_) | Token::Hash(_) | Token::IDHash(_)) => true,
-        Ok(Token::Function(name)) => {
-            name.eq_ignore_ascii_case("rgb")
-                || name.eq_ignore_ascii_case("rgba")
-                || name.eq_ignore_ascii_case("hsl")
-                || name.eq_ignore_ascii_case("hsla")
-                || name.eq_ignore_ascii_case("hwb")
-                || name.eq_ignore_ascii_case("lab")
-                || name.eq_ignore_ascii_case("lch")
-                || name.eq_ignore_ascii_case("oklab")
-                || name.eq_ignore_ascii_case("oklch")
-                || name.eq_ignore_ascii_case("color")
-                || name.eq_ignore_ascii_case("alpha")
-        }
-        Ok(_) | Err(_) => false,
-    };
-    input.reset(&state);
-    selected
-}
-
-fn parse_compatibility_color_text(source: &str) -> Option<CssColor> {
-    let mut input = ParserInput::new(source);
-    let mut parser = Parser::new(&mut input);
-    let color = parse_color_inner(&mut parser).ok()?;
-    parser.expect_exhausted().ok()?;
-    Some(color)
-}
-
 fn parse_selected_authored_color<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssAuthoredColor, ParseError<'i, Error>> {
+) -> std::result::Result<CssColor, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let token = input.next().map_err(basic)?.clone();
     match token {
         Token::Ident(ident) if ident.eq_ignore_ascii_case("currentcolor") => {
-            Ok(CssAuthoredColor::current_color())
+            Ok(CssColor::current_color())
         }
         Token::Ident(ident) if ident.eq_ignore_ascii_case("transparent") => {
-            Ok(CssAuthoredColor::transparent())
+            Ok(CssColor::transparent())
         }
         Token::Ident(ident) => {
             if let Some(system) = authored_system_color(&ident) {
-                return Ok(CssAuthoredColor::from_system(system));
+                return Ok(CssColor::from_system(system));
             }
-            if parse_compatibility_color_text(&ident).is_some() {
-                return Ok(CssAuthoredColor::from_named(CssNamedColor::new(
-                    ident.to_ascii_lowercase(),
-                )));
+            if let Some(name) = CssNamedColor::try_new(ident.as_ref()) {
+                return Ok(CssColor::from_named(name));
             }
             Err(invalid_color(location, None))
         }
@@ -126,37 +72,39 @@ fn parse_selected_authored_color<'i, 't>(
             if matches!(digits.len(), 3 | 4 | 6 | 8)
                 && digits.bytes().all(|byte| byte.is_ascii_hexdigit()) =>
         {
-            Ok(CssAuthoredColor::hex(CssHexColor::new(digits.as_ref())))
+            Ok(CssColor::from_hex(
+                CssHexColor::try_new(digits.as_ref()).expect("checked hex token"),
+            ))
         }
         Token::Function(name)
             if name.eq_ignore_ascii_case("rgb") || name.eq_ignore_ascii_case("rgba") =>
         {
             input
                 .parse_nested_block(|input| parse_authored_rgb(input, numeric))
-                .map(CssAuthoredColor::rgb)
+                .map(CssColor::from_rgb)
         }
         Token::Function(name)
             if name.eq_ignore_ascii_case("hsl") || name.eq_ignore_ascii_case("hsla") =>
         {
             input
                 .parse_nested_block(|input| parse_authored_hsl(input, numeric))
-                .map(CssAuthoredColor::hsl)
+                .map(CssColor::from_hsl)
         }
         Token::Function(name) if name.eq_ignore_ascii_case("hwb") => input
             .parse_nested_block(|input| parse_authored_hwb(input, numeric))
-            .map(CssAuthoredColor::hwb),
+            .map(CssColor::from_hwb),
         Token::Function(name) if name.eq_ignore_ascii_case("lab") => input
             .parse_nested_block(|input| parse_authored_lab(input, numeric))
-            .map(CssAuthoredColor::lab),
+            .map(CssColor::from_lab),
         Token::Function(name) if name.eq_ignore_ascii_case("lch") => input
             .parse_nested_block(|input| parse_authored_lch(input, numeric))
-            .map(CssAuthoredColor::lch),
+            .map(CssColor::from_lch),
         Token::Function(name) if name.eq_ignore_ascii_case("oklab") => input
             .parse_nested_block(|input| parse_authored_lab(input, numeric))
-            .map(CssAuthoredColor::oklab),
+            .map(CssColor::from_oklab),
         Token::Function(name) if name.eq_ignore_ascii_case("oklch") => input
             .parse_nested_block(|input| parse_authored_lch(input, numeric))
-            .map(CssAuthoredColor::oklch),
+            .map(CssColor::from_oklch),
         Token::Function(name) if name.eq_ignore_ascii_case("color") => {
             input.parse_nested_block(|input| {
                 if let Ok(profile) = input.try_parse(|input| {
@@ -166,15 +114,14 @@ fn parse_selected_authored_color<'i, 't>(
                 }) {
                     parse_authored_custom_arguments(input, numeric, profile)
                 } else {
-                    parse_authored_predefined_color(input, numeric)
-                        .map(CssAuthoredColor::predefined)
+                    parse_authored_predefined_color(input, numeric).map(CssColor::from_predefined)
                 }
             })
         }
         Token::Function(name) if name.eq_ignore_ascii_case("alpha") => {
             input.parse_nested_block(|input| {
                 input.expect_ident_matching("from").map_err(basic)?;
-                let (source, _) = parse_color(input, numeric)?.into_parts();
+                let source = parse_color(input, numeric)?;
                 let alpha = if input.try_parse(|input| input.expect_delim('/')).is_ok() {
                     Some(parse_typed_relative_color_expression(
                         input,
@@ -186,8 +133,8 @@ fn parse_selected_authored_color<'i, 't>(
                     None
                 };
                 input.expect_exhausted().map_err(basic)?;
-                CssAuthoredAlphaColor::try_new(source, alpha)
-                    .map(CssAuthoredColor::from_alpha)
+                CssAlphaColor::try_new(source, alpha)
+                    .map(CssColor::from_alpha)
                     .map_err(|_| invalid_color(location, None))
             })
         }
@@ -201,7 +148,7 @@ fn parse_selected_authored_color<'i, 't>(
 fn parse_authored_rgb<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssAuthoredRgbColor, ParseError<'i, Error>> {
+) -> std::result::Result<CssRgbColor, ParseError<'i, Error>> {
     let first = parse_authored_color_component(input, numeric, true)?;
     if input.try_parse(Parser::expect_comma).is_ok() {
         if first.is_none() {
@@ -225,11 +172,8 @@ fn parse_authored_rgb<'i, 't>(
             None
         };
         input.expect_exhausted().map_err(basic)?;
-        Ok(CssAuthoredRgbColor::new(
-            CssAuthoredColorSyntax::Legacy,
-            [first, second, third],
-            alpha,
-        ))
+        CssRgbColor::try_new(CssColorSyntax::Legacy, [first, second, third], alpha)
+            .map_err(|_| invalid_color(input.current_source_location(), Some("component")))
     } else {
         let second = parse_authored_color_component(input, numeric, true)?;
         let third = parse_authored_color_component(input, numeric, true)?;
@@ -239,18 +183,15 @@ fn parse_authored_rgb<'i, 't>(
             None
         };
         input.expect_exhausted().map_err(basic)?;
-        Ok(CssAuthoredRgbColor::new(
-            CssAuthoredColorSyntax::Modern,
-            [first, second, third],
-            alpha,
-        ))
+        CssRgbColor::try_new(CssColorSyntax::Modern, [first, second, third], alpha)
+            .map_err(|_| invalid_color(input.current_source_location(), Some("component")))
     }
 }
 
 fn parse_authored_hsl<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssAuthoredHslColor, ParseError<'i, Error>> {
+) -> std::result::Result<CssHslColor, ParseError<'i, Error>> {
     let hue = parse_authored_hue(input, numeric, true)?;
     if input.try_parse(Parser::expect_comma).is_ok() {
         if hue.is_none() {
@@ -265,13 +206,8 @@ fn parse_authored_hsl<'i, 't>(
             None
         };
         input.expect_exhausted().map_err(basic)?;
-        Ok(CssAuthoredHslColor::new(
-            CssAuthoredColorSyntax::Legacy,
-            hue,
-            saturation,
-            lightness,
-            alpha,
-        ))
+        CssHslColor::try_new(CssColorSyntax::Legacy, hue, saturation, lightness, alpha)
+            .map_err(|_| invalid_color(input.current_source_location(), Some("component")))
     } else {
         let saturation = parse_authored_color_component(input, numeric, true)?;
         let lightness = parse_authored_color_component(input, numeric, true)?;
@@ -281,20 +217,15 @@ fn parse_authored_hsl<'i, 't>(
             None
         };
         input.expect_exhausted().map_err(basic)?;
-        Ok(CssAuthoredHslColor::new(
-            CssAuthoredColorSyntax::Modern,
-            hue,
-            saturation,
-            lightness,
-            alpha,
-        ))
+        CssHslColor::try_new(CssColorSyntax::Modern, hue, saturation, lightness, alpha)
+            .map_err(|_| invalid_color(input.current_source_location(), Some("component")))
     }
 }
 
 fn parse_authored_hwb<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssAuthoredHwbColor, ParseError<'i, Error>> {
+) -> std::result::Result<CssHwbColor, ParseError<'i, Error>> {
     let hue = parse_authored_hue(input, numeric, true)?;
     let whiteness = parse_authored_color_component(input, numeric, true)?;
     let blackness = parse_authored_color_component(input, numeric, true)?;
@@ -304,13 +235,14 @@ fn parse_authored_hwb<'i, 't>(
         None
     };
     input.expect_exhausted().map_err(basic)?;
-    Ok(CssAuthoredHwbColor::new(hue, whiteness, blackness, alpha))
+    CssHwbColor::try_new(hue, whiteness, blackness, alpha)
+        .map_err(|_| invalid_color(input.current_source_location(), Some("component")))
 }
 
 fn parse_authored_lab<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssAuthoredLabColor, ParseError<'i, Error>> {
+) -> std::result::Result<CssLabColor, ParseError<'i, Error>> {
     let lightness = parse_authored_color_component(input, numeric, true)?;
     let a = parse_authored_color_component(input, numeric, true)?;
     let b = parse_authored_color_component(input, numeric, true)?;
@@ -320,13 +252,14 @@ fn parse_authored_lab<'i, 't>(
         None
     };
     input.expect_exhausted().map_err(basic)?;
-    Ok(CssAuthoredLabColor::new(lightness, a, b, alpha))
+    CssLabColor::try_new(lightness, a, b, alpha)
+        .map_err(|_| invalid_color(input.current_source_location(), Some("component")))
 }
 
 fn parse_authored_lch<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssAuthoredLchColor, ParseError<'i, Error>> {
+) -> std::result::Result<CssLchColor, ParseError<'i, Error>> {
     let lightness = parse_authored_color_component(input, numeric, true)?;
     let chroma = parse_authored_color_component(input, numeric, true)?;
     let hue = parse_authored_hue(input, numeric, true)?;
@@ -336,14 +269,15 @@ fn parse_authored_lch<'i, 't>(
         None
     };
     input.expect_exhausted().map_err(basic)?;
-    Ok(CssAuthoredLchColor::new(lightness, chroma, hue, alpha))
+    CssLchColor::try_new(lightness, chroma, hue, alpha)
+        .map_err(|_| invalid_color(input.current_source_location(), Some("component")))
 }
 
 fn parse_authored_custom_arguments<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
     profile: CssColorProfileName,
-) -> Result<CssAuthoredColor, ParseError<'i, Error>> {
+) -> Result<CssColor, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let mut channels = Vec::new();
     let mut alpha = None;
@@ -355,8 +289,8 @@ fn parse_authored_custom_arguments<'i, 't>(
         channels.push(parse_authored_color_component(input, numeric, true)?);
     }
     input.expect_exhausted().map_err(basic)?;
-    CssAuthoredCustomColor::try_new(profile, channels, alpha)
-        .map(CssAuthoredColor::from_custom)
+    CssCustomColor::try_new(profile, channels, alpha)
+        .map(CssColor::from_custom)
         .map_err(|_| invalid_color(location, None))
 }
 fn parse_profile_expression<'i, 't>(
@@ -378,7 +312,7 @@ fn parse_profile_expression<'i, 't>(
 fn parse_authored_predefined_color<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssAuthoredPredefinedColor, ParseError<'i, Error>> {
+) -> std::result::Result<CssPredefinedColor, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     let color_space = match_ignore_ascii_case! { &ident,
@@ -409,23 +343,20 @@ fn parse_authored_predefined_color<'i, 't>(
         None
     };
     input.expect_exhausted().map_err(basic)?;
-    Ok(CssAuthoredPredefinedColor::new(
-        color_space,
-        channels,
-        alpha,
-    ))
+    CssPredefinedColor::try_new(color_space, channels, alpha)
+        .map_err(|_| invalid_color(input.current_source_location(), Some("component")))
 }
 
 fn parse_authored_color_component<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
     allow_none: bool,
-) -> std::result::Result<CssAuthoredColorComponent, ParseError<'i, Error>> {
+) -> std::result::Result<CssColorComponent, ParseError<'i, Error>> {
     let before_opener = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)?.clone() {
         Token::Ident(ident) if allow_none && ident.eq_ignore_ascii_case("none") => {
-            Ok(CssAuthoredColorComponent::None)
+            Ok(CssColorComponent::None)
         }
         Token::Number { .. } | Token::Percentage { .. } => {
             input.reset(&before_opener);
@@ -452,15 +383,14 @@ fn parse_authored_percentage_component<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
     allow_none: bool,
-) -> std::result::Result<CssAuthoredColorComponent, ParseError<'i, Error>> {
+) -> std::result::Result<CssColorComponent, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let value = parse_authored_color_component(input, numeric, allow_none)?;
     if matches!(
         value,
-        CssAuthoredColorComponent::None
-            | CssAuthoredColorComponent::Percentage(_)
-            | CssAuthoredColorComponent::ExactPercentage(_)
-            | CssAuthoredColorComponent::PercentageCalculation(_)
+        CssColorComponent::None
+            | CssColorComponent::Percentage(_)
+            | CssColorComponent::PercentageCalculation(_)
     ) {
         Ok(value)
     } else {
@@ -472,7 +402,7 @@ fn parse_authored_alpha<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
     allow_none: bool,
-) -> std::result::Result<CssAuthoredColorComponent, ParseError<'i, Error>> {
+) -> std::result::Result<CssColorComponent, ParseError<'i, Error>> {
     parse_authored_color_component(input, numeric, allow_none)
 }
 
@@ -481,7 +411,7 @@ fn parse_authored_number_or_percentage_calculation<'i, 't>(
     numeric: &NumericInputContext<'_>,
     before_opener: &cssparser::ParserState,
     location: cssparser::SourceLocation,
-) -> std::result::Result<CssAuthoredColorComponent, ParseError<'i, Error>> {
+) -> std::result::Result<CssColorComponent, ParseError<'i, Error>> {
     let expression = parse_numeric_function(
         input,
         before_opener,
@@ -489,10 +419,10 @@ fn parse_authored_number_or_percentage_calculation<'i, 't>(
         CalculationRoot::NumberPercentage,
     )?;
     match expression.result_type() {
-        CssCalculationType::Number => Ok(CssAuthoredColorComponent::NumberCalculation(
+        CssCalculationType::Number => Ok(CssColorComponent::NumberCalculation(
             CssNumberCalculation::from_expression(expression),
         )),
-        CssCalculationType::Percentage => Ok(CssAuthoredColorComponent::PercentageCalculation(
+        CssCalculationType::Percentage => Ok(CssColorComponent::PercentageCalculation(
             CssPercentageCalculation::from_expression(expression),
         )),
         _ => Err(invalid_color(location, Some("component"))),
@@ -503,12 +433,12 @@ fn parse_authored_hue<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
     allow_none: bool,
-) -> std::result::Result<CssAuthoredHue, ParseError<'i, Error>> {
+) -> std::result::Result<CssColorHue, ParseError<'i, Error>> {
     let before_opener = input.state();
     let location = input.current_source_location();
     match input.next().map_err(basic)?.clone() {
         Token::Ident(ident) if allow_none && ident.eq_ignore_ascii_case("none") => {
-            Ok(CssAuthoredHue::None)
+            Ok(CssColorHue::None)
         }
         token @ (Token::Number { .. } | Token::Dimension { .. }) => {
             input.reset(&before_opener);
@@ -524,13 +454,13 @@ fn parse_authored_hue<'i, 't>(
             if let Ok(expression) = input.try_parse(|input| {
                 parse_numeric_function(input, &before_opener, numeric, CalculationRoot::Number)
             }) {
-                return Ok(CssAuthoredHue::NumberCalculation(
+                return Ok(CssColorHue::NumberCalculation(
                     CssNumberCalculation::from_expression(expression),
                 ));
             }
             parse_numeric_function(input, &before_opener, numeric, CalculationRoot::Angle)
                 .map(CssAngleCalculation::from_expression)
-                .map(CssAuthoredHue::AngleCalculation)
+                .map(CssColorHue::AngleCalculation)
                 .map_err(|_| invalid_color(location, Some("hue")))
         }
         token => Err(with_color_context(
@@ -540,77 +470,59 @@ fn parse_authored_hue<'i, 't>(
     }
 }
 
-fn authored_system_color(ident: &str) -> Option<CssAuthoredSystemColor> {
+fn authored_system_color(ident: &str) -> Option<CssSystemColor> {
     let value = match_ignore_ascii_case! { ident,
-        "canvas" => CssAuthoredSystemColor::Canvas,
-        "canvastext" => CssAuthoredSystemColor::CanvasText,
-        "linktext" => CssAuthoredSystemColor::LinkText,
-        "visitedtext" => CssAuthoredSystemColor::VisitedText,
-        "activetext" => CssAuthoredSystemColor::ActiveText,
-        "buttonface" => CssAuthoredSystemColor::ButtonFace,
-        "buttontext" => CssAuthoredSystemColor::ButtonText,
-        "buttonborder" => CssAuthoredSystemColor::ButtonBorder,
-        "field" => CssAuthoredSystemColor::Field,
-        "fieldtext" => CssAuthoredSystemColor::FieldText,
-        "highlight" => CssAuthoredSystemColor::Highlight,
-        "highlighttext" => CssAuthoredSystemColor::HighlightText,
-        "mark" => CssAuthoredSystemColor::Mark,
-        "marktext" => CssAuthoredSystemColor::MarkText,
-        "graytext" => CssAuthoredSystemColor::GrayText,
-        "selecteditem" => CssAuthoredSystemColor::SelectedItem,
-        "selecteditemtext" => CssAuthoredSystemColor::SelectedItemText,
-        "accentcolor" => CssAuthoredSystemColor::AccentColor,
-        "accentcolortext" => CssAuthoredSystemColor::AccentColorText,
-        "activeborder" => CssAuthoredSystemColor::ActiveBorder,
-        "activecaption" => CssAuthoredSystemColor::ActiveCaption,
-        "appworkspace" => CssAuthoredSystemColor::AppWorkspace,
-        "background" => CssAuthoredSystemColor::Background,
-        "buttonhighlight" => CssAuthoredSystemColor::ButtonHighlight,
-        "buttonshadow" => CssAuthoredSystemColor::ButtonShadow,
-        "captiontext" => CssAuthoredSystemColor::CaptionText,
-        "inactiveborder" => CssAuthoredSystemColor::InactiveBorder,
-        "inactivecaption" => CssAuthoredSystemColor::InactiveCaption,
-        "inactivecaptiontext" => CssAuthoredSystemColor::InactiveCaptionText,
-        "infobackground" => CssAuthoredSystemColor::InfoBackground,
-        "infotext" => CssAuthoredSystemColor::InfoText,
-        "menu" => CssAuthoredSystemColor::Menu,
-        "menutext" => CssAuthoredSystemColor::MenuText,
-        "scrollbar" => CssAuthoredSystemColor::Scrollbar,
-        "threeddarkshadow" => CssAuthoredSystemColor::ThreeDDarkShadow,
-        "threedface" => CssAuthoredSystemColor::ThreeDFace,
-        "threedhighlight" => CssAuthoredSystemColor::ThreeDHighlight,
-        "threedlightshadow" => CssAuthoredSystemColor::ThreeDLightShadow,
-        "threedshadow" => CssAuthoredSystemColor::ThreeDShadow,
-        "window" => CssAuthoredSystemColor::Window,
-        "windowframe" => CssAuthoredSystemColor::WindowFrame,
-        "windowtext" => CssAuthoredSystemColor::WindowText,
+        "canvas" => CssSystemColor::Canvas,
+        "canvastext" => CssSystemColor::CanvasText,
+        "linktext" => CssSystemColor::LinkText,
+        "visitedtext" => CssSystemColor::VisitedText,
+        "activetext" => CssSystemColor::ActiveText,
+        "buttonface" => CssSystemColor::ButtonFace,
+        "buttontext" => CssSystemColor::ButtonText,
+        "buttonborder" => CssSystemColor::ButtonBorder,
+        "field" => CssSystemColor::Field,
+        "fieldtext" => CssSystemColor::FieldText,
+        "highlight" => CssSystemColor::Highlight,
+        "highlighttext" => CssSystemColor::HighlightText,
+        "mark" => CssSystemColor::Mark,
+        "marktext" => CssSystemColor::MarkText,
+        "graytext" => CssSystemColor::GrayText,
+        "selecteditem" => CssSystemColor::SelectedItem,
+        "selecteditemtext" => CssSystemColor::SelectedItemText,
+        "accentcolor" => CssSystemColor::AccentColor,
+        "accentcolortext" => CssSystemColor::AccentColorText,
+        "activeborder" => CssSystemColor::ActiveBorder,
+        "activecaption" => CssSystemColor::ActiveCaption,
+        "appworkspace" => CssSystemColor::AppWorkspace,
+        "background" => CssSystemColor::Background,
+        "buttonhighlight" => CssSystemColor::ButtonHighlight,
+        "buttonshadow" => CssSystemColor::ButtonShadow,
+        "captiontext" => CssSystemColor::CaptionText,
+        "inactiveborder" => CssSystemColor::InactiveBorder,
+        "inactivecaption" => CssSystemColor::InactiveCaption,
+        "inactivecaptiontext" => CssSystemColor::InactiveCaptionText,
+        "infobackground" => CssSystemColor::InfoBackground,
+        "infotext" => CssSystemColor::InfoText,
+        "menu" => CssSystemColor::Menu,
+        "menutext" => CssSystemColor::MenuText,
+        "scrollbar" => CssSystemColor::Scrollbar,
+        "threeddarkshadow" => CssSystemColor::ThreeDDarkShadow,
+        "threedface" => CssSystemColor::ThreeDFace,
+        "threedhighlight" => CssSystemColor::ThreeDHighlight,
+        "threedlightshadow" => CssSystemColor::ThreeDLightShadow,
+        "threedshadow" => CssSystemColor::ThreeDShadow,
+        "window" => CssSystemColor::Window,
+        "windowframe" => CssSystemColor::WindowFrame,
+        "windowtext" => CssSystemColor::WindowText,
         _ => return None,
     };
     Some(value)
 }
 
-fn parse_color_inner<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssColor, ParseError<'i, Error>> {
-    if let Ok(color) = input.try_parse(parse_relative_color) {
-        return Ok(color);
-    }
-    if let Ok(color) = input.try_parse(parse_color_mix) {
-        return Ok(color);
-    }
-    if let Ok(color) = input.try_parse(parse_absolute_color_with_cssparser_color) {
-        return Ok(color);
-    }
-    if let Ok(color) = input.try_parse(parse_system_color) {
-        return Ok(color);
-    }
-    Err(invalid_color(input.current_source_location(), None))
-}
-
 fn parse_authored_relative_color<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssAuthoredColor, ParseError<'i, Error>> {
+) -> std::result::Result<CssColor, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let token = input.next().map_err(basic)?.clone();
     let Token::Function(name) = token else {
@@ -628,9 +540,9 @@ fn parse_authored_relative_color_arguments<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
     function: RelativeColorFunction,
-) -> std::result::Result<CssAuthoredColor, ParseError<'i, Error>> {
+) -> std::result::Result<CssColor, ParseError<'i, Error>> {
     input.expect_ident_matching("from").map_err(basic)?;
-    let (source, _) = parse_color(input, numeric)?.into_parts();
+    let source = parse_color(input, numeric)?;
     if matches!(function, RelativeColorFunction::Color) {
         let location = input.current_source_location();
         if let Ok(profile) = input.try_parse(|input| {
@@ -647,8 +559,8 @@ fn parse_authored_relative_color_arguments<'i, 't>(
                 channels.push(parse_profile_expression(input, numeric)?);
             }
             input.expect_exhausted().map_err(basic)?;
-            return CssAuthoredRelativeCustomColor::try_new(source, profile, channels, alpha)
-                .map(CssAuthoredColor::from_relative_custom)
+            return CssRelativeCustomColor::try_new(source, profile, channels, alpha)
+                .map(CssColor::from_relative_custom)
                 .map_err(|_| invalid_color(location, None));
         }
     }
@@ -669,13 +581,9 @@ fn parse_authored_relative_color_arguments<'i, 't>(
         None
     };
     input.expect_exhausted().map_err(basic)?;
-    Ok(CssAuthoredColor::relative(CssAuthoredRelativeColor::new(
-        function,
-        environment,
-        source,
-        channels,
-        alpha,
-    )))
+    CssRelativeColor::try_new(function, source, channels, alpha)
+        .map(CssColor::from_relative)
+        .map_err(|_| invalid_color(input.current_source_location(), Some("component")))
 }
 
 fn relative_color_signature<'i, 't>(
@@ -689,59 +597,20 @@ fn relative_color_signature<'i, 't>(
     ),
     ParseError<'i, Error>,
 > {
-    use CssRelativeColorResultDomain::{Hue, NumberPercentage};
-    let signature = match function {
-        RelativeColorFunction::Rgb => (
-            CssRelativeColorFunction::Rgb,
-            CssRelativeColorEnvironment::Rgb,
-            [NumberPercentage; 3],
-        ),
-        RelativeColorFunction::Hsl => (
-            CssRelativeColorFunction::Hsl,
-            CssRelativeColorEnvironment::Hsl,
-            [Hue, NumberPercentage, NumberPercentage],
-        ),
-        RelativeColorFunction::Hwb => (
-            CssRelativeColorFunction::Hwb,
-            CssRelativeColorEnvironment::Hwb,
-            [Hue, NumberPercentage, NumberPercentage],
-        ),
-        RelativeColorFunction::Lab => (
-            CssRelativeColorFunction::Lab,
-            CssRelativeColorEnvironment::Lab,
-            [NumberPercentage; 3],
-        ),
-        RelativeColorFunction::Lch => (
-            CssRelativeColorFunction::Lch,
-            CssRelativeColorEnvironment::Lch,
-            [NumberPercentage, NumberPercentage, Hue],
-        ),
-        RelativeColorFunction::Oklab => (
-            CssRelativeColorFunction::Oklab,
-            CssRelativeColorEnvironment::Oklab,
-            [NumberPercentage; 3],
-        ),
-        RelativeColorFunction::Oklch => (
-            CssRelativeColorFunction::Oklch,
-            CssRelativeColorEnvironment::Oklch,
-            [NumberPercentage, NumberPercentage, Hue],
-        ),
+    let function = match function {
+        RelativeColorFunction::Rgb => CssRelativeColorFunction::Rgb,
+        RelativeColorFunction::Hsl => CssRelativeColorFunction::Hsl,
+        RelativeColorFunction::Hwb => CssRelativeColorFunction::Hwb,
+        RelativeColorFunction::Lab => CssRelativeColorFunction::Lab,
+        RelativeColorFunction::Lch => CssRelativeColorFunction::Lch,
+        RelativeColorFunction::Oklab => CssRelativeColorFunction::Oklab,
+        RelativeColorFunction::Oklch => CssRelativeColorFunction::Oklch,
         RelativeColorFunction::Color => {
-            let space = parse_relative_predefined_color_space(input)?;
-            let environment = match space {
-                CssPredefinedColorSpace::XyzD50 | CssPredefinedColorSpace::XyzD65 => {
-                    CssRelativeColorEnvironment::Xyz(space)
-                }
-                _ => CssRelativeColorEnvironment::PredefinedRgb(space),
-            };
-            (
-                CssRelativeColorFunction::Color(space),
-                environment,
-                [NumberPercentage; 3],
-            )
+            CssRelativeColorFunction::Color(parse_relative_predefined_color_space(input)?)
         }
     };
-    Ok(signature)
+    let (environment, domains) = function.signature();
+    Ok((function, environment, domains))
 }
 
 fn parse_typed_relative_color_expression<'i, 't>(
@@ -749,123 +618,25 @@ fn parse_typed_relative_color_expression<'i, 't>(
     numeric: &NumericInputContext<'_>,
     environment: CssRelativeColorEnvironment,
     result_domain: CssRelativeColorResultDomain,
-) -> std::result::Result<CssTypedRelativeColorExpression, ParseError<'i, Error>> {
+) -> std::result::Result<CssRelativeColorExpression, ParseError<'i, Error>> {
     input.skip_whitespace();
-    let start = input.position();
-    let before_opener = input.state();
+    let offset = input.position().byte_index();
     let location = input.current_source_location();
-    let token = input.next().map_err(basic)?.clone();
-    let value = match token {
-        Token::Ident(ident) if ident.eq_ignore_ascii_case("none") => {
-            CssRelativeColorExpressionValue::None
-        }
-        Token::Ident(ident) => {
-            let Some(channel) = relative_color_channel(environment, &ident) else {
-                return Err(with_color_context(
-                    location.new_unexpected_token_error::<Error>(Token::Ident(ident)),
-                    Some("relative channel"),
-                ));
-            };
-            CssRelativeColorExpressionValue::Channel(channel)
-        }
-        Token::Number { .. } | Token::Percentage { .. } => {
-            input.reset(&before_opener);
-            let component = collect_color_scalar(input, numeric)?;
-            match crate::color_scalar::component(component)
-                .map_err(|error| crate::error::invalid_component_value(location, error))?
-            {
-                CssAuthoredColorComponent::Number(value) => {
-                    CssRelativeColorExpressionValue::Number(value)
-                }
-                CssAuthoredColorComponent::Percentage(value) => {
-                    CssRelativeColorExpressionValue::Percentage(value)
-                }
-                CssAuthoredColorComponent::ExactNumber(value) => {
-                    CssRelativeColorExpressionValue::ExactNumber(value)
-                }
-                CssAuthoredColorComponent::ExactPercentage(value) => {
-                    CssRelativeColorExpressionValue::ExactPercentage(value)
-                }
-                _ => unreachable!("ordinary numeric component"),
+    let component = numeric.collect(input).map_err(|error| {
+        let at = numeric.error_location(&error, location, offset);
+        calculation_error(at)
+    })?;
+    let values = crate::CssComponentValues::try_new(vec![component])
+        .map_err(|error| crate::error::invalid_component_value(location, error))?;
+    CssRelativeColorExpression::from_parser_components(values, numeric, environment, result_domain)
+        .map_err(|error| {
+            let at = numeric.error_location(&error, location, offset);
+            if let Some(component) = error.component_error() {
+                crate::error::invalid_component_value(at, component.clone())
+            } else {
+                invalid_color(at, Some("relative channel"))
             }
-        }
-        Token::Dimension { .. } if matches!(result_domain, CssRelativeColorResultDomain::Hue) => {
-            input.reset(&before_opener);
-            let component = collect_color_scalar(input, numeric)?;
-            match crate::color_scalar::hue(component)
-                .map_err(|error| crate::error::invalid_component_value(location, error))?
-            {
-                CssAuthoredHue::Angle(value) => CssRelativeColorExpressionValue::Angle(value),
-                CssAuthoredHue::ExactAngle(value) => {
-                    CssRelativeColorExpressionValue::ExactAngle(value)
-                }
-                _ => unreachable!("ordinary angle component"),
-            }
-        }
-        Token::Function(name) if is_math_function(&name) => {
-            let expression = parse_numeric_function(
-                input,
-                &before_opener,
-                numeric,
-                CalculationRoot::Relative(environment, result_domain),
-            )?;
-            let authored = CssAuthoredDeclarationValue::new(input.slice_from(start).trim_end());
-            CssRelativeColorExpressionValue::Calculation(
-                CssRelativeColorCalculation::from_expression(authored, expression),
-            )
-        }
-        token => {
-            return Err(with_color_context(
-                location.new_unexpected_token_error::<Error>(token),
-                Some("relative channel"),
-            ));
-        }
-    };
-    if !relative_direct_value_is_valid(result_domain, &value) {
-        return Err(invalid_color(location, Some("relative channel")));
-    }
-    Ok(CssTypedRelativeColorExpression::new(
-        environment,
-        result_domain,
-        value,
-    ))
-}
-
-pub(crate) fn adapt_legacy_relative_expression(
-    values: &crate::CssComponentValues,
-    serialized: &crate::CssSerializedValue,
-    environment: CssRelativeColorEnvironment,
-    result_domain: CssRelativeColorResultDomain,
-) -> Option<CssTypedRelativeColorExpression> {
-    let mut input = cssparser::ParserInput::new(serialized.as_css());
-    let mut parser = cssparser::Parser::new(&mut input);
-    let numeric = NumericInputContext::components(values, serialized);
-    let expression =
-        parse_typed_relative_color_expression(&mut parser, &numeric, environment, result_domain)
-            .ok()?;
-    parser.expect_exhausted().ok()?;
-    Some(expression)
-}
-
-fn relative_direct_value_is_valid(
-    domain: CssRelativeColorResultDomain,
-    value: &CssRelativeColorExpressionValue,
-) -> bool {
-    match value {
-        CssRelativeColorExpressionValue::None
-        | CssRelativeColorExpressionValue::Channel(_)
-        | CssRelativeColorExpressionValue::Calculation(_) => true,
-        CssRelativeColorExpressionValue::Number(_)
-        | CssRelativeColorExpressionValue::ExactNumber(_) => true,
-        CssRelativeColorExpressionValue::Percentage(_)
-        | CssRelativeColorExpressionValue::ExactPercentage(_) => {
-            !matches!(domain, CssRelativeColorResultDomain::Hue)
-        }
-        CssRelativeColorExpressionValue::Angle(_)
-        | CssRelativeColorExpressionValue::ExactAngle(_) => {
-            matches!(domain, CssRelativeColorResultDomain::Hue)
-        }
-    }
+        })
 }
 
 pub(crate) fn numeric_relative_channel(
@@ -942,46 +713,10 @@ fn relative_color_channel(
 }
 
 fn relative_channel_type(
-    environment: CssRelativeColorEnvironment,
-    channel: CssRelativeColorChannel,
+    _environment: CssRelativeColorEnvironment,
+    _channel: CssRelativeColorChannel,
 ) -> CssCalculationType {
-    use CssRelativeColorChannel::{A, Alpha, B, C, G, H, L, R, S, W, X, Y, Z};
-    match (environment, channel) {
-        (CssRelativeColorEnvironment::Hsl, H)
-        | (CssRelativeColorEnvironment::Hwb, H)
-        | (CssRelativeColorEnvironment::Lch, H)
-        | (CssRelativeColorEnvironment::Oklch, H) => CssCalculationType::Angle,
-        (CssRelativeColorEnvironment::Hsl, S | L)
-        | (CssRelativeColorEnvironment::Hwb, W | B)
-        | (CssRelativeColorEnvironment::Lab | CssRelativeColorEnvironment::Oklab, L)
-        | (CssRelativeColorEnvironment::Lch | CssRelativeColorEnvironment::Oklch, L) => {
-            CssCalculationType::Percentage
-        }
-        (_, R | G | B | A | C | X | Y | Z | Alpha | H | S | L | W) => CssCalculationType::Number,
-    }
-}
-
-fn parse_relative_color<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssColor, ParseError<'i, Error>> {
-    let state = input.state();
-    let location = input.current_source_location();
-    let token = input.next().map_err(basic)?.clone();
-    match token {
-        Token::Function(name) => {
-            let Some(function) = relative_color_function_from_name(&name) else {
-                input.reset(&state);
-                return Err(location.new_unexpected_token_error::<Error>(Token::Function(name)));
-            };
-            input
-                .parse_nested_block(|input| parse_relative_color_arguments(input, function))
-                .map(CssColor::Relative)
-        }
-        token => {
-            input.reset(&state);
-            Err(location.new_unexpected_token_error::<Error>(token))
-        }
-    }
+    CssCalculationType::Number
 }
 
 #[derive(Clone, Copy)]
@@ -1011,43 +746,6 @@ fn relative_color_function_from_name(name: &str) -> Option<RelativeColorFunction
     Some(function)
 }
 
-fn parse_relative_color_arguments<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    function: RelativeColorFunction,
-) -> std::result::Result<CssRelativeColor, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    input.expect_ident_matching("from").map_err(basic)?;
-    let source = parse_color_inner(input)?;
-    let function = match function {
-        RelativeColorFunction::Rgb => CssRelativeColorFunction::Rgb,
-        RelativeColorFunction::Hsl => CssRelativeColorFunction::Hsl,
-        RelativeColorFunction::Hwb => CssRelativeColorFunction::Hwb,
-        RelativeColorFunction::Lab => CssRelativeColorFunction::Lab,
-        RelativeColorFunction::Lch => CssRelativeColorFunction::Lch,
-        RelativeColorFunction::Oklab => CssRelativeColorFunction::Oklab,
-        RelativeColorFunction::Oklch => CssRelativeColorFunction::Oklch,
-        RelativeColorFunction::Color => {
-            CssRelativeColorFunction::Color(parse_relative_predefined_color_space(input)?)
-        }
-    };
-
-    let mut components = Vec::with_capacity(function.component_count());
-    for _ in 0..function.component_count() {
-        components.push(parse_color_component_expression(input)?);
-    }
-
-    let alpha = if input.try_parse(|input| input.expect_delim('/')).is_ok() {
-        Some(parse_color_component_expression(input)?)
-    } else {
-        None
-    };
-
-    input.expect_exhausted().map_err(basic)?;
-    CssRelativeColor::try_new(function, source, components, alpha).ok_or_else(|| {
-        unsupported_value_at(location, None, "unsupported relative color component count")
-    })
-}
-
 fn parse_relative_predefined_color_space<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssPredefinedColorSpace, ParseError<'i, Error>> {
@@ -1073,121 +771,16 @@ fn parse_relative_predefined_color_space<'i, 't>(
     Ok(color_space)
 }
 
-fn parse_color_component_expression<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssColorComponentExpression, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let start = input.position();
-    consume_color_component_expression(input)?;
-    let authored = CssAuthoredDeclarationValue::new(input.slice_from(start).trim_end());
-    Ok(CssColorComponentExpression::new(authored, Vec::new()))
-}
-
-fn consume_color_component_expression<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<(), ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let token = input.next().map_err(basic)?.clone();
-    if token.is_parse_error() {
-        return Err(input.new_unexpected_token_error(token));
-    }
-    match token {
-        Token::Ident(_)
-        | Token::Number { .. }
-        | Token::Percentage { .. }
-        | Token::Dimension { .. } => Ok(()),
-        Token::Function(name) if name.eq_ignore_ascii_case("calc") => {
-            input.parse_nested_block(parse_color_component_calc_expression)
-        }
-        Token::Function(name) => Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported relative color component function `{name}`"),
-        )),
-        token => Err(location.new_unexpected_token_error::<Error>(token)),
-    }
-}
-
-fn parse_color_component_calc_expression<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<(), ParseError<'i, Error>> {
-    parse_color_component_calc_operand(input)?;
-    while !input.is_exhausted() {
-        parse_color_component_calc_operator(input)?;
-        parse_color_component_calc_operand(input)?;
-    }
-    Ok(())
-}
-
-fn parse_color_component_calc_operator<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<(), ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Delim('+') | Token::Delim('-') | Token::Delim('*') | Token::Delim('/') => Ok(()),
-        token => Err(unsupported_value_at(
-            location,
-            None,
-            format!(
-                "expected relative color calc operator, got `{}`",
-                token.to_css_string()
-            ),
-        )),
-    }
-}
-
-fn parse_color_component_calc_operand<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<(), ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let token = input.next().map_err(basic)?.clone();
-    if token.is_parse_error() {
-        return Err(input.new_unexpected_token_error(token));
-    }
-    match token {
-        Token::Ident(_)
-        | Token::Number { .. }
-        | Token::Percentage { .. }
-        | Token::Dimension { .. } => Ok(()),
-        Token::Function(name) if name.eq_ignore_ascii_case("calc") => {
-            input.parse_nested_block(parse_color_component_calc_expression)
-        }
-        Token::Function(name) => Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported relative color calc function `{name}`"),
-        )),
-        token => Err(location.new_unexpected_token_error::<Error>(token)),
-    }
-}
-
-fn parse_color_mix<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssColor, ParseError<'i, Error>> {
-    let state = input.state();
-    let location = input.current_source_location();
-    let token = input.next().map_err(basic)?.clone();
-    match token {
-        Token::Function(name) if name.eq_ignore_ascii_case("color-mix") => input
-            .parse_nested_block(parse_color_mix_arguments)
-            .map(CssColor::ColorMix),
-        token => {
-            input.reset(&state);
-            Err(location.new_unexpected_token_error::<Error>(token))
-        }
-    }
-}
-
 fn parse_authored_color_mix<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssAuthoredColor, ParseError<'i, Error>> {
+) -> std::result::Result<CssColor, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let token = input.next().map_err(basic)?.clone();
     match token {
         Token::Function(name) if name.eq_ignore_ascii_case("color-mix") => input
             .parse_nested_block(|input| parse_authored_color_mix_arguments(input, numeric))
-            .map(CssAuthoredColor::color_mix),
+            .map(CssColor::from_color_mix),
         token => Err(location.new_unexpected_token_error::<Error>(token)),
     }
 }
@@ -1195,7 +788,7 @@ fn parse_authored_color_mix<'i, 't>(
 fn parse_authored_color_mix_arguments<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssAuthoredColorMix, ParseError<'i, Error>> {
+) -> std::result::Result<CssColorMix, ParseError<'i, Error>> {
     let start = input.position().byte_index();
     let location = input.current_source_location();
     let interpolation = if input
@@ -1213,8 +806,7 @@ fn parse_authored_color_mix_arguments<'i, 't>(
         input.expect_comma().map_err(basic)?;
         components.push(parse_authored_color_mix_component(input, numeric)?);
     }
-    CssAuthoredColorMix::try_from_components(interpolation, components).map_err(|error| match error
-    {
+    CssColorMix::try_new(interpolation, components).map_err(|error| match error {
         CssColorMixConstructionError::EmptyComponents => {
             invalid_color(location, Some("color-mix component"))
         }
@@ -1238,37 +830,37 @@ fn parse_authored_color_mix_arguments<'i, 't>(
 
 fn parse_authored_color_mix_interpolation_method<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssAuthoredColorInterpolation, ParseError<'i, Error>> {
+) -> std::result::Result<CssColorInterpolation, ParseError<'i, Error>> {
     let state = input.state();
     if let Ok(name) = input.expect_ident_cloned()
         && let Some(profile) = CssColorProfileName::try_new(name.as_ref())
     {
-        return Ok(CssAuthoredColorInterpolation::custom(profile));
+        return Ok(CssColorInterpolation::custom(profile));
     }
     input.reset(&state);
     let space = parse_color_mix_interpolation_space(input)?;
     let hue_location = input.current_source_location();
     let hue = input.try_parse(parse_color_mix_hue_interpolation).ok();
-    CssAuthoredColorInterpolation::try_predefined(CssColorInterpolationMethod::new(space, hue))
+    CssColorInterpolation::try_predefined(CssColorInterpolationMethod::new(space, hue))
         .ok_or_else(|| invalid_color(hue_location, Some("hue interpolation")))
 }
 
 fn parse_authored_color_mix_component<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssAuthoredColorMixComponent, ParseError<'i, Error>> {
+) -> std::result::Result<CssColorMixComponent, ParseError<'i, Error>> {
     let leading = if next_is_mix_weight(input) {
         Some(parse_authored_color_mix_weight(input, numeric)?)
     } else {
         None
     };
-    let (color, _) = parse_color(input, numeric)?.into_parts();
+    let color = parse_color(input, numeric)?;
     let weight = if leading.is_none() && next_is_mix_weight(input) {
         Some(parse_authored_color_mix_weight(input, numeric)?)
     } else {
         leading
     };
-    Ok(CssAuthoredColorMixComponent::with_weight(color, weight))
+    Ok(CssColorMixComponent::new(color, weight))
 }
 
 fn next_is_mix_weight(input: &mut Parser<'_, '_>) -> bool {
@@ -1285,29 +877,29 @@ fn next_is_mix_weight(input: &mut Parser<'_, '_>) -> bool {
 fn parse_authored_color_mix_weight<'i>(
     input: &mut Parser<'i, '_>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssAuthoredColorMixWeight, ParseError<'i, Error>> {
+) -> Result<CssColorMixWeight, ParseError<'i, Error>> {
     input.skip_whitespace();
     let state = input.state();
     let location = input.current_source_location();
     if matches!(input.next(), Ok(Token::Function(_))) {
         let expression =
             parse_numeric_function(input, &state, numeric, CalculationRoot::Percentage)?;
-        return CssAuthoredColorMixWeight::try_calculation(
-            CssPercentageCalculation::from_expression(expression),
-        )
+        return CssColorMixWeight::try_calculation(CssPercentageCalculation::from_expression(
+            expression,
+        ))
         .map_err(|error| crate::error::invalid_component_value(location, error));
     }
     input.reset(&state);
-    parse_authored_color_mix_percentage(input, numeric).map(CssAuthoredColorMixWeight::literal)
+    parse_authored_color_mix_percentage(input, numeric).map(CssColorMixWeight::literal)
 }
 
 fn parse_authored_color_mix_percentage<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssAuthoredColorMixPercentage, ParseError<'i, Error>> {
+) -> std::result::Result<CssColorMixPercentage, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let component = collect_color_scalar(input, numeric)?;
-    CssAuthoredColorMixPercentage::try_from_component(component)
+    CssColorMixPercentage::try_from_component(component)
         .map_err(|_| invalid_color(location, Some("color-mix component percentage")))
 }
 
@@ -1326,27 +918,6 @@ fn collect_color_scalar<'i, 't>(
             invalid_color(location, Some("component"))
         }
     })
-}
-
-fn parse_color_mix_arguments<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssColorMix, ParseError<'i, Error>> {
-    input.expect_ident_matching("in").map_err(basic)?;
-    let interpolation = parse_color_mix_interpolation_method(input)?;
-    input.expect_comma().map_err(basic)?;
-    let left = parse_color_mix_component(input)?;
-    input.expect_comma().map_err(basic)?;
-    let right = parse_color_mix_component(input)?;
-
-    Ok(CssColorMix::new(interpolation, left, right))
-}
-
-fn parse_color_mix_interpolation_method<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssColorInterpolationMethod, ParseError<'i, Error>> {
-    let space = parse_color_mix_interpolation_space(input)?;
-    let hue = input.try_parse(parse_color_mix_hue_interpolation).ok();
-    Ok(CssColorInterpolationMethod::new(space, hue))
 }
 
 fn parse_color_mix_interpolation_space<'i, 't>(
@@ -1398,132 +969,4 @@ fn parse_color_mix_hue_interpolation<'i, 't>(
     };
     input.expect_ident_matching("hue").map_err(basic)?;
     Ok(hue)
-}
-
-fn parse_color_mix_component<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssColorMixComponent, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let color = parse_color_inner(input)?;
-    let percentage = input.try_parse(parse_color_mix_percentage).ok();
-    CssColorMixComponent::try_new(color, percentage).ok_or_else(|| {
-        unsupported_value_at(location, None, "unsupported color-mix component percentage")
-    })
-}
-
-fn parse_color_mix_percentage<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<f32, ParseError<'i, Error>> {
-    input
-        .expect_percentage()
-        .map(|percentage| percentage * 100.0)
-        .map_err(basic)
-}
-
-fn parse_absolute_color_with_cssparser_color<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssColor, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    match parse_color_with(&DefaultColorParser, input) {
-        Ok(parsed) => map_parsed_color(parsed, location),
-        Err(_) => Err(invalid_color(location, None)),
-    }
-}
-
-fn parse_system_color<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssColor, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
-    let color = match_ignore_ascii_case! { &ident,
-        "canvas" => CssSystemColor::Canvas,
-        "canvastext" => CssSystemColor::CanvasText,
-        "linktext" => CssSystemColor::LinkText,
-        "visitedtext" => CssSystemColor::VisitedText,
-        "activetext" => CssSystemColor::ActiveText,
-        "buttonface" => CssSystemColor::ButtonFace,
-        "buttontext" => CssSystemColor::ButtonText,
-        "buttonborder" => CssSystemColor::ButtonBorder,
-        "field" => CssSystemColor::Field,
-        "fieldtext" => CssSystemColor::FieldText,
-        "highlight" => CssSystemColor::Highlight,
-        "highlighttext" => CssSystemColor::HighlightText,
-        "mark" => CssSystemColor::Mark,
-        "marktext" => CssSystemColor::MarkText,
-        "graytext" => CssSystemColor::GrayText,
-        "selecteditem" => CssSystemColor::SelectedItem,
-        "selecteditemtext" => CssSystemColor::SelectedItemText,
-        "accentcolor" => CssSystemColor::AccentColor,
-        "accentcolortext" => CssSystemColor::AccentColorText,
-        _ => return Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported system color `{ident}`"),
-        )),
-    };
-    Ok(CssColor::System(color))
-}
-
-fn map_parsed_color<'i>(
-    parsed: ParsedColor,
-    location: cssparser::SourceLocation,
-) -> std::result::Result<CssColor, ParseError<'i, Error>> {
-    let color = match parsed {
-        ParsedColor::CurrentColor => CssColor::CurrentColor,
-        ParsedColor::Rgba(color) => CssColor::Rgba(
-            CssRgbaColor::try_new(color.red, color.green, color.blue, color.alpha)
-                .ok_or_else(|| invalid_color_component(location))?,
-        ),
-        ParsedColor::Hsl(color) => CssColor::Hsl(
-            CssHslColor::try_new(color.hue, color.saturation, color.lightness, color.alpha)
-                .ok_or_else(|| invalid_color_component(location))?,
-        ),
-        ParsedColor::Hwb(color) => CssColor::Hwb(
-            CssHwbColor::try_new(color.hue, color.whiteness, color.blackness, color.alpha)
-                .ok_or_else(|| invalid_color_component(location))?,
-        ),
-        ParsedColor::Lab(color) => CssColor::Lab(
-            CssLabColor::try_new(color.lightness, color.a, color.b, color.alpha)
-                .ok_or_else(|| invalid_color_component(location))?,
-        ),
-        ParsedColor::Lch(color) => CssColor::Lch(
-            CssLchColor::try_new(color.lightness, color.chroma, color.hue, color.alpha)
-                .ok_or_else(|| invalid_color_component(location))?,
-        ),
-        ParsedColor::Oklab(color) => CssColor::Oklab(
-            CssLabColor::try_new(color.lightness, color.a, color.b, color.alpha)
-                .ok_or_else(|| invalid_color_component(location))?,
-        ),
-        ParsedColor::Oklch(color) => CssColor::Oklch(
-            CssLchColor::try_new(color.lightness, color.chroma, color.hue, color.alpha)
-                .ok_or_else(|| invalid_color_component(location))?,
-        ),
-        ParsedColor::ColorFunction(color) => CssColor::ColorFunction(
-            CssColorFunction::try_new(
-                map_predefined_color_space(color.color_space),
-                [color.c1, color.c2, color.c3],
-                color.alpha,
-            )
-            .ok_or_else(|| invalid_color_component(location))?,
-        ),
-    };
-    Ok(color)
-}
-
-fn invalid_color_component<'i>(location: cssparser::SourceLocation) -> ParseError<'i, Error> {
-    invalid_color(location, Some("component"))
-}
-
-fn map_predefined_color_space(color_space: ParsedPredefinedColorSpace) -> CssPredefinedColorSpace {
-    match color_space {
-        ParsedPredefinedColorSpace::Srgb => CssPredefinedColorSpace::Srgb,
-        ParsedPredefinedColorSpace::SrgbLinear => CssPredefinedColorSpace::SrgbLinear,
-        ParsedPredefinedColorSpace::DisplayP3 => CssPredefinedColorSpace::DisplayP3,
-        ParsedPredefinedColorSpace::DisplayP3Linear => CssPredefinedColorSpace::DisplayP3Linear,
-        ParsedPredefinedColorSpace::A98Rgb => CssPredefinedColorSpace::A98Rgb,
-        ParsedPredefinedColorSpace::ProphotoRgb => CssPredefinedColorSpace::ProphotoRgb,
-        ParsedPredefinedColorSpace::Rec2020 => CssPredefinedColorSpace::Rec2020,
-        ParsedPredefinedColorSpace::XyzD50 => CssPredefinedColorSpace::XyzD50,
-        ParsedPredefinedColorSpace::XyzD65 => CssPredefinedColorSpace::XyzD65,
-    }
 }

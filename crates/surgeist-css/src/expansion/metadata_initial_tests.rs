@@ -31,10 +31,7 @@ fn omitted_initial_preserves_user_agent_requirement_and_fixed_value() {
     let CssContributionValueRef::Ordinary(CssLonghandValueRef::Color(color)) = color.view() else {
         panic!("intrinsic symbolic color remains an ordinary specified color")
     };
-    assert_eq!(
-        color.system(),
-        Some(crate::CssAuthoredSystemColor::CanvasText)
-    );
+    assert_eq!(color.system(), Some(crate::CssSystemColor::CanvasText));
 
     let width = OwnedContributionValue::from_initial(initial(CssKnownProperty::BorderTopWidth));
     assert_eq!(width.property(), CssKnownProperty::BorderTopWidth);

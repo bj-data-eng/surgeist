@@ -2,7 +2,7 @@
 //! Color 5 alpha and authored absolute-eligibility contracts.
 use surgeist_css::*;
 
-fn color(text: &str) -> CssAuthoredColor {
+fn color(text: &str) -> CssColor {
     let declaration = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::Color),
         parse_component_values(text).unwrap(),
@@ -14,12 +14,14 @@ fn color(text: &str) -> CssAuthoredColor {
     else {
         panic!("color")
     };
-    value.current().clone()
+    value.value().clone()
 }
 
-fn alpha(text: &str) -> CssTypedRelativeColorExpression {
-    CssTypedRelativeColorExpression::try_alpha_from_components(
+fn alpha(text: &str) -> CssRelativeColorExpression {
+    CssRelativeColorExpression::try_from_components(
         parse_component_values(text).unwrap(),
+        CssRelativeColorEnvironment::Alpha,
+        CssRelativeColorResultDomain::Alpha,
     )
     .unwrap()
 }
@@ -27,11 +29,11 @@ fn alpha(text: &str) -> CssTypedRelativeColorExpression {
 #[test]
 fn checked_alpha_keeps_omission_missing_and_channel_distinct() {
     let source = color("red");
-    let omitted = CssAuthoredAlphaColor::try_new(source.clone(), None).unwrap();
+    let omitted = CssAlphaColor::try_new(source.clone(), None).unwrap();
     assert_eq!(omitted.source(), &source);
     assert!(omitted.alpha().is_none());
-    let missing = CssAuthoredAlphaColor::try_new(source.clone(), Some(alpha("none"))).unwrap();
-    let channel = CssAuthoredAlphaColor::try_new(source, Some(alpha("alpha"))).unwrap();
+    let missing = CssAlphaColor::try_new(source.clone(), Some(alpha("none"))).unwrap();
+    let channel = CssAlphaColor::try_new(source, Some(alpha("alpha"))).unwrap();
     assert_ne!(omitted, missing);
     assert_ne!(missing, channel);
     let expression = channel.alpha().unwrap();
@@ -44,7 +46,7 @@ fn checked_alpha_keeps_omission_missing_and_channel_distinct() {
         expression.value(),
         &CssRelativeColorExpressionValue::Channel(CssRelativeColorChannel::Alpha)
     );
-    let current = CssAuthoredColor::from_alpha(channel.clone());
+    let current = CssColor::from_alpha(channel.clone());
     assert_eq!(current.alpha_value(), Some(&channel));
     assert!(current.relative_value().is_none());
 }
@@ -69,8 +71,10 @@ fn alpha_math_keeps_transparency_references_and_rejects_foreign_environments() {
         "var(--x)",
     ] {
         assert!(
-            CssTypedRelativeColorExpression::try_alpha_from_components(
-                parse_component_values(text).unwrap()
+            CssRelativeColorExpression::try_from_components(
+                parse_component_values(text).unwrap(),
+                CssRelativeColorEnvironment::Alpha,
+                CssRelativeColorResultDomain::Alpha,
             )
             .is_err(),
             "{text}"
@@ -80,8 +84,8 @@ fn alpha_math_keeps_transparency_references_and_rejects_foreign_environments() {
     let foreign = rgb.relative_value().unwrap().alpha().unwrap().clone();
     assert_eq!(foreign.result_domain(), CssRelativeColorResultDomain::Alpha);
     assert_eq!(
-        CssAuthoredAlphaColor::try_new(color("red"), Some(foreign)).unwrap_err(),
-        CssAuthoredColorConstructionError::InvalidExpressionEnvironment
+        CssAlphaColor::try_new(color("red"), Some(foreign)).unwrap_err(),
+        CssColorConstructionError::InvalidExpressionEnvironment
     );
 }
 
@@ -89,18 +93,18 @@ fn alpha_math_keeps_transparency_references_and_rejects_foreign_environments() {
 fn alpha_exact_literals_remain_unclamped() {
     for text in ["1e100", "1e-100"] {
         let expression = alpha(text);
-        let CssRelativeColorExpressionValue::ExactNumber(value) = expression.value() else {
+        let CssRelativeColorExpressionValue::Number(value) = expression.value() else {
             panic!("exact number")
         };
         assert_eq!(value.numeric().representation(), text);
     }
-    assert_eq!(
-        alpha("-2").value(),
-        &CssRelativeColorExpressionValue::Number(CssFiniteNumber::try_new(-2.0).unwrap())
+    assert!(
+        matches!(alpha("-2").value(), CssRelativeColorExpressionValue::Number(v)
+        if v.numeric().representation() == "-2")
     );
-    assert_eq!(
-        alpha("200%").value(),
-        &CssRelativeColorExpressionValue::Percentage(CssFiniteNumber::try_new(200.0).unwrap())
+    assert!(
+        matches!(alpha("200%").value(), CssRelativeColorExpressionValue::Percentage(v)
+        if v.numeric().representation() == "200")
     );
 }
 
@@ -166,8 +170,7 @@ fn eligibility_walks_every_child_and_context_dominates_profile_dependence() {
 fn checked_alpha_graph_enforces_depth_without_discarding_children() {
     let mut current = color("red");
     for _ in 0..256 {
-        current =
-            CssAuthoredColor::from_alpha(CssAuthoredAlphaColor::try_new(current, None).unwrap());
+        current = CssColor::from_alpha(CssAlphaColor::try_new(current, None).unwrap());
     }
     assert_eq!(current.clone(), current);
     assert_eq!(
@@ -175,45 +178,56 @@ fn checked_alpha_graph_enforces_depth_without_discarding_children() {
         CssAbsoluteColorEligibility::Eligible
     );
     assert_eq!(
-        CssAuthoredAlphaColor::try_new(current, None).unwrap_err(),
-        CssAuthoredColorConstructionError::NestingLimit
+        CssAlphaColor::try_new(current, None).unwrap_err(),
+        CssColorConstructionError::NestingLimit
     );
     for depth in [254, 255, 256] {
         let text = format!("{}alpha{}", "calc(".repeat(depth), ")".repeat(depth));
-        let result = CssAuthoredAlphaColor::try_new(color("red"), Some(alpha(&text)));
+        let result = CssAlphaColor::try_new(color("red"), Some(alpha(&text)));
         if depth < 256 {
             assert!(result.is_ok());
         } else {
-            assert_eq!(
-                result.unwrap_err(),
-                CssAuthoredColorConstructionError::NestingLimit
-            );
+            assert_eq!(result.unwrap_err(), CssColorConstructionError::NestingLimit);
         }
     }
 }
 
 #[test]
-fn new_branches_have_no_frozen_projection_even_inside_old_branches() {
-    for text in [
-        "alpha(from red)",
-        "color(--P 1)",
-        "color(from red --P cyan)",
-        "rgb(from alpha(from red) r g b)",
-        "color-mix(in srgb, red, color(--P 1))",
-    ] {
-        let declaration = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
-            parse_component_values(text).unwrap(),
-            CssImportance::Normal,
-        )
-        .unwrap();
-        let CssKnownPropertyValueRef::Color(value) =
-            declaration.known().unwrap().property_value().unwrap()
-        else {
-            panic!("color")
-        };
-        assert!(value.i01_subset().is_none(), "{text}");
-    }
+fn nested_alpha_custom_and_mix_branches_remain_typed() {
+    assert!(color("alpha(from red)").alpha_value().is_some());
+    assert_eq!(
+        color("color(--P 1)")
+            .custom_value()
+            .unwrap()
+            .channels()
+            .len(),
+        1
+    );
+    assert_eq!(
+        color("color(from red --P cyan)")
+            .relative_custom_value()
+            .unwrap()
+            .channels()
+            .len(),
+        1
+    );
+    let relative = color("rgb(from alpha(from red) r g b)");
+    assert!(
+        relative
+            .relative_value()
+            .unwrap()
+            .source()
+            .alpha_value()
+            .is_some()
+    );
+    let mix = color("color-mix(in srgb, red, color(--P 1))");
+    assert_eq!(mix.color_mix_value().unwrap().components().len(), 2);
+    assert!(
+        mix.color_mix_value().unwrap().components()[1]
+            .color()
+            .custom_value()
+            .is_some()
+    );
 }
 
 #[test]
@@ -227,7 +241,12 @@ fn alpha_math_retains_parsed_leaf_in_a_programmatic_function() {
         .unwrap(),
     ])
     .unwrap();
-    let value = CssTypedRelativeColorExpression::try_alpha_from_components(graph).unwrap();
+    let value = CssRelativeColorExpression::try_from_components(
+        graph,
+        CssRelativeColorEnvironment::Alpha,
+        CssRelativeColorResultDomain::Alpha,
+    )
+    .unwrap();
     let CssRelativeColorExpressionValue::Calculation(calculation) = value.value() else {
         panic!("math")
     };

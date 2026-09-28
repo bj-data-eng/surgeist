@@ -1,10 +1,10 @@
 use surgeist_css::{
-    CssAngleCalculation, CssAngleUnit, CssAspectRatioValue, CssAuthoredColorComponent,
-    CssAuthoredHue, CssBoxSize, CssCalcLength, CssCalculationExpressionRef,
-    CssCalculationProductOperator, CssCalculationType, CssCalculationValueRef, CssErrorCode,
-    CssFilterAmount, CssFilterFunctionValue, CssFilterNumber, CssFilterPercentage, CssFilterValue,
-    CssFlexBasisRef, CssFlexValue, CssFlowToleranceRef, CssFontSize, CssFrequencyCalculation,
-    CssFrequencyUnit, CssIntegerCalculation, CssIntegerValue, CssKnownPropertyValueRef, CssLength,
+    CssAngleCalculation, CssAngleUnit, CssAspectRatioValue, CssBoxSize, CssCalcLength,
+    CssCalculationExpressionRef, CssCalculationProductOperator, CssCalculationType,
+    CssCalculationValueRef, CssColorComponent, CssColorHue, CssErrorCode, CssFilter,
+    CssFilterAmount, CssFilterFunction, CssFilterNumber, CssFilterPercentage, CssFlexBasisRef,
+    CssFlexValue, CssFlowToleranceRef, CssFontSize, CssFrequencyCalculation, CssFrequencyUnit,
+    CssIntegerCalculation, CssIntegerValue, CssKnownPropertyValueRef, CssLength,
     CssLengthCalculation, CssLengthPercentageCalculation, CssLengthUnit, CssLineHeight,
     CssNumberCalculation, CssOpacityValue, CssPercentageCalculation, CssPositiveNumber,
     CssPositiveNumberValue, CssRecoveryAction, CssRelativeColorChannel,
@@ -74,8 +74,8 @@ fn core_font_calculations_preserve_number_and_length_percentage_domains() {
 fn relative_color_calculations_retain_typed_domains_and_closed_channel_references() {
     let report = parse_style_attribute(concat!(
         "color: rgb(from red calc(r + 1) calc(g * 2) calc(b / 2) / calc(alpha * 0.5)); ",
-        "color: hsl(from red calc(h + 20deg) calc(s + 10%) l); ",
-        "color: oklch(from red l c calc(h + 0.25turn))",
+        "color: hsl(from red calc(h + 20) calc(s + 10) l); ",
+        "color: oklch(from red l c calc(h + 0.25))",
     ));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
 
@@ -88,7 +88,7 @@ fn relative_color_calculations_retain_typed_domains_and_closed_channel_reference
             else {
                 panic!("expected color wrapper");
             };
-            value.current().relative_value().unwrap()
+            value.value().relative_value().unwrap()
         })
         .collect();
 
@@ -118,7 +118,7 @@ fn relative_color_calculations_retain_typed_domains_and_closed_channel_reference
         let CssRelativeColorExpressionValue::Calculation(calculation) = hue.value() else {
             panic!("expected typed hue calculation");
         };
-        assert_eq!(calculation.result_type(), CssCalculationType::Angle);
+        assert_eq!(calculation.result_type(), CssCalculationType::Number);
         assert_eq!(calculation.references(), &[CssRelativeColorChannel::H]);
     }
 }
@@ -141,41 +141,38 @@ fn perceptual_color_channels_preserve_typed_calculation_domains() {
         else {
             panic!("expected color wrapper");
         };
-        value.current()
+        value.value()
     });
 
     let lab = colors.next().unwrap().lab_value().unwrap();
     assert!(matches!(
         lab.lightness(),
-        CssAuthoredColorComponent::PercentageCalculation(_)
+        CssColorComponent::PercentageCalculation(_)
     ));
-    assert!(matches!(
-        lab.a(),
-        CssAuthoredColorComponent::NumberCalculation(_)
-    ));
+    assert!(matches!(lab.a(), CssColorComponent::NumberCalculation(_)));
     assert!(matches!(
         lab.b(),
-        CssAuthoredColorComponent::PercentageCalculation(_)
+        CssColorComponent::PercentageCalculation(_)
     ));
 
     let lch = colors.next().unwrap().lch_value().unwrap();
     assert!(matches!(
         lch.lightness(),
-        CssAuthoredColorComponent::NumberCalculation(_)
+        CssColorComponent::NumberCalculation(_)
     ));
     assert!(matches!(
         lch.chroma(),
-        CssAuthoredColorComponent::PercentageCalculation(_)
+        CssColorComponent::PercentageCalculation(_)
     ));
-    assert!(matches!(lch.hue(), CssAuthoredHue::AngleCalculation(_)));
+    assert!(matches!(lch.hue(), CssColorHue::AngleCalculation(_)));
 
     let predefined = colors.next().unwrap().predefined_value().unwrap();
     assert!(matches!(
         predefined.channels(),
         [
-            CssAuthoredColorComponent::NumberCalculation(_),
-            CssAuthoredColorComponent::PercentageCalculation(_),
-            CssAuthoredColorComponent::None,
+            CssColorComponent::NumberCalculation(_),
+            CssColorComponent::PercentageCalculation(_),
+            CssColorComponent::None,
         ]
     ));
 }
@@ -773,22 +770,19 @@ fn filter_amount_calculations_keep_number_and_percentage_roots_symbolic() {
     else {
         panic!("expected filter wrapper");
     };
-    let CssFilterValue::Functions(functions) = filter.current() else {
+    let CssFilter::Functions(functions) = filter.value() else {
         panic!("expected filter functions");
     };
     assert!(matches!(
         functions.functions()[0],
-        CssFilterFunctionValue::Brightness(CssFilterAmount::Number(CssFilterNumber::Calculation(
-            _
-        )))
+        CssFilterFunction::Brightness(CssFilterAmount::Number(CssFilterNumber::Calculation(_)))
     ));
     assert!(matches!(
         functions.functions()[1],
-        CssFilterFunctionValue::Opacity(CssFilterAmount::Percentage(
+        CssFilterFunction::Opacity(CssFilterAmount::Percentage(
             CssFilterPercentage::Calculation(_)
         ))
     ));
-    assert!(filter.i01_subset().is_none());
 }
 
 fn calculation_body(

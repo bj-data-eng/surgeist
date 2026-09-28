@@ -2,8 +2,8 @@
 
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssAuthoredColor, CssBorderStyle, CssBorderValue, CssBorderWidth,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
+    CssBorder, CssBorderStyle, CssBorderWidth, CssColor, CssSpecifiedValueSerializationError,
+    CssSpecifiedValueSerializationLimits,
 };
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
@@ -14,7 +14,7 @@ type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 /// expansion. The stored components retain which values were explicitly given.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssColumnRule {
-    components: CssBorderValue,
+    components: CssBorder,
 }
 
 impl CssColumnRule {
@@ -23,9 +23,9 @@ impl CssColumnRule {
     pub fn try_new(
         width: Option<CssBorderWidth>,
         style: Option<CssBorderStyle>,
-        color: Option<CssAuthoredColor>,
+        color: Option<CssColor>,
     ) -> Option<Self> {
-        CssBorderValue::try_new(width, style, color).map(|components| Self { components })
+        CssBorder::try_new(width, style, color).map(|components| Self { components })
     }
 
     #[must_use]
@@ -40,7 +40,7 @@ impl CssColumnRule {
 
     /// Borrows the exact authored color, including symbolic modern colors.
     #[must_use]
-    pub const fn color(&self) -> Option<&CssAuthoredColor> {
+    pub const fn color(&self) -> Option<&CssColor> {
         self.components.color()
     }
 

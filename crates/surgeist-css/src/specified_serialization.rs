@@ -153,10 +153,6 @@ impl SpecifiedSerializationContext {
         self.limits.max_css_bytes() - self.css_bytes
     }
 
-    pub(crate) fn remaining_input_nodes(&self) -> usize {
-        self.limits.max_input_nodes() - self.input_nodes
-    }
-
     pub(crate) fn append(&mut self, output: &mut String, text: &str) -> Result<()> {
         debug_assert_eq!(output.len(), self.css_bytes);
         let next = self
@@ -459,11 +455,11 @@ fn format_lexical(text: &str, percentage: bool, limit: usize) -> Result<String> 
 #[cfg(test)]
 mod composed_value_tests {
     use super::*;
-    use crate::{CssAuthoredColor, CssIntegerCalculation, CssIntegerValue};
+    use crate::{CssColor, CssIntegerCalculation, CssIntegerValue};
 
     #[test]
     fn color_and_integer_share_input_projection_and_output_limits() {
-        let color = CssAuthoredColor::transparent();
+        let color = CssColor::transparent();
         let integer = CssIntegerValue::Literal(7);
 
         let mut context =
@@ -505,7 +501,7 @@ mod composed_value_tests {
 
     #[test]
     fn sequential_colors_and_integer_calculation_cannot_reset_byte_limit() {
-        let color = CssAuthoredColor::transparent();
+        let color = CssColor::transparent();
         let calculation = CssIntegerValue::Calculation(CssIntegerCalculation::literal(2));
 
         let mut context = SpecifiedSerializationContext::new(

@@ -5410,7 +5410,7 @@ impl CssBoxEdgeKeyword {
 #[non_exhaustive]
 pub enum CssCaretColor {
     Auto,
-    Color(Box<CssAuthoredColor>),
+    Color(Box<CssColor>),
 }
 
 /// A checked authored `outline-offset` length.
@@ -6513,33 +6513,12 @@ pub enum CssTextOverflow {
     Ellipsis,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssTextDecoration {
     line: Option<CssTextDecorationLine>,
-    color: Option<Box<CssParsedColor>>,
+    color: Option<Box<CssColor>>,
     style: Option<CssTextDecorationStyle>,
     thickness: Option<CssTextDecorationThickness>,
-}
-
-impl std::fmt::Debug for CssTextDecoration {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("CssTextDecoration")
-            .field("line", &self.line)
-            .field("color", &self.color())
-            .field("style", &self.style)
-            .field("thickness", &self.thickness)
-            .finish()
-    }
-}
-
-impl PartialEq for CssTextDecoration {
-    fn eq(&self, other: &Self) -> bool {
-        self.line == other.line
-            && parsed_color_options_equal(self.color.as_deref(), other.color.as_deref())
-            && self.style == other.style
-            && self.thickness == other.thickness
-    }
 }
 
 impl CssTextDecoration {
@@ -6557,19 +6536,9 @@ impl CssTextDecoration {
         }
     }
 
-    #[must_use]
     pub(crate) fn new(
         line: Option<CssTextDecorationLine>,
         color: Option<CssColor>,
-        style: Option<CssTextDecorationStyle>,
-        thickness: Option<CssTextDecorationThickness>,
-    ) -> Self {
-        Self::new_current(line, color.map(CssParsedColor::from_i01), style, thickness)
-    }
-
-    pub(crate) fn new_current(
-        line: Option<CssTextDecorationLine>,
-        color: Option<CssParsedColor>,
         style: Option<CssTextDecorationStyle>,
         thickness: Option<CssTextDecorationThickness>,
     ) -> Self {
@@ -6587,27 +6556,8 @@ impl CssTextDecoration {
     }
 
     #[must_use]
-    pub const fn color(&self) -> Option<&CssColor> {
-        match self.color.as_ref() {
-            Some(color) => color.i01_subset(),
-            None => None,
-        }
-    }
-
-    /// Returns the exact authored current color in the shorthand, when present.
-    #[must_use]
-    pub const fn current_color(&self) -> Option<&CssAuthoredColor> {
-        match self.color.as_ref() {
-            Some(color) => Some(color.current()),
-            None => None,
-        }
-    }
-
-    pub(crate) const fn has_exact_i01_projection(&self) -> bool {
-        match self.color.as_ref() {
-            Some(color) => color.i01_subset().is_some(),
-            None => true,
-        }
+    pub fn color(&self) -> Option<&CssColor> {
+        self.color.as_deref()
     }
 
     #[must_use]
@@ -7042,102 +6992,6 @@ pub enum CssBorderStyle {
     Outset,
 }
 
-#[derive(Clone)]
-pub struct CssBorder {
-    width: Option<CssLength>,
-    style: Option<CssBorderStyle>,
-    color: Option<Box<CssParsedColor>>,
-}
-
-impl std::fmt::Debug for CssBorder {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("CssBorder")
-            .field("width", &self.width)
-            .field("style", &self.style)
-            .field("color", &self.color())
-            .finish()
-    }
-}
-
-impl PartialEq for CssBorder {
-    fn eq(&self, other: &Self) -> bool {
-        self.width == other.width
-            && self.style == other.style
-            && parsed_color_options_equal(self.color.as_deref(), other.color.as_deref())
-    }
-}
-
-impl CssBorder {
-    #[must_use]
-    pub fn try_new(
-        width: Option<CssLength>,
-        style: Option<CssBorderStyle>,
-        color: Option<CssColor>,
-    ) -> Option<Self> {
-        let width = match width {
-            Some(value) => Some(crate::numeric::admit_pure_length(value)?),
-            None => None,
-        };
-        if width.is_none() && style.is_none() && color.is_none()
-            || width.as_ref().is_some_and(|width| !is_border_width(width))
-        {
-            None
-        } else {
-            Some(Self::new(width, style, color))
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn new(
-        width: Option<CssLength>,
-        style: Option<CssBorderStyle>,
-        color: Option<CssColor>,
-    ) -> Self {
-        Self::new_current(width, style, color.map(CssParsedColor::from_i01))
-    }
-
-    #[must_use]
-    pub(crate) fn new_current(
-        width: Option<CssLength>,
-        style: Option<CssBorderStyle>,
-        color: Option<CssParsedColor>,
-    ) -> Self {
-        Self {
-            width,
-            style,
-            color: color.map(Box::new),
-        }
-    }
-
-    #[must_use]
-    pub const fn width(&self) -> Option<&CssLength> {
-        self.width.as_ref()
-    }
-
-    #[must_use]
-    pub const fn style(&self) -> Option<CssBorderStyle> {
-        self.style
-    }
-
-    #[must_use]
-    pub const fn color(&self) -> Option<&CssColor> {
-        match self.color.as_ref() {
-            Some(color) => color.i01_subset(),
-            None => None,
-        }
-    }
-
-    /// Returns the exact authored current color in the shorthand, when present.
-    #[must_use]
-    pub const fn current_color(&self) -> Option<&CssAuthoredColor> {
-        match self.color.as_ref() {
-            Some(color) => Some(color.current()),
-            None => None,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssBorderStyles {
     pub top: CssBorderStyle,
@@ -7208,21 +7062,6 @@ impl CssCornerRadius {
     }
 }
 
-fn is_border_width(length: &CssLength) -> bool {
-    match length {
-        CssLength::Px(value) => value.value() >= 0.0,
-        CssLength::Dimension(length) => length.value() >= 0.0,
-        CssLength::Zero | CssLength::Thin | CssLength::Medium | CssLength::Thick => true,
-        CssLength::Calc(calc) => !calc.uses_percentage() && !calc_has_negative_component(calc),
-        CssLength::Percent(_)
-        | CssLength::Auto
-        | CssLength::MinContent
-        | CssLength::MaxContent
-        | CssLength::FitContent
-        | CssLength::Normal => false,
-    }
-}
-
 fn is_radius_length(length: &CssLength) -> bool {
     match length {
         CssLength::Px(value) | CssLength::Percent(value) => value.value() >= 0.0,
@@ -7272,25 +7111,13 @@ pub enum CssBoxShadow {
     Shadows(CssBoxShadowList),
 }
 
-impl CssBoxShadow {
-    pub(crate) fn has_exact_i01_projection(&self) -> bool {
-        match self {
-            Self::None => true,
-            Self::Shadows(shadows) => shadows
-                .shadows()
-                .iter()
-                .all(CssShadow::has_exact_i01_projection),
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssBoxShadowList {
     shadows: Vec<CssShadow>,
 }
 
 impl CssBoxShadowList {
-    pub(crate) fn new(shadows: Vec<CssShadow>) -> Option<Self> {
+    pub fn try_new(shadows: Vec<CssShadow>) -> Option<Self> {
         if shadows.is_empty() {
             None
         } else {
@@ -7304,39 +7131,14 @@ impl CssBoxShadowList {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssShadow {
     inset: bool,
     offset_x: CssLength,
     offset_y: CssLength,
     blur_radius: Option<CssLength>,
     spread_radius: Option<CssLength>,
-    color: Option<Box<CssParsedColor>>,
-}
-
-impl std::fmt::Debug for CssShadow {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("CssShadow")
-            .field("inset", &self.inset)
-            .field("offset_x", &self.offset_x)
-            .field("offset_y", &self.offset_y)
-            .field("blur_radius", &self.blur_radius)
-            .field("spread_radius", &self.spread_radius)
-            .field("color", &self.color())
-            .finish()
-    }
-}
-
-impl PartialEq for CssShadow {
-    fn eq(&self, other: &Self) -> bool {
-        self.inset == other.inset
-            && self.offset_x == other.offset_x
-            && self.offset_y == other.offset_y
-            && self.blur_radius == other.blur_radius
-            && self.spread_radius == other.spread_radius
-            && parsed_color_options_equal(self.color.as_deref(), other.color.as_deref())
-    }
+    color: Option<Box<CssColor>>,
 }
 
 impl CssShadow {
@@ -7382,7 +7184,6 @@ impl CssShadow {
         }
     }
 
-    #[must_use]
     pub(crate) fn new(
         inset: bool,
         offset_x: CssLength,
@@ -7390,25 +7191,6 @@ impl CssShadow {
         blur_radius: Option<CssLength>,
         spread_radius: Option<CssLength>,
         color: Option<CssColor>,
-    ) -> Self {
-        Self::new_current(
-            inset,
-            offset_x,
-            offset_y,
-            blur_radius,
-            spread_radius,
-            color.map(CssParsedColor::from_i01),
-        )
-    }
-
-    #[must_use]
-    pub(crate) fn new_current(
-        inset: bool,
-        offset_x: CssLength,
-        offset_y: CssLength,
-        blur_radius: Option<CssLength>,
-        spread_radius: Option<CssLength>,
-        color: Option<CssParsedColor>,
     ) -> Self {
         Self {
             inset,
@@ -7446,27 +7228,8 @@ impl CssShadow {
     }
 
     #[must_use]
-    pub const fn color(&self) -> Option<&CssColor> {
-        match self.color.as_ref() {
-            Some(color) => color.i01_subset(),
-            None => None,
-        }
-    }
-
-    /// Returns the exact authored current shadow color, when present.
-    #[must_use]
-    pub const fn current_color(&self) -> Option<&CssAuthoredColor> {
-        match self.color.as_ref() {
-            Some(color) => Some(color.current()),
-            None => None,
-        }
-    }
-
-    pub(crate) const fn has_exact_i01_projection(&self) -> bool {
-        match self.color.as_ref() {
-            Some(color) => color.i01_subset().is_some(),
-            None => true,
-        }
+    pub fn color(&self) -> Option<&CssColor> {
+        self.color.as_deref()
     }
 }
 
@@ -7799,23 +7562,6 @@ pub struct CssTransformArguments {
 }
 
 impl CssTransformArguments {
-    #[must_use]
-    pub(crate) const fn new(authored: CssAuthoredFunctionArguments) -> Self {
-        Self { authored }
-    }
-
-    #[must_use]
-    pub fn as_css(&self) -> &str {
-        self.authored.as_css()
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssFilterArguments {
-    authored: CssAuthoredFunctionArguments,
-}
-
-impl CssFilterArguments {
     #[must_use]
     pub(crate) const fn new(authored: CssAuthoredFunctionArguments) -> Self {
         Self { authored }
@@ -8331,13 +8077,13 @@ impl CssGradientLinePosition {
 /// One authored color stop in a gradient color-stop list.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssGradientColorStop {
-    color: CssAuthoredColor,
+    color: CssColor,
     position: Option<CssGradientLinePosition>,
 }
 
 impl CssGradientColorStop {
     #[must_use]
-    pub const fn color(&self) -> &CssAuthoredColor {
+    pub const fn color(&self) -> &CssColor {
         &self.color
     }
 
@@ -9030,7 +8776,7 @@ pub struct CssBackgroundLayer {
     repeat: Option<CssBackgroundRepeat>,
     attachment: Option<CssBackgroundAttachment>,
     boxes: Option<CssBackgroundLayerBoxes>,
-    color: Option<CssAuthoredColor>,
+    color: Option<CssColor>,
 }
 
 impl CssBackgroundLayer {
@@ -9042,7 +8788,7 @@ impl CssBackgroundLayer {
         repeat: Option<CssBackgroundRepeat>,
         attachment: Option<CssBackgroundAttachment>,
         boxes: Option<CssBackgroundLayerBoxes>,
-        color: Option<CssAuthoredColor>,
+        color: Option<CssColor>,
     ) -> Self {
         Self {
             image,
@@ -9093,18 +8839,8 @@ impl CssBackgroundLayer {
 
     /// Returns the authored color on the final layer, if present.
     #[must_use]
-    pub const fn color(&self) -> Option<&CssAuthoredColor> {
+    pub const fn color(&self) -> Option<&CssColor> {
         self.color.as_ref()
-    }
-
-    pub(crate) const fn has_only_color(&self) -> bool {
-        self.image.is_none()
-            && self.position.is_none()
-            && self.size.is_none()
-            && self.repeat.is_none()
-            && self.attachment.is_none()
-            && self.boxes.is_none()
-            && self.color.is_some()
     }
 }
 
@@ -9124,27 +8860,6 @@ impl CssBackground {
     #[must_use]
     pub fn layers(&self) -> &[CssBackgroundLayer] {
         &self.layers
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct CssParsedBackground {
-    current: CssBackground,
-    i01_subset: Option<CssColor>,
-}
-
-impl CssParsedBackground {
-    #[must_use]
-    pub(crate) const fn new(current: CssBackground, i01_subset: Option<CssColor>) -> Self {
-        Self {
-            current,
-            i01_subset,
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn into_parts(self) -> (CssBackground, Option<CssColor>) {
-        (self.current, self.i01_subset)
     }
 }
 
@@ -9445,30 +9160,11 @@ pub enum CssOutlineWidth {
     Length(CssLength),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssOutline {
     width: Option<CssOutlineWidth>,
     style: Option<CssOutlineStyle>,
-    color: Option<Box<CssParsedColor>>,
-}
-
-impl std::fmt::Debug for CssOutline {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("CssOutline")
-            .field("width", &self.width)
-            .field("style", &self.style)
-            .field("color", &self.color())
-            .finish()
-    }
-}
-
-impl PartialEq for CssOutline {
-    fn eq(&self, other: &Self) -> bool {
-        self.width == other.width
-            && self.style == other.style
-            && parsed_color_options_equal(self.color.as_deref(), other.color.as_deref())
-    }
+    color: Option<Box<CssColor>>,
 }
 
 impl CssOutline {
@@ -9485,20 +9181,10 @@ impl CssOutline {
         }
     }
 
-    #[must_use]
     pub(crate) fn new(
         width: Option<CssOutlineWidth>,
         style: Option<CssOutlineStyle>,
         color: Option<CssColor>,
-    ) -> Self {
-        Self::new_current(width, style, color.map(CssParsedColor::from_i01))
-    }
-
-    #[must_use]
-    pub(crate) fn new_current(
-        width: Option<CssOutlineWidth>,
-        style: Option<CssOutlineStyle>,
-        color: Option<CssParsedColor>,
     ) -> Self {
         Self {
             width,
@@ -9518,27 +9204,8 @@ impl CssOutline {
     }
 
     #[must_use]
-    pub const fn color(&self) -> Option<&CssColor> {
-        match self.color.as_ref() {
-            Some(color) => color.i01_subset(),
-            None => None,
-        }
-    }
-
-    /// Returns the exact authored current color in the shorthand, when present.
-    #[must_use]
-    pub const fn current_color(&self) -> Option<&CssAuthoredColor> {
-        match self.color.as_ref() {
-            Some(color) => Some(color.current()),
-            None => None,
-        }
-    }
-
-    pub(crate) const fn has_exact_i01_projection(&self) -> bool {
-        match self.color.as_ref() {
-            Some(color) => color.i01_subset().is_some(),
-            None => true,
-        }
+    pub fn color(&self) -> Option<&CssColor> {
+        self.color.as_deref()
     }
 }
 
@@ -10134,22 +9801,6 @@ impl CssScaleValues {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssFilterFunction {
-    Blur(CssFilterArguments),
-    Brightness(CssFilterArguments),
-    Contrast(CssFilterArguments),
-    DropShadow(CssFilterArguments),
-    Grayscale(CssFilterArguments),
-    HueRotate(CssFilterArguments),
-    Invert(CssFilterArguments),
-    Opacity(CssFilterArguments),
-    Saturate(CssFilterArguments),
-    Sepia(CssFilterArguments),
-    Url(CssUrl),
-}
-
 /// A checked authored non-negative filter `<number>`.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
@@ -10210,33 +9861,12 @@ pub enum CssFilterAngle {
 }
 
 /// A filter `drop-shadow()` value, distinct from a box shadow.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssDropShadow {
     offset_x: CssLength,
     offset_y: CssLength,
     blur_radius: Option<CssLength>,
-    color: Option<Box<CssParsedColor>>,
-}
-
-impl std::fmt::Debug for CssDropShadow {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("CssDropShadow")
-            .field("offset_x", &self.offset_x)
-            .field("offset_y", &self.offset_y)
-            .field("blur_radius", &self.blur_radius)
-            .field("color", &self.color())
-            .finish()
-    }
-}
-
-impl PartialEq for CssDropShadow {
-    fn eq(&self, other: &Self) -> bool {
-        self.offset_x == other.offset_x
-            && self.offset_y == other.offset_y
-            && self.blur_radius == other.blur_radius
-            && parsed_color_options_equal(self.color.as_deref(), other.color.as_deref())
-    }
+    color: Option<Box<CssColor>>,
 }
 
 impl CssDropShadow {
@@ -10265,7 +9895,7 @@ impl CssDropShadow {
                 offset_x,
                 offset_y,
                 blur_radius,
-                color: color.map(CssParsedColor::from_i01).map(Box::new),
+                color: color.map(Box::new),
             })
         }
     }
@@ -10286,56 +9916,15 @@ impl CssDropShadow {
     }
 
     #[must_use]
-    pub const fn color(&self) -> Option<&CssColor> {
-        match self.color.as_ref() {
-            Some(color) => color.i01_subset(),
-            None => None,
-        }
-    }
-
-    /// Returns the exact authored current drop-shadow color, when present.
-    #[must_use]
-    pub const fn current_color(&self) -> Option<&CssAuthoredColor> {
-        match self.color.as_ref() {
-            Some(color) => Some(color.current()),
-            None => None,
-        }
-    }
-
-    pub(crate) fn try_new_current(
-        offset_x: CssLength,
-        offset_y: CssLength,
-        blur_radius: Option<CssLength>,
-        color: Option<CssParsedColor>,
-    ) -> Option<Self> {
-        let offset_x = crate::numeric::admit_pure_length(offset_x)?;
-        let offset_y = crate::numeric::admit_pure_length(offset_y)?;
-        let blur_radius = match blur_radius {
-            Some(value) => Some(crate::numeric::admit_pure_length(value)?),
-            None => None,
-        };
-        if !is_shadow_length(&offset_x)
-            || !is_shadow_length(&offset_y)
-            || blur_radius
-                .as_ref()
-                .is_some_and(|blur| !is_shadow_length(blur) || length_has_negative_component(blur))
-        {
-            None
-        } else {
-            Some(Self {
-                offset_x,
-                offset_y,
-                blur_radius,
-                color: color.map(Box::new),
-            })
-        }
+    pub fn color(&self) -> Option<&CssColor> {
+        self.color.as_deref()
     }
 }
 
 /// A parser-produced authored filter function with an exact typed payload.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub enum CssFilterFunctionValue {
+pub enum CssFilterFunction {
     Blur(CssFilterBlur),
     Brightness(CssFilterAmount),
     Contrast(CssFilterAmount),
@@ -10349,49 +9938,8 @@ pub enum CssFilterFunctionValue {
     Url(CssUrl),
 }
 
-/// A non-empty ordered list of current authored filter functions.
+/// A non-empty ordered list of authored filter functions.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssFilterFunctionValueList {
-    functions: Vec<CssFilterFunctionValue>,
-}
-
-impl CssFilterFunctionValueList {
-    #[must_use]
-    pub fn try_new(functions: Vec<CssFilterFunctionValue>) -> Option<Self> {
-        (!functions.is_empty()).then_some(Self { functions })
-    }
-
-    #[must_use]
-    pub fn functions(&self) -> &[CssFilterFunctionValue] {
-        &self.functions
-    }
-}
-
-/// The current authored value of `filter` or `backdrop-filter`.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssFilterValue {
-    None,
-    Functions(CssFilterFunctionValueList),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct CssParsedFilter {
-    current: CssFilterValue,
-    legacy: Option<CssFilter>,
-}
-
-impl CssParsedFilter {
-    pub(crate) const fn new(current: CssFilterValue, legacy: Option<CssFilter>) -> Self {
-        Self { current, legacy }
-    }
-
-    pub(crate) fn into_parts(self) -> (CssFilterValue, Option<CssFilter>) {
-        (self.current, self.legacy)
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssFilterFunctionList {
     functions: Vec<CssFilterFunction>,
 }
@@ -10399,16 +9947,7 @@ pub struct CssFilterFunctionList {
 impl CssFilterFunctionList {
     #[must_use]
     pub fn try_new(functions: Vec<CssFilterFunction>) -> Option<Self> {
-        if functions.is_empty() {
-            None
-        } else {
-            Some(Self::new(functions))
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn new(functions: Vec<CssFilterFunction>) -> Self {
-        Self { functions }
+        (!functions.is_empty()).then_some(Self { functions })
     }
 
     #[must_use]
@@ -10417,7 +9956,8 @@ impl CssFilterFunctionList {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// The authored value of `filter` or `backdrop-filter`.
+#[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFilter {
     None,
@@ -11612,8 +11152,6 @@ pub(crate) fn calc_has_negative_component(calc: &CssCalcLength) -> bool {
 }
 
 mod color;
-pub(crate) use color::CssParsedColor;
-use color::parsed_color_options_equal;
 pub use color::*;
 
 mod selector;

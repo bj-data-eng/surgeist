@@ -2,7 +2,7 @@
 
 use surgeist_css::*;
 
-fn parsed_color(text: &str) -> CssAuthoredColor {
+fn parsed_color(text: &str) -> CssColor {
     let source = format!("border-top-color:{text}");
     let report = parse_style_attribute(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
@@ -14,7 +14,7 @@ fn parsed_color(text: &str) -> CssAuthoredColor {
     else {
         panic!("border-top-color has a checked color")
     };
-    value.current().clone()
+    value.value().clone()
 }
 
 fn error_kind(
@@ -176,12 +176,12 @@ fn parsed_current_agrees_with_checked_aggregates_without_losing_color_graphs_or_
     else {
         panic!("typed border-block-color")
     };
-    let rgb = value.current().start().rgb_value().unwrap();
-    assert!(matches!(rgb.alpha(), Some(CssAuthoredColorComponent::None)));
-    let lab = value.current().end().lab_value().unwrap();
+    let rgb = value.value().start().rgb_value().unwrap();
+    assert!(matches!(rgb.alpha(), Some(CssColorComponent::None)));
+    let lab = value.value().end().lab_value().unwrap();
     assert!(matches!(
         lab.lightness(),
-        CssAuthoredColorComponent::PercentageCalculation(_)
+        CssColorComponent::PercentageCalculation(_)
     ));
     assert_eq!(declaration.importance(), CssImportance::Important);
     let CssValueOrigin::Parsed(origin) = declaration.value_components().items()[0].origin() else {
@@ -204,7 +204,7 @@ fn parsed_current_agrees_with_checked_aggregates_without_losing_color_graphs_or_
         panic!("typed border-inline-color")
     };
     assert_eq!(
-        value.current(),
+        value.value(),
         &CssBorderColorPair::new(parsed_color("red"), Some(parsed_color("#12abef")))
     );
 
@@ -221,10 +221,9 @@ fn parsed_current_agrees_with_checked_aggregates_without_losing_color_graphs_or_
     };
     let colors = ["red", "blue", "transparent", "currentcolor"].map(parsed_color);
     assert_eq!(
-        value.current(),
+        value.value(),
         &CssBorderColorShorthand::try_new(CssBoxSideKind::Logical, colors.to_vec()).unwrap()
     );
-    assert!(value.i01_subset().is_none());
 }
 
 #[test]

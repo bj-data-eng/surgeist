@@ -81,7 +81,7 @@ pub(super) fn parse_box_shadow<'i, 't>(
     }
 
     Ok(CssBoxShadow::Shadows(
-        CssBoxShadowList::new(shadows).expect("box-shadow parser records at least one shadow"),
+        CssBoxShadowList::try_new(shadows).expect("box-shadow parser records at least one shadow"),
     ))
 }
 
@@ -140,36 +140,34 @@ pub(super) fn parse_shadow<'i, 't>(
     }
 
     match lengths.as_slice() {
-        [offset_x, offset_y] => Ok(CssShadow::new_current(
-            inset,
-            offset_x.clone(),
-            offset_y.clone(),
-            None,
-            None,
-            color,
-        )),
-        [offset_x, offset_y, blur] => Ok(CssShadow::new_current(
+        [offset_x, offset_y] => {
+            CssShadow::try_new(inset, offset_x.clone(), offset_y.clone(), None, None, color)
+        }
+        [offset_x, offset_y, blur] => CssShadow::try_new(
             inset,
             offset_x.clone(),
             offset_y.clone(),
             Some(blur.clone()),
             None,
             color,
-        )),
-        [offset_x, offset_y, blur, spread] => Ok(CssShadow::new_current(
+        ),
+        [offset_x, offset_y, blur, spread] => CssShadow::try_new(
             inset,
             offset_x.clone(),
             offset_y.clone(),
             Some(blur.clone()),
             Some(spread.clone()),
             color,
-        )),
-        _ => Err(unsupported_value(
+        ),
+        _ => None,
+    }
+    .ok_or_else(|| {
+        unsupported_value(
             input,
             None,
-            "box-shadow requires at least two offsets",
-        )),
-    }
+            "box-shadow requires two offsets and valid optional lengths",
+        )
+    })
 }
 
 pub(super) fn parse_drop_shadow<'i, 't>(
@@ -214,9 +212,9 @@ pub(super) fn parse_drop_shadow<'i, 't>(
 
     match lengths.as_slice() {
         [offset_x, offset_y] => {
-            CssDropShadow::try_new_current(offset_x.clone(), offset_y.clone(), None, color)
+            CssDropShadow::try_new(offset_x.clone(), offset_y.clone(), None, color)
         }
-        [offset_x, offset_y, blur] => CssDropShadow::try_new_current(
+        [offset_x, offset_y, blur] => CssDropShadow::try_new(
             offset_x.clone(),
             offset_y.clone(),
             Some(blur.clone()),

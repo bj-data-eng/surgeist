@@ -106,8 +106,8 @@ use border_style::*;
 use border_width::*;
 use box_model::*;
 use box_spacing::*;
+pub(crate) use color::numeric_relative_channel;
 use color::parse_color;
-pub(crate) use color::{adapt_legacy_relative_expression, numeric_relative_channel};
 use contain_intrinsic_size::*;
 use container_properties::*;
 #[cfg(test)]

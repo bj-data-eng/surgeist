@@ -2,10 +2,10 @@
 
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssAuthoredColor, CssBorder, CssBorderStyle, CssBoxSideKind, CssCalcLength,
-    CssComponentValueRef, CssLength, CssLengthPercentageCalculation, CssLengthUnit,
-    CssSpecifiedNonNegativeLength, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, CssValueOrigin, CssValueTokenRef,
+    CssBorderStyle, CssBoxSideKind, CssCalcLength, CssColor, CssComponentValueRef, CssLength,
+    CssLengthPercentageCalculation, CssLengthUnit, CssSpecifiedNonNegativeLength,
+    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits, CssValueOrigin,
+    CssValueTokenRef,
 };
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
@@ -240,17 +240,17 @@ impl CssBorderWidthShorthand {
 /// Specified serialization charges one aggregate node plus each present
 /// width, style, and color under one cumulative resource budget.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssBorderValue {
+pub struct CssBorder {
     width: Option<CssBorderWidth>,
     style: Option<CssBorderStyle>,
-    color: Option<CssAuthoredColor>,
+    color: Option<CssColor>,
 }
-impl CssBorderValue {
+impl CssBorder {
     #[must_use]
     pub fn try_new(
         width: Option<CssBorderWidth>,
         style: Option<CssBorderStyle>,
-        color: Option<CssAuthoredColor>,
+        color: Option<CssColor>,
     ) -> Option<Self> {
         (width.is_some() || style.is_some() || color.is_some()).then_some(Self {
             width,
@@ -264,8 +264,8 @@ impl CssBorderValue {
     pub const fn style(&self) -> Option<CssBorderStyle> {
         self.style
     }
-    /// Borrows the exact authored color. Unlike `CssBorder::color`, this is not an I01 projection.
-    pub const fn color(&self) -> Option<&CssAuthoredColor> {
+    /// Borrows the authored color without resolving it.
+    pub const fn color(&self) -> Option<&CssColor> {
         self.color.as_ref()
     }
     pub fn serialize_specified(&self) -> Result<String> {
@@ -295,37 +295,5 @@ impl CssBorderValue {
             }
             Ok(())
         })
-    }
-}
-
-pub(crate) struct CssParsedBorderValue {
-    current: CssBorderValue,
-    legacy: Option<CssBorder>,
-}
-impl CssParsedBorderValue {
-    pub(crate) fn new(
-        width: Option<CssBorderWidth>,
-        style: Option<CssBorderStyle>,
-        color: Option<crate::syntax::CssParsedColor>,
-    ) -> Self {
-        let legacy_width = match &width {
-            Some(value) => legacy_width(value).map(Some),
-            None => Some(None),
-        };
-        let legacy = if color
-            .as_ref()
-            .is_none_or(|value| value.i01_subset().is_some())
-        {
-            legacy_width.map(|width| CssBorder::new_current(width, style, color.clone()))
-        } else {
-            None
-        };
-        let current =
-            CssBorderValue::try_new(width, style, color.map(|value| value.into_parts().0))
-                .expect("parsed nonempty border");
-        Self { current, legacy }
-    }
-    pub(crate) fn into_parts(self) -> (CssBorderValue, Option<CssBorder>) {
-        (self.current, self.legacy)
     }
 }

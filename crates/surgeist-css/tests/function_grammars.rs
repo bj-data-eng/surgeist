@@ -1,13 +1,12 @@
 use surgeist_css::{
     CssBasicShapeValue, CssBoxShadow, CssCircleRadius, CssClipPathPropertyValue, CssClipPathValue,
     CssCubicBezier, CssDropShadow, CssEasing, CssEasingKeyword, CssEasingList, CssEasingNumber,
-    CssEllipseRadius, CssErrorCode, CssFilterAmount, CssFilterAngle, CssFilterBlur,
-    CssFilterFunctionValue, CssFilterFunctionValueList, CssFilterNumber, CssFilterPercentage,
-    CssFilterPropertyValue, CssFilterValue, CssFiniteNumber, CssHorizontalPosition,
-    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
-    CssPolygonFillRule, CssRadialExtent, CssRecoveryAction, CssShapeLength,
-    CssShapeLengthPercentage, CssStepCount, CssStepPosition, CssSteps, CssTransform,
-    CssTransformAngle, CssTransformFunctionKind, CssTransformFunctionValue,
+    CssEllipseRadius, CssErrorCode, CssFilter, CssFilterAmount, CssFilterAngle, CssFilterBlur,
+    CssFilterFunction, CssFilterFunctionList, CssFilterNumber, CssFilterPercentage,
+    CssFilterPropertyValue, CssFiniteNumber, CssHorizontalPosition, CssKnownDeclaredValueRef,
+    CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssPolygonFillRule, CssRadialExtent,
+    CssRecoveryAction, CssShapeLength, CssShapeLengthPercentage, CssStepCount, CssStepPosition,
+    CssSteps, CssTransform, CssTransformAngle, CssTransformFunctionKind, CssTransformFunctionValue,
     CssTransformFunctionValueList, CssTransformLength, CssTransformLengthPercentage,
     CssTransformNonNegativeLength, CssTransformNumber, CssTransformPercentage,
     CssTransformPerspective, CssTransformPropertyValue, CssTransformScaleComponent,
@@ -392,26 +391,25 @@ fn filter_function_list_preserves_typed_authored_order() {
         "drop-shadow(red -1px 2px calc(1px + 2px)) grayscale(.5) ",
         "hue-rotate(calc(1turn - 90deg)) invert(10%) opacity(.75) saturate(2) sepia(30%)"
     ));
-    let CssFilterValue::Functions(functions) = property.current() else {
+    let CssFilter::Functions(functions) = property.value() else {
         panic!("expected current filter function list");
     };
     assert!(matches!(
         functions.functions(),
         [
-            CssFilterFunctionValue::Url(_),
-            CssFilterFunctionValue::Blur(_),
-            CssFilterFunctionValue::Brightness(_),
-            CssFilterFunctionValue::Contrast(_),
-            CssFilterFunctionValue::DropShadow(_),
-            CssFilterFunctionValue::Grayscale(_),
-            CssFilterFunctionValue::HueRotate(_),
-            CssFilterFunctionValue::Invert(_),
-            CssFilterFunctionValue::Opacity(_),
-            CssFilterFunctionValue::Saturate(_),
-            CssFilterFunctionValue::Sepia(_),
+            CssFilterFunction::Url(_),
+            CssFilterFunction::Blur(_),
+            CssFilterFunction::Brightness(_),
+            CssFilterFunction::Contrast(_),
+            CssFilterFunction::DropShadow(_),
+            CssFilterFunction::Grayscale(_),
+            CssFilterFunction::HueRotate(_),
+            CssFilterFunction::Invert(_),
+            CssFilterFunction::Opacity(_),
+            CssFilterFunction::Saturate(_),
+            CssFilterFunction::Sepia(_),
         ]
     ));
-    assert!(property.i01_subset().is_none());
 }
 
 #[test]
@@ -420,32 +418,32 @@ fn every_filter_amount_function_has_exact_typed_domain() {
         "brightness() contrast(2) grayscale(25%) invert(calc(1 - .25)) ",
         "opacity(calc(50%)) saturate(3) sepia(75%)"
     ));
-    let CssFilterValue::Functions(functions) = property.current() else {
+    let CssFilter::Functions(functions) = property.value() else {
         panic!("expected current filter function list");
     };
     assert!(matches!(
         functions.functions()[0],
-        CssFilterFunctionValue::Brightness(CssFilterAmount::Default)
+        CssFilterFunction::Brightness(CssFilterAmount::Default)
     ));
     assert!(matches!(
         functions.functions()[1],
-        CssFilterFunctionValue::Contrast(CssFilterAmount::Number(
+        CssFilterFunction::Contrast(CssFilterAmount::Number(
             CssFilterNumber::Literal(value)
         )) if value.value() == 2.0
     ));
     assert!(matches!(
         functions.functions()[2],
-        CssFilterFunctionValue::Grayscale(CssFilterAmount::Percentage(
+        CssFilterFunction::Grayscale(CssFilterAmount::Percentage(
             CssFilterPercentage::Literal(value)
         )) if value.value() == 25.0
     ));
     assert!(matches!(
         functions.functions()[3],
-        CssFilterFunctionValue::Invert(CssFilterAmount::Number(CssFilterNumber::Calculation(_)))
+        CssFilterFunction::Invert(CssFilterAmount::Number(CssFilterNumber::Calculation(_)))
     ));
     assert!(matches!(
         functions.functions()[4],
-        CssFilterFunctionValue::Opacity(CssFilterAmount::Percentage(
+        CssFilterFunction::Opacity(CssFilterAmount::Percentage(
             CssFilterPercentage::Calculation(_)
         ))
     ));
@@ -466,19 +464,19 @@ fn blur_hue_rotate_and_drop_shadow_expose_distinct_typed_payloads() {
     let property = parsed_filter_property(
         "blur(calc(1px + 2em)) hue-rotate(-.25turn) drop-shadow(1px -2px blue)",
     );
-    let CssFilterValue::Functions(functions) = property.current() else {
+    let CssFilter::Functions(functions) = property.value() else {
         panic!("expected current filter function list");
     };
     assert!(matches!(
         &functions.functions()[0],
-        CssFilterFunctionValue::Blur(blur) if matches!(blur.length(), CssLength::Calc(_))
+        CssFilterFunction::Blur(blur) if matches!(blur.length(), CssLength::Calc(_))
     ));
     assert!(matches!(
         functions.functions()[1],
-        CssFilterFunctionValue::HueRotate(CssFilterAngle::Literal(value))
+        CssFilterFunction::HueRotate(CssFilterAngle::Literal(value))
             if value.value() == -0.25
     ));
-    let CssFilterFunctionValue::DropShadow(shadow) = &functions.functions()[2] else {
+    let CssFilterFunction::DropShadow(shadow) = &functions.functions()[2] else {
         panic!("expected typed drop-shadow");
     };
     assert!(matches!(shadow.offset_x(), CssLength::Px(value) if value.value() == 1.0));
@@ -502,7 +500,7 @@ fn box_shadow_accepts_component_orders_and_rejects_invalid_components() {
     else {
         panic!("expected box-shadow");
     };
-    let CssBoxShadow::Shadows(shadows) = value.current() else {
+    let CssBoxShadow::Shadows(shadows) = value.value() else {
         panic!("expected shadow list");
     };
     assert_eq!(shadows.shadows().len(), 3);
@@ -537,7 +535,7 @@ fn box_shadow_accepts_interleaved_color_between_offsets() {
     else {
         panic!("expected box-shadow");
     };
-    let CssBoxShadow::Shadows(shadows) = value.current() else {
+    let CssBoxShadow::Shadows(shadows) = value.value() else {
         panic!("expected shadow list");
     };
     let [shadow] = shadows.shadows() else {
@@ -545,11 +543,8 @@ fn box_shadow_accepts_interleaved_color_between_offsets() {
     };
     assert!(matches!(shadow.offset_x(), CssLength::Px(value) if value.value() == 1.0));
     assert!(matches!(shadow.offset_y(), CssLength::Px(value) if value.value() == 2.0));
-    let color = shadow
-        .color()
-        .and_then(|color| color.as_rgba())
-        .expect("red interleaved color");
-    assert_eq!((color.red(), color.green(), color.blue()), (255, 0, 0));
+    let color = shadow.color().expect("red interleaved color");
+    assert_eq!(color.named().unwrap().name(), "red");
 
     assert_eq!(
         surgeist_css::validate_style_attribute(source),
@@ -570,19 +565,16 @@ fn drop_shadow_accepts_interleaved_color_between_offsets() {
     else {
         panic!("expected filter");
     };
-    let CssFilterValue::Functions(functions) = value.current() else {
+    let CssFilter::Functions(functions) = value.value() else {
         panic!("expected current filter function list");
     };
-    let [CssFilterFunctionValue::DropShadow(shadow)] = functions.functions() else {
+    let [CssFilterFunction::DropShadow(shadow)] = functions.functions() else {
         panic!("expected one typed drop-shadow");
     };
     assert!(matches!(shadow.offset_x(), CssLength::Px(value) if value.value() == 1.0));
     assert!(matches!(shadow.offset_y(), CssLength::Px(value) if value.value() == 2.0));
-    let color = shadow
-        .color()
-        .and_then(|color| color.as_rgba())
-        .expect("red interleaved color");
-    assert_eq!((color.red(), color.green(), color.blue()), (255, 0, 0));
+    let color = shadow.color().expect("red interleaved color");
+    assert_eq!(color.named().unwrap().name(), "red");
 
     assert_eq!(
         surgeist_css::validate_style_attribute(source),
@@ -596,15 +588,22 @@ fn drop_shadow_retains_an_authored_color_mix_without_a_lossy_filter_projection()
         "drop-shadow(1px 2px ",
         "color-mix(in srgb, lab(calc(50% + 10%) 20 30), blue))",
     ));
-    let CssFilterValue::Functions(functions) = property.current() else {
+    let CssFilter::Functions(functions) = property.value() else {
         panic!("expected current filter function list");
     };
-    let [CssFilterFunctionValue::DropShadow(shadow)] = functions.functions() else {
+    let [CssFilterFunction::DropShadow(shadow)] = functions.functions() else {
         panic!("expected one typed drop-shadow");
     };
-    assert!(shadow.current_color().unwrap().color_mix_value().is_some());
-    assert!(shadow.color().is_none());
-    assert!(property.i01_subset().is_none());
+    assert_eq!(
+        shadow
+            .color()
+            .unwrap()
+            .color_mix_value()
+            .unwrap()
+            .components()
+            .len(),
+        2
+    );
 }
 
 #[test]
@@ -636,7 +635,7 @@ fn filter_checked_scalars_and_lists_reject_unrepresentable_states() {
         )
         .is_none()
     );
-    assert!(CssFilterFunctionValueList::try_new(Vec::new()).is_none());
+    assert!(CssFilterFunctionList::try_new(Vec::new()).is_none());
 }
 
 #[test]

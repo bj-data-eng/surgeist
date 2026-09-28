@@ -1,8 +1,8 @@
-//! Exact ordinary color token domains and conservative frozen-value proofs.
+//! Exact ordinary color token domains.
 use crate::{
-    CssAngleLiteral, CssAngleUnit, CssAuthoredColorComponent, CssAuthoredHue, CssComponentValue,
-    CssComponentValueError, CssComponentValueErrorKind, CssComponentValueRef, CssFiniteNumber,
-    CssNumericTokenRef, CssValueOrigin, CssValueTokenRef,
+    CssAngleUnit, CssColorComponent, CssColorHue, CssComponentValue, CssComponentValueError,
+    CssComponentValueErrorKind, CssComponentValueRef, CssNumericTokenRef, CssValueOrigin,
+    CssValueTokenRef,
 };
 
 macro_rules! literal {
@@ -160,53 +160,29 @@ impl std::error::Error for CssColorScalarError {
 
 pub(crate) fn component(
     value: CssComponentValue,
-) -> Result<CssAuthoredColorComponent, CssComponentValueError> {
+) -> Result<CssColorComponent, CssComponentValueError> {
     match value.view() {
-        CssComponentValueRef::Token(CssValueTokenRef::Number(_)) => {
-            let value = CssColorNumberLiteral::try_from_component(value)?;
-            Ok(
-                match crate::exact_decimal::exact_legacy_value(value.numeric().representation()) {
-                    Some(n) => CssAuthoredColorComponent::Number(
-                        CssFiniteNumber::try_new(n).expect("proved finite"),
-                    ),
-                    None => CssAuthoredColorComponent::ExactNumber(value),
-                },
-            )
-        }
-        CssComponentValueRef::Token(CssValueTokenRef::Percentage(_)) => {
-            let value = CssColorPercentageLiteral::try_from_component(value)?;
-            Ok(
-                match crate::exact_decimal::exact_legacy_value(value.numeric().representation()) {
-                    Some(n) => CssAuthoredColorComponent::Percentage(
-                        CssFiniteNumber::try_new(n).expect("proved finite"),
-                    ),
-                    None => CssAuthoredColorComponent::ExactPercentage(value),
-                },
-            )
-        }
+        CssComponentValueRef::Token(CssValueTokenRef::Number(_)) => Ok(CssColorComponent::Number(
+            CssColorNumberLiteral::try_from_component(value)?,
+        )),
+        CssComponentValueRef::Token(CssValueTokenRef::Percentage(_)) => Ok(
+            CssColorComponent::Percentage(CssColorPercentageLiteral::try_from_component(value)?),
+        ),
         _ => Err(invalid(&value)),
     }
 }
-pub(crate) fn hue(value: CssComponentValue) -> Result<CssAuthoredHue, CssComponentValueError> {
+pub(crate) fn hue(value: CssComponentValue) -> Result<CssColorHue, CssComponentValueError> {
     if matches!(
         value.view(),
         CssComponentValueRef::Token(CssValueTokenRef::Number(_))
     ) {
-        return component(value).map(|v| match v {
-            CssAuthoredColorComponent::Number(n) => CssAuthoredHue::Number(n),
-            CssAuthoredColorComponent::ExactNumber(n) => CssAuthoredHue::ExactNumber(n),
-            _ => unreachable!("number admission"),
-        });
+        return Ok(CssColorHue::Number(
+            CssColorNumberLiteral::try_from_component(value)?,
+        ));
     }
-    let value = CssColorAngleLiteral::try_from_component(value)?;
-    Ok(
-        match crate::exact_decimal::exact_legacy_value(value.numeric().representation()) {
-            Some(n) => CssAuthoredHue::Angle(
-                CssAngleLiteral::try_new(n, value.unit()).expect("proved finite angle"),
-            ),
-            None => CssAuthoredHue::ExactAngle(value),
-        },
-    )
+    Ok(CssColorHue::Angle(
+        CssColorAngleLiteral::try_from_component(value)?,
+    ))
 }
 
 /// Formats a checked color coefficient without imposing opacity's ratio scale.
@@ -226,116 +202,6 @@ pub(crate) fn format_coefficient(
     let mut result = crate::specified_serialization::format_lexical_shift(text, shift, remaining)?;
     result.push_str(suffix);
     Ok(result)
-}
-
-pub(crate) fn channel_matches(
-    current: &CssAuthoredColorComponent,
-    candidate: Option<f32>,
-    percentage_numerator: u32,
-    percentage_denominator: u32,
-) -> bool {
-    match current {
-        CssAuthoredColorComponent::None => candidate.is_none(),
-        CssAuthoredColorComponent::Number(value) => candidate == Some(value.value()),
-        CssAuthoredColorComponent::Percentage(value) => candidate.is_some_and(|candidate| {
-            crate::exact_decimal::binary32_scaled_eq(
-                value.value(),
-                percentage_numerator,
-                percentage_denominator,
-                candidate,
-            )
-        }),
-        CssAuthoredColorComponent::ExactNumber(_)
-        | CssAuthoredColorComponent::ExactPercentage(_)
-        | CssAuthoredColorComponent::NumberCalculation(_)
-        | CssAuthoredColorComponent::PercentageCalculation(_) => false,
-    }
-}
-pub(crate) fn alpha_matches(
-    current: Option<&CssAuthoredColorComponent>,
-    candidate: Option<f32>,
-) -> bool {
-    current.map_or(candidate == Some(1.0), |current| {
-        channel_matches(current, candidate, 1, 100)
-    })
-}
-pub(crate) fn hue_matches(current: &CssAuthoredHue, candidate: Option<f32>) -> bool {
-    match current {
-        CssAuthoredHue::None => candidate.is_none(),
-        CssAuthoredHue::Number(value) => candidate == Some(value.value()),
-        CssAuthoredHue::Angle(value) => candidate.is_some_and(|candidate| match value.unit() {
-            CssAngleUnit::Degrees => candidate == value.value(),
-            CssAngleUnit::Gradians => {
-                crate::exact_decimal::binary32_scaled_eq(value.value(), 9, 10, candidate)
-            }
-            CssAngleUnit::Turns => {
-                crate::exact_decimal::binary32_scaled_eq(value.value(), 360, 1, candidate)
-            }
-            CssAngleUnit::Radians => value.value() == 0.0 && candidate == 0.0,
-        }),
-        CssAuthoredHue::ExactNumber(_)
-        | CssAuthoredHue::ExactAngle(_)
-        | CssAuthoredHue::NumberCalculation(_)
-        | CssAuthoredHue::AngleCalculation(_) => false,
-    }
-}
-pub(crate) fn relative_matches(
-    current: &crate::CssTypedRelativeColorExpression,
-    candidate: &crate::CssColorComponentExpression,
-) -> bool {
-    use crate::CssRelativeColorExpressionValue as Value;
-    if let Value::Calculation(value) = current.value() {
-        return value.authored().as_css() == candidate.authored().as_css();
-    }
-    let Ok(token) = CssComponentValue::try_token(candidate.authored().as_css()) else {
-        return false;
-    };
-    match (current.value(), token.view()) {
-        (Value::None, CssComponentValueRef::Token(CssValueTokenRef::Ident(name))) => {
-            name.eq_ignore_ascii_case("none")
-        }
-        (Value::Number(value), CssComponentValueRef::Token(CssValueTokenRef::Number(number)))
-        | (
-            Value::Percentage(value),
-            CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)),
-        ) => {
-            crate::exact_decimal::exact_legacy_value(number.representation()) == Some(value.value())
-        }
-        (
-            Value::Angle(value),
-            CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }),
-        ) => {
-            let expected = match value.unit() {
-                CssAngleUnit::Degrees => "deg",
-                CssAngleUnit::Gradians => "grad",
-                CssAngleUnit::Radians => "rad",
-                CssAngleUnit::Turns => "turn",
-            };
-            unit.eq_ignore_ascii_case(expected)
-                && crate::exact_decimal::exact_legacy_value(number.representation())
-                    == Some(value.value())
-        }
-        (Value::Channel(channel), CssComponentValueRef::Token(CssValueTokenRef::Ident(name))) => {
-            use crate::CssRelativeColorChannel::*;
-            let expected = match channel {
-                R => "r",
-                G => "g",
-                B => "b",
-                H => "h",
-                S => "s",
-                L => "l",
-                W => "w",
-                A => "a",
-                C => "c",
-                X => "x",
-                Y => "y",
-                Z => "z",
-                Alpha => "alpha",
-            };
-            name.eq_ignore_ascii_case(expected)
-        }
-        _ => false,
-    }
 }
 
 #[cfg(test)]
@@ -383,17 +249,5 @@ mod tests {
             format_coefficient("1e-47", 0, "", 49).unwrap(),
             format!("0.{}1", "0".repeat(46))
         );
-    }
-    #[test]
-    fn frozen_ratio_proofs_do_not_round_or_underflow() {
-        use crate::exact_decimal::binary32_scaled_eq as equal;
-        assert!(equal(25.0, 1, 100, 0.25));
-        assert!(equal(100.0, 1, 1, 100.0));
-        assert!(equal(20.0, 5, 4, 25.0));
-        assert!(!equal(100.0, 1, 250, 0.4));
-        assert!(!equal(f32::from_bits(1), 1, 100, 0.0));
-        let coefficient = f32::from_bits(0x4248_0001);
-        assert!(!equal(coefficient, 1, 100, coefficient / 100.0));
-        assert!(equal(-0.0, 1, 100, 0.0));
     }
 }

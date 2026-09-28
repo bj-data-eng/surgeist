@@ -100,10 +100,7 @@ pub(super) fn parse_column_rule<'i, 't>(
 ) -> Result<CssColumnRule, ParseError<'i, Error>> {
     let (width, style, color) =
         parse_exact_line_triple(input, numeric, "column-rule", "column-rule-width")?;
-    Ok(
-        CssColumnRule::try_new(width, style, color.map(|value| value.into_parts().0))
-            .expect("parsed nonempty column rule"),
-    )
+    Ok(CssColumnRule::try_new(width, style, color).expect("parsed nonempty column rule"))
 }
 
 pub(super) fn parse_column_span<'i, 't>(

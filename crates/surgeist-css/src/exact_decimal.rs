@@ -1999,42 +1999,6 @@ pub(crate) fn serialize_binary32(
     )
 }
 
-// Exact equality left * numerator / denominator == right, for finite binary32
-// operands and small fixed color-space bases. No floating-point arithmetic.
-pub(crate) fn binary32_scaled_eq(left: f32, numerator: u32, denominator: u32, right: f32) -> bool {
-    fn multiply(mut value: Decimal, factor: u32) -> Option<Decimal> {
-        if value.len == 0 || factor == 0 {
-            return Some(Decimal::zero());
-        }
-        let mut carry = 0_u64;
-        for digit in value.digits[..value.len].iter_mut().rev() {
-            let product = u64::from(*digit) * u64::from(factor) + carry;
-            *digit = (product % 10) as u8;
-            carry = product / 10;
-        }
-        while carry != 0 {
-            if value.len == DIGITS {
-                return None;
-            }
-            value.digits.copy_within(..value.len, 1);
-            value.digits[0] = (carry % 10) as u8;
-            value.len += 1;
-            carry /= 10;
-        }
-        while value.digits[value.len - 1] == 0 {
-            value.len -= 1;
-            value.exponent += 1;
-        }
-        Some(value)
-    }
-    left.is_finite()
-        && right.is_finite()
-        && denominator != 0
-        && multiply(Decimal::binary32(left), numerator)
-            .zip(multiply(Decimal::binary32(right), denominator))
-            .is_some_and(|(a, b)| a == b)
-}
-
 // Shared exact-fidelity proof for ordinary numeric consumers. The input must be
 // a checked CSS numeric representation, without a unit or percentage suffix.
 pub(crate) fn exact_legacy_value(text: &str) -> Option<f32> {

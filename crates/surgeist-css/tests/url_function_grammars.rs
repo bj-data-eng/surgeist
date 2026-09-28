@@ -8,11 +8,11 @@
 mod font_face_support;
 
 use surgeist_css::{
-    CssClipPathValue, CssContent, CssContentItem, CssCursor, CssCursorKeyword,
-    CssFilterFunctionValue, CssFilterValue, CssFontFaceSource, CssFontFormatHint, CssFontTechHint,
-    CssImageValue, CssImportTarget, CssImportance, CssKnownProperty, CssKnownPropertyValueRef,
-    CssListStyleImage, CssRecoveryAction, CssRule, CssUrlModifier, parse_sheet,
-    parse_style_attribute, validate_sheet, validate_style_attribute,
+    CssClipPathValue, CssContent, CssContentItem, CssCursor, CssCursorKeyword, CssFilter,
+    CssFilterFunction, CssFontFaceSource, CssFontFormatHint, CssFontTechHint, CssImageValue,
+    CssImportTarget, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssListStyleImage,
+    CssRecoveryAction, CssRule, CssUrlModifier, parse_sheet, parse_style_attribute, validate_sheet,
+    validate_style_attribute,
 };
 
 fn assert_url_payload(value: CssKnownPropertyValueRef<'_>, expected: &str) {
@@ -45,9 +45,9 @@ fn assert_url_payload(value: CssKnownPropertyValueRef<'_>, expected: &str) {
                 if matches!(items.items(), [CssContentItem::Url(url)] if url.as_str() == expected)
         )),
         CssKnownPropertyValueRef::Filter(value) => assert!(matches!(
-            value.current(),
-            CssFilterValue::Functions(functions)
-                if matches!(functions.functions(), [CssFilterFunctionValue::Url(url)] if url.as_str() == expected)
+            value.value(),
+            CssFilter::Functions(functions)
+                if matches!(functions.functions(), [CssFilterFunction::Url(url)] if url.as_str() == expected)
         )),
         CssKnownPropertyValueRef::ClipPath(value) => assert!(matches!(
             value.current(),

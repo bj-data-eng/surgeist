@@ -665,12 +665,41 @@ fn raw_property_corpus_obeys_selected_grammar_and_original_coordinates() {
                 let CssKnownPropertyValueRef::Color(value) = known.property_value().unwrap() else {
                     panic!("expected color: {id}");
                 };
-                let color = value.i01_subset().unwrap().as_rgba().unwrap();
-                assert_eq!([color.red(), color.green(), color.blue()], rgb, "{id}");
-                assert!(
-                    (color.alpha() - f32::from(alpha) / 255.0).abs() <= f32::EPSILON,
-                    "{id}"
-                );
+                let digits = value.value().hex_value().expect("hex color").digits();
+                let rgba = match digits.len() {
+                    3 | 4 => {
+                        let values: Vec<_> = digits
+                            .bytes()
+                            .map(|c| {
+                                let nibble = (c as char).to_digit(16).expect("hex digit") as u8;
+                                nibble * 17
+                            })
+                            .collect();
+                        [
+                            values[0],
+                            values[1],
+                            values[2],
+                            *values.get(3).unwrap_or(&255),
+                        ]
+                    }
+                    6 | 8 => {
+                        let values: Vec<_> = digits
+                            .as_bytes()
+                            .chunks_exact(2)
+                            .map(|pair| {
+                                u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap()
+                            })
+                            .collect();
+                        [
+                            values[0],
+                            values[1],
+                            values[2],
+                            *values.get(3).unwrap_or(&255),
+                        ]
+                    }
+                    _ => panic!("invalid decoded hex length: {id}"),
+                };
+                assert_eq!(rgba, [rgb[0], rgb[1], rgb[2], alpha], "{id}");
             }
             Url(expected) => {
                 let CssKnownPropertyValueRef::BackgroundImage(value) =

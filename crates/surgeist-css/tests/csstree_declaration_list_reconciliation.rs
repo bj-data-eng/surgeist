@@ -5,8 +5,7 @@
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, fs, path::Path};
 use surgeist_css::{
-    CssColor, CssDeclarationList, CssKnownPropertyValueRef, parse_style_attribute,
-    validate_style_attribute,
+    CssDeclarationList, CssKnownPropertyValueRef, parse_style_attribute, validate_style_attribute,
 };
 
 #[path = "support/digest.rs"]
@@ -31,21 +30,32 @@ fn snake_name(value: impl std::fmt::Debug) -> String {
     result
 }
 
-fn declarations(list: &CssDeclarationList) -> Value {
+fn expected_named_colors(id: &str) -> &'static [&'static str] {
+    match id {
+        "declarationList/nesting.json#/basic" | "declarationList/nesting.json#/nested @media" => {
+            &["blue"]
+        }
+        "declarationList/tolerant.json#/no colon after a property name" => &["red"],
+        _ => &[],
+    }
+}
+
+fn declarations(list: &CssDeclarationList, expected_names: &[&str]) -> Value {
+    assert_eq!(list.len(), expected_names.len());
     let declarations: Vec<_> = list
         .iter()
-        .map(|declaration| {
+        .zip(expected_names)
+        .map(|(declaration, expected_name)| {
             let Some(CssKnownPropertyValueRef::Color(value)) =
                 declaration.known().and_then(|known| known.property_value())
             else {
                 panic!("unexpected retained declaration: {declaration:?}");
             };
-            let Some(CssColor::Rgba(color)) = value.i01_subset() else {
-                panic!("expected independently specified RGBA color");
-            };
-            json!({"property": "color", "typed_value": {"kind": "rgba", "red": color.red(),
-            "green": color.green(), "blue": color.blue(), "alpha": color.alpha()},
-            "importance": snake_name(declaration.importance())})
+            assert_eq!(
+                value.value().named().expect("named color").name(),
+                *expected_name
+            );
+            json!({"property": "color", "importance": snake_name(declaration.importance())})
         })
         .collect();
     json!(declarations)
@@ -56,6 +66,7 @@ fn original_declaration_lists_preserve_raw_grammar_typed_values_and_exact_recove
     let mut failures = Vec::new();
     for row in expectations()["rows"].as_array().unwrap() {
         let input = text(row, "input");
+        let expected_names = expected_named_colors(text(row, "id"));
         let report = parse_style_attribute(input);
         let diagnostics: Vec<_> = report
             .diagnostics()
@@ -77,10 +88,19 @@ fn original_declaration_lists_preserve_raw_grammar_typed_values_and_exact_recove
                 "multiplicity": 1, "payload_relation": relation})
             })
             .collect();
-        let actual = json!({"declarations": declarations(report.syntax()),
+        let actual = json!({"declarations": declarations(report.syntax(), expected_names),
             "declaration_count": report.syntax().len(), "clean": report.is_clean(),
             "validation_accepts": validate_style_attribute(input).is_ok(), "diagnostics": diagnostics});
-        let expected = json!({"declarations": row["expected"]["ordered_declarations"],
+        // The pinned oracle's RGBA fields record the retired color projection.
+        // Keep its property/order/importance contract and assert the authored
+        // named branch directly against independent per-case expectations above.
+        let expected_declarations: Vec<_> = row["expected"]["ordered_declarations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| json!({"property": item["property"], "importance": item["importance"]}))
+            .collect();
+        let expected = json!({"declarations": expected_declarations,
             "declaration_count": row["expected"]["declaration_count"], "clean": row["expected"]["is_clean"],
             "validation_accepts": row["expected"]["validation_accepts"], "diagnostics": row["expected_raw_diagnostics"]});
         if actual != expected {

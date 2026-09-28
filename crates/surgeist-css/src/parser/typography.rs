@@ -32,7 +32,7 @@ pub(super) fn parse_caret_color<'i, 't>(
     {
         return Ok(CssCaretColor::Auto);
     }
-    let (color, _) = parse_color(input, numeric)?.into_parts();
+    let color = parse_color(input, numeric)?;
     Ok(CssCaretColor::Color(Box::new(color)))
 }
 
@@ -1054,9 +1054,7 @@ pub(super) fn parse_text_decoration<'i, 't>(
     if line.is_none() && color.is_none() && style.is_none() && thickness.is_none() {
         None
     } else {
-        Some(CssTextDecoration::new_current(
-            line, color, style, thickness,
-        ))
+        CssTextDecoration::try_new(line, color, style, thickness)
     }
     .ok_or_else(|| unsupported_value(input, None, "text-decoration shorthand is empty"))
 }

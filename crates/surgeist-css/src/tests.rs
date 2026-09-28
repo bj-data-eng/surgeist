@@ -60,6 +60,51 @@ macro_rules! face_value {
 }
 
 macro_rules! declaration_value {
+    ($input:expr, Color) => {
+        semantic_value!($input, Color)
+    };
+    ($input:expr, BackgroundColor) => {
+        semantic_value!($input, BackgroundColor)
+    };
+    ($input:expr, BorderColor) => {
+        semantic_value!($input, BorderColor)
+    };
+    ($input:expr, OutlineColor) => {
+        semantic_value!($input, OutlineColor)
+    };
+    ($input:expr, TextDecorationColor) => {
+        semantic_value!($input, TextDecorationColor)
+    };
+    ($input:expr, TextDecoration) => {
+        semantic_value!($input, TextDecoration)
+    };
+    ($input:expr, Outline) => {
+        semantic_value!($input, Outline)
+    };
+    ($input:expr, Filter) => {
+        semantic_value!($input, Filter)
+    };
+    ($input:expr, BackdropFilter) => {
+        semantic_value!($input, BackdropFilter)
+    };
+    ($input:expr, Border) => {
+        semantic_value!($input, Border)
+    };
+    ($input:expr, BorderTop) => {
+        semantic_value!($input, BorderTop)
+    };
+    ($input:expr, BorderRight) => {
+        semantic_value!($input, BorderRight)
+    };
+    ($input:expr, BorderBottom) => {
+        semantic_value!($input, BorderBottom)
+    };
+    ($input:expr, BorderLeft) => {
+        semantic_value!($input, BorderLeft)
+    };
+    ($input:expr, BoxShadow) => {
+        semantic_value!($input, BoxShadow)
+    };
     ($input:expr, $variant:ident) => {{
         let declaration = declaration($input, CssProperty::$variant);
         let value = declaration
@@ -70,6 +115,20 @@ macro_rules! declaration_value {
             panic!("property wrapper did not match requested property");
         };
         value.i01_subset().expect("I01 property payload").clone()
+    }};
+}
+
+macro_rules! semantic_value {
+    ($input:expr, $variant:ident) => {{
+        let declaration = declaration($input, CssProperty::$variant);
+        let value = declaration
+            .known()
+            .and_then(|known| known.property_value())
+            .expect("ordinary declaration value");
+        let CssKnownPropertyValueRef::$variant(value) = value else {
+            panic!("property wrapper did not match requested property");
+        };
+        value.value().clone()
     }};
 }
 
@@ -234,16 +293,6 @@ fn scope_rule(rule: &CssRule) -> &CssScopeRule {
 }
 
 #[test]
-fn cssparser_color_dependency_is_available_for_color_parsing() {
-    let mut input = cssparser::ParserInput::new("rgb(255 0 0 / 50%)");
-    let mut parser = cssparser::Parser::new(&mut input);
-    let parsed =
-        cssparser_color::parse_color_with(&cssparser_color::DefaultColorParser, &mut parser);
-
-    assert!(parsed.is_ok());
-}
-
-#[test]
 fn parses_authored_absolute_color_forms() {
     let cases = [
         ("red", "named"),
@@ -272,24 +321,27 @@ fn parses_authored_absolute_color_forms() {
         else {
             panic!("color property");
         };
-        let color = value.current();
+        let color = value.value();
         assert_eq!(color.kind_name(), expected_kind, "{css}");
     }
 }
 
 #[test]
 fn parses_css_system_colors_symbolically() {
-    let color = declaration_value!(".panel { color: CanvasText; }", Color);
-    assert_eq!(color, CssColor::System(CssSystemColor::CanvasText));
+    let color = semantic_value!(".panel { color: CanvasText; }", Color);
+    assert_eq!(color.system(), Some(CssSystemColor::CanvasText));
 
-    let color = declaration_value!(".panel { background-color: Canvas; }", BackgroundColor);
-    assert_eq!(color, CssColor::System(CssSystemColor::Canvas));
+    let color = semantic_value!(".panel { background-color: Canvas; }", BackgroundColor);
+    assert_eq!(color.system(), Some(CssSystemColor::Canvas));
 
-    let color = declaration_value!(".panel { border-color: AccentColor; }", BorderColor);
-    assert_eq!(color, CssColor::System(CssSystemColor::AccentColor));
+    let color = semantic_value!(".panel { border-color: AccentColor; }", BorderColor);
+    assert_eq!(
+        color.authored_values()[0].system(),
+        Some(CssSystemColor::AccentColor)
+    );
 
-    let color = declaration_value!(".panel { outline-color: HighlightText; }", OutlineColor);
-    assert_eq!(color, CssColor::System(CssSystemColor::HighlightText));
+    let color = semantic_value!(".panel { outline-color: HighlightText; }", OutlineColor);
+    assert_eq!(color.system(), Some(CssSystemColor::HighlightText));
 }
 
 #[test]
@@ -300,39 +352,64 @@ fn rejects_unknown_system_color_like_identifiers() {
 
 #[test]
 fn parses_color_mix_symbolically() {
-    let CssColor::ColorMix(mix) = declaration_value!(
+    let color = semantic_value!(
         ".panel { color: color-mix(in oklch, red 40%, blue); }",
         Color
-    ) else {
-        panic!("expected color-mix");
-    };
+    );
+    let mix = color.color_mix_value().expect("color-mix");
 
     assert_eq!(
-        mix.interpolation().space(),
+        mix.interpolation().unwrap().predefined().unwrap().space(),
         CssColorInterpolationSpace::Oklch
     );
-    assert_eq!(mix.interpolation().hue(), None);
-    assert_eq!(mix.left().percentage(), Some(40.0));
-    assert!(matches!(mix.left().color(), CssColor::Rgba(_)));
-    assert_eq!(mix.right().percentage(), None);
-    assert!(matches!(mix.right().color(), CssColor::Rgba(_)));
+    assert_eq!(
+        mix.interpolation().unwrap().predefined().unwrap().hue(),
+        None
+    );
+    assert_eq!(mix.components().len(), 2);
+    assert_eq!(
+        mix.components()[0]
+            .weight()
+            .unwrap()
+            .literal_value()
+            .unwrap()
+            .literal()
+            .numeric()
+            .representation(),
+        "40"
+    );
+    assert_eq!(mix.components()[0].color().named().unwrap().name(), "red");
+    assert!(mix.components()[1].weight().is_none());
+    assert_eq!(mix.components()[1].color().named().unwrap().name(), "blue");
 }
 
 #[test]
 fn parses_color_mix_with_hue_interpolation() {
-    let CssColor::ColorMix(mix) = declaration_value!(
+    let color = semantic_value!(
         ".panel { color: color-mix(in lch longer hue, red, blue 25%); }",
         Color
-    ) else {
-        panic!("expected color-mix");
-    };
+    );
+    let mix = color.color_mix_value().expect("color-mix");
 
-    assert_eq!(mix.interpolation().space(), CssColorInterpolationSpace::Lch);
     assert_eq!(
-        mix.interpolation().hue(),
+        mix.interpolation().unwrap().predefined().unwrap().space(),
+        CssColorInterpolationSpace::Lch
+    );
+    assert_eq!(
+        mix.interpolation().unwrap().predefined().unwrap().hue(),
         Some(CssHueInterpolationMethod::Longer)
     );
-    assert_eq!(mix.right().percentage(), Some(25.0));
+    assert_eq!(
+        mix.components()[1]
+            .weight()
+            .unwrap()
+            .literal_value()
+            .unwrap()
+            .literal()
+            .numeric()
+            .representation(),
+        "25"
+    );
 }
 
 #[test]
@@ -344,34 +421,45 @@ fn rejects_invalid_color_mix_forms_strictly() {
 
 #[test]
 fn parses_relative_colors_symbolically() {
-    let CssColor::Relative(relative) =
-        declaration_value!(".panel { color: rgb(from red r g b / alpha); }", Color)
-    else {
-        panic!("expected relative color");
-    };
+    let color = semantic_value!(".panel { color: rgb(from red r g b / alpha); }", Color);
+    let relative = color.relative_value().expect("relative color");
 
     assert_eq!(relative.function(), &CssRelativeColorFunction::Rgb);
-    assert!(matches!(relative.source(), CssColor::Rgba(_)));
-    assert_eq!(relative.components().len(), 3);
-    assert_eq!(relative.components()[0].authored().as_css(), "r");
-    assert_eq!(relative.alpha().unwrap().authored().as_css(), "alpha");
+    assert_eq!(relative.source().named().unwrap().name(), "red");
+    assert_eq!(relative.channels().len(), 3);
+    assert!(matches!(
+        relative.channels()[0].value(),
+        CssRelativeColorExpressionValue::Channel(CssRelativeColorChannel::R)
+    ));
+    assert_eq!(
+        relative.channels()[0].result_domain(),
+        CssRelativeColorResultDomain::NumberPercentage
+    );
+    assert!(matches!(
+        relative.alpha().unwrap().value(),
+        CssRelativeColorExpressionValue::Channel(CssRelativeColorChannel::Alpha)
+    ));
+    assert_eq!(
+        relative.alpha().unwrap().result_domain(),
+        CssRelativeColorResultDomain::Alpha
+    );
 }
 
 #[test]
 fn parses_relative_oklch_with_component_expressions() {
-    let CssColor::Relative(relative) = declaration_value!(
-        ".panel { color: oklch(from red l c calc(h + 20deg) / 80%); }",
+    let color = semantic_value!(
+        ".panel { color: oklch(from red l c calc(h + 20) / 80%); }",
         Color
-    ) else {
-        panic!("expected relative color");
-    };
+    );
+    let relative = color.relative_value().expect("relative color");
 
     assert_eq!(relative.function(), &CssRelativeColorFunction::Oklch);
-    assert_eq!(relative.components().len(), 3);
-    assert_eq!(
-        relative.components()[2].authored().as_css(),
-        "calc(h + 20deg)"
-    );
+    assert_eq!(relative.channels().len(), 3);
+    let CssRelativeColorExpressionValue::Calculation(calculation) = relative.channels()[2].value()
+    else {
+        panic!("expected symbolic hue expression");
+    };
+    assert_eq!(calculation.authored().as_css(), "calc(h + 20)");
 }
 
 #[test]
@@ -387,10 +475,8 @@ fn rejects_invalid_relative_color_forms_strictly() {
 
 #[test]
 fn rgba_hex_alpha_preserves_channels() {
-    let color = declaration_value!(".panel { color: #11223344; }", Color);
-    let rgba = color.as_rgba().unwrap();
-    assert_eq!((rgba.red(), rgba.green(), rgba.blue()), (0x11, 0x22, 0x33));
-    assert!((rgba.alpha() - (0x44 as f32 / 255.0)).abs() < 0.0001);
+    let color = semantic_value!(".panel { color: #11223344; }", Color);
+    assert_eq!(color.hex_value().unwrap().digits(), "11223344");
 }
 
 #[test]
@@ -410,15 +496,14 @@ fn preserves_finite_css_color_coefficients_beyond_machine_range() {
         else {
             panic!("color property");
         };
-        assert!(value.i01_subset().is_none(), "{css}");
-        let color = value.current();
+        let color = value.value();
         let literal = if let Some(hsl) = color.hsl_value() {
-            let CssAuthoredHue::ExactNumber(literal) = hsl.hue() else {
+            let CssColorHue::Number(literal) = hsl.hue() else {
                 panic!("exact HSL hue");
             };
             literal
         } else if let Some(hwb) = color.hwb_value() {
-            let CssAuthoredHue::ExactNumber(literal) = hwb.hue() else {
+            let CssColorHue::Number(literal) = hwb.hue() else {
                 panic!("exact HWB hue");
             };
             literal
@@ -430,7 +515,7 @@ fn preserves_finite_css_color_coefficients_beyond_machine_range() {
             } else {
                 &color.predefined_value().unwrap().channels()[0]
             };
-            let CssAuthoredColorComponent::ExactNumber(literal) = channel else {
+            let CssColorComponent::Number(literal) = channel else {
                 panic!("exact color channel");
             };
             literal
@@ -1570,10 +1655,6 @@ fn single_declaration(input: &str) -> CssDeclaration {
     declaration.clone()
 }
 
-fn filter_arguments(css: &str) -> CssFilterArguments {
-    CssFilterArguments::new(CssAuthoredFunctionArguments::new(css))
-}
-
 fn basic_shape_arguments(css: &str) -> CssBasicShapeArguments {
     CssBasicShapeArguments::new(CssAuthoredFunctionArguments::new(css))
 }
@@ -1582,10 +1663,12 @@ fn basic_shape_arguments(css: &str) -> CssBasicShapeArguments {
 fn background_color_preserves_authored_property_identity() {
     let declaration = single_declaration(".panel { background-color: black; }");
     assert_eq!(declaration.property(), &CssProperty::BackgroundColor);
-    assert_eq!(
-        declaration_payload!(declaration, BackgroundColor),
-        CssColor::BLACK
-    );
+    let CssKnownPropertyValueRef::BackgroundColor(value) =
+        declaration.known().unwrap().property_value().unwrap()
+    else {
+        panic!("background color");
+    };
+    assert_eq!(value.value().named().unwrap().name(), "black");
 }
 
 #[test]
@@ -6217,111 +6300,48 @@ fn keyframes_and_authored_nesting_are_structurally_accessible() {
 }
 
 #[test]
-fn color_model_preserves_rgba_and_currentcolor() {
-    let rgba = CssRgbaColor::try_new(255, 128, 0, 0.5).unwrap();
-    assert_eq!(rgba.red(), 255);
-    assert_eq!(rgba.green(), 128);
-    assert_eq!(rgba.blue(), 0);
-    assert_eq!(rgba.alpha(), 0.5);
-    assert_eq!(CssColor::BLACK.as_rgba().unwrap().red(), 0);
-}
-
-#[test]
-fn color_model_rejects_invalid_rgba_alpha() {
-    assert_eq!(CssRgbaColor::try_new(0, 0, 0, -0.1), None);
-    assert_eq!(CssRgbaColor::try_new(0, 0, 0, 1.1), None);
-    assert_eq!(CssRgbaColor::try_new(0, 0, 0, f32::NAN), None);
-}
-
-#[test]
-fn color_function_model_preserves_color_space_and_components() {
-    let color = CssColorFunction::try_new(
-        CssPredefinedColorSpace::DisplayP3,
-        [Some(0.8), Some(0.2), Some(0.1)],
-        Some(0.9),
-    )
-    .unwrap();
-
-    assert_eq!(color.color_space(), CssPredefinedColorSpace::DisplayP3);
-    assert_eq!(color.components(), &[Some(0.8), Some(0.2), Some(0.1)]);
-    assert_eq!(color.alpha(), Some(0.9));
-}
-
-#[test]
-fn color_model_rejects_non_finite_components_and_invalid_alpha() {
+fn color_model_preserves_authored_hex_and_currentcolor() {
+    let hex = CssHexColor::try_new("ff800080").expect("eight hex digits");
+    let color = CssColor::from_hex(hex);
+    assert_eq!(color.hex_value().unwrap().digits(), "ff800080");
+    assert_eq!(color.to_specified_css().unwrap(), "rgba(255, 128, 0, 0.5)");
+    assert!(CssColor::current_color().is_current_color());
     assert_eq!(
-        CssHslColor::try_new(Some(f32::NAN), Some(1.0), Some(0.5), Some(1.0)),
-        None
-    );
-    assert_eq!(
-        CssHwbColor::try_new(Some(30.0), Some(f32::INFINITY), Some(0.2), Some(1.0)),
-        None
-    );
-    assert_eq!(
-        CssLabColor::try_new(Some(0.5), Some(0.1), Some(f32::NEG_INFINITY), Some(1.0)),
-        None
-    );
-    assert_eq!(
-        CssLchColor::try_new(Some(0.5), Some(0.1), Some(30.0), Some(1.1)),
-        None
-    );
-    assert_eq!(
-        CssColorFunction::try_new(
-            CssPredefinedColorSpace::DisplayP3,
-            [Some(0.8), Some(f32::NAN), Some(0.1)],
-            Some(0.9),
-        ),
-        None
-    );
-    assert_eq!(
-        CssColorFunction::try_new(
-            CssPredefinedColorSpace::DisplayP3,
-            [Some(0.8), Some(0.2), Some(0.1)],
-            Some(-0.1),
-        ),
-        None
+        CssColor::current_color().to_specified_css().unwrap(),
+        "currentcolor"
     );
 }
 
 #[test]
-fn symbolic_color_model_rejects_invalid_percentages_and_component_counts() {
-    assert_eq!(
-        CssColorMixComponent::try_new(CssColor::BLACK, Some(-0.1)),
-        None
-    );
-    assert_eq!(
-        CssColorMixComponent::try_new(CssColor::BLACK, Some(100.1)),
-        None
-    );
-    assert_eq!(
-        CssColorMixComponent::try_new(CssColor::BLACK, Some(f32::NAN)),
-        None
-    );
+fn color_model_rejects_invalid_hex_and_named_tokens() {
+    for invalid in ["ff", "fffff", "ggg", "#fff"] {
+        assert!(CssHexColor::try_new(invalid).is_none());
+    }
+    assert_eq!(CssNamedColor::try_new("ReD").unwrap().name(), "red");
+    assert!(CssNamedColor::try_new("MadeUpSystemColor").is_none());
+}
 
-    let component = || {
-        CssColorComponentExpression::new(
-            CssAuthoredDeclarationValue::try_new("r").unwrap(),
+#[test]
+fn symbolic_color_model_rejects_invalid_mix_weights_and_component_counts() {
+    for invalid in ["-0.1%", "100.1%", "1e999%"] {
+        assert!(
+            CssColorMixPercentage::try_from_component(
+                CssComponentValue::try_token(invalid).unwrap()
+            )
+            .is_err()
+        );
+    }
+    assert_eq!(
+        CssColorMix::try_new(None, Vec::new()),
+        Err(CssColorMixConstructionError::EmptyComponents)
+    );
+    assert_eq!(
+        CssCustomColor::try_new(
+            CssColorProfileName::try_new("--brand").unwrap(),
             Vec::new(),
-        )
-    };
-
-    assert_eq!(
-        CssRelativeColor::try_new(
-            CssRelativeColorFunction::Rgb,
-            CssColor::BLACK,
-            vec![component(), component()],
-            None,
+            None
         ),
-        None
-    );
-    assert_eq!(
-        CssRelativeColor::try_new(
-            CssRelativeColorFunction::Color(CssPredefinedColorSpace::Srgb),
-            CssColor::BLACK,
-            vec![component(), component(), component(), component()],
-            None,
-        ),
-        None
+        Err(CssColorConstructionError::EmptyComponents)
     );
 }
 
@@ -8612,7 +8632,7 @@ fn parses_text_decoration_family() {
             ".panel { text-decoration-color: black; }",
             TextDecorationColor
         ),
-        CssColor::BLACK
+        CssColor::from_named(CssNamedColor::try_new("black").unwrap())
     );
     assert_eq!(
         declaration_value!(
@@ -8632,7 +8652,9 @@ fn parses_text_decoration_family() {
             Some(CssTextDecorationLine::new(vec![
                 CssTextDecorationLineComponent::Underline
             ])),
-            Some(CssColor::WHITE),
+            Some(CssColor::from_named(
+                CssNamedColor::try_new("white").unwrap()
+            )),
             Some(CssTextDecorationStyle::Dotted),
             Some(CssTextDecorationThickness::Length(
                 CssTextDecorationThicknessLength::new(CssLength::px(3.0))
@@ -8902,7 +8924,9 @@ fn parses_interaction_and_outline_properties_as_authored_syntax() {
         CssOutline::new(
             Some(CssOutlineWidth::Thick),
             Some(CssOutlineStyle::Border(CssBorderStyle::Dotted)),
-            Some(CssColor::WHITE),
+            Some(CssColor::from_named(
+                CssNamedColor::try_new("white").unwrap()
+            )),
         )
     );
     assert_eq!(
@@ -8933,13 +8957,20 @@ fn parses_transform_effect_and_mask_properties_as_authored_syntax() {
             CssPositionComponent::Vertical(CssVerticalPositionKeyword::Top),
         ])
     );
-    assert_eq!(
-        declaration_value!(".panel { filter: blur(4px) opacity(50%); }", Filter),
-        CssFilter::Functions(CssFilterFunctionList::new(vec![
-            CssFilterFunction::Blur(filter_arguments("4px")),
-            CssFilterFunction::Opacity(filter_arguments("50%")),
-        ]))
-    );
+    let CssFilter::Functions(filter) =
+        declaration_value!(".panel { filter: blur(4px) opacity(50%); }", Filter)
+    else {
+        panic!("filter functions");
+    };
+    assert_eq!(filter.functions().len(), 2);
+    let CssFilterFunction::Blur(blur) = &filter.functions()[0] else {
+        panic!("blur");
+    };
+    assert_eq!(blur.length(), &CssLength::px(4.0));
+    assert!(matches!(
+        filter.functions()[1],
+        CssFilterFunction::Opacity(CssFilterAmount::Percentage(_))
+    ));
     assert_eq!(
         declaration_value!(".panel { backdrop-filter: none; }", BackdropFilter),
         CssFilter::None
@@ -8969,9 +9000,6 @@ fn authored_transform_filter_and_basic_shape_arguments_preserve_css_with_family_
     fn transform_css(arguments: &CssTransformArguments) -> &str {
         arguments.as_css()
     }
-    fn filter_css(arguments: &CssFilterArguments) -> &str {
-        arguments.as_css()
-    }
     fn basic_shape_css(arguments: &CssBasicShapeArguments) -> &str {
         arguments.as_css()
     }
@@ -8992,10 +9020,13 @@ fn authored_transform_filter_and_basic_shape_arguments_preserve_css_with_family_
     else {
         panic!("expected filter functions");
     };
-    let CssFilterFunction::Opacity(arguments) = &functions.functions()[1] else {
+    let CssFilterFunction::Opacity(amount) = &functions.functions()[1] else {
         panic!("expected opacity filter");
     };
-    assert_eq!(filter_css(arguments), "50%");
+    assert!(matches!(
+        amount,
+        CssFilterAmount::Percentage(CssFilterPercentage::Literal(_))
+    ));
 
     let CssClipPath::BasicShape(CssBasicShape::Circle(arguments)) =
         declaration_value!(".panel { clip-path: circle(50% at center); }", ClipPath)
@@ -9436,18 +9467,22 @@ fn parses_border_style_and_border_shorthand_values() {
         declaration_value!(".panel { border-left-style: groove; }", BorderLeftStyle),
         CssBorderStyle::Groove
     );
+    let border = declaration_value!(".panel { border: solid 2px #fff; }", Border);
+    assert_eq!(border.style(), Some(CssBorderStyle::Solid));
     assert_eq!(
-        declaration_value!(".panel { border: solid 2px #fff; }", Border),
-        CssBorder::new(
-            Some(CssLength::px(2.0)),
-            Some(CssBorderStyle::Solid),
-            Some(CssColor::WHITE),
-        )
+        border.width().unwrap().serialize_specified().unwrap(),
+        "2px"
     );
+    assert_eq!(border.color().unwrap().hex_value().unwrap().digits(), "fff");
     assert_eq!(
-        declaration_value!(".panel { border-top: black dotted; }", BorderTop),
-        CssBorder::new(None, Some(CssBorderStyle::Dotted), Some(CssColor::BLACK),)
+        border.serialize_specified().unwrap(),
+        "2px solid rgb(255, 255, 255)"
     );
+
+    let top = declaration_value!(".panel { border-top: black dotted; }", BorderTop);
+    assert!(top.width().is_none());
+    assert_eq!(top.style(), Some(CssBorderStyle::Dotted));
+    assert_eq!(top.color().unwrap().named().unwrap().name(), "black");
 }
 
 #[test]
@@ -9497,7 +9532,9 @@ fn parses_box_shadow_none_and_shadow_lists() {
             CssLength::px(2.0),
             Some(CssLength::px(3.0)),
             Some(CssLength::px(4.0)),
-            Some(CssColor::BLACK),
+            Some(CssColor::from_named(
+                CssNamedColor::try_new("black").unwrap()
+            )),
         )
     );
     assert_eq!(
@@ -9508,7 +9545,7 @@ fn parses_box_shadow_none_and_shadow_lists() {
             CssLength::px(1.0),
             None,
             None,
-            Some(CssColor::WHITE),
+            Some(CssColor::from_hex(CssHexColor::try_new("fff").unwrap())),
         )
     );
 }
@@ -9516,40 +9553,36 @@ fn parses_box_shadow_none_and_shadow_lists() {
 #[test]
 fn checked_border_constructor_rejects_empty_shorthands() {
     assert_eq!(CssBorder::try_new(None, None, None), None);
-    assert_eq!(
-        CssBorder::try_new(None, Some(CssBorderStyle::Solid), None),
-        Some(CssBorder::new(None, Some(CssBorderStyle::Solid), None))
-    );
+    let border = CssBorder::try_new(None, Some(CssBorderStyle::Solid), None).unwrap();
+    assert!(border.width().is_none());
+    assert_eq!(border.style(), Some(CssBorderStyle::Solid));
+    assert!(border.color().is_none());
 }
 
 #[test]
-fn checked_border_constructor_rejects_parser_invalid_widths() {
-    for width in [
-        CssLength::Auto,
-        CssLength::percent(10.0),
-        CssLength::px(-1.0),
-        CssLength::MinContent,
-        CssLength::Normal,
-        CssLength::Calc(CssCalcLength::try_percent(10.0).unwrap()),
-        CssLength::Calc(CssCalcLength::try_px(-1.0).unwrap()),
-    ] {
-        assert_eq!(
-            CssBorder::try_new(Some(width), Some(CssBorderStyle::Solid), None),
-            None
+fn checked_border_width_rejects_negative_and_percentage_values() {
+    for invalid in ["-1px", "10%", "auto", "min-content"] {
+        assert!(
+            CssSpecifiedNonNegativeLength::try_from_component(
+                CssComponentValue::try_token(invalid).unwrap()
+            )
+            .is_err(),
+            "{invalid}"
         );
     }
-
+    let width = CssSpecifiedNonNegativeLength::try_from_component(
+        CssComponentValue::try_token("1px").unwrap(),
+    )
+    .unwrap();
+    let border = CssBorder::try_new(
+        Some(CssBorderWidth::Length(width)),
+        Some(CssBorderStyle::Solid),
+        None,
+    )
+    .unwrap();
     assert_eq!(
-        CssBorder::try_new(
-            Some(CssLength::Calc(CssCalcLength::try_px(1.0).unwrap())),
-            Some(CssBorderStyle::Solid),
-            None,
-        ),
-        Some(CssBorder::new(
-            Some(CssLength::Calc(CssCalcLength::try_px(1.0).unwrap())),
-            Some(CssBorderStyle::Solid),
-            None,
-        ))
+        border.width().unwrap().serialize_specified().unwrap(),
+        "1px"
     );
 }
 

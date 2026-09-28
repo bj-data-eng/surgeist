@@ -589,7 +589,7 @@ fn inherited_scope_keeps_scoped_declaration_and_selector_semantics_across_chunks
             else {
                 panic!("ordinary color")
             };
-            assert_eq!(value.current().named().unwrap().name(), name);
+            assert_eq!(value.value().named().unwrap().name(), name);
             assert_eq!(
                 declaration
                     .source()

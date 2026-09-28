@@ -10,7 +10,7 @@ fn expression(text: &str) -> CssProfileColorExpression {
     CssProfileColorExpression::try_from_components(components(text)).unwrap()
 }
 
-fn color(text: &str) -> CssAuthoredColor {
+fn color(text: &str) -> CssColor {
     let declaration = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::Color),
         components(text),
@@ -22,7 +22,7 @@ fn color(text: &str) -> CssAuthoredColor {
     else {
         panic!("color")
     };
-    value.current().clone()
+    value.value().clone()
 }
 
 fn profile() -> CssColorProfileName {
@@ -70,7 +70,7 @@ fn names_use_ident_rules_and_preserve_decoded_case() {
     );
     assert!(matches!(
         expression("NONE").view(),
-        CssProfileColorExpressionRef::Literal(CssAuthoredColorComponent::None)
+        CssProfileColorExpressionRef::Literal(CssColorComponent::None)
     ));
 }
 
@@ -170,28 +170,30 @@ fn checked_custom_lists_retain_exact_values_order_and_omission() {
     let literal =
         CssColorNumberLiteral::try_from_component(components("1e100").items()[0].clone()).unwrap();
     let channels = vec![
-        CssAuthoredColorComponent::ExactNumber(literal.clone()),
-        CssAuthoredColorComponent::None,
-        CssAuthoredColorComponent::Percentage(CssFiniteNumber::try_new(-20.0).unwrap()),
+        CssColorComponent::Number(literal.clone()),
+        CssColorComponent::None,
+        CssColorComponent::Percentage(
+            CssColorPercentageLiteral::try_from_component(components("-20%").items()[0].clone())
+                .unwrap(),
+        ),
     ];
-    let custom = CssAuthoredCustomColor::try_new(profile(), channels.clone(), None).unwrap();
+    let custom = CssCustomColor::try_new(profile(), channels.clone(), None).unwrap();
     assert_eq!(custom.profile(), &profile());
     assert_eq!(custom.channels(), channels);
     assert!(custom.alpha().is_none());
     assert_eq!(literal.numeric().representation(), "1e100");
-    let current = CssAuthoredColor::from_custom(custom.clone());
+    let current = CssColor::from_custom(custom.clone());
     assert_eq!(current.custom_value(), Some(&custom));
     assert_eq!(
         current.absolute_eligibility(),
         CssAbsoluteColorEligibility::ProfileDependent
     );
     assert_eq!(
-        CssAuthoredCustomColor::try_new(profile(), vec![], None).unwrap_err(),
-        CssAuthoredColorConstructionError::EmptyComponents
+        CssCustomColor::try_new(profile(), vec![], None).unwrap_err(),
+        CssColorConstructionError::EmptyComponents
     );
     let explicit_none =
-        CssAuthoredCustomColor::try_new(profile(), channels, Some(CssAuthoredColorComponent::None))
-            .unwrap();
+        CssCustomColor::try_new(profile(), channels, Some(CssColorComponent::None)).unwrap();
     assert_ne!(custom, explicit_none);
 }
 
@@ -203,7 +205,7 @@ fn relative_profile_alpha_is_an_unbound_name_and_not_transparency() {
         expression("none"),
         expression("pi"),
     ];
-    let custom = CssAuthoredRelativeCustomColor::try_new(
+    let custom = CssRelativeCustomColor::try_new(
         color("red"),
         profile(),
         channels.clone(),
@@ -217,12 +219,12 @@ fn relative_profile_alpha_is_an_unbound_name_and_not_transparency() {
         panic!("unbound alpha")
     };
     assert_eq!(alpha.as_str(), "alpha");
-    let current = CssAuthoredColor::from_relative_custom(custom.clone());
+    let current = CssColor::from_relative_custom(custom.clone());
     assert_eq!(current.relative_custom_value(), Some(&custom));
     assert!(current.relative_value().is_none());
     assert_eq!(
-        CssAuthoredRelativeCustomColor::try_new(color("red"), profile(), vec![], None).unwrap_err(),
-        CssAuthoredColorConstructionError::EmptyComponents
+        CssRelativeCustomColor::try_new(color("red"), profile(), vec![], None).unwrap_err(),
+        CssColorConstructionError::EmptyComponents
     );
 }
 
@@ -231,28 +233,21 @@ fn custom_and_relative_math_share_the_composed_depth_limit() {
     for depth in [254, 255, 256] {
         let text = format!("{}1{}", "calc(".repeat(depth), ")".repeat(depth));
         let calculation = CssNumberCalculation::try_from_components(components(&text)).unwrap();
-        let custom = CssAuthoredCustomColor::try_new(
+        let custom = CssCustomColor::try_new(
             profile(),
-            vec![CssAuthoredColorComponent::NumberCalculation(calculation)],
+            vec![CssColorComponent::NumberCalculation(calculation)],
             None,
         );
-        let relative = CssAuthoredRelativeCustomColor::try_new(
-            color("red"),
-            profile(),
-            vec![expression(&text)],
-            None,
-        );
+        let relative =
+            CssRelativeCustomColor::try_new(color("red"), profile(), vec![expression(&text)], None);
         if depth < 256 {
             assert!(custom.is_ok());
             assert!(relative.is_ok());
         } else {
-            assert_eq!(
-                custom.unwrap_err(),
-                CssAuthoredColorConstructionError::NestingLimit
-            );
+            assert_eq!(custom.unwrap_err(), CssColorConstructionError::NestingLimit);
             assert_eq!(
                 relative.unwrap_err(),
-                CssAuthoredColorConstructionError::NestingLimit
+                CssColorConstructionError::NestingLimit
             );
         }
     }
@@ -278,7 +273,7 @@ fn wide_custom_lists_keep_cumulative_token_and_byte_budgets() {
         panic!("color")
     };
     assert_eq!(
-        value.current().custom_value().unwrap().channels().len(),
+        value.value().custom_value().unwrap().channels().len(),
         width
     );
     for (tokens, bytes, expected) in [

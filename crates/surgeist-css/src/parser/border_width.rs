@@ -5,7 +5,6 @@ use cssparser::{ParseError, Parser, Token};
 use super::border_style::parse_border_style;
 use super::parse_color;
 use super::values::{CalculationRoot, is_math_function, parse_numeric_function};
-use crate::border_width::CssParsedBorderValue;
 use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
 use crate::numeric::NumericInputContext;
 use crate::{
@@ -16,7 +15,7 @@ use crate::{
 type ParsedLineTriple = (
     Option<CssBorderWidth>,
     Option<CssBorderStyle>,
-    Option<crate::syntax::CssParsedColor>,
+    Option<crate::CssColor>,
 );
 
 pub(super) fn parse_exact_border_width<'i, 't>(
@@ -119,12 +118,13 @@ pub(super) fn parse_exact_border_width_shorthand<'i, 't>(
         .ok_or_else(|| unsupported_value(input, None, "border-width requires one to four values"))
 }
 
-pub(super) fn parse_exact_border<'i, 't>(
+pub(super) fn parse_border<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssParsedBorderValue, ParseError<'i, Error>> {
+) -> Result<crate::CssBorder, ParseError<'i, Error>> {
     let (width, style, color) = parse_exact_line_triple(input, numeric, "border", "border width")?;
-    Ok(CssParsedBorderValue::new(width, style, color))
+    crate::CssBorder::try_new(width, style, color)
+        .ok_or_else(|| unsupported_value(input, None, "border requires a width, style, or color"))
 }
 
 pub(super) fn parse_exact_line_triple<'i, 't>(

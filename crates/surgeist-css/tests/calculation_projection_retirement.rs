@@ -49,7 +49,7 @@ fn calculated_polygon_keeps_current_shape_without_old_projection() {
 }
 
 #[test]
-fn calculated_blur_keeps_current_filter_without_old_projection() {
+fn calculated_blur_keeps_typed_filter_expression() {
     let report = parse_style_attribute("filter: blur(calc(1px + 2px))");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Filter(value) = report.syntax()[0]
@@ -60,11 +60,13 @@ fn calculated_blur_keeps_current_filter_without_old_projection() {
     else {
         panic!("filter retains its property identity")
     };
-    assert!(value.i01_subset().is_none());
-    assert!(matches!(
-        value.current(),
-        surgeist_css::CssFilterValue::Functions(_)
-    ));
+    let surgeist_css::CssFilter::Functions(functions) = value.value() else {
+        panic!("filter list");
+    };
+    assert!(
+        matches!(functions.functions(), [surgeist_css::CssFilterFunction::Blur(blur)]
+        if matches!(blur.length(), surgeist_css::CssLength::Calc(_)))
+    );
 }
 
 #[test]
@@ -93,7 +95,7 @@ fn literal_shapes_and_frozen_percentage_circle_keep_their_projections() {
 }
 
 #[test]
-fn literal_blur_keeps_current_filter_and_old_projection() {
+fn literal_blur_keeps_typed_filter_length() {
     let report = parse_style_attribute("filter: blur(3px)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Filter(value) = report.syntax()[0]
@@ -104,5 +106,11 @@ fn literal_blur_keeps_current_filter_and_old_projection() {
     else {
         panic!("filter retains its property identity")
     };
-    assert!(value.i01_subset().is_some());
+    let surgeist_css::CssFilter::Functions(functions) = value.value() else {
+        panic!("filter list");
+    };
+    assert!(
+        matches!(functions.functions(), [surgeist_css::CssFilterFunction::Blur(blur)]
+        if matches!(blur.length(), surgeist_css::CssLength::Px(length) if length.value() == 3.0))
+    );
 }

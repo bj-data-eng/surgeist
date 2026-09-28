@@ -94,7 +94,7 @@ fn opacity_has_noninherited_terminal_metadata_and_ordinary_initial() {
     let CssLonghandValueRef::Color(color) = color_initial.view() else {
         panic!("color initial payload")
     };
-    assert_eq!(color.system(), Some(CssAuthoredSystemColor::CanvasText));
+    assert_eq!(color.system(), Some(CssSystemColor::CanvasText));
 }
 
 #[test]

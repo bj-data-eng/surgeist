@@ -36,8 +36,8 @@ fn wrapper(declaration: &CssDeclaration) -> &CssColorPropertyValue {
     value
 }
 
-fn number<'a>(value: &'a CssAuthoredColorComponent, expected: &str) -> &'a CssColorNumberLiteral {
-    let CssAuthoredColorComponent::ExactNumber(value) = value else {
+fn number<'a>(value: &'a CssColorComponent, expected: &str) -> &'a CssColorNumberLiteral {
+    let CssColorComponent::Number(value) = value else {
         panic!("exact ordinary number")
     };
     assert_eq!(value.numeric().representation(), expected);
@@ -106,16 +106,16 @@ fn ordinary_huge_and_nonzero_underflow_channels_remain_exact() {
         parsed("rgb(1e100 1e-47 0.1 / 1e-100%)"),
         checked("rgb(1e100 1e-47 0.1 / 1e-100%)"),
     ] {
-        let rgb = wrapper(&declaration).current().rgb_value().unwrap();
+        let rgb = wrapper(&declaration).value().rgb_value().unwrap();
         for (value, expected) in rgb.channels().iter().zip(["1e100", "1e-47", "0.1"]) {
             let value = number(value, expected);
             assert!(matches!(value.origin(), CssValueOrigin::Parsed(_)));
         }
-        let CssAuthoredColorComponent::ExactPercentage(alpha) = rgb.alpha().unwrap() else {
+        let CssColorComponent::Percentage(alpha) = rgb.alpha().unwrap() else {
             panic!("exact percentage alpha")
         };
         assert_eq!(alpha.numeric().representation(), "1e-100");
-        assert!(wrapper(&declaration).i01_subset().is_none());
+        assert!(matches!(alpha.origin(), CssValueOrigin::Parsed(_)));
     }
 }
 
@@ -144,7 +144,7 @@ fn checked_mixed_origin_graph_keeps_the_actual_scalar_sources() {
     assert_eq!(declaration.value_components(), &values);
     assert!(declaration.position().is_none());
     assert!(declaration.parsed_value().is_none());
-    let rgb = wrapper(&declaration).current().rgb_value().unwrap();
+    let rgb = wrapper(&declaration).value().rgb_value().unwrap();
     assert_eq!(
         number(&rgb.channels()[0], "0.1").origin(),
         &CssValueOrigin::Programmatic
@@ -176,20 +176,20 @@ fn formerly_overflowing_relative_slots_keep_their_typed_environment() {
         ),
     ] {
         for declaration in [parsed(text), checked(text)] {
-            let relative = wrapper(&declaration).current().relative_value().unwrap();
+            let relative = wrapper(&declaration).value().relative_value().unwrap();
             assert_eq!(relative.environment(), environment);
             let expression = &relative.channels()[index];
             assert_eq!(expression.environment(), environment);
             let (numeric, origin) = match expression.value() {
-                CssRelativeColorExpressionValue::ExactNumber(value)
+                CssRelativeColorExpressionValue::Number(value)
                     if environment == CssRelativeColorEnvironment::Rgb && index == 0 =>
                 {
                     (value.numeric(), value.origin())
                 }
-                CssRelativeColorExpressionValue::ExactPercentage(value) if index == 1 => {
+                CssRelativeColorExpressionValue::Percentage(value) if index == 1 => {
                     (value.numeric(), value.origin())
                 }
-                CssRelativeColorExpressionValue::ExactAngle(value)
+                CssRelativeColorExpressionValue::Angle(value)
                     if environment == CssRelativeColorEnvironment::Hsl =>
                 {
                     assert_eq!(value.unit(), CssAngleUnit::Degrees);
@@ -203,7 +203,7 @@ fn formerly_overflowing_relative_slots_keep_their_typed_environment() {
             };
             assert_eq!(numeric.representation(), "1e999");
             assert!(matches!(origin, CssValueOrigin::Parsed(_)));
-            assert!(wrapper(&declaration).i01_subset().is_none());
+            assert_eq!(expression.origin(), origin);
         }
     }
     for text in ["hsl(from red 1e999% s l)", "rgb(from red 1e999deg g b)"] {
@@ -224,24 +224,22 @@ fn hue_and_percentage_coefficient_domains_survive_without_normalizing() {
         parsed("hsl(1e100turn 0.1% 25%)"),
         checked("hsl(1e100turn 0.1% 25%)"),
     ] {
-        let hsl = wrapper(&declaration).current().hsl_value().unwrap();
-        let CssAuthoredHue::ExactAngle(hue) = hsl.hue() else {
+        let hsl = wrapper(&declaration).value().hsl_value().unwrap();
+        let CssColorHue::Angle(hue) = hsl.hue() else {
             panic!("exact hue angle")
         };
         assert_eq!(hue.unit(), CssAngleUnit::Turns);
         assert_eq!(hue.numeric().representation(), "1e100");
-        let CssAuthoredColorComponent::ExactPercentage(value) = hsl.saturation() else {
+        let CssColorComponent::Percentage(value) = hsl.saturation() else {
             panic!("exact coefficient")
         };
         assert_eq!(value.numeric().representation(), "0.1");
         assert!(
-            matches!(hsl.lightness(), CssAuthoredColorComponent::Percentage(value) if value.value() == 25.0)
+            matches!(hsl.lightness(), CssColorComponent::Percentage(value) if value.numeric().representation() == "25")
         );
     }
     let declaration = parsed("hsl(0.1 25% 50%)");
-    let CssAuthoredHue::ExactNumber(hue) =
-        wrapper(&declaration).current().hsl_value().unwrap().hue()
-    else {
+    let CssColorHue::Number(hue) = wrapper(&declaration).value().hsl_value().unwrap().hue() else {
         panic!("unitless exact hue")
     };
     assert_eq!(hue.numeric().representation(), "0.1");
@@ -249,11 +247,15 @@ fn hue_and_percentage_coefficient_domains_survive_without_normalizing() {
 
 #[test]
 fn mix_weights_distinguish_exact_range_errors_from_component_errors() {
-    for text in ["0.1%", "1e-47%"] {
+    for text in ["0.1%", "1e-47%", "-0%", "25%", "100%"] {
         let supplied = component(text);
-        let weight = CssAuthoredColorMixPercentage::try_from_component(supplied.clone()).unwrap();
-        assert_eq!(weight.value(), None);
-        assert_eq!(weight.exact_literal().unwrap().component(), &supplied);
+        let weight = CssColorMixPercentage::try_from_component(supplied.clone()).unwrap();
+        assert_eq!(weight.literal().component(), &supplied);
+        assert_eq!(weight.literal().origin(), supplied.origin());
+        assert_eq!(
+            weight.literal().numeric().representation(),
+            text.trim_end_matches('%')
+        );
     }
     for text in [
         "-1e-100%".to_owned(),
@@ -261,76 +263,60 @@ fn mix_weights_distinguish_exact_range_errors_from_component_errors() {
         format!("100.{}1%", "0".repeat(256)),
     ] {
         let supplied = component(&text);
-        let error =
-            CssAuthoredColorMixPercentage::try_from_component(supplied.clone()).unwrap_err();
+        let error = CssColorMixPercentage::try_from_component(supplied.clone()).unwrap_err();
         assert_eq!(error.kind(), CssColorScalarErrorKind::OutOfRange);
         assert_eq!(error.origin(), supplied.origin());
         assert!(error.source().is_none());
     }
     let supplied = CssComponentValue::try_number("25").unwrap();
-    let error = CssAuthoredColorMixPercentage::try_from_component(supplied).unwrap_err();
+    let error = CssColorMixPercentage::try_from_component(supplied).unwrap_err();
     assert_eq!(error.kind(), CssColorScalarErrorKind::InvalidComponent);
     assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
     assert!(error.source().is_some());
-    for (text, expected) in [("-0%", 0.0), ("25%", 25.0), ("100%", 100.0)] {
-        let weight = CssAuthoredColorMixPercentage::try_from_component(component(text)).unwrap();
-        assert_eq!(weight.value(), Some(expected));
-        assert!(weight.exact_literal().is_none());
-    }
-    let supplied_binary32 = CssAuthoredColorMixPercentage::try_new(0.1).unwrap();
-    assert_eq!(supplied_binary32.value(), Some(0.1));
-    assert!(supplied_binary32.exact_literal().is_none());
-    assert!(CssAuthoredColorMixPercentage::try_new(f32::INFINITY).is_none());
 }
 
 #[test]
-fn finite_coefficients_still_refuse_lossy_frozen_percentage_round_trips() {
-    // These decimals denote exactly 0x42480001 and the smallest binary32 subnormal.
-    for (coefficient, expected) in [
-        ("50.000003814697265625", f32::from_bits(0x4248_0001)),
-        (
-            "1.40129846432481707092372958328991613128026194187651577175706828388979108268586060148663818836212158203125e-45",
-            f32::from_bits(1),
-        ),
+fn finite_high_precision_mix_weights_retain_original_decimal() {
+    for coefficient in [
+        "50.000003814697265625",
+        "1.40129846432481707092372958328991613128026194187651577175706828388979108268586060148663818836212158203125e-45",
     ] {
         let text = format!("color-mix(in srgb, red {coefficient}%, blue)");
         for declaration in [parsed(&text), checked(&text)] {
-            let mix = wrapper(&declaration).current().color_mix_value().unwrap();
+            let mix = wrapper(&declaration).value().color_mix_value().unwrap();
             let weight = mix.components()[0]
                 .weight()
                 .unwrap()
                 .literal_value()
                 .unwrap();
-            assert_eq!(weight.value(), Some(expected));
-            assert!(weight.exact_literal().is_none());
-            assert!(wrapper(&declaration).i01_subset().is_none());
+            assert_eq!(weight.literal().numeric().representation(), coefficient);
+            assert!(matches!(
+                weight.literal().origin(),
+                CssValueOrigin::Parsed(_)
+            ));
+            assert_eq!(mix.components()[0].color().named().unwrap().name(), "red");
+            assert_eq!(mix.components()[1].color().named().unwrap().name(), "blue");
         }
     }
 }
 
 #[test]
-fn projection_compares_the_actual_percentage_basis_in_each_slot() {
-    // Every coefficient is binary32. The frozen ratio or perceptual result is
-    // not exact: .3, .2, .04 and these scaled Lab/LCH coefficients
-    // cannot be represented by binary32.
+fn percentage_slots_retain_the_authored_coefficient_without_scaling() {
     for (text, expected) in [
-        ("hsl(0 30% 50%)", 30.0),
-        ("hwb(0 30% 25%)", 30.0),
-        ("color(srgb 30% 0% 100%)", 30.0),
-        ("rgb(0 0 0 / 30%)", 30.0),
-        ("oklab(50% 50% 0%)", 50.0),
-        ("oklch(50% 10% 0)", 10.0),
+        ("hsl(0 30% 50%)", "30"),
+        ("hwb(0 30% 25%)", "30"),
+        ("color(srgb 30% 0% 100%)", "30"),
+        ("rgb(0 0 0 / 30%)", "30"),
+        ("oklab(50% 50% 0%)", "50"),
+        ("oklch(50% 10% 0)", "10"),
         (
             "lab(50% 50.000003814697265625% 0%)",
-            f32::from_bits(0x4248_0001),
+            "50.000003814697265625",
         ),
-        (
-            "lch(50% 50.000003814697265625% 0)",
-            f32::from_bits(0x4248_0001),
-        ),
+        ("lch(50% 50.000003814697265625% 0)", "50.000003814697265625"),
     ] {
         for declaration in [parsed(text), checked(text)] {
-            let current = wrapper(&declaration).current();
+            let current = wrapper(&declaration).value();
             let slot = if let Some(value) = current.hsl_value() {
                 value.saturation()
             } else if let Some(value) = current.hwb_value() {
@@ -348,31 +334,24 @@ fn projection_compares_the_actual_percentage_basis_in_each_slot() {
             } else {
                 current.lch_value().unwrap().chroma()
             };
-            assert!(
-                matches!(slot, CssAuthoredColorComponent::Percentage(value) if value.value() == expected),
-                "finite current coefficient: {text}"
-            );
-            assert!(wrapper(&declaration).i01_subset().is_none(), "{text}");
+            let CssColorComponent::Percentage(value) = slot else {
+                panic!("percentage component: {text}")
+            };
+            assert_eq!(value.numeric().representation(), expected, "{text}");
+            assert!(matches!(value.origin(), CssValueOrigin::Parsed(_)));
         }
     }
-    for text in [
-        "hsl(0 25% 50%)",
-        "color(srgb 25% 0% 100%)",
-        "color-mix(in srgb, red 25%, blue 50%)",
-    ] {
-        assert!(wrapper(&parsed(text)).i01_subset().is_some(), "{text}");
-    }
-    // Relative expressions store retained token text, not the frozen absolute
-    // channel ratio. Its finite coefficient must remain 30, not 0.3 or 3000.
+    // A relative expression likewise retains its authored coefficient rather
+    // than applying a color-space percentage basis during parsing.
     let declaration = parsed("rgb(from red 30% g b)");
-    let relative = wrapper(&declaration).current().relative_value().unwrap();
+    let relative = wrapper(&declaration).value().relative_value().unwrap();
     assert!(
-        matches!(relative.channels()[0].value(), CssRelativeColorExpressionValue::Percentage(value) if value.value() == 30.0)
+        matches!(relative.channels()[0].value(), CssRelativeColorExpressionValue::Percentage(value) if value.numeric().representation() == "30")
     );
 }
 
 #[test]
-fn aggregate_projection_cannot_reparse_an_unrepresentable_child() {
+fn border_color_assignments_retain_exact_nested_colors() {
     for text in ["hsl(0 30% 50%)", "color-mix(in srgb, red 0.1%, blue)"] {
         let report = parse_style_attribute(&format!("border-color:{text}"));
         assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -384,8 +363,7 @@ fn aggregate_projection_cannot_reparse_an_unrepresentable_child() {
         else {
             panic!("border colors")
         };
-        assert!(value.i01_subset().is_none(), "{text}");
-        let colors = value.current();
+        let colors = value.value();
         assert_eq!(colors.kind(), CssBoxSideKind::Physical);
         assert_eq!(colors.authored_values().len(), 1);
         let [top, right, bottom, left] = colors.assigned_values();
@@ -393,19 +371,17 @@ fn aggregate_projection_cannot_reparse_an_unrepresentable_child() {
         assert_eq!(top, bottom);
         assert_eq!(top, left);
         if let Some(hsl) = top.hsl_value() {
-            assert!(
-                matches!(hsl.saturation(), CssAuthoredColorComponent::Percentage(value) if value.value() == 30.0)
-            );
+            let CssColorComponent::Percentage(saturation) = hsl.saturation() else {
+                panic!("authored HSL saturation")
+            };
+            assert_eq!(saturation.numeric().representation(), "30");
         } else {
             let weight = top.color_mix_value().unwrap().components()[0]
                 .weight()
                 .unwrap()
                 .literal_value()
                 .unwrap();
-            assert_eq!(
-                weight.exact_literal().unwrap().numeric().representation(),
-                "0.1"
-            );
+            assert_eq!(weight.literal().numeric().representation(), "0.1");
         }
     }
     let report = parse_style_attribute("border-color:hsl(0 25% 50%)");
@@ -418,18 +394,48 @@ fn aggregate_projection_cannot_reparse_an_unrepresentable_child() {
     else {
         panic!("border colors")
     };
-    assert!(value.i01_subset().is_some());
     assert!(
-        matches!(value.current().assigned_values()[0].hsl_value().unwrap().saturation(), CssAuthoredColorComponent::Percentage(value) if value.value() == 25.0)
+        matches!(value.value().assigned_values()[0].hsl_value().unwrap().saturation(), CssColorComponent::Percentage(value) if value.numeric().representation() == "25")
     );
+    let report = parse_style_attribute(
+        "border-color: red hsl(0 30% 50%) color-mix(in srgb, blue 0.1%, green) currentcolor !important",
+    );
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    assert_eq!(report.syntax()[0].importance(), CssImportance::Important);
+    let CssKnownPropertyValueRef::BorderColor(value) = report.syntax()[0]
+        .known()
+        .unwrap()
+        .property_value()
+        .unwrap()
+    else {
+        panic!("border colors")
+    };
+    let [top, right, bottom, left] = value.value().assigned_values();
+    assert_eq!(top.named().unwrap().name(), "red");
+    assert!(
+        matches!(right.hsl_value().unwrap().saturation(), CssColorComponent::Percentage(value)
+        if value.numeric().representation() == "30")
+    );
+    assert_eq!(
+        bottom.color_mix_value().unwrap().components()[0]
+            .weight()
+            .unwrap()
+            .literal_value()
+            .unwrap()
+            .literal()
+            .numeric()
+            .representation(),
+        "0.1"
+    );
+    assert!(left.is_current_color());
 }
 
 #[test]
 fn ordinary_exact_literals_and_math_leaves_keep_distinct_phases() {
     let declaration = parsed("rgb(1e-47 calc(1e-47) 0.100000001490116119384765625)");
-    let rgb = wrapper(&declaration).current().rgb_value().unwrap();
+    let rgb = wrapper(&declaration).value().rgb_value().unwrap();
     number(&rgb.channels()[0], "1e-47");
-    let CssAuthoredColorComponent::NumberCalculation(calculation) = &rgb.channels()[1] else {
+    let CssColorComponent::NumberCalculation(calculation) = &rgb.channels()[1] else {
         panic!("typed number calculation")
     };
     assert_eq!(calculation.result_type(), CssCalculationType::Number);
@@ -445,9 +451,7 @@ fn ordinary_exact_literals_and_math_leaves_keep_distinct_phases() {
             _ => panic!("one literal calculation leaf"),
         }
     }
-    assert!(
-        matches!(&rgb.channels()[2], CssAuthoredColorComponent::Number(value) if value.value() == f32::from_bits(0x3dcc_cccd))
-    );
+    number(&rgb.channels()[2], "0.100000001490116119384765625");
 }
 
 #[test]
@@ -461,7 +465,7 @@ fn decimal_proof_capacity_does_not_limit_exact_literal_admission() {
         let declaration = checked(&format!("rgb({text} 0 0)"));
         number(
             &wrapper(&declaration)
-                .current()
+                .value()
                 .rgb_value()
                 .unwrap()
                 .channels()[0],
@@ -482,7 +486,7 @@ fn decimal_proof_capacity_does_not_limit_exact_literal_admission() {
     .unwrap();
     number(
         &wrapper(&declaration)
-            .current()
+            .value()
             .rgb_value()
             .unwrap()
             .channels()[0],
@@ -491,41 +495,48 @@ fn decimal_proof_capacity_does_not_limit_exact_literal_admission() {
 }
 
 #[test]
-fn perceptual_percentage_projection_keeps_exact_scaled_frozen_values() {
-    // Color4 bases: Lab a=125, LCH C=150, Oklab L=1.
-    // Therefore 20% maps exactly to 25 or 30, and 50% Oklab L to 0.5.
+fn perceptual_families_retain_exact_authored_percentages() {
     for text in ["lab(50% 20% 0%)", "lch(50% 20% 0)", "oklab(50% 0% 0%)"] {
         for declaration in [parsed(text), checked(text)] {
-            let value = wrapper(&declaration);
-            match value
-                .i01_subset()
-                .expect("exact perceptual percentage projection")
-            {
-                CssColor::Lab(frozen) => {
-                    assert_eq!(frozen.lightness(), Some(50.0));
-                    assert_eq!(frozen.a(), Some(25.0));
-                    assert_eq!(frozen.b(), Some(0.0));
-                    assert!(
-                        matches!(value.current().lab_value().unwrap().a(), CssAuthoredColorComponent::Percentage(value) if value.value() == 20.0)
-                    );
-                }
-                CssColor::Lch(frozen) => {
-                    assert_eq!(frozen.lightness(), Some(50.0));
-                    assert_eq!(frozen.chroma(), Some(30.0));
-                    assert_eq!(frozen.hue(), Some(0.0));
-                    assert!(
-                        matches!(value.current().lch_value().unwrap().chroma(), CssAuthoredColorComponent::Percentage(value) if value.value() == 20.0)
-                    );
-                }
-                CssColor::Oklab(frozen) => {
-                    assert_eq!(frozen.lightness(), Some(0.5));
-                    assert_eq!(frozen.a(), Some(0.0));
-                    assert_eq!(frozen.b(), Some(0.0));
-                    assert!(
-                        matches!(value.current().oklab_value().unwrap().lightness(), CssAuthoredColorComponent::Percentage(value) if value.value() == 50.0)
-                    );
-                }
-                _ => panic!("same perceptual color family"),
+            let color = wrapper(&declaration).value();
+            if let Some(lab) = color.lab_value() {
+                let CssColorComponent::Percentage(lightness) = lab.lightness() else {
+                    panic!("Lab lightness percentage")
+                };
+                let CssColorComponent::Percentage(a) = lab.a() else {
+                    panic!("Lab a percentage")
+                };
+                let CssColorComponent::Percentage(b) = lab.b() else {
+                    panic!("Lab b percentage")
+                };
+                assert_eq!(lightness.numeric().representation(), "50");
+                assert_eq!(a.numeric().representation(), "20");
+                assert_eq!(b.numeric().representation(), "0");
+            } else if let Some(lch) = color.lch_value() {
+                let CssColorComponent::Percentage(lightness) = lch.lightness() else {
+                    panic!("LCH lightness percentage")
+                };
+                let CssColorComponent::Percentage(chroma) = lch.chroma() else {
+                    panic!("LCH chroma percentage")
+                };
+                assert_eq!(lightness.numeric().representation(), "50");
+                assert_eq!(chroma.numeric().representation(), "20");
+                assert!(matches!(lch.hue(), CssColorHue::Number(value)
+                    if value.numeric().representation() == "0"));
+            } else {
+                let oklab = color.oklab_value().expect("Oklab value");
+                let CssColorComponent::Percentage(lightness) = oklab.lightness() else {
+                    panic!("Oklab lightness percentage")
+                };
+                assert_eq!(lightness.numeric().representation(), "50");
+                let CssColorComponent::Percentage(a) = oklab.a() else {
+                    panic!("Oklab a percentage")
+                };
+                let CssColorComponent::Percentage(b) = oklab.b() else {
+                    panic!("Oklab b percentage")
+                };
+                assert_eq!(a.numeric().representation(), "0");
+                assert_eq!(b.numeric().representation(), "0");
             }
         }
     }
@@ -548,8 +559,7 @@ fn deep_mixed_color_graph_retains_exact_leaf_at_the_shared_depth_boundary() {
         let text = nested(depth);
         for declaration in [parsed(&text), checked(&text)] {
             let value = wrapper(&declaration);
-            assert!(value.i01_subset().is_none());
-            let mut current = value.current();
+            let mut current = value.value();
             let mut visited = 1;
             loop {
                 if let Some(mix) = current.color_mix_value() {

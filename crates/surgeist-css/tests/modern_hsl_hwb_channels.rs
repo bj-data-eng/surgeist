@@ -26,22 +26,22 @@ fn wrapper(declaration: &CssDeclaration) -> &CssColorPropertyValue {
     };
     value
 }
-fn color(declaration: &CssDeclaration) -> &CssAuthoredColor {
-    wrapper(declaration).current()
+fn color(declaration: &CssDeclaration) -> &CssColor {
+    wrapper(declaration).value()
 }
-fn number(component: &CssAuthoredColorComponent, expected: f32) {
+fn number(component: &CssColorComponent, expected: f32) {
     assert!(
-        matches!(component, CssAuthoredColorComponent::Number(value) if value.value() == expected)
+        matches!(component, CssColorComponent::Number(value) if value.numeric().representation() == format!("{expected}"))
     );
 }
-fn percentage(component: &CssAuthoredColorComponent, expected: f32) {
+fn percentage(component: &CssColorComponent, expected: f32) {
     assert!(
-        matches!(component, CssAuthoredColorComponent::Percentage(value) if value.value() == expected)
+        matches!(component, CssColorComponent::Percentage(value) if value.numeric().representation() == format!("{expected}"))
     );
 }
-fn slots(color: &CssAuthoredColor) -> (&CssAuthoredColorComponent, &CssAuthoredColorComponent) {
+fn slots(color: &CssColor) -> (&CssColorComponent, &CssColorComponent) {
     if let Some(hsl) = color.hsl_value() {
-        assert_eq!(hsl.syntax(), CssAuthoredColorSyntax::Modern);
+        assert_eq!(hsl.syntax(), CssColorSyntax::Modern);
         (hsl.saturation(), hsl.lightness())
     } else {
         let hwb = color.hwb_value().expect("HWB");
@@ -59,10 +59,6 @@ fn modern_number_channels_keep_number_payloads_and_source_origins() {
         ("hwb(0 -25 150)", -25.0, 150.0),
     ] {
         let declaration = parsed(text);
-        assert!(
-            wrapper(&declaration).i01_subset().is_none(),
-            "new number-channel form {text}"
-        );
         let (first, second) = slots(color(&declaration));
         number(first, first_expected);
         number(second, second_expected);
@@ -103,7 +99,6 @@ fn checked_mixed_channels_keep_original_parsed_and_programmatic_components() {
                     ),
                     programmatic
                 );
-                assert!(wrapper(&declaration).i01_subset().is_none());
                 let (first, second) = slots(color(&declaration));
                 if first_is_number {
                     number(first, 25.0);
@@ -147,10 +142,10 @@ fn modern_number_and_percentage_calculations_keep_distinct_types_and_leaves() {
             .expect("checked modern math channels"),
         ] {
             let (first, second) = slots(color(&declaration));
-            let CssAuthoredColorComponent::NumberCalculation(first) = first else {
+            let CssColorComponent::NumberCalculation(first) = first else {
                 panic!("Number calculation")
             };
-            let CssAuthoredColorComponent::PercentageCalculation(second) = second else {
+            let CssColorComponent::PercentageCalculation(second) = second else {
                 panic!("Percentage calculation")
             };
             assert_eq!(first.result_type(), CssCalculationType::Number);
@@ -174,7 +169,7 @@ fn border_color_aggregate_uses_the_same_modern_color_grammar() {
     else {
         panic!("border colors")
     };
-    let values = value.current();
+    let values = value.value();
     assert_eq!(values.kind(), CssBoxSideKind::Physical);
     assert_eq!(values.authored_values().len(), 2);
     let [top, right, bottom, left] = values.assigned_values();
@@ -222,18 +217,14 @@ fn legacy_hsl_stays_percentage_only_and_invalid_modern_domains_recover() {
 #[test]
 fn existing_legacy_percentages_and_modern_missing_components_stay_valid() {
     let declaration = parsed("hsla(0, 25%, 50%, .5)");
-    assert!(
-        wrapper(&declaration).i01_subset().is_some(),
-        "existing legacy percentage projection"
-    );
     let hsl = color(&declaration).hsl_value().unwrap();
-    assert_eq!(hsl.syntax(), CssAuthoredColorSyntax::Legacy);
+    assert_eq!(hsl.syntax(), CssColorSyntax::Legacy);
     percentage(hsl.saturation(), 25.0);
     percentage(hsl.lightness(), 50.0);
     for text in ["hsl(none none 50% / none)", "hwb(none none 50% / none)"] {
         let declaration = parsed(text);
         let (first, second) = slots(color(&declaration));
-        assert!(matches!(first, CssAuthoredColorComponent::None));
+        assert!(matches!(first, CssColorComponent::None));
         percentage(second, 50.0);
     }
 }
@@ -252,11 +243,12 @@ fn former_negative_modern_hsl_fixture_is_a_valid_mixed_domain_color() {
         .expect("checked former negative fixture"),
     ] {
         let hsl = color(&declaration).hsl_value().unwrap();
-        assert_eq!(hsl.syntax(), CssAuthoredColorSyntax::Modern);
-        assert!(matches!(hsl.hue(), CssAuthoredHue::Number(value) if value.value() == 20.0));
+        assert_eq!(hsl.syntax(), CssColorSyntax::Modern);
+        assert!(
+            matches!(hsl.hue(), CssColorHue::Number(value) if value.numeric().representation() == "20")
+        );
         number(hsl.saturation(), 30.0);
         percentage(hsl.lightness(), 40.0);
         assert!(hsl.alpha().is_none());
-        assert!(wrapper(&declaration).i01_subset().is_none());
     }
 }

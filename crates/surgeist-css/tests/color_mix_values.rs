@@ -33,8 +33,8 @@ fn wrapper(declaration: &CssDeclaration) -> &CssColorPropertyValue {
     value
 }
 
-fn color(text: &str) -> CssAuthoredColor {
-    wrapper(&checked(text)).current().clone()
+fn color(text: &str) -> CssColor {
+    wrapper(&checked(text)).value().clone()
 }
 
 fn component(text: &str) -> CssComponentValue {
@@ -49,7 +49,7 @@ fn ordered_nonempty_lists_retain_duplicates_weights_and_method_omission() {
         parsed("color-mix(25% red, green 50%, red)"),
         checked("color-mix(25% red, green 50%, red)"),
     ] {
-        let mix = wrapper(&declaration).current().color_mix_value().unwrap();
+        let mix = wrapper(&declaration).value().color_mix_value().unwrap();
         assert!(mix.interpolation().is_none());
         assert_eq!(mix.components().len(), 3);
         for (item, expected) in mix.components().iter().zip(["red", "green", "red"]) {
@@ -57,7 +57,15 @@ fn ordered_nonempty_lists_retain_duplicates_weights_and_method_omission() {
         }
         for (item, expected) in mix.components()[..2].iter().zip([25.0, 50.0]) {
             let weight = item.weight().unwrap();
-            assert_eq!(weight.literal_value().unwrap().value(), Some(expected));
+            assert_eq!(
+                weight
+                    .literal_value()
+                    .unwrap()
+                    .literal()
+                    .numeric()
+                    .representation(),
+                if expected == 25.0 { "25" } else { "50" }
+            );
             assert!(weight.calculation().is_none());
         }
         assert!(mix.components()[2].weight().is_none());
@@ -65,7 +73,7 @@ fn ordered_nonempty_lists_retain_duplicates_weights_and_method_omission() {
     let singleton = checked("color-mix(red)");
     assert_eq!(
         wrapper(&singleton)
-            .current()
+            .value()
             .color_mix_value()
             .unwrap()
             .components()
@@ -73,12 +81,12 @@ fn ordered_nonempty_lists_retain_duplicates_weights_and_method_omission() {
         1
     );
     let explicit = checked("color-mix(in oklab, red)");
-    let mix = wrapper(&explicit).current().color_mix_value().unwrap();
+    let mix = wrapper(&explicit).value().color_mix_value().unwrap();
     assert_eq!(
         mix.interpolation().unwrap().predefined().unwrap().space(),
         CssColorInterpolationSpace::Oklab
     );
-    assert_ne!(wrapper(&singleton).current(), wrapper(&explicit).current());
+    assert_ne!(wrapper(&singleton).value(), wrapper(&explicit).value());
 }
 
 #[test]
@@ -95,7 +103,7 @@ fn custom_profile_identity_decodes_escapes_without_folding_case() {
             checked(&format!("color-mix(in {spelling}, red)")),
         ] {
             let method = wrapper(&declaration)
-                .current()
+                .value()
                 .color_mix_value()
                 .unwrap()
                 .interpolation()
@@ -115,7 +123,7 @@ fn custom_profile_identity_decodes_escapes_without_folding_case() {
     for invalid in ["", "profile", "-profile", "--\0"] {
         assert!(CssColorProfileName::try_new(invalid).is_none(), "{invalid}");
     }
-    let custom = CssAuthoredColorInterpolation::custom(CssColorProfileName::try_new("--").unwrap());
+    let custom = CssColorInterpolation::custom(CssColorProfileName::try_new("--").unwrap());
     assert_eq!(custom.custom_profile().unwrap().as_str(), "--");
 }
 
@@ -130,22 +138,29 @@ fn bare_percentage_roots_cannot_masquerade_as_calculated_mix_weights() {
             .unwrap(),
         ] {
             let origin = root.components().items()[0].origin().clone();
-            let error = CssAuthoredColorMixWeight::try_calculation(root).unwrap_err();
+            let error = CssColorMixWeight::try_calculation(root).unwrap_err();
             assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
             assert_eq!(error.origin(), &origin);
         }
     }
     for text in ["-5%", "120%", "100.0000000000000000000001%"] {
         let supplied = component(text);
-        let error =
-            CssAuthoredColorMixPercentage::try_from_component(supplied.clone()).unwrap_err();
+        let error = CssColorMixPercentage::try_from_component(supplied.clone()).unwrap_err();
         assert_eq!(error.kind(), CssColorScalarErrorKind::OutOfRange);
         assert_eq!(error.origin(), supplied.origin());
     }
-    let literal = CssAuthoredColorMixWeight::literal(
-        CssAuthoredColorMixPercentage::try_from_component(component("25%")).unwrap(),
+    let literal = CssColorMixWeight::literal(
+        CssColorMixPercentage::try_from_component(component("25%")).unwrap(),
     );
-    assert_eq!(literal.literal_value().unwrap().value(), Some(25.0));
+    assert_eq!(
+        literal
+            .literal_value()
+            .unwrap()
+            .literal()
+            .numeric()
+            .representation(),
+        "25"
+    );
     assert!(literal.calculation().is_none());
 }
 
@@ -168,7 +183,7 @@ fn genuine_calculations_preserve_the_graph_origins_and_specified_range() {
         for graph in [parsed_graph, programmatic_graph] {
             let root = CssPercentageCalculation::try_from_components(graph.clone()).unwrap();
             let origin = root.origin().clone();
-            let weight = CssAuthoredColorMixWeight::try_calculation(root.clone()).unwrap();
+            let weight = CssColorMixWeight::try_calculation(root.clone()).unwrap();
             assert!(weight.literal_value().is_none());
             let retained = weight.calculation().unwrap();
             assert_eq!(retained, &root);
@@ -181,7 +196,7 @@ fn genuine_calculations_preserve_the_graph_origins_and_specified_range() {
             format!("color-mix({source} red)"),
         ] {
             for declaration in [parsed(&text), checked(&text)] {
-                let mix = wrapper(&declaration).current().color_mix_value().unwrap();
+                let mix = wrapper(&declaration).value().color_mix_value().unwrap();
                 let weight = mix.components()[0].weight().unwrap();
                 assert!(weight.literal_value().is_none());
                 let calculation = weight.calculation().unwrap();
@@ -193,7 +208,6 @@ fn genuine_calculations_preserve_the_graph_origins_and_specified_range() {
                     panic!("original math source")
                 };
                 assert!(origin.source().as_str().contains(&text));
-                assert!(wrapper(&declaration).i01_subset().is_none());
             }
         }
     }
@@ -202,7 +216,7 @@ fn genuine_calculations_preserve_the_graph_origins_and_specified_range() {
 #[test]
 fn checked_list_and_interpolation_constructors_enforce_their_domains() {
     assert_eq!(
-        CssAuthoredColorMix::try_from_components(None, vec![]).unwrap_err(),
+        CssColorMix::try_new(None, vec![]).unwrap_err(),
         CssColorMixConstructionError::EmptyComponents
     );
     for space in [
@@ -212,15 +226,7 @@ fn checked_list_and_interpolation_constructors_enforce_their_domains() {
     ] {
         let invalid =
             CssColorInterpolationMethod::new(space, Some(CssHueInterpolationMethod::Longer));
-        assert!(CssAuthoredColorInterpolation::try_predefined(invalid).is_none());
-        assert!(
-            CssAuthoredColorMix::try_new(
-                invalid,
-                CssAuthoredColorMixComponent::new(color("red"), None),
-                CssAuthoredColorMixComponent::new(color("blue"), None)
-            )
-            .is_none()
-        );
+        assert!(CssColorInterpolation::try_predefined(invalid).is_none());
     }
     for space in [
         CssColorInterpolationSpace::Hsl,
@@ -230,19 +236,16 @@ fn checked_list_and_interpolation_constructors_enforce_their_domains() {
     ] {
         let method =
             CssColorInterpolationMethod::new(space, Some(CssHueInterpolationMethod::Longer));
-        let interpolation = CssAuthoredColorInterpolation::try_predefined(method).unwrap();
+        let interpolation = CssColorInterpolation::try_predefined(method).unwrap();
         assert_eq!(interpolation.predefined(), Some(method));
         assert!(interpolation.custom_profile().is_none());
     }
-    let exact = CssAuthoredColorMixWeight::literal(
-        CssAuthoredColorMixPercentage::try_from_component(component("1e-100%")).unwrap(),
+    let exact = CssColorMixWeight::literal(
+        CssColorMixPercentage::try_from_component(component("1e-100%")).unwrap(),
     );
-    let mix = CssAuthoredColorMix::try_from_components(
+    let mix = CssColorMix::try_new(
         None,
-        vec![CssAuthoredColorMixComponent::with_weight(
-            color("red"),
-            Some(exact),
-        )],
+        vec![CssColorMixComponent::new(color("red"), Some(exact))],
     )
     .unwrap();
     let exact = mix.components()[0]
@@ -250,8 +253,7 @@ fn checked_list_and_interpolation_constructors_enforce_their_domains() {
         .unwrap()
         .literal_value()
         .unwrap()
-        .exact_literal()
-        .unwrap();
+        .literal();
     assert_eq!(exact.numeric().representation(), "1e-100");
 }
 
@@ -273,7 +275,7 @@ fn checked_mixed_origin_weights_keep_the_actual_leaf_source() {
     ])
     .unwrap();
     let declaration = checked_components(values);
-    let mix = wrapper(&declaration).current().color_mix_value().unwrap();
+    let mix = wrapper(&declaration).value().color_mix_value().unwrap();
     let calculation = mix.components()[0].weight().unwrap().calculation().unwrap();
     assert_eq!(calculation.origin(), &CssValueOrigin::Programmatic);
     let mut expression = calculation.expression();
@@ -298,13 +300,10 @@ fn enclosing_mix_counts_calculation_depth_in_its_composed_graph() {
         let calculation =
             CssPercentageCalculation::try_from_components(parse_component_values(&source).unwrap())
                 .unwrap();
-        let weight = CssAuthoredColorMixWeight::try_calculation(calculation).unwrap();
-        let result = CssAuthoredColorMix::try_from_components(
+        let weight = CssColorMixWeight::try_calculation(calculation).unwrap();
+        let result = CssColorMix::try_new(
             None,
-            vec![CssAuthoredColorMixComponent::with_weight(
-                color("red"),
-                Some(weight),
-            )],
+            vec![CssColorMixComponent::new(color("red"), Some(weight))],
         );
         if succeeds {
             assert_eq!(result.unwrap().components().len(), 1);
@@ -318,28 +317,42 @@ fn enclosing_mix_counts_calculation_depth_in_its_composed_graph() {
 }
 
 #[test]
-fn nested_projection_requires_every_list_child_and_weight_to_be_representable() {
-    for (inner, safe) in [
-        ("color-mix(in srgb, red 25%, blue 50%)", true),
-        ("color-mix(in srgb, red, green, blue)", false),
-        ("color-mix(in srgb, red 0.1%, blue)", false),
-        ("color-mix(in srgb, red calc(25%), blue)", false),
+fn nested_mix_retains_each_list_child_and_weight_kind() {
+    for (inner, expected_count, expected_weight) in [
+        ("color-mix(in srgb, red 25%, blue 50%)", 2, Some("25")),
+        ("color-mix(in srgb, red, green, blue)", 3, None),
+        ("color-mix(in srgb, red 0.1%, blue)", 2, Some("0.1")),
+        ("color-mix(in srgb, red calc(25%), blue)", 2, None),
     ] {
         let source = format!("color-mix(in srgb, red, rgb(from {inner} r g b))");
         for declaration in [parsed(&source), checked(&source)] {
-            let value = wrapper(&declaration);
-            assert_eq!(value.i01_subset().is_some(), safe, "{source}");
-            let nested = value.current().color_mix_value().unwrap().components()[1]
+            let nested = wrapper(&declaration)
+                .value()
+                .color_mix_value()
+                .unwrap()
+                .components()[1]
                 .color()
                 .relative_value()
                 .unwrap()
                 .source()
                 .color_mix_value()
                 .unwrap();
-            assert_eq!(
-                nested.components().len(),
-                if inner.contains("green") { 3 } else { 2 }
-            );
+            assert_eq!(nested.components().len(), expected_count);
+            let weight = nested.components()[0].weight();
+            match expected_weight {
+                Some(coefficient) => assert_eq!(
+                    weight
+                        .unwrap()
+                        .literal_value()
+                        .unwrap()
+                        .literal()
+                        .numeric()
+                        .representation(),
+                    coefficient
+                ),
+                None if inner.contains("calc") => assert!(weight.unwrap().calculation().is_some()),
+                None => assert!(weight.is_none()),
+            }
         }
     }
 }
@@ -362,8 +375,7 @@ fn mixed_nary_relative_graphs_obey_the_shared_boundary_and_drop_normally() {
         let text = nested_list(depth);
         for declaration in [parsed(&text), checked(&text)] {
             let value = wrapper(&declaration);
-            assert!(value.i01_subset().is_none());
-            let mut current = value.current();
+            let mut current = value.value();
             let mut visited = 1;
             loop {
                 if let Some(mix) = current.color_mix_value() {
@@ -377,8 +389,7 @@ fn mixed_nary_relative_graphs_obey_the_shared_boundary_and_drop_normally() {
                 visited += 1;
             }
             assert_eq!(visited, depth);
-            let CssAuthoredColorComponent::ExactNumber(leaf) =
-                &current.rgb_value().unwrap().channels()[0]
+            let CssColorComponent::Number(leaf) = &current.rgb_value().unwrap().channels()[0]
             else {
                 panic!("exact deepest leaf")
             };
@@ -403,11 +414,7 @@ fn mixed_nary_relative_graphs_obey_the_shared_boundary_and_drop_normally() {
     );
     let child = color(&nested_list(256));
     assert_eq!(
-        CssAuthoredColorMix::try_from_components(
-            None,
-            vec![CssAuthoredColorMixComponent::new(child, None)]
-        )
-        .unwrap_err(),
+        CssColorMix::try_new(None, vec![CssColorMixComponent::new(child, None)]).unwrap_err(),
         CssColorMixConstructionError::NestingLimit
     );
 }
@@ -421,7 +428,7 @@ fn moderately_wide_lists_charge_component_and_byte_budgets_cumulatively() {
     let limits = CssComponentValueLimits::try_new(256, count, source.len()).unwrap();
     let graph = parse_component_values_with_limits(&source, limits).unwrap();
     let declaration = checked_components(graph.clone());
-    let mix = wrapper(&declaration).current().color_mix_value().unwrap();
+    let mix = wrapper(&declaration).value().color_mix_value().unwrap();
     assert_eq!(mix.components().len(), width);
     assert!(
         mix.components()
@@ -467,11 +474,9 @@ fn enclosing_mix_counts_absolute_and_relative_channel_math_depth() {
             // The channel math is nested below the rgb function. The new mix
             // adds one more function: 254 + 1 + 1 = 256, 255 + 1 + 1 = 257.
             for declaration in [parsed(&text), checked(&text)] {
-                let child = wrapper(&declaration).current().clone();
-                let result = CssAuthoredColorMix::try_from_components(
-                    None,
-                    vec![CssAuthoredColorMixComponent::new(child, None)],
-                );
+                let child = wrapper(&declaration).value().clone();
+                let result =
+                    CssColorMix::try_new(None, vec![CssColorMixComponent::new(child, None)]);
                 if succeeds {
                     assert_eq!(result.unwrap().components().len(), 1);
                 } else {

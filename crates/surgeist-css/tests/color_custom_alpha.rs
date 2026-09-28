@@ -48,11 +48,24 @@ fn wrapper(declaration: &CssDeclaration) -> &CssColorPropertyValue {
     value
 }
 
-fn admits_current_only(text: &str) {
+fn admits_authored_color(text: &str) {
     for declaration in [parsed(text), checked(text)] {
         let value = wrapper(&declaration);
         assert_eq!(value.as_css(), text);
-        assert!(value.i01_subset().is_none(), "{text}");
+        let color = value.value();
+        if text.starts_with("color(from") {
+            assert!(color.relative_custom_value().is_some(), "{text}");
+        } else if text.starts_with("color(--") {
+            assert!(color.custom_value().is_some(), "{text}");
+        } else if text.starts_with("alpha(from") {
+            assert!(color.alpha_value().is_some(), "{text}");
+        } else if text.starts_with("color-mix(") {
+            assert!(color.color_mix_value().is_some(), "{text}");
+        } else if text.starts_with("rgb(from") {
+            assert!(color.relative_value().is_some(), "{text}");
+        } else {
+            panic!("unexpected color branch: {text}");
+        }
     }
 }
 
@@ -78,7 +91,7 @@ fn rejects(text: &str) {
 #[test]
 fn ordinary_custom_colors_accept_nonempty_variable_component_lists() {
     for text in ["color(--P 1)", "color(--P 1 2)", "color(--P 1 2 3 4 5)"] {
-        admits_current_only(text);
+        admits_authored_color(text);
     }
 }
 
@@ -89,20 +102,69 @@ fn ordinary_custom_colors_preserve_exact_literals_missing_values_and_math() {
         "color(--P 1e-100 0.1% / none)",
         "color(--P calc(2) calc(120%) / calc(-5%))",
     ] {
-        admits_current_only(text);
+        admits_authored_color(text);
+    }
+    for declaration in [
+        parsed("color(--P 1e100 none 20% -2)"),
+        checked("color(--P 1e100 none 20% -2)"),
+    ] {
+        let custom = wrapper(&declaration).value().custom_value().unwrap();
+        assert_eq!(custom.profile().as_str(), "--P");
+        assert_eq!(custom.channels().len(), 4);
+        let CssColorComponent::Number(large) = &custom.channels()[0] else {
+            panic!("large number")
+        };
+        assert_eq!(large.numeric().representation(), "1e100");
+        assert_eq!(large.component().origin(), large.origin());
+        assert!(matches!(custom.channels()[1], CssColorComponent::None));
+        let CssColorComponent::Percentage(pct) = &custom.channels()[2] else {
+            panic!("percentage")
+        };
+        assert_eq!(pct.numeric().representation(), "20");
+        let CssColorComponent::Number(negative) = &custom.channels()[3] else {
+            panic!("negative number")
+        };
+        assert_eq!(negative.numeric().representation(), "-2");
+        assert!(custom.alpha().is_none());
+    }
+    for declaration in [
+        parsed("color(--P 1e-100 0.1% / none)"),
+        checked("color(--P 1e-100 0.1% / none)"),
+    ] {
+        let custom = wrapper(&declaration).value().custom_value().unwrap();
+        let CssColorComponent::Number(tiny) = &custom.channels()[0] else {
+            panic!("tiny number")
+        };
+        assert_eq!(tiny.numeric().representation(), "1e-100");
+        let CssColorComponent::Percentage(pct) = &custom.channels()[1] else {
+            panic!("small percentage")
+        };
+        assert_eq!(pct.numeric().representation(), "0.1");
+        assert!(matches!(custom.alpha(), Some(CssColorComponent::None)));
     }
 }
 
 #[test]
 fn custom_profile_names_accept_case_escapes_and_bare_dashes() {
-    for text in [
-        "color(--Profile 1)",
-        "color(--profile 1)",
-        "color(--Pr\\6f file 1)",
-        "color(--a\\ b 1)",
-        "color(-- 1)",
+    for (text, decoded) in [
+        ("color(--Profile 1)", "--Profile"),
+        ("color(--profile 1)", "--profile"),
+        ("color(--Pr\\6f file 1)", "--Profile"),
+        ("color(--a\\ b 1)", "--a b"),
+        ("color(-- 1)", "--"),
     ] {
-        admits_current_only(text);
+        admits_authored_color(text);
+        for declaration in [parsed(text), checked(text)] {
+            assert_eq!(
+                wrapper(&declaration)
+                    .value()
+                    .custom_value()
+                    .unwrap()
+                    .profile()
+                    .as_str(),
+                decoded
+            );
+        }
     }
 }
 
@@ -113,7 +175,28 @@ fn relative_custom_colors_admit_unbound_profile_names_in_channels_and_alpha() {
         "color(from red --P alpha none default initial --channel / cyan)",
         "color(from red --P c\\79 an / calc(alpha / 2))",
     ] {
-        admits_current_only(text);
+        admits_authored_color(text);
+    }
+    for declaration in [
+        parsed("color(from red --P cyan calc(magenta * 2) / alpha)"),
+        checked("color(from red --P cyan calc(magenta * 2) / alpha)"),
+    ] {
+        let relative = wrapper(&declaration)
+            .value()
+            .relative_custom_value()
+            .unwrap();
+        assert_eq!(relative.source().named().unwrap().name(), "red");
+        assert_eq!(relative.profile().as_str(), "--P");
+        assert_eq!(relative.channels().len(), 2);
+        assert!(
+            matches!(relative.channels()[0].view(), CssProfileColorExpressionRef::Reference(name) if name.as_str() == "cyan")
+        );
+        assert!(
+            matches!(relative.channels()[1].view(), CssProfileColorExpressionRef::Calculation(calc) if calc.references().iter().map(|name| name.as_str()).collect::<Vec<_>>() == ["magenta"])
+        );
+        assert!(
+            matches!(relative.alpha().unwrap().view(), CssProfileColorExpressionRef::Reference(name) if name.as_str() == "alpha")
+        );
     }
 }
 
@@ -126,13 +209,18 @@ fn relative_custom_colors_admit_direct_constant_names_and_constant_math() {
         "color(from red --P e calc(e * cyan))",
         "color(from red --P infinity calc(infinity) NaN calc(NaN))",
     ] {
-        admits_current_only(text);
+        admits_authored_color(text);
     }
 }
 
 #[test]
 fn relative_alpha_accepts_an_omitted_override() {
-    admits_current_only("alpha(from red)");
+    admits_authored_color("alpha(from red)");
+    for declaration in [parsed("alpha(from red)"), checked("alpha(from red)")] {
+        let alpha = wrapper(&declaration).value().alpha_value().unwrap();
+        assert_eq!(alpha.source().named().unwrap().name(), "red");
+        assert!(alpha.alpha().is_none());
+    }
 }
 
 #[test]
@@ -145,12 +233,45 @@ fn relative_alpha_accepts_none_numeric_percentage_and_channel_math_overrides() {
         "alpha(from red / calc(alpha / 2))",
         "alpha(from red / calc(120%))",
     ] {
-        admits_current_only(text);
+        admits_authored_color(text);
+    }
+    for (text, expected) in [
+        ("alpha(from red / none)", "none"),
+        ("alpha(from red / 0.1)", "number"),
+        ("alpha(from red / 25%)", "percentage"),
+        ("alpha(from red / alpha)", "channel"),
+        ("alpha(from red / calc(alpha / 2))", "calculation"),
+    ] {
+        for declaration in [parsed(text), checked(text)] {
+            let alpha = wrapper(&declaration)
+                .value()
+                .alpha_value()
+                .unwrap()
+                .alpha()
+                .unwrap();
+            match (expected, alpha.value()) {
+                ("none", CssRelativeColorExpressionValue::None) => {}
+                ("number", CssRelativeColorExpressionValue::Number(v)) => {
+                    assert_eq!(v.numeric().representation(), "0.1")
+                }
+                ("percentage", CssRelativeColorExpressionValue::Percentage(v)) => {
+                    assert_eq!(v.numeric().representation(), "25")
+                }
+                (
+                    "channel",
+                    CssRelativeColorExpressionValue::Channel(CssRelativeColorChannel::Alpha),
+                ) => {}
+                ("calculation", CssRelativeColorExpressionValue::Calculation(calc)) => {
+                    assert_eq!(calc.references(), [CssRelativeColorChannel::Alpha])
+                }
+                _ => panic!("wrong alpha branch: {text}"),
+            }
+        }
     }
 }
 
 #[test]
-fn aggregate_border_color_transports_custom_and_alpha_colors_without_frozen_projection() {
+fn aggregate_border_color_transports_custom_and_alpha_colors() {
     for text in [
         "color(--P 1e100 none 20% -2)",
         "alpha(from red / calc(alpha / 2))",
@@ -178,26 +299,30 @@ fn aggregate_border_color_transports_custom_and_alpha_colors_without_frozen_proj
             else {
                 panic!("border color")
             };
-            let colors = value.current();
+            let colors = value.value();
             assert_eq!(colors.kind(), CssBoxSideKind::Physical);
             assert_eq!(colors.authored_values().len(), 1);
             let [top, right, bottom, left] = colors.assigned_values();
             assert_eq!(top, right);
             assert_eq!(top, bottom);
             assert_eq!(top, left);
-            assert!(value.i01_subset().is_none());
+            if text.starts_with("alpha(") {
+                assert!(top.alpha_value().is_some());
+            } else {
+                assert!(top.custom_value().is_some());
+            }
         }
     }
 }
 
 #[test]
-fn nested_custom_and_alpha_descendants_keep_enclosing_projection_conservative() {
+fn nested_custom_and_alpha_descendants_keep_typed_branches() {
     for text in [
         "color-mix(in srgb, color(--P 1), blue)",
         "rgb(from alpha(from red / none) r g b)",
         "alpha(from color(from red --P cyan) / alpha)",
     ] {
-        admits_current_only(text);
+        admits_authored_color(text);
     }
 }
 
@@ -330,49 +455,63 @@ fn profile_channel_names_do_not_leak_into_ordinary_or_predefined_numeric_roots()
 }
 
 #[test]
-fn existing_predefined_and_two_color_frozen_values_remain_available() {
+fn predefined_relative_and_two_color_values_remain_available() {
     for text in [
         "color(srgb 1 0 0)",
         "rgb(from red r g b)",
         "color-mix(in srgb, red 25%, blue 50%)",
     ] {
         for declaration in [parsed(text), checked(text)] {
-            assert!(wrapper(&declaration).i01_subset().is_some(), "{text}");
+            let color = wrapper(&declaration).value();
+            if text.starts_with("color(srgb") {
+                assert!(color.predefined_value().is_some());
+            } else if text.starts_with("rgb(from") {
+                assert!(color.relative_value().is_some());
+            } else {
+                assert_eq!(color.color_mix_value().unwrap().components().len(), 2);
+            }
         }
     }
 }
 
 // Each witness is a separate test so an expected parsed failure cannot hide
 // checked admission, alpha math, aggregate transport, or substitution reentry.
-fn checked_current_only(text: &str) {
+fn checked_color(text: &str) {
     let declaration = checked(text);
     let value = wrapper(&declaration);
     assert_eq!(value.as_css(), text);
-    assert!(value.i01_subset().is_none());
+    let color = value.value();
+    if text.starts_with("color(from") {
+        assert!(color.relative_custom_value().is_some());
+    } else if text.starts_with("color(--") {
+        assert!(color.custom_value().is_some());
+    } else {
+        assert!(color.alpha_value().is_some());
+    }
 }
 
 #[test]
 fn checked_custom_color_accepts_exact_variable_channels() {
-    checked_current_only("color(--P 1e100 none 20% -2)");
+    checked_color("color(--P 1e100 none 20% -2)");
 }
 
 #[test]
 fn checked_relative_custom_color_accepts_symbolic_channel_math() {
-    checked_current_only("color(from red --P cyan calc(magenta * 2) / alpha)");
+    checked_color("color(from red --P cyan calc(magenta * 2) / alpha)");
 }
 
 #[test]
 fn checked_relative_alpha_accepts_transparency_math() {
-    checked_current_only("alpha(from red / calc(alpha / 2))");
+    checked_color("alpha(from red / calc(alpha / 2))");
 }
 
 #[test]
 fn parsed_relative_alpha_accepts_transparency_math() {
     let declaration = parsed("alpha(from red / calc(alpha / 2))");
-    assert!(wrapper(&declaration).i01_subset().is_none());
+    assert!(wrapper(&declaration).value().alpha_value().is_some());
 }
 
-fn reenters_current_color(text: &str) {
+fn reenters_color(text: &str) {
     let declaration = checked("var(--paint)");
     let CssExpansion::Pending(pending) = expand_declaration(&declaration).unwrap() else {
         panic!("pending color")
@@ -393,15 +532,15 @@ fn reenters_current_color(text: &str) {
 
 #[test]
 fn substitution_reentry_accepts_relative_custom_channel_math() {
-    reenters_current_color("color(from red --P cyan calc(magenta * 2) / alpha)");
+    reenters_color("color(from red --P cyan calc(magenta * 2) / alpha)");
 }
 
 #[test]
 fn substitution_reentry_accepts_relative_alpha_math() {
-    reenters_current_color("alpha(from red / calc(alpha / 2))");
+    reenters_color("alpha(from red / calc(alpha / 2))");
 }
 
-fn checked_border_current_only(text: &str) {
+fn checked_border_color(text: &str) {
     let components = parse_component_values(text).unwrap();
     let declaration = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::BorderColor),
@@ -416,24 +555,28 @@ fn checked_border_current_only(text: &str) {
     else {
         panic!("border color")
     };
-    let colors = value.current();
+    let colors = value.value();
     assert_eq!(colors.kind(), CssBoxSideKind::Physical);
     assert_eq!(colors.authored_values().len(), 1);
     let [top, right, bottom, left] = colors.assigned_values();
     assert_eq!(top, right);
     assert_eq!(top, bottom);
     assert_eq!(top, left);
-    assert!(value.i01_subset().is_none());
+    if text.starts_with("alpha(") {
+        assert!(top.alpha_value().is_some());
+    } else {
+        assert!(top.custom_value().is_some());
+    }
 }
 
 #[test]
 fn checked_border_color_transports_custom_channels() {
-    checked_border_current_only("color(--P 1e100 none 20% -2)");
+    checked_border_color("color(--P 1e100 none 20% -2)");
 }
 
 #[test]
 fn checked_border_color_transports_relative_alpha_math() {
-    checked_border_current_only("alpha(from red / calc(alpha / 2))");
+    checked_border_color("alpha(from red / calc(alpha / 2))");
 }
 
 #[test]
@@ -454,5 +597,5 @@ fn parsed_border_color_transports_relative_alpha_math() {
     else {
         panic!("border color")
     };
-    assert!(value.i01_subset().is_none());
+    assert!(value.value().assigned_values()[0].alpha_value().is_some());
 }

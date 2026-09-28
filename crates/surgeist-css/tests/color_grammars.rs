@@ -1,8 +1,8 @@
 use surgeist_css::{
-    CssAuthoredColorComponent, CssAuthoredColorSyntax, CssAuthoredHue, CssAuthoredSystemColor,
-    CssColorInterpolationSpace, CssHueInterpolationMethod, CssKnownDeclaredValueRef,
-    CssKnownProperty, CssKnownPropertyValueRef, CssOpacityValue, CssPredefinedColorSpace,
-    CssRelativeColorEnvironment, CssRelativeColorFunction, parse_style_attribute,
+    CssColorComponent, CssColorHue, CssColorInterpolationSpace, CssColorSyntax,
+    CssHueInterpolationMethod, CssKnownDeclaredValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssOpacityValue, CssPredefinedColorSpace,
+    CssRelativeColorEnvironment, CssRelativeColorFunction, CssSystemColor, parse_style_attribute,
 };
 
 fn color_value(source: &str) -> surgeist_css::CssColorPropertyValue {
@@ -101,7 +101,7 @@ fn color_mix_preserved_subset_retains_space_hue_components_and_order() {
         "rgb(from blue r g b / alpha) 75%)",
     ));
     let color_mix = value
-        .current()
+        .value()
         .color_mix_value()
         .expect("checked current color-mix branch");
     assert_eq!(
@@ -129,8 +129,10 @@ fn color_mix_preserved_subset_retains_space_hue_components_and_order() {
             .unwrap()
             .literal_value()
             .unwrap()
-            .value(),
-        Some(25.0)
+            .literal()
+            .numeric()
+            .representation(),
+        "25"
     );
     assert!(color_mix.components()[1].color().relative_value().is_some());
     assert_eq!(
@@ -139,10 +141,11 @@ fn color_mix_preserved_subset_retains_space_hue_components_and_order() {
             .unwrap()
             .literal_value()
             .unwrap()
-            .value(),
-        Some(75.0)
+            .literal()
+            .numeric()
+            .representation(),
+        "75"
     );
-    assert!(value.i01_subset().is_none());
 }
 
 #[test]
@@ -164,14 +167,21 @@ fn color_mix_preserved_subset_accepts_supported_spaces_and_polar_hue_methods() {
         "color: color-mix(in oklch longer hue, red, blue)",
     ] {
         let value = color_value(source);
-        assert!(value.current().color_mix_value().is_some(), "{source}");
+        assert!(value.value().color_mix_value().is_some(), "{source}");
     }
 
     let compatible = color_value("color: color-mix(in srgb, red 25%, blue)");
-    assert!(matches!(
-        compatible.i01_subset(),
-        Some(surgeist_css::CssColor::ColorMix(_))
-    ));
+    assert_eq!(
+        compatible.value().color_mix_value().unwrap().components()[0]
+            .weight()
+            .unwrap()
+            .literal_value()
+            .unwrap()
+            .literal()
+            .numeric()
+            .representation(),
+        "25"
+    );
 }
 
 #[test]
@@ -300,16 +310,12 @@ fn relative_color_families_expose_their_closed_current_environments_and_i01_proj
     ] {
         let value = color_value(source);
         let relative = value
-            .current()
+            .value()
             .relative_value()
             .expect("typed relative-color branch");
         assert_eq!(relative.function(), &expected_function, "{source}");
         assert_eq!(relative.environment(), expected_environment, "{source}");
         assert_eq!(relative.channels().len(), 3, "{source}");
-        assert!(matches!(
-            value.i01_subset(),
-            Some(surgeist_css::CssColor::Relative(_))
-        ));
     }
 }
 
@@ -317,21 +323,17 @@ fn relative_color_families_expose_their_closed_current_environments_and_i01_proj
 fn relative_color_each_environment_accepts_its_channel_references_in_typed_math() {
     for source in [
         "color: rgb(from red calc(r + 1) calc(g + 1) calc(b + 1) / calc(alpha * 0.5))",
-        "color: hsl(from red calc(h + 1deg) calc(s + 1%) calc(l + 1%) / calc(alpha + 0.1))",
-        "color: hwb(from red calc(h + 1deg) calc(w + 1%) calc(b + 1%) / calc(alpha + 0.1))",
-        "color: lab(from red calc(l + 1%) calc(a + 1) calc(b + 1) / calc(alpha + 0.1))",
-        "color: lch(from red calc(l + 1%) calc(c + 1) calc(h + 1deg) / calc(alpha + 0.1))",
-        "color: oklab(from red calc(l + 1%) calc(a + 1) calc(b + 1) / calc(alpha + 0.1))",
-        "color: oklch(from red calc(l + 1%) calc(c + 1) calc(h + 1deg) / calc(alpha + 0.1))",
+        "color: hsl(from red calc(h + 1) calc(s + 1) calc(l + 1) / calc(alpha + 0.1))",
+        "color: hwb(from red calc(h + 1) calc(w + 1) calc(b + 1) / calc(alpha + 0.1))",
+        "color: lab(from red calc(l + 1) calc(a + 1) calc(b + 1) / calc(alpha + 0.1))",
+        "color: lch(from red calc(l + 1) calc(c + 1) calc(h + 1) / calc(alpha + 0.1))",
+        "color: oklab(from red calc(l + 1) calc(a + 1) calc(b + 1) / calc(alpha + 0.1))",
+        "color: oklch(from red calc(l + 1) calc(c + 1) calc(h + 1) / calc(alpha + 0.1))",
         "color: color(from red rec2020 calc(r + 1) calc(g + 1) calc(b + 1) / calc(alpha + 0.1))",
         "color: color(from red xyz-d50 calc(x + 1) calc(y + 1) calc(z + 1) / calc(alpha + 0.1))",
     ] {
         let value = color_value(source);
-        assert!(value.current().relative_value().is_some(), "{source}");
-        assert!(matches!(
-            value.i01_subset(),
-            Some(surgeist_css::CssColor::Relative(_))
-        ));
+        assert!(value.value().relative_value().is_some(), "{source}");
     }
 }
 
@@ -393,7 +395,7 @@ fn relative_color_math_preserves_exact_values_without_float_range_evaluation() {
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 2);
         let value = color_value(&source);
-        let relative = value.current().relative_value().unwrap();
+        let relative = value.value().relative_value().unwrap();
         let CssRelativeColorExpressionValue::Calculation(calculation) =
             relative.channels()[0].value()
         else {
@@ -462,7 +464,7 @@ fn relative_color_origins_recurse_without_evaluation() {
         "color: rgb(from oklch(from color(from red xyz x y z) l c h) ",
         "r g b / alpha)",
     ));
-    let outer = value.current().relative_value().unwrap();
+    let outer = value.value().relative_value().unwrap();
     let middle = outer.source().relative_value().unwrap();
     let inner = middle.source().relative_value().unwrap();
     assert_eq!(outer.environment(), CssRelativeColorEnvironment::Rgb);
@@ -471,10 +473,6 @@ fn relative_color_origins_recurse_without_evaluation() {
         inner.environment(),
         CssRelativeColorEnvironment::Xyz(CssPredefinedColorSpace::XyzD65)
     );
-    assert!(matches!(
-        value.i01_subset(),
-        Some(surgeist_css::CssColor::Relative(_))
-    ));
 }
 
 #[test]
@@ -524,15 +522,10 @@ fn relative_color_nesting_preserves_the_exact_parser_boundary() {
 #[test]
 fn authored_keyword_and_hex_colors_preserve_their_current_branches() {
     let current = color_value("color: CurrentColor");
-    assert!(current.current().is_current_color());
-    assert!(matches!(
-        current.i01_subset(),
-        Some(surgeist_css::CssColor::CurrentColor)
-    ));
+    assert!(current.value().is_current_color());
 
     let transparent = color_value("color: transparent");
-    assert!(transparent.current().is_transparent());
-    assert!(transparent.i01_subset().is_some());
+    assert!(transparent.value().is_transparent());
 
     for (source, digits) in [
         ("color: #0f8", "0f8"),
@@ -541,179 +534,160 @@ fn authored_keyword_and_hex_colors_preserve_their_current_branches() {
         ("color: #00ff88cc", "00ff88cc"),
     ] {
         let value = color_value(source);
-        assert_eq!(value.current().hex_value().unwrap().digits(), digits);
-        assert!(value.i01_subset().is_some());
+        assert_eq!(value.value().hex_value().unwrap().digits(), digits);
     }
 
     let named = color_value("color: ReBeccAPurple");
-    assert_eq!(named.current().named().unwrap().name(), "rebeccapurple");
-    assert!(named.i01_subset().is_some());
+    assert_eq!(named.value().named().unwrap().name(), "rebeccapurple");
 }
 
 #[test]
 fn authored_system_colors_distinguish_current_and_deprecated_sets() {
     let current = color_value("color: CanvasText");
-    assert_eq!(
-        current.current().system(),
-        Some(CssAuthoredSystemColor::CanvasText)
-    );
-    assert!(current.i01_subset().is_some());
+    assert_eq!(current.value().system(), Some(CssSystemColor::CanvasText));
 
     let deprecated = color_value("color: ThreeDLightShadow");
     assert_eq!(
-        deprecated.current().system(),
-        Some(CssAuthoredSystemColor::ThreeDLightShadow)
+        deprecated.value().system(),
+        Some(CssSystemColor::ThreeDLightShadow)
     );
-    assert!(deprecated.i01_subset().is_none());
 }
 
 #[test]
 fn authored_rgb_keeps_legacy_and_modern_component_domains() {
     let legacy = color_value("color: rgba(300, -20, 40, 150%)");
-    let rgb = legacy.current().rgb_value().unwrap();
-    assert_eq!(rgb.syntax(), CssAuthoredColorSyntax::Legacy);
+    let rgb = legacy.value().rgb_value().unwrap();
+    assert_eq!(rgb.syntax(), CssColorSyntax::Legacy);
     assert!(matches!(
         rgb.channels(),
         [
-            CssAuthoredColorComponent::Number(red),
-            CssAuthoredColorComponent::Number(green),
-            CssAuthoredColorComponent::Number(blue),
-        ] if red.value() == 300.0 && green.value() == -20.0 && blue.value() == 40.0
+            CssColorComponent::Number(red),
+            CssColorComponent::Number(green),
+            CssColorComponent::Number(blue),
+        ] if red.numeric().representation() == "300" && green.numeric().representation() == "-20" && blue.numeric().representation() == "40"
     ));
     assert!(matches!(
         rgb.alpha(),
-        Some(CssAuthoredColorComponent::Percentage(value)) if value.value() == 150.0
+        Some(CssColorComponent::Percentage(value)) if value.numeric().representation() == "150"
     ));
 
     let modern = color_value(concat!(
         "color: rgb(calc(1 + 2) calc(10% + 20%) none / ",
         "calc(50% + 10%))",
     ));
-    let rgb = modern.current().rgb_value().unwrap();
-    assert_eq!(rgb.syntax(), CssAuthoredColorSyntax::Modern);
+    let rgb = modern.value().rgb_value().unwrap();
+    assert_eq!(rgb.syntax(), CssColorSyntax::Modern);
     assert!(matches!(
         rgb.channels(),
         [
-            CssAuthoredColorComponent::NumberCalculation(_),
-            CssAuthoredColorComponent::PercentageCalculation(_),
-            CssAuthoredColorComponent::None,
+            CssColorComponent::NumberCalculation(_),
+            CssColorComponent::PercentageCalculation(_),
+            CssColorComponent::None,
         ]
     ));
     assert!(matches!(
         rgb.alpha(),
-        Some(CssAuthoredColorComponent::PercentageCalculation(_))
+        Some(CssColorComponent::PercentageCalculation(_))
     ));
-    assert!(modern.i01_subset().is_none());
 }
 
 #[test]
 fn authored_hsl_and_hwb_keep_hue_and_percentage_domains() {
     let hsl = color_value("color: hsl(calc(1turn - 90deg) 120% -20% / none)");
-    let hsl = hsl.current().hsl_value().unwrap();
-    assert_eq!(hsl.syntax(), CssAuthoredColorSyntax::Modern);
-    assert!(matches!(hsl.hue(), CssAuthoredHue::AngleCalculation(_)));
+    let hsl = hsl.value().hsl_value().unwrap();
+    assert_eq!(hsl.syntax(), CssColorSyntax::Modern);
+    assert!(matches!(hsl.hue(), CssColorHue::AngleCalculation(_)));
     assert!(matches!(
         hsl.saturation(),
-        CssAuthoredColorComponent::Percentage(value) if (value.value() - 120.0).abs() < 0.001
+        CssColorComponent::Percentage(value) if value.numeric().representation() == "120"
     ));
-    assert!(matches!(hsl.alpha(), Some(CssAuthoredColorComponent::None)));
+    assert!(matches!(hsl.alpha(), Some(CssColorComponent::None)));
 
     let legacy = color_value("color: hsla(-30, 120%, -10%, 2)");
     assert_eq!(
-        legacy.current().hsl_value().unwrap().syntax(),
-        CssAuthoredColorSyntax::Legacy
+        legacy.value().hsl_value().unwrap().syntax(),
+        CssColorSyntax::Legacy
     );
 
     let hwb = color_value("color: hwb(none calc(20% + 5%) 120% / -10%)");
-    let hwb = hwb.current().hwb_value().unwrap();
-    assert!(matches!(hwb.hue(), CssAuthoredHue::None));
+    let hwb = hwb.value().hwb_value().unwrap();
+    assert!(matches!(hwb.hue(), CssColorHue::None));
     assert!(matches!(
         hwb.whiteness(),
-        CssAuthoredColorComponent::PercentageCalculation(_)
+        CssColorComponent::PercentageCalculation(_)
     ));
     assert!(matches!(
         hwb.blackness(),
-        CssAuthoredColorComponent::Percentage(value) if (value.value() - 120.0).abs() < 0.001
+        CssColorComponent::Percentage(value) if value.numeric().representation() == "120"
     ));
 }
 
 #[test]
 fn authored_perceptual_colors_preserve_channels_alpha_and_function_identity() {
     let lab = color_value("color: lab(calc(50% + 10%) calc(20 + 5) -30% / calc(120% - 5%))");
-    let lab_value = lab.current().lab_value().expect("typed Lab branch");
+    let lab_value = lab.value().lab_value().expect("typed Lab branch");
     assert!(matches!(
         lab_value.lightness(),
-        CssAuthoredColorComponent::PercentageCalculation(_)
+        CssColorComponent::PercentageCalculation(_)
     ));
     assert!(matches!(
         lab_value.a(),
-        CssAuthoredColorComponent::NumberCalculation(_)
+        CssColorComponent::NumberCalculation(_)
     ));
     assert!(matches!(
         lab_value.b(),
-        CssAuthoredColorComponent::Percentage(value)
-            if (value.value() - -30.0).abs() < 0.001
+        CssColorComponent::Percentage(value)
+            if value.numeric().representation() == "-30"
     ));
     assert!(matches!(
         lab_value.alpha(),
-        Some(CssAuthoredColorComponent::PercentageCalculation(_))
+        Some(CssColorComponent::PercentageCalculation(_))
     ));
-    assert!(lab.i01_subset().is_none());
 
     let lch = color_value("color: lch(125% -20 calc(1turn - 90deg) / none)");
-    let lch_value = lch.current().lch_value().expect("typed LCH branch");
+    let lch_value = lch.value().lch_value().expect("typed LCH branch");
     assert!(matches!(
         lch_value.lightness(),
-        CssAuthoredColorComponent::Percentage(value) if value.value() == 125.0
+        CssColorComponent::Percentage(value) if value.numeric().representation() == "125"
     ));
     assert!(matches!(
         lch_value.chroma(),
-        CssAuthoredColorComponent::Number(value) if value.value() == -20.0
+        CssColorComponent::Number(value) if value.numeric().representation() == "-20"
     ));
-    assert!(matches!(
-        lch_value.hue(),
-        CssAuthoredHue::AngleCalculation(_)
-    ));
-    assert!(matches!(
-        lch_value.alpha(),
-        Some(CssAuthoredColorComponent::None)
-    ));
+    assert!(matches!(lch_value.hue(), CssColorHue::AngleCalculation(_)));
+    assert!(matches!(lch_value.alpha(), Some(CssColorComponent::None)));
 
     let oklab = color_value("color: oklab(none 150% -2 / 3)");
-    let oklab_value = oklab.current().oklab_value().expect("typed Oklab branch");
-    assert!(matches!(
-        oklab_value.lightness(),
-        CssAuthoredColorComponent::None
-    ));
+    let oklab_value = oklab.value().oklab_value().expect("typed Oklab branch");
+    assert!(matches!(oklab_value.lightness(), CssColorComponent::None));
     assert!(matches!(
         oklab_value.a(),
-        CssAuthoredColorComponent::Percentage(value) if value.value() == 150.0
+        CssColorComponent::Percentage(value) if value.numeric().representation() == "150"
     ));
     assert!(matches!(
         oklab_value.b(),
-        CssAuthoredColorComponent::Number(value) if value.value() == -2.0
+        CssColorComponent::Number(value) if value.numeric().representation() == "-2"
     ));
 
     let oklch = color_value("color: oklch(-20 150% none)");
-    let oklch_value = oklch.current().oklch_value().expect("typed Oklch branch");
+    let oklch_value = oklch.value().oklch_value().expect("typed Oklch branch");
     assert!(matches!(
         oklch_value.lightness(),
-        CssAuthoredColorComponent::Number(value) if value.value() == -20.0
+        CssColorComponent::Number(value) if value.numeric().representation() == "-20"
     ));
     assert!(matches!(
         oklch_value.chroma(),
-        CssAuthoredColorComponent::Percentage(value) if value.value() == 150.0
+        CssColorComponent::Percentage(value) if value.numeric().representation() == "150"
     ));
-    assert!(matches!(oklch_value.hue(), CssAuthoredHue::None));
+    assert!(matches!(oklch_value.hue(), CssColorHue::None));
 
     let compatible = color_value("color: lab(50% 20 30 / 50%)");
-    assert!(matches!(
-        compatible.i01_subset(),
-        Some(surgeist_css::CssColor::Lab(_))
-    ));
+    assert!(matches!(compatible.value().lab_value().unwrap().alpha(),
+        Some(CssColorComponent::Percentage(v)) if v.numeric().representation() == "50"));
 
     let out_of_range = color_value("color: lab(125% -20 30 / 150%)");
-    assert!(out_of_range.i01_subset().is_none());
+    assert!(matches!(out_of_range.value().lab_value().unwrap().alpha(),
+        Some(CssColorComponent::Percentage(v)) if v.numeric().representation() == "150"));
 }
 
 #[test]
@@ -737,75 +711,67 @@ fn authored_predefined_colors_preserve_supported_space_and_channel_kinds() {
             "color: color({name} calc(1 + 2) 120% none / -25%)"
         ));
         let predefined = value
-            .current()
+            .value()
             .predefined_value()
             .expect("typed predefined color branch");
         assert_eq!(predefined.color_space(), expected, "{name}");
         assert!(matches!(
             predefined.channels(),
             [
-                CssAuthoredColorComponent::NumberCalculation(_),
-                CssAuthoredColorComponent::Percentage(percentage),
-                CssAuthoredColorComponent::None,
-        ] if (percentage.value() - 120.0).abs() < 0.001
+                CssColorComponent::NumberCalculation(_),
+                CssColorComponent::Percentage(percentage),
+                CssColorComponent::None,
+        ] if percentage.numeric().representation() == "120"
         ));
         assert!(matches!(
             predefined.alpha(),
-            Some(CssAuthoredColorComponent::Percentage(value))
-                if (value.value() - -25.0).abs() < 0.001
+            Some(CssColorComponent::Percentage(value))
+                if value.numeric().representation() == "-25"
         ));
-        assert!(value.i01_subset().is_none());
     }
 }
 
 #[test]
-fn display_p3_linear_color_preserves_current_channels_and_exact_compatibility() {
+fn display_p3_linear_color_preserves_exact_channels() {
     let value = color_value("color: color(display-p3-linear 1 0.5 0)");
-    let current = value.current().predefined_value().unwrap();
+    let current = value.value().predefined_value().unwrap();
     assert_eq!(
         current.color_space(),
         CssPredefinedColorSpace::DisplayP3Linear
     );
-    for (channel, expected) in current.channels().iter().zip([1.0, 0.5, 0.0]) {
+    for (channel, expected) in current.channels().iter().zip(["1", "0.5", "0"]) {
         assert!(
-            matches!(channel, CssAuthoredColorComponent::Number(value) if value.value() == expected)
+            matches!(channel, CssColorComponent::Number(value) if value.numeric().representation() == expected)
         );
     }
-    assert!(matches!(
-        value.i01_subset(),
-        Some(surgeist_css::CssColor::ColorFunction(color))
-            if color.color_space() == CssPredefinedColorSpace::DisplayP3Linear
-    ));
 }
 
 #[test]
 fn out_of_range_predefined_alpha_has_no_lossy_compatibility_projection() {
     let value = color_value("color: color(srgb 1 0.5 0 / 150%)");
-    assert!(value.current().predefined_value().is_some());
-    assert!(value.i01_subset().is_none());
+    assert!(value.value().predefined_value().is_some());
 }
 
 #[test]
 fn predefined_inexact_literals_have_no_rounded_compatibility_projection() {
     let value = color_value("color: color(display-p3 0.8 0.2 0.1 / 90%)");
     assert_eq!(
-        value.current().predefined_value().unwrap().color_space(),
+        value.value().predefined_value().unwrap().color_space(),
         CssPredefinedColorSpace::DisplayP3,
     );
     for (channel, expected) in value
-        .current()
+        .value()
         .predefined_value()
         .unwrap()
         .channels()
         .iter()
         .zip(["0.8", "0.2", "0.1"])
     {
-        let CssAuthoredColorComponent::ExactNumber(literal) = channel else {
+        let CssColorComponent::Number(literal) = channel else {
             panic!("nonbinary32 authored coefficient must remain exact");
         };
         assert_eq!(literal.numeric().representation(), expected);
     }
-    assert!(value.i01_subset().is_none());
 }
 
 #[test]

@@ -4,7 +4,7 @@ The project's own license is in [LICENSE](LICENSE).
 
 ## Dependencies
 
-This notice covers the bundled CSSTree and Web Platform Tests fixtures and the 24 registry crates in
+This notice covers the bundled CSSTree and Web Platform Tests fixtures and the 23 registry crates in
 the local Cargo resolution of `surgeist-css` 0.1.0 with default features,
 including development and build dependencies.
 The Cargo dependencies are not vendored in this repository. The roles below
@@ -12,10 +12,8 @@ describe their use by this crate; a downstream executable's contents depend on
 its build. Transitive versions can change with dependency resolution. Upstream
 license alternatives are preserved without selecting one.
 
-This product depends on `cssparser` 0.37.0 and `cssparser-color` 0.5.0 as direct
-runtime dependencies, and `cssparser-macros` 0.7.0 for procedural macros,
-distributed by Simon Sapin (`cssparser` and `cssparser-macros`) and Emilio Cobos
-Álvarez (`cssparser-color`):
+This product depends on `cssparser` 0.37.0 as a direct runtime dependency
+and `cssparser-macros` 0.7.0 for procedural macros, distributed by Simon Sapin:
 
 * License: [MPL-2.0](licenses/rust-cssparser/LICENSE)
 * Homepage: [rust-cssparser](https://github.com/servo/rust-cssparser)

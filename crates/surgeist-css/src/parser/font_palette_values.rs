@@ -342,7 +342,7 @@ fn parse_overrides<'i>(
     input.parse_comma_separated(|input| {
         let index = parse_index(input, numeric)?;
         let location = input.current_source_location();
-        let (color, _) = super::color::parse_color(input, numeric)?.into_parts();
+        let color = super::color::parse_color(input, numeric)?;
         let pair = CssFontPaletteOverride::try_new(index, color).map_err(|error| match error {
             CssFontPaletteConstructionError::ContextualColor(_) => {
                 unsupported_value_at(location, None, "override color must be absolute")

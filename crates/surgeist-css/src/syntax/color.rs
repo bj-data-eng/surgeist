@@ -1,43 +1,41 @@
 use super::{
-    CssAngleCalculation, CssAngleLiteral, CssAuthoredDeclarationValue, CssCalculationExpression,
+    CssAngleCalculation, CssAuthoredDeclarationValue, CssCalculationExpression,
     CssCalculationExpressionRef, CssCalculationType, CssColorAngleLiteral, CssColorNumberLiteral,
-    CssColorPercentageLiteral, CssColorScalarError, CssFiniteNumber, CssNumberCalculation,
-    CssPercentageCalculation, CssVariableReference,
+    CssColorPercentageLiteral, CssColorScalarError, CssNumberCalculation, CssPercentageCalculation,
 };
 
 mod serialization;
 
 /// An authored color retaining its specified syntax and symbolic dependencies.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssAuthoredColor {
-    representation: CssAuthoredColorRepresentation,
+pub struct CssColor {
+    representation: CssColorRepresentation,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum CssAuthoredColorRepresentation {
+enum CssColorRepresentation {
     CurrentColor,
     Transparent,
     Hex(CssHexColor),
     Named(CssNamedColor),
-    System(CssAuthoredSystemColor),
-    Rgb(CssAuthoredRgbColor),
-    Hsl(CssAuthoredHslColor),
-    Hwb(CssAuthoredHwbColor),
-    Lab(CssAuthoredLabColor),
-    Lch(CssAuthoredLchColor),
-    Oklab(CssAuthoredLabColor),
-    Oklch(CssAuthoredLchColor),
-    Predefined(CssAuthoredPredefinedColor),
-    Custom(CssAuthoredCustomColor),
+    System(CssSystemColor),
+    Rgb(CssRgbColor),
+    Hsl(CssHslColor),
+    Hwb(CssHwbColor),
+    Lab(CssLabColor),
+    Lch(CssLchColor),
+    Oklab(CssLabColor),
+    Oklch(CssLchColor),
+    Predefined(CssPredefinedColor),
+    Custom(CssCustomColor),
     // Keep retained profile-expression metadata out of every inline color value.
-    RelativeCustom(Box<CssAuthoredRelativeCustomColor>),
-    Alpha(CssAuthoredAlphaColor),
-    Relative(CssAuthoredRelativeColor),
-    ColorMix(CssAuthoredColorMix),
-    PreservedI01(CssColor),
+    RelativeCustom(Box<CssRelativeCustomColor>),
+    Alpha(CssAlphaColor),
+    Relative(Box<CssRelativeColor>),
+    ColorMix(CssColorMix),
 }
 
-impl CssAuthoredColor {
+impl CssColor {
     /// Produces canonical specified color text without resolving external color context.
     pub fn to_specified_css(&self) -> Result<String, crate::CssSpecifiedValueSerializationError> {
         self.to_specified_css_with_limits(crate::CssSpecifiedValueSerializationLimits::default())
@@ -51,156 +49,144 @@ impl CssAuthoredColor {
         serialization::serialize(self, limits)
     }
 
-    pub const fn from_custom(value: CssAuthoredCustomColor) -> Self {
+    pub const fn from_custom(value: CssCustomColor) -> Self {
         Self {
-            representation: CssAuthoredColorRepresentation::Custom(value),
+            representation: CssColorRepresentation::Custom(value),
         }
     }
-    pub fn from_relative_custom(value: CssAuthoredRelativeCustomColor) -> Self {
+    pub fn from_relative_custom(value: CssRelativeCustomColor) -> Self {
         Self {
-            representation: CssAuthoredColorRepresentation::RelativeCustom(Box::new(value)),
+            representation: CssColorRepresentation::RelativeCustom(Box::new(value)),
         }
     }
-    pub const fn from_alpha(value: CssAuthoredAlphaColor) -> Self {
+    pub const fn from_alpha(value: CssAlphaColor) -> Self {
         Self {
-            representation: CssAuthoredColorRepresentation::Alpha(value),
+            representation: CssColorRepresentation::Alpha(value),
         }
     }
-    pub const fn custom_value(&self) -> Option<&CssAuthoredCustomColor> {
+    pub const fn custom_value(&self) -> Option<&CssCustomColor> {
         match &self.representation {
-            CssAuthoredColorRepresentation::Custom(v) => Some(v),
+            CssColorRepresentation::Custom(v) => Some(v),
             _ => None,
         }
     }
-    pub const fn relative_custom_value(&self) -> Option<&CssAuthoredRelativeCustomColor> {
+    pub const fn relative_custom_value(&self) -> Option<&CssRelativeCustomColor> {
         match &self.representation {
-            CssAuthoredColorRepresentation::RelativeCustom(v) => Some(v),
+            CssColorRepresentation::RelativeCustom(v) => Some(v),
             _ => None,
         }
     }
-    pub const fn alpha_value(&self) -> Option<&CssAuthoredAlphaColor> {
+    pub const fn alpha_value(&self) -> Option<&CssAlphaColor> {
         match &self.representation {
-            CssAuthoredColorRepresentation::Alpha(v) => Some(v),
+            CssColorRepresentation::Alpha(v) => Some(v),
             _ => None,
         }
     }
 
-    pub(crate) const fn current_color() -> Self {
+    pub const fn current_color() -> Self {
         Self {
-            representation: CssAuthoredColorRepresentation::CurrentColor,
+            representation: CssColorRepresentation::CurrentColor,
         }
     }
 
-    pub(crate) const fn transparent() -> Self {
+    pub const fn transparent() -> Self {
         Self {
-            representation: CssAuthoredColorRepresentation::Transparent,
+            representation: CssColorRepresentation::Transparent,
         }
     }
 
-    pub(crate) const fn hex(value: CssHexColor) -> Self {
+    pub const fn from_hex(value: CssHexColor) -> Self {
         Self {
-            representation: CssAuthoredColorRepresentation::Hex(value),
+            representation: CssColorRepresentation::Hex(value),
         }
     }
 
-    pub(crate) const fn from_named(value: CssNamedColor) -> Self {
+    pub const fn from_named(value: CssNamedColor) -> Self {
         Self {
-            representation: CssAuthoredColorRepresentation::Named(value),
+            representation: CssColorRepresentation::Named(value),
         }
     }
 
-    pub(crate) const fn from_system(value: CssAuthoredSystemColor) -> Self {
+    pub const fn from_system(value: CssSystemColor) -> Self {
         Self {
-            representation: CssAuthoredColorRepresentation::System(value),
+            representation: CssColorRepresentation::System(value),
         }
     }
 
-    pub(crate) const fn rgb(value: CssAuthoredRgbColor) -> Self {
+    pub const fn from_rgb(value: CssRgbColor) -> Self {
         Self {
-            representation: CssAuthoredColorRepresentation::Rgb(value),
+            representation: CssColorRepresentation::Rgb(value),
         }
     }
 
-    pub(crate) const fn hsl(value: CssAuthoredHslColor) -> Self {
+    pub const fn from_hsl(value: CssHslColor) -> Self {
         Self {
-            representation: CssAuthoredColorRepresentation::Hsl(value),
+            representation: CssColorRepresentation::Hsl(value),
         }
     }
 
-    pub(crate) const fn hwb(value: CssAuthoredHwbColor) -> Self {
+    pub const fn from_hwb(value: CssHwbColor) -> Self {
         Self {
-            representation: CssAuthoredColorRepresentation::Hwb(value),
+            representation: CssColorRepresentation::Hwb(value),
         }
     }
 
-    pub(crate) const fn lab(value: CssAuthoredLabColor) -> Self {
+    pub const fn from_lab(value: CssLabColor) -> Self {
         Self {
-            representation: CssAuthoredColorRepresentation::Lab(value),
+            representation: CssColorRepresentation::Lab(value),
         }
     }
 
-    pub(crate) const fn lch(value: CssAuthoredLchColor) -> Self {
+    pub const fn from_lch(value: CssLchColor) -> Self {
         Self {
-            representation: CssAuthoredColorRepresentation::Lch(value),
+            representation: CssColorRepresentation::Lch(value),
         }
     }
 
-    pub(crate) const fn oklab(value: CssAuthoredLabColor) -> Self {
+    pub const fn from_oklab(value: CssLabColor) -> Self {
         Self {
-            representation: CssAuthoredColorRepresentation::Oklab(value),
+            representation: CssColorRepresentation::Oklab(value),
         }
     }
 
-    pub(crate) const fn oklch(value: CssAuthoredLchColor) -> Self {
+    pub const fn from_oklch(value: CssLchColor) -> Self {
         Self {
-            representation: CssAuthoredColorRepresentation::Oklch(value),
+            representation: CssColorRepresentation::Oklch(value),
         }
     }
 
-    pub(crate) const fn predefined(value: CssAuthoredPredefinedColor) -> Self {
+    pub const fn from_predefined(value: CssPredefinedColor) -> Self {
         Self {
-            representation: CssAuthoredColorRepresentation::Predefined(value),
+            representation: CssColorRepresentation::Predefined(value),
         }
     }
 
-    pub(crate) const fn relative(value: CssAuthoredRelativeColor) -> Self {
+    pub fn from_relative(value: CssRelativeColor) -> Self {
         Self {
-            representation: CssAuthoredColorRepresentation::Relative(value),
+            representation: CssColorRepresentation::Relative(Box::new(value)),
         }
     }
 
-    pub(crate) const fn color_mix(value: CssAuthoredColorMix) -> Self {
+    pub const fn from_color_mix(value: CssColorMix) -> Self {
         Self {
-            representation: CssAuthoredColorRepresentation::ColorMix(value),
-        }
-    }
-
-    pub(crate) const fn preserved_i01(value: CssColor) -> Self {
-        Self {
-            representation: CssAuthoredColorRepresentation::PreservedI01(value),
+            representation: CssColorRepresentation::ColorMix(value),
         }
     }
 
     #[must_use]
     pub const fn is_current_color(&self) -> bool {
-        matches!(
-            self.representation,
-            CssAuthoredColorRepresentation::CurrentColor
-        )
+        matches!(self.representation, CssColorRepresentation::CurrentColor)
     }
 
     #[must_use]
     pub const fn is_transparent(&self) -> bool {
-        matches!(
-            self.representation,
-            CssAuthoredColorRepresentation::Transparent
-        )
+        matches!(self.representation, CssColorRepresentation::Transparent)
     }
 
     #[must_use]
     pub const fn hex_value(&self) -> Option<&CssHexColor> {
         match &self.representation {
-            CssAuthoredColorRepresentation::Hex(value) => Some(value),
+            CssColorRepresentation::Hex(value) => Some(value),
             _ => None,
         }
     }
@@ -208,97 +194,97 @@ impl CssAuthoredColor {
     #[must_use]
     pub const fn named(&self) -> Option<&CssNamedColor> {
         match &self.representation {
-            CssAuthoredColorRepresentation::Named(value) => Some(value),
+            CssColorRepresentation::Named(value) => Some(value),
             _ => None,
         }
     }
 
     #[must_use]
-    pub const fn system(&self) -> Option<CssAuthoredSystemColor> {
+    pub const fn system(&self) -> Option<CssSystemColor> {
         match self.representation {
-            CssAuthoredColorRepresentation::System(value) => Some(value),
+            CssColorRepresentation::System(value) => Some(value),
             _ => None,
         }
     }
 
     #[must_use]
-    pub const fn rgb_value(&self) -> Option<&CssAuthoredRgbColor> {
+    pub const fn rgb_value(&self) -> Option<&CssRgbColor> {
         match &self.representation {
-            CssAuthoredColorRepresentation::Rgb(value) => Some(value),
+            CssColorRepresentation::Rgb(value) => Some(value),
             _ => None,
         }
     }
 
     #[must_use]
-    pub const fn hsl_value(&self) -> Option<&CssAuthoredHslColor> {
+    pub const fn hsl_value(&self) -> Option<&CssHslColor> {
         match &self.representation {
-            CssAuthoredColorRepresentation::Hsl(value) => Some(value),
+            CssColorRepresentation::Hsl(value) => Some(value),
             _ => None,
         }
     }
 
     #[must_use]
-    pub const fn hwb_value(&self) -> Option<&CssAuthoredHwbColor> {
+    pub const fn hwb_value(&self) -> Option<&CssHwbColor> {
         match &self.representation {
-            CssAuthoredColorRepresentation::Hwb(value) => Some(value),
+            CssColorRepresentation::Hwb(value) => Some(value),
             _ => None,
         }
     }
 
     #[must_use]
-    pub const fn lab_value(&self) -> Option<&CssAuthoredLabColor> {
+    pub const fn lab_value(&self) -> Option<&CssLabColor> {
         match &self.representation {
-            CssAuthoredColorRepresentation::Lab(value) => Some(value),
+            CssColorRepresentation::Lab(value) => Some(value),
             _ => None,
         }
     }
 
     #[must_use]
-    pub const fn lch_value(&self) -> Option<&CssAuthoredLchColor> {
+    pub const fn lch_value(&self) -> Option<&CssLchColor> {
         match &self.representation {
-            CssAuthoredColorRepresentation::Lch(value) => Some(value),
+            CssColorRepresentation::Lch(value) => Some(value),
             _ => None,
         }
     }
 
     #[must_use]
-    pub const fn oklab_value(&self) -> Option<&CssAuthoredLabColor> {
+    pub const fn oklab_value(&self) -> Option<&CssLabColor> {
         match &self.representation {
-            CssAuthoredColorRepresentation::Oklab(value) => Some(value),
+            CssColorRepresentation::Oklab(value) => Some(value),
             _ => None,
         }
     }
 
     #[must_use]
-    pub const fn oklch_value(&self) -> Option<&CssAuthoredLchColor> {
+    pub const fn oklch_value(&self) -> Option<&CssLchColor> {
         match &self.representation {
-            CssAuthoredColorRepresentation::Oklch(value) => Some(value),
+            CssColorRepresentation::Oklch(value) => Some(value),
             _ => None,
         }
     }
 
     #[must_use]
-    pub const fn predefined_value(&self) -> Option<&CssAuthoredPredefinedColor> {
+    pub const fn predefined_value(&self) -> Option<&CssPredefinedColor> {
         match &self.representation {
-            CssAuthoredColorRepresentation::Predefined(value) => Some(value),
+            CssColorRepresentation::Predefined(value) => Some(value),
             _ => None,
         }
     }
 
     /// Returns the typed preserved Color 5 relative-color branch, when present.
     #[must_use]
-    pub const fn relative_value(&self) -> Option<&CssAuthoredRelativeColor> {
+    pub const fn relative_value(&self) -> Option<&CssRelativeColor> {
         match &self.representation {
-            CssAuthoredColorRepresentation::Relative(value) => Some(value),
+            CssColorRepresentation::Relative(value) => Some(value),
             _ => None,
         }
     }
 
     /// Returns the checked preserved Color 5 `color-mix()` branch, when present.
     #[must_use]
-    pub const fn color_mix_value(&self) -> Option<&CssAuthoredColorMix> {
+    pub const fn color_mix_value(&self) -> Option<&CssColorMix> {
         match &self.representation {
-            CssAuthoredColorRepresentation::ColorMix(value) => Some(value),
+            CssColorRepresentation::ColorMix(value) => Some(value),
             _ => None,
         }
     }
@@ -306,158 +292,25 @@ impl CssAuthoredColor {
     #[must_use]
     pub const fn kind_name(&self) -> &'static str {
         match &self.representation {
-            CssAuthoredColorRepresentation::CurrentColor => "currentcolor",
-            CssAuthoredColorRepresentation::Transparent => "transparent",
-            CssAuthoredColorRepresentation::Hex(_) => "hex",
-            CssAuthoredColorRepresentation::Named(_) => "named",
-            CssAuthoredColorRepresentation::System(_) => "system",
-            CssAuthoredColorRepresentation::Rgb(_) => "rgb",
-            CssAuthoredColorRepresentation::Hsl(_) => "hsl",
-            CssAuthoredColorRepresentation::Hwb(_) => "hwb",
-            CssAuthoredColorRepresentation::Lab(_) => "lab",
-            CssAuthoredColorRepresentation::Lch(_) => "lch",
-            CssAuthoredColorRepresentation::Oklab(_) => "oklab",
-            CssAuthoredColorRepresentation::Oklch(_) => "oklch",
-            CssAuthoredColorRepresentation::Custom(_) => "color",
-            CssAuthoredColorRepresentation::RelativeCustom(_) => "relative",
-            CssAuthoredColorRepresentation::Alpha(_) => "alpha",
-            CssAuthoredColorRepresentation::Predefined(_) => "color",
-            CssAuthoredColorRepresentation::Relative(_) => "relative",
-            CssAuthoredColorRepresentation::ColorMix(_) => "color-mix",
-            CssAuthoredColorRepresentation::PreservedI01(value) => value.kind_name(),
+            CssColorRepresentation::CurrentColor => "currentcolor",
+            CssColorRepresentation::Transparent => "transparent",
+            CssColorRepresentation::Hex(_) => "hex",
+            CssColorRepresentation::Named(_) => "named",
+            CssColorRepresentation::System(_) => "system",
+            CssColorRepresentation::Rgb(_) => "rgb",
+            CssColorRepresentation::Hsl(_) => "hsl",
+            CssColorRepresentation::Hwb(_) => "hwb",
+            CssColorRepresentation::Lab(_) => "lab",
+            CssColorRepresentation::Lch(_) => "lch",
+            CssColorRepresentation::Oklab(_) => "oklab",
+            CssColorRepresentation::Oklch(_) => "oklch",
+            CssColorRepresentation::Custom(_) => "color",
+            CssColorRepresentation::RelativeCustom(_) => "relative",
+            CssColorRepresentation::Alpha(_) => "alpha",
+            CssColorRepresentation::Predefined(_) => "color",
+            CssColorRepresentation::Relative(_) => "relative",
+            CssColorRepresentation::ColorMix(_) => "color-mix",
         }
-    }
-
-    /// Proves the actual candidate payload, including its scale, before pairing.
-    pub(crate) fn matches_i01(&self, candidate: &CssColor) -> bool {
-        use crate::color_scalar::{alpha_matches, channel_matches, hue_matches, relative_matches};
-        let mut pending = vec![(self, candidate)];
-        while let Some((current, candidate)) = pending.pop() {
-            let valid = match (&current.representation, candidate) {
-                (CssAuthoredColorRepresentation::PreservedI01(value), candidate) => {
-                    value == candidate
-                }
-                (CssAuthoredColorRepresentation::CurrentColor, CssColor::CurrentColor) => true,
-                (CssAuthoredColorRepresentation::Transparent, candidate) => {
-                    *candidate == CssColor::TRANSPARENT
-                }
-                (
-                    CssAuthoredColorRepresentation::Hex(_)
-                    | CssAuthoredColorRepresentation::Named(_),
-                    CssColor::Rgba(_),
-                ) => true,
-                (CssAuthoredColorRepresentation::System(_), CssColor::System(_)) => true,
-                (CssAuthoredColorRepresentation::Rgb(value), CssColor::Rgba(candidate)) => {
-                    value
-                        .channels()
-                        .iter()
-                        .zip([candidate.red(), candidate.green(), candidate.blue()])
-                        .all(|(channel, byte)| {
-                            channel_matches(channel, Some(f32::from(byte)), 255, 100)
-                        })
-                        && alpha_matches(value.alpha(), Some(candidate.alpha()))
-                }
-                (CssAuthoredColorRepresentation::Hsl(value), CssColor::Hsl(candidate)) => {
-                    hue_matches(value.hue(), candidate.hue())
-                        && channel_matches(value.saturation(), candidate.saturation(), 1, 100)
-                        && channel_matches(value.lightness(), candidate.lightness(), 1, 100)
-                        && alpha_matches(value.alpha(), candidate.alpha())
-                }
-                (CssAuthoredColorRepresentation::Hwb(value), CssColor::Hwb(candidate)) => {
-                    hue_matches(value.hue(), candidate.hue())
-                        && channel_matches(value.whiteness(), candidate.whiteness(), 1, 100)
-                        && channel_matches(value.blackness(), candidate.blackness(), 1, 100)
-                        && alpha_matches(value.alpha(), candidate.alpha())
-                }
-                (CssAuthoredColorRepresentation::Lab(value), CssColor::Lab(candidate)) => {
-                    channel_matches(value.lightness(), candidate.lightness(), 1, 1)
-                        && channel_matches(value.a(), candidate.a(), 5, 4)
-                        && channel_matches(value.b(), candidate.b(), 5, 4)
-                        && alpha_matches(value.alpha(), candidate.alpha())
-                }
-                (CssAuthoredColorRepresentation::Oklab(value), CssColor::Oklab(candidate)) => {
-                    channel_matches(value.lightness(), candidate.lightness(), 1, 100)
-                        && channel_matches(value.a(), candidate.a(), 1, 250)
-                        && channel_matches(value.b(), candidate.b(), 1, 250)
-                        && alpha_matches(value.alpha(), candidate.alpha())
-                }
-                (CssAuthoredColorRepresentation::Lch(value), CssColor::Lch(candidate)) => {
-                    channel_matches(value.lightness(), candidate.lightness(), 1, 1)
-                        && channel_matches(value.chroma(), candidate.chroma(), 3, 2)
-                        && hue_matches(value.hue(), candidate.hue())
-                        && alpha_matches(value.alpha(), candidate.alpha())
-                }
-                (CssAuthoredColorRepresentation::Oklch(value), CssColor::Oklch(candidate)) => {
-                    channel_matches(value.lightness(), candidate.lightness(), 1, 100)
-                        && channel_matches(value.chroma(), candidate.chroma(), 1, 250)
-                        && hue_matches(value.hue(), candidate.hue())
-                        && alpha_matches(value.alpha(), candidate.alpha())
-                }
-                (
-                    CssAuthoredColorRepresentation::Predefined(value),
-                    CssColor::ColorFunction(candidate),
-                ) => {
-                    value.color_space() == candidate.color_space()
-                        && value
-                            .channels()
-                            .iter()
-                            .zip(candidate.components())
-                            .all(|(value, candidate)| channel_matches(value, *candidate, 1, 100))
-                        && alpha_matches(value.alpha(), candidate.alpha())
-                }
-                (
-                    CssAuthoredColorRepresentation::ColorMix(value),
-                    CssColor::ColorMix(candidate),
-                ) => {
-                    let weights_match =
-                        |current: &CssAuthoredColorMixComponent,
-                         candidate: &CssColorMixComponent| {
-                            match (current.weight(), candidate.percentage()) {
-                                (None, None) => true,
-                                (Some(current), Some(candidate)) => current
-                                    .literal_value()
-                                    .is_some_and(|value| value.value() == Some(candidate)),
-                                _ => false,
-                            }
-                        };
-                    let [left, right] = value.components() else {
-                        return false;
-                    };
-                    pending.push((left.color(), candidate.left().color()));
-                    pending.push((right.color(), candidate.right().color()));
-                    value
-                        .interpolation()
-                        .and_then(CssAuthoredColorInterpolation::predefined)
-                        .as_ref()
-                        == Some(candidate.interpolation())
-                        && weights_match(left, candidate.left())
-                        && weights_match(right, candidate.right())
-                }
-                (
-                    CssAuthoredColorRepresentation::Relative(value),
-                    CssColor::Relative(candidate),
-                ) => {
-                    pending.push((value.source(), candidate.source()));
-                    value.function() == candidate.function()
-                        && value.channels().len() == candidate.components().len()
-                        && value
-                            .channels()
-                            .iter()
-                            .zip(candidate.components())
-                            .all(|(value, candidate)| relative_matches(value, candidate))
-                        && match (value.alpha(), candidate.alpha()) {
-                            (None, None) => true,
-                            (Some(value), Some(candidate)) => relative_matches(value, candidate),
-                            _ => false,
-                        }
-                }
-                _ => false,
-            };
-            if !valid {
-                return false;
-            }
-        }
-        true
     }
 }
 
@@ -467,10 +320,11 @@ pub struct CssHexColor {
 }
 
 impl CssHexColor {
-    pub(crate) fn new(digits: impl Into<String>) -> Self {
-        Self {
-            digits: digits.into(),
-        }
+    pub fn try_new(digits: impl Into<String>) -> Option<Self> {
+        let digits = digits.into();
+        (matches!(digits.len(), 3 | 4 | 6 | 8)
+            && digits.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .then_some(Self { digits })
     }
 
     #[must_use]
@@ -485,8 +339,12 @@ pub struct CssNamedColor {
 }
 
 impl CssNamedColor {
-    pub(crate) fn new(name: impl Into<String>) -> Self {
-        Self { name: name.into() }
+    pub fn try_new(name: impl Into<String>) -> Option<Self> {
+        let name = name.into();
+        cssparser::color::parse_named_color(&name).ok()?;
+        Some(Self {
+            name: name.to_ascii_lowercase(),
+        })
     }
 
     #[must_use]
@@ -497,7 +355,7 @@ impl CssNamedColor {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssAuthoredSystemColor {
+pub enum CssSystemColor {
     Canvas,
     CanvasText,
     LinkText,
@@ -544,24 +402,22 @@ pub enum CssAuthoredSystemColor {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssAuthoredColorSyntax {
+pub enum CssColorSyntax {
     Legacy,
     Modern,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub enum CssAuthoredColorComponent {
-    ExactNumber(CssColorNumberLiteral),
-    ExactPercentage(CssColorPercentageLiteral),
+pub enum CssColorComponent {
     None,
-    Number(CssFiniteNumber),
-    Percentage(CssFiniteNumber),
+    Number(CssColorNumberLiteral),
+    Percentage(CssColorPercentageLiteral),
     NumberCalculation(CssNumberCalculation),
     PercentageCalculation(CssPercentageCalculation),
 }
 
-impl CssAuthoredColorComponent {
+impl CssColorComponent {
     pub(crate) const fn is_none(&self) -> bool {
         matches!(self, Self::None)
     }
@@ -569,10 +425,8 @@ impl CssAuthoredColorComponent {
     pub(crate) const fn domain(&self) -> Option<CssCalculationType> {
         match self {
             Self::None => None,
-            Self::Number(_) | Self::ExactNumber(_) | Self::NumberCalculation(_) => {
-                Some(CssCalculationType::Number)
-            }
-            Self::Percentage(_) | Self::ExactPercentage(_) | Self::PercentageCalculation(_) => {
+            Self::Number(_) | Self::NumberCalculation(_) => Some(CssCalculationType::Number),
+            Self::Percentage(_) | Self::PercentageCalculation(_) => {
                 Some(CssCalculationType::Percentage)
             }
         }
@@ -581,240 +435,278 @@ impl CssAuthoredColorComponent {
 
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub enum CssAuthoredHue {
-    ExactNumber(CssColorNumberLiteral),
-    ExactAngle(CssColorAngleLiteral),
+pub enum CssColorHue {
     None,
-    Number(CssFiniteNumber),
-    Angle(CssAngleLiteral),
+    Number(CssColorNumberLiteral),
+    Angle(CssColorAngleLiteral),
     NumberCalculation(CssNumberCalculation),
     AngleCalculation(CssAngleCalculation),
 }
 
-impl CssAuthoredHue {
+impl CssColorHue {
     pub(crate) const fn is_none(&self) -> bool {
         matches!(self, Self::None)
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssAuthoredRgbColor {
-    syntax: CssAuthoredColorSyntax,
-    channels: [CssAuthoredColorComponent; 3],
-    alpha: Option<CssAuthoredColorComponent>,
+pub struct CssRgbColor {
+    syntax: CssColorSyntax,
+    channels: [CssColorComponent; 3],
+    alpha: Option<CssColorComponent>,
 }
 
-impl CssAuthoredRgbColor {
-    pub(crate) const fn new(
-        syntax: CssAuthoredColorSyntax,
-        channels: [CssAuthoredColorComponent; 3],
-        alpha: Option<CssAuthoredColorComponent>,
-    ) -> Self {
-        Self {
+impl CssRgbColor {
+    pub fn try_new(
+        syntax: CssColorSyntax,
+        channels: [CssColorComponent; 3],
+        alpha: Option<CssColorComponent>,
+    ) -> Result<Self, CssColorConstructionError> {
+        if syntax == CssColorSyntax::Legacy
+            && (channels.iter().any(CssColorComponent::is_none)
+                || alpha.as_ref().is_some_and(CssColorComponent::is_none)
+                || channels.iter().any(|v| v.domain() != channels[0].domain()))
+        {
+            return Err(CssColorConstructionError::InvalidSyntax);
+        }
+        check_components_depth(channels.iter().chain(alpha.iter()))?;
+        Ok(Self {
             syntax,
             channels,
             alpha,
-        }
+        })
     }
 
     #[must_use]
-    pub const fn syntax(&self) -> CssAuthoredColorSyntax {
+    pub const fn syntax(&self) -> CssColorSyntax {
         self.syntax
     }
 
     #[must_use]
-    pub const fn channels(&self) -> &[CssAuthoredColorComponent; 3] {
+    pub const fn channels(&self) -> &[CssColorComponent; 3] {
         &self.channels
     }
 
     #[must_use]
-    pub const fn alpha(&self) -> Option<&CssAuthoredColorComponent> {
+    pub const fn alpha(&self) -> Option<&CssColorComponent> {
         self.alpha.as_ref()
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssAuthoredHslColor {
-    syntax: CssAuthoredColorSyntax,
-    hue: CssAuthoredHue,
-    saturation: CssAuthoredColorComponent,
-    lightness: CssAuthoredColorComponent,
-    alpha: Option<CssAuthoredColorComponent>,
+pub struct CssHslColor {
+    syntax: CssColorSyntax,
+    hue: CssColorHue,
+    saturation: CssColorComponent,
+    lightness: CssColorComponent,
+    alpha: Option<CssColorComponent>,
 }
 
-impl CssAuthoredHslColor {
-    pub(crate) const fn new(
-        syntax: CssAuthoredColorSyntax,
-        hue: CssAuthoredHue,
-        saturation: CssAuthoredColorComponent,
-        lightness: CssAuthoredColorComponent,
-        alpha: Option<CssAuthoredColorComponent>,
-    ) -> Self {
-        Self {
+impl CssHslColor {
+    pub fn try_new(
+        syntax: CssColorSyntax,
+        hue: CssColorHue,
+        saturation: CssColorComponent,
+        lightness: CssColorComponent,
+        alpha: Option<CssColorComponent>,
+    ) -> Result<Self, CssColorConstructionError> {
+        if syntax == CssColorSyntax::Legacy
+            && (hue.is_none()
+                || !matches!(saturation.domain(), Some(CssCalculationType::Percentage))
+                || !matches!(lightness.domain(), Some(CssCalculationType::Percentage))
+                || alpha.as_ref().is_some_and(CssColorComponent::is_none))
+        {
+            return Err(CssColorConstructionError::InvalidSyntax);
+        }
+        check_color_depth(
+            color_hue_depth(&hue)
+                .max(color_component_depth(&saturation))
+                .max(color_component_depth(&lightness))
+                .max(alpha.as_ref().map_or(0, color_component_depth)),
+        )?;
+        Ok(Self {
             syntax,
             hue,
             saturation,
             lightness,
             alpha,
-        }
+        })
     }
 
     #[must_use]
-    pub const fn syntax(&self) -> CssAuthoredColorSyntax {
+    pub const fn syntax(&self) -> CssColorSyntax {
         self.syntax
     }
 
     #[must_use]
-    pub const fn hue(&self) -> &CssAuthoredHue {
+    pub const fn hue(&self) -> &CssColorHue {
         &self.hue
     }
 
     #[must_use]
-    pub const fn saturation(&self) -> &CssAuthoredColorComponent {
+    pub const fn saturation(&self) -> &CssColorComponent {
         &self.saturation
     }
 
     #[must_use]
-    pub const fn lightness(&self) -> &CssAuthoredColorComponent {
+    pub const fn lightness(&self) -> &CssColorComponent {
         &self.lightness
     }
 
     #[must_use]
-    pub const fn alpha(&self) -> Option<&CssAuthoredColorComponent> {
+    pub const fn alpha(&self) -> Option<&CssColorComponent> {
         self.alpha.as_ref()
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssAuthoredHwbColor {
-    hue: CssAuthoredHue,
-    whiteness: CssAuthoredColorComponent,
-    blackness: CssAuthoredColorComponent,
-    alpha: Option<CssAuthoredColorComponent>,
+pub struct CssHwbColor {
+    hue: CssColorHue,
+    whiteness: CssColorComponent,
+    blackness: CssColorComponent,
+    alpha: Option<CssColorComponent>,
 }
 
-impl CssAuthoredHwbColor {
-    pub(crate) const fn new(
-        hue: CssAuthoredHue,
-        whiteness: CssAuthoredColorComponent,
-        blackness: CssAuthoredColorComponent,
-        alpha: Option<CssAuthoredColorComponent>,
-    ) -> Self {
-        Self {
+impl CssHwbColor {
+    pub fn try_new(
+        hue: CssColorHue,
+        whiteness: CssColorComponent,
+        blackness: CssColorComponent,
+        alpha: Option<CssColorComponent>,
+    ) -> Result<Self, CssColorConstructionError> {
+        check_color_depth(
+            color_hue_depth(&hue)
+                .max(color_component_depth(&whiteness))
+                .max(color_component_depth(&blackness))
+                .max(alpha.as_ref().map_or(0, color_component_depth)),
+        )?;
+        Ok(Self {
             hue,
             whiteness,
             blackness,
             alpha,
-        }
+        })
     }
 
     #[must_use]
-    pub const fn hue(&self) -> &CssAuthoredHue {
+    pub const fn hue(&self) -> &CssColorHue {
         &self.hue
     }
 
     #[must_use]
-    pub const fn whiteness(&self) -> &CssAuthoredColorComponent {
+    pub const fn whiteness(&self) -> &CssColorComponent {
         &self.whiteness
     }
 
     #[must_use]
-    pub const fn blackness(&self) -> &CssAuthoredColorComponent {
+    pub const fn blackness(&self) -> &CssColorComponent {
         &self.blackness
     }
 
     #[must_use]
-    pub const fn alpha(&self) -> Option<&CssAuthoredColorComponent> {
+    pub const fn alpha(&self) -> Option<&CssColorComponent> {
         self.alpha.as_ref()
     }
 }
 
-/// A parser-owned authored Lab-family color with exact channel kinds.
+/// A checked authored Lab-family color with exact channel kinds.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssAuthoredLabColor {
-    lightness: CssAuthoredColorComponent,
-    a: CssAuthoredColorComponent,
-    b: CssAuthoredColorComponent,
-    alpha: Option<CssAuthoredColorComponent>,
+pub struct CssLabColor {
+    lightness: CssColorComponent,
+    a: CssColorComponent,
+    b: CssColorComponent,
+    alpha: Option<CssColorComponent>,
 }
 
-impl CssAuthoredLabColor {
-    pub(crate) const fn new(
-        lightness: CssAuthoredColorComponent,
-        a: CssAuthoredColorComponent,
-        b: CssAuthoredColorComponent,
-        alpha: Option<CssAuthoredColorComponent>,
-    ) -> Self {
-        Self {
+impl CssLabColor {
+    pub fn try_new(
+        lightness: CssColorComponent,
+        a: CssColorComponent,
+        b: CssColorComponent,
+        alpha: Option<CssColorComponent>,
+    ) -> Result<Self, CssColorConstructionError> {
+        check_color_depth(
+            color_component_depth(&lightness)
+                .max(color_component_depth(&a))
+                .max(color_component_depth(&b))
+                .max(alpha.as_ref().map_or(0, color_component_depth)),
+        )?;
+        Ok(Self {
             lightness,
             a,
             b,
             alpha,
-        }
+        })
     }
 
     #[must_use]
-    pub const fn lightness(&self) -> &CssAuthoredColorComponent {
+    pub const fn lightness(&self) -> &CssColorComponent {
         &self.lightness
     }
 
     #[must_use]
-    pub const fn a(&self) -> &CssAuthoredColorComponent {
+    pub const fn a(&self) -> &CssColorComponent {
         &self.a
     }
 
     #[must_use]
-    pub const fn b(&self) -> &CssAuthoredColorComponent {
+    pub const fn b(&self) -> &CssColorComponent {
         &self.b
     }
 
     #[must_use]
-    pub const fn alpha(&self) -> Option<&CssAuthoredColorComponent> {
+    pub const fn alpha(&self) -> Option<&CssColorComponent> {
         self.alpha.as_ref()
     }
 }
 
-/// A parser-owned authored LCH-family color with an angle-capable hue.
+/// A checked authored LCH-family color with an angle-capable hue.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssAuthoredLchColor {
-    lightness: CssAuthoredColorComponent,
-    chroma: CssAuthoredColorComponent,
-    hue: CssAuthoredHue,
-    alpha: Option<CssAuthoredColorComponent>,
+pub struct CssLchColor {
+    lightness: CssColorComponent,
+    chroma: CssColorComponent,
+    hue: CssColorHue,
+    alpha: Option<CssColorComponent>,
 }
 
-impl CssAuthoredLchColor {
-    pub(crate) const fn new(
-        lightness: CssAuthoredColorComponent,
-        chroma: CssAuthoredColorComponent,
-        hue: CssAuthoredHue,
-        alpha: Option<CssAuthoredColorComponent>,
-    ) -> Self {
-        Self {
+impl CssLchColor {
+    pub fn try_new(
+        lightness: CssColorComponent,
+        chroma: CssColorComponent,
+        hue: CssColorHue,
+        alpha: Option<CssColorComponent>,
+    ) -> Result<Self, CssColorConstructionError> {
+        check_color_depth(
+            color_component_depth(&lightness)
+                .max(color_component_depth(&chroma))
+                .max(color_hue_depth(&hue))
+                .max(alpha.as_ref().map_or(0, color_component_depth)),
+        )?;
+        Ok(Self {
             lightness,
             chroma,
             hue,
             alpha,
-        }
+        })
     }
 
     #[must_use]
-    pub const fn lightness(&self) -> &CssAuthoredColorComponent {
+    pub const fn lightness(&self) -> &CssColorComponent {
         &self.lightness
     }
 
     #[must_use]
-    pub const fn chroma(&self) -> &CssAuthoredColorComponent {
+    pub const fn chroma(&self) -> &CssColorComponent {
         &self.chroma
     }
 
     #[must_use]
-    pub const fn hue(&self) -> &CssAuthoredHue {
+    pub const fn hue(&self) -> &CssColorHue {
         &self.hue
     }
 
     #[must_use]
-    pub const fn alpha(&self) -> Option<&CssAuthoredColorComponent> {
+    pub const fn alpha(&self) -> Option<&CssColorComponent> {
         self.alpha.as_ref()
     }
 }
@@ -838,24 +730,28 @@ impl CssColorProfileComponentName {
 /// Intrinsic failures while composing an authored color graph.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssAuthoredColorConstructionError {
+pub enum CssColorConstructionError {
     EmptyComponents,
+    InvalidSyntax,
+    InvalidComponent,
     NestingLimit,
     CapacityOverflow,
     InvalidExpressionEnvironment,
 }
-impl std::fmt::Display for CssAuthoredColorConstructionError {
+impl std::fmt::Display for CssColorConstructionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::EmptyComponents => "color requires at least one component",
+            Self::InvalidSyntax => "invalid color syntax and component combination",
+            Self::InvalidComponent => "invalid color component domain",
             Self::NestingLimit => "color nesting limit exceeded",
             Self::CapacityOverflow => "color capacity overflow",
             Self::InvalidExpressionEnvironment => "color expression environment mismatch",
         })
     }
 }
-impl std::error::Error for CssAuthoredColorConstructionError {}
-impl From<ColorGraphDepthError> for CssAuthoredColorConstructionError {
+impl std::error::Error for CssColorConstructionError {}
+impl From<ColorGraphDepthError> for CssColorConstructionError {
     fn from(value: ColorGraphDepthError) -> Self {
         match value {
             ColorGraphDepthError::NestingLimit => Self::NestingLimit,
@@ -863,31 +759,39 @@ impl From<ColorGraphDepthError> for CssAuthoredColorConstructionError {
         }
     }
 }
-fn composed_color_depth(child_depth: u32) -> Result<u32, CssAuthoredColorConstructionError> {
+fn check_color_depth(child_depth: u32) -> Result<(), CssColorConstructionError> {
+    composed_color_depth(child_depth).map(|_| ())
+}
+fn check_components_depth<'a>(
+    values: impl Iterator<Item = &'a CssColorComponent>,
+) -> Result<(), CssColorConstructionError> {
+    check_color_depth(values.map(color_component_depth).max().unwrap_or(0))
+}
+fn composed_color_depth(child_depth: u32) -> Result<u32, CssColorConstructionError> {
     let depth = child_depth
         .checked_add(1)
-        .ok_or(CssAuthoredColorConstructionError::CapacityOverflow)?;
+        .ok_or(CssColorConstructionError::CapacityOverflow)?;
     if depth > crate::STRUCTURAL_NESTING_LIMIT {
-        return Err(CssAuthoredColorConstructionError::NestingLimit);
+        return Err(CssColorConstructionError::NestingLimit);
     }
     Ok(depth)
 }
 /// A nonempty authored custom `color()` without profile binding or evaluation.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssAuthoredCustomColor {
+pub struct CssCustomColor {
     profile: CssColorProfileName,
-    channels: Vec<CssAuthoredColorComponent>,
-    alpha: Option<CssAuthoredColorComponent>,
+    channels: Vec<CssColorComponent>,
+    alpha: Option<CssColorComponent>,
     nesting_depth: u32,
 }
-impl CssAuthoredCustomColor {
+impl CssCustomColor {
     pub fn try_new(
         profile: CssColorProfileName,
-        channels: Vec<CssAuthoredColorComponent>,
-        alpha: Option<CssAuthoredColorComponent>,
-    ) -> Result<Self, CssAuthoredColorConstructionError> {
+        channels: Vec<CssColorComponent>,
+        alpha: Option<CssColorComponent>,
+    ) -> Result<Self, CssColorConstructionError> {
         if channels.is_empty() {
-            return Err(CssAuthoredColorConstructionError::EmptyComponents);
+            return Err(CssColorConstructionError::EmptyComponents);
         }
         let nesting_depth = composed_color_depth(
             channels
@@ -907,31 +811,31 @@ impl CssAuthoredCustomColor {
     pub const fn profile(&self) -> &CssColorProfileName {
         &self.profile
     }
-    pub fn channels(&self) -> &[CssAuthoredColorComponent] {
+    pub fn channels(&self) -> &[CssColorComponent] {
         &self.channels
     }
-    pub const fn alpha(&self) -> Option<&CssAuthoredColorComponent> {
+    pub const fn alpha(&self) -> Option<&CssColorComponent> {
         self.alpha.as_ref()
     }
 }
 /// A custom relative color retaining unbound profile references in authored order.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssAuthoredRelativeCustomColor {
-    source: Box<CssAuthoredColor>,
+pub struct CssRelativeCustomColor {
+    source: Box<CssColor>,
     profile: CssColorProfileName,
     channels: Vec<crate::CssProfileColorExpression>,
     alpha: Option<crate::CssProfileColorExpression>,
     nesting_depth: u32,
 }
-impl CssAuthoredRelativeCustomColor {
+impl CssRelativeCustomColor {
     pub fn try_new(
-        source: CssAuthoredColor,
+        source: CssColor,
         profile: CssColorProfileName,
         channels: Vec<crate::CssProfileColorExpression>,
         alpha: Option<crate::CssProfileColorExpression>,
-    ) -> Result<Self, CssAuthoredColorConstructionError> {
+    ) -> Result<Self, CssColorConstructionError> {
         if channels.is_empty() {
-            return Err(CssAuthoredColorConstructionError::EmptyComponents);
+            return Err(CssColorConstructionError::EmptyComponents);
         }
         let expressions = channels
             .iter()
@@ -948,7 +852,7 @@ impl CssAuthoredRelativeCustomColor {
             nesting_depth,
         })
     }
-    pub const fn source(&self) -> &CssAuthoredColor {
+    pub const fn source(&self) -> &CssColor {
         &self.source
     }
     pub const fn profile(&self) -> &CssColorProfileName {
@@ -963,23 +867,23 @@ impl CssAuthoredRelativeCustomColor {
 }
 /// Authored `alpha(from ...)`, preserving omission independently from `none`.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssAuthoredAlphaColor {
-    source: Box<CssAuthoredColor>,
-    alpha: Option<CssTypedRelativeColorExpression>,
+pub struct CssAlphaColor {
+    source: Box<CssColor>,
+    alpha: Option<CssRelativeColorExpression>,
     nesting_depth: u32,
 }
-impl CssAuthoredAlphaColor {
+impl CssAlphaColor {
     pub fn try_new(
-        source: CssAuthoredColor,
-        alpha: Option<CssTypedRelativeColorExpression>,
-    ) -> Result<Self, CssAuthoredColorConstructionError> {
+        source: CssColor,
+        alpha: Option<CssRelativeColorExpression>,
+    ) -> Result<Self, CssColorConstructionError> {
         if alpha.as_ref().is_some_and(|v| {
             v.environment() != CssRelativeColorEnvironment::Alpha
                 || v.result_domain() != CssRelativeColorResultDomain::Alpha
         }) {
-            return Err(CssAuthoredColorConstructionError::InvalidExpressionEnvironment);
+            return Err(CssColorConstructionError::InvalidExpressionEnvironment);
         }
-        let expression_depth = match alpha.as_ref().map(CssTypedRelativeColorExpression::value) {
+        let expression_depth = match alpha.as_ref().map(CssRelativeColorExpression::value) {
             Some(CssRelativeColorExpressionValue::Calculation(v)) => {
                 v.data.expression.component_nesting_depth()
             }
@@ -993,10 +897,10 @@ impl CssAuthoredAlphaColor {
             nesting_depth,
         })
     }
-    pub const fn source(&self) -> &CssAuthoredColor {
+    pub const fn source(&self) -> &CssColor {
         &self.source
     }
-    pub const fn alpha(&self) -> Option<&CssTypedRelativeColorExpression> {
+    pub const fn alpha(&self) -> Option<&CssRelativeColorExpression> {
         self.alpha.as_ref()
     }
 }
@@ -1017,70 +921,41 @@ pub enum CssAbsoluteColorExclusion {
     ContrastColor,
     DeviceCmyk,
 }
-impl CssAuthoredColor {
+impl CssColor {
     pub fn absolute_eligibility(&self) -> CssAbsoluteColorEligibility {
-        enum Pending<'a> {
-            Current(&'a CssAuthoredColor),
-            Frozen(&'a CssColor),
-        }
         use CssAbsoluteColorEligibility as E;
         use CssAbsoluteColorExclusion as X;
-        use CssAuthoredColorRepresentation as R;
-        let mut pending = vec![Pending::Current(self)];
+        use CssColorRepresentation as R;
+        let mut pending = vec![self];
         let mut profile = false;
-        while let Some(next) = pending.pop() {
-            match next {
-                Pending::Current(color) => match &color.representation {
-                    R::CurrentColor => return E::Contextual(X::CurrentColor),
-                    R::System(_) => return E::Contextual(X::SystemColor),
-                    R::Custom(_) => profile = true,
-                    R::RelativeCustom(v) => {
-                        profile = true;
-                        pending.push(Pending::Current(v.source()));
-                    }
-                    R::Alpha(v) => pending.push(Pending::Current(v.source())),
-                    R::Relative(v) => pending.push(Pending::Current(v.source())),
-                    R::ColorMix(v) => {
-                        profile |= v
-                            .interpolation()
-                            .is_some_and(|v| v.custom_profile().is_some());
-                        pending.extend(
-                            v.components()
-                                .iter()
-                                .rev()
-                                .map(|v| Pending::Current(v.color())),
-                        );
-                    }
-                    R::PreservedI01(v) => pending.push(Pending::Frozen(v)),
-                    R::Transparent
-                    | R::Hex(_)
-                    | R::Named(_)
-                    | R::Rgb(_)
-                    | R::Hsl(_)
-                    | R::Hwb(_)
-                    | R::Lab(_)
-                    | R::Lch(_)
-                    | R::Oklab(_)
-                    | R::Oklch(_)
-                    | R::Predefined(_) => {}
-                },
-                Pending::Frozen(color) => match color {
-                    CssColor::CurrentColor => return E::Contextual(X::CurrentColor),
-                    CssColor::System(_) => return E::Contextual(X::SystemColor),
-                    CssColor::Relative(v) => pending.push(Pending::Frozen(v.source())),
-                    CssColor::ColorMix(v) => {
-                        pending.push(Pending::Frozen(v.right().color()));
-                        pending.push(Pending::Frozen(v.left().color()));
-                    }
-                    CssColor::Rgba(_)
-                    | CssColor::Hsl(_)
-                    | CssColor::Hwb(_)
-                    | CssColor::Lab(_)
-                    | CssColor::Lch(_)
-                    | CssColor::Oklab(_)
-                    | CssColor::Oklch(_)
-                    | CssColor::ColorFunction(_) => {}
-                },
+        while let Some(color) = pending.pop() {
+            match &color.representation {
+                R::CurrentColor => return E::Contextual(X::CurrentColor),
+                R::System(_) => return E::Contextual(X::SystemColor),
+                R::Custom(_) => profile = true,
+                R::RelativeCustom(v) => {
+                    profile = true;
+                    pending.push(v.source());
+                }
+                R::Alpha(v) => pending.push(v.source()),
+                R::Relative(v) => pending.push(v.source()),
+                R::ColorMix(v) => {
+                    profile |= v
+                        .interpolation()
+                        .is_some_and(|v| v.custom_profile().is_some());
+                    pending.extend(v.components().iter().rev().map(|v| v.color()));
+                }
+                R::Transparent
+                | R::Hex(_)
+                | R::Named(_)
+                | R::Rgb(_)
+                | R::Hsl(_)
+                | R::Hwb(_)
+                | R::Lab(_)
+                | R::Lch(_)
+                | R::Oklab(_)
+                | R::Oklch(_)
+                | R::Predefined(_) => {}
             }
         }
         if profile {
@@ -1091,12 +966,12 @@ impl CssAuthoredColor {
     }
 }
 
-/// A parser-owned absolute `color()` value in a predefined Color 4 space.
+/// A checked absolute `color()` value in a predefined Color 4 space.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssAuthoredPredefinedColor {
+pub struct CssPredefinedColor {
     color_space: CssPredefinedColorSpace,
-    channels: [CssAuthoredColorComponent; 3],
-    alpha: Option<CssAuthoredColorComponent>,
+    channels: [CssColorComponent; 3],
+    alpha: Option<CssColorComponent>,
 }
 
 /// The closed origin-channel environment for a preserved relative-color family.
@@ -1113,6 +988,23 @@ pub enum CssRelativeColorEnvironment {
     Oklch,
     PredefinedRgb(CssPredefinedColorSpace),
     Xyz(CssPredefinedColorSpace),
+}
+impl CssRelativeColorEnvironment {
+    pub(crate) const fn is_consistent(self) -> bool {
+        !matches!(
+            self,
+            Self::PredefinedRgb(CssPredefinedColorSpace::XyzD50 | CssPredefinedColorSpace::XyzD65)
+                | Self::Xyz(
+                    CssPredefinedColorSpace::Srgb
+                        | CssPredefinedColorSpace::SrgbLinear
+                        | CssPredefinedColorSpace::DisplayP3
+                        | CssPredefinedColorSpace::DisplayP3Linear
+                        | CssPredefinedColorSpace::A98Rgb
+                        | CssPredefinedColorSpace::ProphotoRgb
+                        | CssPredefinedColorSpace::Rec2020
+                )
+        )
+    }
 }
 
 /// The semantic result slot in which a relative-color expression is authored.
@@ -1147,13 +1039,10 @@ pub enum CssRelativeColorChannel {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssRelativeColorExpressionValue {
-    ExactNumber(CssColorNumberLiteral),
-    ExactPercentage(CssColorPercentageLiteral),
-    ExactAngle(CssColorAngleLiteral),
     None,
-    Number(CssFiniteNumber),
-    Percentage(CssFiniteNumber),
-    Angle(CssAngleLiteral),
+    Number(CssColorNumberLiteral),
+    Percentage(CssColorPercentageLiteral),
+    Angle(CssColorAngleLiteral),
     Channel(CssRelativeColorChannel),
     Calculation(CssRelativeColorCalculation),
 }
@@ -1210,22 +1099,25 @@ impl CssRelativeColorCalculation {
 
 /// One result expression checked against a closed relative-color environment and slot domain.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssTypedRelativeColorExpression {
+pub struct CssRelativeColorExpression {
     environment: CssRelativeColorEnvironment,
     result_domain: CssRelativeColorResultDomain,
     value: CssRelativeColorExpressionValue,
+    origin: crate::CssValueOrigin,
 }
 
-impl CssTypedRelativeColorExpression {
+impl CssRelativeColorExpression {
     pub(crate) const fn new(
         environment: CssRelativeColorEnvironment,
         result_domain: CssRelativeColorResultDomain,
         value: CssRelativeColorExpressionValue,
+        origin: crate::CssValueOrigin,
     ) -> Self {
         Self {
             environment,
             result_domain,
             value,
+            origin,
         }
     }
 
@@ -1243,33 +1135,60 @@ impl CssTypedRelativeColorExpression {
     pub const fn value(&self) -> &CssRelativeColorExpressionValue {
         &self.value
     }
+    #[must_use]
+    pub const fn origin(&self) -> &crate::CssValueOrigin {
+        &self.origin
+    }
 }
 
-/// A parser-owned relative color with an exact three-channel typed result environment.
+/// A checked relative color with an exact three-channel typed result environment.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssAuthoredRelativeColor {
+pub struct CssRelativeColor {
     function: CssRelativeColorFunction,
     environment: CssRelativeColorEnvironment,
-    source: Box<CssAuthoredColor>,
-    channels: [CssTypedRelativeColorExpression; 3],
-    alpha: Option<CssTypedRelativeColorExpression>,
+    source: Box<CssColor>,
+    channels: [CssRelativeColorExpression; 3],
+    alpha: Option<CssRelativeColorExpression>,
 }
 
-impl CssAuthoredRelativeColor {
-    pub(crate) fn new(
+impl CssRelativeColor {
+    pub fn try_new(
         function: CssRelativeColorFunction,
-        environment: CssRelativeColorEnvironment,
-        source: CssAuthoredColor,
-        channels: [CssTypedRelativeColorExpression; 3],
-        alpha: Option<CssTypedRelativeColorExpression>,
-    ) -> Self {
-        Self {
+        source: CssColor,
+        channels: [CssRelativeColorExpression; 3],
+        alpha: Option<CssRelativeColorExpression>,
+    ) -> Result<Self, CssColorConstructionError> {
+        let (environment, domains) = function.signature();
+        for (value, domain) in channels.iter().zip(domains) {
+            if value.environment() != environment || value.result_domain() != domain {
+                return Err(CssColorConstructionError::InvalidExpressionEnvironment);
+            }
+        }
+        if alpha.as_ref().is_some_and(|value| {
+            value.environment() != environment
+                || value.result_domain() != CssRelativeColorResultDomain::Alpha
+        }) {
+            return Err(CssColorConstructionError::InvalidExpressionEnvironment);
+        }
+        let expression_depth = channels
+            .iter()
+            .chain(alpha.iter())
+            .map(|value| match value.value() {
+                CssRelativeColorExpressionValue::Calculation(v) => {
+                    v.data.expression.component_nesting_depth()
+                }
+                _ => 0,
+            })
+            .max()
+            .unwrap_or(0);
+        composed_color_depth(expression_depth.max(authored_color_depth(&source)?))?;
+        Ok(Self {
             function,
             environment,
             source: Box::new(source),
             channels,
             alpha,
-        }
+        })
     }
 
     #[must_use]
@@ -1283,32 +1202,33 @@ impl CssAuthoredRelativeColor {
     }
 
     #[must_use]
-    pub const fn source(&self) -> &CssAuthoredColor {
+    pub const fn source(&self) -> &CssColor {
         &self.source
     }
 
     #[must_use]
-    pub const fn channels(&self) -> &[CssTypedRelativeColorExpression; 3] {
+    pub const fn channels(&self) -> &[CssRelativeColorExpression; 3] {
         &self.channels
     }
 
     #[must_use]
-    pub const fn alpha(&self) -> Option<&CssTypedRelativeColorExpression> {
+    pub const fn alpha(&self) -> Option<&CssRelativeColorExpression> {
         self.alpha.as_ref()
     }
 }
 
-impl CssAuthoredPredefinedColor {
-    pub(crate) const fn new(
+impl CssPredefinedColor {
+    pub fn try_new(
         color_space: CssPredefinedColorSpace,
-        channels: [CssAuthoredColorComponent; 3],
-        alpha: Option<CssAuthoredColorComponent>,
-    ) -> Self {
-        Self {
+        channels: [CssColorComponent; 3],
+        alpha: Option<CssColorComponent>,
+    ) -> Result<Self, CssColorConstructionError> {
+        check_components_depth(channels.iter().chain(alpha.iter()))?;
+        Ok(Self {
             color_space,
             channels,
             alpha,
-        }
+        })
     }
 
     #[must_use]
@@ -1317,40 +1237,22 @@ impl CssAuthoredPredefinedColor {
     }
 
     #[must_use]
-    pub const fn channels(&self) -> &[CssAuthoredColorComponent; 3] {
+    pub const fn channels(&self) -> &[CssColorComponent; 3] {
         &self.channels
     }
 
     #[must_use]
-    pub const fn alpha(&self) -> Option<&CssAuthoredColorComponent> {
+    pub const fn alpha(&self) -> Option<&CssColorComponent> {
         self.alpha.as_ref()
     }
 }
 
-/// A checked authored percentage trailing one preserved `color-mix()` component.
+/// A checked literal percentage for one `color-mix()` component.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssAuthoredColorMixPercentage {
-    value: ColorMixPercentageValue,
+pub struct CssColorMixPercentage {
+    literal: CssColorPercentageLiteral,
 }
-#[derive(Clone, Debug, PartialEq)]
-enum ColorMixPercentageValue {
-    Finite(CssFiniteNumber),
-    Exact(CssColorPercentageLiteral),
-}
-impl CssAuthoredColorMixPercentage {
-    #[must_use]
-    pub const fn try_new(value: f32) -> Option<Self> {
-        if value >= 0.0 && value <= 100.0 {
-            match CssFiniteNumber::try_new(value) {
-                Some(value) => Some(Self {
-                    value: ColorMixPercentageValue::Finite(value),
-                }),
-                None => None,
-            }
-        } else {
-            None
-        }
-    }
+impl CssColorMixPercentage {
     /// Checks the exact literal coefficient against the inclusive 0..100 range.
     pub fn try_from_component(
         component: crate::CssComponentValue,
@@ -1361,31 +1263,11 @@ impl CssAuthoredColorMixPercentage {
         {
             return Err(CssColorScalarError::out_of_range(literal.origin().clone()));
         }
-        Ok(Self {
-            value: match crate::exact_decimal::exact_legacy_value(
-                literal.numeric().representation(),
-            ) {
-                Some(value) => ColorMixPercentageValue::Finite(
-                    CssFiniteNumber::try_new(value).expect("proved finite"),
-                ),
-                None => ColorMixPercentageValue::Exact(literal),
-            },
-        })
-    }
-    /// Returns the exact binary32 subset, never a rounded approximation.
-    #[must_use]
-    pub const fn value(&self) -> Option<f32> {
-        match &self.value {
-            ColorMixPercentageValue::Finite(v) => Some(v.value()),
-            ColorMixPercentageValue::Exact(_) => None,
-        }
+        Ok(Self { literal })
     }
     #[must_use]
-    pub const fn exact_literal(&self) -> Option<&CssColorPercentageLiteral> {
-        match &self.value {
-            ColorMixPercentageValue::Exact(v) => Some(v),
-            ColorMixPercentageValue::Finite(_) => None,
-        }
+    pub const fn literal(&self) -> &CssColorPercentageLiteral {
+        &self.literal
     }
 }
 
@@ -1410,13 +1292,13 @@ impl CssColorProfileName {
 
 /// A checked predefined interpolation method or symbolic custom profile.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssAuthoredColorInterpolation(ColorInterpolation);
+pub struct CssColorInterpolation(ColorInterpolation);
 #[derive(Clone, Debug, PartialEq)]
 enum ColorInterpolation {
     Predefined(CssColorInterpolationMethod),
     Custom(CssColorProfileName),
 }
-impl CssAuthoredColorInterpolation {
+impl CssColorInterpolation {
     pub fn try_predefined(method: CssColorInterpolationMethod) -> Option<Self> {
         if method.hue().is_some() && !method.space().is_polar() {
             return None;
@@ -1445,15 +1327,15 @@ impl CssAuthoredColorInterpolation {
 
 /// A literal weight in range or a symbolic percentage math function.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssAuthoredColorMixWeight(ColorMixWeight);
+pub struct CssColorMixWeight(ColorMixWeight);
 #[derive(Clone, Debug, PartialEq)]
 enum ColorMixWeight {
-    Literal(CssAuthoredColorMixPercentage),
+    Literal(CssColorMixPercentage),
     Calculation(CssPercentageCalculation),
 }
-impl CssAuthoredColorMixWeight {
+impl CssColorMixWeight {
     #[must_use]
-    pub fn literal(value: CssAuthoredColorMixPercentage) -> Self {
+    pub fn literal(value: CssColorMixPercentage) -> Self {
         Self(ColorMixWeight::Literal(value))
     }
     pub fn try_calculation(
@@ -1477,7 +1359,7 @@ impl CssAuthoredColorMixWeight {
         Ok(Self(ColorMixWeight::Calculation(value)))
     }
     #[must_use]
-    pub fn literal_value(&self) -> Option<&CssAuthoredColorMixPercentage> {
+    pub fn literal_value(&self) -> Option<&CssColorMixPercentage> {
         match &self.0 {
             ColorMixWeight::Literal(v) => Some(v),
             ColorMixWeight::Calculation(_) => None,
@@ -1494,28 +1376,24 @@ impl CssAuthoredColorMixWeight {
 
 /// One authored color and its optional literal or calculated weight.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssAuthoredColorMixComponent {
-    color: Box<CssAuthoredColor>,
-    weight: Option<CssAuthoredColorMixWeight>,
+pub struct CssColorMixComponent {
+    color: Box<CssColor>,
+    weight: Option<CssColorMixWeight>,
 }
-impl CssAuthoredColorMixComponent {
+impl CssColorMixComponent {
     #[must_use]
-    pub fn new(color: CssAuthoredColor, percentage: Option<CssAuthoredColorMixPercentage>) -> Self {
-        Self::with_weight(color, percentage.map(CssAuthoredColorMixWeight::literal))
-    }
-    #[must_use]
-    pub fn with_weight(color: CssAuthoredColor, weight: Option<CssAuthoredColorMixWeight>) -> Self {
+    pub fn new(color: CssColor, weight: Option<CssColorMixWeight>) -> Self {
         Self {
             color: Box::new(color),
             weight,
         }
     }
     #[must_use]
-    pub const fn color(&self) -> &CssAuthoredColor {
+    pub const fn color(&self) -> &CssColor {
         &self.color
     }
     #[must_use]
-    pub const fn weight(&self) -> Option<&CssAuthoredColorMixWeight> {
+    pub const fn weight(&self) -> Option<&CssColorMixWeight> {
         self.weight.as_ref()
     }
 }
@@ -1541,15 +1419,15 @@ impl std::error::Error for CssColorMixConstructionError {}
 
 /// A nonempty ordered authored mix with optional explicit interpolation.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssAuthoredColorMix {
-    interpolation: Option<CssAuthoredColorInterpolation>,
-    components: Vec<CssAuthoredColorMixComponent>,
+pub struct CssColorMix {
+    interpolation: Option<CssColorInterpolation>,
+    components: Vec<CssColorMixComponent>,
     nesting_depth: u32,
 }
-impl CssAuthoredColorMix {
-    pub fn try_from_components(
-        interpolation: Option<CssAuthoredColorInterpolation>,
-        components: Vec<CssAuthoredColorMixComponent>,
+impl CssColorMix {
+    pub fn try_new(
+        interpolation: Option<CssColorInterpolation>,
+        components: Vec<CssColorMixComponent>,
     ) -> Result<Self, CssColorMixConstructionError> {
         if components.is_empty() {
             return Err(CssColorMixConstructionError::EmptyComponents);
@@ -1562,25 +1440,11 @@ impl CssAuthoredColorMix {
         })
     }
     #[must_use]
-    pub fn try_new(
-        interpolation: CssColorInterpolationMethod,
-        left: CssAuthoredColorMixComponent,
-        right: CssAuthoredColorMixComponent,
-    ) -> Option<Self> {
-        Self::try_from_components(
-            Some(CssAuthoredColorInterpolation::try_predefined(
-                interpolation,
-            )?),
-            vec![left, right],
-        )
-        .ok()
-    }
-    #[must_use]
-    pub const fn interpolation(&self) -> Option<&CssAuthoredColorInterpolation> {
+    pub const fn interpolation(&self) -> Option<&CssColorInterpolation> {
         self.interpolation.as_ref()
     }
     #[must_use]
-    pub fn components(&self) -> &[CssAuthoredColorMixComponent] {
+    pub fn components(&self) -> &[CssColorMixComponent] {
         &self.components
     }
 }
@@ -1599,19 +1463,14 @@ impl From<ColorGraphDepthError> for CssColorMixConstructionError {
     }
 }
 
-fn color_mix_depth(
-    components: &[CssAuthoredColorMixComponent],
-) -> Result<u32, ColorGraphDepthError> {
+fn color_mix_depth(components: &[CssColorMixComponent]) -> Result<u32, ColorGraphDepthError> {
     let mut depth = 1;
     for component in components {
         depth = depth.max(
             1u32.checked_add(authored_color_depth(component.color())?)
                 .ok_or(ColorGraphDepthError::CapacityOverflow)?,
         );
-        if let Some(value) = component
-            .weight()
-            .and_then(CssAuthoredColorMixWeight::calculation)
-        {
+        if let Some(value) = component.weight().and_then(CssColorMixWeight::calculation) {
             depth = depth.max(
                 1u32.checked_add(value.components().nesting_depth())
                     .ok_or(ColorGraphDepthError::CapacityOverflow)?,
@@ -1624,30 +1483,28 @@ fn color_mix_depth(
     Ok(depth)
 }
 
-fn color_component_depth(value: &CssAuthoredColorComponent) -> u32 {
+fn color_component_depth(value: &CssColorComponent) -> u32 {
     match value {
-        CssAuthoredColorComponent::NumberCalculation(v) => v.components().nesting_depth(),
-        CssAuthoredColorComponent::PercentageCalculation(v) => v.components().nesting_depth(),
+        CssColorComponent::NumberCalculation(v) => v.components().nesting_depth(),
+        CssColorComponent::PercentageCalculation(v) => v.components().nesting_depth(),
         _ => 0,
     }
 }
-fn color_hue_depth(value: &CssAuthoredHue) -> u32 {
+fn color_hue_depth(value: &CssColorHue) -> u32 {
     match value {
-        CssAuthoredHue::NumberCalculation(v) => v.components().nesting_depth(),
-        CssAuthoredHue::AngleCalculation(v) => v.components().nesting_depth(),
+        CssColorHue::NumberCalculation(v) => v.components().nesting_depth(),
+        CssColorHue::AngleCalculation(v) => v.components().nesting_depth(),
         _ => 0,
     }
 }
-fn authored_color_depth(mut color: &CssAuthoredColor) -> Result<u32, ColorGraphDepthError> {
-    use CssAuthoredColorRepresentation as R;
+fn authored_color_depth(mut color: &CssColor) -> Result<u32, ColorGraphDepthError> {
+    use CssColorRepresentation as R;
     let mut ancestors = 0u32;
     let mut maximum = 0u32;
     loop {
-        let alpha =
-            |v: &Option<CssAuthoredColorComponent>| v.as_ref().map_or(0, color_component_depth);
-        let channels = |v: &[CssAuthoredColorComponent; 3]| {
-            v.iter().map(color_component_depth).max().unwrap_or(0)
-        };
+        let alpha = |v: &Option<CssColorComponent>| v.as_ref().map_or(0, color_component_depth);
+        let channels =
+            |v: &[CssColorComponent; 3]| v.iter().map(color_component_depth).max().unwrap_or(0);
         let depth = match &color.representation {
             R::CurrentColor | R::Transparent | R::Hex(_) | R::Named(_) | R::System(_) => 0,
             R::Rgb(v) => 1 + channels(&v.channels).max(alpha(&v.alpha)),
@@ -1706,7 +1563,6 @@ fn authored_color_depth(mut color: &CssAuthoredColor) -> Result<u32, ColorGraphD
                 color = &v.source;
                 continue;
             }
-            R::PreservedI01(v) => legacy_color_depth(v)?,
         };
         maximum = maximum.max(
             ancestors
@@ -1718,476 +1574,6 @@ fn authored_color_depth(mut color: &CssAuthoredColor) -> Result<u32, ColorGraphD
         } else {
             Ok(maximum)
         };
-    }
-}
-
-fn legacy_color_depth(color: &CssColor) -> Result<u32, ColorGraphDepthError> {
-    let mut pending = vec![(color, 0u32)];
-    let mut maximum = 0;
-    while let Some((color, enclosing)) = pending.pop() {
-        let depth = enclosing
-            .checked_add(match color {
-                CssColor::CurrentColor | CssColor::System(_) | CssColor::Rgba(_) => 0,
-                _ => 1,
-            })
-            .ok_or(ColorGraphDepthError::CapacityOverflow)?;
-        maximum = maximum.max(depth);
-        if maximum > crate::STRUCTURAL_NESTING_LIMIT {
-            return Err(ColorGraphDepthError::NestingLimit);
-        }
-        match color {
-            CssColor::ColorMix(v) => {
-                pending.push((v.left().color(), depth));
-                pending.push((v.right().color(), depth));
-            }
-            CssColor::Relative(v) => {
-                pending.push((v.source(), depth));
-                // Frozen expressions retain only authored text; use the shared
-                // component owner, never a second numeric grammar or evaluator.
-                for expression in v.components().iter().chain(v.alpha()) {
-                    let values = crate::parse_component_values(expression.authored().as_css())
-                        .map_err(|_| ColorGraphDepthError::NestingLimit)?;
-                    maximum = maximum.max(
-                        depth
-                            .checked_add(values.nesting_depth())
-                            .ok_or(ColorGraphDepthError::CapacityOverflow)?,
-                    );
-                }
-            }
-            _ => {}
-        }
-    }
-    if maximum > crate::STRUCTURAL_NESTING_LIMIT {
-        Err(ColorGraphDepthError::NestingLimit)
-    } else {
-        Ok(maximum)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct CssParsedColor {
-    current: CssAuthoredColor,
-    i01_subset: Option<CssColor>,
-}
-
-impl CssParsedColor {
-    pub(crate) const fn new(current: CssAuthoredColor, i01_subset: Option<CssColor>) -> Self {
-        Self {
-            current,
-            i01_subset,
-        }
-    }
-
-    pub(crate) fn from_i01(value: CssColor) -> Self {
-        Self::new(CssAuthoredColor::preserved_i01(value.clone()), Some(value))
-    }
-
-    pub(crate) fn into_parts(self) -> (CssAuthoredColor, Option<CssColor>) {
-        (self.current, self.i01_subset)
-    }
-
-    pub(crate) const fn current(&self) -> &CssAuthoredColor {
-        &self.current
-    }
-
-    pub(crate) const fn i01_subset(&self) -> Option<&CssColor> {
-        self.i01_subset.as_ref()
-    }
-}
-
-pub(super) fn parsed_color_options_equal(
-    left: Option<&CssParsedColor>,
-    right: Option<&CssParsedColor>,
-) -> bool {
-    match (left, right) {
-        (None, None) => true,
-        (Some(left), Some(right)) => match (left.i01_subset(), right.i01_subset()) {
-            (Some(left), Some(right)) => left == right,
-            (None, None) => left.current() == right.current(),
-            (Some(_), None) | (None, Some(_)) => false,
-        },
-        (None, Some(_)) | (Some(_), None) => false,
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssColor {
-    CurrentColor,
-    Rgba(CssRgbaColor),
-    Hsl(CssHslColor),
-    Hwb(CssHwbColor),
-    Lab(CssLabColor),
-    Lch(CssLchColor),
-    Oklab(CssLabColor),
-    Oklch(CssLchColor),
-    ColorFunction(CssColorFunction),
-    System(CssSystemColor),
-    ColorMix(CssColorMix),
-    Relative(CssRelativeColor),
-}
-
-impl CssColor {
-    pub const TRANSPARENT: Self = Self::Rgba(CssRgbaColor {
-        red: 0,
-        green: 0,
-        blue: 0,
-        alpha: 0.0,
-    });
-    pub const BLACK: Self = Self::Rgba(CssRgbaColor {
-        red: 0,
-        green: 0,
-        blue: 0,
-        alpha: 1.0,
-    });
-    pub const WHITE: Self = Self::Rgba(CssRgbaColor {
-        red: 255,
-        green: 255,
-        blue: 255,
-        alpha: 1.0,
-    });
-
-    #[must_use]
-    pub const fn as_rgba(&self) -> Option<&CssRgbaColor> {
-        match self {
-            Self::Rgba(color) => Some(color),
-            Self::CurrentColor
-            | Self::Hsl(_)
-            | Self::Hwb(_)
-            | Self::Lab(_)
-            | Self::Lch(_)
-            | Self::Oklab(_)
-            | Self::Oklch(_)
-            | Self::ColorFunction(_)
-            | Self::System(_)
-            | Self::ColorMix(_)
-            | Self::Relative(_) => None,
-        }
-    }
-
-    #[must_use]
-    pub const fn kind_name(&self) -> &'static str {
-        match self {
-            Self::CurrentColor => "currentcolor",
-            Self::Rgba(_) => "rgba",
-            Self::Hsl(_) => "hsl",
-            Self::Hwb(_) => "hwb",
-            Self::Lab(_) => "lab",
-            Self::Lch(_) => "lch",
-            Self::Oklab(_) => "oklab",
-            Self::Oklch(_) => "oklch",
-            Self::ColorFunction(_) => "color",
-            Self::System(_) => "system",
-            Self::ColorMix(_) => "color-mix",
-            Self::Relative(_) => "relative",
-        }
-    }
-
-    #[must_use]
-    pub fn try_rgba(r: f32, g: f32, b: f32, a: f32) -> Option<Self> {
-        if [r, g, b, a]
-            .into_iter()
-            .all(|channel| channel.is_finite() && (0.0..=1.0).contains(&channel))
-        {
-            Some(Self::rgba_unchecked(r, g, b, a))
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn rgba_unchecked(r: f32, g: f32, b: f32, a: f32) -> Self {
-        Self::Rgba(CssRgbaColor {
-            red: normalized_color_channel_to_byte(r),
-            green: normalized_color_channel_to_byte(g),
-            blue: normalized_color_channel_to_byte(b),
-            alpha: a,
-        })
-    }
-}
-
-fn normalized_color_channel_to_byte(channel: f32) -> u8 {
-    (channel * 255.0).round() as u8
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssRgbaColor {
-    red: u8,
-    green: u8,
-    blue: u8,
-    alpha: f32,
-}
-
-impl CssRgbaColor {
-    #[must_use]
-    pub fn try_new(red: u8, green: u8, blue: u8, alpha: f32) -> Option<Self> {
-        if alpha.is_finite() && (0.0..=1.0).contains(&alpha) {
-            Some(Self {
-                red,
-                green,
-                blue,
-                alpha,
-            })
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub const fn red(&self) -> u8 {
-        self.red
-    }
-
-    #[must_use]
-    pub const fn green(&self) -> u8 {
-        self.green
-    }
-
-    #[must_use]
-    pub const fn blue(&self) -> u8 {
-        self.blue
-    }
-
-    #[must_use]
-    pub const fn alpha(&self) -> f32 {
-        self.alpha
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssHslColor {
-    hue: Option<f32>,
-    saturation: Option<f32>,
-    lightness: Option<f32>,
-    alpha: Option<f32>,
-}
-
-impl CssHslColor {
-    #[must_use]
-    pub fn try_new(
-        hue: Option<f32>,
-        saturation: Option<f32>,
-        lightness: Option<f32>,
-        alpha: Option<f32>,
-    ) -> Option<Self> {
-        if color_components_are_finite([hue, saturation, lightness]) && color_alpha_is_valid(alpha)
-        {
-            Some(Self::new(hue, saturation, lightness, alpha))
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub(crate) const fn new(
-        hue: Option<f32>,
-        saturation: Option<f32>,
-        lightness: Option<f32>,
-        alpha: Option<f32>,
-    ) -> Self {
-        Self {
-            hue,
-            saturation,
-            lightness,
-            alpha,
-        }
-    }
-
-    #[must_use]
-    pub const fn hue(&self) -> Option<f32> {
-        self.hue
-    }
-
-    #[must_use]
-    pub const fn saturation(&self) -> Option<f32> {
-        self.saturation
-    }
-
-    #[must_use]
-    pub const fn lightness(&self) -> Option<f32> {
-        self.lightness
-    }
-
-    #[must_use]
-    pub const fn alpha(&self) -> Option<f32> {
-        self.alpha
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssHwbColor {
-    hue: Option<f32>,
-    whiteness: Option<f32>,
-    blackness: Option<f32>,
-    alpha: Option<f32>,
-}
-
-impl CssHwbColor {
-    #[must_use]
-    pub fn try_new(
-        hue: Option<f32>,
-        whiteness: Option<f32>,
-        blackness: Option<f32>,
-        alpha: Option<f32>,
-    ) -> Option<Self> {
-        if color_components_are_finite([hue, whiteness, blackness]) && color_alpha_is_valid(alpha) {
-            Some(Self::new(hue, whiteness, blackness, alpha))
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub(crate) const fn new(
-        hue: Option<f32>,
-        whiteness: Option<f32>,
-        blackness: Option<f32>,
-        alpha: Option<f32>,
-    ) -> Self {
-        Self {
-            hue,
-            whiteness,
-            blackness,
-            alpha,
-        }
-    }
-
-    #[must_use]
-    pub const fn hue(&self) -> Option<f32> {
-        self.hue
-    }
-
-    #[must_use]
-    pub const fn whiteness(&self) -> Option<f32> {
-        self.whiteness
-    }
-
-    #[must_use]
-    pub const fn blackness(&self) -> Option<f32> {
-        self.blackness
-    }
-
-    #[must_use]
-    pub const fn alpha(&self) -> Option<f32> {
-        self.alpha
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssLabColor {
-    lightness: Option<f32>,
-    a: Option<f32>,
-    b: Option<f32>,
-    alpha: Option<f32>,
-}
-
-impl CssLabColor {
-    #[must_use]
-    pub fn try_new(
-        lightness: Option<f32>,
-        a: Option<f32>,
-        b: Option<f32>,
-        alpha: Option<f32>,
-    ) -> Option<Self> {
-        if color_components_are_finite([lightness, a, b]) && color_alpha_is_valid(alpha) {
-            Some(Self::new(lightness, a, b, alpha))
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub(crate) const fn new(
-        lightness: Option<f32>,
-        a: Option<f32>,
-        b: Option<f32>,
-        alpha: Option<f32>,
-    ) -> Self {
-        Self {
-            lightness,
-            a,
-            b,
-            alpha,
-        }
-    }
-
-    #[must_use]
-    pub const fn lightness(&self) -> Option<f32> {
-        self.lightness
-    }
-
-    #[must_use]
-    pub const fn a(&self) -> Option<f32> {
-        self.a
-    }
-
-    #[must_use]
-    pub const fn b(&self) -> Option<f32> {
-        self.b
-    }
-
-    #[must_use]
-    pub const fn alpha(&self) -> Option<f32> {
-        self.alpha
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssLchColor {
-    lightness: Option<f32>,
-    chroma: Option<f32>,
-    hue: Option<f32>,
-    alpha: Option<f32>,
-}
-
-impl CssLchColor {
-    #[must_use]
-    pub fn try_new(
-        lightness: Option<f32>,
-        chroma: Option<f32>,
-        hue: Option<f32>,
-        alpha: Option<f32>,
-    ) -> Option<Self> {
-        if color_components_are_finite([lightness, chroma, hue]) && color_alpha_is_valid(alpha) {
-            Some(Self::new(lightness, chroma, hue, alpha))
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub(crate) const fn new(
-        lightness: Option<f32>,
-        chroma: Option<f32>,
-        hue: Option<f32>,
-        alpha: Option<f32>,
-    ) -> Self {
-        Self {
-            lightness,
-            chroma,
-            hue,
-            alpha,
-        }
-    }
-
-    #[must_use]
-    pub const fn lightness(&self) -> Option<f32> {
-        self.lightness
-    }
-
-    #[must_use]
-    pub const fn chroma(&self) -> Option<f32> {
-        self.chroma
-    }
-
-    #[must_use]
-    pub const fn hue(&self) -> Option<f32> {
-        self.hue
-    }
-
-    #[must_use]
-    pub const fn alpha(&self) -> Option<f32> {
-        self.alpha
     }
 }
 
@@ -2203,167 +1589,6 @@ pub enum CssPredefinedColorSpace {
     Rec2020,
     XyzD50,
     XyzD65,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssColorFunction {
-    color_space: CssPredefinedColorSpace,
-    components: [Option<f32>; 3],
-    alpha: Option<f32>,
-}
-
-impl CssColorFunction {
-    #[must_use]
-    pub fn try_new(
-        color_space: CssPredefinedColorSpace,
-        components: [Option<f32>; 3],
-        alpha: Option<f32>,
-    ) -> Option<Self> {
-        if color_components_are_finite(components) && color_alpha_is_valid(alpha) {
-            Some(Self::new(color_space, components, alpha))
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub(crate) const fn new(
-        color_space: CssPredefinedColorSpace,
-        components: [Option<f32>; 3],
-        alpha: Option<f32>,
-    ) -> Self {
-        Self {
-            color_space,
-            components,
-            alpha,
-        }
-    }
-
-    #[must_use]
-    pub const fn color_space(&self) -> CssPredefinedColorSpace {
-        self.color_space
-    }
-
-    #[must_use]
-    pub const fn components(&self) -> &[Option<f32>; 3] {
-        &self.components
-    }
-
-    #[must_use]
-    pub const fn alpha(&self) -> Option<f32> {
-        self.alpha
-    }
-}
-
-fn color_components_are_finite(components: [Option<f32>; 3]) -> bool {
-    components
-        .into_iter()
-        .all(|component| component.is_none_or(f32::is_finite))
-}
-
-fn color_alpha_is_valid(alpha: Option<f32>) -> bool {
-    alpha.is_none_or(|alpha| alpha.is_finite() && (0.0..=1.0).contains(&alpha))
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssSystemColor {
-    Canvas,
-    CanvasText,
-    LinkText,
-    VisitedText,
-    ActiveText,
-    ButtonFace,
-    ButtonText,
-    ButtonBorder,
-    Field,
-    FieldText,
-    Highlight,
-    HighlightText,
-    Mark,
-    MarkText,
-    GrayText,
-    SelectedItem,
-    SelectedItemText,
-    AccentColor,
-    AccentColorText,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssColorMix {
-    interpolation: CssColorInterpolationMethod,
-    left: CssColorMixComponent,
-    right: CssColorMixComponent,
-}
-
-impl CssColorMix {
-    #[must_use]
-    pub const fn new(
-        interpolation: CssColorInterpolationMethod,
-        left: CssColorMixComponent,
-        right: CssColorMixComponent,
-    ) -> Self {
-        Self {
-            interpolation,
-            left,
-            right,
-        }
-    }
-
-    #[must_use]
-    pub const fn interpolation(&self) -> &CssColorInterpolationMethod {
-        &self.interpolation
-    }
-
-    #[must_use]
-    pub const fn left(&self) -> &CssColorMixComponent {
-        &self.left
-    }
-
-    #[must_use]
-    pub const fn right(&self) -> &CssColorMixComponent {
-        &self.right
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssColorMixComponent {
-    color: Box<CssColor>,
-    percentage: Option<f32>,
-}
-
-impl CssColorMixComponent {
-    #[must_use]
-    pub fn try_new(color: CssColor, percentage: Option<f32>) -> Option<Self> {
-        if color_percentage_is_valid(percentage) {
-            Some(Self::new(color, percentage))
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn new(color: CssColor, percentage: Option<f32>) -> Self {
-        Self {
-            color: Box::new(color),
-            percentage,
-        }
-    }
-
-    #[must_use]
-    pub const fn color(&self) -> &CssColor {
-        &self.color
-    }
-
-    #[must_use]
-    pub const fn percentage(&self) -> Option<f32> {
-        self.percentage
-    }
-}
-
-fn color_percentage_is_valid(percentage: Option<f32>) -> bool {
-    percentage
-        .is_none_or(|percentage| percentage.is_finite() && (0.0..=100.0).contains(&percentage))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2421,65 +1646,6 @@ pub enum CssHueInterpolationMethod {
     Decreasing,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssRelativeColor {
-    function: CssRelativeColorFunction,
-    source: Box<CssColor>,
-    components: Vec<CssColorComponentExpression>,
-    alpha: Option<CssColorComponentExpression>,
-}
-
-impl CssRelativeColor {
-    #[must_use]
-    pub fn try_new(
-        function: CssRelativeColorFunction,
-        source: CssColor,
-        components: Vec<CssColorComponentExpression>,
-        alpha: Option<CssColorComponentExpression>,
-    ) -> Option<Self> {
-        if components.len() == function.component_count() {
-            Some(Self::new(function, source, components, alpha))
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn new(
-        function: CssRelativeColorFunction,
-        source: CssColor,
-        components: Vec<CssColorComponentExpression>,
-        alpha: Option<CssColorComponentExpression>,
-    ) -> Self {
-        Self {
-            function,
-            source: Box::new(source),
-            components,
-            alpha,
-        }
-    }
-
-    #[must_use]
-    pub const fn function(&self) -> &CssRelativeColorFunction {
-        &self.function
-    }
-
-    #[must_use]
-    pub const fn source(&self) -> &CssColor {
-        &self.source
-    }
-
-    #[must_use]
-    pub fn components(&self) -> &[CssColorComponentExpression] {
-        &self.components
-    }
-
-    #[must_use]
-    pub const fn alpha(&self) -> Option<&CssColorComponentExpression> {
-        self.alpha.as_ref()
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssRelativeColorFunction {
@@ -2494,6 +1660,28 @@ pub enum CssRelativeColorFunction {
 }
 
 impl CssRelativeColorFunction {
+    pub const fn signature(
+        self,
+    ) -> (
+        CssRelativeColorEnvironment,
+        [CssRelativeColorResultDomain; 3],
+    ) {
+        use CssRelativeColorEnvironment as E;
+        use CssRelativeColorResultDomain::{Hue, NumberPercentage as N};
+        match self {
+            Self::Rgb => (E::Rgb, [N; 3]),
+            Self::Hsl => (E::Hsl, [Hue, N, N]),
+            Self::Hwb => (E::Hwb, [Hue, N, N]),
+            Self::Lab => (E::Lab, [N; 3]),
+            Self::Lch => (E::Lch, [N, N, Hue]),
+            Self::Oklab => (E::Oklab, [N; 3]),
+            Self::Oklch => (E::Oklch, [N, N, Hue]),
+            Self::Color(
+                space @ (CssPredefinedColorSpace::XyzD50 | CssPredefinedColorSpace::XyzD65),
+            ) => (E::Xyz(space), [N; 3]),
+            Self::Color(space) => (E::PredefinedRgb(space), [N; 3]),
+        }
+    }
     #[must_use]
     pub const fn component_count(self) -> usize {
         match self {
@@ -2506,34 +1694,5 @@ impl CssRelativeColorFunction {
             | Self::Oklch
             | Self::Color(_) => 3,
         }
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssColorComponentExpression {
-    authored: CssAuthoredDeclarationValue,
-    references: Vec<CssVariableReference>,
-}
-
-impl CssColorComponentExpression {
-    #[must_use]
-    pub fn new(
-        authored: CssAuthoredDeclarationValue,
-        references: Vec<CssVariableReference>,
-    ) -> Self {
-        Self {
-            authored,
-            references,
-        }
-    }
-
-    #[must_use]
-    pub const fn authored(&self) -> &CssAuthoredDeclarationValue {
-        &self.authored
-    }
-
-    #[must_use]
-    pub fn references(&self) -> &[CssVariableReference] {
-        &self.references
     }
 }

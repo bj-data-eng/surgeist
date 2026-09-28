@@ -434,9 +434,17 @@ fn collect_colors(declarations: &CssDeclarationList, colors: &mut Vec<[u8; 3]>) 
         else {
             panic!("color")
         };
-        let value = value.i01_subset().unwrap().as_rgba().unwrap();
-        assert_eq!(value.alpha(), 1.0);
-        colors.push([value.red(), value.green(), value.blue()]);
+        let name = value
+            .value()
+            .named()
+            .expect("named color in pinned rule corpus")
+            .name();
+        colors.push(match name {
+            "red" => [255, 0, 0],
+            "green" => [0, 128, 0],
+            "blue" => [0, 0, 255],
+            other => panic!("unexpected named rule color: {other}"),
+        });
     }
 }
 fn collect_rules(rule: &CssRule, kinds: &mut Vec<&'static str>, colors: &mut Vec<[u8; 3]>) {

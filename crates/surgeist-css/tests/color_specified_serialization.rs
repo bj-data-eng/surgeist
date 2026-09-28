@@ -3,7 +3,7 @@
 
 use surgeist_css::*;
 
-fn color(text: &str) -> CssAuthoredColor {
+fn color(text: &str) -> CssColor {
     let declaration = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::Color),
         parse_component_values(text).unwrap(),
@@ -15,7 +15,7 @@ fn color(text: &str) -> CssAuthoredColor {
     else {
         panic!("color")
     };
-    value.current().clone()
+    value.value().clone()
 }
 
 #[test]

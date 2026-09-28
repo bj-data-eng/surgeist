@@ -5,7 +5,7 @@
 
 use surgeist_css::*;
 
-fn color(css: &str) -> CssAuthoredColor {
+fn color(css: &str) -> CssColor {
     let declaration = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::Color),
         parse_component_values(css).unwrap(),
@@ -17,7 +17,7 @@ fn color(css: &str) -> CssAuthoredColor {
     else {
         panic!("expected checked color");
     };
-    value.current().clone()
+    value.value().clone()
 }
 
 fn stop(css: &str, position: Option<CssGradientLinePosition>) -> CssGradientColorStop {

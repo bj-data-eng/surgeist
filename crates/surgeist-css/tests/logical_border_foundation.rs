@@ -93,14 +93,14 @@ fn one_value(name: &str, value: &str) -> CssLonghandValue {
     item.ordinary_value().unwrap().clone()
 }
 
-fn authored_color(value: &str) -> CssAuthoredColor {
+fn authored_color(value: &str) -> CssColor {
     let source = declaration("border-top-color", value);
     let Some(CssKnownPropertyValueRef::BorderTopColor(color)) =
         source.known().unwrap().property_value()
     else {
         panic!("existing color longhand exposes the exact authored color");
     };
-    color.current().clone()
+    color.value().clone()
 }
 
 fn members(name: &str) -> Vec<String> {
@@ -241,12 +241,12 @@ fn omitted_facets_use_logical_longhand_initials_in_facet_major_order() {
     }
     // Existing checked aggregate independently models exactly the same omissions
     // and canonical specified order without a new logical-only domain type.
-    let partial = CssBorderValue::try_new(None, Some(CssBorderStyle::Solid), None).unwrap();
+    let partial = CssBorder::try_new(None, Some(CssBorderStyle::Solid), None).unwrap();
     assert_eq!(partial.width(), None);
     assert_eq!(partial.style(), Some(CssBorderStyle::Solid));
     assert_eq!(partial.color(), None);
     assert_eq!(partial.serialize_specified().unwrap(), "solid");
-    let full = CssBorderValue::try_new(
+    let full = CssBorder::try_new(
         Some(CssBorderWidth::Thin),
         Some(CssBorderStyle::Solid),
         Some(authored_color("currentcolor")),
@@ -262,8 +262,8 @@ fn omitted_facets_use_logical_longhand_initials_in_facet_major_order() {
     else {
         panic!("existing physical border triple exposes the shared typed model");
     };
-    assert_eq!(value.current(), &full);
-    assert!(CssBorderValue::try_new(None, None, None).is_none());
+    assert_eq!(value.value(), &full);
+    assert!(CssBorder::try_new(None, None, None).is_none());
 }
 
 #[test]
@@ -293,16 +293,16 @@ fn explicit_width_style_and_color_reach_each_logical_target_without_mapping() {
                 };
                 let oklch = color.oklch_value().expect("exact OKLCH color");
                 assert!(
-                    matches!(oklch.lightness(), CssAuthoredColorComponent::Percentage(value) if value.value() == 50.0)
+                    matches!(oklch.lightness(), CssColorComponent::Percentage(value) if value.numeric().representation() == "50")
                 );
                 assert!(
-                    matches!(oklch.chroma(), CssAuthoredColorComponent::ExactNumber(value) if value.numeric().representation() == "0.2")
+                    matches!(oklch.chroma(), CssColorComponent::Number(value) if value.numeric().representation() == "0.2")
                 );
                 assert!(
-                    matches!(oklch.hue(), CssAuthoredHue::Angle(value) if value.value() == 30.0 && value.unit() == CssAngleUnit::Degrees)
+                    matches!(oklch.hue(), CssColorHue::Angle(value) if value.numeric().representation() == "30" && value.unit() == CssAngleUnit::Degrees)
                 );
                 assert_eq!(oklch.alpha(), None);
-                let color_only = CssBorderValue::try_new(None, None, Some(color.clone())).unwrap();
+                let color_only = CssBorder::try_new(None, None, Some(color.clone())).unwrap();
                 assert_eq!(
                     color_only.serialize_specified().unwrap(),
                     "oklch(0.5 0.2 30)"

@@ -3,7 +3,7 @@
 use cssparser::{ParseError, Parser};
 
 use super::color::parse_color;
-use crate::border_color::CssParsedBorderColorShorthand;
+use crate::border_color::CssBorderColorShorthand;
 use crate::error::{Error, unsupported_value};
 use crate::numeric::NumericInputContext;
 use crate::{CssBorderColorPair, CssBoxSideKind};
@@ -12,11 +12,11 @@ pub(super) fn parse_border_color_pair<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssBorderColorPair, ParseError<'i, Error>> {
-    let start = parse_color(input, numeric)?.into_parts().0;
+    let start = parse_color(input, numeric)?;
     let authored_end = if input.is_exhausted() {
         None
     } else {
-        Some(parse_color(input, numeric)?.into_parts().0)
+        Some(parse_color(input, numeric)?)
     };
     Ok(CssBorderColorPair::new(start, authored_end))
 }
@@ -24,7 +24,7 @@ pub(super) fn parse_border_color_pair<'i, 't>(
 pub(super) fn parse_border_colors<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssParsedBorderColorShorthand, ParseError<'i, Error>> {
+) -> Result<CssBorderColorShorthand, ParseError<'i, Error>> {
     let kind = if input
         .try_parse(|input| input.expect_ident_matching("logical"))
         .is_ok()
@@ -44,6 +44,6 @@ pub(super) fn parse_border_colors<'i, 't>(
             ));
         }
     }
-    CssParsedBorderColorShorthand::try_new(kind, colors)
+    CssBorderColorShorthand::try_new(kind, colors)
         .ok_or_else(|| unsupported_value(input, None, "border-color requires one to four colors"))
 }

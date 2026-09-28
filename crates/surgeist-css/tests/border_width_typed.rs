@@ -25,7 +25,7 @@ fn parsed_width(text: &str) -> CssBorderWidth {
     value.current().clone()
 }
 
-fn red() -> CssAuthoredColor {
+fn red() -> CssColor {
     let report = parse_style_attribute("border-top-color:red");
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::BorderTopColor(value) = report.syntax()[0]
@@ -36,7 +36,7 @@ fn red() -> CssAuthoredColor {
     else {
         panic!("typed color")
     };
-    value.current().clone()
+    value.value().clone()
 }
 
 #[test]
@@ -182,8 +182,8 @@ fn pair_and_four_side_keep_arity_roles_and_cumulative_budgets() {
 
 #[test]
 fn border_triple_retains_omissions_and_exact_shared_budget() {
-    assert!(CssBorderValue::try_new(None, None, None).is_none());
-    let value = CssBorderValue::try_new(
+    assert!(CssBorder::try_new(None, None, None).is_none());
+    let value = CssBorder::try_new(
         Some(CssBorderWidth::Thin),
         Some(CssBorderStyle::Solid),
         Some(red()),
@@ -216,11 +216,11 @@ fn border_triple_retains_omissions_and_exact_shared_budget() {
     else {
         panic!("typed border")
     };
-    assert_eq!(wrapper.current(), &value);
+    assert_eq!(wrapper.value(), &value);
     assert_eq!(wrapper.as_css(), "red solid thin");
     assert_ne!(
         value,
-        CssBorderValue::try_new(
+        CssBorder::try_new(
             Some(CssBorderWidth::Thin),
             Some(CssBorderStyle::Solid),
             None
@@ -305,7 +305,7 @@ fn physical_compatibility_projection_never_narrows_exact_literals() {
 fn symbolic_border_triple_shares_one_numeric_and_color_budget() {
     // Numeric specified serialization orders unlike units canonically; the
     // same order is asserted by the Overflow 3 checked length consumer.
-    let value = CssBorderValue::try_new(
+    let value = CssBorder::try_new(
         Some(parsed_width("calc(1px + 2em)")),
         Some(CssBorderStyle::Solid),
         Some(red()),

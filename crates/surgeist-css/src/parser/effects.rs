@@ -662,33 +662,6 @@ pub(super) fn collect_authored_tokens<'i, 't>(
     Ok(value.trim().to_owned())
 }
 
-pub(super) fn validate_non_negative_length<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
-    parse_literal_length_with_context(input, LengthGrammar::BorderWidth, "function length").is_ok()
-        && input.is_exhausted()
-}
-
-pub(super) fn validate_number_or_percent<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
-    let parsed = match input.next() {
-        Ok(Token::Number { .. } | Token::Percentage { .. }) => true,
-        Ok(_) => false,
-        Err(_) => false,
-    };
-    parsed && input.is_exhausted()
-}
-
-pub(super) fn validate_angle<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
-    match input.next() {
-        Ok(Token::Dimension { unit, .. }) => {
-            unit.eq_ignore_ascii_case("deg")
-                || unit.eq_ignore_ascii_case("rad")
-                || unit.eq_ignore_ascii_case("grad")
-                || unit.eq_ignore_ascii_case("turn")
-        }
-        Ok(Token::Number { value, .. }) => *value == 0.0,
-        _ => false,
-    }
-}
-
 fn parse_radial_extent<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssRadialExtent, ParseError<'i, Error>> {
@@ -1042,69 +1015,42 @@ pub(super) fn parse_scale<'i, 't>(
 pub(super) fn parse_filter<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssParsedFilter, ParseError<'i, Error>> {
+) -> std::result::Result<CssFilter, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
         .is_ok()
     {
-        return Ok(CssParsedFilter::new(
-            CssFilterValue::None,
-            Some(CssFilter::None),
-        ));
+        return Ok(CssFilter::None);
     }
-    let mut current_functions = Vec::new();
-    let mut legacy_functions = Vec::new();
-    let mut belongs_to_i01 = true;
+    let mut functions = Vec::new();
     while !input.is_exhausted() {
-        let (current, legacy) = parse_filter_function(input, numeric)?;
-        current_functions.push(current);
-        match legacy {
-            Some(legacy) => legacy_functions.push(legacy),
-            None => belongs_to_i01 = false,
-        }
+        functions.push(parse_filter_function(input, numeric)?);
     }
-    let current = CssFilterFunctionValueList::try_new(current_functions)
-        .map(CssFilterValue::Functions)
-        .ok_or_else(|| unsupported_value(input, None, "filter function list is empty"))?;
-    let legacy = if belongs_to_i01 {
-        CssFilterFunctionList::try_new(legacy_functions).map(CssFilter::Functions)
-    } else {
-        None
-    };
-    Ok(CssParsedFilter::new(current, legacy))
+    CssFilterFunctionList::try_new(functions)
+        .map(CssFilter::Functions)
+        .ok_or_else(|| unsupported_value(input, None, "filter function list is empty"))
 }
 
 pub(super) fn parse_filter_function<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<(CssFilterFunctionValue, Option<CssFilterFunction>), ParseError<'i, Error>>
-{
+) -> std::result::Result<CssFilterFunction, ParseError<'i, Error>> {
     if let Ok(url) = input.try_parse(|input| parse_url(input, numeric)) {
-        return Ok((
-            CssFilterFunctionValue::Url(url.clone()),
-            Some(CssFilterFunction::Url(url)),
-        ));
+        return Ok(CssFilterFunction::Url(url));
     }
     let location = input.current_source_location();
     let name = match input.next().map_err(basic)? {
         Token::Function(name) => name.clone(),
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     };
-    input.parse_nested_block(|input| {
-        let state = input.state();
-        let authored = collect_transform_authored_tokens(input)?;
-        input.reset(&state);
-        let current = parse_filter_function_value(input, numeric, name.as_ref())?;
-        let legacy = legacy_filter_function(name.as_ref(), &authored, &current);
-        Ok((current, legacy))
-    })
+    input.parse_nested_block(|input| parse_filter_function_value(input, numeric, name.as_ref()))
 }
 
 fn parse_filter_function_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
     name: &str,
-) -> std::result::Result<CssFilterFunctionValue, ParseError<'i, Error>> {
+) -> std::result::Result<CssFilterFunction, ParseError<'i, Error>> {
     match name.to_ascii_lowercase().as_str() {
         "blur" => {
             let length = if input.is_exhausted() {
@@ -1116,24 +1062,24 @@ fn parse_filter_function_value<'i, 't>(
             };
             input.expect_exhausted().map_err(basic)?;
             CssFilterBlur::try_new(length)
-                .map(CssFilterFunctionValue::Blur)
+                .map(CssFilterFunction::Blur)
                 .ok_or_else(|| {
                     unsupported_value(input, None, "blur() requires a non-negative length")
                 })
         }
-        "brightness" => parse_filter_amount(input, numeric).map(CssFilterFunctionValue::Brightness),
-        "contrast" => parse_filter_amount(input, numeric).map(CssFilterFunctionValue::Contrast),
+        "brightness" => parse_filter_amount(input, numeric).map(CssFilterFunction::Brightness),
+        "contrast" => parse_filter_amount(input, numeric).map(CssFilterFunction::Contrast),
         "drop-shadow" => {
             let shadow = parse_drop_shadow(input, numeric)?;
             input.expect_exhausted().map_err(basic)?;
-            Ok(CssFilterFunctionValue::DropShadow(shadow))
+            Ok(CssFilterFunction::DropShadow(shadow))
         }
-        "grayscale" => parse_filter_amount(input, numeric).map(CssFilterFunctionValue::Grayscale),
-        "hue-rotate" => parse_filter_angle(input, numeric).map(CssFilterFunctionValue::HueRotate),
-        "invert" => parse_filter_amount(input, numeric).map(CssFilterFunctionValue::Invert),
-        "opacity" => parse_filter_amount(input, numeric).map(CssFilterFunctionValue::Opacity),
-        "saturate" => parse_filter_amount(input, numeric).map(CssFilterFunctionValue::Saturate),
-        "sepia" => parse_filter_amount(input, numeric).map(CssFilterFunctionValue::Sepia),
+        "grayscale" => parse_filter_amount(input, numeric).map(CssFilterFunction::Grayscale),
+        "hue-rotate" => parse_filter_angle(input, numeric).map(CssFilterFunction::HueRotate),
+        "invert" => parse_filter_amount(input, numeric).map(CssFilterFunction::Invert),
+        "opacity" => parse_filter_amount(input, numeric).map(CssFilterFunction::Opacity),
+        "saturate" => parse_filter_amount(input, numeric).map(CssFilterFunction::Saturate),
+        "sepia" => parse_filter_amount(input, numeric).map(CssFilterFunction::Sepia),
         _ => Err(unsupported_value(
             input,
             None,
@@ -1243,48 +1189,6 @@ fn parse_filter_angle<'i, 't>(
     };
     input.expect_exhausted().map_err(basic)?;
     Ok(angle)
-}
-
-fn legacy_filter_function(
-    name: &str,
-    authored: &str,
-    current: &CssFilterFunctionValue,
-) -> Option<CssFilterFunction> {
-    if authored.is_empty() {
-        return None;
-    }
-    let is_i01 = validate_authored_function_arguments(authored, |input| {
-        match name.to_ascii_lowercase().as_str() {
-            "blur" => validate_non_negative_length(input),
-            "brightness" | "contrast" | "grayscale" | "invert" | "opacity" | "saturate"
-            | "sepia" => validate_number_or_percent(input),
-            "hue-rotate" => validate_angle(input) && input.is_exhausted(),
-            "drop-shadow" => false,
-            _ => false,
-        }
-    });
-    let is_i01 = if let CssFilterFunctionValue::DropShadow(shadow) = current {
-        shadow.current_color().is_none() || shadow.color().is_some()
-    } else {
-        is_i01
-    };
-    if !is_i01 {
-        return None;
-    }
-    let arguments = CssFilterArguments::new(CssAuthoredFunctionArguments::new(authored));
-    match name.to_ascii_lowercase().as_str() {
-        "blur" => Some(CssFilterFunction::Blur(arguments)),
-        "brightness" => Some(CssFilterFunction::Brightness(arguments)),
-        "contrast" => Some(CssFilterFunction::Contrast(arguments)),
-        "drop-shadow" => Some(CssFilterFunction::DropShadow(arguments)),
-        "grayscale" => Some(CssFilterFunction::Grayscale(arguments)),
-        "hue-rotate" => Some(CssFilterFunction::HueRotate(arguments)),
-        "invert" => Some(CssFilterFunction::Invert(arguments)),
-        "opacity" => Some(CssFilterFunction::Opacity(arguments)),
-        "saturate" => Some(CssFilterFunction::Saturate(arguments)),
-        "sepia" => Some(CssFilterFunction::Sepia(arguments)),
-        _ => None,
-    }
 }
 
 pub(super) fn parse_clip_path<'i, 't>(

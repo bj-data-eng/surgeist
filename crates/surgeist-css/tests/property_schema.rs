@@ -2,15 +2,19 @@ mod common;
 
 use common::CssParseReportTestExt;
 use surgeist_css::{
-    CssAuthoredColorComponent, CssAuthoredSystemColor, CssBasicShapeValue, CssBoxShadow,
-    CssClipPathValue, CssEasing, CssErrorCode, CssFilterFunctionValue, CssFilterValue,
-    CssFontVariantCaps, CssFontVariantValue, CssImportance, CssKnownDeclaredValueRef,
-    CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction, CssRule,
-    CssTransformFunctionValue, CssTransformValue, ErrorKind, parse_sheet, parse_style_attribute,
+    CssBasicShapeValue, CssBorderStyle, CssBoxShadow, CssClipPathValue, CssColor,
+    CssColorComponent, CssColorInterpolationSpace, CssEasing, CssErrorCode, CssFilter,
+    CssFilterAmount, CssFilterFunction, CssFilterPercentage, CssFontVariantCaps,
+    CssFontVariantValue, CssImportance, CssKnownDeclaredValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLength, CssOutlineStyle, CssPredefinedColorSpace,
+    CssRecoveryAction, CssRelativeColorChannel, CssRelativeColorEnvironment,
+    CssRelativeColorExpressionValue, CssRelativeColorFunction, CssRule, CssSystemColor,
+    CssTextDecorationLineComponent, CssTransformFunctionValue, CssTransformValue, ErrorKind,
+    parse_sheet, parse_style_attribute,
 };
 
 #[test]
-fn direct_color_wrappers_keep_current_i01_global_and_substitution_branches_distinct() {
+fn direct_color_wrappers_keep_system_named_global_and_substitution_branches_distinct() {
     let report = parse_style_attribute(concat!(
         "color: ActiveBorder; ",
         "background-color: red; ",
@@ -28,10 +32,9 @@ fn direct_color_wrappers_keep_current_i01_global_and_substitution_branches_disti
         panic!("expected color wrapper");
     };
     assert_eq!(
-        deprecated.current().system(),
-        Some(CssAuthoredSystemColor::ActiveBorder)
+        deprecated.value().system(),
+        Some(CssSystemColor::ActiveBorder)
     );
-    assert!(deprecated.i01_subset().is_none());
 
     let CssKnownPropertyValueRef::BackgroundColor(named) = report.syntax()[1]
         .known()
@@ -41,8 +44,7 @@ fn direct_color_wrappers_keep_current_i01_global_and_substitution_branches_disti
     else {
         panic!("expected background-color wrapper");
     };
-    assert_eq!(named.current().named().unwrap().name(), "red");
-    assert!(named.i01_subset().is_some());
+    assert_eq!(named.value().named().unwrap().name(), "red");
 
     assert!(matches!(
         report.syntax()[2].known().unwrap().declared_value(),
@@ -193,7 +195,7 @@ fn font_variant_wrappers_keep_current_global_and_substitution_branches_distinct(
 }
 
 #[test]
-fn direct_color_wrappers_expose_perceptual_current_values_without_lossy_projection() {
+fn direct_color_wrappers_expose_perceptual_and_predefined_channels() {
     let report = parse_style_attribute(concat!(
         "color: lab(calc(40% + 10%) 20 30); ",
         "background-color: color(xyz none calc(2 + 1) -3 / 120%)",
@@ -208,11 +210,20 @@ fn direct_color_wrappers_expose_perceptual_current_values_without_lossy_projecti
     else {
         panic!("expected color wrapper");
     };
+    let lab = lab.value().lab_value().expect("lab color");
     assert!(matches!(
-        lab.current().lab_value().unwrap().lightness(),
-        CssAuthoredColorComponent::PercentageCalculation(_)
+        lab.lightness(),
+        CssColorComponent::PercentageCalculation(_)
     ));
-    assert!(lab.i01_subset().is_none());
+    let CssColorComponent::Number(a) = lab.a() else {
+        panic!("expected lab a number");
+    };
+    assert_eq!(a.numeric().representation(), "20");
+    let CssColorComponent::Number(b) = lab.b() else {
+        panic!("expected lab b number");
+    };
+    assert_eq!(b.numeric().representation(), "30");
+    assert!(lab.alpha().is_none());
 
     let CssKnownPropertyValueRef::BackgroundColor(predefined) = report.syntax()[1]
         .known()
@@ -222,19 +233,31 @@ fn direct_color_wrappers_expose_perceptual_current_values_without_lossy_projecti
     else {
         panic!("expected background-color wrapper");
     };
+    let predefined = predefined
+        .value()
+        .predefined_value()
+        .expect("predefined color");
+    assert_eq!(predefined.color_space(), CssPredefinedColorSpace::XyzD65);
     assert!(matches!(
-        predefined.current().predefined_value().unwrap().channels(),
+        predefined.channels(),
         [
-            CssAuthoredColorComponent::None,
-            CssAuthoredColorComponent::NumberCalculation(_),
-            CssAuthoredColorComponent::Number(_),
+            CssColorComponent::None,
+            CssColorComponent::NumberCalculation(_),
+            CssColorComponent::Number(_),
         ]
     ));
-    assert!(predefined.i01_subset().is_none());
+    let CssColorComponent::Number(third) = &predefined.channels()[2] else {
+        panic!("expected third channel number");
+    };
+    assert_eq!(third.numeric().representation(), "-3");
+    let Some(CssColorComponent::Percentage(alpha)) = predefined.alpha() else {
+        panic!("expected percentage alpha");
+    };
+    assert_eq!(alpha.numeric().representation(), "120");
 }
 
 #[test]
-fn direct_color_wrappers_preserve_typed_relative_current_and_i01_views() {
+fn direct_color_wrappers_preserve_typed_relative_channels() {
     let report = parse_style_attribute(concat!(
         "color: rgb(from red r g b); ",
         "background-color: color(from red xyz x y z / alpha)",
@@ -249,11 +272,21 @@ fn direct_color_wrappers_preserve_typed_relative_current_and_i01_views() {
     else {
         panic!("expected color wrapper");
     };
-    assert!(color.current().relative_value().is_some());
-    assert!(matches!(
-        color.i01_subset(),
-        Some(surgeist_css::CssColor::Relative(_))
-    ));
+    let relative = color.value().relative_value().expect("relative rgb color");
+    assert_eq!(relative.function(), &CssRelativeColorFunction::Rgb);
+    assert_eq!(relative.environment(), CssRelativeColorEnvironment::Rgb);
+    assert_eq!(relative.source().named().unwrap().name(), "red");
+    assert_eq!(relative.alpha(), None);
+    for (channel, expected) in relative.channels().iter().zip([
+        CssRelativeColorChannel::R,
+        CssRelativeColorChannel::G,
+        CssRelativeColorChannel::B,
+    ]) {
+        assert_eq!(
+            channel.value(),
+            &CssRelativeColorExpressionValue::Channel(expected)
+        );
+    }
 
     let CssKnownPropertyValueRef::BackgroundColor(background) = report.syntax()[1]
         .known()
@@ -263,11 +296,33 @@ fn direct_color_wrappers_preserve_typed_relative_current_and_i01_views() {
     else {
         panic!("expected background-color wrapper");
     };
-    assert!(background.current().relative_value().is_some());
-    assert!(matches!(
-        background.i01_subset(),
-        Some(surgeist_css::CssColor::Relative(_))
-    ));
+    let relative = background
+        .value()
+        .relative_value()
+        .expect("relative xyz color");
+    assert_eq!(
+        relative.function(),
+        &CssRelativeColorFunction::Color(CssPredefinedColorSpace::XyzD65)
+    );
+    assert_eq!(
+        relative.environment(),
+        CssRelativeColorEnvironment::Xyz(CssPredefinedColorSpace::XyzD65)
+    );
+    assert_eq!(relative.source().named().unwrap().name(), "red");
+    for (channel, expected) in relative.channels().iter().zip([
+        CssRelativeColorChannel::X,
+        CssRelativeColorChannel::Y,
+        CssRelativeColorChannel::Z,
+    ]) {
+        assert_eq!(
+            channel.value(),
+            &CssRelativeColorExpressionValue::Channel(expected)
+        );
+    }
+    assert_eq!(
+        relative.alpha().unwrap().value(),
+        &CssRelativeColorExpressionValue::Channel(CssRelativeColorChannel::Alpha)
+    );
 }
 
 macro_rules! assert_property_specific_css {
@@ -1230,7 +1285,7 @@ fn timing_function_wrappers_keep_typed_global_and_substitution_branches_distinct
 }
 
 #[test]
-fn shadow_and_filter_wrappers_expose_current_values_and_frozen_i01_projections() {
+fn shadow_and_filter_wrappers_expose_ordered_typed_values() {
     let report = parse_style_attribute(concat!(
         "box-shadow: inset 1px 2px red; ",
         "filter: blur(4px) opacity(50%); ",
@@ -1246,8 +1301,18 @@ fn shadow_and_filter_wrappers_expose_current_values_and_frozen_i01_projections()
     else {
         panic!("expected box-shadow wrapper");
     };
-    assert!(matches!(shadow.current(), CssBoxShadow::Shadows(_)));
-    assert!(shadow.i01_subset().is_some());
+    let CssBoxShadow::Shadows(shadows) = shadow.value() else {
+        panic!("expected box-shadow list");
+    };
+    let [shadow] = shadows.shadows() else {
+        panic!("expected one box shadow");
+    };
+    assert!(shadow.inset());
+    assert!(matches!(shadow.offset_x(), CssLength::Px(value) if value.value() == 1.0));
+    assert!(matches!(shadow.offset_y(), CssLength::Px(value) if value.value() == 2.0));
+    assert!(shadow.blur_radius().is_none());
+    assert!(shadow.spread_radius().is_none());
+    assert_eq!(shadow.color().unwrap().named().unwrap().name(), "red");
 
     let CssKnownPropertyValueRef::Filter(filter) = report.syntax()[1]
         .known()
@@ -1257,17 +1322,22 @@ fn shadow_and_filter_wrappers_expose_current_values_and_frozen_i01_projections()
     else {
         panic!("expected filter wrapper");
     };
-    let CssFilterValue::Functions(functions) = filter.current() else {
+    let CssFilter::Functions(functions) = filter.value() else {
         panic!("expected filter functions");
     };
+    let [
+        CssFilterFunction::Blur(blur),
+        CssFilterFunction::Opacity(amount),
+    ] = functions.functions()
+    else {
+        panic!("expected ordered blur and opacity functions");
+    };
+    assert!(matches!(blur.length(), CssLength::Px(value) if value.value() == 4.0));
     assert!(matches!(
-        functions.functions(),
-        [
-            CssFilterFunctionValue::Blur(_),
-            CssFilterFunctionValue::Opacity(_)
-        ]
+        amount,
+        CssFilterAmount::Percentage(CssFilterPercentage::Literal(value))
+            if value.value() == 50.0
     ));
-    assert!(filter.i01_subset().is_some());
 
     let CssKnownPropertyValueRef::BackdropFilter(backdrop) = report.syntax()[2]
         .known()
@@ -1277,12 +1347,50 @@ fn shadow_and_filter_wrappers_expose_current_values_and_frozen_i01_projections()
     else {
         panic!("expected backdrop-filter wrapper");
     };
-    assert!(matches!(backdrop.current(), CssFilterValue::Functions(_)));
-    assert!(backdrop.i01_subset().is_none());
+    let CssFilter::Functions(functions) = backdrop.value() else {
+        panic!("expected backdrop filter functions");
+    };
+    assert!(matches!(
+        functions.functions(),
+        [CssFilterFunction::Brightness(CssFilterAmount::Default)]
+    ));
+}
+
+fn assert_srgb_mix_with_lab_and_blue(color: &CssColor) {
+    let mix = color.color_mix_value().expect("color-mix value");
+    let interpolation = mix.interpolation().expect("explicit interpolation");
+    let method = interpolation
+        .predefined()
+        .expect("predefined interpolation");
+    assert_eq!(
+        method.space(),
+        CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb)
+    );
+    assert_eq!(method.hue(), None);
+    let [lab, blue] = mix.components() else {
+        panic!("expected two ordered color-mix components");
+    };
+    assert!(lab.weight().is_none());
+    let lab = lab.color().lab_value().expect("lab first component");
+    assert!(matches!(
+        lab.lightness(),
+        CssColorComponent::PercentageCalculation(_)
+    ));
+    let CssColorComponent::Number(a) = lab.a() else {
+        panic!("expected lab a number");
+    };
+    assert_eq!(a.numeric().representation(), "20");
+    let CssColorComponent::Number(b) = lab.b() else {
+        panic!("expected lab b number");
+    };
+    assert_eq!(b.numeric().representation(), "30");
+    assert!(lab.alpha().is_none());
+    assert!(blue.weight().is_none());
+    assert_eq!(blue.color().named().unwrap().name(), "blue");
 }
 
 #[test]
-fn every_aggregate_color_consumer_retains_current_color_mix_without_an_i01_projection() {
+fn every_aggregate_color_consumer_retains_typed_color_mix() {
     let report = parse_style_attribute(concat!(
         "border: 1px solid color-mix(in srgb, lab(calc(50% + 10%) 20 30), blue); ",
         "border-top: solid color-mix(in srgb, lab(calc(50% + 10%) 20 30), blue); ",
@@ -1299,20 +1407,39 @@ fn every_aggregate_color_consumer_retains_current_color_mix_without_an_i01_proje
 
     for declaration in &report.syntax()[..5] {
         let known = declaration.known().unwrap();
-        let (current, projection) = match known.property_value().unwrap() {
-            CssKnownPropertyValueRef::Border(value) => (value.current(), value.i01_subset()),
-            CssKnownPropertyValueRef::BorderTop(value) => (value.current(), value.i01_subset()),
-            CssKnownPropertyValueRef::BorderRight(value) => (value.current(), value.i01_subset()),
-            CssKnownPropertyValueRef::BorderBottom(value) => (value.current(), value.i01_subset()),
-            CssKnownPropertyValueRef::BorderLeft(value) => (value.current(), value.i01_subset()),
+        let border = match known.property_value().unwrap() {
+            CssKnownPropertyValueRef::Border(value) => value.value(),
+            CssKnownPropertyValueRef::BorderTop(value) => value.value(),
+            CssKnownPropertyValueRef::BorderRight(value) => value.value(),
+            CssKnownPropertyValueRef::BorderBottom(value) => value.value(),
+            CssKnownPropertyValueRef::BorderLeft(value) => value.value(),
             _ => panic!("expected border shorthand wrapper"),
         };
-        assert!(current.color().unwrap().color_mix_value().is_some());
-        assert!(
-            current.color().is_some(),
-            "the current model retains the complete color"
-        );
-        assert!(projection.is_none());
+        assert_eq!(border.style(), Some(CssBorderStyle::Solid));
+        assert_srgb_mix_with_lab_and_blue(border.color().expect("border color"));
+    }
+    let border = match report.syntax()[0]
+        .known()
+        .unwrap()
+        .property_value()
+        .unwrap()
+    {
+        CssKnownPropertyValueRef::Border(value) => value.value(),
+        _ => panic!("expected border shorthand"),
+    };
+    assert_eq!(
+        border.width().unwrap().serialize_specified().unwrap(),
+        "1px"
+    );
+    for declaration in &report.syntax()[1..5] {
+        let border = match declaration.known().unwrap().property_value().unwrap() {
+            CssKnownPropertyValueRef::BorderTop(value) => value.value(),
+            CssKnownPropertyValueRef::BorderRight(value) => value.value(),
+            CssKnownPropertyValueRef::BorderBottom(value) => value.value(),
+            CssKnownPropertyValueRef::BorderLeft(value) => value.value(),
+            _ => panic!("expected side border"),
+        };
+        assert!(border.width().is_none());
     }
 
     let CssKnownPropertyValueRef::TextDecoration(decoration) = report.syntax()[5]
@@ -1323,16 +1450,13 @@ fn every_aggregate_color_consumer_retains_current_color_mix_without_an_i01_proje
     else {
         panic!("expected text-decoration wrapper");
     };
-    assert!(
-        decoration
-            .current()
-            .current_color()
-            .unwrap()
-            .color_mix_value()
-            .is_some()
-    );
-    assert!(decoration.current().color().is_none());
-    assert!(decoration.i01_subset().is_none());
+    assert_srgb_mix_with_lab_and_blue(decoration.value().color().expect("decoration color"));
+    assert!(matches!(
+        decoration.value().line().unwrap().components(),
+        [CssTextDecorationLineComponent::Underline]
+    ));
+    assert!(decoration.value().style().is_none());
+    assert!(decoration.value().thickness().is_none());
 
     let CssKnownPropertyValueRef::Outline(outline) = report.syntax()[6]
         .known()
@@ -1342,16 +1466,12 @@ fn every_aggregate_color_consumer_retains_current_color_mix_without_an_i01_proje
     else {
         panic!("expected outline wrapper");
     };
-    assert!(
-        outline
-            .current()
-            .current_color()
-            .unwrap()
-            .color_mix_value()
-            .is_some()
+    assert_srgb_mix_with_lab_and_blue(outline.value().color().expect("outline color"));
+    assert_eq!(
+        outline.value().style(),
+        Some(CssOutlineStyle::Border(CssBorderStyle::Solid))
     );
-    assert!(outline.current().color().is_none());
-    assert!(outline.i01_subset().is_none());
+    assert!(outline.value().width().is_none());
 
     let CssKnownPropertyValueRef::BoxShadow(shadow) = report.syntax()[7]
         .known()
@@ -1361,39 +1481,35 @@ fn every_aggregate_color_consumer_retains_current_color_mix_without_an_i01_proje
     else {
         panic!("expected box-shadow wrapper");
     };
-    let CssBoxShadow::Shadows(shadows) = shadow.current() else {
+    let CssBoxShadow::Shadows(shadows) = shadow.value() else {
         panic!("expected box-shadow list");
     };
-    assert!(
-        shadows.shadows()[0]
-            .current_color()
-            .unwrap()
-            .color_mix_value()
-            .is_some()
-    );
-    assert!(shadows.shadows()[0].color().is_none());
-    assert!(shadow.i01_subset().is_none());
+    let [shadow] = shadows.shadows() else {
+        panic!("expected one box shadow");
+    };
+    assert_srgb_mix_with_lab_and_blue(shadow.color().expect("box-shadow color"));
+    assert!(!shadow.inset());
+    assert!(matches!(shadow.offset_x(), CssLength::Px(value) if value.value() == 1.0));
+    assert!(matches!(shadow.offset_y(), CssLength::Px(value) if value.value() == 2.0));
+    assert!(shadow.blur_radius().is_none());
+    assert!(shadow.spread_radius().is_none());
 
     for declaration in &report.syntax()[8..] {
-        let current = match declaration.known().unwrap().property_value().unwrap() {
-            CssKnownPropertyValueRef::Filter(value) => {
-                assert!(value.i01_subset().is_none());
-                value.current()
-            }
-            CssKnownPropertyValueRef::BackdropFilter(value) => {
-                assert!(value.i01_subset().is_none());
-                value.current()
-            }
+        let value = match declaration.known().unwrap().property_value().unwrap() {
+            CssKnownPropertyValueRef::Filter(value) => value.value(),
+            CssKnownPropertyValueRef::BackdropFilter(value) => value.value(),
             _ => panic!("expected filter wrapper"),
         };
-        let CssFilterValue::Functions(functions) = current else {
+        let CssFilter::Functions(functions) = value else {
             panic!("expected filter function list");
         };
-        let [CssFilterFunctionValue::DropShadow(shadow)] = functions.functions() else {
+        let [CssFilterFunction::DropShadow(shadow)] = functions.functions() else {
             panic!("expected one drop-shadow");
         };
-        assert!(shadow.current_color().unwrap().color_mix_value().is_some());
-        assert!(shadow.color().is_none());
+        assert_srgb_mix_with_lab_and_blue(shadow.color().expect("drop-shadow color"));
+        assert!(matches!(shadow.offset_x(), CssLength::Px(value) if value.value() == 1.0));
+        assert!(matches!(shadow.offset_y(), CssLength::Px(value) if value.value() == 2.0));
+        assert!(shadow.blur_radius().is_none());
     }
 }
 

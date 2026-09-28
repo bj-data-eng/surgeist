@@ -3,7 +3,7 @@
 use std::fmt;
 
 use crate::{
-    CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssAuthoredColor, CssComponentValue,
+    CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssColor, CssComponentValue,
     CssComponentValueError, CssComponentValueErrorKind, CssComponentValueLimits,
     CssComponentValues, CssFontFaceFamily, CssIntegerValue, CssSerializedOrigin,
     CssSerializedValue, CssSourcePosition, CssSubstitutionDependentValue, CssValueOrigin, Error,
@@ -118,13 +118,13 @@ pub enum CssFontPaletteBase {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontPaletteOverride {
     index: CssFontPaletteIndex,
-    color: CssAuthoredColor,
+    color: CssColor,
 }
 
 impl CssFontPaletteOverride {
     pub fn try_new(
         index: CssFontPaletteIndex,
-        color: CssAuthoredColor,
+        color: CssColor,
     ) -> Result<Self, CssFontPaletteConstructionError> {
         if let CssAbsoluteColorEligibility::Contextual(reason) = color.absolute_eligibility() {
             return Err(CssFontPaletteConstructionError::ContextualColor(reason));
@@ -138,7 +138,7 @@ impl CssFontPaletteOverride {
     }
 
     #[must_use]
-    pub const fn color(&self) -> &CssAuthoredColor {
+    pub const fn color(&self) -> &CssColor {
         &self.color
     }
 }

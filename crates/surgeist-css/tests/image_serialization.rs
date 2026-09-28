@@ -21,7 +21,7 @@ fn only(css: &str) -> CssImageValue {
     images(css).images()[0].clone()
 }
 
-fn color(css: &str) -> CssAuthoredColor {
+fn color(css: &str) -> CssColor {
     let report = parse_style_attribute(&format!("color: {css}"));
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Color(value) = report.syntax()[0]
@@ -32,7 +32,7 @@ fn color(css: &str) -> CssAuthoredColor {
     else {
         panic!("expected typed color");
     };
-    value.current().clone()
+    value.value().clone()
 }
 
 fn kind(

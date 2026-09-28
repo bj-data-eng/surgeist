@@ -10,15 +10,16 @@ fn parse(source: &str) -> surgeist_css::CssParseReport<Option<surgeist_css::CssS
     parse_style_block(source, &CssNamespaceContext::default())
 }
 
-fn color(declaration: &CssDeclaration, expected: [u8; 3]) {
+fn color(declaration: &CssDeclaration, expected: &str) {
     let CssKnownPropertyValueRef::Color(value) =
         declaration.known().unwrap().property_value().unwrap()
     else {
         panic!("color")
     };
-    let rgba = value.i01_subset().unwrap().as_rgba().unwrap();
-    assert_eq!([rgba.red(), rgba.green(), rgba.blue()], expected);
-    assert_eq!(rgba.alpha(), 1.0);
+    assert_eq!(
+        value.value().named().expect("named authored color").name(),
+        expected
+    );
 }
 
 #[test]
@@ -57,7 +58,7 @@ fn typed_declarations_and_nested_runs_remain_in_authored_order() {
     assert!(report.is_clean(), "{report:?}");
     let block = report.syntax().as_ref().unwrap();
     assert_eq!(block.declarations().len(), 1);
-    color(&block.declarations()[0], [255, 0, 0]);
+    color(&block.declarations()[0], "red");
     let [
         CssRule::Style(child),
         CssRule::NestedDeclarations(width),
@@ -67,7 +68,7 @@ fn typed_declarations_and_nested_runs_remain_in_authored_order() {
     else {
         panic!("ordered children and declaration runs")
     };
-    color(&child.declarations()[0], [0, 0, 255]);
+    color(&child.declarations()[0], "blue");
     let [CssStyleSelector::Selector(CssSelector::Compound(anchor))] = child.selectors().selectors()
     else {
         panic!("authored anchor")
@@ -96,8 +97,8 @@ fn typed_declarations_and_nested_runs_remain_in_authored_order() {
     };
     assert_eq!(block.declarations().len(), 1);
     assert_eq!(after.declarations().len(), 1);
-    color(&block.declarations()[0], [255, 0, 0]);
-    color(&after.declarations()[0], [0, 0, 255]);
+    color(&block.declarations()[0], "red");
+    color(&after.declarations()[0], "blue");
     assert_eq!(after.position().byte_offset().value(), 24);
     let [diagnostic] = report.diagnostics() else {
         panic!("one rejected at-rule")
@@ -266,7 +267,7 @@ fn bounded_child_resource_recovery_preserves_ancestors_and_following_declaration
             panic!("retained style leaf")
         };
         assert_eq!(leaf.declarations().len(), 1);
-        color(&leaf.declarations()[0], [255, 0, 0]);
+        color(&leaf.declarations()[0], "red");
     }
     // One block plus 255 style ancestors exhausts the limit before the leaf.
     // The following declaration belongs to the retained deepest ancestor.
@@ -322,7 +323,7 @@ fn nested_groups_preserve_supported_depth_and_own_inner_limits() {
         let [CssRule::Style(leaf)] = rules else {
             panic!("retained style leaf")
         };
-        color(&leaf.declarations()[0], [255, 0, 0]);
+        color(&leaf.declarations()[0], "red");
     }
     let source = format!(
         "{{{}a{{color:red}}{}}}",

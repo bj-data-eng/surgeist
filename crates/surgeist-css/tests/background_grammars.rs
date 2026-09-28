@@ -90,8 +90,6 @@ fn c13_background_layers_retain_typed_structure() {
             .map(|color| color.digits()),
         Some("123456")
     );
-    assert_eq!(value.current().hex_value().unwrap().digits(), "123456");
-    assert!(value.i01_subset().is_none());
 }
 
 #[test]
@@ -174,7 +172,7 @@ fn background_longhands_preserve_comma_lists_and_current_accessors() {
 }
 
 #[test]
-fn background_globals_substitutions_and_color_projection_remain_distinct() {
+fn background_globals_substitutions_and_layer_colors_remain_distinct() {
     let report = parse_style_attribute(concat!(
         "background: inherit; ",
         "background: var(--surface, url(hero.png) center / cover); ",
@@ -196,17 +194,22 @@ fn background_globals_substitutions_and_color_projection_remain_distinct() {
     else {
         panic!("expected color-only background");
     };
-    assert_eq!(color_only.current().named().unwrap().name(), "red");
-    assert!(color_only.i01_subset().is_some());
-    assert!(color_only.background().layers()[0].color().is_some());
+    assert_eq!(
+        color_only.background().layers()[0]
+            .color()
+            .unwrap()
+            .named()
+            .unwrap()
+            .name(),
+        "red"
+    );
 
     let CssKnownDeclaredValueRef::Property(CssKnownPropertyValueRef::Background(image_only)) =
         report.syntax()[3].known().unwrap().declared_value()
     else {
         panic!("expected image-only background");
     };
-    assert!(image_only.current().is_transparent());
-    assert!(image_only.i01_subset().is_none());
+    assert!(image_only.background().layers()[0].image().is_some());
     assert!(image_only.background().layers()[0].color().is_none());
 }
 

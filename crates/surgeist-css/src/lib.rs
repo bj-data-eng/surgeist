@@ -268,13 +268,12 @@
 //! Property accessors expose dedicated typed function families. Timing-function
 //! wrappers expose the sole [`CssEasingList`] through `timing_functions()`.
 //! Transform wrappers return [`CssTransformValue`], filter and backdrop-filter
-//! wrappers return [`CssFilterValue`], box-shadow returns [`CssBoxShadow`], and
-//! clip-path returns an optional [`CssClipPathValue`]. Those other families
-//! retain their documented I01 projections independently of timing.
+//! wrappers return [`CssFilter`], box-shadow returns [`CssBoxShadow`], and
+//! clip-path returns an optional [`CssClipPathValue`]. The transform and clip-path families retain their documented projections.
 //!
 //! ```
 //! use surgeist_css::{
-//!     CssBasicShapeValue, CssClipPathValue, CssFilterFunctionValue, CssFilterValue,
+//!     CssBasicShapeValue, CssClipPathValue, CssFilterFunction, CssFilter,
 //!     CssKnownPropertyValueRef, CssTransformFunctionValue, CssTransformValue,
 //!     parse_style_attribute,
 //! };
@@ -301,9 +300,9 @@
 //!     .property_value().expect("ordinary filter")
 //! else { panic!("expected filter") };
 //! assert!(matches!(
-//!     filter.current(),
-//!     CssFilterValue::Functions(functions)
-//!         if matches!(functions.functions()[1], CssFilterFunctionValue::DropShadow(_))
+//!     filter.value(),
+//!     CssFilter::Functions(functions)
+//!         if matches!(functions.functions()[1], CssFilterFunction::DropShadow(_))
 //! ));
 //!
 //! let CssKnownPropertyValueRef::ClipPath(clip) = report.syntax()[2]
@@ -333,68 +332,35 @@
 //! and `clip-path` retain explicit Partial metadata boundaries; support for a typed
 //! function does not promote an aggregate or an unselected production.
 //!
-//! # Authored colors and frozen I01 compatibility
+//! # Authored colors
 //!
-//! The current color model preserves authored Color 4 syntax. It distinguishes
-//! named, transparent, current, hexadecimal, current and deprecated system,
-//! legacy and modern RGB/HSL, HWB, Lab/LCH, Oklab/Oklch, and predefined
-//! `color()` branches. Finite specified components remain authored when they are
-//! outside a computed range, and typed calculations remain symbolic. The current
-//! opacity model similarly preserves finite numbers and percentages, including
-//! signed and out-of-range specified values.
-//!
-//! Color-bearing property wrappers expose their current value through
-//! `current()`, and the opacity wrapper exposes its current [`CssOpacityValue`]
-//! through `value()`. Their `i01_subset()` is a separate compatibility view:
-//! a current value returns `None` when [`CssColor`] or [`CssOpacity`] cannot
-//! represent it without loss. Ordinary opacity decimals such as `.1` retain
-//! their exact spelling in [`CssOpacityValue::ExactScalar`] rather than exposing
-//! a rounded I01 payload; exactly representable values such as `.5` retain their
-//! legacy variant. Consumers use the current enum and select a precision policy
-//! explicitly when lowering. A missing compatibility projection does not make
-//! the current value invalid.
+//! [`CssColor`] is the sole checked authored color graph. It retains named,
+//! hexadecimal, system, RGB/HSL/HWB, Lab/LCH, predefined `color()`, relative,
+//! custom-profile, `alpha()`, and `color-mix()` branches. Ordinary color numbers,
+//! percentages, and angles retain exact lexical coefficients and origins;
+//! calculations remain symbolic. Color-bearing property wrappers expose this
+//! graph through `value()` or an aggregate `color()` accessor.
 //!
 //! ```
-//! use surgeist_css::{
-//!     CssAuthoredSystemColor, CssKnownPropertyValueRef, CssOpacityValue,
-//!     parse_style_attribute,
-//! };
+//! use surgeist_css::{CssKnownPropertyValueRef, CssSystemColor, parse_style_attribute};
 //!
-//! let report = parse_style_attribute("color: ActiveBorder; opacity: 150%");
+//! let report = parse_style_attribute("color: ActiveBorder; border: solid #fff");
 //! assert!(report.is_clean());
-//!
 //! let CssKnownPropertyValueRef::Color(color) = report.syntax()[0]
-//!     .known().expect("known color")
-//!     .property_value().expect("ordinary color")
-//! else { panic!("expected color") };
-//! assert_eq!(
-//!     color.current().system(),
-//!     Some(CssAuthoredSystemColor::ActiveBorder),
-//! );
-//! assert!(color.i01_subset().is_none());
-//!
-//! let CssKnownPropertyValueRef::Opacity(opacity) = report.syntax()[1]
-//!     .known().expect("known opacity")
-//!     .property_value().expect("ordinary opacity")
-//! else { panic!("expected opacity") };
-//! assert!(matches!(opacity.value(), CssOpacityValue::Percentage(value)
-//!     if value.value() == 150.0));
-//! assert!(opacity.i01_subset().is_none());
+//!     .known().unwrap().property_value().unwrap()
+//! else { panic!("color") };
+//! assert_eq!(color.value().system(), Some(CssSystemColor::ActiveBorder));
+//! let CssKnownPropertyValueRef::Border(border) = report.syntax()[1]
+//!     .known().unwrap().property_value().unwrap()
+//! else { panic!("border") };
+//! assert_eq!(border.value().color().unwrap().hex_value().unwrap().digits(), "fff");
 //! ```
 //!
-//! The preserved Color 5 surface is intentionally narrower. Relative colors
-//! cover `rgb`/`rgba`, `hsl`/`hsla`, `hwb`, `lab`, `lch`, `oklab`, `oklch`,
-//! and predefined RGB/XYZ `color()` spaces with closed per-family channel
-//! environments. `color-mix()` requires an interpolation method and exactly two
-//! colors, accepts optional trailing percentages, and permits hue interpolation
-//! methods only in polar spaces. `alpha()`, custom color profiles,
-//! `light-dark()`, and `device-cmyk()` are not part of this surface.
-//!
-//! These values remain authored syntax. This crate does not clamp computed
-//! color or opacity values, resolve `currentcolor` or system colors, evaluate
-//! relative channels or calculations, perform color conversion or gamut mapping,
-//! resolve a mix, apply contrast, serialize computed colors, or lower colors
-//! into a sibling crate.
+//! Checked constructors compose each color family without resolving
+//! `currentcolor`, system colors, profiles, relative channels, or a mix. The
+//! specified serializer applies cumulative resource limits and returns an atomic
+//! canonical string. Authored out-of-range components are retained until their
+//! computed-value phase. Opacity remains a separate authored numeric model.
 //!
 //! # Authored Grid repetition and keyframe structure
 //!
@@ -1184,9 +1150,7 @@ pub use aspect_ratio::{CssRatioOperand, CssSpecifiedRatio};
 pub use border_color::{CssBorderColorPair, CssBorderColorShorthand, CssBorderColors};
 pub use border_radius::{CssBorderRadiusShorthand, CssCornerRadiusValue};
 pub use border_style::{CssBorderStylePair, CssBorderStyleShorthand};
-pub use border_width::{
-    CssBorderValue, CssBorderWidth, CssBorderWidthPair, CssBorderWidthShorthand,
-};
+pub use border_width::{CssBorder, CssBorderWidth, CssBorderWidthPair, CssBorderWidthShorthand};
 pub use box_spacing::{
     CssBoxSideKind, CssMarginPair, CssMarginShorthand, CssMarginValue, CssPaddingPair,
     CssPaddingShorthand, CssPaddingValue,

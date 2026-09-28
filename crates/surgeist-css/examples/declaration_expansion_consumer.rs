@@ -15,16 +15,16 @@
 //! Surgeist contracts. This consumer neither resolves style nor loads resources.
 
 use surgeist_css::{
-    CssAuthoredColor, CssAuthoredColorComponent, CssBorderImageOutsetComponent,
-    CssBorderImageRepeatKeyword, CssBorderImageSliceComponent, CssBorderImageWidthComponent,
-    CssBorderStyle, CssBorderWidth, CssComponentValue, CssComponentValues, CssContributionValueRef,
-    CssContributions, CssCustomPropertyName, CssDeclaration, CssExpansion, CssExpansionErrorKind,
-    CssGlobalKeyword, CssImageValue, CssImportance, CssKnownProperty as Property,
-    CssKnownPropertyValueRef, CssLength, CssLonghandContribution, CssLonghandContributions,
-    CssLonghandValueRef, CssPendingSubstitution, CssPredefinedColorSpace, CssPropertyNameRef,
-    CssPropertyValueErrorKind, CssSerializedOrigin, CssSpecifiedNonNegativeLength, CssTextAlign,
-    CssTextAlignAllValue, CssTextAlignLastValue, CssUnresolvedStandard, CssValueOrigin,
-    expand_declaration, parse_component_values, parse_property_value, parse_style_attribute,
+    CssBorderImageOutsetComponent, CssBorderImageRepeatKeyword, CssBorderImageSliceComponent,
+    CssBorderImageWidthComponent, CssBorderStyle, CssBorderWidth, CssColor, CssColorComponent,
+    CssComponentValue, CssComponentValues, CssContributionValueRef, CssContributions,
+    CssCustomPropertyName, CssDeclaration, CssExpansion, CssExpansionErrorKind, CssGlobalKeyword,
+    CssImageValue, CssImportance, CssKnownProperty as Property, CssKnownPropertyValueRef,
+    CssLength, CssLonghandContribution, CssLonghandContributions, CssLonghandValueRef,
+    CssPendingSubstitution, CssPredefinedColorSpace, CssPropertyNameRef, CssPropertyValueErrorKind,
+    CssSerializedOrigin, CssSpecifiedNonNegativeLength, CssTextAlign, CssTextAlignAllValue,
+    CssTextAlignLastValue, CssUnresolvedStandard, CssValueOrigin, expand_declaration,
+    parse_component_values, parse_property_value, parse_style_attribute,
 };
 
 const MARGINS: [Property; 4] = [
@@ -196,7 +196,7 @@ fn style(item: &CssLonghandContribution) -> CssBorderStyle {
     }
 }
 
-fn color(item: &CssLonghandContribution) -> &CssAuthoredColor {
+fn color(item: &CssLonghandContribution) -> &CssColor {
     match (item.property(), item.value()) {
         (
             Property::BorderTopColor,
@@ -214,21 +214,21 @@ fn color(item: &CssLonghandContribution) -> &CssAuthoredColor {
             Property::BorderLeftColor,
             CssContributionValueRef::Ordinary(CssLonghandValueRef::BorderLeftColor(value)),
         ) => value,
-        other => panic!("expected coupled current color contribution: {other:?}"),
+        other => panic!("expected coupled color contribution: {other:?}"),
     }
 }
 
-fn assert_modern_color(value: &CssAuthoredColor) {
+fn assert_modern_color(value: &CssColor) {
     let value = value
         .predefined_value()
         .expect("preserved predefined color");
     assert_eq!(value.color_space(), CssPredefinedColorSpace::DisplayP3);
-    for (channel, expected) in value.channels().iter().zip([1.0, 0.5, 0.0]) {
+    for (channel, expected) in value.channels().iter().zip(["1", "0.5", "0"]) {
         assert!(matches!(channel,
-            CssAuthoredColorComponent::Number(number) if number.value() == expected));
+            CssColorComponent::Number(number) if number.numeric().representation() == expected));
     }
     assert!(matches!(value.alpha(),
-        Some(CssAuthoredColorComponent::Percentage(number)) if number.value() == 150.0));
+        Some(CssColorComponent::Percentage(number)) if number.numeric().representation() == "150"));
 }
 
 fn border_members() -> Vec<Property> {
@@ -432,15 +432,10 @@ fn four_sided_styles_and_current_colors() {
             panic!("authored border-color")
         };
         assert_eq!(
-            authored.current().kind(),
+            authored.value().kind(),
             surgeist_css::CssBoxSideKind::Physical
         );
-        for (side, expected) in authored
-            .current()
-            .assigned_values()
-            .into_iter()
-            .zip(expected)
-        {
+        for (side, expected) in authored.value().assigned_values().into_iter().zip(expected) {
             assert_eq!(side.named().unwrap().name(), expected);
         }
         assert_eq!(
@@ -461,8 +456,7 @@ fn four_sided_styles_and_current_colors() {
     else {
         panic!("authored current border-color");
     };
-    assert!(authored.i01_subset().is_none());
-    let [top, right, bottom, left] = authored.current().assigned_values();
+    let [top, right, bottom, left] = authored.value().assigned_values();
     assert_modern_color(top);
     assert_modern_color(bottom);
     assert!(right.is_current_color());
@@ -542,7 +536,8 @@ fn full_border_resets_all_five_image_values() {
             else {
                 panic!("authored border");
             };
-            assert!(authored.i01_subset().is_none());
+            let border = authored.value();
+            assert_eq!(border.style(), Some(CssBorderStyle::Dashed));
         }
         let values = expanded(&source);
         assert_members(&values, &border_members());

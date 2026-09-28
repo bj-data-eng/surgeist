@@ -1,26 +1,25 @@
 use surgeist_css::{
-    CssAnimationDirection, CssAuthoredColorComponent, CssAuthoredColorMix,
-    CssAuthoredColorMixPercentage, CssAuthoredColorSyntax, CssAuthoredFontFeature,
-    CssAuthoredFontFeatureList, CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue,
-    CssAuthoredSystemColor, CssCalculationSumOperator, CssColorInterpolationMethod,
-    CssColorInterpolationSpace, CssComponentValue, CssCounterStyleRange, CssCounterStyleSpeakAs,
-    CssCounterSymbol, CssDefinedFalseMediaReason, CssErrorCode, CssExclusionReason, CssFeatureKind,
-    CssFontFamilyNameKind, CssFontFeatureIndex, CssFontSize, CssFontSizeAdjust, CssFontSynthesis,
-    CssFontSynthesisValues, CssFontVariantCaps, CssFontVariantEastAsianValues,
-    CssFontVariantLigatureState, CssFontVariantLigatureValues, CssFontVariantNumericFigure,
-    CssFontVariantNumericValues, CssFontVariantPosition, CssFontVariantValues,
-    CssGenericFontFamily, CssGridAutoFlowAxis, CssHueInterpolationMethod, CssImportance,
-    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLanguageRange,
-    CssMediaConditionKind, CssMediaQuery, CssMediaQueryModifier, CssMediaType,
+    CssAnimationDirection, CssAuthoredFontFeature, CssAuthoredFontFeatureList,
+    CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue, CssCalculationSumOperator,
+    CssColorComponent, CssColorInterpolation, CssColorInterpolationMethod,
+    CssColorInterpolationSpace, CssColorMixPercentage, CssColorSyntax, CssComponentValue,
+    CssCounterStyleRange, CssCounterStyleSpeakAs, CssCounterSymbol, CssDefinedFalseMediaReason,
+    CssErrorCode, CssExclusionReason, CssFeatureKind, CssFontFamilyNameKind, CssFontFeatureIndex,
+    CssFontSize, CssFontSizeAdjust, CssFontSynthesis, CssFontSynthesisValues, CssFontVariantCaps,
+    CssFontVariantEastAsianValues, CssFontVariantLigatureState, CssFontVariantLigatureValues,
+    CssFontVariantNumericFigure, CssFontVariantNumericValues, CssFontVariantPosition,
+    CssFontVariantValues, CssGenericFontFamily, CssGridAutoFlowAxis, CssHueInterpolationMethod,
+    CssImportance, CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLanguageRange, CssMediaConditionKind, CssMediaQuery, CssMediaQueryModifier, CssMediaType,
     CssNamespaceConstraint, CssNamespaceName, CssNamespacePrefix, CssOpenTypeTag,
     CssPredefinedColorSpace, CssPropertyNameRef, CssPseudoClass, CssPseudoElement,
     CssPseudoElementSegment, CssRecoveryAction, CssRelativeColorChannel,
     CssRelativeColorEnvironment, CssRelativeColorExpressionValue, CssRelativeColorFunction,
     CssRelativeColorResultDomain, CssRule, CssSelector, CssSelectorCombinator,
     CssSpecificationTier, CssSpecifiedNonNegativeLengthPercentage, CssSupportStatus,
-    CssSupportsConditionKind, CssSupportsConditionList, ErrorKind, conformance_exclusion,
-    feature_metadata, parse_sheet, parse_style_attribute, property_support_metadata,
-    specification_source,
+    CssSupportsConditionKind, CssSupportsConditionList, CssSystemColor, ErrorKind,
+    conformance_exclusion, feature_metadata, parse_sheet, parse_style_attribute,
+    property_support_metadata, specification_source,
 };
 
 #[test]
@@ -385,14 +384,14 @@ fn public_surface_exposes_typed_authored_color_inspection() {
     else {
         panic!("expected RGB color wrapper");
     };
-    let rgb = rgb.current().rgb_value().expect("typed RGB branch");
-    assert_eq!(rgb.syntax(), CssAuthoredColorSyntax::Modern);
+    let rgb = rgb.value().rgb_value().expect("typed RGB branch");
+    assert_eq!(rgb.syntax(), CssColorSyntax::Modern);
     assert!(matches!(
         rgb.channels(),
         [
-            CssAuthoredColorComponent::None,
-            CssAuthoredColorComponent::Percentage(_),
-            CssAuthoredColorComponent::NumberCalculation(_),
+            CssColorComponent::None,
+            CssColorComponent::Percentage(_),
+            CssColorComponent::NumberCalculation(_),
         ]
     ));
 
@@ -404,8 +403,8 @@ fn public_surface_exposes_typed_authored_color_inspection() {
     else {
         panic!("expected system color wrapper");
     };
-    let category = match system.current().system().unwrap() {
-        CssAuthoredSystemColor::WindowText => "deprecated system",
+    let category = match system.value().system().unwrap() {
+        CssSystemColor::WindowText => "deprecated system",
         _ => "other future system color",
     };
     assert_eq!(category, "deprecated system");
@@ -427,8 +426,8 @@ fn public_surface_exposes_perceptual_and_predefined_color_inspection() {
     else {
         panic!("expected Oklch color wrapper");
     };
-    assert!(oklch.current().oklch_value().is_some());
-    assert!(oklch.current().lab_value().is_none());
+    assert!(oklch.value().oklch_value().is_some());
+    assert!(oklch.value().lab_value().is_none());
 
     let CssKnownPropertyValueRef::Color(predefined) = report.syntax()[1]
         .known()
@@ -439,11 +438,7 @@ fn public_surface_exposes_perceptual_and_predefined_color_inspection() {
         panic!("expected predefined color wrapper");
     };
     assert_eq!(
-        predefined
-            .current()
-            .predefined_value()
-            .unwrap()
-            .color_space(),
+        predefined.value().predefined_value().unwrap().color_space(),
         CssPredefinedColorSpace::XyzD65,
     );
 }
@@ -451,7 +446,7 @@ fn public_surface_exposes_perceptual_and_predefined_color_inspection() {
 #[test]
 fn public_surface_exposes_typed_relative_color_inspection_without_resolution() {
     let report =
-        parse_style_attribute("color: oklch(from rgb(from red r g b) l c calc(h + 20deg) / alpha)");
+        parse_style_attribute("color: oklch(from rgb(from red r g b) l c calc(h + 20) / alpha)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Color(value) = report.syntax()[0]
         .known()
@@ -461,7 +456,7 @@ fn public_surface_exposes_typed_relative_color_inspection_without_resolution() {
     else {
         panic!("expected color wrapper");
     };
-    let relative = value.current().relative_value().unwrap();
+    let relative = value.value().relative_value().unwrap();
     assert_eq!(relative.environment(), CssRelativeColorEnvironment::Oklch);
     assert_eq!(
         relative.channels()[2].result_domain(),
@@ -471,12 +466,8 @@ fn public_surface_exposes_typed_relative_color_inspection_without_resolution() {
         panic!("expected symbolic hue calculation");
     };
     assert_eq!(hue.references(), &[CssRelativeColorChannel::H]);
-    assert_eq!(hue.authored().as_css(), "calc(h + 20deg)");
+    assert_eq!(hue.authored().as_css(), "calc(h + 20)");
     assert!(relative.source().relative_value().is_some());
-    assert!(matches!(
-        value.i01_subset(),
-        Some(surgeist_css::CssColor::Relative(_))
-    ));
 }
 
 #[test]
@@ -491,29 +482,37 @@ fn public_color_mix_construction_rejects_hue_in_a_rectangular_space() {
     else {
         panic!("expected color wrapper");
     };
-    let color_mix = value.current().color_mix_value().unwrap();
-    let invalid = CssAuthoredColorMix::try_new(
-        CssColorInterpolationMethod::new(
-            CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb),
-            Some(CssHueInterpolationMethod::Longer),
-        ),
-        color_mix.components()[0].clone(),
-        color_mix.components()[1].clone(),
-    );
+    let color_mix = value.value().color_mix_value().unwrap();
+    assert_eq!(color_mix.components().len(), 2);
+    let invalid = CssColorInterpolation::try_predefined(CssColorInterpolationMethod::new(
+        CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb),
+        Some(CssHueInterpolationMethod::Longer),
+    ));
     assert!(invalid.is_none());
 
     assert_eq!(
-        CssAuthoredColorMixPercentage::try_new(0.0).unwrap().value(),
-        Some(0.0)
+        CssColorMixPercentage::try_from_component(CssComponentValue::try_token("0%").unwrap())
+            .unwrap()
+            .literal()
+            .numeric()
+            .representation(),
+        "0"
     );
     assert_eq!(
-        CssAuthoredColorMixPercentage::try_new(100.0)
+        CssColorMixPercentage::try_from_component(CssComponentValue::try_token("100%").unwrap())
             .unwrap()
-            .value(),
-        Some(100.0),
+            .literal()
+            .numeric()
+            .representation(),
+        "100",
     );
-    for invalid in [-1.0, 101.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-        assert!(CssAuthoredColorMixPercentage::try_new(invalid).is_none());
+    for invalid in ["-1%", "101%", "1e999%"] {
+        assert!(
+            CssColorMixPercentage::try_from_component(
+                CssComponentValue::try_token(invalid).unwrap()
+            )
+            .is_err()
+        );
     }
 }
 

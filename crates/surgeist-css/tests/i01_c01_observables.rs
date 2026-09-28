@@ -1233,12 +1233,9 @@ fn assert_archived_container_opaque_acceptance(row: &Row) -> bool {
     else {
         panic!("color")
     };
-    assert_eq!(
-        color.i01_subset(),
-        Some(&surgeist_css::CssColor::Rgba(
-            surgeist_css::CssRgbaColor::try_new(255, 0, 0, 1.0).unwrap()
-        ))
-    );
+    // The captured Rgba projection is archival; the sole authored color keeps
+    // the named branch without resolving it to channels.
+    assert_eq!(color.value().named().unwrap().name(), "red");
     true
 }
 
@@ -2301,6 +2298,56 @@ fn assert_declaration_value(
     }
 }
 
+// The immutable TSV's `typed:Rgba(...)` and aggregate Debug payloads recorded
+// an I01 projection. They remain archival observations, not expected current
+// output. These assertions replace that projection with exact authored branches
+// and checked components, while declaration identity and authored text continue
+// to be checked against the capture below.
+fn assert_captured_color(color: &surgeist_css::CssColor, expected: &str) {
+    match expected {
+        "red" | "blue" | "black" | "white" => {
+            assert_eq!(color.named().expect("named color").name(), expected);
+        }
+        "transparent" => assert!(color.is_transparent()),
+        "#fff" => assert_eq!(color.hex_value().expect("hex color").digits(), "fff"),
+        _ => panic!("uncatalogued captured color: {expected}"),
+    }
+}
+
+fn assert_captured_border(border: &surgeist_css::CssBorder, expected: &str) {
+    use surgeist_css::{CssBorderStyle as Style, CssBorderWidth as Width};
+    let (width, style, color) = match expected {
+        "solid 2px #fff" => (Some("2px"), Some(Style::Solid), Some("#fff")),
+        "#fff" => (None, None, Some("#fff")),
+        "dashed black" => (None, Some(Style::Dashed), Some("black")),
+        "1px" => (Some("1px"), None, None),
+        "black dotted" => (None, Some(Style::Dotted), Some("black")),
+        _ => panic!("uncatalogued captured border: {expected}"),
+    };
+    assert_eq!(border.style(), style);
+    match (border.width(), width) {
+        (Some(Width::Length(actual)), Some(expected)) => {
+            assert_eq!(actual.serialize_specified().unwrap(), expected);
+            assert!(matches!(
+                actual.origin(),
+                surgeist_css::CssValueOrigin::Parsed(_)
+            ));
+            assert!(actual.literal_component().is_some());
+        }
+        (None, None) => {}
+        _ => panic!("captured border width differs: {expected}"),
+    }
+    match (border.color(), color) {
+        (Some(actual), Some(expected)) => assert_captured_color(actual, expected),
+        (None, None) => {}
+        _ => panic!("captured border color differs: {expected:?}"),
+    }
+}
+
+fn assert_captured_px(length: &surgeist_css::CssLength, expected: f32) {
+    assert!(matches!(length, surgeist_css::CssLength::Px(value) if value.value() == expected));
+}
+
 macro_rules! assert_property_specific_value {
     (
         $property:expr,
@@ -2685,6 +2732,220 @@ fn assert_known_property_value(
     authored: &AuthoredDeclaration<'_>,
     frozen: &mut FrozenDeclarationCursor<'_>,
 ) {
+    use surgeist_css::{
+        CssBorderStyle as BorderStyle, CssBoxShadow, CssFilter, CssFilterAmount, CssFilterFunction,
+        CssFilterPercentage, CssOutlineStyle, CssOutlineWidth, CssTextDecorationLineComponent,
+        CssTextDecorationStyle, CssTextDecorationThickness,
+    };
+    let migrated_authored = match (property, &value) {
+        (
+            surgeist_css::CssKnownProperty::Color,
+            surgeist_css::CssKnownPropertyValueRef::Color(value),
+        ) => {
+            assert_captured_color(value.value(), authored.value);
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::BackgroundColor,
+            surgeist_css::CssKnownPropertyValueRef::BackgroundColor(value),
+        ) => {
+            assert_captured_color(value.value(), "transparent");
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::BorderColor,
+            surgeist_css::CssKnownPropertyValueRef::BorderColor(value),
+        ) => {
+            let colors = value.value();
+            assert_eq!(colors.kind(), surgeist_css::CssBoxSideKind::Physical);
+            let [color] = colors.authored_values() else {
+                panic!("captured one-value border-color shorthand");
+            };
+            assert_captured_color(color, "black");
+            for color in colors.assigned_values() {
+                assert_captured_color(color, "black");
+            }
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::BorderTopColor,
+            surgeist_css::CssKnownPropertyValueRef::BorderTopColor(value),
+        ) => {
+            assert_captured_color(value.value(), "black");
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::BorderRightColor,
+            surgeist_css::CssKnownPropertyValueRef::BorderRightColor(value),
+        ) => {
+            assert_captured_color(value.value(), "white");
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::BorderBottomColor,
+            surgeist_css::CssKnownPropertyValueRef::BorderBottomColor(value),
+        ) => {
+            assert_captured_color(value.value(), "transparent");
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::BorderLeftColor,
+            surgeist_css::CssKnownPropertyValueRef::BorderLeftColor(value),
+        ) => {
+            assert_captured_color(value.value(), "#fff");
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::OutlineColor,
+            surgeist_css::CssKnownPropertyValueRef::OutlineColor(value),
+        ) => {
+            assert_captured_color(value.value(), "black");
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::TextDecorationColor,
+            surgeist_css::CssKnownPropertyValueRef::TextDecorationColor(value),
+        ) => {
+            assert_captured_color(value.value(), "black");
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::Background,
+            surgeist_css::CssKnownPropertyValueRef::Background(value),
+        ) => {
+            let [layer] = value.background().layers() else {
+                panic!("captured one-layer background");
+            };
+            assert!(layer.image().is_none());
+            assert!(layer.position().is_none());
+            assert!(layer.size().is_none());
+            assert!(layer.repeat().is_none());
+            assert!(layer.attachment().is_none());
+            assert!(layer.boxes().is_none());
+            assert_captured_color(layer.color().expect("background color"), "#fff");
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::Border,
+            surgeist_css::CssKnownPropertyValueRef::Border(value),
+        ) => {
+            assert_captured_border(value.value(), "solid 2px #fff");
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::BorderTop,
+            surgeist_css::CssKnownPropertyValueRef::BorderTop(value),
+        ) => {
+            assert_captured_border(value.value(), "black dotted");
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::BorderRight,
+            surgeist_css::CssKnownPropertyValueRef::BorderRight(value),
+        ) => {
+            assert_captured_border(value.value(), "1px");
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::BorderBottom,
+            surgeist_css::CssKnownPropertyValueRef::BorderBottom(value),
+        ) => {
+            assert_captured_border(value.value(), "#fff");
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::BorderLeft,
+            surgeist_css::CssKnownPropertyValueRef::BorderLeft(value),
+        ) => {
+            assert_captured_border(value.value(), "dashed black");
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::Outline,
+            surgeist_css::CssKnownPropertyValueRef::Outline(value),
+        ) => {
+            let outline = value.value();
+            assert!(matches!(outline.width(), Some(CssOutlineWidth::Thick)));
+            assert_eq!(
+                outline.style(),
+                Some(CssOutlineStyle::Border(BorderStyle::Dotted))
+            );
+            assert_captured_color(outline.color().expect("outline color"), "white");
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::TextDecoration,
+            surgeist_css::CssKnownPropertyValueRef::TextDecoration(value),
+        ) => {
+            let decoration = value.value();
+            assert!(matches!(
+                decoration.line().expect("decoration line").components(),
+                [CssTextDecorationLineComponent::Underline]
+            ));
+            assert_captured_color(decoration.color().expect("decoration color"), "white");
+            assert_eq!(decoration.style(), Some(CssTextDecorationStyle::Dotted));
+            let Some(CssTextDecorationThickness::Length(thickness)) = decoration.thickness() else {
+                panic!("captured decoration length");
+            };
+            assert_captured_px(thickness.length(), 3.0);
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::BoxShadow,
+            surgeist_css::CssKnownPropertyValueRef::BoxShadow(value),
+        ) => {
+            let CssBoxShadow::Shadows(shadows) = value.value() else {
+                panic!("captured box shadow list");
+            };
+            let [shadow] = shadows.shadows() else {
+                panic!("captured one box shadow");
+            };
+            assert!(shadow.inset());
+            assert_captured_px(shadow.offset_x(), 1.0);
+            assert_captured_px(shadow.offset_y(), 2.0);
+            assert_captured_px(shadow.blur_radius().expect("blur"), 3.0);
+            assert_captured_px(shadow.spread_radius().expect("spread"), 4.0);
+            assert_captured_color(shadow.color().expect("shadow color"), "black");
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::Filter,
+            surgeist_css::CssKnownPropertyValueRef::Filter(value),
+        ) => {
+            let CssFilter::Functions(functions) = value.value() else {
+                panic!("captured filter function list");
+            };
+            let [
+                CssFilterFunction::Blur(blur),
+                CssFilterFunction::Opacity(amount),
+            ] = functions.functions()
+            else {
+                panic!("captured ordered blur and opacity");
+            };
+            assert_captured_px(blur.length(), 4.0);
+            assert!(matches!(
+                amount,
+                CssFilterAmount::Percentage(CssFilterPercentage::Literal(number))
+                    if number.value() == 50.0
+            ));
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::BackdropFilter,
+            surgeist_css::CssKnownPropertyValueRef::BackdropFilter(value),
+        ) => {
+            assert!(matches!(value.value(), CssFilter::None));
+            Some(value.as_css())
+        }
+        _ => None,
+    };
+    if let Some(css) = migrated_authored {
+        assert_eq!(authored.id, property.stable_id());
+        assert_eq!(authored.value_capability, "deferred-i01");
+        assert_eq!(css, authored.value);
+        assert!(semantic.is_some_and(|item| item.id == property.stable_id()));
+        return;
+    }
     match (property, &value) {
         (
             surgeist_css::CssKnownProperty::ListStyleType,
@@ -3997,9 +4258,7 @@ fn assert_known_property_value(
             WordBreak,
             OverflowWrap,
             TextOverflow,
-            TextDecoration,
             TextDecorationLine,
-            TextDecorationColor,
             TextDecorationStyle,
             TextDecorationThickness,
             TextTransform,
@@ -4010,24 +4269,11 @@ fn assert_known_property_value(
             Left,
             ZIndex,
             BoxDecorationBreak,
-            Border,
-            BorderTop,
-            BorderRight,
-            BorderBottom,
-            BorderLeft,
             BorderWidth,
             BorderTopWidth,
             BorderRightWidth,
             BorderBottomWidth,
             BorderLeftWidth,
-            Color,
-            Background,
-            BackgroundColor,
-            BorderColor,
-            BorderTopColor,
-            BorderRightColor,
-            BorderBottomColor,
-            BorderLeftColor,
             BackgroundImage,
             BackgroundPosition,
             BackgroundSize,
@@ -4045,7 +4291,6 @@ fn assert_known_property_value(
             BorderTopRightRadius,
             BorderBottomRightRadius,
             BorderBottomLeftRadius,
-            BoxShadow,
             Opacity,
             FlexGrow,
             FlexShrink,
@@ -4058,8 +4303,6 @@ fn assert_known_property_value(
             Cursor,
             PointerEvents,
             UserSelect,
-            Outline,
-            OutlineColor,
             OutlineStyle,
             OutlineWidth,
             Transform,
@@ -4067,8 +4310,6 @@ fn assert_known_property_value(
             Translate,
             Rotate,
             Scale,
-            Filter,
-            BackdropFilter,
             ClipPath,
             Mask,
             MaskImage,
