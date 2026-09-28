@@ -270,11 +270,11 @@
 //! wrappers expose the sole [`CssEasingList`] through `timing_functions()`.
 //! Transform wrappers expose the sole [`CssTransform`] through `value()`; filter and
 //! backdrop-filter wrappers return [`CssFilter`], box-shadow returns [`CssBoxShadow`], and
-//! clip-path returns an optional [`CssClipPathValue`]. Clip-path retains its documented projection.
+//! clip-path exposes the sole [`CssClipPath`] through `value()`.
 //!
 //! ```
 //! use surgeist_css::{
-//!     CssBasicShapeValue, CssClipPathValue, CssFilterFunction, CssFilter,
+//!     CssBasicShape, CssClipPath, CssFilterFunction, CssFilter,
 //!     CssKnownPropertyValueRef, CssTransformFunction, CssTransform,
 //!     parse_style_attribute,
 //! };
@@ -311,8 +311,8 @@
 //!     .property_value().expect("ordinary clip path")
 //! else { panic!("expected clip-path") };
 //! assert!(matches!(
-//!     clip.current(),
-//!     Some(CssClipPathValue::BasicShape(CssBasicShapeValue::Polygon(polygon)))
+//!     clip.value(),
+//!     CssClipPath::BasicShape(CssBasicShape::Polygon(polygon))
 //!         if polygon.round().is_some()
 //! ));
 //! ```

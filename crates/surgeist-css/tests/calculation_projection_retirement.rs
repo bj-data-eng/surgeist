@@ -1,11 +1,12 @@
 #![forbid(unsafe_code)]
 
-//! Calculation-only compatibility retirement keeps current authored parsing and
-//! literal I01 projections. It removes the duplicate frozen math grammar.
+//! Selected basic shapes retain symbolic calculations in the sole authored graph.
 
-use surgeist_css::{CssKnownPropertyValueRef, parse_style_attribute};
+use surgeist_css::{
+    CssBasicShape, CssClipPath, CssKnownPropertyValueRef, CssLength, parse_style_attribute,
+};
 
-fn assert_current_shape_without_old_projection(shape: &str) {
+fn parsed_shape(shape: &str) -> CssBasicShape {
     let report = parse_style_attribute(&format!("clip-path: {shape}"));
     assert!(report.is_clean(), "{shape}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::ClipPath(value) = report.syntax()[0]
@@ -16,36 +17,61 @@ fn assert_current_shape_without_old_projection(shape: &str) {
     else {
         panic!("clip-path retains its property identity")
     };
-    assert!(value.current().is_some(), "{shape}: current authored shape");
+    let CssClipPath::BasicShape(shape) = value.value() else {
+        panic!("typed basic shape: {shape}");
+    };
+    shape.clone()
+}
+
+#[test]
+fn calculated_circle_radius_keeps_typed_shape() {
+    let CssBasicShape::Circle(circle) = parsed_shape("circle(calc(1px + 2px))") else {
+        panic!("circle");
+    };
     assert!(
-        value.i01_subset().is_none(),
-        "{shape}: retired math projection"
+        matches!(circle.radius(), surgeist_css::CssCircleRadius::LengthPercentage(radius)
+        if matches!(radius.value(), CssLength::Calc(_)))
     );
 }
 
 #[test]
-fn calculated_circle_radius_keeps_current_shape_without_old_projection() {
-    assert_current_shape_without_old_projection("circle(calc(1px + 2px))");
+fn calculated_shape_position_keeps_typed_shape() {
+    let CssBasicShape::Circle(circle) = parsed_shape("circle(1px at calc(1px + 2px) center)")
+    else {
+        panic!("circle");
+    };
+    assert!(circle.position().is_some());
 }
 
 #[test]
-fn calculated_shape_position_keeps_current_shape_without_old_projection() {
-    assert_current_shape_without_old_projection("circle(1px at calc(1px + 2px) center)");
+fn calculated_ellipse_keeps_typed_shape() {
+    let CssBasicShape::Ellipse(ellipse) = parsed_shape("ellipse(calc(1px + 2px) 4px)") else {
+        panic!("ellipse");
+    };
+    assert!(
+        matches!(ellipse.radius(), surgeist_css::CssEllipseRadius::Radii(radii)
+        if matches!(radii.horizontal().value(), CssLength::Calc(_)))
+    );
 }
 
 #[test]
-fn calculated_ellipse_keeps_current_shape_without_old_projection() {
-    assert_current_shape_without_old_projection("ellipse(calc(1px + 2px) 4px)");
+fn calculated_inset_keeps_typed_shape() {
+    let CssBasicShape::Inset(inset) = parsed_shape("inset(calc(1px + 2px))") else {
+        panic!("inset");
+    };
+    assert!(matches!(inset.offsets().values(), [CssLength::Calc(_)]));
 }
 
 #[test]
-fn calculated_inset_keeps_current_shape_without_old_projection() {
-    assert_current_shape_without_old_projection("inset(calc(1px + 2px))");
-}
-
-#[test]
-fn calculated_polygon_keeps_current_shape_without_old_projection() {
-    assert_current_shape_without_old_projection("polygon(calc(1px + 2px) 0px, 1px 1px)");
+fn calculated_polygon_keeps_typed_shape() {
+    let CssBasicShape::Polygon(polygon) = parsed_shape("polygon(calc(1px + 2px) 0px, 1px 1px)")
+    else {
+        panic!("polygon");
+    };
+    assert!(matches!(
+        polygon.points().points()[0].x(),
+        CssLength::Calc(_)
+    ));
 }
 
 #[test]
@@ -70,27 +96,26 @@ fn calculated_blur_keeps_typed_filter_expression() {
 }
 
 #[test]
-fn literal_shapes_and_frozen_percentage_circle_keep_their_projections() {
-    for (shape, has_current) in [
-        ("circle(1px)", true),
-        ("circle(1px at center)", true),
-        ("ellipse(1px 2px)", true),
-        ("inset(1px round 2px)", true),
-        ("polygon(0px 0px, 1px 1px)", true),
-        ("circle(50% at center)", false),
+fn literal_shapes_and_percentage_circle_use_typed_graph() {
+    for (shape, expected_kind) in [
+        ("circle(1px)", "circle"),
+        ("circle(1px at center)", "circle"),
+        ("ellipse(1px 2px)", "ellipse"),
+        ("inset(1px round 2px)", "inset"),
+        ("polygon(0px 0px, 1px 1px)", "polygon"),
+        ("circle(50% at center)", "circle"),
     ] {
-        let report = parse_style_attribute(&format!("clip-path: {shape}"));
-        assert!(report.is_clean(), "{shape}: {:?}", report.diagnostics());
-        let CssKnownPropertyValueRef::ClipPath(value) = report.syntax()[0]
-            .known()
-            .unwrap()
-            .property_value()
-            .unwrap()
-        else {
-            panic!("clip-path retains its property identity")
-        };
-        assert!(value.i01_subset().is_some(), "{shape}: literal projection");
-        assert_eq!(value.current().is_some(), has_current, "{shape}");
+        let actual = parsed_shape(shape);
+        assert_eq!(
+            match actual {
+                CssBasicShape::Circle(_) => "circle",
+                CssBasicShape::Ellipse(_) => "ellipse",
+                CssBasicShape::Inset(_) => "inset",
+                CssBasicShape::Polygon(_) => "polygon",
+                _ => panic!("unsupported shape"),
+            },
+            expected_kind
+        );
     }
 }
 

@@ -186,15 +186,10 @@ pub surgeist_css::CssBaselinePosition::Baseline
 pub surgeist_css::CssBaselinePosition::First
 pub surgeist_css::CssBaselinePosition::Last
 #[non_exhaustive] pub enum surgeist_css::CssBasicShape
-pub surgeist_css::CssBasicShape::Circle(surgeist_css::CssBasicShapeArguments)
-pub surgeist_css::CssBasicShape::Ellipse(surgeist_css::CssBasicShapeArguments)
-pub surgeist_css::CssBasicShape::Inset(surgeist_css::CssBasicShapeArguments)
-pub surgeist_css::CssBasicShape::Polygon(surgeist_css::CssBasicShapeArguments)
-#[non_exhaustive] pub enum surgeist_css::CssBasicShapeValue
-pub surgeist_css::CssBasicShapeValue::Circle(surgeist_css::CssCircleShape)
-pub surgeist_css::CssBasicShapeValue::Ellipse(surgeist_css::CssEllipseShape)
-pub surgeist_css::CssBasicShapeValue::Inset(alloc::boxed::Box<surgeist_css::CssInsetShape>)
-pub surgeist_css::CssBasicShapeValue::Polygon(surgeist_css::CssPolygonShape)
+pub surgeist_css::CssBasicShape::Circle(surgeist_css::CssCircleShape)
+pub surgeist_css::CssBasicShape::Ellipse(surgeist_css::CssEllipseShape)
+pub surgeist_css::CssBasicShape::Inset(alloc::boxed::Box<surgeist_css::CssInsetShape>)
+pub surgeist_css::CssBasicShape::Polygon(surgeist_css::CssPolygonShape)
 #[non_exhaustive] pub enum surgeist_css::CssBlendMode
 pub surgeist_css::CssBlendMode::Color
 pub surgeist_css::CssBlendMode::ColorBurn
@@ -429,7 +424,7 @@ pub surgeist_css::CssCharacterAlignmentErrorKind::InvalidCharacter
 #[non_exhaustive] pub enum surgeist_css::CssCircleRadius
 pub surgeist_css::CssCircleRadius::Default
 pub surgeist_css::CssCircleRadius::Extent(surgeist_css::CssRadialExtent)
-pub surgeist_css::CssCircleRadius::Length(surgeist_css::CssShapeLength)
+pub surgeist_css::CssCircleRadius::LengthPercentage(surgeist_css::CssShapeLengthPercentage)
 #[non_exhaustive] pub enum surgeist_css::CssClear
 pub surgeist_css::CssClear::Both
 pub surgeist_css::CssClear::InlineEnd
@@ -456,10 +451,6 @@ pub fn surgeist_css::CssClipEdge::serialize_specified_with_limits(&self, limits:
 pub surgeist_css::CssClipPath::BasicShape(surgeist_css::CssBasicShape)
 pub surgeist_css::CssClipPath::None
 pub surgeist_css::CssClipPath::Url(surgeist_css::CssUrl)
-#[non_exhaustive] pub enum surgeist_css::CssClipPathValue
-pub surgeist_css::CssClipPathValue::BasicShape(surgeist_css::CssBasicShapeValue)
-pub surgeist_css::CssClipPathValue::None
-pub surgeist_css::CssClipPathValue::Url(surgeist_css::CssUrl)
 #[non_exhaustive] pub enum surgeist_css::CssColorComponent
 pub surgeist_css::CssColorComponent::None
 pub surgeist_css::CssColorComponent::Number(surgeist_css::CssColorNumberLiteral)
@@ -4408,9 +4399,6 @@ impl surgeist_css::CssBackgroundSizePropertyValue
 pub fn surgeist_css::CssBackgroundSizePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBackgroundSizePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssBackgroundSizeList>
 pub const fn surgeist_css::CssBackgroundSizePropertyValue::sizes(&self) -> &surgeist_css::CssBackgroundSizeList
-pub struct surgeist_css::CssBasicShapeArguments
-impl surgeist_css::CssBasicShapeArguments
-pub fn surgeist_css::CssBasicShapeArguments::as_css(&self) -> &str
 pub struct surgeist_css::CssBlendModeList
 impl surgeist_css::CssBlendModeList
 pub fn surgeist_css::CssBlendModeList::modes(&self) -> &[surgeist_css::CssBlendMode]
@@ -5016,8 +5004,7 @@ pub const fn surgeist_css::CssClipLength::value(&self) -> &surgeist_css::CssLeng
 pub struct surgeist_css::CssClipPathPropertyValue
 impl surgeist_css::CssClipPathPropertyValue
 pub fn surgeist_css::CssClipPathPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssClipPathPropertyValue::current(&self) -> core::option::Option<&surgeist_css::CssClipPathValue>
-pub const fn surgeist_css::CssClipPathPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssClipPath>
+pub const fn surgeist_css::CssClipPathPropertyValue::value(&self) -> &surgeist_css::CssClipPath
 pub struct surgeist_css::CssClipPropertyValue
 impl surgeist_css::CssClipPropertyValue
 pub fn surgeist_css::CssClipPropertyValue::as_css(&self) -> &str

@@ -4234,6 +4234,34 @@ fn assert_known_property_value(
             );
             Some(value.as_css())
         }
+        (
+            surgeist_css::CssKnownProperty::ClipPath,
+            surgeist_css::CssKnownPropertyValueRef::ClipPath(value),
+        ) => {
+            assert_eq!(authored.value, "circle(50% at center)");
+            let surgeist_css::CssClipPath::BasicShape(surgeist_css::CssBasicShape::Circle(circle)) =
+                value.value()
+            else {
+                panic!("captured typed circle");
+            };
+            let surgeist_css::CssCircleRadius::LengthPercentage(radius) = circle.radius() else {
+                panic!("captured percentage radius");
+            };
+            assert!(
+                matches!(radius.value(), surgeist_css::CssLength::Percent(percent)
+                if percent.value() == 50.0)
+            );
+            let position = circle.position().expect("captured center position");
+            assert!(matches!(
+                position.horizontal(),
+                surgeist_css::CssHorizontalPosition::Center
+            ));
+            assert!(matches!(
+                position.vertical(),
+                surgeist_css::CssVerticalPosition::Center
+            ));
+            Some(value.as_css())
+        }
         _ => None,
     };
     if let Some(css) = grid_authored {
@@ -4343,7 +4371,6 @@ fn assert_known_property_value(
             Translate,
             Rotate,
             Scale,
-            ClipPath,
             Mask,
             MaskImage,
             MaskSize,

@@ -8,7 +8,7 @@
 mod font_face_support;
 
 use surgeist_css::{
-    CssClipPathValue, CssContent, CssContentItem, CssCursor, CssCursorKeyword, CssFilter,
+    CssClipPath, CssContent, CssContentItem, CssCursor, CssCursorKeyword, CssFilter,
     CssFilterFunction, CssFontFaceSource, CssFontFormatHint, CssFontTechHint, CssImageValue,
     CssImportTarget, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssListStyleImage,
     CssRecoveryAction, CssRule, CssUrlModifier, parse_sheet, parse_style_attribute, validate_sheet,
@@ -50,8 +50,8 @@ fn assert_url_payload(value: CssKnownPropertyValueRef<'_>, expected: &str) {
                 if matches!(functions.functions(), [CssFilterFunction::Url(url)] if url.as_str() == expected)
         )),
         CssKnownPropertyValueRef::ClipPath(value) => assert!(matches!(
-            value.current(),
-            Some(CssClipPathValue::Url(url)) if url.as_str() == expected
+            value.value(),
+            CssClipPath::Url(url) if url.as_str() == expected
         )),
         CssKnownPropertyValueRef::Background(value) => assert!(matches!(
             value.background().layers(),

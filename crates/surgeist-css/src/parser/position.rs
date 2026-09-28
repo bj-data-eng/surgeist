@@ -1,12 +1,8 @@
 use cssparser::{ParseError, Parser, ParserState, Token, match_ignore_ascii_case};
 
-use super::values::{
-    LengthGrammar, next_is_comma, next_is_delim, parse_length_with,
-    parse_literal_length_with_context,
-};
+use super::values::{LengthGrammar, next_is_comma, next_is_delim, parse_length_with};
 use crate::error::{Error, unsupported_value};
 use crate::syntax::*;
-use crate::validation::unsupported_keyword_reason;
 
 pub(super) fn next_starts_background_position<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
     let state = input.state();
@@ -129,61 +125,6 @@ pub(super) fn parse_css_position<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
     parse_generic_position(input, numeric).map(|(_, legacy)| legacy)
-}
-
-pub(super) fn parse_css_position_legacy<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
-    parse_css_position_legacy_components(input)
-}
-
-fn parse_css_position_legacy_components<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
-    let mut components = Vec::new();
-    while !input.is_exhausted() && !next_is_comma(input) && !next_is_delim(input, '/') {
-        components.push(parse_legacy_position_component(input, &components)?);
-        if components.len() > 4 {
-            return Err(unsupported_value(
-                input,
-                None,
-                "position has too many components",
-            ));
-        }
-    }
-    CssPosition::try_new(components)
-        .ok_or_else(|| unsupported_value(input, None, "position is empty"))
-}
-
-fn parse_legacy_position_component<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    previous: &[CssPositionComponent],
-) -> std::result::Result<CssPositionComponent, ParseError<'i, Error>> {
-    let state = input.state();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        return match_ignore_ascii_case! { &ident,
-            "left" => Ok(CssPositionComponent::Horizontal(CssHorizontalPositionKeyword::Left)),
-            "right" => Ok(CssPositionComponent::Horizontal(CssHorizontalPositionKeyword::Right)),
-            "top" => Ok(CssPositionComponent::Vertical(CssVerticalPositionKeyword::Top)),
-            "bottom" => Ok(CssPositionComponent::Vertical(CssVerticalPositionKeyword::Bottom)),
-            "center" => {
-                let has_horizontal = previous.iter().any(|component| matches!(component, CssPositionComponent::Horizontal(_)));
-                if has_horizontal {
-                    Ok(CssPositionComponent::Vertical(CssVerticalPositionKeyword::Center))
-                } else {
-                    Ok(CssPositionComponent::Horizontal(CssHorizontalPositionKeyword::Center))
-                }
-            },
-            _ => Err(unsupported_value(
-                input,
-                None,
-                unsupported_keyword_reason("position", ident.as_ref()),
-            )),
-        };
-    }
-    input.reset(&state);
-    parse_literal_length_with_context(input, LengthGrammar::Position, "position")
-        .map(CssPositionComponent::Length)
 }
 
 #[derive(Clone, Debug)]

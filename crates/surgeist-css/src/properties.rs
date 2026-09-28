@@ -2095,8 +2095,7 @@ macro_rules! define_property_value {
     ) => {
         #[derive(Clone, Debug, PartialEq)]
         pub(crate) struct $representation {
-            current: Option<CssClipPathValue>,
-            i01_subset: Option<CssClipPath>,
+            value: CssClipPath,
         }
 
         /// A grammar-checked authored ordinary `clip-path` value.
@@ -2108,17 +2107,10 @@ macro_rules! define_property_value {
 
         impl $wrapper {
             #[must_use]
-            pub(crate) fn new(
-                authored: CssAuthoredDeclarationValue,
-                parsed: CssParsedClipPath,
-            ) -> Self {
-                let (current, i01_subset) = parsed.into_parts();
+            pub(crate) fn new(authored: CssAuthoredDeclarationValue, value: CssClipPath) -> Self {
                 Self {
                     authored,
-                    representation: $representation {
-                        current,
-                        i01_subset,
-                    },
+                    representation: $representation { value },
                 }
             }
 
@@ -2127,16 +2119,10 @@ macro_rules! define_property_value {
                 self.authored.as_css()
             }
 
-            /// Returns the exact checked current authored clip-path subset, when representable.
+            /// Returns the checked authored clip-path value.
             #[must_use]
-            pub const fn current(&self) -> Option<&CssClipPathValue> {
-                self.representation.current.as_ref()
-            }
-
-            /// Returns the frozen authored-arguments compatibility projection.
-            #[must_use]
-            pub const fn i01_subset(&self) -> Option<&CssClipPath> {
-                self.representation.i01_subset.as_ref()
+            pub const fn value(&self) -> &CssClipPath {
+                &self.representation.value
             }
         }
     };

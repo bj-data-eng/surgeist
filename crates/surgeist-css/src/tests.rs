@@ -108,6 +108,9 @@ macro_rules! declaration_value {
     ($input:expr, Transform) => {
         semantic_value!($input, Transform)
     };
+    ($input:expr, ClipPath) => {
+        semantic_value!($input, ClipPath)
+    };
     ($input:expr, $variant:ident) => {{
         let declaration = declaration($input, CssProperty::$variant);
         let value = declaration
@@ -1656,10 +1659,6 @@ fn single_declaration(input: &str) -> CssDeclaration {
         panic!("{input} should parse exactly one declaration");
     };
     declaration.clone()
-}
-
-fn basic_shape_arguments(css: &str) -> CssBasicShapeArguments {
-    CssBasicShapeArguments::new(CssAuthoredFunctionArguments::new(css))
 }
 
 #[test]
@@ -8978,12 +8977,16 @@ fn parses_transform_effect_and_mask_properties_as_authored_syntax() {
         declaration_value!(".panel { backdrop-filter: none; }", BackdropFilter),
         CssFilter::None
     );
-    assert_eq!(
-        declaration_value!(".panel { clip-path: circle(50% at center); }", ClipPath),
-        CssClipPath::BasicShape(CssBasicShape::Circle(basic_shape_arguments(
-            "50% at center"
-        ),))
+    let CssClipPath::BasicShape(CssBasicShape::Circle(circle)) =
+        declaration_value!(".panel { clip-path: circle(50% at center); }", ClipPath)
+    else {
+        panic!("typed percentage circle");
+    };
+    assert!(
+        matches!(circle.radius(), CssCircleRadius::LengthPercentage(radius)
+        if matches!(radius.value(), CssLength::Percent(value) if value.value() == 50.0))
     );
+    assert!(circle.position().is_some());
     assert_eq!(
         declaration_value!(".panel { mask-image: url(mask.png), none; }", MaskImage),
         CssImageLayerList::new(vec![
@@ -9000,10 +9003,6 @@ fn parses_transform_effect_and_mask_properties_as_authored_syntax() {
 
 #[test]
 fn authored_transform_filter_and_basic_shape_values_preserve_family_context() {
-    fn basic_shape_css(arguments: &CssBasicShapeArguments) -> &str {
-        arguments.as_css()
-    }
-
     let CssTransform::Functions(functions) = declaration_value!(
         ".panel { transform: translate(10px, 20px) rotate(45deg); }",
         Transform
@@ -9035,12 +9034,16 @@ fn authored_transform_filter_and_basic_shape_values_preserve_family_context() {
         CssFilterAmount::Percentage(CssFilterPercentage::Literal(_))
     ));
 
-    let CssClipPath::BasicShape(CssBasicShape::Circle(arguments)) =
+    let CssClipPath::BasicShape(CssBasicShape::Circle(circle)) =
         declaration_value!(".panel { clip-path: circle(50% at center); }", ClipPath)
     else {
         panic!("expected basic shape clip-path");
     };
-    assert_eq!(basic_shape_css(&arguments), "50% at center");
+    assert!(
+        matches!(circle.radius(), CssCircleRadius::LengthPercentage(radius)
+        if matches!(radius.value(), CssLength::Percent(value) if value.value() == 50.0))
+    );
+    assert!(circle.position().is_some());
 
     let easings = timing_value!(
         ".panel { transition-timing-function: cubic-bezier(0.1, 0.2, 0.3, 1); }",

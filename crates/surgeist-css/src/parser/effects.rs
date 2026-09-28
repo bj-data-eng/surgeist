@@ -1,13 +1,13 @@
-use cssparser::{ParseError, Parser, ParserInput, ToCss, Token, match_ignore_ascii_case};
+use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
 
 use super::background::{parse_background_repeat, parse_background_size, parse_image_layer};
 use super::box_model::{expand_radius_components, parse_drop_shadow};
-use super::position::{parse_css_position, parse_css_position_legacy, parse_css_position_value};
+use super::position::{parse_css_position, parse_css_position_value};
 use super::url::parse_url;
 use super::values::{
     CalculationRoot, LengthGrammar, checked_percentage_value, next_is_comma, next_is_delim,
-    next_is_ident, parse_length_with, parse_length_with_context, parse_literal_length_with_context,
-    parse_number, parse_numeric_function,
+    next_is_ident, parse_length_with, parse_length_with_context, parse_number,
+    parse_numeric_function,
 };
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
@@ -577,37 +577,6 @@ fn parse_transform_length<'i, 't>(
     })
 }
 
-pub(super) fn validate_authored_function_arguments(
-    value: &str,
-    mut validate: impl for<'i, 't> FnMut(&mut Parser<'i, 't>) -> bool,
-) -> bool {
-    let mut input = ParserInput::new(value);
-    let mut parser = Parser::new(&mut input);
-    validate(&mut parser) && parser.is_exhausted()
-}
-
-pub(super) fn collect_authored_tokens<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<String, ParseError<'i, Error>> {
-    let mut value = String::new();
-    while !input.is_exhausted() {
-        let token = input.next().map_err(basic)?;
-        let token_css = token.to_css_string();
-        if matches!(token, Token::Comma) {
-            if value.ends_with(' ') {
-                value.pop();
-            }
-            value.push_str(", ");
-        } else {
-            if !value.is_empty() && !value.ends_with(' ') {
-                value.push(' ');
-            }
-            value.push_str(&token_css);
-        }
-    }
-    Ok(value.trim().to_owned())
-}
-
 fn parse_radial_extent<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssRadialExtent, ParseError<'i, Error>> {
@@ -634,17 +603,11 @@ fn parse_circle_shape<'i, 't>(
     } else if let Ok(extent) = input.try_parse(parse_radial_extent) {
         CssCircleRadius::Extent(extent)
     } else {
-        let location = input.current_source_location();
-        let value =
-            parse_length_with_context(input, numeric, LengthGrammar::Position, "circle radius")?;
-        let length = CssShapeLength::try_new(value).ok_or_else(|| {
-            unsupported_value_at(
-                location,
-                None,
-                "circle radius requires a non-negative length",
-            )
-        })?;
-        CssCircleRadius::Length(length)
+        CssCircleRadius::LengthPercentage(parse_non_negative_shape_length_percentage(
+            input,
+            numeric,
+            "circle radius",
+        )?)
     };
     Ok(CssCircleShape::new(
         radius,
@@ -1140,21 +1103,15 @@ fn parse_filter_angle<'i, 't>(
 pub(super) fn parse_clip_path<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssParsedClipPath, ParseError<'i, Error>> {
+) -> std::result::Result<CssClipPath, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
         .is_ok()
     {
-        return Ok(CssParsedClipPath::new(
-            Some(CssClipPathValue::None),
-            Some(CssClipPath::None),
-        ));
+        return Ok(CssClipPath::None);
     }
     if let Ok(url) = input.try_parse(|input| parse_url(input, numeric)) {
-        return Ok(CssParsedClipPath::new(
-            Some(CssClipPathValue::Url(url.clone())),
-            Some(CssClipPath::Url(url)),
-        ));
+        return Ok(CssClipPath::Url(url));
     }
     let location = input.current_source_location();
     let name = match input.next().map_err(basic)? {
@@ -1172,24 +1129,14 @@ pub(super) fn parse_clip_path<'i, 't>(
             format!("unsupported clip-path function `{name}`"),
         ));
     }
-    let (authored, current) = input.parse_nested_block(|input| {
-        let state = input.state();
-        let authored = collect_authored_tokens(input)?;
-        input.reset(&state);
-        if normalized_name == "circle"
-            && input.try_parse(parse_frozen_circle_percentage).is_ok()
-            && input.is_exhausted()
-        {
-            return Ok((authored, None));
-        }
-        input.reset(&state);
-        let current = match normalized_name.as_str() {
+    input.parse_nested_block(|input| {
+        let shape = match normalized_name.as_str() {
             "inset" => parse_inset_shape(input, numeric)
                 .map(Box::new)
-                .map(CssBasicShapeValue::Inset),
-            "circle" => parse_circle_shape(input, numeric).map(CssBasicShapeValue::Circle),
-            "ellipse" => parse_ellipse_shape(input, numeric).map(CssBasicShapeValue::Ellipse),
-            "polygon" => parse_polygon_shape(input, numeric).map(CssBasicShapeValue::Polygon),
+                .map(CssBasicShape::Inset),
+            "circle" => parse_circle_shape(input, numeric).map(CssBasicShape::Circle),
+            "ellipse" => parse_ellipse_shape(input, numeric).map(CssBasicShape::Ellipse),
+            "polygon" => parse_polygon_shape(input, numeric).map(CssBasicShape::Polygon),
             _ => Err(unsupported_value(
                 input,
                 None,
@@ -1203,167 +1150,8 @@ pub(super) fn parse_clip_path<'i, 't>(
                 "basic-shape function has trailing arguments",
             ));
         }
-        Ok((authored, Some(CssClipPathValue::BasicShape(current))))
-    })?;
-    let legacy = legacy_basic_shape(&normalized_name, &authored).map(CssClipPath::BasicShape);
-    Ok(CssParsedClipPath::new(current, legacy))
-}
-
-fn parse_frozen_circle_percentage<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<(), ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    input.skip_whitespace();
-    let token_start = input.position();
-    let value = match input.next().map_err(basic)? {
-        Token::Percentage { .. } => checked_percentage_value(
-            location,
-            input.slice_from(token_start),
-            "circle percentage radius must be finite",
-        )?,
-        token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    };
-    if value != 50.0 {
-        return Err(unsupported_value_at(
-            location,
-            None,
-            "circle percentage radius is not in the frozen compatibility case",
-        ));
-    }
-    input.expect_ident_matching("at")?;
-    input.expect_ident_matching("center")?;
-    Ok(())
-}
-
-fn legacy_basic_shape(name: &str, authored: &str) -> Option<CssBasicShape> {
-    if authored.is_empty() {
-        return None;
-    }
-    let valid = validate_authored_function_arguments(authored, |input| match name {
-        "circle" => validate_legacy_circle_shape(input),
-        "ellipse" => validate_legacy_ellipse_shape(input),
-        "inset" => validate_legacy_inset_shape(input),
-        "polygon" => validate_legacy_polygon_shape(input),
-        _ => false,
-    });
-    if !valid {
-        return None;
-    }
-    let arguments = CssBasicShapeArguments::new(CssAuthoredFunctionArguments::new(authored));
-    match name {
-        "inset" => Some(CssBasicShape::Inset(arguments)),
-        "circle" => Some(CssBasicShape::Circle(arguments)),
-        "ellipse" => Some(CssBasicShape::Ellipse(arguments)),
-        "polygon" => Some(CssBasicShape::Polygon(arguments)),
-        _ => None,
-    }
-}
-
-fn validate_legacy_shape_radius<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
-    input.try_parse(parse_radial_extent).is_ok()
-        || parse_literal_length_with_context(input, LengthGrammar::BackgroundSize, "shape radius")
-            .is_ok()
-}
-
-fn validate_legacy_circle_shape<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
-    if input
-        .try_parse(|input| input.expect_ident_matching("at"))
-        .is_ok()
-    {
-        return parse_css_position_legacy(input).is_ok() && input.is_exhausted();
-    }
-    validate_legacy_shape_radius(input)
-        && (input.is_exhausted()
-            || input
-                .try_parse(|input| input.expect_ident_matching("at"))
-                .is_ok()
-                && parse_css_position_legacy(input).is_ok()
-                && input.is_exhausted())
-}
-
-fn validate_legacy_ellipse_shape<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
-    if input
-        .try_parse(|input| input.expect_ident_matching("at"))
-        .is_ok()
-    {
-        return parse_css_position_legacy(input).is_ok() && input.is_exhausted();
-    }
-    if !validate_legacy_shape_radius(input) {
-        return false;
-    }
-    if !input.is_exhausted() && !next_is_ident(input, "at") && !validate_legacy_shape_radius(input)
-    {
-        return false;
-    }
-    input.is_exhausted()
-        || input
-            .try_parse(|input| input.expect_ident_matching("at"))
-            .is_ok()
-            && parse_css_position_legacy(input).is_ok()
-            && input.is_exhausted()
-}
-
-fn validate_legacy_inset_shape<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
-    let mut count = 0;
-    while !input.is_exhausted() && !next_is_ident(input, "round") {
-        if count == 4
-            || parse_literal_length_with_context(
-                input,
-                LengthGrammar::BackgroundSize,
-                "inset shape",
-            )
-            .is_err()
-        {
-            return false;
-        }
-        count += 1;
-    }
-    count > 0
-        && (input.is_exhausted()
-            || input
-                .try_parse(|input| input.expect_ident_matching("round"))
-                .is_ok()
-                && validate_legacy_length_sequence(input, 1, 4))
-}
-
-fn validate_legacy_length_sequence<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    min: usize,
-    max: usize,
-) -> bool {
-    let mut count = 0;
-    while !input.is_exhausted() {
-        if count == max
-            || parse_literal_length_with_context(input, LengthGrammar::Position, "function length")
-                .is_err()
-        {
-            return false;
-        }
-        count += 1;
-        if !input.is_exhausted() {
-            let _ = input.try_parse(Parser::expect_comma);
-        }
-    }
-    count >= min
-}
-
-fn validate_legacy_polygon_shape<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
-    let mut points = 0;
-    loop {
-        if parse_literal_length_with_context(input, LengthGrammar::Position, "polygon x").is_err()
-            || parse_literal_length_with_context(input, LengthGrammar::Position, "polygon y")
-                .is_err()
-        {
-            return false;
-        }
-        points += 1;
-        if input.is_exhausted() {
-            return points >= 1;
-        }
-        if input.try_parse(Parser::expect_comma).is_err() || input.is_exhausted() {
-            return false;
-        }
-    }
+        Ok(CssClipPath::BasicShape(shape))
+    })
 }
 
 pub(super) fn parse_mask_list<'i, 't>(

@@ -7556,23 +7556,6 @@ impl CssAuthoredFunctionArguments {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssBasicShapeArguments {
-    authored: CssAuthoredFunctionArguments,
-}
-
-impl CssBasicShapeArguments {
-    #[must_use]
-    pub(crate) const fn new(authored: CssAuthoredFunctionArguments) -> Self {
-        Self { authored }
-    }
-
-    #[must_use]
-    pub fn as_css(&self) -> &str {
-        self.authored.as_css()
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssImageLayer {
@@ -9961,13 +9944,13 @@ pub enum CssRadialExtent {
     FarthestCorner,
 }
 
-/// The authored radius branch of a current `circle()` value.
+/// The authored radius branch of a `circle()` value.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssCircleRadius {
     Default,
     Extent(CssRadialExtent),
-    Length(CssShapeLength),
+    LengthPercentage(CssShapeLengthPercentage),
 }
 
 /// A checked pair of non-negative authored ellipse radii.
@@ -10007,7 +9990,7 @@ impl CssEllipseRadii {
     }
 }
 
-/// The authored radius branch of a current `ellipse()` value.
+/// The authored radius branch of an `ellipse()` value.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssEllipseRadius {
@@ -10016,7 +9999,7 @@ pub enum CssEllipseRadius {
     Radii(CssEllipseRadii),
 }
 
-/// A current authored `circle()` value.
+/// An authored `circle()` value.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssCircleShape {
     radius: CssCircleRadius,
@@ -10040,7 +10023,7 @@ impl CssCircleShape {
     }
 }
 
-/// A current authored `ellipse()` value.
+/// An authored `ellipse()` value.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssEllipseShape {
     radius: CssEllipseRadius,
@@ -10083,7 +10066,7 @@ impl CssInsetShapeOffsets {
     }
 }
 
-/// A current authored `inset()` value.
+/// An authored `inset()` value.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssInsetShape {
     offsets: CssInsetShapeOffsets,
@@ -10115,7 +10098,7 @@ pub enum CssPolygonFillRule {
     Evenodd,
 }
 
-/// One checked authored point in a current `polygon()` value.
+/// One checked authored point in a `polygon()` value.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssPolygonPoint {
     x: CssLength,
@@ -10161,7 +10144,7 @@ impl CssPolygonPointList {
     }
 }
 
-/// A current authored `polygon()` value.
+/// An authored `polygon()` value.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssPolygonShape {
     fill_rule: Option<CssPolygonFillRule>,
@@ -10199,59 +10182,23 @@ impl CssPolygonShape {
     }
 }
 
-/// A selected current authored basic-shape function.
+/// A selected authored basic-shape function.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub enum CssBasicShapeValue {
+pub enum CssBasicShape {
     Inset(Box<CssInsetShape>),
     Circle(CssCircleShape),
     Ellipse(CssEllipseShape),
     Polygon(CssPolygonShape),
 }
 
-/// The exact current authored subset of `clip-path`.
+/// The supported authored subset of `clip-path`.
 #[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssClipPathValue {
-    None,
-    Url(CssUrl),
-    BasicShape(CssBasicShapeValue),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssBasicShape {
-    Inset(CssBasicShapeArguments),
-    Circle(CssBasicShapeArguments),
-    Ellipse(CssBasicShapeArguments),
-    Polygon(CssBasicShapeArguments),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssClipPath {
     None,
     Url(CssUrl),
     BasicShape(CssBasicShape),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct CssParsedClipPath {
-    current: Option<CssClipPathValue>,
-    legacy: Option<CssClipPath>,
-}
-
-impl CssParsedClipPath {
-    pub(crate) const fn new(
-        current: Option<CssClipPathValue>,
-        legacy: Option<CssClipPath>,
-    ) -> Self {
-        Self { current, legacy }
-    }
-
-    pub(crate) fn into_parts(self) -> (Option<CssClipPathValue>, Option<CssClipPath>) {
-        (self.current, self.legacy)
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

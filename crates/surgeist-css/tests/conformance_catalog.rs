@@ -1,6 +1,6 @@
 use surgeist_css::{
-    CssAngleCalculation, CssAngleUnit, CssAuthoredFontFaceDescriptorValue, CssBasicShapeValue,
-    CssBlendMode, CssBoxEdgeKeyword, CssBoxShadow, CssCalculationType, CssClipPathValue,
+    CssAngleCalculation, CssAngleUnit, CssAuthoredFontFaceDescriptorValue, CssBasicShape,
+    CssBlendMode, CssBoxEdgeKeyword, CssBoxShadow, CssCalculationType, CssClipPath,
     CssDelayLiteral, CssEasing, CssErrorCode, CssExclusionReason, CssFeatureKind, CssFilter,
     CssFilterFunction, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
     CssFrequencyCalculation, CssFrequencyUnit, CssHorizontalPosition, CssIntegerCalculation,
@@ -5186,20 +5186,20 @@ fn every_selected_basic_shape_has_typed_public_components() {
         else {
             panic!("expected clip-path value");
         };
-        let Some(CssClipPathValue::BasicShape(shape)) = value.current() else {
+        let CssClipPath::BasicShape(shape) = value.value() else {
             panic!("expected current {expected} shape");
         };
         assert!(
             matches!(
                 (expected, shape),
-                ("inset", CssBasicShapeValue::Inset(_))
-                    | ("circle", CssBasicShapeValue::Circle(_))
-                    | ("ellipse", CssBasicShapeValue::Ellipse(_))
-                    | ("polygon", CssBasicShapeValue::Polygon(_))
+                ("inset", CssBasicShape::Inset(_))
+                    | ("circle", CssBasicShape::Circle(_))
+                    | ("ellipse", CssBasicShape::Ellipse(_))
+                    | ("polygon", CssBasicShape::Polygon(_))
             ),
             "expected {expected}"
         );
-        if let CssBasicShapeValue::Polygon(polygon) = shape {
+        if let CssBasicShape::Polygon(polygon) = shape {
             assert!(polygon.round().is_some(), "polygon round component");
         }
     }

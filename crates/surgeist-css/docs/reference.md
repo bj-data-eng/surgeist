@@ -417,12 +417,11 @@ operand has no binary operator; signed operand tokens remain valid. Checked
 component construction owns shape and resource admission, so arbitrary recursive
 legacy sums can no longer bypass those invariants.
 
-The frozen I01 position and basic-shape projection grammar now admits
-literal lengths only. Calculation-bearing current values still parse through the
-numeric owner but have no projection through that frozen grammar. Literal
-projections, including `circle(50% at center)`, remain available. This does not
-retire unrelated generic wrapper accessors that already expose typed calculations.
-Position compatibility checks exclude every `CssLength::Calc` variant.
+The frozen I01 position projection grammar admits literal lengths only.
+Calculation-bearing authored positions still parse through the numeric owner but
+have no projection through that frozen grammar. Position compatibility checks
+exclude every `CssLength::Calc` variant. Basic shapes and `clip-path` use their
+sole typed authored graph, including symbolic calculations.
 
 ## Authored preferred aspect ratios
 
@@ -1095,12 +1094,11 @@ Property accessors expose dedicated typed function families. Timing-function
 wrappers expose the sole `CssEasingList` through `timing_functions()`.
 `transform.value()` returns `CssTransform`, `filter.value()` and
 `backdrop-filter.value()` return `CssFilter`, `box-shadow.value()`
-returns `CssBoxShadow`, and `clip-path.current()` returns an optional
-`CssClipPathValue`. Clip-path retains its documented projection.
+returns `CssBoxShadow`, and `clip-path.value()` returns `CssClipPath`.
 
 ```rust
 use surgeist_css::{
-    CssBasicShapeValue, CssClipPathValue, CssFilterFunction, CssFilter,
+    CssBasicShape, CssClipPath, CssFilterFunction, CssFilter,
     CssKnownPropertyValueRef, CssTransformFunction, CssTransform,
     parse_style_attribute,
 };
@@ -1137,8 +1135,8 @@ let CssKnownPropertyValueRef::ClipPath(clip) = report.syntax()[2]
     .property_value().expect("ordinary clip path")
 else { panic!("expected clip-path") };
 assert!(matches!(
-    clip.current(),
-    Some(CssClipPathValue::BasicShape(CssBasicShapeValue::Polygon(polygon)))
+    clip.value(),
+    CssClipPath::BasicShape(CssBasicShape::Polygon(polygon))
         if polygon.round().is_some()
 ));
 ```
@@ -1160,6 +1158,18 @@ different models, so filter shadows cannot contain `inset` or spread. Filter
 lists preserve URL/function order and typed function-specific operands. The
 selected basic-shape family exposes `inset()`, `circle()`, `ellipse()`, and
 `polygon()`, including polygon `round <length>`.
+
+`circle()` retains one nonnegative length-percentage radius, an omitted radius,
+radial extent keywords, and optional `at <position>`. Percentage and symbolic
+length-percentage radii are checked authored values; two radii are invalid.
+This operational choice follows the pinned WebKit Shapes consumer
+(`CSSPropertyParserConsumer+Shapes.cpp`, revision
+`73aa6c89e2cb77c46184a81aec944e4ab99d114d`). It resolves a source
+discrepancy: [CSS Shapes 1](https://www.w3.org/TR/2025/CRD-css-shapes-1-20250612/#funcdef-basic-shape-circle)
+imports Images 3 `<radial-size>` and excludes its two-radius branch, while that
+imported [Images 3 production](https://www.w3.org/TR/2023/CRD-css-images-3-20231218/#typedef-radial-size)
+does not itself provide a single percentage branch. The source discrepancy
+remains tracked separately from this authored parser behavior.
 
 These are authored syntax values. This crate does not multiply transform
 matrices, interpolate or evaluate easing, render shadows or filters, resolve

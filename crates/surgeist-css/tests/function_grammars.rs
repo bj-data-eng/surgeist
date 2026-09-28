@@ -1,5 +1,5 @@
 use surgeist_css::{
-    CssBasicShapeValue, CssBoxShadow, CssCircleRadius, CssClipPathPropertyValue, CssClipPathValue,
+    CssBasicShape, CssBoxShadow, CssCircleRadius, CssClipPath, CssClipPathPropertyValue,
     CssCubicBezier, CssDropShadow, CssEasing, CssEasingKeyword, CssEasingList, CssEasingNumber,
     CssEllipseRadius, CssErrorCode, CssFilter, CssFilterAmount, CssFilterAngle, CssFilterBlur,
     CssFilterFunction, CssFilterFunctionList, CssFilterNumber, CssFilterPercentage,
@@ -136,20 +136,29 @@ fn parsed_clip_path_property(value: &str) -> CssClipPathPropertyValue {
 }
 
 #[test]
-fn clip_path_rejects_circle_percentage_radius() {
+fn clip_path_accepts_circle_percentage_radius() {
     let report = parse_style_attribute("clip-path: circle(25%); color: red");
-    assert_eq!(report.syntax().len(), 1, "retained invalid circle radius");
-    assert_eq!(
-        report.syntax()[0]
-            .known()
-            .expect("retained color sibling")
-            .property(),
-        CssKnownProperty::Color,
-    );
-    let [diagnostic] = report.diagnostics() else {
-        panic!("invalid circle radius must produce one diagnostic");
+    assert!(report.is_clean());
+    assert_eq!(report.syntax().len(), 2);
+    let CssKnownPropertyValueRef::ClipPath(value) = report.syntax()[0]
+        .known()
+        .unwrap()
+        .property_value()
+        .unwrap()
+    else {
+        panic!("circle clip path");
     };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
+    let CssClipPath::BasicShape(CssBasicShape::Circle(circle)) = value.value() else {
+        panic!("typed circle");
+    };
+    assert!(
+        matches!(circle.radius(), CssCircleRadius::LengthPercentage(radius)
+        if matches!(radius.value(), CssLength::Percent(value) if value.value() == 25.0))
+    );
+    assert_eq!(
+        report.syntax()[1].known().unwrap().property(),
+        CssKnownProperty::Color
+    );
 }
 
 #[test]
@@ -175,10 +184,16 @@ fn basic_shape_radius_arity_and_separator_mutations_are_rejected() {
 }
 
 #[test]
-fn frozen_circle_percentage_projection_stays_legacy_only() {
+fn circle_percentage_position_has_typed_radius_and_position() {
     let property = parsed_clip_path_property("circle(50% at center)");
-    assert!(property.current().is_none());
-    assert!(property.i01_subset().is_some());
+    let CssClipPath::BasicShape(CssBasicShape::Circle(circle)) = property.value() else {
+        panic!("typed circle");
+    };
+    assert!(
+        matches!(circle.radius(), CssCircleRadius::LengthPercentage(radius)
+        if matches!(radius.value(), CssLength::Percent(value) if value.value() == 50.0))
+    );
+    assert!(circle.position().is_some());
 }
 
 #[test]
@@ -190,17 +205,13 @@ fn every_radial_extent_keyword_has_a_typed_branch() {
         ("farthest-corner", CssRadialExtent::FarthestCorner),
     ] {
         let circle = parsed_clip_path_property(&format!("circle({keyword})"));
-        let Some(CssClipPathValue::BasicShape(CssBasicShapeValue::Circle(circle))) =
-            circle.current()
-        else {
+        let CssClipPath::BasicShape(CssBasicShape::Circle(circle)) = circle.value() else {
             panic!("expected typed circle");
         };
         assert!(matches!(circle.radius(), CssCircleRadius::Extent(value) if *value == expected));
 
         let ellipse = parsed_clip_path_property(&format!("ellipse({keyword})"));
-        let Some(CssClipPathValue::BasicShape(CssBasicShapeValue::Ellipse(ellipse))) =
-            ellipse.current()
-        else {
+        let CssClipPath::BasicShape(CssBasicShape::Ellipse(ellipse)) = ellipse.value() else {
             panic!("expected typed ellipse");
         };
         assert!(matches!(ellipse.radius(), CssEllipseRadius::Extent(value) if *value == expected));
@@ -210,13 +221,12 @@ fn every_radial_extent_keyword_has_a_typed_branch() {
 #[test]
 fn selected_basic_shapes_expose_typed_authored_components() {
     let circle = parsed_clip_path_property("circle(10px at right 5% bottom 2px)");
-    let Some(CssClipPathValue::BasicShape(CssBasicShapeValue::Circle(circle))) = circle.current()
-    else {
+    let CssClipPath::BasicShape(CssBasicShape::Circle(circle)) = circle.value() else {
         panic!("expected typed circle");
     };
     assert!(matches!(
         circle.radius(),
-        CssCircleRadius::Length(value)
+        CssCircleRadius::LengthPercentage(value)
             if matches!(value.value(), CssLength::Px(number) if number.value() == 10.0)
     ));
     let position = circle.position().unwrap();
@@ -230,9 +240,7 @@ fn selected_basic_shapes_expose_typed_authored_components() {
     ));
 
     let ellipse = parsed_clip_path_property("ellipse(10px 25% at center)");
-    let Some(CssClipPathValue::BasicShape(CssBasicShapeValue::Ellipse(ellipse))) =
-        ellipse.current()
-    else {
+    let CssClipPath::BasicShape(CssBasicShape::Ellipse(ellipse)) = ellipse.value() else {
         panic!("expected typed ellipse");
     };
     let CssEllipseRadius::Radii(radii) = ellipse.radius() else {
@@ -242,8 +250,7 @@ fn selected_basic_shapes_expose_typed_authored_components() {
     assert!(matches!(radii.vertical().value(), CssLength::Percent(value) if value.value() == 25.0));
 
     let inset = parsed_clip_path_property("inset(1px 2% 3px round 4px 5% / 6px 7%)");
-    let Some(CssClipPathValue::BasicShape(CssBasicShapeValue::Inset(inset))) = inset.current()
-    else {
+    let CssClipPath::BasicShape(CssBasicShape::Inset(inset)) = inset.value() else {
         panic!("expected typed inset");
     };
     assert_eq!(inset.offsets().values().len(), 3);
@@ -253,9 +260,7 @@ fn selected_basic_shapes_expose_typed_authored_components() {
 
     let polygon =
         parsed_clip_path_property("polygon(evenodd round 2px, 0 0, 100% 0, calc(50% - 1px) 100%)");
-    let Some(CssClipPathValue::BasicShape(CssBasicShapeValue::Polygon(polygon))) =
-        polygon.current()
-    else {
+    let CssClipPath::BasicShape(CssBasicShape::Polygon(polygon)) = polygon.value() else {
         panic!("expected typed polygon");
     };
     assert_eq!(polygon.fill_rule(), Some(CssPolygonFillRule::Evenodd));
@@ -269,17 +274,14 @@ fn selected_basic_shapes_expose_typed_authored_components() {
 #[test]
 fn omitted_shape_branches_are_explicit() {
     let circle = parsed_clip_path_property("circle()");
-    let Some(CssClipPathValue::BasicShape(CssBasicShapeValue::Circle(circle))) = circle.current()
-    else {
+    let CssClipPath::BasicShape(CssBasicShape::Circle(circle)) = circle.value() else {
         panic!("expected default circle");
     };
     assert!(matches!(circle.radius(), CssCircleRadius::Default));
     assert!(circle.position().is_none());
 
     let ellipse = parsed_clip_path_property("ellipse(at left top)");
-    let Some(CssClipPathValue::BasicShape(CssBasicShapeValue::Ellipse(ellipse))) =
-        ellipse.current()
-    else {
+    let CssClipPath::BasicShape(CssBasicShape::Ellipse(ellipse)) = ellipse.value() else {
         panic!("expected default ellipse");
     };
     assert!(matches!(ellipse.radius(), CssEllipseRadius::Default));
@@ -292,17 +294,14 @@ fn omitted_shape_branches_are_explicit() {
         ("inset(1px 2px 3px 4px)", 4),
     ] {
         let inset = parsed_clip_path_property(value);
-        let Some(CssClipPathValue::BasicShape(CssBasicShapeValue::Inset(inset))) = inset.current()
-        else {
+        let CssClipPath::BasicShape(CssBasicShape::Inset(inset)) = inset.value() else {
             panic!("expected typed `{value}`");
         };
         assert_eq!(inset.offsets().values().len(), count);
     }
 
     let polygon = parsed_clip_path_property("polygon(0 0)");
-    let Some(CssClipPathValue::BasicShape(CssBasicShapeValue::Polygon(polygon))) =
-        polygon.current()
-    else {
+    let CssClipPath::BasicShape(CssBasicShape::Polygon(polygon)) = polygon.value() else {
         panic!("expected prefix-free polygon");
     };
     assert_eq!(polygon.fill_rule(), None);
@@ -310,9 +309,7 @@ fn omitted_shape_branches_are_explicit() {
     assert_eq!(polygon.points().points().len(), 1);
 
     let polygon = parsed_clip_path_property("polygon(round 1px nonzero, -1px -2%)");
-    let Some(CssClipPathValue::BasicShape(CssBasicShapeValue::Polygon(polygon))) =
-        polygon.current()
-    else {
+    let CssClipPath::BasicShape(CssBasicShape::Polygon(polygon)) = polygon.value() else {
         panic!("expected round-first polygon prefix");
     };
     assert_eq!(polygon.fill_rule(), Some(CssPolygonFillRule::Nonzero));
@@ -324,6 +321,76 @@ fn shape_checked_scalars_reject_invalid_public_construction() {
     assert!(CssShapeLength::try_new(CssLength::try_percent(10.0).unwrap()).is_none());
     assert!(CssShapeLength::try_new(CssLength::try_px(-1.0).unwrap()).is_none());
     assert!(CssShapeLengthPercentage::try_new(CssLength::try_percent(-1.0).unwrap()).is_none());
+}
+
+#[test]
+fn checked_shape_aggregates_retain_circle_percentage_and_omission() {
+    use surgeist_css::{
+        CssCircleShape, CssEllipseRadii, CssEllipseShape, CssInsetShape, CssInsetShapeOffsets,
+        CssPolygonPoint, CssPolygonPointList, CssPolygonShape,
+    };
+
+    let radius = CssShapeLengthPercentage::try_new(CssLength::try_percent(25.0).unwrap())
+        .expect("nonnegative percentage radius");
+    let circle = CssCircleShape::new(CssCircleRadius::LengthPercentage(radius), None);
+    assert!(
+        matches!(circle.radius(), CssCircleRadius::LengthPercentage(radius)
+        if matches!(radius.value(), CssLength::Percent(value) if value.value() == 25.0))
+    );
+    assert!(circle.position().is_none());
+    let omitted = CssCircleShape::new(CssCircleRadius::Default, None);
+    assert!(matches!(omitted.radius(), CssCircleRadius::Default));
+
+    let ellipse = CssEllipseShape::new(
+        CssEllipseRadius::Radii(
+            CssEllipseRadii::try_new(
+                CssLength::try_px(10.0).unwrap(),
+                CssLength::try_percent(20.0).unwrap(),
+            )
+            .unwrap(),
+        ),
+        None,
+    );
+    assert!(matches!(ellipse.radius(), CssEllipseRadius::Radii(radii)
+        if matches!(radii.vertical().value(), CssLength::Percent(value) if value.value() == 20.0)));
+
+    let inset = CssInsetShape::new(
+        CssInsetShapeOffsets::try_new(vec![CssLength::try_percent(5.0).unwrap()]).unwrap(),
+        None,
+    );
+    assert!(
+        matches!(inset.offsets().values(), [CssLength::Percent(value)] if value.value() == 5.0)
+    );
+
+    let point = CssPolygonPoint::try_new(
+        CssLength::try_px(0.0).unwrap(),
+        CssLength::try_percent(100.0).unwrap(),
+    )
+    .unwrap();
+    let polygon = CssPolygonShape::new(
+        None,
+        None,
+        CssPolygonPointList::try_new(vec![point]).unwrap(),
+    );
+    assert_eq!(polygon.points().points().len(), 1);
+    assert!(
+        matches!(polygon.points().points()[0].y(), CssLength::Percent(value)
+        if value.value() == 100.0)
+    );
+    assert!(CssPolygonPointList::try_new(Vec::new()).is_none());
+    assert!(CssInsetShapeOffsets::try_new(Vec::new()).is_none());
+}
+
+#[test]
+fn circle_symbolic_length_percentage_radius_remains_typed() {
+    let property = parsed_clip_path_property("circle(calc(10px + 20%))");
+    let CssClipPath::BasicShape(CssBasicShape::Circle(circle)) = property.value() else {
+        panic!("typed circle");
+    };
+    assert!(
+        matches!(circle.radius(), CssCircleRadius::LengthPercentage(radius)
+        if matches!(radius.value(), CssLength::Calc(_)))
+    );
 }
 
 #[test]

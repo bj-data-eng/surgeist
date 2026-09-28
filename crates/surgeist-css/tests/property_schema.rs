@@ -2,7 +2,7 @@ mod common;
 
 use common::CssParseReportTestExt;
 use surgeist_css::{
-    CssBasicShapeValue, CssBorderStyle, CssBoxShadow, CssClipPathValue, CssColor,
+    CssBasicShape, CssBorderStyle, CssBoxShadow, CssCircleRadius, CssClipPath, CssColor,
     CssColorComponent, CssColorInterpolationSpace, CssEasing, CssErrorCode, CssFilter,
     CssFilterAmount, CssFilterFunction, CssFilterPercentage, CssFontVariantCaps,
     CssFontVariantValue, CssImportance, CssKnownDeclaredValueRef, CssKnownProperty,
@@ -1513,7 +1513,7 @@ fn every_aggregate_color_consumer_retains_typed_color_mix() {
 }
 
 #[test]
-fn clip_path_wrapper_separates_current_legacy_global_and_substitution_values() {
+fn clip_path_wrapper_separates_authored_global_and_substitution_values() {
     let report = parse_style_attribute(concat!(
         "clip-path: inset(1px round 2px); ",
         "clip-path: circle(50% at center); ",
@@ -1522,30 +1522,35 @@ fn clip_path_wrapper_separates_current_legacy_global_and_substitution_values() {
     ));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
 
-    let CssKnownPropertyValueRef::ClipPath(current) = report.syntax()[0]
+    let CssKnownPropertyValueRef::ClipPath(inset) = report.syntax()[0]
         .known()
         .unwrap()
         .property_value()
         .unwrap()
     else {
-        panic!("expected current clip-path wrapper");
+        panic!("expected inset clip-path wrapper");
     };
     assert!(matches!(
-        current.current(),
-        Some(CssClipPathValue::BasicShape(CssBasicShapeValue::Inset(_)))
+        inset.value(),
+        CssClipPath::BasicShape(CssBasicShape::Inset(_))
     ));
-    assert!(current.i01_subset().is_some());
 
-    let CssKnownPropertyValueRef::ClipPath(legacy_only) = report.syntax()[1]
+    let CssKnownPropertyValueRef::ClipPath(circle) = report.syntax()[1]
         .known()
         .unwrap()
         .property_value()
         .unwrap()
     else {
-        panic!("expected legacy clip-path wrapper");
+        panic!("expected circle clip-path wrapper");
     };
-    assert!(legacy_only.current().is_none());
-    assert!(legacy_only.i01_subset().is_some());
+    let CssClipPath::BasicShape(CssBasicShape::Circle(shape)) = circle.value() else {
+        panic!("typed percentage circle");
+    };
+    assert!(
+        matches!(shape.radius(), CssCircleRadius::LengthPercentage(radius)
+        if matches!(radius.value(), CssLength::Percent(value) if value.value() == 50.0))
+    );
+    assert!(shape.position().is_some());
 
     assert!(matches!(
         report.syntax()[2].known().unwrap().declared_value(),
