@@ -97,6 +97,15 @@ typed, composable primitives. Public APIs, internal models, errors, defaults,
 features, tests, docs, and examples are product contracts. Keep symbolic values
 unresolved until their owning layer has the required context.
 
+Until the root `surgeist` public API reaches v1.x.x, do not add or retain
+compatibility or migration shims or machinery in any Surgeist crate. Reaching
+that version permits consideration of such support; it does not authorize it
+automatically. Name APIs for their semantic roles from first principles. Do not
+keep `v1`/`v2` or `old`/`new`/`current` prefixes or suffixes solely to distinguish
+successive designs. Genuine domain distinctions, such as authored versus
+computed values, remain valid. CSS-standard legacy syntax and aliases express
+CSS semantics and are not crate compatibility shims.
+
 The following are domain boundaries. Current manifests and source establish the
 implemented dependency graph and behavior.
 
