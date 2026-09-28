@@ -3133,6 +3133,23 @@ legacy `Url` form; `CssUrl::from_parts` selects `CssUrlFunction::Url` or `Src`
 and preserves ordered modifiers. `CssImportUrl::url()` and
 `CssFontFaceUrlSource::authored_url()` expose that shared value alongside their
 existing decoded-string accessors. Resource validity belongs downstream.
+`CssUrl::is_local_url()` reports the Values 4 local URL flag for decoded targets
+beginning with `#`; it does not resolve the fragment. `CssIdent::try_new()`
+checks decoded identifier representability without consumer keyword exclusions.
+`CssUrlModifierFunction::try_new()` checks the modifier's function syntax and
+keeps its immutable argument components; `argument_components()` retains original
+token origins from parsed or checked input. The older `arguments().as_css()` view
+remains available as authored argument text, and URL equality continues to use
+that text and the decoded modifier name rather than source coordinates.
+
+`CssUrl::serialize_specified()` and its limits variant emit quoted `url()` or
+`src()` text without resolving the target. Ordered modifiers retain their names
+and checked token boundaries, including syntax closed implicitly at EOF.
+Opaque modifier arguments retain meaningful whitespace and comments. One
+cumulative input-node, projection-node, and UTF-8 byte budget covers the complete
+value; failures return no partial output. CSS string escaping replaces embedded
+NUL with U+FFFD in output while leaving the stored target unchanged. Fragment-only
+targets remain fragment-only, and empty targets retain their function identity.
 
 These models are authored syntax only. `surgeist-css` does not evaluate media or
 supports conditions, match selectors, resolve URLs, load imported resources,

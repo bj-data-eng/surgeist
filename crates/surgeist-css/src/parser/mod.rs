@@ -2646,7 +2646,7 @@ pub(crate) fn construct_import(
         return Err(import_construction_grammar(value.origin()));
     }
     let serialized = values.serialize_with_limit(limits.max_css_bytes())?;
-    let selected = classify_constructed_import(&serialized, context)?;
+    let selected = classify_constructed_import(&values, &serialized, context)?;
     let target_component = &items[selected.target_index];
     let layer_component = selected.layer_index.map(|index| items[index].clone());
     let supports_component = selected.supports_index.map(|index| items[index].clone());
@@ -2730,6 +2730,7 @@ struct ConstructedImportSelection {
     supports_form: SupportsAuthoredForm,
 }
 fn classify_constructed_import(
+    values: &crate::CssComponentValues,
     serialized: &crate::CssSerializedValue,
     context: &CssNamespaceContext,
 ) -> Result<ConstructedImportSelection, crate::CssImportConstructionError> {
@@ -2743,12 +2744,13 @@ fn classify_constructed_import(
     }
     let mut buffer = ParserInput::new(source);
     let mut input = Parser::new(&mut buffer);
+    let numeric = crate::numeric::NumericInputContext::components(values, serialized);
     let result = (|| {
         input.next()?; // The original component envelope proved the at-keyword.
         input.parse_until_before(Delimiter::Semicolon, |input| {
             input.skip_whitespace();
             let target_start = input.position().byte_index();
-            let target = parse_import_target(input)?;
+            let target = parse_import_target(input, &numeric)?;
             let selected = select_import_clauses(source, input, &recovery)?;
             let index_at = |offset| {
                 let path = serialized
@@ -2870,7 +2872,8 @@ fn parse_import_prelude<'i, 't>(
 ) -> Result<CssImportPrelude, ParseError<'i, Error>> {
     input.skip_whitespace();
     let target_start = input.state();
-    let target = parse_import_target(input)?;
+    let numeric = crate::numeric::NumericInputContext::parsed(recovery.source_snapshot());
+    let target = parse_import_target(input, &numeric)?;
     let target_end = input.state();
     input.reset(&target_start);
     let target_component =
@@ -3419,6 +3422,7 @@ fn flush_scoped_declarations(buffer: &mut Vec<CssDeclaration>, rules: &mut Vec<C
 
 fn parse_import_target<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssImportTarget, ParseError<'i, Error>> {
     let location = input.current_source_location();
 
@@ -3428,7 +3432,7 @@ fn parse_import_target<'i, 't>(
         )));
     }
 
-    if let Ok(value) = input.try_parse(parse_url) {
+    if let Ok(value) = input.try_parse(|input| parse_url(input, numeric)) {
         return Ok(CssImportTarget::Url(CssImportUrl::from_url(value)));
     }
 

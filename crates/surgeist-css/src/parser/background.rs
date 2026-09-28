@@ -303,7 +303,7 @@ pub(super) fn parse_image_value<'i, 't>(
     if next_is_gradient(input) {
         return parse_gradient(input, numeric).map(CssImageValue::Gradient);
     }
-    parse_url(input).map(CssImageValue::Url)
+    parse_url(input, numeric).map(CssImageValue::Url)
 }
 
 pub(super) fn parse_border_image_source<'i, 't>(
@@ -1237,6 +1237,7 @@ fn validate_radial_size<'i>(
 
 pub(super) fn parse_image_layer<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssImageLayer, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
@@ -1244,7 +1245,7 @@ pub(super) fn parse_image_layer<'i, 't>(
     {
         return Ok(CssImageLayer::None);
     }
-    parse_url(input).map(CssImageLayer::Url)
+    parse_url(input, numeric).map(CssImageLayer::Url)
 }
 
 pub(super) fn parse_background_size_list<'i, 't>(
@@ -1454,9 +1455,10 @@ pub(super) fn parse_background_attachment<'i, 't>(
 
 pub(super) fn parse_cursor<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssCursor, ParseError<'i, Error>> {
     let mut urls = Vec::new();
-    while let Ok(url) = input.try_parse(parse_url) {
+    while let Ok(url) = input.try_parse(|input| parse_url(input, numeric)) {
         urls.push(url);
         input.expect_comma().map_err(basic)?;
     }

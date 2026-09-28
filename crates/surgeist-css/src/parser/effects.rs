@@ -1077,7 +1077,7 @@ pub(super) fn parse_filter_function<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<(CssFilterFunctionValue, Option<CssFilterFunction>), ParseError<'i, Error>>
 {
-    if let Ok(url) = input.try_parse(parse_url) {
+    if let Ok(url) = input.try_parse(|input| parse_url(input, numeric)) {
         return Ok((
             CssFilterFunctionValue::Url(url.clone()),
             Some(CssFilterFunction::Url(url)),
@@ -1296,7 +1296,7 @@ pub(super) fn parse_clip_path<'i, 't>(
             Some(CssClipPath::None),
         ));
     }
-    if let Ok(url) = input.try_parse(parse_url) {
+    if let Ok(url) = input.try_parse(|input| parse_url(input, numeric)) {
         return Ok(CssParsedClipPath::new(
             Some(CssClipPathValue::Url(url.clone())),
             Some(CssClipPath::Url(url)),
@@ -1546,7 +1546,7 @@ pub(super) fn parse_mask_layer<'i, 't>(
 
     while !input.is_exhausted() && !next_is_comma(input) {
         if image.is_none()
-            && let Ok(parsed_image) = input.try_parse(parse_image_layer)
+            && let Ok(parsed_image) = input.try_parse(|input| parse_image_layer(input, numeric))
         {
             image = Some(parsed_image);
             continue;

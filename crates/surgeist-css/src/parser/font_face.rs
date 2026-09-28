@@ -379,9 +379,15 @@ pub(super) fn parse_font_face_value<'i, 't>(
             CssFontFaceDescriptorKind::FontFamily => {
                 CssFontFaceDescriptorValue::FontFamily(parse_font_face_family(input)?)
             }
-            CssFontFaceDescriptorKind::Src => CssFontFaceDescriptorValue::Src(
-                parse_font_face_source_list(source, input, member_diagnostics, implicit_closures)?,
-            ),
+            CssFontFaceDescriptorKind::Src => {
+                CssFontFaceDescriptorValue::Src(parse_font_face_source_list(
+                    source,
+                    input,
+                    numeric,
+                    member_diagnostics,
+                    implicit_closures,
+                )?)
+            }
             CssFontFaceDescriptorKind::FontWeight => {
                 CssFontFaceDescriptorValue::FontWeight(parse_font_face_weight(input, numeric)?)
             }
@@ -424,6 +430,7 @@ fn parse_font_face_family<'i, 't>(
 fn parse_font_face_source_list<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     implicit_closures: &mut Vec<usize>,
 ) -> std::result::Result<CssFontFaceSourceList, ParseError<'i, Error>> {
@@ -433,7 +440,7 @@ fn parse_font_face_source_list<'i, 't>(
     loop {
         let member_start = input.position().byte_index();
         let result = input.parse_until_before(Delimiter::Comma, |member| {
-            let parsed = parse_font_face_source(member)?;
+            let parsed = parse_font_face_source(member, numeric)?;
             member.expect_exhausted().map_err(basic)?;
             Ok(parsed)
         });
@@ -492,6 +499,7 @@ fn parse_font_face_source_list<'i, 't>(
 
 fn parse_font_face_source<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssFontFaceSource, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_function_matching("local"))
@@ -503,7 +511,7 @@ fn parse_font_face_source<'i, 't>(
             .ok_or_else(|| unsupported_value(input, None, "invalid decoded local font name"));
     }
 
-    let url = parse_font_source_url(input)?;
+    let url = parse_font_source_url(input, numeric)?;
     let mut formats = None;
     let mut tech = Vec::new();
     let mut saw_tech = false;
@@ -557,8 +565,9 @@ fn parse_font_face_source<'i, 't>(
 
 fn parse_font_source_url<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssUrl, ParseError<'i, Error>> {
-    parse_url(input)
+    parse_url(input, numeric)
 }
 
 fn parse_local_name<'i, 't>(

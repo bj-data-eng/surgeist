@@ -2,11 +2,13 @@
 
 use cssparser::{ParseError, Parser, Token};
 
+use crate::CssComponentValueRef;
 use crate::error::{Error, basic};
 use crate::syntax::*;
 
 pub(super) fn parse_url<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssUrl, ParseError<'i, Error>> {
     let location = input.current_source_location();
     match input.next().map_err(basic)?.clone() {
@@ -23,6 +25,7 @@ pub(super) fn parse_url<'i, 't>(
                 let value = input.expect_string_cloned().map_err(basic)?.to_string();
                 let mut modifiers = Vec::new();
                 while !input.is_exhausted() {
+                    let modifier_start = input.state();
                     let modifier_location = input.current_source_location();
                     match input.next().map_err(basic)?.clone() {
                         Token::Ident(value) => {
@@ -36,10 +39,45 @@ pub(super) fn parse_url<'i, 't>(
                                     input.slice_from(start).to_owned(),
                                 ))
                             })?;
-                            modifiers.push(CssUrlModifier::Function(CssUrlModifierFunction::new(
-                                CssIdent::new(name.to_string()),
-                                arguments,
-                            )));
+                            let modifier_end = input.state();
+                            input.reset(&modifier_start);
+                            let collected = numeric.collect(input).map_err(|error| {
+                                let location = numeric.error_location(
+                                    &error,
+                                    modifier_location,
+                                    modifier_start.position().byte_index(),
+                                );
+                                error.component_error().map_or_else(
+                                    || {
+                                        crate::error::unsupported_value(
+                                            input,
+                                            None,
+                                            "invalid URL modifier component",
+                                        )
+                                    },
+                                    |detail| {
+                                        crate::error::invalid_component_value(
+                                            location,
+                                            detail.clone(),
+                                        )
+                                    },
+                                )
+                            })?;
+                            input.reset(&modifier_end);
+                            let CssComponentValueRef::Function(function) = collected.view() else {
+                                return Err(crate::error::unsupported_value(
+                                    input,
+                                    None,
+                                    "URL modifier is not a function",
+                                ));
+                            };
+                            modifiers.push(CssUrlModifier::Function(
+                                CssUrlModifierFunction::from_parsed(
+                                    CssIdent::new(name.to_string()),
+                                    arguments,
+                                    function.values().clone(),
+                                ),
+                            ));
                         }
                         token => {
                             return Err(

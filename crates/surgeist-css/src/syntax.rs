@@ -7700,6 +7700,13 @@ impl CssUrl {
         &self.value
     }
 
+    /// Whether this authored URL has the Values 4 local URL flag.
+    /// A fragment-only target remains symbolic; tree-scoped resolution is downstream.
+    #[must_use]
+    pub fn is_local_url(&self) -> bool {
+        self.value.starts_with('#')
+    }
+
     /// Returns the authored modifiers of a quoted `url()` or `src()` value.
     ///
     /// Values and Units Level 3 defines modifier syntax without assigning
@@ -7726,13 +7733,21 @@ impl std::fmt::Debug for CssUrl {
 
 /// One decoded CSS identifier retained as authored value syntax.
 ///
-/// This parser-owned value does not apply consumer-specific keyword exclusions.
+/// Parsed and checked construction do not apply consumer-specific keyword exclusions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssIdent {
     value: String,
 }
 
 impl CssIdent {
+    /// Constructs a representable decoded CSS identifier, retaining its case and punctuation.
+    /// Consumer-specific keyword exclusions are intentionally not applied.
+    pub fn try_new(value: impl Into<String>) -> Result<Self, crate::CssComponentValueError> {
+        let value = value.into();
+        crate::CssComponentValue::try_ident(value.clone())?;
+        Ok(Self { value })
+    }
+
     #[must_use]
     pub(crate) fn new(value: impl Into<String>) -> Self {
         Self {
@@ -7759,17 +7774,45 @@ pub enum CssUrlModifier {
     Function(CssUrlModifierFunction),
 }
 
-/// One parser-produced functional URL modifier.
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// One checked functional URL modifier with retained authored argument tokens.
+/// Equality remains based on its decoded name and compatibility argument text,
+/// independent of the retained component origins.
+#[derive(Clone)]
 pub struct CssUrlModifierFunction {
     name: CssIdent,
     arguments: CssAuthoredFunctionArguments,
+    argument_components: crate::CssComponentValues,
 }
 
 impl CssUrlModifierFunction {
+    /// Constructs a modifier only when its name and argument token stream form a CSS function.
+    pub fn try_new(
+        name: CssIdent,
+        arguments: crate::CssComponentValues,
+    ) -> Result<Self, crate::CssComponentValueError> {
+        crate::CssComponentValue::try_function(name.as_str(), arguments.clone())?;
+        let css = arguments
+            .serialize_with_limit(crate::CssComponentValueLimits::default().max_css_bytes())?
+            .as_css()
+            .to_owned();
+        Ok(Self {
+            name,
+            arguments: CssAuthoredFunctionArguments::new(css),
+            argument_components: arguments,
+        })
+    }
+
     #[must_use]
-    pub(crate) const fn new(name: CssIdent, arguments: CssAuthoredFunctionArguments) -> Self {
-        Self { name, arguments }
+    pub(crate) const fn from_parsed(
+        name: CssIdent,
+        arguments: CssAuthoredFunctionArguments,
+        argument_components: crate::CssComponentValues,
+    ) -> Self {
+        Self {
+            name,
+            arguments,
+            argument_components,
+        }
     }
 
     /// Returns the decoded, case-preserving function name.
@@ -7782,6 +7825,30 @@ impl CssUrlModifierFunction {
     #[must_use]
     pub const fn arguments(&self) -> &CssAuthoredFunctionArguments {
         &self.arguments
+    }
+
+    /// Returns the original immutable argument tokens and their source origins.
+    #[must_use]
+    pub const fn argument_components(&self) -> &crate::CssComponentValues {
+        &self.argument_components
+    }
+}
+
+impl PartialEq for CssUrlModifierFunction {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.arguments == other.arguments
+    }
+}
+
+impl Eq for CssUrlModifierFunction {}
+
+impl std::fmt::Debug for CssUrlModifierFunction {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CssUrlModifierFunction")
+            .field("name", &self.name)
+            .field("arguments", &self.arguments)
+            .finish()
     }
 }
 

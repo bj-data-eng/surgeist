@@ -3646,6 +3646,7 @@ pub surgeist_css::CssSpecifiedValueSerializationErrorKind::ByteLimit
 pub surgeist_css::CssSpecifiedValueSerializationErrorKind::CapacityOverflow
 pub surgeist_css::CssSpecifiedValueSerializationErrorKind::InputNodeLimit
 pub surgeist_css::CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+pub surgeist_css::CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
 #[non_exhaustive] pub enum surgeist_css::CssStepPosition
 pub surgeist_css::CssStepPosition::End
 pub surgeist_css::CssStepPosition::JumpBoth
@@ -6716,6 +6717,7 @@ pub const fn surgeist_css::CssHwbColor::whiteness(&self) -> core::option::Option
 pub struct surgeist_css::CssIdent
 impl surgeist_css::CssIdent
 pub fn surgeist_css::CssIdent::as_str(&self) -> &str
+pub fn surgeist_css::CssIdent::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
 pub struct surgeist_css::CssImage
 impl surgeist_css::CssImage
 pub fn surgeist_css::CssImage::try_new(value: surgeist_css::CssImageValue) -> core::option::Option<Self>
@@ -8934,14 +8936,25 @@ impl surgeist_css::CssUrl
 pub fn surgeist_css::CssUrl::as_str(&self) -> &str
 pub fn surgeist_css::CssUrl::from_parts(function: surgeist_css::CssUrlFunction, value: impl core::convert::Into<alloc::string::String>, modifiers: alloc::vec::Vec<surgeist_css::CssUrlModifier>) -> Self
 pub const fn surgeist_css::CssUrl::function(&self) -> surgeist_css::CssUrlFunction
+pub fn surgeist_css::CssUrl::is_local_url(&self) -> bool
 pub fn surgeist_css::CssUrl::modifiers(&self) -> &[surgeist_css::CssUrlModifier]
 pub fn surgeist_css::CssUrl::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+impl surgeist_css::CssUrl
+pub fn surgeist_css::CssUrl::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssUrl::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::fmt::Debug for surgeist_css::CssUrl
 pub fn surgeist_css::CssUrl::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssUrlModifierFunction
 impl surgeist_css::CssUrlModifierFunction
+pub const fn surgeist_css::CssUrlModifierFunction::argument_components(&self) -> &surgeist_css::CssComponentValues
 pub const fn surgeist_css::CssUrlModifierFunction::arguments(&self) -> &surgeist_css::CssAuthoredFunctionArguments
 pub fn surgeist_css::CssUrlModifierFunction::name(&self) -> &str
+pub fn surgeist_css::CssUrlModifierFunction::try_new(name: surgeist_css::CssIdent, arguments: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+impl core::cmp::Eq for surgeist_css::CssUrlModifierFunction
+impl core::cmp::PartialEq for surgeist_css::CssUrlModifierFunction
+pub fn surgeist_css::CssUrlModifierFunction::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_css::CssUrlModifierFunction
+pub fn surgeist_css::CssUrlModifierFunction::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssUserSelectPropertyValue
 impl surgeist_css::CssUserSelectPropertyValue
 pub fn surgeist_css::CssUserSelectPropertyValue::as_css(&self) -> &str

@@ -44,6 +44,7 @@ pub(super) fn parse_quotes<'i, 't>(
 
 pub(super) fn parse_content<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssContent, ParseError<'i, Error>> {
     let state = input.state();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
@@ -58,7 +59,7 @@ pub(super) fn parse_content<'i, 't>(
 
     let mut items = Vec::new();
     while !input.is_exhausted() {
-        items.push(parse_content_item(input)?);
+        items.push(parse_content_item(input, numeric)?);
     }
     CssContentList::try_new(items)
         .map(CssContent::Items)
@@ -93,6 +94,7 @@ pub(super) fn parse_list_style_position<'i, 't>(
 
 pub(super) fn parse_list_style_image<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssListStyleImage, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
@@ -100,17 +102,20 @@ pub(super) fn parse_list_style_image<'i, 't>(
     {
         return Ok(CssListStyleImage::None);
     }
-    parse_url(input).map(CssListStyleImage::Url).map_err(|_| {
-        unsupported_value(
-            input,
-            None,
-            "list-style-image only supports `none` or url(...)",
-        )
-    })
+    parse_url(input, numeric)
+        .map(CssListStyleImage::Url)
+        .map_err(|_| {
+            unsupported_value(
+                input,
+                None,
+                "list-style-image only supports `none` or url(...)",
+            )
+        })
 }
 
 pub(super) fn parse_list_style<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssListStyle, ParseError<'i, Error>> {
     let mut style_type = None;
     let mut position = None;
@@ -118,7 +123,7 @@ pub(super) fn parse_list_style<'i, 't>(
     let mut has_ambiguous_none = false;
 
     while !input.is_exhausted() {
-        let component = parse_list_style_component(input)?;
+        let component = parse_list_style_component(input, numeric)?;
         match component {
             ListStyleComponent::None => {
                 if has_ambiguous_none {
@@ -225,6 +230,7 @@ enum ListStyleComponent {
 
 fn parse_list_style_component<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<ListStyleComponent, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
@@ -237,7 +243,7 @@ fn parse_list_style_component<'i, 't>(
         return Ok(ListStyleComponent::Position(position));
     }
 
-    if let Ok(image) = input.try_parse(parse_list_style_image) {
+    if let Ok(image) = input.try_parse(|input| parse_list_style_image(input, numeric)) {
         return Ok(ListStyleComponent::Image(image));
     }
 
@@ -246,11 +252,12 @@ fn parse_list_style_component<'i, 't>(
 
 fn parse_content_item<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssContentItem, ParseError<'i, Error>> {
     if let Ok(value) = input.try_parse(parse_content_string) {
         return Ok(CssContentItem::String(value));
     }
-    if let Ok(url) = input.try_parse(parse_url) {
+    if let Ok(url) = input.try_parse(|input| parse_url(input, numeric)) {
         return Ok(CssContentItem::Url(url));
     }
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {

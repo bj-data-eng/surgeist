@@ -1138,6 +1138,7 @@ pub use supports::CssSupportsConstructionError;
 mod media;
 mod named_supports_serialization;
 mod specified_rule_serialization;
+mod url_serialization;
 pub use media::*;
 mod media_features;
 mod normalization;

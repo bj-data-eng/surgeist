@@ -168,6 +168,7 @@ impl<'i> DeclarationParser<'i> for CounterStyleDescriptorParser<'i> {
         let implicit_closures =
             self.recovery
                 .check_component_values(self.source, input, "css.descriptor")?;
+        let numeric = crate::numeric::NumericInputContext::parsed(self.recovery.source_snapshot());
         let position = crate::CssSourcePosition::from_cssparser(
             declaration_start.position(),
             declaration_start.source_location(),
@@ -179,19 +180,19 @@ impl<'i> DeclarationParser<'i> for CounterStyleDescriptorParser<'i> {
                     position,
                 )),
                 "negative" => CssCounterStyleDescriptor::Negative(CssDescriptorOccurrence::new(
-                    parse_descriptor_boundary(input, "counter-style", "negative", parse_negative)?,
+                    parse_descriptor_boundary(input, "counter-style", "negative", |input| parse_negative(input, &numeric))?,
                     position,
                 )),
                 "symbols" => CssCounterStyleDescriptor::Symbols(CssDescriptorOccurrence::new(
-                    parse_descriptor_boundary(input, "counter-style", "symbols", parse_symbols)?,
+                    parse_descriptor_boundary(input, "counter-style", "symbols", |input| parse_symbols(input, &numeric))?,
                     position,
                 )),
                 "prefix" => CssCounterStyleDescriptor::Prefix(CssDescriptorOccurrence::new(
-                    parse_descriptor_boundary(input, "counter-style", "prefix", parse_symbol)?,
+                    parse_descriptor_boundary(input, "counter-style", "prefix", |input| parse_symbol(input, &numeric))?,
                     position,
                 )),
                 "suffix" => CssCounterStyleDescriptor::Suffix(CssDescriptorOccurrence::new(
-                    parse_descriptor_boundary(input, "counter-style", "suffix", parse_symbol)?,
+                    parse_descriptor_boundary(input, "counter-style", "suffix", |input| parse_symbol(input, &numeric))?,
                     position,
                 )),
                 "range" => CssCounterStyleDescriptor::Range(CssDescriptorOccurrence::new(
@@ -199,7 +200,7 @@ impl<'i> DeclarationParser<'i> for CounterStyleDescriptorParser<'i> {
                     position,
                 )),
                 "pad" => CssCounterStyleDescriptor::Pad(CssDescriptorOccurrence::new(
-                    parse_descriptor_boundary(input, "counter-style", "pad", parse_pad)?,
+                    parse_descriptor_boundary(input, "counter-style", "pad", |input| parse_pad(input, &numeric))?,
                     position,
                 )),
                 "fallback" => CssCounterStyleDescriptor::Fallback(CssDescriptorOccurrence::new(
@@ -212,7 +213,7 @@ impl<'i> DeclarationParser<'i> for CounterStyleDescriptorParser<'i> {
                             input,
                             "counter-style",
                             "additive-symbols",
-                            parse_additive_symbols,
+                            |input| parse_additive_symbols(input, &numeric),
                         )?,
                         position,
                     ),
@@ -268,10 +269,11 @@ fn parse_system<'i, 't>(
 
 fn parse_symbols<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssCounterSymbols, ParseError<'i, Error>> {
     let mut symbols = Vec::new();
     while !input.is_exhausted() {
-        symbols.push(parse_symbol_component(input)?);
+        symbols.push(parse_symbol_component(input, numeric)?);
     }
     if symbols.is_empty() {
         Err(unsupported_value(input, None, "symbols must not be empty"))
@@ -282,12 +284,13 @@ fn parse_symbols<'i, 't>(
 
 fn parse_negative<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssCounterStyleNegative, ParseError<'i, Error>> {
-    let prefix = parse_symbol_component(input)?;
+    let prefix = parse_symbol_component(input, numeric)?;
     let suffix = if input.is_exhausted() {
         None
     } else {
-        Some(parse_symbol_component(input)?)
+        Some(parse_symbol_component(input, numeric)?)
     };
     input.expect_exhausted().map_err(basic)?;
     Ok(CssCounterStyleNegative::new(prefix, suffix))
@@ -347,12 +350,13 @@ fn parse_range_bound<'i, 't>(
 
 fn parse_pad<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssCounterStylePad, ParseError<'i, Error>> {
     let (minimum_length, symbol) =
         if let Ok(minimum_length) = input.try_parse(parse_nonnegative_integer) {
-            (minimum_length, parse_symbol_component(input)?)
+            (minimum_length, parse_symbol_component(input, numeric)?)
         } else {
-            let symbol = parse_symbol_component(input)?;
+            let symbol = parse_symbol_component(input, numeric)?;
             (parse_nonnegative_integer(input)?, symbol)
         };
     input.expect_exhausted().map_err(basic)?;
@@ -369,11 +373,12 @@ fn parse_fallback<'i, 't>(
 
 fn parse_additive_symbols<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssCounterAdditiveSymbols, ParseError<'i, Error>> {
     let mut tuples = Vec::new();
     let mut previous_weight = None;
     loop {
-        let (tuple, weight_location) = parse_additive_tuple(input)?;
+        let (tuple, weight_location) = parse_additive_tuple(input, numeric)?;
         if previous_weight.is_some_and(|previous| previous <= tuple.weight()) {
             return Err(unsupported_value_at(
                 weight_location,
@@ -393,13 +398,18 @@ fn parse_additive_symbols<'i, 't>(
 
 fn parse_additive_tuple<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<(CssCounterAdditiveTuple, cssparser::SourceLocation), ParseError<'i, Error>> {
     let initial_location = input.current_source_location();
     let (weight, symbol, weight_location) =
         if let Ok(weight) = input.try_parse(parse_nonnegative_integer) {
-            (weight, parse_symbol_component(input)?, initial_location)
+            (
+                weight,
+                parse_symbol_component(input, numeric)?,
+                initial_location,
+            )
         } else {
-            let symbol = parse_symbol_component(input)?;
+            let symbol = parse_symbol_component(input, numeric)?;
             let weight_location = input.current_source_location();
             (parse_nonnegative_integer(input)?, symbol, weight_location)
         };
@@ -449,21 +459,23 @@ fn parse_counter_style_name_component<'i, 't>(
 
 fn parse_symbol<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssCounterSymbol, ParseError<'i, Error>> {
-    let symbol = parse_symbol_component(input)?;
+    let symbol = parse_symbol_component(input, numeric)?;
     input.expect_exhausted().map_err(basic)?;
     Ok(symbol)
 }
 
 fn parse_symbol_component<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssCounterSymbol, ParseError<'i, Error>> {
     if let Ok(value) = input.try_parse(Parser::expect_string_cloned) {
         return CssContentString::try_new(value.to_string())
             .map(CssCounterSymbol::String)
             .ok_or_else(|| unsupported_value(input, None, "counter symbol contains null"));
     }
-    if let Ok(value) = input.try_parse(parse_url) {
+    if let Ok(value) = input.try_parse(|input| parse_url(input, numeric)) {
         return Ok(CssCounterSymbol::Url(value));
     }
     let location = input.current_source_location();
