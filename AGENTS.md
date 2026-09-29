@@ -26,24 +26,18 @@ Surgeist-owned code. Higher-priority user and system instructions still apply.
 
 ## Delegation Policy
 
-Use GPT-6 Astra (`gpt-6-astra`) for coordination. Delegate bounded implementation,
-test implementation and execution, repetitive refactors, focused repository
-exploration, and other well-specified work to GPT-6 Sol (`gpt-6-sol`). Give each
-assignment explicit scope, contracts, acceptance criteria, and verification
-requirements through PISCT coordination.
+Use GPT-6.1 Sol (`gpt-6.1-sol`) for all roles, including coordination,
+architecture, implementation, testing, exploration, and review. Give delegated
+assignments explicit scope, contracts, acceptance criteria, and verification
+requirements through PISCT coordination. Workers must report conflicting
+requirements or unexpected boundary changes before expanding their assignments.
 
-Keep global architectural judgment, ambiguous tradeoffs, cross-subsystem
-reasoning, independent test expectations, and integration decisions on Astra.
-Sol must report conflicting requirements or unexpected boundary changes to the
-coordinator before expanding its assignment. Passing tests alone do not establish
-acceptance; review against requirements and source evidence.
-
-The Astra coordinator owns shared ledger updates, staging, commits, integration,
-and publication within the user's authorized scope. Final independent integration
-review uses a fresh Astra reviewer uninvolved in authoring the implementation.
+The coordinator owns shared ledger updates, staging, commits, integration, and
+publication within the user's authorized scope. Final independent integration
+review uses a fresh reviewer uninvolved in authoring the implementation. Passing
+tests alone do not establish acceptance; review requirements and source evidence.
 PISCT owns delegation mechanics and engineering checks; `surgeist-admin` owns
-administrative storage and retention. This policy selects responsibilities and
-models without granting additional mutation or publication authority.
+administrative storage and retention. This policy grants no additional authority.
 
 ## Repository Identity And Ownership
 
