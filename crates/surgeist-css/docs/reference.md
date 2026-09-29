@@ -1458,8 +1458,11 @@ CSS from retained values, whereas declaration `as_css()` preserves authored text
 
 The Grid repetition value, the six Grid property records, and the keyframe rule
 record remain `Partial`. Subgrid name-repeat, remaining `grid`/`grid-template`
-shorthand alternatives, and implicit-track lifecycle metadata and expansion
-remain unfinished.
+shorthand alternatives remain unfinished.
+`grid-auto-rows` and `grid-auto-columns` have noninherited `auto` initial
+values and expand to one intrinsic longhand contribution. CSS-wide keywords
+stay symbolic, and substituted values reenter the same repeat-free grammar
+strictly before producing contributions.
 Calculation keyframe selectors, string names, and unselected declaration-processing
 grammar remain outside the keyframe boundary. Repetition counts and used track
 sizes remain unresolved. This crate does not perform Grid layout, cascade

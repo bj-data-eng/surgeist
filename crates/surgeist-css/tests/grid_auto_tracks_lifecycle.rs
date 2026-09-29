@@ -3,7 +3,7 @@
 //! Grid 2 (2025-03-26) §7.6 specifies both implicit track-size longhands as
 //! noninherited, initially `auto`, repeat-free `<track-size>+` values.
 //! https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#auto-tracks
-//! This RED exercises only the existing public parser and lifecycle APIs.
+//! Tests exercise the public parser and lifecycle APIs.
 
 use surgeist_css::*;
 
@@ -322,6 +322,34 @@ fn normalization_reports_exact_rule_declaration_and_contribution_limits() {
                 CssNormalizationLimits::try_new(1, 1, 1, 1).unwrap()
             )
             .is_ok()
+        );
+    }
+}
+
+#[test]
+fn typed_metadata_views_expose_exactly_one_auto_initial_breadth() {
+    for (name, property) in PROPERTIES {
+        let CssPropertyKindRef::Longhand(longhand) = grammar(name).metadata().unwrap().kind()
+        else {
+            panic!("implicit track longhand metadata: {name}")
+        };
+        let initial_value = longhand.initial_value();
+        let CssInitialValueRef::Value(initial) = initial_value.view() else {
+            panic!("ordinary initial: {name}")
+        };
+        assert_eq!(initial.property().known_property(), property);
+        let sizes = match initial.view() {
+            CssLonghandValueRef::GridAutoRows(value)
+            | CssLonghandValueRef::GridAutoColumns(value) => value.sizes(),
+            _ => panic!("typed implicit track initial: {name}"),
+        };
+        let [size] = sizes else {
+            panic!("exactly one initial size: {name}")
+        };
+        assert_eq!(size.kind(), CssGridTrackSizeKind::Breadth);
+        assert_eq!(
+            size.breadth().unwrap().kind(),
+            CssGridTrackBreadthKind::Auto
         );
     }
 }
