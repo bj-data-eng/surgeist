@@ -32,6 +32,23 @@ assignments explicit scope, contracts, acceptance criteria, and verification
 requirements through PISCT coordination. Workers must report conflicting
 requirements or unexpected boundary changes before expanding their assignments.
 
+Select effort for each delegated assignment from its reasoning demands, not
+its role alone. Explicitly set `reasoning_effort` on every subagent launch;
+choose a context mode that permits overrides and supply the necessary context.
+Use these starting points, then reassess if conflicting requirements, unexpected
+complexity, or verification findings warrant more effort:
+
+| Effort | Typical assignment |
+| --- | --- |
+| `low` | Mechanical edits, repetitive refactors with fully specified transformations, and routine check execution |
+| `medium` | Well-scoped implementation, repository exploration, and focused reviews with clear contracts and acceptance criteria |
+| `high` | Ambiguous requirements, complex correctness reasoning, cross-crate tradeoffs, and final integration review |
+| `xhigh` | Especially difficult architectural decisions or unusually complex composed behavior |
+
+Do not assign blanket effort levels by role. Clear scope, source evidence,
+acceptance criteria, and independent review remain required at every effort
+level where applicable.
+
 The coordinator owns shared ledger updates, staging, commits, integration, and
 publication within the user's authorized scope. Final independent integration
 review uses a fresh reviewer uninvolved in authoring the implementation. Passing
