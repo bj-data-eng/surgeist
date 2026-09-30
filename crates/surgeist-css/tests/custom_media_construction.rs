@@ -210,7 +210,7 @@ fn canonical_rule_output_preserves_exact_values_and_opaque_token_boundaries() {
             .unwrap();
     let rule = CssCustomMediaRule::try_new(
         programmatic_name(),
-        CssCustomMediaBody::Media(CssMediaQueryList::try_new(vec![query]).unwrap()),
+        CssCustomMediaBody::Media(CssMediaQueryList::new(vec![query])),
     )
     .unwrap();
     assert_eq!(

@@ -406,7 +406,7 @@ fn font_face_and_local_names_reject_generics_and_reserved_tokens_with_local_reco
         else {
             panic!("expected both valid source fallbacks: {source}: {report:?}");
         };
-        assert_eq!(before.url(), "before");
+        assert_eq!(before.url().as_str(), "before");
         assert_eq!(after.as_str(), "After");
         let [family_diagnostic, local_diagnostic] = report.diagnostics() else {
             panic!("expected two independent recoveries: {source}: {report:?}");

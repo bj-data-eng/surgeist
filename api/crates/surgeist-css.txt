@@ -1203,6 +1203,11 @@ pub surgeist_css::CssFontFeatureValuesErrorKind::NegativeIndex
 #[non_exhaustive] pub enum surgeist_css::CssFontFeatureValuesItem
 pub surgeist_css::CssFontFeatureValuesItem::Block(surgeist_css::CssFontFeatureValueBlock)
 pub surgeist_css::CssFontFeatureValuesItem::FontDisplay(surgeist_css::CssFontFeatureDisplayOccurrence)
+#[non_exhaustive] pub enum surgeist_css::CssFontFormat
+pub surgeist_css::CssFontFormat::Keyword(surgeist_css::CssFontFormatHint)
+pub surgeist_css::CssFontFormat::String(surgeist_css::CssFontFormatString)
+impl surgeist_css::CssFontFormat
+pub fn surgeist_css::CssFontFormat::recognized_format(&self) -> core::option::Option<surgeist_css::CssFontFormatHint>
 #[non_exhaustive] pub enum surgeist_css::CssFontFormatHint
 pub surgeist_css::CssFontFormatHint::Collection
 pub surgeist_css::CssFontFormatHint::EmbeddedOpenType
@@ -5042,12 +5047,10 @@ pub fn surgeist_css::CssCompoundSelector::classes(&self) -> &[alloc::string::Str
 pub const fn surgeist_css::CssCompoundSelector::has_pseudo_elements(&self) -> bool
 pub const fn surgeist_css::CssCompoundSelector::has_scope_anchor(&self) -> bool
 pub fn surgeist_css::CssCompoundSelector::ids(&self) -> &[alloc::string::String]
-pub fn surgeist_css::CssCompoundSelector::key(&self) -> core::option::Option<&alloc::string::String>
 pub const fn surgeist_css::CssCompoundSelector::nesting_selectors(&self) -> usize
 pub fn surgeist_css::CssCompoundSelector::pseudo_classes(&self) -> &[surgeist_css::CssPseudoClass]
 pub const fn surgeist_css::CssCompoundSelector::pseudo_elements(&self) -> core::option::Option<&surgeist_css::CssPseudoElementSequence>
 pub const fn surgeist_css::CssCompoundSelector::scope_anchors(&self) -> usize
-pub const fn surgeist_css::CssCompoundSelector::tag(&self) -> core::option::Option<&alloc::string::String>
 pub fn surgeist_css::CssCompoundSelector::type_selector(&self) -> core::option::Option<&surgeist_css::CssQualifiedSelectorName>
 pub struct surgeist_css::CssCompoundSelectorArgument
 impl surgeist_css::CssCompoundSelectorArgument
@@ -5607,9 +5610,9 @@ impl surgeist_css::CssExplicitFont
 pub const fn surgeist_css::CssExplicitFont::families(&self) -> &surgeist_css::CssFontFamilyList
 pub const fn surgeist_css::CssExplicitFont::line_height(&self) -> core::option::Option<&surgeist_css::CssLineHeight>
 pub const fn surgeist_css::CssExplicitFont::size(&self) -> &surgeist_css::CssFontSize
-pub const fn surgeist_css::CssExplicitFont::stretch(&self) -> core::option::Option<surgeist_css::CssFontStretch>
+pub const fn surgeist_css::CssExplicitFont::stretch(&self) -> core::option::Option<surgeist_css::CssFontWidthKeyword>
 pub const fn surgeist_css::CssExplicitFont::style(&self) -> core::option::Option<&surgeist_css::CssFontStyle>
-pub fn surgeist_css::CssExplicitFont::try_new(style: core::option::Option<surgeist_css::CssFontStyle>, variant: core::option::Option<surgeist_css::CssFontVariant>, weight: core::option::Option<surgeist_css::CssFontWeight>, stretch: core::option::Option<surgeist_css::CssFontStretch>, size: surgeist_css::CssFontSize, line_height: core::option::Option<surgeist_css::CssLineHeight>, families: surgeist_css::CssFontFamilyList) -> core::option::Option<Self>
+pub fn surgeist_css::CssExplicitFont::try_new(style: core::option::Option<surgeist_css::CssFontStyle>, variant: core::option::Option<surgeist_css::CssFontVariant>, weight: core::option::Option<surgeist_css::CssFontWeight>, stretch: core::option::Option<surgeist_css::CssFontWidthKeyword>, size: surgeist_css::CssFontSize, line_height: core::option::Option<surgeist_css::CssLineHeight>, families: surgeist_css::CssFontFamilyList) -> core::option::Option<Self>
 pub const fn surgeist_css::CssExplicitFont::variant(&self) -> core::option::Option<surgeist_css::CssFontVariant>
 pub const fn surgeist_css::CssExplicitFont::weight(&self) -> core::option::Option<&surgeist_css::CssFontWeight>
 impl surgeist_css::CssExplicitFont
@@ -5763,17 +5766,11 @@ pub fn surgeist_css::CssFontFaceSourceList::sources(&self) -> &[surgeist_css::Cs
 pub fn surgeist_css::CssFontFaceSourceList::try_new(sources: alloc::vec::Vec<surgeist_css::CssFontFaceSource>) -> core::option::Option<Self>
 pub struct surgeist_css::CssFontFaceUrlSource
 impl surgeist_css::CssFontFaceUrlSource
-pub const fn surgeist_css::CssFontFaceUrlSource::authored_url(&self) -> &surgeist_css::CssUrl
-pub const fn surgeist_css::CssFontFaceUrlSource::format(&self) -> core::option::Option<&surgeist_css::CssFontFormatHint>
-pub const fn surgeist_css::CssFontFaceUrlSource::formats(&self) -> core::option::Option<&surgeist_css::CssFontFormatList>
-pub fn surgeist_css::CssFontFaceUrlSource::new_with_formats(url: impl core::convert::Into<alloc::string::String>, formats: core::option::Option<surgeist_css::CssFontFormatList>, tech: alloc::vec::Vec<surgeist_css::CssFontTechHint>) -> Self
-pub fn surgeist_css::CssFontFaceUrlSource::new_with_url(url: surgeist_css::CssUrl, formats: core::option::Option<surgeist_css::CssFontFormatList>, tech: alloc::vec::Vec<surgeist_css::CssFontTechHint>) -> Self
+pub const fn surgeist_css::CssFontFaceUrlSource::format(&self) -> core::option::Option<&surgeist_css::CssFontFormat>
+pub fn surgeist_css::CssFontFaceUrlSource::new(url: surgeist_css::CssUrl, format: core::option::Option<surgeist_css::CssFontFormat>, tech: alloc::vec::Vec<surgeist_css::CssFontTechHint>) -> Self
 pub fn surgeist_css::CssFontFaceUrlSource::required_technologies(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_css::CssFontTechHint> + '_
 pub fn surgeist_css::CssFontFaceUrlSource::tech(&self) -> &[surgeist_css::CssFontTechHint]
-pub fn surgeist_css::CssFontFaceUrlSource::try_new(url: impl core::convert::Into<alloc::string::String>, format: core::option::Option<surgeist_css::CssFontFormatHint>, tech: alloc::vec::Vec<surgeist_css::CssFontTechHint>) -> core::option::Option<Self>
-pub fn surgeist_css::CssFontFaceUrlSource::url(&self) -> &str
-impl core::fmt::Debug for surgeist_css::CssFontFaceUrlSource
-pub fn surgeist_css::CssFontFaceUrlSource::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub const fn surgeist_css::CssFontFaceUrlSource::url(&self) -> &surgeist_css::CssUrl
 pub struct surgeist_css::CssFontFaceValueError
 impl surgeist_css::CssFontFaceValueError
 pub fn surgeist_css::CssFontFaceValueError::kind(&self) -> &surgeist_css::CssFontFaceValueErrorKind
@@ -5864,14 +5861,10 @@ pub fn surgeist_css::CssFontFeatureValuesRule::families(&self) -> &[surgeist_css
 pub fn surgeist_css::CssFontFeatureValuesRule::items(&self) -> &[surgeist_css::CssFontFeatureValuesItem]
 pub const fn surgeist_css::CssFontFeatureValuesRule::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
 pub fn surgeist_css::CssFontFeatureValuesRule::try_new(families: alloc::vec::Vec<surgeist_css::CssFontFaceFamily>, items: alloc::vec::Vec<surgeist_css::CssFontFeatureValuesItem>) -> core::result::Result<Self, surgeist_css::CssFontFeatureValuesError>
-pub struct surgeist_css::CssFontFormatList
-impl surgeist_css::CssFontFormatList
-pub fn surgeist_css::CssFontFormatList::formats(&self) -> &[surgeist_css::CssFontFormatString]
-pub fn surgeist_css::CssFontFormatList::try_new(formats: alloc::vec::Vec<surgeist_css::CssFontFormatString>) -> core::option::Option<Self>
 pub struct surgeist_css::CssFontFormatString
 impl surgeist_css::CssFontFormatString
 pub fn surgeist_css::CssFontFormatString::as_str(&self) -> &str
-pub fn surgeist_css::CssFontFormatString::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub fn surgeist_css::CssFontFormatString::new(value: impl core::convert::Into<alloc::string::String>) -> Self
 pub struct surgeist_css::CssFontKerningPropertyValue
 impl surgeist_css::CssFontKerningPropertyValue
 pub fn surgeist_css::CssFontKerningPropertyValue::as_css(&self) -> &str
@@ -6260,7 +6253,7 @@ pub fn surgeist_css::CssGridLineName::try_new(value: surgeist_css::CssIdent) -> 
 pub struct surgeist_css::CssGridLineNames
 impl surgeist_css::CssGridLineNames
 pub fn surgeist_css::CssGridLineNames::names(&self) -> &[surgeist_css::CssCustomIdent]
-pub fn surgeist_css::CssGridLineNames::try_new(names: alloc::vec::Vec<surgeist_css::CssCustomIdent>) -> core::option::Option<Self>
+pub fn surgeist_css::CssGridLineNames::new(names: alloc::vec::Vec<surgeist_css::CssCustomIdent>) -> Self
 pub struct surgeist_css::CssGridLineRange
 impl surgeist_css::CssGridLineRange
 pub const fn surgeist_css::CssGridLineRange::authored_end(&self) -> core::option::Option<&surgeist_css::CssGridLine>
@@ -6437,18 +6430,15 @@ pub fn surgeist_css::CssImportRule::try_from_components_with_limits(values: surg
 pub struct surgeist_css::CssImportString
 impl surgeist_css::CssImportString
 pub fn surgeist_css::CssImportString::as_str(&self) -> &str
-pub fn surgeist_css::CssImportString::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub fn surgeist_css::CssImportString::new(value: impl core::convert::Into<alloc::string::String>) -> Self
 pub struct surgeist_css::CssImportSupports
 impl surgeist_css::CssImportSupports
 pub const fn surgeist_css::CssImportSupports::condition(&self) -> &surgeist_css::CssSupportsCondition
 pub struct surgeist_css::CssImportUrl
 impl surgeist_css::CssImportUrl
 pub fn surgeist_css::CssImportUrl::as_str(&self) -> &str
-pub fn surgeist_css::CssImportUrl::from_url(url: surgeist_css::CssUrl) -> Self
-pub fn surgeist_css::CssImportUrl::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub fn surgeist_css::CssImportUrl::new(url: surgeist_css::CssUrl) -> Self
 pub const fn surgeist_css::CssImportUrl::url(&self) -> &surgeist_css::CssUrl
-impl core::fmt::Debug for surgeist_css::CssImportUrl
-pub fn surgeist_css::CssImportUrl::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssInlineSizePropertyValue
 impl surgeist_css::CssInlineSizePropertyValue
 pub fn surgeist_css::CssInlineSizePropertyValue::as_css(&self) -> &str
@@ -6924,8 +6914,8 @@ pub const fn surgeist_css::CssMediaQueryError::expectation(&self) -> surgeist_cs
 pub const fn surgeist_css::CssMediaQueryError::feature(&self) -> core::option::Option<&surgeist_css::CssMediaFeatureName>
 pub struct surgeist_css::CssMediaQueryList
 impl surgeist_css::CssMediaQueryList
+pub fn surgeist_css::CssMediaQueryList::new(queries: alloc::vec::Vec<surgeist_css::CssMediaQuery>) -> Self
 pub fn surgeist_css::CssMediaQueryList::queries(&self) -> &[surgeist_css::CssMediaQuery]
-pub fn surgeist_css::CssMediaQueryList::try_new(queries: alloc::vec::Vec<surgeist_css::CssMediaQuery>) -> core::option::Option<Self>
 impl surgeist_css::CssMediaQueryList
 pub fn surgeist_css::CssMediaQueryList::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssMediaSerializationError>
 pub struct surgeist_css::CssMediaRange<T>
@@ -7521,9 +7511,8 @@ pub fn surgeist_css::CssQualifiedSelectorName::local_name(&self) -> core::option
 pub const fn surgeist_css::CssQualifiedSelectorName::namespace(&self) -> &surgeist_css::CssNamespaceConstraint
 pub struct surgeist_css::CssQueryLength
 impl surgeist_css::CssQueryLength
-pub const fn surgeist_css::CssQueryLength::authored_unit(self) -> core::option::Option<surgeist_css::CssLengthUnit>
 pub fn surgeist_css::CssQueryLength::try_new(value: f32, unit: surgeist_css::CssLengthUnit) -> core::option::Option<Self>
-pub const fn surgeist_css::CssQueryLength::unit(self) -> surgeist_css::CssLengthUnit
+pub const fn surgeist_css::CssQueryLength::unit(self) -> core::option::Option<surgeist_css::CssLengthUnit>
 pub fn surgeist_css::CssQueryLength::unitless_zero() -> Self
 pub const fn surgeist_css::CssQueryLength::value(self) -> surgeist_css::CssFiniteNumber
 pub struct surgeist_css::CssQuotePair
@@ -8538,12 +8527,10 @@ pub fn surgeist_css::CssUrl::from_parts(function: surgeist_css::CssUrlFunction, 
 pub const fn surgeist_css::CssUrl::function(&self) -> surgeist_css::CssUrlFunction
 pub fn surgeist_css::CssUrl::is_local_url(&self) -> bool
 pub fn surgeist_css::CssUrl::modifiers(&self) -> &[surgeist_css::CssUrlModifier]
-pub fn surgeist_css::CssUrl::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub fn surgeist_css::CssUrl::new(value: impl core::convert::Into<alloc::string::String>) -> Self
 impl surgeist_css::CssUrl
 pub fn surgeist_css::CssUrl::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssUrl::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-impl core::fmt::Debug for surgeist_css::CssUrl
-pub fn surgeist_css::CssUrl::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssUrlModifierFunction
 impl surgeist_css::CssUrlModifierFunction
 pub const fn surgeist_css::CssUrlModifierFunction::argument_components(&self) -> &surgeist_css::CssComponentValues
@@ -8651,6 +8638,5 @@ pub const fn surgeist_css::specification_sources() -> &'static [surgeist_css::Cs
 pub fn surgeist_css::validate_sheet(input: &str) -> core::result::Result<surgeist_css::CssSheet, surgeist_css::CssValidationFailure>
 pub fn surgeist_css::validate_style_attribute(input: &str) -> core::result::Result<surgeist_css::CssDeclarationList, surgeist_css::CssValidationFailure>
 pub type surgeist_css::CssColumnWidth = surgeist_css::CssSizeValue
-pub type surgeist_css::CssFontStretch = surgeist_css::CssFontWidthKeyword
 pub type surgeist_css::CssLineStyle = surgeist_css::CssBorderStyle
 pub type surgeist_css::CssLineWidth = surgeist_css::CssBorderWidth

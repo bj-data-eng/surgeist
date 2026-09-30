@@ -136,8 +136,12 @@ fn quoted_url_controls_remain_clean_in_ordinary_import_and_font_paths() {
     else {
         panic!("one font URL")
     };
-    assert_eq!(font.url(), "font.woff2");
-    assert_eq!(font.format(), Some(&CssFontFormatHint::Woff2));
+    assert_eq!(font.url().as_str(), "font.woff2");
+    assert_eq!(
+        font.format()
+            .and_then(surgeist_css::CssFontFormat::recognized_format),
+        Some(CssFontFormatHint::Woff2)
+    );
 }
 
 #[test]
@@ -245,9 +249,14 @@ fn font_face_accepts_src_url_sources_with_ordered_hints() {
     else {
         panic!("two ordered URL sources")
     };
-    assert_eq!(first.url(), "first.woff2");
-    assert_eq!(first.format(), Some(&CssFontFormatHint::Woff2));
-    assert_eq!(second.url(), "second.woff2");
+    assert_eq!(first.url().as_str(), "first.woff2");
+    assert_eq!(
+        first
+            .format()
+            .and_then(surgeist_css::CssFontFormat::recognized_format),
+        Some(CssFontFormatHint::Woff2)
+    );
+    assert_eq!(second.url().as_str(), "second.woff2");
     assert_eq!(second.tech(), &[CssFontTechHint::Variations]);
 }
 

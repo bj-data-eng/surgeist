@@ -17,12 +17,7 @@ pub struct CssGridLineNames {
 impl CssGridLineNames {
     /// Creates an authored line-name group, including the valid empty group `[]`.
     #[must_use]
-    pub fn try_new(names: Vec<CssCustomIdent>) -> Option<Self> {
-        Some(Self::new(names))
-    }
-
-    #[must_use]
-    pub(crate) fn new(names: Vec<CssCustomIdent>) -> Self {
+    pub fn new(names: Vec<CssCustomIdent>) -> Self {
         Self { names }
     }
 

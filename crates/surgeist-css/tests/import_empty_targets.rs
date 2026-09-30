@@ -35,17 +35,10 @@ fn assert_target(import: &CssImportRule, url: bool, decoded: &str) {
 fn decoded_target_constructors_preserve_empty_and_whitespace_values() {
     for value in ["", " ", " \t\n ", "\u{00a0}", " theme.css "] {
         assert_eq!(
-            CssImportUrl::try_new(value)
-                .expect("decoded URL values need not name a usable resource")
-                .as_str(),
+            CssImportUrl::new(surgeist_css::CssUrl::new(value)).as_str(),
             value
         );
-        assert_eq!(
-            CssImportString::try_new(value)
-                .expect("decoded import strings need not name a usable resource")
-                .as_str(),
-            value
-        );
+        assert_eq!(CssImportString::new(value).as_str(), value);
     }
 }
 

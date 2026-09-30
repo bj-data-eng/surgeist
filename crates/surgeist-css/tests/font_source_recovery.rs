@@ -36,7 +36,7 @@ fn assert_sources(rule: &CssFontFaceRule, expected: &[(&str, &str)]) {
         .iter()
         .map(|source| match source {
             CssFontFaceSource::Local(local) => ("local", local.as_str()),
-            CssFontFaceSource::Url(url) => ("url", url.url()),
+            CssFontFaceSource::Url(url) => ("url", url.url().as_str()),
             other => panic!("unexpected font source kind: {other:?}"),
         })
         .collect::<Vec<_>>();

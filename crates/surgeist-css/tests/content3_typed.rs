@@ -190,7 +190,7 @@ fn symbols_require_the_selected_count_and_only_checked_string_or_image_leaves() 
             CssSymbolsStyleValue::try_new(Some(system), vec![star.clone(), star.clone()]).is_some()
         );
     }
-    let image = CssImage::try_new(CssImageValue::Url(CssUrl::try_new("#star").unwrap())).unwrap();
+    let image = CssImage::try_new(CssImageValue::Url(CssUrl::new("#star"))).unwrap();
     let style = CssCounterStyleValue::Symbols(
         CssSymbolsStyleValue::try_new(None, vec![CssCounterSymbolValue::Image(image)]).unwrap(),
     );
@@ -208,7 +208,7 @@ fn symbols_require_the_selected_count_and_only_checked_string_or_image_leaves() 
 fn checked_generated_content_classifies_a_sole_image_as_replacement() {
     assert!(CssGeneratedContent::try_new(vec![], None).is_none());
     assert!(CssContentAlternative::try_new(vec![]).is_none());
-    let image = CssImage::try_new(CssImageValue::Url(CssUrl::try_new("#icon").unwrap())).unwrap();
+    let image = CssImage::try_new(CssImageValue::Url(CssUrl::new("#icon"))).unwrap();
     let generated =
         CssGeneratedContent::try_new(vec![CssContentValueItem::Image(image.clone())], None)
             .unwrap();
@@ -558,8 +558,7 @@ fn two_image_symbols_share_the_outer_input_and_projection_limits() {
             .into_iter()
             .map(|target| {
                 CssCounterSymbolValue::Image(
-                    CssImage::try_new(CssImageValue::Url(CssUrl::try_new(target).unwrap()))
-                        .unwrap(),
+                    CssImage::try_new(CssImageValue::Url(CssUrl::new(target))).unwrap(),
                 )
             })
             .collect(),

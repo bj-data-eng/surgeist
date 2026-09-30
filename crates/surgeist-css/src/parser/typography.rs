@@ -8,8 +8,8 @@ use crate::font_variant::CssFontVariant;
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
 use crate::{
-    CssAbsoluteFontWeight, CssFontObliqueAngle, CssFontSize, CssFontStretch, CssFontStyle,
-    CssFontStyleKeyword, CssFontWeight, CssFontWeightNumber, CssFontWidth,
+    CssAbsoluteFontWeight, CssFontObliqueAngle, CssFontSize, CssFontStyle, CssFontStyleKeyword,
+    CssFontWeight, CssFontWeightNumber, CssFontWidth, CssFontWidthKeyword,
     CssLengthPercentageCalculation, CssLineHeight, CssSpecifiedLengthPercentage,
     CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
     CssTextSpacingAdjustment,
@@ -539,7 +539,7 @@ pub(super) fn parse_font<'i, 't>(
         } else if weight.is_none() {
             weight = Some(CssFontWeight::Absolute(CssAbsoluteFontWeight::Normal));
         } else if stretch.is_none() {
-            stretch = Some(CssFontStretch::Normal);
+            stretch = Some(CssFontWidthKeyword::Normal);
         } else {
             return Err(unsupported_value(
                 input,
@@ -721,18 +721,18 @@ pub(super) fn parse_font_oblique_angle<'i, 't>(
 
 pub(super) fn parse_font_stretch<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontStretch, ParseError<'i, Error>> {
+) -> std::result::Result<CssFontWidthKeyword, ParseError<'i, Error>> {
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
-        "normal" => Ok(CssFontStretch::Normal),
-        "ultra-condensed" => Ok(CssFontStretch::UltraCondensed),
-        "extra-condensed" => Ok(CssFontStretch::ExtraCondensed),
-        "condensed" => Ok(CssFontStretch::Condensed),
-        "semi-condensed" => Ok(CssFontStretch::SemiCondensed),
-        "semi-expanded" => Ok(CssFontStretch::SemiExpanded),
-        "expanded" => Ok(CssFontStretch::Expanded),
-        "extra-expanded" => Ok(CssFontStretch::ExtraExpanded),
-        "ultra-expanded" => Ok(CssFontStretch::UltraExpanded),
+        "normal" => Ok(CssFontWidthKeyword::Normal),
+        "ultra-condensed" => Ok(CssFontWidthKeyword::UltraCondensed),
+        "extra-condensed" => Ok(CssFontWidthKeyword::ExtraCondensed),
+        "condensed" => Ok(CssFontWidthKeyword::Condensed),
+        "semi-condensed" => Ok(CssFontWidthKeyword::SemiCondensed),
+        "semi-expanded" => Ok(CssFontWidthKeyword::SemiExpanded),
+        "expanded" => Ok(CssFontWidthKeyword::Expanded),
+        "extra-expanded" => Ok(CssFontWidthKeyword::ExtraExpanded),
+        "ultra-expanded" => Ok(CssFontWidthKeyword::UltraExpanded),
         _ => Err(unsupported_value(
             input,
             None,

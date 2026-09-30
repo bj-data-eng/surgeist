@@ -53,16 +53,31 @@ fn font_sources_drop_obsolete_multiple_formats_and_preserve_selected_hints() {
     let CssFontFaceSource::Url(arbitrary) = &sources[1] else {
         panic!("expected first retained URL source");
     };
-    assert_eq!(arbitrary.url(), "demo-b.bin");
-    assert_eq!(arbitrary.formats().unwrap().formats()[0].as_str(), "zebra");
-    assert_eq!(arbitrary.format(), None);
+    assert_eq!(arbitrary.url().as_str(), "demo-b.bin");
+    assert_eq!(string_format!(arbitrary), "zebra");
+    assert_eq!(
+        arbitrary
+            .format()
+            .and_then(surgeist_css::CssFontFormat::recognized_format),
+        None
+    );
 
     let CssFontFaceSource::Url(keyword) = &sources[2] else {
         panic!("expected second retained URL source");
     };
-    assert_eq!(keyword.url(), "demo-c.bin");
-    assert_eq!(keyword.formats().unwrap().formats()[0].as_str(), "woff2");
-    assert_eq!(keyword.format(), Some(&CssFontFormatHint::Woff2));
+    assert_eq!(keyword.url().as_str(), "demo-c.bin");
+    assert_eq!(
+        keyword.format(),
+        Some(&surgeist_css::CssFontFormat::Keyword(
+            CssFontFormatHint::Woff2
+        ))
+    );
+    assert_eq!(
+        keyword
+            .format()
+            .and_then(surgeist_css::CssFontFormat::recognized_format),
+        Some(CssFontFormatHint::Woff2)
+    );
     assert_eq!(
         keyword.tech(),
         &[CssFontTechHint::Variations, CssFontTechHint::ColorCOLRv1]
@@ -137,7 +152,7 @@ fn font_source_lists_retain_fallbacks_beside_empty_members() {
         else {
             panic!("expected retained URL fallback: {source}");
         };
-        assert_eq!(url.url(), "a");
+        assert_eq!(url.url().as_str(), "a");
         assert_eq!(
             ordinary_face!(rule.descriptors(), FontFamily)
                 .unwrap()
@@ -229,7 +244,12 @@ fn selected_fonts4_format_and_technology_keywords_remain_ordered() {
         let CssFontFaceSource::Url(source) = source else {
             panic!("expected URL source");
         };
-        assert_eq!(source.format(), Some(&expected));
+        assert_eq!(
+            source
+                .format()
+                .and_then(surgeist_css::CssFontFormat::recognized_format),
+            Some(expected)
+        );
     }
     let CssFontFaceSource::Url(technology) =
         &ordinary_face!(rule.descriptors(), Src).unwrap().sources()[7]
@@ -278,9 +298,11 @@ fn font_face_preserves_occurrences_and_uses_last_valid_descriptor() {
     );
     assert_eq!(
         ordinary_face!(rule.descriptors(), Src).unwrap().sources()[0],
-        CssFontFaceSource::Url(
-            surgeist_css::CssFontFaceUrlSource::try_new("two.woff2", None, Vec::new()).unwrap(),
-        )
+        CssFontFaceSource::Url(surgeist_css::CssFontFaceUrlSource::new(
+            surgeist_css::CssUrl::new("two.woff2"),
+            None,
+            Vec::new()
+        ),)
     );
     assert_eq!(
         ordinary_face!(rule.descriptors(), FontWeight).unwrap(),
@@ -438,7 +460,7 @@ fn invalid_descriptor_occurrences_do_not_erase_valid_neighbors() {
     else {
         panic!("expected URL source");
     };
-    assert_eq!(effective_source.url(), "two");
+    assert_eq!(effective_source.url().as_str(), "two");
     let features = ordinary_face!(rule.descriptors(), FontFeatureSettings).unwrap();
     assert!(matches!(
         features,

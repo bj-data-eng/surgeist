@@ -245,113 +245,46 @@ pub enum CssFontFaceSource {
     Local(CssFontLocalName),
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFaceUrlSource {
     url: CssUrl,
-    format: Option<CssFontFormatHint>,
-    formats: Option<CssFontFormatList>,
+    format: Option<CssFontFormat>,
     tech: Vec<CssFontTechHint>,
 }
 
 impl CssFontFaceUrlSource {
-    /// Preserves an authored URL string and its format and technology hints.
-    ///
-    /// Every URL string is accepted, including empty and whitespace-only strings.
-    /// Resource resolution and loading belong to a later phase. The optional return
-    /// retains the existing signature after removal of the nonempty restriction.
+    /// Preserves a shared authored URL, optional format, and ordered technologies.
+    /// Resource resolution and support remain downstream.
     #[must_use]
-    pub fn try_new(
-        url: impl Into<String>,
-        format: Option<CssFontFormatHint>,
-        tech: Vec<CssFontTechHint>,
-    ) -> Option<Self> {
-        let formats =
-            format.map(|format| CssFontFormatList::new(CssFontFormatString::new(format.as_str())));
-        Some(Self::new_with_formats(url, formats, tech))
-    }
-
-    /// Preserves an authored URL, a checked single format argument, and technologies.
-    ///
-    /// Construction is infallible because the format wrapper already enforces its
-    /// cardinality. Empty URLs and empty or unrecognized format strings are valid
-    /// authored values. Strings are decoded values, not CSS source to parse again.
-    #[must_use]
-    pub fn new_with_formats(
-        url: impl Into<String>,
-        formats: Option<CssFontFormatList>,
-        tech: Vec<CssFontTechHint>,
-    ) -> Self {
-        Self::new_with_url(CssUrl::new(url), formats, tech)
-    }
-
-    /// Preserves a shared authored URL, one checked format hint, and technologies.
-    #[must_use]
-    pub fn new_with_url(
-        url: CssUrl,
-        formats: Option<CssFontFormatList>,
-        tech: Vec<CssFontTechHint>,
-    ) -> Self {
-        let format = formats.as_ref().and_then(CssFontFormatList::recognized);
-        Self {
-            url,
-            format,
-            formats,
-            tech,
-        }
+    pub fn new(url: CssUrl, format: Option<CssFontFormat>, tech: Vec<CssFontTechHint>) -> Self {
+        Self { url, format, tech }
     }
 
     #[must_use]
-    pub fn url(&self) -> &str {
-        self.url.as_str()
-    }
-
-    /// Returns the shared authored URL, including function identity and modifiers.
-    #[must_use]
-    pub const fn authored_url(&self) -> &CssUrl {
+    pub const fn url(&self) -> &CssUrl {
         &self.url
     }
 
-    /// Returns the recognized base format, including the four legacy variation strings.
-    ///
-    /// `None` can mean either an absent hint or an unrecognized string; use
-    /// [`Self::formats`] to distinguish them. Format recognition does not determine
-    /// resource support. TrueType and OpenType retain distinct authored identities;
-    /// [`CssFontFormatHint::is_equivalent_to`] compares their compatibility meaning.
+    /// Returns the single authored format argument; absence differs from an empty string.
     #[must_use]
-    pub const fn format(&self) -> Option<&CssFontFormatHint> {
+    pub const fn format(&self) -> Option<&CssFontFormat> {
         self.format.as_ref()
     }
 
-    /// Returns the single authored `format()` argument, when present.
-    ///
-    /// The list-named wrapper preserves the original inspection API. A present
-    /// hint always contains exactly one string, including empty or unrecognized
-    /// strings; `None` means that the source has no `format()` hint.
-    #[must_use]
-    pub const fn formats(&self) -> Option<&CssFontFormatList> {
-        self.formats.as_ref()
-    }
-
     /// Returns technology hints in authored order, including repetitions.
-    ///
-    /// A legacy format string's implied technology is exposed separately by
-    /// [`Self::required_technologies`].
     #[must_use]
     pub fn tech(&self) -> &[CssFontTechHint] {
         &self.tech
     }
 
-    /// Returns the distinct technologies that the source requires together.
-    ///
-    /// Authored technologies retain first-occurrence order. The `variations`
-    /// requirement implied by a legacy variation format string follows them when
-    /// it was not already authored. This projection leaves [`Self::tech`] unchanged
-    /// and does not decide whether a resource loader supports those technologies.
+    /// Yields distinct required technologies in first-occurrence order, followed by
+    /// the legacy string's implied variations requirement when not already authored.
     pub fn required_technologies(&self) -> impl Iterator<Item = CssFontTechHint> + '_ {
-        let implied = self.formats.as_ref().and_then(|formats| {
-            formats.formats[0]
+        let implied = self.format.as_ref().and_then(|format| match format {
+            CssFontFormat::String(value) => value
                 .legacy_variation_format()
-                .map(|_| CssFontTechHint::Variations)
+                .map(|_| CssFontTechHint::Variations),
+            CssFontFormat::Keyword(_) => None,
         });
         let mut seen = Vec::new();
         self.tech
@@ -369,15 +302,22 @@ impl CssFontFaceUrlSource {
     }
 }
 
-impl std::fmt::Debug for CssFontFaceUrlSource {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("CssFontFaceUrlSource")
-            .field("url", &self.url())
-            .field("format", &self.format)
-            .field("formats", &self.formats)
-            .field("tech", &self.tech)
-            .finish()
+/// The distinct authored keyword and string productions of a font format hint.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssFontFormat {
+    Keyword(CssFontFormatHint),
+    String(CssFontFormatString),
+}
+
+impl CssFontFormat {
+    /// Recognizes format meaning without deciding resource support or changing authored identity.
+    #[must_use]
+    pub fn recognized_format(&self) -> Option<CssFontFormatHint> {
+        match self {
+            Self::Keyword(format) => Some(*format),
+            Self::String(value) => value.recognized(),
+        }
     }
 }
 
@@ -391,17 +331,9 @@ pub struct CssFontFormatString {
 }
 
 impl CssFontFormatString {
-    /// Preserves an authored string, including the empty string.
-    ///
-    /// Every string is accepted. The optional return retains this constructor's
-    /// existing signature after removal of the former nonempty restriction.
+    /// Preserves decoded authored text, including empty and unknown format strings.
     #[must_use]
-    pub fn try_new(value: impl Into<String>) -> Option<Self> {
-        Some(Self::new(value))
-    }
-
-    #[must_use]
-    pub(crate) fn new(value: impl Into<String>) -> Self {
+    pub fn new(value: impl Into<String>) -> Self {
         Self {
             value: value.into(),
         }
@@ -431,40 +363,6 @@ impl CssFontFormatString {
         } else {
             None
         }
-    }
-}
-
-/// Exactly one authored string from a font source `format()` hint.
-///
-/// The name and slice accessor originate in the earlier Fonts3 list model.
-/// The selected Fonts4 grammar permits exactly one argument, so empty and
-/// multiple-element inputs are rejected by [`Self::try_new`]. The one string
-/// itself may be empty or unrecognized; resource support is a later concern.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssFontFormatList {
-    formats: [CssFontFormatString; 1],
-}
-
-impl CssFontFormatList {
-    #[must_use]
-    pub fn try_new(formats: Vec<CssFontFormatString>) -> Option<Self> {
-        let [format]: [CssFontFormatString; 1] = formats.try_into().ok()?;
-        Some(Self::new(format))
-    }
-
-    #[must_use]
-    pub(crate) fn new(format: CssFontFormatString) -> Self {
-        Self { formats: [format] }
-    }
-
-    #[must_use]
-    pub fn formats(&self) -> &[CssFontFormatString] {
-        &self.formats
-    }
-
-    #[must_use]
-    fn recognized(&self) -> Option<CssFontFormatHint> {
-        self.formats[0].recognized()
     }
 }
 
@@ -626,19 +524,6 @@ impl CssFontFormatHint {
                 (self, other),
                 (Self::TrueType, Self::OpenType) | (Self::OpenType, Self::TrueType)
             )
-    }
-
-    #[must_use]
-    pub(crate) const fn as_str(self) -> &'static str {
-        match self {
-            Self::Woff => "woff",
-            Self::Woff2 => "woff2",
-            Self::TrueType => "truetype",
-            Self::OpenType => "opentype",
-            Self::Collection => "collection",
-            Self::EmbeddedOpenType => "embedded-opentype",
-            Self::Svg => "svg",
-        }
     }
 
     pub(crate) fn from_ascii_name(value: &[u8]) -> Option<Self> {

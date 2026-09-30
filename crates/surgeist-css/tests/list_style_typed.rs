@@ -34,7 +34,7 @@ fn shorthand(value: &CssDeclaration) -> &CssListStyleValue {
 fn checked_construction_keeps_all_absent_invalid_and_borrows_authored_components() {
     assert!(CssListStyleValue::try_new(None, None, None).is_none());
     let type_value = CssListStyleTypeValue::CounterStyle(named("CustomMarker"));
-    let image = CssImageValue::Url(CssUrl::try_new("#marker").unwrap());
+    let image = CssImageValue::Url(CssUrl::new("#marker"));
     let value = CssListStyleValue::try_new(
         Some(type_value.clone()),
         Some(CssListStylePosition::Inside),
@@ -262,8 +262,7 @@ fn nested_symbols_images_share_the_shorthand_budget_and_original_source() {
             .into_iter()
             .map(|target| {
                 CssCounterSymbolValue::Image(
-                    CssImage::try_new(CssImageValue::Url(CssUrl::try_new(target).unwrap()))
-                        .unwrap(),
+                    CssImage::try_new(CssImageValue::Url(CssUrl::new(target))).unwrap(),
                 )
             })
             .collect(),
@@ -387,7 +386,7 @@ fn string_styles_and_image_values_serialize_without_layout_or_resource_lookup() 
     let value = CssListStyleValue::try_new(
         Some(string_style),
         None,
-        Some(CssImageValue::Url(CssUrl::try_new("").unwrap())),
+        Some(CssImageValue::Url(CssUrl::new(""))),
     )
     .unwrap();
     assert_eq!(value.serialize_specified().unwrap(), "url(\"\") \"a\\\"b\"");

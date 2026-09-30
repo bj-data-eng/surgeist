@@ -33,7 +33,7 @@ fn background_url(value: &str) -> CssUrl {
 #[test]
 fn checked_constructors_preserve_function_identity_and_decoded_empty_targets() {
     for target in ["", " ", "asset.svg"] {
-        let url = CssUrl::try_new(target).unwrap();
+        let url = CssUrl::new(target);
         let src = CssUrl::from_parts(CssUrlFunction::Src, target, Vec::new());
         assert_eq!(url.function(), CssUrlFunction::Url);
         assert_eq!(src.function(), CssUrlFunction::Src);
@@ -45,21 +45,22 @@ fn checked_constructors_preserve_function_identity_and_decoded_empty_targets() {
             url
         );
 
-        let legacy_import = CssImportUrl::try_new(target).unwrap();
-        let import = CssImportUrl::from_url(src.clone());
-        assert_eq!(legacy_import.url().function(), CssUrlFunction::Url);
-        assert_eq!(legacy_import.as_str(), target);
+        let url_import = CssImportUrl::new(surgeist_css::CssUrl::new(target));
+        let import = CssImportUrl::new(src.clone());
+        assert_eq!(url_import.url().function(), CssUrlFunction::Url);
+        assert_eq!(url_import.as_str(), target);
         assert_eq!(import.url(), &src);
         assert_eq!(import.as_str(), target);
-        assert_ne!(legacy_import, import);
+        assert_ne!(url_import, import);
 
-        let legacy_font = CssFontFaceUrlSource::try_new(target, None, Vec::new()).unwrap();
-        let font = CssFontFaceUrlSource::new_with_url(src.clone(), None, Vec::new());
-        assert_eq!(legacy_font.authored_url().function(), CssUrlFunction::Url);
-        assert_eq!(legacy_font.url(), target);
-        assert_eq!(font.authored_url(), &src);
-        assert_eq!(font.url(), target);
-        assert_ne!(legacy_font, font);
+        let url_font =
+            CssFontFaceUrlSource::new(surgeist_css::CssUrl::new(target), None, Vec::new());
+        let font = CssFontFaceUrlSource::new(src.clone(), None, Vec::new());
+        assert_eq!(url_font.url().function(), CssUrlFunction::Url);
+        assert_eq!(url_font.url().as_str(), target);
+        assert_eq!(font.url(), &src);
+        assert_eq!(font.url().as_str(), target);
+        assert_ne!(url_font, font);
     }
 }
 
@@ -129,16 +130,16 @@ fn import_and_font_sources_expose_shared_payload_and_preserve_import_spelling() 
     else {
         panic!("two ordered font URLs")
     };
-    assert_eq!(first.url(), "first.woff2");
-    assert_eq!(first.authored_url().function(), CssUrlFunction::Src);
+    assert_eq!(first.url().as_str(), "first.woff2");
+    assert_eq!(first.url().function(), CssUrlFunction::Src);
     assert!(
-        matches!(first.authored_url().modifiers(), [CssUrlModifier::Function(function)]
+        matches!(first.url().modifiers(), [CssUrlModifier::Function(function)]
         if function.name() == "integrity" && function.arguments().as_css() == "sha256")
     );
-    assert_eq!(second.url(), "second.woff2");
-    assert_eq!(second.authored_url().function(), CssUrlFunction::Url);
+    assert_eq!(second.url().as_str(), "second.woff2");
+    assert_eq!(second.url().function(), CssUrlFunction::Url);
     assert!(
-        matches!(second.authored_url().modifiers(), [CssUrlModifier::Ident(ident)] if ident.as_str() == "cors")
+        matches!(second.url().modifiers(), [CssUrlModifier::Ident(ident)] if ident.as_str() == "cors")
     );
 }
 
@@ -159,10 +160,10 @@ fn malformed_src_members_recover_without_losing_valid_font_and_rule_neighbors() 
     let [CssFontFaceSource::Url(first), CssFontFaceSource::Url(last)] = sources else {
         panic!("valid font source order preserved")
     };
-    assert_eq!(first.url(), "first.woff2");
-    assert_eq!(last.url(), "last.woff2");
-    assert_eq!(first.authored_url().function(), CssUrlFunction::Src);
-    assert_eq!(last.authored_url().function(), CssUrlFunction::Src);
+    assert_eq!(first.url().as_str(), "first.woff2");
+    assert_eq!(last.url().as_str(), "last.woff2");
+    assert_eq!(first.url().function(), CssUrlFunction::Src);
+    assert_eq!(last.url().function(), CssUrlFunction::Src);
     assert_eq!(report.diagnostics().len(), 2);
     assert_eq!(
         report.diagnostics()[0].action(),

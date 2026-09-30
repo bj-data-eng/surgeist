@@ -45,7 +45,7 @@ fn every_known_descriptor_defers_env_and_reenters_its_ordinary_grammar() {
                 let [CssFontFaceSource::Url(url)] = sources.sources() else {
                     panic!("one URL source")
                 };
-                assert_eq!(url.url(), "face.woff2");
+                assert_eq!(url.url().as_str(), "face.woff2");
             }
             Ordinary::FontWeight(weight) => assert_eq!(
                 weight,

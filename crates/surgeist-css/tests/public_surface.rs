@@ -96,9 +96,7 @@ fn public_surface_exposes_namespace_qualified_selector_accessors_and_id_projecti
         CssNamespaceConstraint::Named(prefix) if prefix.as_str() == "svg"
     ));
     assert_eq!(type_selector.local_name(), Some("a"));
-    assert_eq!(selector.tag().map(String::as_str), Some("a"));
     assert_eq!(selector.ids(), ["primary"]);
-    assert_eq!(selector.key().map(String::as_str), Some("primary"));
 
     let [attribute] = selector.attributes() else {
         panic!("expected qualified attribute selector")
@@ -122,7 +120,6 @@ fn public_surface_exposes_checked_selectors3_language_pseudos_and_ordered_ids() 
     };
 
     assert_eq!(selector.ids(), ["first", "second"]);
-    assert_eq!(selector.key().map(String::as_str), Some("second"));
     assert!(matches!(
         selector.pseudo_classes(),
         [CssPseudoClass::Lang(range)] if range.ranges()[0].as_str() == "en"
@@ -991,31 +988,37 @@ fn public_surface_emits_all_ten_recovery_actions() {
 }
 
 #[test]
-fn public_surface_font_format_models_enforce_fonts4_cardinality() {
+fn public_surface_font_format_models_preserve_the_single_authored_production() {
     use surgeist_css::{
-        CssFontFaceUrlSource, CssFontFormatHint, CssFontFormatList, CssFontFormatString,
-        CssFontTechHint,
+        CssFontFaceUrlSource, CssFontFormat, CssFontFormatHint, CssFontFormatString,
+        CssFontTechHint, CssUrl,
     };
-
-    assert_eq!(CssFontFormatString::try_new("").unwrap().as_str(), "");
-    let arbitrary = CssFontFormatString::try_new("zebra").unwrap();
-    assert_eq!(arbitrary.as_str(), "zebra");
-    let recognized = CssFontFormatString::try_new("WoFf2").unwrap();
-    assert_eq!(recognized.as_str(), "WoFf2");
-    assert_eq!(CssFontFormatList::try_new(Vec::new()), None);
-    let formats = CssFontFormatList::try_new(vec![arbitrary.clone()]).unwrap();
-    assert_eq!(formats.formats().len(), 1);
-    assert_eq!(formats.formats()[0].as_str(), "zebra");
-    assert!(CssFontFormatList::try_new(vec![arbitrary, recognized]).is_none());
-
-    let legacy = CssFontFaceUrlSource::try_new(
-        "face.woff2",
-        Some(CssFontFormatHint::Woff2),
+    for text in ["", "zebra", "WoFf2", " woff2 "] {
+        let value = CssFontFormatString::new(text);
+        assert_eq!(value.as_str(), text);
+        let source = CssFontFaceUrlSource::new(
+            CssUrl::new(""),
+            Some(CssFontFormat::String(value.clone())),
+            Vec::new(),
+        );
+        assert_eq!(source.format(), Some(&CssFontFormat::String(value)));
+        assert_eq!(source.url().as_str(), "");
+        assert!(source.tech().is_empty());
+    }
+    let keyword = CssFontFaceUrlSource::new(
+        CssUrl::new("face.woff2"),
+        Some(CssFontFormat::Keyword(CssFontFormatHint::Woff2)),
         vec![CssFontTechHint::Variations],
-    )
-    .unwrap();
-    assert_eq!(legacy.format(), Some(&CssFontFormatHint::Woff2));
-    assert_eq!(legacy.formats().unwrap().formats()[0].as_str(), "woff2");
+    );
+    assert_eq!(
+        keyword.format(),
+        Some(&CssFontFormat::Keyword(CssFontFormatHint::Woff2))
+    );
+    assert_eq!(
+        keyword.format().and_then(CssFontFormat::recognized_format),
+        Some(CssFontFormatHint::Woff2)
+    );
+    assert_eq!(keyword.tech(), [CssFontTechHint::Variations]);
 }
 
 #[test]

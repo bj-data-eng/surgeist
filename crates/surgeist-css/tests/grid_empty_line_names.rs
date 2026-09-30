@@ -11,13 +11,12 @@ use surgeist_css::{
 
 #[test]
 fn construction_preserves_an_empty_line_name_group() {
-    let empty = CssGridLineNames::try_new(Vec::new()).expect("[] is valid line-names");
+    let empty = CssGridLineNames::new(Vec::new());
     assert!(empty.names().is_empty());
-    let names = CssGridLineNames::try_new(vec![
+    let names = CssGridLineNames::new(vec![
         CssCustomIdent::try_new("start").unwrap(),
         CssCustomIdent::try_new("start").unwrap(),
-    ])
-    .unwrap();
+    ]);
     assert_eq!(names.names().len(), 2);
 }
 

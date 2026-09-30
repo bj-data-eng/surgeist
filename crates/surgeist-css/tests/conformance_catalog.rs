@@ -4150,12 +4150,17 @@ fn font_source_complete_grammar_retains_legacy_controls_and_rejects_malformed_sr
         panic!("expected a retained URL source");
     };
     assert_eq!(
-        source.formats().unwrap().formats()[0].as_str(),
+        match source.format().unwrap() {
+            surgeist_css::CssFontFormat::String(value) => value.as_str(),
+            _ => panic!("string format"),
+        },
         "woff2-variations"
     );
     assert_eq!(
-        source.format(),
-        Some(&surgeist_css::CssFontFormatHint::Woff2)
+        source
+            .format()
+            .and_then(surgeist_css::CssFontFormat::recognized_format),
+        Some(surgeist_css::CssFontFormatHint::Woff2)
     );
     assert!(source.tech().is_empty());
     assert_eq!(

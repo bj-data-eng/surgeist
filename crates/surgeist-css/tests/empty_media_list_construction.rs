@@ -16,8 +16,7 @@ fn empty_media_list_construction_matches_valid_authored_rule() {
     };
     assert!(media.query().queries().is_empty());
     assert_eq!(validate_sheet(source).unwrap(), *parsed.syntax());
-    let constructed = CssMediaQueryList::try_new(Vec::new())
-        .expect("an empty list is valid authored media syntax");
+    let constructed = CssMediaQueryList::new(Vec::new());
     assert!(constructed.queries().is_empty());
     assert_eq!(&constructed, media.query());
 }
@@ -33,7 +32,6 @@ fn media_list_construction_preserves_nonempty_member_order_and_recovery() {
     assert!(members[1].is_guaranteed_false());
     assert!(!members[0].is_guaranteed_false());
     assert!(!members[2].is_guaranteed_false());
-    let constructed = CssMediaQueryList::try_new(members.to_vec())
-        .expect("valid existing members remain constructible");
+    let constructed = CssMediaQueryList::new(members.to_vec());
     assert_eq!(constructed.queries(), members);
 }

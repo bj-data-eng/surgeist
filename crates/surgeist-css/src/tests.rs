@@ -957,12 +957,11 @@ fn scoped_group_rule_models_keep_scoped_children() {
         location,
     ));
     let scoped_children = CssScopedRuleList::from_rules(vec![child.clone()]);
-    let query = CssMediaQueryList::try_new(vec![
+    let query = CssMediaQueryList::new(vec![
         crate::parse_media_query("screen")
             .into_validation_result()
             .unwrap(),
-    ])
-    .unwrap();
+    ]);
     let media = CssScopedMediaRule::new(query.clone(), scoped_children.clone(), location);
     assert_eq!(media.query(), &query);
     assert_eq!(media.rules(), &scoped_children);
@@ -1033,22 +1032,19 @@ fn scoped_selector_model_preserves_authored_scope_anchor_marker() {
 #[test]
 fn import_target_constructors_preserve_decoded_values() {
     for value in ["", " \t\n "] {
-        assert_eq!(CssImportUrl::try_new(value).unwrap().as_str(), value);
-        assert_eq!(CssImportString::try_new(value).unwrap().as_str(), value);
+        assert_eq!(CssImportUrl::new(crate::CssUrl::new(value)).as_str(), value);
+        assert_eq!(CssImportString::new(value).as_str(), value);
     }
     assert_eq!(
-        CssImportUrl::try_new("theme.css").unwrap().as_str(),
+        CssImportUrl::new(crate::CssUrl::new("theme.css")).as_str(),
         "theme.css"
     );
-    assert_eq!(
-        CssImportString::try_new("theme.css").unwrap().as_str(),
-        "theme.css"
-    );
+    assert_eq!(CssImportString::new("theme.css").as_str(), "theme.css");
 }
 
 #[test]
 fn import_rule_accessors_expose_authored_structure() {
-    let target = CssImportTarget::Url(CssImportUrl::try_new("theme.css").unwrap());
+    let target = CssImportTarget::Url(CssImportUrl::new(crate::CssUrl::new("theme.css")));
     let layer = CssImportLayer::Named(CssLayerName::try_new(["theme", "components"]).unwrap());
     let location = source_position(3, 7);
     let sheet =
@@ -1083,7 +1079,7 @@ fn import_rule_parser_accepts_targets_layers_and_media() {
     let rule = import_rule(rule);
     assert_eq!(
         rule.target(),
-        &CssImportTarget::String(CssImportString::try_new("theme.css").unwrap())
+        &CssImportTarget::String(CssImportString::new("theme.css"))
     );
     assert_eq!(rule.layer(), None);
     assert_eq!(rule.media(), None);
@@ -1094,7 +1090,7 @@ fn import_rule_parser_accepts_targets_layers_and_media() {
     };
     assert_eq!(
         import_rule(rule).target(),
-        &CssImportTarget::Url(CssImportUrl::try_new("layout.css").unwrap())
+        &CssImportTarget::Url(CssImportUrl::new(crate::CssUrl::new("layout.css")))
     );
 
     let sheet = parse_sheet("@import url(tokens.css) layer;").unwrap();
@@ -1104,7 +1100,7 @@ fn import_rule_parser_accepts_targets_layers_and_media() {
     let rule = import_rule(rule);
     assert_eq!(
         rule.target(),
-        &CssImportTarget::Url(CssImportUrl::try_new("tokens.css").unwrap())
+        &CssImportTarget::Url(CssImportUrl::new(crate::CssUrl::new("tokens.css")))
     );
     assert_eq!(rule.layer(), Some(&CssImportLayer::Anonymous));
 
@@ -1713,8 +1709,7 @@ fn list_counter_and_content_models_preserve_authored_shapes() {
             CssContentValueItem::Counters(counters),
             CssContentValueItem::Contents,
             CssContentValueItem::Image(
-                CssImage::try_new(CssImageValue::Url(CssUrl::try_new("marker.svg").unwrap()))
-                    .unwrap(),
+                CssImage::try_new(CssImageValue::Url(CssUrl::new("marker.svg"))).unwrap(),
             ),
             CssContentValueItem::OpenQuote,
             CssContentValueItem::CloseQuote,
@@ -1752,7 +1747,7 @@ fn list_counter_and_content_models_preserve_authored_shapes() {
             CssContentString::try_new("*").unwrap(),
         )),
         Some(CssListStylePosition::Inside),
-        Some(CssImageValue::Url(CssUrl::try_new("bullet.svg").unwrap())),
+        Some(CssImageValue::Url(CssUrl::new("bullet.svg"))),
     )
     .unwrap();
     assert!(matches!(
@@ -1871,10 +1866,7 @@ fn parses_generated_content_values_symbolically() {
             CssContentValue::Generated(
                 CssGeneratedContent::try_new(
                     vec![CssContentValueItem::Image(
-                        CssImage::try_new(CssImageValue::Url(
-                            CssUrl::try_new("marker.svg").unwrap(),
-                        ))
-                        .unwrap(),
+                        CssImage::try_new(CssImageValue::Url(CssUrl::new("marker.svg"))).unwrap(),
                     )],
                     None,
                 )
@@ -2010,7 +2002,7 @@ fn parses_list_style_longhands_and_shorthand_symbolically() {
     );
     assert_eq!(
         single_declaration_value!("list-style-image", ListStyleImage, "url(marker.svg)"),
-        CssImageValue::Url(CssUrl::try_new("marker.svg").unwrap(),)
+        CssImageValue::Url(CssUrl::new("marker.svg"),)
     );
 
     let list_style =
@@ -2024,7 +2016,7 @@ fn parses_list_style_longhands_and_shorthand_symbolically() {
     assert_eq!(list_style.position(), Some(CssListStylePosition::Inside));
     assert_eq!(
         list_style.image(),
-        Some(&CssImageValue::Url(CssUrl::try_new("marker.svg").unwrap()))
+        Some(&CssImageValue::Url(CssUrl::new("marker.svg")))
     );
 
     let list_style = single_declaration_value!("list-style", ListStyle, "none inside");
@@ -2063,7 +2055,7 @@ fn parses_list_style_longhands_and_shorthand_symbolically() {
         );
         assert_eq!(
             list_style.image(),
-            Some(&CssImageValue::Url(CssUrl::try_new("marker.svg").unwrap())),
+            Some(&CssImageValue::Url(CssUrl::new("marker.svg"))),
             "{authored_value}"
         );
         assert_eq!(list_style.position(), None, "{authored_value}");
@@ -2459,7 +2451,12 @@ fn compound_root_selector_carries_root_pseudo_class_structurally() {
         panic!("expected compound selector");
     };
 
-    assert_eq!(selector.tag().map(String::as_str), Some("html"));
+    assert_eq!(
+        selector
+            .type_selector()
+            .and_then(CssQualifiedSelectorName::local_name),
+        Some("html")
+    );
     assert_eq!(selector.pseudo_classes(), &[CssPseudoClass::Root]);
 }
 
@@ -2555,7 +2552,12 @@ fn parses_compound_structural_simple_pseudo_classes() {
     else {
         panic!("expected compound selector");
     };
-    assert_eq!(selector.tag().map(String::as_str), Some("button"));
+    assert_eq!(
+        selector
+            .type_selector()
+            .and_then(CssQualifiedSelectorName::local_name),
+        Some("button")
+    );
     assert_eq!(selector.pseudo_classes(), &[CssPseudoClass::FirstChild]);
 }
 
@@ -2617,7 +2619,12 @@ fn parses_compound_and_complex_terminal_pseudo_element_selectors() {
     else {
         panic!("expected compound marker selector");
     };
-    assert_eq!(marker.tag().map(String::as_str), Some("li"));
+    assert_eq!(
+        marker
+            .type_selector()
+            .and_then(CssQualifiedSelectorName::local_name),
+        Some("li")
+    );
     assert_pseudo_elements(
         marker.pseudo_elements().unwrap(),
         &[CssPseudoElement::Marker],
@@ -3319,182 +3326,11 @@ fn combinator_selectors_are_structurally_inspectable() {
         CssSelectorCombinator::Child
     );
     assert_eq!(
-        selector.rest()[0].selector().tag().map(String::as_str),
+        selector.rest()[0]
+            .selector()
+            .type_selector()
+            .and_then(CssQualifiedSelectorName::local_name),
         Some("button")
-    );
-}
-
-#[test]
-fn nesting_selector_composition_preserves_parent_and_child_structure() {
-    let parent = CssSelector::Class("card".to_owned());
-    let child = CssSelector::Class("title".to_owned());
-
-    let descendant = CssSelector::combine_descendant(parent.clone(), child.clone()).unwrap();
-    let CssSelector::Complex(descendant) = descendant else {
-        panic!("expected descendant complex selector");
-    };
-    assert_eq!(descendant.first().classes(), &["card".to_owned()]);
-    let [part] = descendant.rest() else {
-        panic!("expected one descendant part");
-    };
-    assert_eq!(part.combinator(), CssSelectorCombinator::Descendant);
-    assert_eq!(part.selector().classes(), &["title".to_owned()]);
-
-    let appended = CssSelector::append_to_subject(
-        parent,
-        CssCompoundSelector::new(
-            None,
-            None,
-            vec!["active".to_owned()],
-            Vec::new(),
-            vec![CssPseudoClass::Hover],
-        ),
-    )
-    .unwrap();
-    let CssSelector::Compound(appended) = appended else {
-        panic!("expected compound selector");
-    };
-    assert_eq!(
-        appended.classes(),
-        &["card".to_owned(), "active".to_owned()]
-    );
-    assert_eq!(appended.pseudo_classes(), &[CssPseudoClass::Hover]);
-}
-
-#[test]
-fn nesting_selector_composition_preserves_child_complex_chain() {
-    let parent = CssSelector::Class("card".to_owned());
-    let child = CssSelector::Complex(
-        CssComplexSelector::try_new(
-            CssCompoundSelector::new(None, None, vec!["title".to_owned()], Vec::new(), Vec::new()),
-            vec![CssComplexSelectorPart::new(
-                CssSelectorCombinator::Child,
-                CssCompoundSelector::new(
-                    None,
-                    None,
-                    vec!["icon".to_owned()],
-                    Vec::new(),
-                    Vec::new(),
-                ),
-            )],
-        )
-        .unwrap(),
-    );
-
-    let combined = CssSelector::combine_descendant(parent, child).unwrap();
-    let CssSelector::Complex(combined) = combined else {
-        panic!("expected complex selector");
-    };
-    assert_eq!(combined.first().classes(), &["card".to_owned()]);
-    let [title, icon] = combined.rest() else {
-        panic!("expected parent descendant link followed by child chain");
-    };
-    assert_eq!(title.combinator(), CssSelectorCombinator::Descendant);
-    assert_eq!(title.selector().classes(), &["title".to_owned()]);
-    assert_eq!(icon.combinator(), CssSelectorCombinator::Child);
-    assert_eq!(icon.selector().classes(), &["icon".to_owned()]);
-}
-
-#[test]
-fn nesting_selector_composition_preserves_complex_chains() {
-    let parent = CssSelector::Complex(
-        CssComplexSelector::try_new(
-            CssCompoundSelector::new(None, None, vec!["card".to_owned()], Vec::new(), Vec::new()),
-            vec![CssComplexSelectorPart::new(
-                CssSelectorCombinator::Child,
-                CssCompoundSelector::new(
-                    Some("button".to_owned()),
-                    None,
-                    Vec::new(),
-                    Vec::new(),
-                    Vec::new(),
-                ),
-            )],
-        )
-        .unwrap(),
-    );
-    let child = CssCompoundSelector::new(
-        None,
-        None,
-        vec!["icon".to_owned()],
-        Vec::new(),
-        vec![CssPseudoClass::Hover],
-    );
-
-    let combined = CssSelector::combine_with_combinator(
-        parent.clone(),
-        CssSelectorCombinator::NextSibling,
-        child,
-    )
-    .unwrap();
-    let CssSelector::Complex(combined) = combined else {
-        panic!("expected complex selector");
-    };
-    assert_eq!(combined.first().classes(), &["card".to_owned()]);
-    let [button, icon] = combined.rest() else {
-        panic!("expected preserved parent part and appended child part");
-    };
-    assert_eq!(button.combinator(), CssSelectorCombinator::Child);
-    assert_eq!(button.selector().tag().map(String::as_str), Some("button"));
-    assert_eq!(icon.combinator(), CssSelectorCombinator::NextSibling);
-    assert_eq!(icon.selector().classes(), &["icon".to_owned()]);
-    assert_eq!(icon.selector().pseudo_classes(), &[CssPseudoClass::Hover]);
-
-    let appended = CssSelector::append_to_subject(
-        parent,
-        CssCompoundSelector::new(
-            None,
-            None,
-            vec!["primary".to_owned()],
-            vec![CssAttributeSelector::new_qualified(
-                CssNamespaceConstraint::ExplicitNone,
-                CssAttributeName::new("aria-current"),
-                CssAttributeMatcher::Equals("true".to_owned()),
-                CssAttributeCaseSensitivity::DocumentDefault,
-            )],
-            vec![CssPseudoClass::Focus],
-        ),
-    )
-    .unwrap();
-    let CssSelector::Complex(appended) = appended else {
-        panic!("expected complex selector");
-    };
-    let [part] = appended.rest() else {
-        panic!("expected preserved complex selector part");
-    };
-    assert_eq!(part.selector().tag().map(String::as_str), Some("button"));
-    assert_eq!(part.selector().classes(), &["primary".to_owned()]);
-    assert_eq!(part.selector().pseudo_classes(), &[CssPseudoClass::Focus]);
-    let [attribute] = part.selector().attributes() else {
-        panic!("expected appended attribute selector");
-    };
-    assert_eq!(attribute.name().as_str(), "aria-current");
-
-    assert!(
-        CssSelector::append_to_subject(
-            CssSelector::Class("card".to_owned()),
-            CssCompoundSelector::new(
-                Some("button".to_owned()),
-                None,
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-            ),
-        )
-        .is_none()
-    );
-    assert!(
-        CssSelector::append_to_subject(
-            CssSelector::Class("card".to_owned()),
-            CssCompoundSelector::new(
-                None,
-                Some("submit".to_owned()),
-                Vec::new(),
-                Vec::new(),
-                Vec::new()
-            ),
-        )
-        .is_none()
     );
 }
 
@@ -3936,7 +3772,12 @@ fn parses_attribute_selector_case_modifiers_and_compound_position() {
     else {
         panic!("expected compound selector");
     };
-    assert_eq!(selector.tag().map(String::as_str), Some("button"));
+    assert_eq!(
+        selector
+            .type_selector()
+            .and_then(CssQualifiedSelectorName::local_name),
+        Some("button")
+    );
     assert_eq!(selector.classes(), &["primary".to_owned()]);
     assert_eq!(selector.pseudo_classes(), &[CssPseudoClass::Hover]);
     let [attribute] = selector.attributes() else {
@@ -5123,19 +4964,15 @@ fn constructor_invariants_reject_invalid_public_numeric_values() {
 
 #[test]
 fn media_query_list_constructor_accepts_empty_and_nonempty_lists() {
+    assert!(CssMediaQueryList::new(Vec::new()).queries().is_empty());
     assert!(
-        CssMediaQueryList::try_new(Vec::new())
-            .unwrap()
-            .queries()
-            .is_empty()
-    );
-    assert!(
-        CssMediaQueryList::try_new(vec![
+        !CssMediaQueryList::new(vec![
             crate::parse_media_query("screen")
                 .into_validation_result()
                 .unwrap()
         ])
-        .is_some()
+        .queries()
+        .is_empty()
     );
 }
 
@@ -5152,7 +4989,7 @@ fn media_condition_list_constructor_requires_at_least_two_conditions() {
 }
 
 #[test]
-fn legacy_query_numeric_constructors_preserve_container_compatibility_invariants() {
+fn query_numeric_constructors_preserve_finite_nonnegative_values_and_authored_units() {
     assert_eq!(
         CssQueryLength::try_new(12.0, CssLengthUnit::Rem)
             .unwrap()
@@ -5164,13 +5001,12 @@ fn legacy_query_numeric_constructors_preserve_container_compatibility_invariants
         CssQueryLength::try_new(12.0, CssLengthUnit::Rem)
             .unwrap()
             .unit(),
-        CssLengthUnit::Rem
+        Some(CssLengthUnit::Rem)
     );
     assert_eq!(CssQueryLength::try_new(-0.1, CssLengthUnit::Px), None);
     assert_eq!(CssQueryLength::try_new(f32::NAN, CssLengthUnit::Px), None);
     assert_eq!(CssQueryLength::unitless_zero().value().value(), 0.0);
-    assert_eq!(CssQueryLength::unitless_zero().authored_unit(), None);
-    assert_eq!(CssQueryLength::unitless_zero().unit(), CssLengthUnit::Px);
+    assert_eq!(CssQueryLength::unitless_zero().unit(), None);
 
     assert_eq!(
         CssRatio::try_new(16.0, 9.0).unwrap().numerator().value(),
@@ -5422,15 +5258,15 @@ fn font_face_descriptor_collection_preserves_optional_matching_fields() {
     assert!(empty.effective(CssFontFaceDescriptorKind::Src).is_none());
     assert_eq!(empty.occurrences().len(), 0);
     assert_eq!(
-        CssFontFaceUrlSource::try_new("", None, Vec::new())
-            .unwrap()
-            .url(),
+        CssFontFaceUrlSource::new(crate::CssUrl::new(""), None, Vec::new())
+            .url()
+            .as_str(),
         ""
     );
     assert_eq!(
-        CssFontFaceUrlSource::try_new("   ", None, Vec::new())
-            .unwrap()
-            .url(),
+        CssFontFaceUrlSource::new(crate::CssUrl::new("   "), None, Vec::new())
+            .url()
+            .as_str(),
         "   "
     );
 
@@ -5545,13 +5381,13 @@ fn font_face_names_and_urls_preserve_empty_and_whitespace_authored_strings() {
         "Avenir Next"
     );
     assert_eq!(
-        CssFontFaceUrlSource::try_new(
-            "fonts/avenir.woff2",
-            Some(CssFontFormatHint::Woff2),
-            vec![CssFontTechHint::Variations],
+        CssFontFaceUrlSource::new(
+            crate::CssUrl::new("fonts/avenir.woff2"),
+            Some(crate::CssFontFormat::Keyword(CssFontFormatHint::Woff2)),
+            vec![CssFontTechHint::Variations]
         )
-        .unwrap()
-        .url(),
+        .url()
+        .as_str(),
         "fonts/avenir.woff2"
     );
 
@@ -5559,9 +5395,9 @@ fn font_face_names_and_urls_preserve_empty_and_whitespace_authored_strings() {
         assert_eq!(CssFontFaceFamily::try_new(value).unwrap().as_str(), value);
         assert_eq!(CssFontLocalName::try_new(value).unwrap().as_str(), value);
         assert_eq!(
-            CssFontFaceUrlSource::try_new(value, None, Vec::new())
-                .unwrap()
-                .url(),
+            CssFontFaceUrlSource::new(crate::CssUrl::new(value), None, Vec::new())
+                .url()
+                .as_str(),
             value
         );
     }
@@ -5572,13 +5408,15 @@ fn font_face_source_and_unicode_lists_reject_empty_values() {
     assert_eq!(CssFontFaceSourceList::try_new(Vec::new()), None);
     assert_eq!(CssUnicodeRangeList::try_new(Vec::new()), None);
 
-    let url = CssFontFaceUrlSource::try_new(
-        "fonts/avenir.woff2",
-        Some(CssFontFormatHint::Woff2),
+    let url = CssFontFaceUrlSource::new(
+        crate::CssUrl::new("fonts/avenir.woff2"),
+        Some(crate::CssFontFormat::Keyword(CssFontFormatHint::Woff2)),
         vec![CssFontTechHint::ColorCOLRv1],
-    )
-    .unwrap();
-    assert_eq!(url.format(), Some(&CssFontFormatHint::Woff2));
+    );
+    assert_eq!(
+        url.format().and_then(CssFontFormat::recognized_format),
+        Some(CssFontFormatHint::Woff2)
+    );
     assert_eq!(url.tech(), &[CssFontTechHint::ColorCOLRv1]);
 
     let sources = CssFontFaceSourceList::try_new(vec![CssFontFaceSource::Url(url)]).unwrap();
@@ -5668,7 +5506,11 @@ fn font_face_rule_accessors_expose_authored_structure() {
         CssFontFaceDescriptor::new(
             CssFontFaceDescriptorValue::Src(
                 CssFontFaceSourceList::try_new(vec![CssFontFaceSource::Url(
-                    CssFontFaceUrlSource::try_new("fonts/avenir.woff2", None, Vec::new()).unwrap(),
+                    CssFontFaceUrlSource::new(
+                        crate::CssUrl::new("fonts/avenir.woff2"),
+                        None,
+                        Vec::new(),
+                    ),
                 )])
                 .unwrap(),
             )
@@ -5714,8 +5556,11 @@ fn font_face_rule_parser_accepts_descriptor_block() {
     let [CssFontFaceSource::Url(source)] = face_value!(descriptors, Src).sources() else {
         panic!("expected one URL font source");
     };
-    assert_eq!(source.url(), "inter.woff2");
-    assert_eq!(source.format(), Some(&CssFontFormatHint::Woff2));
+    assert_eq!(source.url().as_str(), "inter.woff2");
+    assert_eq!(
+        source.format().and_then(CssFontFormat::recognized_format),
+        Some(CssFontFormatHint::Woff2)
+    );
     assert!(source.tech().is_empty());
     assert_eq!(
         face_value!(descriptors, FontWeight)
@@ -5764,11 +5609,17 @@ fn font_face_rule_parser_accepts_source_list_forms() {
         panic!("expected local source and two URL sources");
     };
     assert_eq!(local.as_str(), "Inter");
-    assert_eq!(woff2.url(), "inter.woff2");
-    assert_eq!(woff2.format(), Some(&CssFontFormatHint::Woff2));
+    assert_eq!(woff2.url().as_str(), "inter.woff2");
+    assert_eq!(
+        woff2.format().and_then(CssFontFormat::recognized_format),
+        Some(CssFontFormatHint::Woff2)
+    );
     assert!(woff2.tech().is_empty());
-    assert_eq!(variable.url(), "inter-var.woff2");
-    assert_eq!(variable.format(), None);
+    assert_eq!(variable.url().as_str(), "inter-var.woff2");
+    assert_eq!(
+        variable.format().and_then(CssFontFormat::recognized_format),
+        None
+    );
     assert_eq!(variable.tech(), &[CssFontTechHint::Variations]);
 }
 
@@ -6298,8 +6149,11 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
     let [CssFontFaceSource::Url(source)] = face_value!(descriptors, Src).sources() else {
         panic!("expected one font-face URL source");
     };
-    assert_eq!(source.url(), "inter.woff2");
-    assert_eq!(source.format(), Some(&CssFontFormatHint::Woff2));
+    assert_eq!(source.url().as_str(), "inter.woff2");
+    assert_eq!(
+        source.format().and_then(CssFontFormat::recognized_format),
+        Some(CssFontFormatHint::Woff2)
+    );
 
     let [CssMediaQuery::Condition(media_condition)] = media.query().queries() else {
         panic!("expected prefers-color-scheme media condition");
@@ -6348,7 +6202,12 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
         panic!("expected one complex selector part");
     };
     assert_eq!(part.combinator(), CssSelectorCombinator::Child);
-    assert_eq!(part.selector().tag().map(String::as_str), Some("button"));
+    assert_eq!(
+        part.selector()
+            .type_selector()
+            .and_then(CssQualifiedSelectorName::local_name),
+        Some("button")
+    );
     let [attribute] = part.selector().attributes() else {
         panic!("expected one attribute selector");
     };
@@ -8740,7 +8599,7 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
             weight_number("700")
         )))
     );
-    assert_eq!(font.stretch(), Some(CssFontStretch::Condensed));
+    assert_eq!(font.stretch(), Some(CssFontWidthKeyword::Condensed));
     assert_eq!(
         font.size(),
         &CssFontSize::LengthPercentage(
@@ -10324,10 +10183,7 @@ fn grid_and_flex_properties_reject_cross_family_values() {
 fn checked_grid_constructors_reject_parser_invalid_states() {
     assert_eq!(CssCustomIdent::try_new(""), None);
     assert_eq!(CssCustomIdent::try_new("auto"), None);
-    assert_eq!(
-        CssGridLineNames::try_new(Vec::new()),
-        Some(CssGridLineNames::new(Vec::new()))
-    );
+    assert_eq!(CssGridLineNames::new(Vec::new()).names(), &[]);
     assert_eq!(CssGridGeneralTrackList::try_new(Vec::new()), None);
     assert_eq!(CssGridRepeatInteger::try_new(0), None);
     assert_eq!(CssGridTrackSizeList::try_new(Vec::new()), None);

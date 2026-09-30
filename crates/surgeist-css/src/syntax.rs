@@ -17,7 +17,7 @@ pub(crate) use crate::numeric::*;
 pub use crate::page_line_minimum::CssPageLineMinimum;
 use crate::{
     CssColorAngleLiteral, CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError,
-    CssFontSize, CssFontStretch, CssFontStyle, CssFontWeight, CssLineHeight, CssValueOrigin,
+    CssFontSize, CssFontStyle, CssFontWeight, CssFontWidthKeyword, CssLineHeight, CssValueOrigin,
 };
 use crate::{
     CssContainerScrollQuery, CssContainerStyleQuery, CssFontFeatureValuesRule,
@@ -1030,27 +1030,15 @@ pub enum CssImportTarget {
     String(CssImportString),
 }
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssImportUrl {
     url: CssUrl,
 }
 
 impl CssImportUrl {
-    /// Preserves a decoded authored URL, including empty or whitespace values.
-    /// Resource resolution and usability belong to the importing layer.
+    /// Preserves a shared authored URL, including its function identity and modifiers.
     #[must_use]
-    pub fn try_new(value: impl Into<String>) -> Option<Self> {
-        Some(Self::new(value))
-    }
-
-    #[must_use]
-    pub(crate) fn new(value: impl Into<String>) -> Self {
-        Self::from_url(CssUrl::new(value))
-    }
-
-    /// Preserves a checked authored URL, including its function identity and modifiers.
-    #[must_use]
-    pub fn from_url(url: CssUrl) -> Self {
+    pub fn new(url: CssUrl) -> Self {
         Self { url }
     }
 
@@ -1066,15 +1054,6 @@ impl CssImportUrl {
     }
 }
 
-impl std::fmt::Debug for CssImportUrl {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("CssImportUrl")
-            .field("value", &self.as_str())
-            .finish()
-    }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssImportString {
     value: String,
@@ -1084,12 +1063,7 @@ impl CssImportString {
     /// Preserves a decoded authored string, including empty or whitespace values.
     /// Resource resolution and usability belong to the importing layer.
     #[must_use]
-    pub fn try_new(value: impl Into<String>) -> Option<Self> {
-        Some(Self::new(value))
-    }
-
-    #[must_use]
-    pub(crate) fn new(value: impl Into<String>) -> Self {
+    pub fn new(value: impl Into<String>) -> Self {
         let value = value.into();
         Self { value }
     }
@@ -2341,15 +2315,9 @@ pub struct CssMediaQueryList {
 impl CssMediaQueryList {
     /// Constructs a list, including the valid empty media-query list.
     ///
-    /// Every supplied member is retained in order. This returns `Some` for all
-    /// lists; the `Option` return type is preserved for compatibility.
+    /// Every supplied checked member is retained in order.
     #[must_use]
-    pub fn try_new(queries: Vec<CssMediaQuery>) -> Option<Self> {
-        Some(Self::new(queries))
-    }
-
-    #[must_use]
-    pub(crate) fn new(queries: Vec<CssMediaQuery>) -> Self {
+    pub fn new(queries: Vec<CssMediaQuery>) -> Self {
         Self {
             queries,
             comma_origins: Vec::new(),
@@ -3315,19 +3283,9 @@ impl CssQueryLength {
         self.value
     }
 
-    /// Returns the explicit unit, or the `px`-equivalent compatibility projection for unitless
-    /// zero. Use [`Self::authored_unit`] when exact authored-unit presence matters.
-    #[must_use]
-    pub const fn unit(self) -> CssLengthUnit {
-        match self.unit {
-            Some(unit) => unit,
-            None => CssLengthUnit::Px,
-        }
-    }
-
     /// Returns the exact authored unit, or `None` for a valid unitless zero.
     #[must_use]
-    pub const fn authored_unit(self) -> Option<CssLengthUnit> {
+    pub const fn unit(self) -> Option<CssLengthUnit> {
         self.unit
     }
 }
@@ -5731,7 +5689,7 @@ pub struct CssExplicitFont {
     style: Option<CssFontStyle>,
     variant: Option<CssFontVariant>,
     weight: Option<CssFontWeight>,
-    stretch: Option<CssFontStretch>,
+    stretch: Option<CssFontWidthKeyword>,
     size: CssFontSize,
     line_height: Option<CssLineHeight>,
     families: CssFontFamilyList,
@@ -5743,7 +5701,7 @@ impl CssExplicitFont {
         style: Option<CssFontStyle>,
         variant: Option<CssFontVariant>,
         weight: Option<CssFontWeight>,
-        stretch: Option<CssFontStretch>,
+        stretch: Option<CssFontWidthKeyword>,
         size: CssFontSize,
         line_height: Option<CssLineHeight>,
         families: CssFontFamilyList,
@@ -5775,7 +5733,7 @@ impl CssExplicitFont {
     }
 
     #[must_use]
-    pub const fn stretch(&self) -> Option<CssFontStretch> {
+    pub const fn stretch(&self) -> Option<CssFontWidthKeyword> {
         self.stretch
     }
 
@@ -6305,7 +6263,7 @@ pub enum CssUrlFunction {
     Src,
 }
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssUrl {
     function: CssUrlFunction,
     value: String,
@@ -6316,12 +6274,7 @@ impl CssUrl {
     /// Preserves a decoded authored URL, including empty or whitespace values.
     /// Resource resolution and usability belong to downstream consumers.
     #[must_use]
-    pub fn try_new(value: impl Into<String>) -> Option<Self> {
-        Some(Self::new(value))
-    }
-
-    #[must_use]
-    pub(crate) fn new(value: impl Into<String>) -> Self {
+    pub fn new(value: impl Into<String>) -> Self {
         Self::from_parts(CssUrlFunction::Url, value, Vec::new())
     }
 
@@ -6369,18 +6322,6 @@ impl CssUrl {
     }
 }
 
-impl std::fmt::Debug for CssUrl {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Preserve the established diagnostic/debug projection used by the I01
-        // behavioral oracle. Authored modifiers are inspected through the
-        // intentional typed accessor above rather than Debug text.
-        formatter
-            .debug_struct("CssUrl")
-            .field("value", &self.value)
-            .finish()
-    }
-}
-
 /// One decoded CSS identifier retained as authored value syntax.
 ///
 /// Parsed and checked construction do not apply consumer-specific keyword exclusions.
@@ -6425,7 +6366,7 @@ pub enum CssUrlModifier {
 }
 
 /// One checked functional URL modifier with retained authored argument tokens.
-/// Equality remains based on its decoded name and compatibility argument text,
+/// Equality remains based on its decoded name and authored argument text,
 /// independent of the retained component origins.
 #[derive(Clone)]
 pub struct CssUrlModifierFunction {

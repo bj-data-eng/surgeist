@@ -736,9 +736,7 @@ fn mask_shorthand_preserves_valid_image_position_size_and_repeat_components() {
 
     let expected = CssMaskList::try_new(vec![
         CssMaskLayer::try_new(
-            Some(CssImageValue::Url(
-                CssUrl::try_new("mask.png").expect("nonempty URL"),
-            )),
+            Some(CssImageValue::Url(CssUrl::new("mask.png"))),
             Some(
                 CssPosition::try_new(CssHorizontalPosition::Center, CssVerticalPosition::Center)
                     .expect("valid center position"),

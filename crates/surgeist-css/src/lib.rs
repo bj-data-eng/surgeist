@@ -561,7 +561,6 @@
 //! ));
 //! assert_eq!(qualified.local_name(), Some("a"));
 //! assert_eq!(selector.ids(), ["first", "second"]);
-//! assert_eq!(selector.key().map(String::as_str), Some("second"));
 //! let [attribute] = selector.attributes() else {
 //!     panic!("expected one attribute selector");
 //! };
@@ -1180,7 +1179,7 @@ pub use grid_template_areas::{
     CssGridTemplateAreaRow, CssGridTemplateAreaRows, CssGridTemplateAreas,
 };
 mod font_width;
-pub use font_width::{CssFontFaceWidth, CssFontStretch, CssFontWidth, CssFontWidthKeyword};
+pub use font_width::{CssFontFaceWidth, CssFontWidth, CssFontWidthKeyword};
 mod font_controls;
 pub use font_controls::{
     CssFontKerning, CssFontLanguageOverride, CssFontLanguageString, CssFontOpticalSizing,

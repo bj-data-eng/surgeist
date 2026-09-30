@@ -3417,7 +3417,7 @@ fn parse_import_target<'i, 't>(
     }
 
     if let Ok(value) = input.try_parse(|input| parse_url(input, numeric)) {
-        return Ok(CssImportTarget::Url(CssImportUrl::from_url(value)));
+        return Ok(CssImportTarget::Url(CssImportUrl::new(value)));
     }
 
     Err(invalid_syntax(

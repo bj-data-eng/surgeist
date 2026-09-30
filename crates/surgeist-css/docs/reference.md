@@ -115,8 +115,8 @@ constraints. Retain the context if later matching needs namespace names.
 valid neighbors. A grammatically valid unknown feature remains an unknown
 condition. An empty media query list is
 valid and clean; an empty single query is malformed.
-`CssMediaQueryList::try_new` also accepts an empty vector and preserves every
-supplied member in order. Its existing `Option` return type is retained.
+`CssMediaQueryList::new` also accepts an empty vector and preserves every
+supplied checked member in order through infallible construction.
 
 Media conditions preserve explicit grouping as
 `CssMediaConditionKind::Parenthesized`: the wrapper position identifies the outer
@@ -1439,7 +1439,7 @@ cross-products or discarded valid empty keyframe parents.
 
 Empty `[]` line-name groups are retained as ordered authored components in
 explicit tracks and repetitions.
-`CssGridLineNames::try_new(Vec::new())` accepts the same empty group. A group
+`CssGridLineNames::new(Vec::new())` accepts the same empty group. A group
 does not supply a required track size; reserved line names remain rejected.
 Two adjacent `[...]` groups cannot occupy one track boundary, including inside
 integer and automatic repetitions.
@@ -1865,30 +1865,25 @@ the report unclean, so `validate_sheet` rejects it.
 
 Empty URL strings remain valid authored sources. `url()` and `url("")`
 retain the empty string, while `url("  ")` preserves its quoted whitespace.
-`CssFontFaceUrlSource::try_new` accepts these strings as well; its existing
-optional return type is retained. Whether a source identifies a usable font
-resource is decided by the downstream resource owner.
+`CssFontFaceUrlSource::new` accepts a shared `CssUrl`, an optional `CssFontFormat`,
+and authored technology hints without resource resolution or loading.
 
-Each `format()` hint accepts exactly one recognized keyword or one quoted
-string under the selected Fonts 4 edition. Empty and unrecognized strings are
-valid authored values; resource support is determined later. Multiple quoted
-arguments from the earlier Fonts 3 grammar now discard that source member.
-`CssFontFormatList::try_new` consequently requires exactly one item, and
-`CssFontFormatString::try_new("")` succeeds. The list name and slice accessor
-remain available with this single-item invariant. `tech(palettes)` has the
-typed `CssFontTechHint::Palettes` representation, and technology order and
-repeated entries remain authored.
+Each `format()` accepts exactly one recognized keyword or one quoted string.
+`CssFontFormat::Keyword` preserves keyword identity; `CssFontFormat::String`
+contains a `CssFontFormatString` whose infallible `new` constructor preserves
+decoded case, whitespace, empty and unrecognized strings. A missing format is
+`None`; an empty string is a present string variant. Multiple arguments discard
+the source member. Technology hints retain authored order and repetitions.
 
-`CssFontFaceUrlSource::new_with_formats` accepts a checked single-argument wrapper
-without another fallible validation step. `formats()` preserves the decoded
-authored string. `format()` projects the four legacy strings `woff2-variations`,
-`woff-variations`, `truetype-variations`, and `opentype-variations` to their base
-formats using ASCII-insensitive matching, without trimming or interpreting other
-suffixes. `required_technologies()` yields distinct authored technologies in
-first-occurrence order, followed by implied `variations` when absent. Every yielded
-technology is required together. `tech()` retains its exact authored order and
-repetitions. `CssFontFormatHint::is_equivalent_to` recognizes TrueType/OpenType
-compatibility while ordinary equality keeps their identities distinct.
+`format()` returns the single authored format. `CssFontFormat::recognized_format`
+derives recognition without caching or deciding resource support. The four CSS
+legacy variation strings `woff2-variations`, `woff-variations`,
+`truetype-variations`, and `opentype-variations` recognize their base formats
+using ASCII-insensitive matching without trimming. `required_technologies()`
+yields distinct authored technologies in first-occurrence order, followed by
+implied `variations` when absent. `tech()` retains its authored repetitions.
+`CssFontFormatHint::is_equivalent_to` recognizes TrueType/OpenType equivalence
+while ordinary equality keeps their identities distinct.
 
 The `font-family`, `font-weight`, `font-style` and `font-width` properties and
 descriptors, the `font-size` property, `font`, `@font-face`, `src`, font-source
@@ -1922,7 +1917,7 @@ complete font-face rule serializer. The `font` shorthand continues to accept
 only the Fonts 3 width keywords. The breaking public property migration replaces
 `CssKnownProperty::FontStretch` and `CssKnownPropertyValueRef::FontStretch` with
 their `FontWidth` variants; the wrapper's `value()` returns `CssFontWidth`.
-`CssFontStretch` remains a type alias for the nine-keyword `CssFontWidthKeyword`.
+The shorthand uses the nine-keyword `CssFontWidthKeyword` model.
 The descriptor migration replaces `CssFontFaceDescriptorKind::FontStretch` with
 `CssFontFaceDescriptorKind::FontWidth` and the ordinary
 `CssFontFaceDescriptorValue::FontStretch` with
@@ -2064,7 +2059,6 @@ assert!(matches!(
 ));
 assert_eq!(qualified.local_name(), Some("a"));
 assert_eq!(selector.ids(), ["first", "second"]);
-assert_eq!(selector.key().map(String::as_str), Some("second"));
 let [attribute] = selector.attributes() else {
     panic!("expected one attribute selector");
 };
@@ -3253,18 +3247,20 @@ spelling, rather than performing computed-value URL serialization.
 
 Ordinary property values and font sources share this authored URL rule:
 `url()`, `url("")`, `url('')`, and `src("")` retain an empty decoded string,
-while quoted whitespace remains data. `CssUrl::try_new("")` constructs the
-legacy `Url` form; `CssUrl::from_parts` selects `CssUrlFunction::Url` or `Src`
-and preserves ordered modifiers. `CssImportUrl::url()` and
-`CssFontFaceUrlSource::authored_url()` expose that shared value alongside their
-existing decoded-string accessors. Resource validity belongs downstream.
+while quoted whitespace remains data. `CssUrl::new("")` constructs the
+authored `Url` form; `CssUrl::from_parts` selects `CssUrlFunction::Url` or `Src`
+and preserves ordered modifiers. `CssImportUrl::new(CssUrl)` preserves the shared
+URL, while `CssImportString::new(decoded_text)` preserves the distinct string
+target. Both constructors are infallible. `CssImportUrl::url()` and
+`CssFontFaceUrlSource::url()` expose the shared authored URL. Resource validity
+belongs downstream.
 `CssUrl::is_local_url()` reports the Values 4 local URL flag for decoded targets
 beginning with `#`; it does not resolve the fragment. `CssIdent::try_new()`
 checks decoded identifier representability without consumer keyword exclusions.
 `CssUrlModifierFunction::try_new()` checks the modifier's function syntax and
 keeps its immutable argument components; `argument_components()` retains original
-token origins from parsed or checked input. The older `arguments().as_css()` view
-remains available as authored argument text, and URL equality continues to use
+token origins from parsed or checked input. The `arguments().as_css()` view
+preserves authored argument text, and URL equality continues to use
 that text and the decoded modifier name rather than source coordinates.
 
 `CssUrl::serialize_specified()` and its limits variant emit quoted `url()` or

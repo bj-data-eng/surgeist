@@ -49,10 +49,7 @@ fn checked_urls_emit_explicit_lowercase_function_identity_and_decoded_target() {
         assert_eq!(value.serialize_specified().unwrap(), expected);
     }
     assert_eq!(
-        CssUrl::try_new("icon.svg")
-            .unwrap()
-            .serialize_specified()
-            .unwrap(),
+        CssUrl::new("icon.svg").serialize_specified().unwrap(),
         "url(\"icon.svg\")"
     );
 }
@@ -87,7 +84,7 @@ fn parsed_function_and_modifier_names_keep_decoded_case_and_order() {
 #[test]
 fn decoded_string_escaping_preserves_quotes_backslashes_controls_and_unicode() {
     let target = "é\"\\\n\u{0001}";
-    let value = CssUrl::try_new(target).unwrap();
+    let value = CssUrl::new(target);
     let expected = "url(\"é\\\"\\\\\\a \\1 \")";
     assert_eq!(value.serialize_specified().unwrap(), expected);
     assert_eq!(value.as_str(), target);
