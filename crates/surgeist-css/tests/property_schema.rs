@@ -1,17 +1,7 @@
 mod common;
 
 use common::CssParseReportTestExt;
-use surgeist_css::{
-    CssBasicShape, CssBorderStyle, CssBoxShadow, CssCircleRadius, CssClipPath, CssColor,
-    CssColorComponent, CssColorInterpolationSpace, CssEasing, CssErrorCode, CssFilter,
-    CssFilterAmount, CssFilterFunction, CssFilterPercentage, CssFontVariantCaps,
-    CssFontVariantValue, CssImportance, CssKnownDeclaredValueRef, CssKnownProperty,
-    CssKnownPropertyValueRef, CssLength, CssOutlineStyle, CssPredefinedColorSpace,
-    CssRecoveryAction, CssRelativeColorChannel, CssRelativeColorEnvironment,
-    CssRelativeColorExpressionValue, CssRelativeColorFunction, CssRule, CssSystemColor,
-    CssTextDecorationLineComponent, CssTransform, CssTransformFunction, ErrorKind, parse_sheet,
-    parse_style_attribute,
-};
+use surgeist_css::*;
 
 #[test]
 fn direct_color_wrappers_keep_system_named_global_and_substitution_branches_distinct() {
@@ -1306,8 +1296,16 @@ fn shadow_and_filter_wrappers_expose_ordered_typed_values() {
         panic!("expected one box shadow");
     };
     assert!(shadow.inset());
-    assert!(matches!(shadow.offset_x(), CssLength::Px(value) if value.value() == 1.0));
-    assert!(matches!(shadow.offset_y(), CssLength::Px(value) if value.value() == 2.0));
+    assert!(exact_dimension(
+        shadow.offset_x().literal_component(),
+        "1",
+        "px"
+    ));
+    assert!(exact_dimension(
+        shadow.offset_y().literal_component(),
+        "2",
+        "px"
+    ));
     assert!(shadow.blur_radius().is_none());
     assert!(shadow.spread_radius().is_none());
     assert_eq!(shadow.color().unwrap().named().unwrap().name(), "red");
@@ -1330,7 +1328,11 @@ fn shadow_and_filter_wrappers_expose_ordered_typed_values() {
     else {
         panic!("expected ordered blur and opacity functions");
     };
-    assert!(matches!(blur.length(), CssLength::Px(value) if value.value() == 4.0));
+    assert!(exact_dimension(
+        blur.length().literal_component(),
+        "4",
+        "px"
+    ));
     assert!(matches!(
         amount,
         CssFilterAmount::Percentage(CssFilterPercentage::Literal(value))
@@ -1487,8 +1489,16 @@ fn every_aggregate_color_consumer_retains_typed_color_mix() {
     };
     assert_srgb_mix_with_lab_and_blue(shadow.color().expect("box-shadow color"));
     assert!(!shadow.inset());
-    assert!(matches!(shadow.offset_x(), CssLength::Px(value) if value.value() == 1.0));
-    assert!(matches!(shadow.offset_y(), CssLength::Px(value) if value.value() == 2.0));
+    assert!(exact_dimension(
+        shadow.offset_x().literal_component(),
+        "1",
+        "px"
+    ));
+    assert!(exact_dimension(
+        shadow.offset_y().literal_component(),
+        "2",
+        "px"
+    ));
     assert!(shadow.blur_radius().is_none());
     assert!(shadow.spread_radius().is_none());
 
@@ -1505,8 +1515,16 @@ fn every_aggregate_color_consumer_retains_typed_color_mix() {
             panic!("expected one drop-shadow");
         };
         assert_srgb_mix_with_lab_and_blue(shadow.color().expect("drop-shadow color"));
-        assert!(matches!(shadow.offset_x(), CssLength::Px(value) if value.value() == 1.0));
-        assert!(matches!(shadow.offset_y(), CssLength::Px(value) if value.value() == 2.0));
+        assert!(exact_dimension(
+            shadow.offset_x().literal_component(),
+            "1",
+            "px"
+        ));
+        assert!(exact_dimension(
+            shadow.offset_y().literal_component(),
+            "2",
+            "px"
+        ));
         assert!(shadow.blur_radius().is_none());
     }
 }
@@ -1547,7 +1565,7 @@ fn clip_path_wrapper_separates_authored_global_and_substitution_values() {
     };
     assert!(
         matches!(shape.radius(), CssCircleRadius::LengthPercentage(radius)
-        if matches!(radius.value(), CssLength::Percent(value) if value.value() == 50.0))
+        if exact_percentage(radius.literal_component(), "50"))
     );
     assert!(shape.position().is_some());
 
@@ -1612,4 +1630,18 @@ fn deferred_basic_shape_math_drops_only_the_invalid_declaration() {
             assert_eq!(failure.diagnostics(), report.diagnostics(), "{source}");
         }
     }
+}
+
+fn exact_dimension(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+    expected_unit: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+}
+fn exact_percentage(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
 }

@@ -1,13 +1,16 @@
+use super::values::{
+    parse_length, parse_length_percentage, parse_nonnegative_length,
+    parse_nonnegative_length_percentage,
+};
 use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
 
 use super::background::{parse_background_repeat, parse_background_size, parse_mask_image};
-use super::box_model::{expand_radius_components, parse_drop_shadow};
+use super::box_model::parse_drop_shadow;
 use super::position::parse_css_position;
 use super::url::parse_url;
 use super::values::{
-    CalculationRoot, LengthGrammar, checked_percentage_value, next_is_comma, next_is_delim,
-    next_is_ident, parse_length_with, parse_length_with_context, parse_number,
-    parse_numeric_function,
+    CalculationRoot, checked_percentage_value, next_is_comma, next_is_delim, next_is_ident,
+    parse_number, parse_numeric_function,
 };
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
@@ -41,16 +44,8 @@ pub(super) fn parse_clip<'i, 't>(
 pub(super) fn parse_outline_offset<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssOutlineOffset, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let value = parse_length_with_context(
-        input,
-        numeric,
-        LengthGrammar::OutlineOffset,
-        "outline-offset",
-    )?;
-    CssOutlineOffset::try_new(value)
-        .ok_or_else(|| unsupported_value_at(location, None, "outline-offset requires a length"))
+) -> Result<CssSpecifiedLength, ParseError<'i, Error>> {
+    parse_length(input, numeric, "outline-offset")
 }
 
 pub(super) fn parse_transform_box<'i, 't>(
@@ -139,11 +134,8 @@ fn parse_clip_edge<'i, 't>(
     {
         return Ok(CssClipEdge::Auto);
     }
-    let location = input.current_source_location();
-    let value = parse_length_with(input, numeric, LengthGrammar::Clip)?;
-    CssClipLength::try_new(value)
-        .map(CssClipEdge::Length)
-        .ok_or_else(|| unsupported_value_at(location, None, "clip edge requires a length or auto"))
+    let value = parse_length(input, numeric, "clip")?;
+    Ok(CssClipEdge::Length(value))
 }
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
@@ -285,16 +277,7 @@ fn parse_transform_function_value<'i, 't>(
             {
                 CssTransformPerspective::None
             } else {
-                let location = input.current_source_location();
-                let length = parse_transform_length(input, numeric)?;
-                let length = CssTransformNonNegativeLength::try_new(length.value().clone())
-                    .ok_or_else(|| {
-                        unsupported_value_at(
-                            location,
-                            None,
-                            "perspective() requires a non-negative length or none",
-                        )
-                    })?;
+                let length = parse_nonnegative_length(input, numeric, "perspective")?;
                 CssTransformPerspective::Length(length)
             };
             input.expect_exhausted().map_err(basic)?;
@@ -554,27 +537,15 @@ fn parse_transform_angle<'i, 't>(
 fn parse_transform_length_percentage<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssTransformLengthPercentage, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let value = parse_length_with_context(input, numeric, LengthGrammar::Position, "translate")?;
-    CssTransformLengthPercentage::try_new(value).ok_or_else(|| {
-        unsupported_value_at(
-            location,
-            None,
-            "transform translation requires a length-percentage",
-        )
-    })
+) -> Result<CssSpecifiedLengthPercentage, ParseError<'i, Error>> {
+    parse_length_percentage(input, numeric, "transform translation")
 }
 
 fn parse_transform_length<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssTransformLength, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let value = parse_length_with_context(input, numeric, LengthGrammar::Position, "translate")?;
-    CssTransformLength::try_new(value).ok_or_else(|| {
-        unsupported_value_at(location, None, "transform translation requires a length")
-    })
+) -> Result<CssSpecifiedLength, ParseError<'i, Error>> {
+    parse_length(input, numeric, "transform translation")
 }
 
 fn parse_radial_extent<'i, 't>(
@@ -654,34 +625,16 @@ fn parse_shape_length_percentage<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
     context: &str,
-) -> std::result::Result<CssLength, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let value = parse_length_with_context(input, numeric, LengthGrammar::Position, context)?;
-    CssPositionOffset::try_new(value.clone())
-        .map(|_| value)
-        .ok_or_else(|| {
-            unsupported_value_at(
-                location,
-                None,
-                format!("{context} requires a length-percentage"),
-            )
-        })
+) -> Result<CssSpecifiedLengthPercentage, ParseError<'i, Error>> {
+    parse_length_percentage(input, numeric, context)
 }
 
 fn parse_non_negative_shape_length_percentage<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
     context: &str,
-) -> std::result::Result<CssShapeLengthPercentage, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let value = parse_length_with_context(input, numeric, LengthGrammar::Position, context)?;
-    CssShapeLengthPercentage::try_new(value).ok_or_else(|| {
-        unsupported_value_at(
-            location,
-            None,
-            format!("{context} requires a non-negative length-percentage"),
-        )
-    })
+) -> Result<CssSpecifiedNonNegativeLengthPercentage, ParseError<'i, Error>> {
+    parse_nonnegative_length_percentage(input, numeric, context)
 }
 
 fn parse_inset_shape<'i, 't>(
@@ -717,32 +670,22 @@ fn parse_inset_shape<'i, 't>(
 fn parse_shape_radii<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssBorderRadii, ParseError<'i, Error>> {
+) -> Result<crate::CssBorderRadiusShorthand, ParseError<'i, Error>> {
     let horizontal = parse_shape_radius_list(input, numeric)?;
     let vertical = if input.try_parse(|input| input.expect_delim('/')).is_ok() {
-        parse_shape_radius_list(input, numeric)?
+        Some(parse_shape_radius_list(input, numeric)?)
     } else {
-        horizontal.clone()
+        None
     };
-    if !input.is_exhausted() {
-        return Err(unsupported_value(input, None, "invalid inset round radii"));
-    }
-    let (h_top_left, h_top_right, h_bottom_right, h_bottom_left) =
-        expand_radius_components(horizontal);
-    let (v_top_left, v_top_right, v_bottom_right, v_bottom_left) =
-        expand_radius_components(vertical);
-    Ok(CssBorderRadii::new(
-        CssCornerRadius::new(h_top_left, v_top_left),
-        CssCornerRadius::new(h_top_right, v_top_right),
-        CssCornerRadius::new(h_bottom_right, v_bottom_right),
-        CssCornerRadius::new(h_bottom_left, v_bottom_left),
-    ))
+    input.expect_exhausted().map_err(basic)?;
+    crate::CssBorderRadiusShorthand::try_new(horizontal, vertical)
+        .ok_or_else(|| unsupported_value(input, None, "invalid inset round radii"))
 }
 
 fn parse_shape_radius_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<Vec<CssLength>, ParseError<'i, Error>> {
+) -> std::result::Result<Vec<CssSpecifiedNonNegativeLengthPercentage>, ParseError<'i, Error>> {
     let mut values = Vec::new();
     while !input.is_exhausted() && !next_is_delim(input, '/') {
         if values.len() == 4 {
@@ -752,11 +695,11 @@ fn parse_shape_radius_list<'i, 't>(
                 "inset round has too many radii",
             ));
         }
-        values.push(
-            parse_non_negative_shape_length_percentage(input, numeric, "inset round radius")?
-                .value()
-                .clone(),
-        );
+        values.push(parse_non_negative_shape_length_percentage(
+            input,
+            numeric,
+            "inset round radius",
+        )?);
     }
     if values.is_empty() {
         Err(unsupported_value(
@@ -784,20 +727,7 @@ fn parse_polygon_shape<'i, 't>(
         }
         if round.is_none() && next_is_ident(input, "round") {
             input.expect_ident_matching("round")?;
-            let location = input.current_source_location();
-            let value = parse_length_with_context(
-                input,
-                numeric,
-                LengthGrammar::Position,
-                "polygon round",
-            )?;
-            round = Some(CssShapeLength::try_new(value).ok_or_else(|| {
-                unsupported_value_at(
-                    location,
-                    None,
-                    "polygon round requires a non-negative length",
-                )
-            })?);
+            round = Some(parse_nonnegative_length(input, numeric, "polygon round")?);
             continue;
         }
         break;
@@ -846,32 +776,28 @@ fn parse_polygon_fill_rule<'i, 't>(
 pub(super) fn parse_translate<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssTranslate, ParseError<'i, Error>> {
+) -> Result<CssTranslate, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
         .is_ok()
     {
         return Ok(CssTranslate::None);
     }
-    let mut values = Vec::new();
-    while !input.is_exhausted() {
-        values.push(parse_length_with_context(
-            input,
-            numeric,
-            LengthGrammar::Position,
-            "translate",
-        )?);
-        if values.len() > 3 {
-            return Err(unsupported_value(
-                input,
-                None,
-                "translate has too many values",
-            ));
-        }
-    }
-    CssTranslateValues::try_new(values)
-        .map(CssTranslate::Values)
-        .ok_or_else(|| unsupported_value(input, None, "translate is empty"))
+    let x = parse_length_percentage(input, numeric, "translate x")?;
+    let y = if input.is_exhausted() {
+        None
+    } else {
+        Some(parse_length_percentage(input, numeric, "translate y")?)
+    };
+    let z = if input.is_exhausted() {
+        None
+    } else {
+        Some(parse_length(input, numeric, "translate z")?)
+    };
+    input.expect_exhausted().map_err(basic)?;
+    Ok(CssTranslate::Values(
+        CssTranslateValues::try_new(x, y, z).expect("parser retained consecutive translate axes"),
+    ))
 }
 
 pub(super) fn parse_rotate<'i, 't>(
@@ -962,19 +888,13 @@ fn parse_filter_function_value<'i, 't>(
 ) -> std::result::Result<CssFilterFunction, ParseError<'i, Error>> {
     match name.to_ascii_lowercase().as_str() {
         "blur" => {
-            let length = if input.is_exhausted() {
-                // Filter Effects 1 supplies 0px for an omitted radius. The
-                // property's authored components still preserve the omission.
-                CssLength::try_px(0.0).expect("zero pixels is a finite length")
+            let blur = if input.is_exhausted() {
+                CssFilterBlur::omitted()
             } else {
-                super::values::parse_shadow_blur_length(input, numeric)?
+                CssFilterBlur::new(parse_nonnegative_length(input, numeric, "filter blur")?)
             };
             input.expect_exhausted().map_err(basic)?;
-            CssFilterBlur::try_new(length)
-                .map(CssFilterFunction::Blur)
-                .ok_or_else(|| {
-                    unsupported_value(input, None, "blur() requires a non-negative length")
-                })
+            Ok(CssFilterFunction::Blur(blur))
         }
         "brightness" => parse_filter_amount(input, numeric).map(CssFilterFunction::Brightness),
         "contrast" => parse_filter_amount(input, numeric).map(CssFilterFunction::Contrast),
@@ -1251,7 +1171,7 @@ mod transform_tests {
         assert!(matches!(
             &functions.functions()[1],
             CssTransformFunction::Translate3d(translation)
-                if matches!(translation.z().value(), CssLength::Px(value) if value.value() == 3.0)
+                if matches!(translation.z().literal_component().unwrap().view(), crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "3" && unit == "px")
         ));
         assert_eq!(
             functions.functions()[0].kind(),

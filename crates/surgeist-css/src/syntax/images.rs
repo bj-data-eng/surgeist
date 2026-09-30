@@ -1,9 +1,9 @@
 //! Checked construction boundaries for authored Images 3 values.
 
 use super::{
-    CssColor, CssColorStopList, CssGradientColorStop, CssGradientLinePosition, CssImageValue,
-    CssLinearGradient, CssLinearGradientDirection, CssPosition, CssRadialGradient, CssRadialShape,
-    CssRadialSize,
+    CssColor, CssColorStopList, CssGradientColorStop, CssImageValue, CssLinearGradient,
+    CssLinearGradientDirection, CssPosition, CssRadialGradient, CssRadialShape, CssRadialSize,
+    CssSpecifiedLengthPercentage,
 };
 
 /// One authored `<image>`, excluding property-specific `none` keywords.
@@ -30,7 +30,7 @@ impl CssGradientColorStop {
     /// Constructs a stop from a checked authored color and optional line position.
     /// The authored color stays symbolic; no legacy color projection is invented.
     #[must_use]
-    pub fn from_color(color: CssColor, position: Option<CssGradientLinePosition>) -> Self {
+    pub fn from_color(color: CssColor, position: Option<CssSpecifiedLengthPercentage>) -> Self {
         Self { color, position }
     }
 }

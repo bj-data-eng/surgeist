@@ -1,10 +1,4 @@
-use surgeist_css::{
-    CssBlendMode, CssBlendModeList, CssBoxEdgeKeyword, CssCaretColor, CssContain,
-    CssContainComponent, CssContainComponentList, CssErrorCode, CssGlobalKeyword, CssIsolation,
-    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
-    CssOutlineOffset, CssRecoveryAction, CssResize, CssTransformBox, ErrorKind,
-    parse_style_attribute,
-};
+use surgeist_css::*;
 
 #[test]
 fn residual_ui_containment_and_compositing_properties_are_typed() {
@@ -79,9 +73,10 @@ fn residual_ui_containment_and_compositing_properties_are_typed() {
     else {
         panic!("expected outline-offset");
     };
-    assert!(matches!(
-        offset.offset().value(),
-        CssLength::Px(value) if value.value() == -2.0
+    assert!(exact_dimension(
+        offset.offset().literal_component(),
+        "-2",
+        "px"
     ));
 
     let CssKnownPropertyValueRef::Resize(resize) = report.syntax()[2]
@@ -317,9 +312,18 @@ fn checked_public_containment_transform_and_list_construction_rejects_invalid_st
         &[CssBlendMode::Screen, CssBlendMode::Screen],
     );
 
-    assert!(CssOutlineOffset::try_new(CssLength::Auto).is_none());
-    assert!(CssOutlineOffset::try_new(CssLength::try_percent(10.0).unwrap()).is_none());
-    assert!(CssOutlineOffset::try_new(CssLength::try_px(-2.0).unwrap()).is_some());
+    for css in ["auto", "10%"] {
+        assert!(
+            CssSpecifiedLength::try_from_component(CssComponentValue::try_token(css).unwrap())
+                .is_err()
+        );
+    }
+    assert!(
+        CssSpecifiedLength::try_from_component(
+            CssComponentValue::try_dimension("-2", "px").unwrap()
+        )
+        .is_ok()
+    );
 }
 
 #[test]
@@ -508,4 +512,12 @@ fn ui_containment_and_compositing_eof_and_non_bmp_recovery_preserve_coordinates(
         report.syntax()[1].known().unwrap().property(),
         CssKnownProperty::Color,
     );
+}
+
+fn exact_dimension(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+    expected_unit: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }

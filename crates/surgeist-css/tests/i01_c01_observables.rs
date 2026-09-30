@@ -2341,8 +2341,12 @@ fn assert_captured_border(border: &surgeist_css::CssBorder, expected: &str) {
     }
 }
 
-fn assert_captured_px(length: &surgeist_css::CssLength, expected: f32) {
-    assert!(matches!(length, surgeist_css::CssLength::Px(value) if value.value() == expected));
+fn assert_captured_px(component: Option<&surgeist_css::CssComponentValue>, expected: &str) {
+    assert!(exact_dimension(component, expected, "px"));
+    assert!(matches!(
+        component.unwrap().origin(),
+        surgeist_css::CssValueOrigin::Parsed(_)
+    ));
 }
 
 fn assert_captured_grid_columns(list: &surgeist_css::CssGridTrackList) {
@@ -2734,10 +2738,10 @@ fn assert_known_property_value(
             assert!(matches!(value.sizes().sizes(), [
                 Size::Cover,
                 Size::Explicit {
-                    width: Part::Length(surgeist_css::CssLength::Px(length)),
+                    width: Part::Length(length),
                     height: Some(Part::Auto),
                 },
-            ] if length.value() == 10.0));
+            ] if exact_dimension(length.literal_component(), "10", "px")));
             Some(value.as_css())
         }
         (
@@ -2823,10 +2827,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::Transform,
             surgeist_css::CssKnownPropertyValueRef::Transform(value),
         ) => {
-            use surgeist_css::{
-                CssAngleUnit, CssLength, CssTransform, CssTransformAngle, CssTransformFunction,
-                CssTransformNumber,
-            };
+            use surgeist_css::*;
             let CssTransform::Functions(functions) = value.value() else {
                 panic!("captured transform function list");
             };
@@ -2838,12 +2839,16 @@ fn assert_known_property_value(
             else {
                 panic!("captured translate, rotate, scale order");
             };
-            assert!(
-                matches!(translation.x().value(), CssLength::Px(number) if number.value() == 10.0)
-            );
-            assert!(
-                matches!(translation.y().unwrap().value(), CssLength::Px(number) if number.value() == 20.0)
-            );
+            assert!(exact_dimension(
+                translation.x().literal_component(),
+                "10",
+                "px"
+            ));
+            assert!(exact_dimension(
+                translation.y().unwrap().literal_component(),
+                "20",
+                "px"
+            ));
             assert!(
                 matches!(angle, CssTransformAngle::Literal(literal) if literal.value() == 45.0 && literal.unit() == CssAngleUnit::Degrees)
             );
@@ -3002,7 +3007,7 @@ fn assert_known_property_value(
             let Some(CssTextDecorationThickness::Length(thickness)) = decoration.thickness() else {
                 panic!("captured decoration length");
             };
-            assert_captured_px(thickness.length(), 3.0);
+            assert_captured_px(thickness.literal_component(), "3");
             Some(value.as_css())
         }
         (
@@ -3016,10 +3021,13 @@ fn assert_known_property_value(
                 panic!("captured one box shadow");
             };
             assert!(shadow.inset());
-            assert_captured_px(shadow.offset_x(), 1.0);
-            assert_captured_px(shadow.offset_y(), 2.0);
-            assert_captured_px(shadow.blur_radius().expect("blur"), 3.0);
-            assert_captured_px(shadow.spread_radius().expect("spread"), 4.0);
+            assert_captured_px(shadow.offset_x().literal_component(), "1");
+            assert_captured_px(shadow.offset_y().literal_component(), "2");
+            assert_captured_px(shadow.blur_radius().expect("blur").literal_component(), "3");
+            assert_captured_px(
+                shadow.spread_radius().expect("spread").literal_component(),
+                "4",
+            );
             assert_captured_color(shadow.color().expect("shadow color"), "black");
             Some(value.as_css())
         }
@@ -3037,7 +3045,7 @@ fn assert_known_property_value(
             else {
                 panic!("captured ordered blur and opacity");
             };
-            assert_captured_px(blur.length(), 4.0);
+            assert_captured_px(blur.length().literal_component(), "4");
             assert!(matches!(
                 amount,
                 CssFilterAmount::Percentage(CssFilterPercentage::Literal(number))
@@ -3424,10 +3432,7 @@ fn assert_known_property_value(
                 frozen.input,
             );
             let old = format!(
-                "CssEdges {{ top: {:?}, right: {:?}, bottom: {bottom}, left: {:?} }}",
-                surgeist_css::CssLength::try_px(1.0).unwrap(),
-                surgeist_css::CssLength::try_percent(2.0).unwrap(),
-                surgeist_css::CssLength::Zero,
+                "CssEdges {{ top: Px(CssFiniteNumber {{ value: 1.0 }}), right: Percent(CssFiniteNumber {{ value: 2.0 }}), bottom: {bottom}, left: Zero }}"
             );
             assert_captured_numeric_metadata(
                 property.stable_id(),
@@ -4317,10 +4322,7 @@ fn assert_known_property_value(
             let surgeist_css::CssCircleRadius::LengthPercentage(radius) = circle.radius() else {
                 panic!("captured percentage radius");
             };
-            assert!(
-                matches!(radius.value(), surgeist_css::CssLength::Percent(percent)
-                if percent.value() == 50.0)
-            );
+            assert!(exact_percentage(radius.literal_component(), "50"));
             let position = circle.position().expect("captured center position");
             assert!(matches!(
                 position.horizontal(),
@@ -4347,16 +4349,16 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::BackgroundPosition(value),
         ) => {
             use surgeist_css::{
-                CssHorizontalPosition as Horizontal, CssLength, CssVerticalPosition as Vertical,
+                CssHorizontalPosition as Horizontal, CssVerticalPosition as Vertical,
             };
             let [position] = value.positions().positions() else {
                 panic!("captured one background-position layer")
             };
             assert!(
-                matches!(position.horizontal(), Horizontal::LeftOffset(offset) if matches!(offset.value(), CssLength::Px(number) if number.value() == 10.0))
+                matches!(position.horizontal(), Horizontal::LeftOffset(offset) if exact_dimension(offset.literal_component(), "10", "px"))
             );
             assert!(
-                matches!(position.vertical(), Vertical::TopOffset(offset) if matches!(offset.value(), CssLength::Percent(number) if number.value() == 20.0))
+                matches!(position.vertical(), Vertical::TopOffset(offset) if exact_percentage(offset.literal_component(), "20"))
             );
             Some(value.as_css())
         }
@@ -5155,9 +5157,11 @@ fn assert_known_property_value(
             let typed = value.value();
             assert!(typed.hanging());
             assert!(typed.each_line());
-            assert!(
-                matches!(typed.length(), CssLength::Dimension(length) if length.value() == 1.0 && length.unit() == CssLengthUnit::Rem)
-            );
+            assert!(exact_dimension(
+                typed.length().literal_component(),
+                "1",
+                "rem"
+            ));
         }
         (CssKnownProperty::VerticalAlign, CssKnownPropertyValueRef::VerticalAlign(value)) => {
             assert_archive_wrapper(property, value.as_css(), semantic, authored);
@@ -5336,7 +5340,7 @@ fn assert_known_property_value(
             let CssTextDecorationThickness::Length(length) = typed else {
                 panic!("captured thickness");
             };
-            assert_captured_px(length.length(), 2.0);
+            assert_captured_px(length.literal_component(), "2");
         }
         (CssKnownProperty::TextTransform, CssKnownPropertyValueRef::TextTransform(value)) => {
             assert_archive_wrapper(property, value.as_css(), semantic, authored);
@@ -5978,7 +5982,7 @@ fn assert_known_property_value(
             let CssOutlineWidth::Length(length) = typed else {
                 panic!("captured outline width");
             };
-            assert_captured_px(length, 2.0);
+            assert_captured_px(length.literal_component(), "2");
         }
         (CssKnownProperty::Translate, CssKnownPropertyValueRef::Translate(value)) => {
             assert_archive_wrapper(property, value.as_css(), semantic, authored);
@@ -5998,11 +6002,15 @@ fn assert_known_property_value(
             let CssTranslate::Values(values) = typed else {
                 panic!("captured translate");
             };
-            let [x, y] = values.values() else {
-                panic!("two captured translate coordinates");
-            };
-            assert_captured_px(x, 10.0);
-            assert_captured_px(y, 20.0);
+            assert_captured_px(values.x().literal_component(), "10");
+            assert_captured_px(
+                values
+                    .y()
+                    .expect("second captured translate coordinate")
+                    .literal_component(),
+                "20",
+            );
+            assert!(values.z().is_none());
         }
         (CssKnownProperty::Rotate, CssKnownPropertyValueRef::Rotate(value)) => {
             assert_archive_wrapper(property, value.as_css(), semantic, authored);
@@ -6437,4 +6445,18 @@ fn assert_archive_basis(basis: &surgeist_css::CssFlexBasisValue) {
         panic!("captured flex basis");
     };
     assert_archive_literal(length.literal_component().unwrap(), "10", Some("rem"));
+}
+
+fn exact_dimension(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+    expected_unit: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+}
+fn exact_percentage(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
 }

@@ -454,10 +454,11 @@ fn nested_symbols_images_preserve_math_modifier_order_and_shared_budget() {
     let CssColorStopListItem::Stop(first_stop) = &gradient.stops().items()[0] else {
         panic!("first gradient stop")
     };
-    let CssLength::Calc(CssCalcLength::Typed(calculation)) = first_stop.position().unwrap().value()
-    else {
-        panic!("symbolic first-stop math")
-    };
+    let calculation = first_stop
+        .position()
+        .unwrap()
+        .calculation()
+        .expect("retained exact calculation");
     let CssValueOrigin::Parsed(calc_origin) = calculation.origin() else {
         panic!("original calculation source")
     };

@@ -1,17 +1,4 @@
-use surgeist_css::{
-    CssAngleCalculation, CssAngleUnit, CssAuthoredFontFaceDescriptorValue, CssBasicShape,
-    CssBlendMode, CssBoxEdgeKeyword, CssBoxShadow, CssCalculationType, CssClipPath,
-    CssDelayLiteral, CssEasing, CssErrorCode, CssExclusionReason, CssFeatureKind, CssFilter,
-    CssFilterFunction, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
-    CssFrequencyCalculation, CssFrequencyUnit, CssHorizontalPosition, CssIntegerCalculation,
-    CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssLengthCalculation,
-    CssLengthDimension, CssLengthUnit, CssNumberCalculation, CssPercentageCalculation,
-    CssRecoveryAction, CssResolution, CssResolutionUnit, CssRule, CssSpecificationTier,
-    CssSupportStatus, CssSupportsConditionKind, CssTimeCalculation, CssTimeUnit, CssTransform,
-    CssTransformFunction, CssTransformPerspective, CssTransformScaleComponent, CssVerticalPosition,
-    ErrorKind, conformance_exclusion, conformance_exclusions, feature_metadata, parse_sheet,
-    parse_style_attribute, property_support_metadata, specification_source, specification_sources,
-};
+use surgeist_css::*;
 
 #[test]
 fn display_sources_separate_base_grammar_from_grid_lanes_additions() {
@@ -2313,11 +2300,16 @@ fn selected_alignment_grammars_cite_the_superseding_align3_source() {
 
 #[test]
 fn c14_remaining_official_values_are_typed() {
-    let dimension =
-        CssLengthDimension::try_new(-1.5, CssLengthUnit::Cqw).expect("finite dimension");
-    assert_eq!(dimension.value(), -1.5);
-    assert_eq!(dimension.unit(), CssLengthUnit::Cqw);
-    assert!(CssLengthDimension::try_new(f32::INFINITY, CssLengthUnit::Px).is_none());
+    let dimension = CssSpecifiedLength::try_from_component(
+        CssComponentValue::try_dimension("-1.5", "cqw").unwrap(),
+    )
+    .unwrap();
+    assert!(exact_dimension(
+        dimension.literal_component(),
+        "-1.5",
+        "cqw"
+    ));
+    assert!(CssComponentValue::try_dimension("infinity", "px").is_err());
 
     let angle = CssAngleCalculation::try_literal(-0.5, CssAngleUnit::Turns).expect("finite angle");
     let percentage = CssPercentageCalculation::try_literal(25.0).expect("finite percentage");
@@ -2570,12 +2562,12 @@ fn official_position_metadata_matches_generic_position_behavior() {
     assert!(matches!(
         value.position().horizontal(),
         CssHorizontalPosition::RightOffset(offset)
-            if matches!(offset.value(), CssLength::Percent(value) if value.value() == 5.0)
+            if exact_percentage(offset.literal_component(), "5")
     ));
     assert!(matches!(
         value.position().vertical(),
         CssVerticalPosition::BottomOffset(offset)
-            if matches!(offset.value(), CssLength::Px(value) if value.value() == 2.0)
+            if exact_dimension(offset.literal_component(), "2", "px")
     ));
 
     assert_complete_position_value_metadata(
@@ -2604,7 +2596,7 @@ fn official_background_position_metadata_matches_three_component_layer_behavior(
     assert!(matches!(
         layer.horizontal(),
         CssHorizontalPosition::LeftOffset(offset)
-            if matches!(offset.value(), CssLength::Px(value) if value.value() == 10.0)
+            if exact_dimension(offset.literal_component(), "10", "px")
     ));
     assert!(matches!(layer.vertical(), CssVerticalPosition::Top));
 
@@ -2660,7 +2652,7 @@ fn object_position_property_metadata_matches_semantic_accessor_behavior() {
     assert!(matches!(
         value.position().vertical(),
         CssVerticalPosition::Offset(offset)
-            if matches!(offset.value(), CssLength::Percent(value) if value.value() == 25.0)
+            if exact_percentage(offset.literal_component(), "25")
     ));
 
     assert_complete_position_property_metadata(
@@ -2692,10 +2684,12 @@ fn transform_origin_property_metadata_matches_directed_z_behavior() {
         value.origin().vertical(),
         CssVerticalPosition::Top
     ));
-    assert!(matches!(
-        value.origin().z().map(|z| z.value()),
-        Some(CssLength::Px(value)) if value.value() == 50.0
-    ));
+    assert!(
+        value
+            .origin()
+            .z()
+            .is_some_and(|z| exact_dimension(z.literal_component(), "50", "px"))
+    );
 
     assert_complete_position_property_metadata(
         "baseline.property.transform-origin",
@@ -2724,7 +2718,7 @@ fn mask_position_property_metadata_matches_generic_layer_behavior() {
     assert!(matches!(
         first.horizontal(),
         CssHorizontalPosition::LeftOffset(offset)
-            if matches!(offset.value(), CssLength::Px(value) if value.value() == 10.0)
+            if exact_dimension(offset.literal_component(), "10", "px")
     ));
     assert!(matches!(second.horizontal(), CssHorizontalPosition::Center));
 
@@ -2768,9 +2762,11 @@ fn official_number_metadata_matches_checked_number_behavior() {
 
 #[test]
 fn official_dimension_metadata_matches_checked_dimension_behavior() {
-    let value = CssLengthDimension::try_new(1.5, CssLengthUnit::Rem).expect("finite dimension");
-    assert_eq!(value.value(), 1.5);
-    assert_eq!(value.unit(), CssLengthUnit::Rem);
+    let value = CssSpecifiedLength::try_from_component(
+        CssComponentValue::try_dimension("1.5", "rem").unwrap(),
+    )
+    .unwrap();
+    assert!(exact_dimension(value.literal_component(), "1.5", "rem"));
     assert_c03_value_metadata(
         "official.value.dimension",
         "<dimension>",
@@ -4766,7 +4762,7 @@ fn transform_perspective_accepts_none_and_zero_and_rejects_invalid_dimensions() 
     assert!(matches!(
         &functions.functions()[1],
         CssTransformFunction::Perspective(CssTransformPerspective::Length(length))
-            if matches!(length.value(), CssLength::Zero)
+            if matches!(length.literal_component().map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number))) if number.representation() == "0")
     ));
     assert!(!parse_style_attribute("transform: perspective(10%)").is_clean());
     assert!(!parse_style_attribute("transform: perspective(-1px)").is_clean());
@@ -5932,4 +5928,18 @@ fn text_combine_upright_uses_selected_level_four_digits_grammar() {
     for text in ["digits", "digits 2", "digits 4", "digits calc(2.5)"] {
         assert!(parse_style_attribute(&format!("text-combine-upright:{text}")).is_clean());
     }
+}
+
+fn exact_dimension(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+    expected_unit: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+}
+fn exact_percentage(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
 }

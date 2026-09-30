@@ -341,9 +341,11 @@ fn nested_symbols_images_share_the_shorthand_budget_and_original_source() {
         let CssColorStopListItem::Stop(stop) = &gradient.stops().items()[0] else {
             panic!("first gradient stop")
         };
-        let CssLength::Calc(CssCalcLength::Typed(calc)) = stop.position().unwrap().value() else {
-            panic!("symbolic stop")
-        };
+        let calc = stop
+            .position()
+            .unwrap()
+            .calculation()
+            .expect("retained exact calculation");
         let CssValueOrigin::Parsed(origin) = calc.origin() else {
             panic!("original math origin")
         };

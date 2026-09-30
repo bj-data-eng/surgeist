@@ -1,6 +1,7 @@
+use super::values::{parse_length, parse_length_percentage};
 use cssparser::{ParseError, Parser, ParserState, Token, match_ignore_ascii_case};
 
-use super::values::{LengthGrammar, next_is_comma, next_is_delim, parse_length_with};
+use super::values::{next_is_comma, next_is_delim};
 use crate::error::{Error, unsupported_value};
 use crate::syntax::*;
 
@@ -104,8 +105,8 @@ pub(super) fn parse_transform_origin<'i, 't>(
     if atoms.len() == 3 {
         let z_index = atoms.len() - 1;
         if let Some(position) = build_generic_position(&atoms[..z_index]) {
-            let z = transform_origin_z(&atoms[z_index])
-                .ok_or_else(|| invalid_generic_position_atom(input, &states[z_index]))?;
+            input.reset(&states[z_index]);
+            let z = parse_length(input, numeric, "transform-origin z")?;
             return CssTransformOrigin::try_new(position, Some(z))
                 .ok_or_else(|| invalid_generic_position_atom(input, &states[0]));
         }
@@ -131,7 +132,7 @@ enum GenericPositionAtom {
     Horizontal(CssHorizontalPositionKeyword),
     Vertical(CssVerticalPositionKeyword),
     Center,
-    Offset(CssPositionOffset),
+    Offset(CssSpecifiedLengthPercentage),
 }
 
 fn parse_generic_position<'i, 't>(
@@ -191,11 +192,8 @@ fn parse_generic_position_atom<'i, 't>(
         };
     }
     input.reset(&state);
-    let value = parse_length_with(input, numeric, LengthGrammar::Position)?;
-    let Some(offset) = CssPositionOffset::try_new(value) else {
-        return Err(invalid_generic_position_atom(input, &state));
-    };
-    Ok(GenericPositionAtom::Offset(offset))
+    let value = parse_length_percentage(input, numeric, "position")?;
+    Ok(GenericPositionAtom::Offset(value))
 }
 
 fn invalid_generic_position_atom<'i, 't>(
@@ -208,13 +206,6 @@ fn invalid_generic_position_atom<'i, 't>(
         Ok(token) => location.new_unexpected_token_error::<Error>(token.clone()),
         Err(error) => error.into(),
     }
-}
-
-fn transform_origin_z(atom: &GenericPositionAtom) -> Option<CssTransformOriginZ> {
-    let GenericPositionAtom::Offset(offset) = atom else {
-        return None;
-    };
-    CssTransformOriginZ::try_new(offset.value().clone())
 }
 
 fn invalid_atom_index(atoms: &[GenericPositionAtom]) -> usize {
@@ -425,7 +416,7 @@ const fn is_vertical_edge(keyword: CssVerticalPositionKeyword) -> bool {
 
 fn horizontal_edge_offset(
     keyword: CssHorizontalPositionKeyword,
-    offset: CssPositionOffset,
+    offset: CssSpecifiedLengthPercentage,
 ) -> CssHorizontalPosition {
     match keyword {
         CssHorizontalPositionKeyword::Left => CssHorizontalPosition::LeftOffset(offset),
@@ -436,7 +427,7 @@ fn horizontal_edge_offset(
 
 fn vertical_edge_offset(
     keyword: CssVerticalPositionKeyword,
-    offset: CssPositionOffset,
+    offset: CssSpecifiedLengthPercentage,
 ) -> CssVerticalPosition {
     match keyword {
         CssVerticalPositionKeyword::Top => CssVerticalPosition::TopOffset(offset),

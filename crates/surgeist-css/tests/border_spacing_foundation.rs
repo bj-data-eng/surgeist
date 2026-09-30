@@ -54,8 +54,14 @@ fn border_spacing_metadata_is_inherited_with_zero_on_both_axes() {
         CssKnownProperty::BorderSpacing
     );
     let authored = declaration("border-spacing:0");
-    assert_eq!(spacing(&authored).horizontal().value(), &CssLength::Zero);
-    assert_eq!(spacing(&authored).vertical().value(), &CssLength::Zero);
+    assert!(exact_literal(
+        spacing(&authored).horizontal().literal_component(),
+        "0"
+    ));
+    assert!(exact_literal(
+        spacing(&authored).vertical().literal_component(),
+        "0"
+    ));
     let items = expanded(&authored);
     let [contribution] = items.as_slice() else {
         panic!("one zero-valued terminal")
@@ -66,24 +72,20 @@ fn border_spacing_metadata_is_inherited_with_zero_on_both_axes() {
 #[test]
 fn one_or_two_lengths_keep_horizontal_then_vertical_effective_values() {
     for (authored, horizontal, vertical) in [
-        ("2px", 2.0, 2.0),
-        ("2px 3px", 2.0, 3.0),
-        ("0 4px", 0.0, 4.0),
+        ("2px", "2px", "2px"),
+        ("2px 3px", "2px", "3px"),
+        ("0 4px", "0", "4px"),
     ] {
         let source = declaration(&format!("border-spacing:{authored}!important"));
         let value = spacing(&source);
-        let horizontal_value = value.horizontal().value();
-        let vertical_value = value.vertical().value();
-        match horizontal_value {
-            CssLength::Px(value) => assert_eq!(value.value(), horizontal),
-            CssLength::Zero => assert_eq!(horizontal, 0.0),
-            _ => panic!("horizontal length: {authored}"),
-        }
-        match vertical_value {
-            CssLength::Px(value) => assert_eq!(value.value(), vertical),
-            CssLength::Zero => assert_eq!(vertical, 0.0),
-            _ => panic!("vertical length: {authored}"),
-        }
+        assert!(exact_literal(
+            value.horizontal().literal_component(),
+            horizontal
+        ));
+        assert!(exact_literal(
+            value.vertical().literal_component(),
+            vertical
+        ));
         let items = expanded(&source);
         let [item] = items.as_slice() else {
             panic!("one terminal: {authored}")
@@ -101,11 +103,12 @@ fn symbolic_pure_length_math_remains_in_the_authored_pair() {
     for authored in ["calc(1px + 2em)", "calc(1px + 2em) 3px"] {
         let source = declaration(&format!("border-spacing:{authored}"));
         let value = spacing(&source);
-        assert!(matches!(value.horizontal().value(), CssLength::Calc(_)));
+        assert!(value.horizontal().calculation().is_some());
         if authored.ends_with("3px") {
-            assert!(matches!(
-                value.vertical().value(),
-                CssLength::Px(length) if length.value() == 3.0
+            assert!(exact_dimension(
+                value.vertical().literal_component(),
+                "3",
+                "px"
             ));
         } else {
             assert_eq!(value.horizontal(), value.vertical());
@@ -251,4 +254,40 @@ fn normalization_keeps_mixed_order_and_fails_at_exact_contribution_limit() {
         error.declaration().unwrap().known().unwrap().property(),
         CssKnownProperty::BorderSpacing
     );
+}
+
+fn exact_dimension(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+    expected_unit: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+}
+fn exact_literal(component: Option<&surgeist_css::CssComponentValue>, css: &str) -> bool {
+    use surgeist_css::{CssComponentValueRef as Component, CssValueTokenRef as Token};
+    let expected = surgeist_css::CssComponentValue::try_token(css).unwrap();
+    match (
+        component.map(surgeist_css::CssComponentValue::view),
+        expected.view(),
+    ) {
+        (
+            Some(Component::Token(Token::Number(actual))),
+            Component::Token(Token::Number(expected)),
+        )
+        | (
+            Some(Component::Token(Token::Percentage(actual))),
+            Component::Token(Token::Percentage(expected)),
+        ) => actual.representation() == expected.representation(),
+        (
+            Some(Component::Token(Token::Dimension {
+                number: actual,
+                unit: actual_unit,
+            })),
+            Component::Token(Token::Dimension {
+                number: expected,
+                unit: expected_unit,
+            }),
+        ) => actual.representation() == expected.representation() && actual_unit == expected_unit,
+        _ => false,
+    }
 }

@@ -164,10 +164,7 @@ fn root_only_unitless_zero_is_rechecked_as_an_arithmetic_operand() {
 
 #[test]
 fn trusted_parsed_recovery_remains_in_the_child_while_strict_component_admission_rejects_it() {
-    use surgeist_css::{
-        CssCalcLength, CssFlowToleranceRef, CssKnownPropertyValueRef, CssLength,
-        parse_style_attribute,
-    };
+    use surgeist_css::*;
     let report = parse_style_attribute("flow-tolerance:calc(1px");
     assert!(!report.is_clean());
     let CssKnownPropertyValueRef::FlowTolerance(value) = report.syntax()[0]
@@ -178,11 +175,10 @@ fn trusted_parsed_recovery_remains_in_the_child_while_strict_component_admission
     else {
         panic!("flow tolerance")
     };
-    let CssFlowToleranceRef::LengthPercentage(CssLength::Calc(CssCalcLength::Typed(child))) =
-        value.value().as_ref()
-    else {
+    let CssFlowToleranceRef::LengthPercentage(length) = value.value().as_ref() else {
         panic!("trusted recovered typed child")
     };
+    let child = length.calculation().expect("trusted checked child");
     let components = child.components().clone();
     let CssComponentValueRef::Function(function) = components.items()[0].view() else {
         panic!("calc")

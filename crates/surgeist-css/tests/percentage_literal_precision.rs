@@ -1,18 +1,10 @@
 #![forbid(unsafe_code)]
-//! A CSS percentage token carries its authored numeric magnitude. Its legacy
-//! f32 consumers must not round `unit_value` and then multiply it back by 100.
+//! Percentage tokens retain exact authored numeric spelling in checked lengths.
+//! Bounded scalar consumers retain their directly authored percentage magnitude.
 
-use surgeist_css::{
-    CssBorderImageSliceComponent, CssColorStopListItem, CssComponentValue, CssComponentValues,
-    CssErrorCode, CssFilter, CssFilterAmount, CssFilterFunction, CssFilterPercentage, CssGradient,
-    CssGridGeneralTrackComponent, CssHorizontalPosition, CssImageValue, CssImportance,
-    CssKeyframeSelector, CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssPropertyNameRef,
-    CssRecoveryAction, CssRule, CssTransform, CssTransformFunction, CssTransformPercentage,
-    CssTransformScaleComponent, parse_component_values, parse_property_value, parse_sheet,
-    parse_style_attribute,
-};
+use surgeist_css::*;
 
-fn first_object_position_percent(source: &str) -> f32 {
+fn first_object_position_percent(source: &str) -> String {
     let report = parse_style_attribute(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::ObjectPosition(value) = report.syntax()[0]
@@ -26,10 +18,12 @@ fn first_object_position_percent(source: &str) -> f32 {
     let CssHorizontalPosition::Offset(offset) = value.position().horizontal() else {
         panic!("expected percentage offset");
     };
-    let CssLength::Percent(number) = offset.value() else {
+    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) =
+        offset.literal_component().unwrap().view()
+    else {
         panic!("expected percentage length");
     };
-    number.value()
+    number.representation().to_owned()
 }
 
 #[test]
@@ -51,23 +45,24 @@ fn parsed_gradient_stop_keeps_authored_thirty_percent() {
     let CssColorStopListItem::Stop(stop) = &gradient.stops().items()[0] else {
         panic!("expected first color stop");
     };
-    assert!(
-        matches!(stop.position().unwrap().value(), CssLength::Percent(value) if value.value() == 30.0)
-    );
+    assert!(exact_percentage(
+        stop.position().unwrap().literal_component(),
+        "30"
+    ));
 }
 
 #[test]
 fn parsed_generic_position_keeps_authored_thirty_percent_after_trivia() {
-    assert_eq!(first_object_position_percent("object-position: 30%"), 30.0);
+    assert_eq!(first_object_position_percent("object-position: 30%"), "30");
     // The token begins after both trivia forms. The numeric spelling, not a
     // preceding comment or whitespace, determines the retained magnitude.
     assert_eq!(
         first_object_position_percent("object-position: /*lead*/ 30%"),
-        30.0
+        "30"
     );
 }
 
-fn checked_object_position_percent(components: CssComponentValues) -> f32 {
+fn checked_object_position_percent(components: CssComponentValues) -> String {
     let declaration = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::ObjectPosition),
         components,
@@ -82,17 +77,19 @@ fn checked_object_position_percent(components: CssComponentValues) -> f32 {
     let CssHorizontalPosition::Offset(offset) = value.position().horizontal() else {
         panic!("expected checked percentage offset");
     };
-    let CssLength::Percent(number) = offset.value() else {
+    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) =
+        offset.literal_component().unwrap().view()
+    else {
         panic!("expected checked percentage length");
     };
-    number.value()
+    number.representation().to_owned()
 }
 
 #[test]
 fn checked_parsed_components_keep_authored_thirty_percent() {
     assert_eq!(
         checked_object_position_percent(parse_component_values("30%").unwrap()),
-        30.0
+        "30"
     );
 }
 
@@ -100,7 +97,7 @@ fn checked_parsed_components_keep_authored_thirty_percent() {
 fn checked_programmatic_components_keep_authored_thirty_percent() {
     let components =
         CssComponentValues::try_new(vec![CssComponentValue::try_token("30%").unwrap()]).unwrap();
-    assert_eq!(checked_object_position_percent(components), 30.0);
+    assert_eq!(checked_object_position_percent(components), "30");
 }
 
 #[test]
@@ -207,8 +204,8 @@ fn keyframe_selector_keeps_authored_thirty_percent() {
 #[test]
 fn already_exact_percentage_controls_remain_valid() {
     for (source, expected) in [
-        ("object-position: 25%", 25.0),
-        ("object-position: .5%", 0.5),
+        ("object-position: 25%", "25"),
+        ("object-position: .5%", ".5"),
     ] {
         assert_eq!(first_object_position_percent(source), expected, "{source}");
     }
@@ -217,18 +214,18 @@ fn already_exact_percentage_controls_remain_valid() {
 #[test]
 fn signed_and_exponent_spellings_keep_authored_thirty_percent() {
     for (source, expected) in [
-        ("object-position: +30%", 30.0),
-        ("object-position: -30%", -30.0),
-        ("object-position: 3e1%", 30.0),
+        ("object-position: +30%", "+30"),
+        ("object-position: -30%", "-30"),
+        ("object-position: 3e1%", "3e1"),
     ] {
         assert_eq!(first_object_position_percent(source), expected, "{source}");
     }
 }
 
 #[test]
-fn nonfinite_negative_and_range_controls_still_recover_at_the_token() {
+fn invalid_unitless_negative_and_range_controls_still_recover_at_the_token() {
     for source in [
-        "object-position: 1e100%; color: red",
+        "object-position: 1e100; color: red",
         "grid-template-columns: -30%; color: red",
         "filter: grayscale(-30%); color: red",
         "border-image-slice: -30%; color: red",
@@ -241,8 +238,8 @@ fn nonfinite_negative_and_range_controls_still_recover_at_the_token() {
         assert_eq!(
             error.position().byte_offset().value(),
             source
-                .find(if source.contains("1e100%") {
-                    "1e100%"
+                .find(if source.contains("1e100") {
+                    "1e100"
                 } else {
                     "-30%"
                 })
@@ -269,4 +266,38 @@ fn nonfinite_negative_and_range_controls_still_recover_at_the_token() {
     assert!(
         matches!(keyframes.blocks()[0].selectors().selectors()[0], CssKeyframeSelector::Percent(number) if number.value().value() == 25.0)
     );
+}
+
+#[test]
+fn huge_finite_decimal_percentage_is_an_exact_authored_position() {
+    let source = "object-position: 1e100%";
+    assert_eq!(first_object_position_percent(source), "1e100");
+    let report = parse_style_attribute(source);
+    let CssKnownPropertyValueRef::ObjectPosition(wrapper) = report.syntax()[0]
+        .known()
+        .unwrap()
+        .property_value()
+        .unwrap()
+    else {
+        panic!("position")
+    };
+    let CssHorizontalPosition::Offset(offset) = wrapper.position().horizontal() else {
+        panic!("percentage")
+    };
+    let CssValueOrigin::Parsed(origin) = offset.origin() else {
+        panic!("parsed origin")
+    };
+    assert_eq!(origin.source().as_str(), source);
+    assert_eq!(
+        &source[origin.span().start().byte_offset().value()
+            ..origin.span().end().byte_offset().value()],
+        "1e100%"
+    );
+}
+
+fn exact_percentage(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
 }

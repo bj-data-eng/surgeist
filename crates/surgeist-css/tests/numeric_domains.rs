@@ -1,13 +1,4 @@
-use surgeist_css::{
-    CssAnimationIterationNumber, CssComponentValue, CssDelayLiteral, CssDurationLiteral,
-    CssErrorCode, CssFiniteNumber, CssFlowTolerance, CssFlowToleranceRef, CssFontObliqueAngle,
-    CssFontSizeAdjust, CssFontWeightNumber, CssGridRepeatInteger, CssKeyframePercent,
-    CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssLengthDimension, CssLengthUnit,
-    CssNonNegativeNumber, CssOpacityScalarKind, CssOpacityValue, CssRatio, CssRatioOperand,
-    CssRecoveryAction, CssResolution, CssResolutionUnit, CssRule, CssScaleValues,
-    CssSpecifiedNonNegativeNumber, CssTimeUnit, CssTokenKind, ErrorKind, parse_sheet,
-    parse_style_attribute,
-};
+use surgeist_css::*;
 
 #[test]
 fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_boundaries() {
@@ -17,9 +8,7 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         assert_eq!(CssRatio::try_new(value, 1.0), None);
         assert_eq!(CssRatio::try_new(1.0, value), None);
         assert_eq!(CssKeyframePercent::try_new(value), None);
-        assert_eq!(CssLength::try_px(value), None);
-        assert_eq!(CssLength::try_percent(value), None);
-        assert_eq!(CssLengthDimension::try_new(value, CssLengthUnit::Rem), None);
+
         assert_eq!(CssScaleValues::try_new(vec![value]), None);
         assert_eq!(CssResolution::try_new(value, CssResolutionUnit::Dppx), None);
         assert_eq!(
@@ -28,6 +17,11 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         );
         assert_eq!(CssDelayLiteral::try_new(value, CssTimeUnit::Seconds), None);
         assert_eq!(CssAnimationIterationNumber::try_new(value), None);
+    }
+
+    for invalid in ["NaN", "infinity", "-infinity"] {
+        assert!(CssComponentValue::try_dimension(invalid, "rem").is_err());
+        assert!(CssComponentValue::try_token(&format!("{invalid}%")).is_err());
     }
 
     for invalid in ["NaN", "infinity", "-infinity"] {
@@ -127,11 +121,15 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         f32::MAX
     );
 
-    let tolerance =
-        CssFlowTolerance::try_length_percentage(CssLength::try_percent(25.0).unwrap()).unwrap();
+    let tolerance = CssFlowTolerance::length_percentage(
+        CssSpecifiedLengthPercentage::try_from_component(
+            CssComponentValue::try_token("25%").unwrap(),
+        )
+        .unwrap(),
+    );
     assert!(matches!(
         tolerance.as_ref(),
-        CssFlowToleranceRef::LengthPercentage(CssLength::Percent(value)) if value.value() == 25.0
+        CssFlowToleranceRef::LengthPercentage(value) if exact_percentage(value.literal_component(),"25")
     ));
 
     let report = parse_style_attribute("flow-tolerance: 25%");
@@ -146,7 +144,7 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
     assert_eq!(value.as_css(), "25%");
     assert!(matches!(
         value.value().as_ref(),
-        CssFlowToleranceRef::LengthPercentage(CssLength::Percent(percent)) if percent.value() == 25.0
+        CssFlowToleranceRef::LengthPercentage(value) if exact_percentage(value.literal_component(),"25")
     ));
     assert_eq!(value.value(), &tolerance);
 }
@@ -331,10 +329,10 @@ fn non_finite_iteration_parse_retains_sheet_siblings_with_exact_diagnostic() {
 }
 
 #[test]
-fn flow_tolerance_percentage_conversion_overflow_drops_declaration_and_retains_siblings() {
+fn flow_tolerance_nonzero_unitless_value_drops_declaration_and_retains_siblings() {
     let cases = [(
         "flow-tolerance",
-        "3.5e38%",
+        "3.5e38",
         CssKnownProperty::FlowTolerance,
         0,
     )];
@@ -346,7 +344,7 @@ fn flow_tolerance_percentage_conversion_overflow_drops_declaration_and_retains_s
 
         assert_eq!(report.syntax().len(), 2, "source: {source}");
         let [diagnostic] = report.diagnostics() else {
-            panic!("percentage overflow must produce one diagnostic for {source}");
+            panic!("nonzero unitless length must produce one diagnostic for {source}");
         };
         assert_eq!(
             diagnostic.error().code(),
@@ -375,11 +373,69 @@ fn flow_tolerance_percentage_conversion_overflow_drops_declaration_and_retains_s
         match diagnostic.error().kind() {
             ErrorKind::InvalidPropertyValue(detail) => {
                 assert_eq!(detail.property(), expected_property);
-                let encountered = detail.encountered().expect("overflowing percentage token");
-                assert_eq!(encountered.kind(), CssTokenKind::Percentage);
-                assert_eq!(encountered.authored(), "3.5e38%");
+                let encountered = detail.encountered().expect("nonzero unitless token");
+                assert_eq!(encountered.kind(), CssTokenKind::Number);
+                assert_eq!(encountered.authored(), "3.5e38");
             }
             _ => panic!("expected invalid property value"),
         }
+        assert_eq!(
+            report.syntax()[0].known().unwrap().property(),
+            CssKnownProperty::Color
+        );
+        assert_eq!(
+            report.syntax()[1].known().unwrap().property(),
+            CssKnownProperty::Width
+        );
     }
+}
+
+#[test]
+fn flow_tolerance_retains_exact_ordinary_percentages_beyond_float_storage() {
+    for spelling in ["3.5e38", "1e999"] {
+        let token = format!("{spelling}%");
+        let source = format!("color: red; flow-tolerance: {token}; width: 2px");
+        let report = parse_style_attribute(&source);
+        assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
+        assert_eq!(report.syntax().len(), 3);
+        assert_eq!(
+            report.syntax()[0].known().unwrap().property(),
+            CssKnownProperty::Color
+        );
+        assert_eq!(
+            report.syntax()[2].known().unwrap().property(),
+            CssKnownProperty::Width
+        );
+        let CssKnownPropertyValueRef::FlowTolerance(wrapper) = report.syntax()[1]
+            .known()
+            .unwrap()
+            .property_value()
+            .unwrap()
+        else {
+            panic!("checked flow-tolerance")
+        };
+        let CssFlowToleranceRef::LengthPercentage(value) = wrapper.value().as_ref() else {
+            panic!("exact ordinary percentage")
+        };
+        let component = value.literal_component().expect("literal, not calculation");
+        let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) = component.view()
+        else {
+            panic!("original percentage kind")
+        };
+        assert_eq!(number.representation(), spelling);
+        let CssValueOrigin::Parsed(origin) = value.origin() else {
+            panic!("original parsed provenance")
+        };
+        assert_eq!(origin.source().as_str(), source);
+        let token_start = source.find(&token).unwrap();
+        assert_eq!(origin.span().start().byte_offset().value(), token_start);
+        assert_eq!(
+            origin.span().end().byte_offset().value(),
+            token_start + token.len()
+        );
+    }
+}
+
+fn exact_percentage(component: Option<&surgeist_css::CssComponentValue>, expected: &str) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation()==expected)
 }

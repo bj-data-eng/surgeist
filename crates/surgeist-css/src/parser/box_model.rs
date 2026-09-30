@@ -24,34 +24,6 @@ pub(super) fn parse_box_decoration_break<'i, 't>(
     }
 }
 
-pub(super) fn expand_radius_components(
-    values: Vec<CssLength>,
-) -> (CssLength, CssLength, CssLength, CssLength) {
-    match values.as_slice() {
-        [all] => (all.clone(), all.clone(), all.clone(), all.clone()),
-        [vertical, horizontal] => (
-            vertical.clone(),
-            horizontal.clone(),
-            vertical.clone(),
-            horizontal.clone(),
-        ),
-        [top_left, top_right_bottom_left, bottom_right] => (
-            top_left.clone(),
-            top_right_bottom_left.clone(),
-            bottom_right.clone(),
-            top_right_bottom_left.clone(),
-        ),
-        [top_left, top_right, bottom_right, bottom_left] => (
-            top_left.clone(),
-            top_right.clone(),
-            bottom_right.clone(),
-            bottom_left.clone(),
-        ),
-        [] => unreachable!("caller validates non-empty border-radius components"),
-        _ => unreachable!("border-radius component parser caps values at four"),
-    }
-}
-
 pub(super) fn parse_box_shadow<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
@@ -88,18 +60,18 @@ pub(super) fn parse_box_shadow<'i, 't>(
 pub(super) fn parse_shadow<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssShadow, ParseError<'i, Error>> {
+) -> Result<CssShadow, ParseError<'i, Error>> {
     let mut inset = false;
     let mut color = None;
-    let mut lengths = Vec::new();
-
+    let mut offsets = Vec::new();
+    let mut blur = None;
+    let mut spread = None;
     while !input.is_exhausted() {
         let state = input.state();
         if input.try_parse(Parser::expect_comma).is_ok() {
             input.reset(&state);
             break;
         }
-
         if input
             .try_parse(|input| input.expect_ident_matching("inset"))
             .is_ok()
@@ -110,76 +82,49 @@ pub(super) fn parse_shadow<'i, 't>(
             inset = true;
             continue;
         }
-
-        if let Ok(parsed_color) = input.try_parse(|input| parse_color(input, numeric)) {
-            if color.replace(parsed_color).is_some() {
+        if let Ok(parsed) = input.try_parse(|input| parse_color(input, numeric)) {
+            if color.replace(parsed).is_some() {
                 return Err(unsupported_value(input, None, "duplicate box-shadow color"));
             }
             continue;
         }
-
-        let parsed_length = match lengths.len() {
-            0 | 1 | 3 => input
-                .try_parse(|input| parse_shadow_length(input, numeric))
-                .ok(),
-            2 => input
-                .try_parse(|input| parse_shadow_blur_length(input, numeric))
-                .ok(),
-            _ => None,
-        };
-        if let Some(parsed_length) = parsed_length {
-            lengths.push(parsed_length);
-            continue;
+        if offsets.len() < 2 {
+            offsets.push(parse_shadow_length(input, numeric)?);
+        } else if blur.is_none() {
+            blur = Some(parse_shadow_blur_length(input, numeric)?);
+        } else if spread.is_none() {
+            spread = Some(parse_shadow_length(input, numeric)?);
+        } else {
+            return Err(unsupported_value(
+                input,
+                None,
+                "unsupported box-shadow component",
+            ));
         }
-
+    }
+    let [x, y] = offsets.as_slice() else {
         return Err(unsupported_value(
             input,
             None,
-            "unsupported box-shadow component",
+            "box-shadow requires two offsets",
         ));
-    }
-
-    match lengths.as_slice() {
-        [offset_x, offset_y] => {
-            CssShadow::try_new(inset, offset_x.clone(), offset_y.clone(), None, None, color)
-        }
-        [offset_x, offset_y, blur] => CssShadow::try_new(
-            inset,
-            offset_x.clone(),
-            offset_y.clone(),
-            Some(blur.clone()),
-            None,
-            color,
-        ),
-        [offset_x, offset_y, blur, spread] => CssShadow::try_new(
-            inset,
-            offset_x.clone(),
-            offset_y.clone(),
-            Some(blur.clone()),
-            Some(spread.clone()),
-            color,
-        ),
-        _ => None,
-    }
-    .ok_or_else(|| {
-        unsupported_value(
-            input,
-            None,
-            "box-shadow requires two offsets and valid optional lengths",
-        )
-    })
+    };
+    Ok(
+        CssShadow::try_new(inset, x.clone(), y.clone(), blur, spread, color)
+            .expect("parser requires blur before spread"),
+    )
 }
 
 pub(super) fn parse_drop_shadow<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssDropShadow, ParseError<'i, Error>> {
+) -> Result<CssDropShadow, ParseError<'i, Error>> {
     let mut color = None;
-    let mut lengths = Vec::new();
-
+    let mut offsets = Vec::new();
+    let mut blur = None;
     while !input.is_exhausted() {
-        if let Ok(parsed_color) = input.try_parse(|input| parse_color(input, numeric)) {
-            if color.replace(parsed_color).is_some() {
+        if let Ok(parsed) = input.try_parse(|input| parse_color(input, numeric)) {
+            if color.replace(parsed).is_some() {
                 return Err(unsupported_value(
                     input,
                     None,
@@ -188,45 +133,24 @@ pub(super) fn parse_drop_shadow<'i, 't>(
             }
             continue;
         }
-
-        let parsed_length = match lengths.len() {
-            0 | 1 => input
-                .try_parse(|input| parse_shadow_length(input, numeric))
-                .ok(),
-            2 => input
-                .try_parse(|input| parse_shadow_blur_length(input, numeric))
-                .ok(),
-            _ => None,
-        };
-        if let Some(parsed_length) = parsed_length {
-            lengths.push(parsed_length);
-            continue;
+        if offsets.len() < 2 {
+            offsets.push(parse_shadow_length(input, numeric)?);
+        } else if blur.is_none() {
+            blur = Some(parse_shadow_blur_length(input, numeric)?);
+        } else {
+            return Err(unsupported_value(
+                input,
+                None,
+                "unsupported drop-shadow component",
+            ));
         }
-
+    }
+    let [x, y] = offsets.as_slice() else {
         return Err(unsupported_value(
             input,
             None,
-            "unsupported drop-shadow component",
+            "drop-shadow requires two offsets",
         ));
-    }
-
-    match lengths.as_slice() {
-        [offset_x, offset_y] => {
-            CssDropShadow::try_new(offset_x.clone(), offset_y.clone(), None, color)
-        }
-        [offset_x, offset_y, blur] => CssDropShadow::try_new(
-            offset_x.clone(),
-            offset_y.clone(),
-            Some(blur.clone()),
-            color,
-        ),
-        _ => None,
-    }
-    .ok_or_else(|| {
-        unsupported_value(
-            input,
-            None,
-            "drop-shadow requires two offsets and an optional non-negative blur",
-        )
-    })
+    };
+    Ok(CssDropShadow::new(x.clone(), y.clone(), blur, color))
 }

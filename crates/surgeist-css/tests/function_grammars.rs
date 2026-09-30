@@ -1,17 +1,4 @@
-use surgeist_css::{
-    CssBasicShape, CssBoxShadow, CssCircleRadius, CssClipPath, CssClipPathPropertyValue,
-    CssCubicBezier, CssDropShadow, CssEasing, CssEasingKeyword, CssEasingList, CssEasingNumber,
-    CssEllipseRadius, CssErrorCode, CssFilter, CssFilterAmount, CssFilterAngle, CssFilterBlur,
-    CssFilterFunction, CssFilterFunctionList, CssFilterNumber, CssFilterPercentage,
-    CssFilterPropertyValue, CssFiniteNumber, CssHorizontalPosition, CssKnownDeclaredValueRef,
-    CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssPolygonFillRule, CssRadialExtent,
-    CssRecoveryAction, CssShapeLength, CssShapeLengthPercentage, CssStepCount, CssStepPosition,
-    CssSteps, CssTransform, CssTransformAngle, CssTransformFunction, CssTransformFunctionKind,
-    CssTransformFunctionList, CssTransformLength, CssTransformLengthPercentage,
-    CssTransformNonNegativeLength, CssTransformNumber, CssTransformPercentage,
-    CssTransformPerspective, CssTransformPropertyValue, CssTransformScaleComponent,
-    CssTransitionTimingFunctionPropertyValue, CssVerticalPosition, parse_style_attribute,
-};
+use surgeist_css::*;
 
 fn parsed_transform_property(value: &str) -> CssTransformPropertyValue {
     let report = parse_style_attribute(&format!("transform: {value}"));
@@ -153,7 +140,7 @@ fn clip_path_accepts_circle_percentage_radius() {
     };
     assert!(
         matches!(circle.radius(), CssCircleRadius::LengthPercentage(radius)
-        if matches!(radius.value(), CssLength::Percent(value) if value.value() == 25.0))
+        if exact_percentage(radius.literal_component(), "25"))
     );
     assert_eq!(
         report.syntax()[1].known().unwrap().property(),
@@ -191,7 +178,7 @@ fn circle_percentage_position_has_typed_radius_and_position() {
     };
     assert!(
         matches!(circle.radius(), CssCircleRadius::LengthPercentage(radius)
-        if matches!(radius.value(), CssLength::Percent(value) if value.value() == 50.0))
+        if exact_percentage(radius.literal_component(), "50"))
     );
     assert!(circle.position().is_some());
 }
@@ -227,7 +214,7 @@ fn selected_basic_shapes_expose_typed_authored_components() {
     assert!(matches!(
         circle.radius(),
         CssCircleRadius::LengthPercentage(value)
-            if matches!(value.value(), CssLength::Px(number) if number.value() == 10.0)
+            if exact_dimension(value.literal_component(), "10", "px")
     ));
     let position = circle.position().unwrap();
     assert!(matches!(
@@ -246,8 +233,12 @@ fn selected_basic_shapes_expose_typed_authored_components() {
     let CssEllipseRadius::Radii(radii) = ellipse.radius() else {
         panic!("expected explicit ellipse radii");
     };
-    assert!(matches!(radii.horizontal().value(), CssLength::Px(value) if value.value() == 10.0));
-    assert!(matches!(radii.vertical().value(), CssLength::Percent(value) if value.value() == 25.0));
+    assert!(exact_dimension(
+        radii.horizontal().literal_component(),
+        "10",
+        "px"
+    ));
+    assert!(exact_percentage(radii.vertical().literal_component(), "25"));
 
     let inset = parsed_clip_path_property("inset(1px 2% 3px round 4px 5% / 6px 7%)");
     let CssClipPath::BasicShape(CssBasicShape::Inset(inset)) = inset.value() else {
@@ -255,8 +246,16 @@ fn selected_basic_shapes_expose_typed_authored_components() {
     };
     assert_eq!(inset.offsets().values().len(), 3);
     let radii = inset.round().unwrap();
-    assert!(matches!(radii.top_left.horizontal(), CssLength::Px(value) if value.value() == 4.0));
-    assert!(matches!(radii.top_left.vertical(), CssLength::Px(value) if value.value() == 6.0));
+    assert!(exact_dimension(
+        radii.top_left().horizontal().literal_component(),
+        "4",
+        "px"
+    ));
+    assert!(exact_dimension(
+        radii.top_left().vertical().literal_component(),
+        "6",
+        "px"
+    ));
 
     let polygon =
         parsed_clip_path_property("polygon(evenodd round 2px, 0 0, 100% 0, calc(50% - 1px) 100%)");
@@ -264,10 +263,11 @@ fn selected_basic_shapes_expose_typed_authored_components() {
         panic!("expected typed polygon");
     };
     assert_eq!(polygon.fill_rule(), Some(CssPolygonFillRule::Evenodd));
-    assert!(matches!(
-        polygon.round().map(CssShapeLength::value),
-        Some(CssLength::Px(value)) if value.value() == 2.0
-    ));
+    assert!(polygon.round().is_some_and(|value| exact_dimension(
+        value.literal_component(),
+        "2",
+        "px"
+    )));
     assert_eq!(polygon.points().points().len(), 3);
 }
 
@@ -318,9 +318,24 @@ fn omitted_shape_branches_are_explicit() {
 
 #[test]
 fn shape_checked_scalars_reject_invalid_public_construction() {
-    assert!(CssShapeLength::try_new(CssLength::try_percent(10.0).unwrap()).is_none());
-    assert!(CssShapeLength::try_new(CssLength::try_px(-1.0).unwrap()).is_none());
-    assert!(CssShapeLengthPercentage::try_new(CssLength::try_percent(-1.0).unwrap()).is_none());
+    assert!(
+        CssSpecifiedNonNegativeLength::try_from_component(
+            CssComponentValue::try_token("10%").unwrap()
+        )
+        .is_err()
+    );
+    assert!(
+        CssSpecifiedNonNegativeLength::try_from_component(
+            CssComponentValue::try_dimension("-1", "px").unwrap()
+        )
+        .is_err()
+    );
+    assert!(
+        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+            CssComponentValue::try_token("-1%").unwrap()
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -330,53 +345,48 @@ fn checked_shape_aggregates_retain_circle_percentage_and_omission() {
         CssPolygonPoint, CssPolygonPointList, CssPolygonShape,
     };
 
-    let radius = CssShapeLengthPercentage::try_new(CssLength::try_percent(25.0).unwrap())
-        .expect("nonnegative percentage radius");
+    let radius = nonnegative_length_percentage("25%");
     let circle = CssCircleShape::new(CssCircleRadius::LengthPercentage(radius), None);
     assert!(
         matches!(circle.radius(), CssCircleRadius::LengthPercentage(radius)
-        if matches!(radius.value(), CssLength::Percent(value) if value.value() == 25.0))
+        if exact_percentage(radius.literal_component(), "25"))
     );
     assert!(circle.position().is_none());
     let omitted = CssCircleShape::new(CssCircleRadius::Default, None);
     assert!(matches!(omitted.radius(), CssCircleRadius::Default));
 
     let ellipse = CssEllipseShape::new(
-        CssEllipseRadius::Radii(
-            CssEllipseRadii::try_new(
-                CssLength::try_px(10.0).unwrap(),
-                CssLength::try_percent(20.0).unwrap(),
-            )
-            .unwrap(),
-        ),
+        CssEllipseRadius::Radii(CssEllipseRadii::new(
+            nonnegative_length_percentage("10px"),
+            nonnegative_length_percentage("20%"),
+        )),
         None,
     );
     assert!(matches!(ellipse.radius(), CssEllipseRadius::Radii(radii)
-        if matches!(radii.vertical().value(), CssLength::Percent(value) if value.value() == 20.0)));
+        if exact_percentage(radii.vertical().literal_component(), "20")));
 
     let inset = CssInsetShape::new(
-        CssInsetShapeOffsets::try_new(vec![CssLength::try_percent(5.0).unwrap()]).unwrap(),
+        CssInsetShapeOffsets::try_new(vec![signed_length_percentage("5%")]).unwrap(),
         None,
     );
     assert!(
-        matches!(inset.offsets().values(), [CssLength::Percent(value)] if value.value() == 5.0)
+        matches!(inset.offsets().values(), [value] if exact_percentage(value.literal_component(), "5"))
     );
 
-    let point = CssPolygonPoint::try_new(
-        CssLength::try_px(0.0).unwrap(),
-        CssLength::try_percent(100.0).unwrap(),
-    )
-    .unwrap();
+    let point = CssPolygonPoint::new(
+        signed_length_percentage("0px"),
+        signed_length_percentage("100%"),
+    );
     let polygon = CssPolygonShape::new(
         None,
         None,
         CssPolygonPointList::try_new(vec![point]).unwrap(),
     );
     assert_eq!(polygon.points().points().len(), 1);
-    assert!(
-        matches!(polygon.points().points()[0].y(), CssLength::Percent(value)
-        if value.value() == 100.0)
-    );
+    assert!(exact_percentage(
+        polygon.points().points()[0].y().literal_component(),
+        "100"
+    ));
     assert!(CssPolygonPointList::try_new(Vec::new()).is_none());
     assert!(CssInsetShapeOffsets::try_new(Vec::new()).is_none());
 }
@@ -389,7 +399,7 @@ fn circle_symbolic_length_percentage_radius_remains_typed() {
     };
     assert!(
         matches!(circle.radius(), CssCircleRadius::LengthPercentage(radius)
-        if matches!(radius.value(), CssLength::Calc(_)))
+        if radius.calculation().is_some())
     );
 }
 
@@ -535,7 +545,7 @@ fn blur_hue_rotate_and_drop_shadow_expose_distinct_typed_payloads() {
     };
     assert!(matches!(
         &functions.functions()[0],
-        CssFilterFunction::Blur(blur) if matches!(blur.length(), CssLength::Calc(_))
+        CssFilterFunction::Blur(blur) if blur.length().calculation().is_some()
     ));
     assert!(matches!(
         functions.functions()[1],
@@ -545,8 +555,16 @@ fn blur_hue_rotate_and_drop_shadow_expose_distinct_typed_payloads() {
     let CssFilterFunction::DropShadow(shadow) = &functions.functions()[2] else {
         panic!("expected typed drop-shadow");
     };
-    assert!(matches!(shadow.offset_x(), CssLength::Px(value) if value.value() == 1.0));
-    assert!(matches!(shadow.offset_y(), CssLength::Px(value) if value.value() == -2.0));
+    assert!(exact_dimension(
+        shadow.offset_x().literal_component(),
+        "1",
+        "px"
+    ));
+    assert!(exact_dimension(
+        shadow.offset_y().literal_component(),
+        "-2",
+        "px"
+    ));
     assert!(shadow.blur_radius().is_none());
     assert!(shadow.color().is_some());
 }
@@ -572,7 +590,9 @@ fn box_shadow_accepts_component_orders_and_rejects_invalid_components() {
     assert_eq!(shadows.shadows().len(), 3);
     assert!(shadows.shadows()[0].inset());
     assert!(
-        matches!(shadows.shadows()[0].spread_radius(), Some(CssLength::Px(value)) if value.value() == -4.0)
+        shadows.shadows()[0]
+            .spread_radius()
+            .is_some_and(|value| exact_dimension(value.literal_component(), "-4", "px"))
     );
     assert!(shadows.shadows()[1].color().is_some());
 
@@ -607,8 +627,16 @@ fn box_shadow_accepts_interleaved_color_between_offsets() {
     let [shadow] = shadows.shadows() else {
         panic!("expected one shadow");
     };
-    assert!(matches!(shadow.offset_x(), CssLength::Px(value) if value.value() == 1.0));
-    assert!(matches!(shadow.offset_y(), CssLength::Px(value) if value.value() == 2.0));
+    assert!(exact_dimension(
+        shadow.offset_x().literal_component(),
+        "1",
+        "px"
+    ));
+    assert!(exact_dimension(
+        shadow.offset_y().literal_component(),
+        "2",
+        "px"
+    ));
     let color = shadow.color().expect("red interleaved color");
     assert_eq!(color.named().unwrap().name(), "red");
 
@@ -637,8 +665,16 @@ fn drop_shadow_accepts_interleaved_color_between_offsets() {
     let [CssFilterFunction::DropShadow(shadow)] = functions.functions() else {
         panic!("expected one typed drop-shadow");
     };
-    assert!(matches!(shadow.offset_x(), CssLength::Px(value) if value.value() == 1.0));
-    assert!(matches!(shadow.offset_y(), CssLength::Px(value) if value.value() == 2.0));
+    assert!(exact_dimension(
+        shadow.offset_x().literal_component(),
+        "1",
+        "px"
+    ));
+    assert!(exact_dimension(
+        shadow.offset_y().literal_component(),
+        "2",
+        "px"
+    ));
     let color = shadow.color().expect("red interleaved color");
     assert_eq!(color.named().unwrap().name(), "red");
 
@@ -691,15 +727,15 @@ fn filter_lists_reject_empty_unknown_repeated_and_trailing_mutations() {
 
 #[test]
 fn filter_checked_scalars_and_lists_reject_unrepresentable_states() {
-    assert!(CssFilterBlur::try_new(CssLength::try_px(-1.0).unwrap()).is_none());
     assert!(
-        CssDropShadow::try_new(
-            CssLength::try_percent(1.0).unwrap(),
-            CssLength::Zero,
-            None,
-            None,
+        CssSpecifiedNonNegativeLength::try_from_component(
+            CssComponentValue::try_dimension("-1", "px").unwrap()
         )
-        .is_none()
+        .is_err()
+    );
+    assert!(
+        CssSpecifiedLength::try_from_component(CssComponentValue::try_token("1%").unwrap())
+            .is_err()
     );
     assert!(CssFilterFunctionList::try_new(Vec::new()).is_none());
 }
@@ -1051,8 +1087,8 @@ fn every_selected_two_dimensional_transform_function_preserves_authored_order() 
     assert!(matches!(
         &functions.functions()[1],
         CssTransformFunction::Translate(translation)
-            if matches!(translation.x().value(), CssLength::Px(value) if value.value() == 1.0)
-                && matches!(translation.y().unwrap().value(), CssLength::Percent(value) if value.value() == 2.0)
+            if exact_dimension(translation.x().literal_component(), "1", "px")
+                && exact_percentage(translation.y().unwrap().literal_component(), "2")
     ));
     assert!(matches!(
         &functions.functions()[2],
@@ -1122,7 +1158,7 @@ fn transform_perspective_accepts_none_and_zero_and_rejects_invalid_dimensions() 
     assert!(matches!(
         &functions.functions()[1],
         CssTransformFunction::Perspective(CssTransformPerspective::Length(length))
-            if matches!(length.value(), CssLength::Zero)
+            if matches!(length.literal_component().map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number))) if number.representation() == "0")
     ));
 }
 
@@ -1280,9 +1316,13 @@ fn transform_three_dimensional_translations_keep_z_length_only() {
     let CssTransformFunction::Translate3d(translation) = &functions.functions()[0] else {
         panic!("expected typed translate3d");
     };
-    assert!(matches!(translation.x().value(), CssLength::Percent(value) if value.value() == 10.0));
-    assert!(matches!(translation.y().value(), CssLength::Calc(_)));
-    assert!(matches!(translation.z().value(), CssLength::Dimension(value) if value.value() == 4.0));
+    assert!(exact_percentage(translation.x().literal_component(), "10"));
+    assert!(translation.y().calculation().is_some());
+    assert!(exact_dimension(
+        translation.z().literal_component(),
+        "4",
+        "em"
+    ));
 }
 
 #[test]
@@ -1334,16 +1374,21 @@ fn transform_function_lists_reject_empty_unknown_and_trailing_mutations() {
 
 #[test]
 fn transform_checked_scalars_and_lists_reject_unrepresentable_states() {
-    assert!(CssTransformLengthPercentage::try_new(CssLength::Auto).is_none());
     assert!(
-        CssTransformLength::try_new(CssLength::try_percent(10.0).expect("finite percentage"))
-            .is_none()
+        CssSpecifiedLengthPercentage::try_from_component(
+            CssComponentValue::try_token("auto").unwrap()
+        )
+        .is_err()
     );
     assert!(
-        CssTransformNonNegativeLength::try_new(
-            CssLength::try_px(-1.0).expect("finite negative length"),
+        CssSpecifiedLength::try_from_component(CssComponentValue::try_token("10%").unwrap())
+            .is_err()
+    );
+    assert!(
+        CssSpecifiedNonNegativeLength::try_from_component(
+            CssComponentValue::try_dimension("-1", "px").unwrap()
         )
-        .is_none()
+        .is_err()
     );
     assert!(CssTransformFunctionList::try_new(Vec::new()).is_none());
 }
@@ -1388,5 +1433,50 @@ fn transform_calculations_preserve_the_exact_depth_boundary() {
                 .expect_err("strict validation rejects over-limit transform calculations");
             assert_eq!(failure.diagnostics(), report.diagnostics());
         }
+    }
+}
+
+fn exact_dimension(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+    expected_unit: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+}
+fn exact_percentage(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
+}
+
+fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercentage {
+    let components = surgeist_css::parse_component_values(css).unwrap();
+    if css.contains('(') {
+        surgeist_css::CssSpecifiedLengthPercentage::try_from_calculation(
+            surgeist_css::CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+        )
+        .unwrap()
+    } else {
+        surgeist_css::CssSpecifiedLengthPercentage::try_from_component(
+            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
+    }
+}
+fn nonnegative_length_percentage(
+    css: &str,
+) -> surgeist_css::CssSpecifiedNonNegativeLengthPercentage {
+    let components = surgeist_css::parse_component_values(css).unwrap();
+    if css.contains('(') {
+        surgeist_css::CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
+            surgeist_css::CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+        )
+        .unwrap()
+    } else {
+        surgeist_css::CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
     }
 }

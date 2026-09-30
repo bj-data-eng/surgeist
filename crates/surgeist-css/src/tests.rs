@@ -4944,7 +4944,7 @@ fn rejection_negative_numbers_and_public_constructor_invariants_matrix() {
 
     assert_eq!(CssFontFamilyList::try_new(Vec::new()), None);
     assert_eq!(CssGridGeneralTrackList::try_new(Vec::new()), None);
-    let offset = CssPositionOffset::try_new(CssLength::px(1.0)).unwrap();
+    let offset = signed_length_percentage("1px");
     assert!(
         CssPosition::try_new(
             CssHorizontalPosition::LeftOffset(offset),
@@ -5078,42 +5078,16 @@ fn constructor_invariants_reject_invalid_public_numeric_values() {
     assert_eq!(CssNonNegativeNumber::try_new(-0.1), None);
     assert_eq!(CssNonNegativeNumber::try_new(f32::NEG_INFINITY), None);
 
-    assert_eq!(
-        CssLengthDimension::try_new(2.0, CssLengthUnit::Rem)
-            .unwrap()
-            .value(),
-        2.0
-    );
-    assert_eq!(
-        CssLengthDimension::try_new(f32::NAN, CssLengthUnit::Rem),
-        None
-    );
-
-    assert_eq!(CssLength::try_px(f32::NAN), None);
-    assert_eq!(CssLength::try_percent(f32::INFINITY), None);
-    assert_eq!(
-        CssLength::try_dimension(f32::NEG_INFINITY, CssLengthUnit::Rem),
-        None
-    );
-    assert_eq!(CssLength::try_px(3.0).unwrap(), CssLength::px(3.0));
-    assert_eq!(
-        CssLength::try_dimension(4.0, CssLengthUnit::Px).unwrap(),
-        CssLength::px(4.0)
-    );
+    for number in ["NaN", "inf", "-inf"] {
+        assert!(CssComponentValue::try_dimension(number, "rem").is_err());
+        assert!(CssComponentValue::try_token(&format!("{number}%")).is_err());
+    }
+    let exact = signed_length("4px");
+    assert!(exact_dimension(exact.literal_component(), "4", "px"));
+    assert!(matches!(exact.origin(), CssValueOrigin::Programmatic));
 
     assert_eq!(CssScaleValues::try_new(vec![1.0, f32::NAN]), None);
     assert_eq!(CssScaleValues::try_new(vec![f32::INFINITY]), None);
-
-    assert_eq!(CssCalcLength::try_px(f32::NAN), None);
-    assert_eq!(CssCalcLength::try_percent(f32::INFINITY), None);
-    assert_eq!(
-        CssCalcLength::try_dimension(f32::NEG_INFINITY, CssLengthUnit::Rem),
-        None
-    );
-    assert_eq!(
-        CssCalcLength::try_px(1.0).unwrap(),
-        CssCalcLength::Px(CssFiniteNumber::try_new(1.0).unwrap())
-    );
 
     assert!(CssComponentValue::try_number("NaN").is_err());
     assert!(
@@ -8460,9 +8434,16 @@ fn flow_tolerance_calc_is_preserved_as_css_syntax() {
         panic!("expected flow-tolerance wrapper");
     };
     match value.value().as_ref() {
-        CssFlowToleranceRef::LengthPercentage(CssLength::Calc(calc)) => {
-            assert!(calc.uses_percentage());
-            assert_eq!(calc.to_css_string(), "calc(8px + 2%)");
+        CssFlowToleranceRef::LengthPercentage(length) => {
+            let calc = length.calculation().expect("checked flow calculation");
+            assert_eq!(
+                calc.numeric_type().percent_hint(),
+                Some(crate::CssNumericDimension::Length)
+            );
+            assert_eq!(
+                calc.components().serialize().unwrap().as_css(),
+                "calc(8px + 2%)"
+            );
         }
         other => panic!("expected calc flow-tolerance, got {other:?}"),
     }
@@ -8587,11 +8568,11 @@ fn parses_typography_and_text_keyword_families() {
 fn parses_typography_and_text_length_families() {
     assert_eq!(
         declaration_value!(".panel { text-indent: 2em; }", TextIndent),
-        CssTextIndent::new(CssLength::dimension(2.0, CssLengthUnit::Em), false, false,)
+        CssTextIndent::new(signed_length_percentage("2em"), false, false)
     );
     assert_eq!(
         declaration_value!(".panel { vertical-align: 4px; }", VerticalAlign),
-        CssVerticalAlign::Length(CssVerticalAlignLength::new(CssLength::px(4.0)))
+        CssVerticalAlign::Length(signed_length_percentage("4px"))
     );
     assert_eq!(
         declaration_value!(".panel { letter-spacing: normal; }", LetterSpacing),
@@ -8635,9 +8616,7 @@ fn parses_typography_and_text_length_families() {
             ".panel { text-decoration-thickness: 2px; }",
             TextDecorationThickness
         ),
-        CssTextDecorationThickness::Length(CssTextDecorationThicknessLength::new(CssLength::px(
-            2.0
-        )))
+        CssTextDecorationThickness::Length(nonnegative_length_percentage("2px"))
     );
 }
 
@@ -8823,7 +8802,7 @@ fn parses_text_decoration_family() {
             )),
             Some(CssTextDecorationStyle::Dotted),
             Some(CssTextDecorationThickness::Length(
-                CssTextDecorationThicknessLength::new(CssLength::px(3.0))
+                nonnegative_length_percentage("3px")
             )),
         )
     );
@@ -8887,16 +8866,23 @@ fn checked_typography_constructors_reject_invalid_states() {
         CssAuthoredFontFeatureValue::On,
     );
     assert_eq!(feature.tag().as_str(), "kern");
-    assert_eq!(CssVerticalAlignLength::try_new(CssLength::Auto), None);
     assert!(
         CssSpecifiedLengthPercentage::try_from_component(
             CssComponentValue::try_token("auto").unwrap()
         )
         .is_err()
     );
-    assert_eq!(
-        CssTextDecorationThicknessLength::try_new(CssLength::px(-1.0)),
-        None
+    assert!(
+        CssSpecifiedLengthPercentage::try_from_component(
+            CssComponentValue::try_token("auto").unwrap()
+        )
+        .is_err()
+    );
+    assert!(
+        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+            CssComponentValue::try_dimension("-1", "px").unwrap()
+        )
+        .is_err()
     );
     assert_eq!(
         CssTextDecorationLine::try_new(vec![
@@ -9020,12 +9006,8 @@ fn parses_background_properties_as_authored_syntax() {
         ),
         CssBackgroundPositionList::try_new(vec![
             CssBackgroundPosition::try_new(
-                CssHorizontalPosition::LeftOffset(
-                    CssPositionOffset::try_new(CssLength::px(10.0)).unwrap(),
-                ),
-                CssVerticalPosition::TopOffset(
-                    CssPositionOffset::try_new(CssLength::percent(20.0)).unwrap(),
-                ),
+                CssHorizontalPosition::LeftOffset(signed_length_percentage("10px"),),
+                CssVerticalPosition::TopOffset(signed_length_percentage("20%"),),
             )
             .unwrap()
         ])
@@ -9039,7 +9021,7 @@ fn parses_background_properties_as_authored_syntax() {
         CssBackgroundSizeList::new(vec![
             CssBackgroundSize::Cover,
             CssBackgroundSize::Explicit {
-                width: CssBackgroundSizeComponent::Length(CssLength::px(10.0)),
+                width: CssBackgroundSizeComponent::Length(nonnegative_length_percentage("10px")),
                 height: Some(CssBackgroundSizeComponent::Auto),
             },
         ])
@@ -9106,7 +9088,7 @@ fn parses_interaction_and_outline_properties_as_authored_syntax() {
     );
     assert_eq!(
         declaration_value!(".panel { outline-width: 2px; }", OutlineWidth),
-        CssOutlineWidth::Length(CssLength::px(2.0))
+        CssOutlineWidth::Length(nonnegative_length("2px"))
     );
 }
 
@@ -9142,7 +9124,11 @@ fn parses_transform_effect_and_mask_properties_as_authored_syntax() {
     let CssFilterFunction::Blur(blur) = &filter.functions()[0] else {
         panic!("blur");
     };
-    assert_eq!(blur.length(), &CssLength::px(4.0));
+    assert!(exact_dimension(
+        blur.length().literal_component(),
+        "4",
+        "px"
+    ));
     assert!(matches!(
         filter.functions()[1],
         CssFilterFunction::Opacity(CssFilterAmount::Percentage(_))
@@ -9158,7 +9144,7 @@ fn parses_transform_effect_and_mask_properties_as_authored_syntax() {
     };
     assert!(
         matches!(circle.radius(), CssCircleRadius::LengthPercentage(radius)
-        if matches!(radius.value(), CssLength::Percent(value) if value.value() == 50.0))
+        if exact_percentage(radius.literal_component(), "50"))
     );
     assert!(circle.position().is_some());
     assert_eq!(
@@ -9187,10 +9173,16 @@ fn authored_transform_filter_and_basic_shape_values_preserve_family_context() {
     let CssTransformFunction::Translate(translation) = &functions.functions()[0] else {
         panic!("typed translate function");
     };
-    assert!(matches!(translation.x().value(), CssLength::Px(value) if value.value() == 10.0));
-    assert!(
-        matches!(translation.y().unwrap().value(), CssLength::Px(value) if value.value() == 20.0)
-    );
+    assert!(exact_dimension(
+        translation.x().literal_component(),
+        "10",
+        "px"
+    ));
+    assert!(exact_dimension(
+        translation.y().unwrap().literal_component(),
+        "20",
+        "px"
+    ));
     assert!(matches!(
         functions.functions()[1],
         CssTransformFunction::Rotate(CssTransformAngle::Literal(_))
@@ -9216,7 +9208,7 @@ fn authored_transform_filter_and_basic_shape_values_preserve_family_context() {
     };
     assert!(
         matches!(circle.radius(), CssCircleRadius::LengthPercentage(radius)
-        if matches!(radius.value(), CssLength::Percent(value) if value.value() == 50.0))
+        if exact_percentage(radius.literal_component(), "50"))
     );
     assert!(circle.position().is_some());
 
@@ -9330,7 +9322,7 @@ fn background_effect_and_animation_constructors_reject_invalid_states() {
     assert_eq!(CssImageValueList::try_new(Vec::new()), None);
     assert_eq!(CssCursorUrlList::try_new(Vec::new()), None);
     assert!(CssCursor::try_urls(Vec::new(), CssCursorKeyword::Pointer).is_none());
-    let horizontal = CssPositionOffset::try_new(CssLength::px(1.0)).unwrap();
+    let horizontal = signed_length_percentage("1px");
     assert!(
         CssPosition::try_new(
             CssHorizontalPosition::LeftOffset(horizontal),
@@ -9338,7 +9330,7 @@ fn background_effect_and_animation_constructors_reject_invalid_states() {
         )
         .is_none()
     );
-    let vertical = CssPositionOffset::try_new(CssLength::percent(5.0)).unwrap();
+    let vertical = signed_length_percentage("5%");
     assert!(
         CssPosition::try_new(
             CssHorizontalPosition::Left,
@@ -9346,16 +9338,17 @@ fn background_effect_and_animation_constructors_reject_invalid_states() {
         )
         .is_none()
     );
-    assert_eq!(CssTranslateValues::try_new(Vec::new()), None);
-    assert_eq!(
-        CssTranslateValues::try_new(vec![
-            CssLength::px(1.0),
-            CssLength::px(2.0),
-            CssLength::px(3.0),
-            CssLength::px(4.0),
-        ]),
-        None
+    assert!(
+        CssTranslateValues::try_new(
+            signed_length_percentage("1px"),
+            None,
+            Some(signed_length("3px"))
+        )
+        .is_none()
     );
+    for css in ["translate()", "translate3d(1px, 2px, 3px, 4px)"] {
+        assert!(!parse_style_attribute(&format!("transform: {css}")).is_clean());
+    }
     assert_eq!(CssScaleValues::try_new(Vec::new()), None);
     assert_eq!(CssScaleValues::try_new(vec![1.0, 2.0, 3.0, 4.0]), None);
     assert_eq!(CssMaskList::try_new(Vec::new()), None);
@@ -9764,27 +9757,29 @@ fn parses_box_shadow_none_and_shadow_lists() {
     assert_eq!(shadows.shadows().len(), 2);
     assert_eq!(
         shadows.shadows()[0],
-        CssShadow::new(
+        CssShadow::try_new(
             true,
-            CssLength::px(1.0),
-            CssLength::px(2.0),
-            Some(CssLength::px(3.0)),
-            Some(CssLength::px(4.0)),
+            signed_length("1px"),
+            signed_length("2px"),
+            Some(nonnegative_length("3px")),
+            Some(signed_length("4px")),
             Some(CssColor::from_named(
                 CssNamedColor::try_new("black").unwrap()
             )),
         )
+        .unwrap()
     );
     assert_eq!(
         shadows.shadows()[1],
-        CssShadow::new(
+        CssShadow::try_new(
             false,
-            CssLength::Zero,
-            CssLength::px(1.0),
+            signed_length("0"),
+            signed_length("1px"),
             None,
             None,
             Some(CssColor::from_hex(CssHexColor::try_new("fff").unwrap())),
         )
+        .unwrap()
     );
 }
 
@@ -9826,79 +9821,99 @@ fn checked_border_width_rejects_negative_and_percentage_values() {
 
 #[test]
 fn checked_corner_radius_constructor_rejects_parser_invalid_values() {
-    for value in [
-        CssLength::Auto,
-        CssLength::MinContent,
-        CssLength::MaxContent,
-        CssLength::FitContent,
-        CssLength::Normal,
-        CssLength::px(-1.0),
-        CssLength::percent(-1.0),
-        CssLength::Calc(CssCalcLength::try_px(-1.0).unwrap()),
-        CssLength::Calc(CssCalcLength::try_percent(-1.0).unwrap()),
+    for css in [
+        "auto",
+        "min-content",
+        "max-content",
+        "fit-content",
+        "normal",
+        "-1px",
+        "-1%",
     ] {
-        assert_eq!(
-            CssCornerRadius::try_new(value.clone(), CssLength::px(1.0)),
-            None
+        assert!(
+            CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+                CssComponentValue::try_token(css).unwrap()
+            )
+            .is_err(),
+            "{css}"
         );
-        assert_eq!(CssCornerRadius::try_new(CssLength::px(1.0), value), None);
     }
-
-    assert_eq!(
-        CssCornerRadius::try_new(CssLength::px(1.0), CssLength::percent(25.0)),
-        Some(CssCornerRadius::new(
-            CssLength::px(1.0),
-            CssLength::percent(25.0)
-        ))
+    for css in ["-1px", "-1%"] {
+        let calculation = CssLengthPercentageCalculation::try_from_components(
+            parse_component_values(css).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(calculation).is_err()
+        );
+    }
+    let radius = CssCornerRadiusValue::new(
+        nonnegative_length_percentage("1px"),
+        Some(nonnegative_length_percentage("25%")),
     );
+    assert!(exact_dimension(
+        radius.horizontal().literal_component(),
+        "1",
+        "px"
+    ));
+    assert!(exact_percentage(
+        radius.vertical().literal_component(),
+        "25"
+    ));
 }
 
 #[test]
 fn checked_shadow_constructor_rejects_invalid_pairings_and_lengths() {
-    assert_eq!(
-        CssShadow::try_new(false, CssLength::Auto, CssLength::px(2.0), None, None, None,),
-        None
+    assert!(
+        CssSpecifiedLength::try_from_component(CssComponentValue::try_token("auto").unwrap())
+            .is_err()
     );
-    assert_eq!(
+    assert!(
+        CssSpecifiedNonNegativeLength::try_from_component(
+            CssComponentValue::try_dimension("-3", "px").unwrap()
+        )
+        .is_err()
+    );
+    assert!(
         CssShadow::try_new(
             false,
-            CssLength::px(1.0),
-            CssLength::px(2.0),
+            signed_length("1px"),
+            signed_length("2px"),
             None,
-            Some(CssLength::px(4.0)),
-            None,
-        ),
-        None
+            Some(signed_length("4px")),
+            None
+        )
+        .is_none()
     );
-    assert_eq!(
-        CssShadow::try_new(
-            false,
-            CssLength::px(1.0),
-            CssLength::px(2.0),
-            Some(CssLength::px(-3.0)),
-            None,
-            None,
-        ),
-        None
-    );
-    assert_eq!(
-        CssShadow::try_new(
-            false,
-            CssLength::px(-1.0),
-            CssLength::px(2.0),
-            Some(CssLength::px(3.0)),
-            Some(CssLength::px(-4.0)),
-            None,
-        ),
-        Some(CssShadow::new(
-            false,
-            CssLength::px(-1.0),
-            CssLength::px(2.0),
-            Some(CssLength::px(3.0)),
-            Some(CssLength::px(-4.0)),
-            None,
-        ))
-    );
+    let shadow = CssShadow::try_new(
+        false,
+        signed_length("-1px"),
+        signed_length("2px"),
+        Some(nonnegative_length("3px")),
+        Some(signed_length("-4px")),
+        None,
+    )
+    .unwrap();
+    assert!(exact_dimension(
+        shadow.offset_x().literal_component(),
+        "-1",
+        "px"
+    ));
+    assert!(exact_dimension(
+        shadow.offset_y().literal_component(),
+        "2",
+        "px"
+    ));
+    assert!(exact_dimension(
+        shadow.blur_radius().unwrap().literal_component(),
+        "3",
+        "px"
+    ));
+    assert!(exact_dimension(
+        shadow.spread_radius().unwrap().literal_component(),
+        "-4",
+        "px"
+    ));
 }
 
 #[test]
@@ -10368,4 +10383,72 @@ fn assert_pseudo_elements(sequence: &CssPseudoElementSequence, expected: &[CssPs
         .map(CssPseudoElementSegment::PseudoElement)
         .collect();
     assert_eq!(sequence.segments(), expected);
+}
+
+fn exact_dimension(
+    component: Option<&crate::CssComponentValue>,
+    representation: &str,
+    expected_unit: &str,
+) -> bool {
+    matches!(component.map(crate::CssComponentValue::view), Some(crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+}
+fn exact_percentage(component: Option<&crate::CssComponentValue>, representation: &str) -> bool {
+    matches!(component.map(crate::CssComponentValue::view), Some(crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
+}
+
+fn signed_length(css: &str) -> crate::CssSpecifiedLength {
+    let components = crate::parse_component_values(css).unwrap();
+    if css.contains('(') {
+        crate::CssSpecifiedLength::try_from_calculation(
+            crate::CssLengthCalculation::try_from_components(components).unwrap(),
+        )
+        .unwrap()
+    } else {
+        crate::CssSpecifiedLength::try_from_component(
+            crate::CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
+    }
+}
+fn nonnegative_length(css: &str) -> crate::CssSpecifiedNonNegativeLength {
+    let components = crate::parse_component_values(css).unwrap();
+    if css.contains('(') {
+        crate::CssSpecifiedNonNegativeLength::try_from_calculation(
+            crate::CssLengthCalculation::try_from_components(components).unwrap(),
+        )
+        .unwrap()
+    } else {
+        crate::CssSpecifiedNonNegativeLength::try_from_component(
+            crate::CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
+    }
+}
+fn signed_length_percentage(css: &str) -> crate::CssSpecifiedLengthPercentage {
+    let components = crate::parse_component_values(css).unwrap();
+    if css.contains('(') {
+        crate::CssSpecifiedLengthPercentage::try_from_calculation(
+            crate::CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+        )
+        .unwrap()
+    } else {
+        crate::CssSpecifiedLengthPercentage::try_from_component(
+            crate::CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
+    }
+}
+fn nonnegative_length_percentage(css: &str) -> crate::CssSpecifiedNonNegativeLengthPercentage {
+    let components = crate::parse_component_values(css).unwrap();
+    if css.contains('(') {
+        crate::CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
+            crate::CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+        )
+        .unwrap()
+    } else {
+        crate::CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+            crate::CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
+    }
 }

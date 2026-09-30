@@ -149,7 +149,9 @@ pub surgeist_css::CssBackgroundSize::Explicit::height: core::option::Option<surg
 pub surgeist_css::CssBackgroundSize::Explicit::width: surgeist_css::CssBackgroundSizeComponent
 #[non_exhaustive] pub enum surgeist_css::CssBackgroundSizeComponent
 pub surgeist_css::CssBackgroundSizeComponent::Auto
-pub surgeist_css::CssBackgroundSizeComponent::Length(surgeist_css::CssLength)
+pub surgeist_css::CssBackgroundSizeComponent::Length(surgeist_css::CssSpecifiedNonNegativeLengthPercentage)
+impl core::cmp::PartialEq for surgeist_css::CssBackgroundSizeComponent
+pub fn surgeist_css::CssBackgroundSizeComponent::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssBaselinePosition
 pub surgeist_css::CssBaselinePosition::Baseline
 pub surgeist_css::CssBaselinePosition::First
@@ -190,9 +192,11 @@ impl surgeist_css::CssBorderCollapse
 pub fn surgeist_css::CssBorderCollapse::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssBorderCollapse::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssBorderImageOutsetComponent
-pub surgeist_css::CssBorderImageOutsetComponent::Length(surgeist_css::CssBorderImageOutsetLength)
+pub surgeist_css::CssBorderImageOutsetComponent::Length(surgeist_css::CssSpecifiedNonNegativeLength)
 pub surgeist_css::CssBorderImageOutsetComponent::Number(surgeist_css::CssNonNegativeNumber)
 pub surgeist_css::CssBorderImageOutsetComponent::NumberCalculation(surgeist_css::CssNumberCalculation)
+impl core::cmp::PartialEq for surgeist_css::CssBorderImageOutsetComponent
+pub fn surgeist_css::CssBorderImageOutsetComponent::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssBorderImageRepeatKeyword
 pub surgeist_css::CssBorderImageRepeatKeyword::Repeat
 pub surgeist_css::CssBorderImageRepeatKeyword::Round
@@ -205,9 +209,11 @@ pub surgeist_css::CssBorderImageSliceComponent::Percentage(surgeist_css::CssNonN
 pub surgeist_css::CssBorderImageSliceComponent::PercentageCalculation(surgeist_css::CssPercentageCalculation)
 #[non_exhaustive] pub enum surgeist_css::CssBorderImageWidthComponent
 pub surgeist_css::CssBorderImageWidthComponent::Auto
-pub surgeist_css::CssBorderImageWidthComponent::LengthPercentage(surgeist_css::CssBorderImageWidthLengthPercentage)
+pub surgeist_css::CssBorderImageWidthComponent::LengthPercentage(surgeist_css::CssSpecifiedNonNegativeLengthPercentage)
 pub surgeist_css::CssBorderImageWidthComponent::Number(surgeist_css::CssNonNegativeNumber)
 pub surgeist_css::CssBorderImageWidthComponent::NumberCalculation(surgeist_css::CssNumberCalculation)
+impl core::cmp::PartialEq for surgeist_css::CssBorderImageWidthComponent
+pub fn surgeist_css::CssBorderImageWidthComponent::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssBorderStyle
 pub surgeist_css::CssBorderStyle::Dashed
 pub surgeist_css::CssBorderStyle::Dotted
@@ -300,17 +306,6 @@ pub surgeist_css::CssBreakInside::AvoidRegion
 impl surgeist_css::CssBreakInside
 pub fn surgeist_css::CssBreakInside::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssBreakInside::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-#[non_exhaustive] pub enum surgeist_css::CssCalcLength
-pub surgeist_css::CssCalcLength::Dimension(surgeist_css::CssLengthDimension)
-pub surgeist_css::CssCalcLength::Percent(surgeist_css::CssFiniteNumber)
-pub surgeist_css::CssCalcLength::Px(surgeist_css::CssFiniteNumber)
-pub surgeist_css::CssCalcLength::Typed(surgeist_css::CssLengthPercentageCalculation)
-impl surgeist_css::CssCalcLength
-pub fn surgeist_css::CssCalcLength::to_css_string(&self) -> alloc::string::String
-pub fn surgeist_css::CssCalcLength::try_dimension(value: f32, unit: surgeist_css::CssLengthUnit) -> core::option::Option<Self>
-pub fn surgeist_css::CssCalcLength::try_percent(value: f32) -> core::option::Option<Self>
-pub fn surgeist_css::CssCalcLength::try_px(value: f32) -> core::option::Option<Self>
-pub fn surgeist_css::CssCalcLength::uses_percentage(&self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssCalcSizeBasisRef<'a>
 pub surgeist_css::CssCalcSizeBasisRef::Any
 pub surgeist_css::CssCalcSizeBasisRef::Keyword(surgeist_css::CssIntrinsicSizeKeyword)
@@ -381,7 +376,9 @@ pub surgeist_css::CssCharacterAlignmentErrorKind::InvalidCharacter
 #[non_exhaustive] pub enum surgeist_css::CssCircleRadius
 pub surgeist_css::CssCircleRadius::Default
 pub surgeist_css::CssCircleRadius::Extent(surgeist_css::CssRadialExtent)
-pub surgeist_css::CssCircleRadius::LengthPercentage(surgeist_css::CssShapeLengthPercentage)
+pub surgeist_css::CssCircleRadius::LengthPercentage(surgeist_css::CssSpecifiedNonNegativeLengthPercentage)
+impl core::cmp::PartialEq for surgeist_css::CssCircleRadius
+pub fn surgeist_css::CssCircleRadius::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssClear
 pub surgeist_css::CssClear::Both
 pub surgeist_css::CssClear::InlineEnd
@@ -400,10 +397,12 @@ pub fn surgeist_css::CssClip::serialize_specified(&self) -> core::result::Result
 pub fn surgeist_css::CssClip::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssClipEdge
 pub surgeist_css::CssClipEdge::Auto
-pub surgeist_css::CssClipEdge::Length(surgeist_css::CssClipLength)
+pub surgeist_css::CssClipEdge::Length(surgeist_css::CssSpecifiedLength)
 impl surgeist_css::CssClipEdge
 pub fn surgeist_css::CssClipEdge::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssClipEdge::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::cmp::PartialEq for surgeist_css::CssClipEdge
+pub fn surgeist_css::CssClipEdge::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssClipPath
 pub surgeist_css::CssClipPath::BasicShape(surgeist_css::CssBasicShape)
 pub surgeist_css::CssClipPath::None
@@ -454,8 +453,10 @@ pub surgeist_css::CssColorScalarErrorKind::OutOfRange
 pub surgeist_css::CssColorSchemePreference::Dark
 pub surgeist_css::CssColorSchemePreference::Light
 #[non_exhaustive] pub enum surgeist_css::CssColorStopListItem
-pub surgeist_css::CssColorStopListItem::Hint(surgeist_css::CssGradientLinePosition)
+pub surgeist_css::CssColorStopListItem::Hint(surgeist_css::CssSpecifiedLengthPercentage)
 pub surgeist_css::CssColorStopListItem::Stop(alloc::boxed::Box<surgeist_css::CssGradientColorStop>)
+impl core::cmp::PartialEq for surgeist_css::CssColorStopListItem
+pub fn surgeist_css::CssColorStopListItem::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssColorSyntax
 pub surgeist_css::CssColorSyntax::Legacy
 pub surgeist_css::CssColorSyntax::Modern
@@ -1107,7 +1108,7 @@ pub fn surgeist_css::CssFloat::serialize_specified(&self) -> core::result::Resul
 pub fn surgeist_css::CssFloat::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFlowToleranceRef<'a>
 pub surgeist_css::CssFlowToleranceRef::Infinite
-pub surgeist_css::CssFlowToleranceRef::LengthPercentage(&'a surgeist_css::CssLength)
+pub surgeist_css::CssFlowToleranceRef::LengthPercentage(&'a surgeist_css::CssSpecifiedLengthPercentage)
 pub surgeist_css::CssFlowToleranceRef::Normal
 #[non_exhaustive] pub enum surgeist_css::CssFontDisplay
 pub surgeist_css::CssFontDisplay::Auto
@@ -1585,10 +1586,12 @@ pub surgeist_css::CssHorizontalGradientSide::Right
 #[non_exhaustive] pub enum surgeist_css::CssHorizontalPosition
 pub surgeist_css::CssHorizontalPosition::Center
 pub surgeist_css::CssHorizontalPosition::Left
-pub surgeist_css::CssHorizontalPosition::LeftOffset(surgeist_css::CssPositionOffset)
-pub surgeist_css::CssHorizontalPosition::Offset(surgeist_css::CssPositionOffset)
+pub surgeist_css::CssHorizontalPosition::LeftOffset(surgeist_css::CssSpecifiedLengthPercentage)
+pub surgeist_css::CssHorizontalPosition::Offset(surgeist_css::CssSpecifiedLengthPercentage)
 pub surgeist_css::CssHorizontalPosition::Right
-pub surgeist_css::CssHorizontalPosition::RightOffset(surgeist_css::CssPositionOffset)
+pub surgeist_css::CssHorizontalPosition::RightOffset(surgeist_css::CssSpecifiedLengthPercentage)
+impl core::cmp::PartialEq for surgeist_css::CssHorizontalPosition
+pub fn surgeist_css::CssHorizontalPosition::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssHorizontalPositionKeyword
 pub surgeist_css::CssHorizontalPositionKeyword::Center
 pub surgeist_css::CssHorizontalPositionKeyword::Left
@@ -2413,24 +2416,6 @@ pub surgeist_css::CssLeaderValue::String(surgeist_css::CssContentString)
 pub surgeist_css::CssLegacyAlignment::Center
 pub surgeist_css::CssLegacyAlignment::Left
 pub surgeist_css::CssLegacyAlignment::Right
-#[non_exhaustive] pub enum surgeist_css::CssLength
-pub surgeist_css::CssLength::Auto
-pub surgeist_css::CssLength::Calc(surgeist_css::CssCalcLength)
-pub surgeist_css::CssLength::Dimension(surgeist_css::CssLengthDimension)
-pub surgeist_css::CssLength::FitContent
-pub surgeist_css::CssLength::MaxContent
-pub surgeist_css::CssLength::Medium
-pub surgeist_css::CssLength::MinContent
-pub surgeist_css::CssLength::Normal
-pub surgeist_css::CssLength::Percent(surgeist_css::CssFiniteNumber)
-pub surgeist_css::CssLength::Px(surgeist_css::CssFiniteNumber)
-pub surgeist_css::CssLength::Thick
-pub surgeist_css::CssLength::Thin
-pub surgeist_css::CssLength::Zero
-impl surgeist_css::CssLength
-pub fn surgeist_css::CssLength::try_dimension(value: f32, unit: surgeist_css::CssLengthUnit) -> core::option::Option<Self>
-pub fn surgeist_css::CssLength::try_percent(value: f32) -> core::option::Option<Self>
-pub fn surgeist_css::CssLength::try_px(value: f32) -> core::option::Option<Self>
 #[non_exhaustive] pub enum surgeist_css::CssLengthUnit
 pub surgeist_css::CssLengthUnit::Cap
 pub surgeist_css::CssLengthUnit::Ch
@@ -3088,10 +3073,12 @@ pub surgeist_css::CssOrientation::Portrait
 pub surgeist_css::CssOutlineStyle::Auto
 pub surgeist_css::CssOutlineStyle::Border(surgeist_css::CssBorderStyle)
 #[non_exhaustive] pub enum surgeist_css::CssOutlineWidth
-pub surgeist_css::CssOutlineWidth::Length(surgeist_css::CssLength)
+pub surgeist_css::CssOutlineWidth::Length(surgeist_css::CssSpecifiedNonNegativeLength)
 pub surgeist_css::CssOutlineWidth::Medium
 pub surgeist_css::CssOutlineWidth::Thick
 pub surgeist_css::CssOutlineWidth::Thin
+impl core::cmp::PartialEq for surgeist_css::CssOutlineWidth
+pub fn surgeist_css::CssOutlineWidth::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssOverflow
 pub surgeist_css::CssOverflow::Auto
 pub surgeist_css::CssOverflow::Clip
@@ -3254,9 +3241,11 @@ pub surgeist_css::CssRadialExtent::FarthestSide
 pub surgeist_css::CssRadialShape::Circle
 pub surgeist_css::CssRadialShape::Ellipse
 #[non_exhaustive] pub enum surgeist_css::CssRadialSize
-pub surgeist_css::CssRadialSize::Circle(surgeist_css::CssRadialCircleSize)
+pub surgeist_css::CssRadialSize::Circle(surgeist_css::CssSpecifiedNonNegativeLength)
 pub surgeist_css::CssRadialSize::Ellipse(surgeist_css::CssRadialEllipseSize)
 pub surgeist_css::CssRadialSize::Extent(surgeist_css::CssRadialExtent)
+impl core::cmp::PartialEq for surgeist_css::CssRadialSize
+pub fn surgeist_css::CssRadialSize::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssRecoveryAction
 pub surgeist_css::CssRecoveryAction::DropAtRule
 pub surgeist_css::CssRecoveryAction::DropDeclaration
@@ -3690,7 +3679,9 @@ pub surgeist_css::CssTextDecorationStyle::Wavy
 #[non_exhaustive] pub enum surgeist_css::CssTextDecorationThickness
 pub surgeist_css::CssTextDecorationThickness::Auto
 pub surgeist_css::CssTextDecorationThickness::FromFont
-pub surgeist_css::CssTextDecorationThickness::Length(surgeist_css::CssTextDecorationThicknessLength)
+pub surgeist_css::CssTextDecorationThickness::Length(surgeist_css::CssSpecifiedNonNegativeLengthPercentage)
+impl core::cmp::PartialEq for surgeist_css::CssTextDecorationThickness
+pub fn surgeist_css::CssTextDecorationThickness::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssTextOrientation
 pub surgeist_css::CssTextOrientation::Mixed
 pub surgeist_css::CssTextOrientation::Sideways
@@ -3787,11 +3778,13 @@ pub surgeist_css::CssTransformFunction::SkewX(surgeist_css::CssTransformAngle)
 pub surgeist_css::CssTransformFunction::SkewY(surgeist_css::CssTransformAngle)
 pub surgeist_css::CssTransformFunction::Translate(surgeist_css::CssTransformTranslate)
 pub surgeist_css::CssTransformFunction::Translate3d(surgeist_css::CssTransformTranslate3d)
-pub surgeist_css::CssTransformFunction::TranslateX(surgeist_css::CssTransformLengthPercentage)
-pub surgeist_css::CssTransformFunction::TranslateY(surgeist_css::CssTransformLengthPercentage)
-pub surgeist_css::CssTransformFunction::TranslateZ(surgeist_css::CssTransformLength)
+pub surgeist_css::CssTransformFunction::TranslateX(surgeist_css::CssSpecifiedLengthPercentage)
+pub surgeist_css::CssTransformFunction::TranslateY(surgeist_css::CssSpecifiedLengthPercentage)
+pub surgeist_css::CssTransformFunction::TranslateZ(surgeist_css::CssSpecifiedLength)
 impl surgeist_css::CssTransformFunction
 pub const fn surgeist_css::CssTransformFunction::kind(&self) -> surgeist_css::CssTransformFunctionKind
+impl core::cmp::PartialEq for surgeist_css::CssTransformFunction
+pub fn surgeist_css::CssTransformFunction::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssTransformFunctionKind
 pub surgeist_css::CssTransformFunctionKind::Matrix
 pub surgeist_css::CssTransformFunctionKind::Matrix3d
@@ -3821,8 +3814,10 @@ pub surgeist_css::CssTransformNumber::Literal(surgeist_css::CssFiniteNumber)
 pub surgeist_css::CssTransformPercentage::Calculation(surgeist_css::CssPercentageCalculation)
 pub surgeist_css::CssTransformPercentage::Literal(surgeist_css::CssFiniteNumber)
 #[non_exhaustive] pub enum surgeist_css::CssTransformPerspective
-pub surgeist_css::CssTransformPerspective::Length(surgeist_css::CssTransformNonNegativeLength)
+pub surgeist_css::CssTransformPerspective::Length(surgeist_css::CssSpecifiedNonNegativeLength)
 pub surgeist_css::CssTransformPerspective::None
+impl core::cmp::PartialEq for surgeist_css::CssTransformPerspective
+pub fn surgeist_css::CssTransformPerspective::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssTransformScaleComponent
 pub surgeist_css::CssTransformScaleComponent::Number(surgeist_css::CssTransformNumber)
 pub surgeist_css::CssTransformScaleComponent::Percentage(surgeist_css::CssTransformPercentage)
@@ -3907,23 +3902,27 @@ pub surgeist_css::CssValueTokenRef::Whitespace(&'a str)
 #[non_exhaustive] pub enum surgeist_css::CssVerticalAlign
 pub surgeist_css::CssVerticalAlign::Baseline
 pub surgeist_css::CssVerticalAlign::Bottom
-pub surgeist_css::CssVerticalAlign::Length(surgeist_css::CssVerticalAlignLength)
+pub surgeist_css::CssVerticalAlign::Length(surgeist_css::CssSpecifiedLengthPercentage)
 pub surgeist_css::CssVerticalAlign::Middle
 pub surgeist_css::CssVerticalAlign::Sub
 pub surgeist_css::CssVerticalAlign::Super
 pub surgeist_css::CssVerticalAlign::TextBottom
 pub surgeist_css::CssVerticalAlign::TextTop
 pub surgeist_css::CssVerticalAlign::Top
+impl core::cmp::PartialEq for surgeist_css::CssVerticalAlign
+pub fn surgeist_css::CssVerticalAlign::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssVerticalGradientSide
 pub surgeist_css::CssVerticalGradientSide::Bottom
 pub surgeist_css::CssVerticalGradientSide::Top
 #[non_exhaustive] pub enum surgeist_css::CssVerticalPosition
 pub surgeist_css::CssVerticalPosition::Bottom
-pub surgeist_css::CssVerticalPosition::BottomOffset(surgeist_css::CssPositionOffset)
+pub surgeist_css::CssVerticalPosition::BottomOffset(surgeist_css::CssSpecifiedLengthPercentage)
 pub surgeist_css::CssVerticalPosition::Center
-pub surgeist_css::CssVerticalPosition::Offset(surgeist_css::CssPositionOffset)
+pub surgeist_css::CssVerticalPosition::Offset(surgeist_css::CssSpecifiedLengthPercentage)
 pub surgeist_css::CssVerticalPosition::Top
-pub surgeist_css::CssVerticalPosition::TopOffset(surgeist_css::CssPositionOffset)
+pub surgeist_css::CssVerticalPosition::TopOffset(surgeist_css::CssSpecifiedLengthPercentage)
+impl core::cmp::PartialEq for surgeist_css::CssVerticalPosition
+pub fn surgeist_css::CssVerticalPosition::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssVerticalPositionKeyword
 pub surgeist_css::CssVerticalPositionKeyword::Bottom
 pub surgeist_css::CssVerticalPositionKeyword::Center
@@ -4388,10 +4387,6 @@ pub struct surgeist_css::CssBorderImageOutset
 impl surgeist_css::CssBorderImageOutset
 pub fn surgeist_css::CssBorderImageOutset::try_new(values: alloc::vec::Vec<surgeist_css::CssBorderImageOutsetComponent>) -> core::option::Option<Self>
 pub const fn surgeist_css::CssBorderImageOutset::values(&self) -> &[surgeist_css::CssBorderImageOutsetComponent; 4]
-pub struct surgeist_css::CssBorderImageOutsetLength
-impl surgeist_css::CssBorderImageOutsetLength
-pub fn surgeist_css::CssBorderImageOutsetLength::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssBorderImageOutsetLength::value(&self) -> &surgeist_css::CssLength
 pub struct surgeist_css::CssBorderImageOutsetPropertyValue
 impl surgeist_css::CssBorderImageOutsetPropertyValue
 pub fn surgeist_css::CssBorderImageOutsetPropertyValue::as_css(&self) -> &str
@@ -4426,10 +4421,6 @@ pub struct surgeist_css::CssBorderImageWidth
 impl surgeist_css::CssBorderImageWidth
 pub fn surgeist_css::CssBorderImageWidth::try_new(values: alloc::vec::Vec<surgeist_css::CssBorderImageWidthComponent>) -> core::option::Option<Self>
 pub const fn surgeist_css::CssBorderImageWidth::values(&self) -> &[surgeist_css::CssBorderImageWidthComponent; 4]
-pub struct surgeist_css::CssBorderImageWidthLengthPercentage
-impl surgeist_css::CssBorderImageWidthLengthPercentage
-pub fn surgeist_css::CssBorderImageWidthLengthPercentage::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssBorderImageWidthLengthPercentage::value(&self) -> &surgeist_css::CssLength
 pub struct surgeist_css::CssBorderImageWidthPropertyValue
 impl surgeist_css::CssBorderImageWidthPropertyValue
 pub fn surgeist_css::CssBorderImageWidthPropertyValue::as_css(&self) -> &str
@@ -4502,13 +4493,6 @@ pub struct surgeist_css::CssBorderPropertyValue
 impl surgeist_css::CssBorderPropertyValue
 pub fn surgeist_css::CssBorderPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBorderPropertyValue::value(&self) -> &surgeist_css::CssBorder
-pub struct surgeist_css::CssBorderRadii
-pub surgeist_css::CssBorderRadii::bottom_left: surgeist_css::CssCornerRadius
-pub surgeist_css::CssBorderRadii::bottom_right: surgeist_css::CssCornerRadius
-pub surgeist_css::CssBorderRadii::top_left: surgeist_css::CssCornerRadius
-pub surgeist_css::CssBorderRadii::top_right: surgeist_css::CssCornerRadius
-impl surgeist_css::CssBorderRadii
-pub const fn surgeist_css::CssBorderRadii::new(top_left: surgeist_css::CssCornerRadius, top_right: surgeist_css::CssCornerRadius, bottom_right: surgeist_css::CssCornerRadius, bottom_left: surgeist_css::CssCornerRadius) -> Self
 pub struct surgeist_css::CssBorderRadiusPropertyValue
 impl surgeist_css::CssBorderRadiusPropertyValue
 pub fn surgeist_css::CssBorderRadiusPropertyValue::as_css(&self) -> &str
@@ -4546,19 +4530,14 @@ pub fn surgeist_css::CssBorderRightWidthPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBorderRightWidthPropertyValue::value(&self) -> &surgeist_css::CssBorderWidth
 pub struct surgeist_css::CssBorderSpacing
 impl surgeist_css::CssBorderSpacing
-pub const fn surgeist_css::CssBorderSpacing::horizontal(&self) -> &surgeist_css::CssBorderSpacingLength
-pub fn surgeist_css::CssBorderSpacing::try_new(horizontal: surgeist_css::CssLength, vertical: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssBorderSpacing::vertical(&self) -> &surgeist_css::CssBorderSpacingLength
+pub const fn surgeist_css::CssBorderSpacing::horizontal(&self) -> &surgeist_css::CssSpecifiedNonNegativeLength
+pub const fn surgeist_css::CssBorderSpacing::new(horizontal: surgeist_css::CssSpecifiedNonNegativeLength, vertical: surgeist_css::CssSpecifiedNonNegativeLength) -> Self
+pub const fn surgeist_css::CssBorderSpacing::vertical(&self) -> &surgeist_css::CssSpecifiedNonNegativeLength
 impl surgeist_css::CssBorderSpacing
 pub fn surgeist_css::CssBorderSpacing::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssBorderSpacing::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-pub struct surgeist_css::CssBorderSpacingLength
-impl surgeist_css::CssBorderSpacingLength
-pub fn surgeist_css::CssBorderSpacingLength::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-pub fn surgeist_css::CssBorderSpacingLength::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-impl surgeist_css::CssBorderSpacingLength
-pub fn surgeist_css::CssBorderSpacingLength::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssBorderSpacingLength::value(&self) -> &surgeist_css::CssLength
+impl core::cmp::PartialEq for surgeist_css::CssBorderSpacing
+pub fn surgeist_css::CssBorderSpacing::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssBorderSpacingPropertyValue
 impl surgeist_css::CssBorderSpacingPropertyValue
 pub fn surgeist_css::CssBorderSpacingPropertyValue::as_css(&self) -> &str
@@ -4789,13 +4768,6 @@ pub struct surgeist_css::CssClearPropertyValue
 impl surgeist_css::CssClearPropertyValue
 pub fn surgeist_css::CssClearPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssClearPropertyValue::value(&self) -> &surgeist_css::CssClear
-pub struct surgeist_css::CssClipLength
-impl surgeist_css::CssClipLength
-pub fn surgeist_css::CssClipLength::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-pub fn surgeist_css::CssClipLength::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-impl surgeist_css::CssClipLength
-pub fn surgeist_css::CssClipLength::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssClipLength::value(&self) -> &surgeist_css::CssLength
 pub struct surgeist_css::CssClipPathPropertyValue
 impl surgeist_css::CssClipPathPropertyValue
 pub fn surgeist_css::CssClipPathPropertyValue::as_css(&self) -> &str
@@ -5326,11 +5298,6 @@ pub struct surgeist_css::CssContentVisibilityPropertyValue
 impl surgeist_css::CssContentVisibilityPropertyValue
 pub fn surgeist_css::CssContentVisibilityPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssContentVisibilityPropertyValue::value(&self) -> &surgeist_css::CssContentVisibility
-pub struct surgeist_css::CssCornerRadius
-impl surgeist_css::CssCornerRadius
-pub const fn surgeist_css::CssCornerRadius::horizontal(&self) -> &surgeist_css::CssLength
-pub fn surgeist_css::CssCornerRadius::try_new(horizontal: surgeist_css::CssLength, vertical: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssCornerRadius::vertical(&self) -> &surgeist_css::CssLength
 pub struct surgeist_css::CssCornerRadiusValue
 impl surgeist_css::CssCornerRadiusValue
 pub fn surgeist_css::CssCornerRadiusValue::authored_vertical(&self) -> core::option::Option<&surgeist_css::CssSpecifiedNonNegativeLengthPercentage>
@@ -5573,11 +5540,13 @@ pub fn surgeist_css::CssDisplayPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssDisplayPropertyValue::value(&self) -> &surgeist_css::CssDisplayValue
 pub struct surgeist_css::CssDropShadow
 impl surgeist_css::CssDropShadow
-pub const fn surgeist_css::CssDropShadow::blur_radius(&self) -> core::option::Option<&surgeist_css::CssLength>
+pub const fn surgeist_css::CssDropShadow::blur_radius(&self) -> core::option::Option<&surgeist_css::CssSpecifiedNonNegativeLength>
 pub fn surgeist_css::CssDropShadow::color(&self) -> core::option::Option<&surgeist_css::CssColor>
-pub const fn surgeist_css::CssDropShadow::offset_x(&self) -> &surgeist_css::CssLength
-pub const fn surgeist_css::CssDropShadow::offset_y(&self) -> &surgeist_css::CssLength
-pub fn surgeist_css::CssDropShadow::try_new(offset_x: surgeist_css::CssLength, offset_y: surgeist_css::CssLength, blur_radius: core::option::Option<surgeist_css::CssLength>, color: core::option::Option<surgeist_css::CssColor>) -> core::option::Option<Self>
+pub fn surgeist_css::CssDropShadow::new(offset_x: surgeist_css::CssSpecifiedLength, offset_y: surgeist_css::CssSpecifiedLength, blur_radius: core::option::Option<surgeist_css::CssSpecifiedNonNegativeLength>, color: core::option::Option<surgeist_css::CssColor>) -> Self
+pub const fn surgeist_css::CssDropShadow::offset_x(&self) -> &surgeist_css::CssSpecifiedLength
+pub const fn surgeist_css::CssDropShadow::offset_y(&self) -> &surgeist_css::CssSpecifiedLength
+impl core::cmp::PartialEq for surgeist_css::CssDropShadow
+pub fn surgeist_css::CssDropShadow::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssDurationList
 impl surgeist_css::CssDurationList
 pub fn surgeist_css::CssDurationList::try_new(values: alloc::vec::Vec<surgeist_css::CssDuration>) -> core::option::Option<Self>
@@ -5593,9 +5562,11 @@ pub fn surgeist_css::CssEasingList::try_new(values: alloc::vec::Vec<surgeist_css
 pub fn surgeist_css::CssEasingList::values(&self) -> &[surgeist_css::CssEasing]
 pub struct surgeist_css::CssEllipseRadii
 impl surgeist_css::CssEllipseRadii
-pub const fn surgeist_css::CssEllipseRadii::horizontal(&self) -> &surgeist_css::CssShapeLengthPercentage
-pub fn surgeist_css::CssEllipseRadii::try_new(horizontal: surgeist_css::CssLength, vertical: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssEllipseRadii::vertical(&self) -> &surgeist_css::CssShapeLengthPercentage
+pub const fn surgeist_css::CssEllipseRadii::horizontal(&self) -> &surgeist_css::CssSpecifiedNonNegativeLengthPercentage
+pub const fn surgeist_css::CssEllipseRadii::new(horizontal: surgeist_css::CssSpecifiedNonNegativeLengthPercentage, vertical: surgeist_css::CssSpecifiedNonNegativeLengthPercentage) -> Self
+pub const fn surgeist_css::CssEllipseRadii::vertical(&self) -> &surgeist_css::CssSpecifiedNonNegativeLengthPercentage
+impl core::cmp::PartialEq for surgeist_css::CssEllipseRadii
+pub fn surgeist_css::CssEllipseRadii::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssEllipseShape
 impl surgeist_css::CssEllipseShape
 pub const fn surgeist_css::CssEllipseShape::new(radius: surgeist_css::CssEllipseRadius, position: core::option::Option<surgeist_css::CssPosition>) -> Self
@@ -5661,8 +5632,12 @@ pub const fn surgeist_css::CssFeatureMetadata::supported_subset(&self) -> core::
 pub const fn surgeist_css::CssFeatureMetadata::unsupported_remainder(&self) -> core::option::Option<&'static str>
 pub struct surgeist_css::CssFilterBlur
 impl surgeist_css::CssFilterBlur
-pub const fn surgeist_css::CssFilterBlur::length(&self) -> &surgeist_css::CssLength
-pub fn surgeist_css::CssFilterBlur::try_new(length: surgeist_css::CssLength) -> core::option::Option<Self>
+pub const fn surgeist_css::CssFilterBlur::authored_length(&self) -> core::option::Option<&surgeist_css::CssSpecifiedNonNegativeLength>
+pub const fn surgeist_css::CssFilterBlur::length(&self) -> &surgeist_css::CssSpecifiedNonNegativeLength
+pub const fn surgeist_css::CssFilterBlur::new(length: surgeist_css::CssSpecifiedNonNegativeLength) -> Self
+pub fn surgeist_css::CssFilterBlur::omitted() -> Self
+impl core::cmp::PartialEq for surgeist_css::CssFilterBlur
+pub fn surgeist_css::CssFilterBlur::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssFilterFunctionList
 impl surgeist_css::CssFilterFunctionList
 pub fn surgeist_css::CssFilterFunctionList::functions(&self) -> &[surgeist_css::CssFilterFunction]
@@ -5747,8 +5722,10 @@ pub struct surgeist_css::CssFlowTolerance
 impl surgeist_css::CssFlowTolerance
 pub const fn surgeist_css::CssFlowTolerance::as_ref(&self) -> surgeist_css::CssFlowToleranceRef<'_>
 pub const fn surgeist_css::CssFlowTolerance::infinite() -> Self
+pub fn surgeist_css::CssFlowTolerance::length_percentage(value: surgeist_css::CssSpecifiedLengthPercentage) -> Self
 pub const fn surgeist_css::CssFlowTolerance::normal() -> Self
-pub fn surgeist_css::CssFlowTolerance::try_length_percentage(value: surgeist_css::CssLength) -> core::option::Option<Self>
+impl core::cmp::PartialEq for surgeist_css::CssFlowTolerance
+pub fn surgeist_css::CssFlowTolerance::eq(&self, other: &Self) -> bool
 impl core::default::Default for surgeist_css::CssFlowTolerance
 pub fn surgeist_css::CssFlowTolerance::default() -> Self
 pub struct surgeist_css::CssFlowTolerancePropertyValue
@@ -6179,13 +6156,11 @@ pub fn surgeist_css::CssGeneratedContent::try_new(items: alloc::vec::Vec<surgeis
 pub struct surgeist_css::CssGradientColorStop
 impl surgeist_css::CssGradientColorStop
 pub const fn surgeist_css::CssGradientColorStop::color(&self) -> &surgeist_css::CssColor
-pub const fn surgeist_css::CssGradientColorStop::position(&self) -> core::option::Option<&surgeist_css::CssGradientLinePosition>
+pub const fn surgeist_css::CssGradientColorStop::position(&self) -> core::option::Option<&surgeist_css::CssSpecifiedLengthPercentage>
 impl surgeist_css::CssGradientColorStop
-pub fn surgeist_css::CssGradientColorStop::from_color(color: surgeist_css::CssColor, position: core::option::Option<surgeist_css::CssGradientLinePosition>) -> Self
-pub struct surgeist_css::CssGradientLinePosition
-impl surgeist_css::CssGradientLinePosition
-pub fn surgeist_css::CssGradientLinePosition::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssGradientLinePosition::value(&self) -> &surgeist_css::CssLength
+pub fn surgeist_css::CssGradientColorStop::from_color(color: surgeist_css::CssColor, position: core::option::Option<surgeist_css::CssSpecifiedLengthPercentage>) -> Self
+impl core::cmp::PartialEq for surgeist_css::CssGradientColorStop
+pub fn surgeist_css::CssGradientColorStop::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssGrammarExpectation(_)
 impl surgeist_css::CssGrammarExpectation
 pub const fn surgeist_css::CssGrammarExpectation::as_str(self) -> &'static str
@@ -6516,13 +6491,15 @@ pub fn surgeist_css::CssInsetPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssInsetPropertyValue::value(&self) -> &surgeist_css::CssInsetShorthand
 pub struct surgeist_css::CssInsetShape
 impl surgeist_css::CssInsetShape
-pub const fn surgeist_css::CssInsetShape::new(offsets: surgeist_css::CssInsetShapeOffsets, round: core::option::Option<surgeist_css::CssBorderRadii>) -> Self
+pub const fn surgeist_css::CssInsetShape::new(offsets: surgeist_css::CssInsetShapeOffsets, round: core::option::Option<surgeist_css::CssBorderRadiusShorthand>) -> Self
 pub const fn surgeist_css::CssInsetShape::offsets(&self) -> &surgeist_css::CssInsetShapeOffsets
-pub const fn surgeist_css::CssInsetShape::round(&self) -> core::option::Option<&surgeist_css::CssBorderRadii>
+pub const fn surgeist_css::CssInsetShape::round(&self) -> core::option::Option<&surgeist_css::CssBorderRadiusShorthand>
 pub struct surgeist_css::CssInsetShapeOffsets
 impl surgeist_css::CssInsetShapeOffsets
-pub fn surgeist_css::CssInsetShapeOffsets::try_new(values: alloc::vec::Vec<surgeist_css::CssLength>) -> core::option::Option<Self>
-pub fn surgeist_css::CssInsetShapeOffsets::values(&self) -> &[surgeist_css::CssLength]
+pub fn surgeist_css::CssInsetShapeOffsets::try_new(values: alloc::vec::Vec<surgeist_css::CssSpecifiedLengthPercentage>) -> core::option::Option<Self>
+pub fn surgeist_css::CssInsetShapeOffsets::values(&self) -> &[surgeist_css::CssSpecifiedLengthPercentage]
+impl core::cmp::PartialEq for surgeist_css::CssInsetShapeOffsets
+pub fn surgeist_css::CssInsetShapeOffsets::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssInsetShorthand
 impl surgeist_css::CssInsetShorthand
 pub fn surgeist_css::CssInsetShorthand::assigned_values(&self) -> [&surgeist_css::CssInsetValue; 4]
@@ -6700,12 +6677,6 @@ pub fn surgeist_css::CssLengthCalculation::try_from_components(values: surgeist_
 pub fn surgeist_css::CssLengthCalculation::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 impl surgeist_css::CssLengthCalculation
 pub fn surgeist_css::CssLengthCalculation::try_dimension(value: f32, unit: surgeist_css::CssLengthUnit) -> core::option::Option<Self>
-pub struct surgeist_css::CssLengthDimension
-impl surgeist_css::CssLengthDimension
-pub fn surgeist_css::CssLengthDimension::to_css_string(self) -> alloc::string::String
-pub fn surgeist_css::CssLengthDimension::try_new(value: f32, unit: surgeist_css::CssLengthUnit) -> core::option::Option<Self>
-pub const fn surgeist_css::CssLengthDimension::unit(self) -> surgeist_css::CssLengthUnit
-pub const fn surgeist_css::CssLengthDimension::value(self) -> f32
 pub struct surgeist_css::CssLengthPercentageCalculation
 impl surgeist_css::CssLengthPercentageCalculation
 pub fn surgeist_css::CssLengthPercentageCalculation::components(&self) -> &surgeist_css::CssComponentValues
@@ -7045,10 +7016,6 @@ pub struct surgeist_css::CssNonNegativeInteger
 impl surgeist_css::CssNonNegativeInteger
 pub const fn surgeist_css::CssNonNegativeInteger::new(value: u32) -> Self
 pub const fn surgeist_css::CssNonNegativeInteger::value(self) -> u32
-pub struct surgeist_css::CssNonNegativeLength
-impl surgeist_css::CssNonNegativeLength
-pub fn surgeist_css::CssNonNegativeLength::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssNonNegativeLength::value(&self) -> &surgeist_css::CssLength
 pub struct surgeist_css::CssNonNegativeNumber
 impl surgeist_css::CssNonNegativeNumber
 pub fn surgeist_css::CssNonNegativeNumber::try_new(value: f32) -> core::option::Option<Self>
@@ -7188,14 +7155,10 @@ pub struct surgeist_css::CssOutlineColorPropertyValue
 impl surgeist_css::CssOutlineColorPropertyValue
 pub fn surgeist_css::CssOutlineColorPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssOutlineColorPropertyValue::value(&self) -> &surgeist_css::CssColor
-pub struct surgeist_css::CssOutlineOffset
-impl surgeist_css::CssOutlineOffset
-pub fn surgeist_css::CssOutlineOffset::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssOutlineOffset::value(&self) -> &surgeist_css::CssLength
 pub struct surgeist_css::CssOutlineOffsetPropertyValue
 impl surgeist_css::CssOutlineOffsetPropertyValue
 pub fn surgeist_css::CssOutlineOffsetPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssOutlineOffsetPropertyValue::offset(&self) -> &surgeist_css::CssOutlineOffset
+pub const fn surgeist_css::CssOutlineOffsetPropertyValue::offset(&self) -> &surgeist_css::CssSpecifiedLength
 pub struct surgeist_css::CssOutlinePropertyValue
 impl surgeist_css::CssOutlinePropertyValue
 pub fn surgeist_css::CssOutlinePropertyValue::as_css(&self) -> &str
@@ -7439,9 +7402,11 @@ pub fn surgeist_css::CssPointerEventsPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssPointerEventsPropertyValue::value(&self) -> &surgeist_css::CssPointerEvents
 pub struct surgeist_css::CssPolygonPoint
 impl surgeist_css::CssPolygonPoint
-pub fn surgeist_css::CssPolygonPoint::try_new(x: surgeist_css::CssLength, y: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssPolygonPoint::x(&self) -> &surgeist_css::CssLength
-pub const fn surgeist_css::CssPolygonPoint::y(&self) -> &surgeist_css::CssLength
+pub const fn surgeist_css::CssPolygonPoint::new(x: surgeist_css::CssSpecifiedLengthPercentage, y: surgeist_css::CssSpecifiedLengthPercentage) -> Self
+pub const fn surgeist_css::CssPolygonPoint::x(&self) -> &surgeist_css::CssSpecifiedLengthPercentage
+pub const fn surgeist_css::CssPolygonPoint::y(&self) -> &surgeist_css::CssSpecifiedLengthPercentage
+impl core::cmp::PartialEq for surgeist_css::CssPolygonPoint
+pub fn surgeist_css::CssPolygonPoint::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssPolygonPointList
 impl surgeist_css::CssPolygonPointList
 pub fn surgeist_css::CssPolygonPointList::points(&self) -> &[surgeist_css::CssPolygonPoint]
@@ -7449,9 +7414,11 @@ pub fn surgeist_css::CssPolygonPointList::try_new(points: alloc::vec::Vec<surgei
 pub struct surgeist_css::CssPolygonShape
 impl surgeist_css::CssPolygonShape
 pub const fn surgeist_css::CssPolygonShape::fill_rule(&self) -> core::option::Option<surgeist_css::CssPolygonFillRule>
-pub const fn surgeist_css::CssPolygonShape::new(fill_rule: core::option::Option<surgeist_css::CssPolygonFillRule>, round: core::option::Option<surgeist_css::CssShapeLength>, points: surgeist_css::CssPolygonPointList) -> Self
+pub const fn surgeist_css::CssPolygonShape::new(fill_rule: core::option::Option<surgeist_css::CssPolygonFillRule>, round: core::option::Option<surgeist_css::CssSpecifiedNonNegativeLength>, points: surgeist_css::CssPolygonPointList) -> Self
 pub const fn surgeist_css::CssPolygonShape::points(&self) -> &surgeist_css::CssPolygonPointList
-pub const fn surgeist_css::CssPolygonShape::round(&self) -> core::option::Option<&surgeist_css::CssShapeLength>
+pub const fn surgeist_css::CssPolygonShape::round(&self) -> core::option::Option<&surgeist_css::CssSpecifiedNonNegativeLength>
+impl core::cmp::PartialEq for surgeist_css::CssPolygonShape
+pub fn surgeist_css::CssPolygonShape::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssPosition
 impl surgeist_css::CssPosition
 pub const fn surgeist_css::CssPosition::horizontal(&self) -> &surgeist_css::CssHorizontalPosition
@@ -7464,10 +7431,6 @@ pub struct surgeist_css::CssPositionList
 impl surgeist_css::CssPositionList
 pub fn surgeist_css::CssPositionList::positions(&self) -> &[surgeist_css::CssPosition]
 pub fn surgeist_css::CssPositionList::try_new(positions: alloc::vec::Vec<surgeist_css::CssPosition>) -> core::option::Option<Self>
-pub struct surgeist_css::CssPositionOffset
-impl surgeist_css::CssPositionOffset
-pub fn surgeist_css::CssPositionOffset::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssPositionOffset::value(&self) -> &surgeist_css::CssLength
 pub struct surgeist_css::CssPositionPropertyValue
 impl surgeist_css::CssPositionPropertyValue
 pub fn surgeist_css::CssPositionPropertyValue::as_css(&self) -> &str
@@ -7582,15 +7545,13 @@ pub struct surgeist_css::CssQuotesPropertyValue
 impl surgeist_css::CssQuotesPropertyValue
 pub fn surgeist_css::CssQuotesPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssQuotesPropertyValue::quotes(&self) -> &surgeist_css::CssQuotes
-pub struct surgeist_css::CssRadialCircleSize
-impl surgeist_css::CssRadialCircleSize
-pub const fn surgeist_css::CssRadialCircleSize::radius(&self) -> &surgeist_css::CssLength
-pub fn surgeist_css::CssRadialCircleSize::try_new(radius: surgeist_css::CssLength) -> core::option::Option<Self>
 pub struct surgeist_css::CssRadialEllipseSize
 impl surgeist_css::CssRadialEllipseSize
-pub const fn surgeist_css::CssRadialEllipseSize::horizontal(&self) -> &surgeist_css::CssLength
-pub fn surgeist_css::CssRadialEllipseSize::try_new(horizontal: surgeist_css::CssLength, vertical: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssRadialEllipseSize::vertical(&self) -> &surgeist_css::CssLength
+pub const fn surgeist_css::CssRadialEllipseSize::horizontal(&self) -> &surgeist_css::CssSpecifiedNonNegativeLengthPercentage
+pub const fn surgeist_css::CssRadialEllipseSize::new(horizontal: surgeist_css::CssSpecifiedNonNegativeLengthPercentage, vertical: surgeist_css::CssSpecifiedNonNegativeLengthPercentage) -> Self
+pub const fn surgeist_css::CssRadialEllipseSize::vertical(&self) -> &surgeist_css::CssSpecifiedNonNegativeLengthPercentage
+impl core::cmp::PartialEq for surgeist_css::CssRadialEllipseSize
+pub fn surgeist_css::CssRadialEllipseSize::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssRadialGradient
 impl surgeist_css::CssRadialGradient
 pub const fn surgeist_css::CssRadialGradient::position(&self) -> core::option::Option<&surgeist_css::CssPosition>
@@ -7938,21 +7899,15 @@ pub fn surgeist_css::CssSerializedValue::origin_at(&self, byte_offset: usize) ->
 pub fn surgeist_css::CssSerializedValue::segments(&self) -> &[surgeist_css::CssSerializedOriginSegment]
 pub struct surgeist_css::CssShadow
 impl surgeist_css::CssShadow
-pub const fn surgeist_css::CssShadow::blur_radius(&self) -> core::option::Option<&surgeist_css::CssLength>
+pub const fn surgeist_css::CssShadow::blur_radius(&self) -> core::option::Option<&surgeist_css::CssSpecifiedNonNegativeLength>
 pub fn surgeist_css::CssShadow::color(&self) -> core::option::Option<&surgeist_css::CssColor>
 pub const fn surgeist_css::CssShadow::inset(&self) -> bool
-pub const fn surgeist_css::CssShadow::offset_x(&self) -> &surgeist_css::CssLength
-pub const fn surgeist_css::CssShadow::offset_y(&self) -> &surgeist_css::CssLength
-pub const fn surgeist_css::CssShadow::spread_radius(&self) -> core::option::Option<&surgeist_css::CssLength>
-pub fn surgeist_css::CssShadow::try_new(inset: bool, offset_x: surgeist_css::CssLength, offset_y: surgeist_css::CssLength, blur_radius: core::option::Option<surgeist_css::CssLength>, spread_radius: core::option::Option<surgeist_css::CssLength>, color: core::option::Option<surgeist_css::CssColor>) -> core::option::Option<Self>
-pub struct surgeist_css::CssShapeLength
-impl surgeist_css::CssShapeLength
-pub fn surgeist_css::CssShapeLength::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssShapeLength::value(&self) -> &surgeist_css::CssLength
-pub struct surgeist_css::CssShapeLengthPercentage
-impl surgeist_css::CssShapeLengthPercentage
-pub fn surgeist_css::CssShapeLengthPercentage::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssShapeLengthPercentage::value(&self) -> &surgeist_css::CssLength
+pub const fn surgeist_css::CssShadow::offset_x(&self) -> &surgeist_css::CssSpecifiedLength
+pub const fn surgeist_css::CssShadow::offset_y(&self) -> &surgeist_css::CssSpecifiedLength
+pub const fn surgeist_css::CssShadow::spread_radius(&self) -> core::option::Option<&surgeist_css::CssSpecifiedLength>
+pub fn surgeist_css::CssShadow::try_new(inset: bool, offset_x: surgeist_css::CssSpecifiedLength, offset_y: surgeist_css::CssSpecifiedLength, blur_radius: core::option::Option<surgeist_css::CssSpecifiedNonNegativeLength>, spread_radius: core::option::Option<surgeist_css::CssSpecifiedLength>, color: core::option::Option<surgeist_css::CssColor>) -> core::option::Option<Self>
+impl core::cmp::PartialEq for surgeist_css::CssShadow
+pub fn surgeist_css::CssShadow::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssSheet
 impl surgeist_css::CssSheet
 pub const fn surgeist_css::CssSheet::encoding(&self) -> core::option::Option<&surgeist_css::CssEncodingDeclaration>
@@ -8326,10 +8281,6 @@ pub struct surgeist_css::CssTextDecorationStylePropertyValue
 impl surgeist_css::CssTextDecorationStylePropertyValue
 pub fn surgeist_css::CssTextDecorationStylePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTextDecorationStylePropertyValue::value(&self) -> &surgeist_css::CssTextDecorationStyle
-pub struct surgeist_css::CssTextDecorationThicknessLength
-impl surgeist_css::CssTextDecorationThicknessLength
-pub const fn surgeist_css::CssTextDecorationThicknessLength::length(&self) -> &surgeist_css::CssLength
-pub fn surgeist_css::CssTextDecorationThicknessLength::try_new(length: surgeist_css::CssLength) -> core::option::Option<Self>
 pub struct surgeist_css::CssTextDecorationThicknessPropertyValue
 impl surgeist_css::CssTextDecorationThicknessPropertyValue
 pub fn surgeist_css::CssTextDecorationThicknessPropertyValue::as_css(&self) -> &str
@@ -8338,8 +8289,10 @@ pub struct surgeist_css::CssTextIndent
 impl surgeist_css::CssTextIndent
 pub const fn surgeist_css::CssTextIndent::each_line(&self) -> bool
 pub const fn surgeist_css::CssTextIndent::hanging(&self) -> bool
-pub const fn surgeist_css::CssTextIndent::length(&self) -> &surgeist_css::CssLength
-pub fn surgeist_css::CssTextIndent::try_new(length: surgeist_css::CssLength, hanging: bool, each_line: bool) -> core::option::Option<Self>
+pub const fn surgeist_css::CssTextIndent::length(&self) -> &surgeist_css::CssSpecifiedLengthPercentage
+pub const fn surgeist_css::CssTextIndent::new(length: surgeist_css::CssSpecifiedLengthPercentage, hanging: bool, each_line: bool) -> Self
+impl core::cmp::PartialEq for surgeist_css::CssTextIndent
+pub fn surgeist_css::CssTextIndent::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssTextIndentPropertyValue
 impl surgeist_css::CssTextIndentPropertyValue
 pub fn surgeist_css::CssTextIndentPropertyValue::as_css(&self) -> &str
@@ -8393,14 +8346,6 @@ pub struct surgeist_css::CssTransformFunctionList
 impl surgeist_css::CssTransformFunctionList
 pub fn surgeist_css::CssTransformFunctionList::functions(&self) -> &[surgeist_css::CssTransformFunction]
 pub fn surgeist_css::CssTransformFunctionList::try_new(functions: alloc::vec::Vec<surgeist_css::CssTransformFunction>) -> core::option::Option<Self>
-pub struct surgeist_css::CssTransformLength
-impl surgeist_css::CssTransformLength
-pub fn surgeist_css::CssTransformLength::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssTransformLength::value(&self) -> &surgeist_css::CssLength
-pub struct surgeist_css::CssTransformLengthPercentage
-impl surgeist_css::CssTransformLengthPercentage
-pub fn surgeist_css::CssTransformLengthPercentage::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssTransformLengthPercentage::value(&self) -> &surgeist_css::CssLength
 pub struct surgeist_css::CssTransformMatrix
 impl surgeist_css::CssTransformMatrix
 pub const fn surgeist_css::CssTransformMatrix::components(&self) -> &[surgeist_css::CssTransformNumber; 6]
@@ -8409,24 +8354,18 @@ pub struct surgeist_css::CssTransformMatrix3d
 impl surgeist_css::CssTransformMatrix3d
 pub const fn surgeist_css::CssTransformMatrix3d::components(&self) -> &[surgeist_css::CssTransformNumber; 16]
 pub const fn surgeist_css::CssTransformMatrix3d::new(components: [surgeist_css::CssTransformNumber; 16]) -> Self
-pub struct surgeist_css::CssTransformNonNegativeLength
-impl surgeist_css::CssTransformNonNegativeLength
-pub fn surgeist_css::CssTransformNonNegativeLength::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssTransformNonNegativeLength::value(&self) -> &surgeist_css::CssLength
 pub struct surgeist_css::CssTransformOrigin
 impl surgeist_css::CssTransformOrigin
 pub const fn surgeist_css::CssTransformOrigin::horizontal(&self) -> &surgeist_css::CssHorizontalPosition
-pub fn surgeist_css::CssTransformOrigin::try_new(position: surgeist_css::CssPosition, z: core::option::Option<surgeist_css::CssTransformOriginZ>) -> core::option::Option<Self>
+pub fn surgeist_css::CssTransformOrigin::try_new(position: surgeist_css::CssPosition, z: core::option::Option<surgeist_css::CssSpecifiedLength>) -> core::option::Option<Self>
 pub const fn surgeist_css::CssTransformOrigin::vertical(&self) -> &surgeist_css::CssVerticalPosition
-pub const fn surgeist_css::CssTransformOrigin::z(&self) -> core::option::Option<&surgeist_css::CssTransformOriginZ>
+pub const fn surgeist_css::CssTransformOrigin::z(&self) -> core::option::Option<&surgeist_css::CssSpecifiedLength>
+impl core::cmp::PartialEq for surgeist_css::CssTransformOrigin
+pub fn surgeist_css::CssTransformOrigin::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssTransformOriginPropertyValue
 impl surgeist_css::CssTransformOriginPropertyValue
 pub fn surgeist_css::CssTransformOriginPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTransformOriginPropertyValue::origin(&self) -> &surgeist_css::CssTransformOrigin
-pub struct surgeist_css::CssTransformOriginZ
-impl surgeist_css::CssTransformOriginZ
-pub fn surgeist_css::CssTransformOriginZ::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssTransformOriginZ::value(&self) -> &surgeist_css::CssLength
 pub struct surgeist_css::CssTransformPropertyValue
 impl surgeist_css::CssTransformPropertyValue
 pub fn surgeist_css::CssTransformPropertyValue::as_css(&self) -> &str
@@ -8456,15 +8395,19 @@ pub const fn surgeist_css::CssTransformSkew::x(&self) -> &surgeist_css::CssTrans
 pub const fn surgeist_css::CssTransformSkew::y(&self) -> core::option::Option<&surgeist_css::CssTransformAngle>
 pub struct surgeist_css::CssTransformTranslate
 impl surgeist_css::CssTransformTranslate
-pub const fn surgeist_css::CssTransformTranslate::new(x: surgeist_css::CssTransformLengthPercentage, y: core::option::Option<surgeist_css::CssTransformLengthPercentage>) -> Self
-pub const fn surgeist_css::CssTransformTranslate::x(&self) -> &surgeist_css::CssTransformLengthPercentage
-pub const fn surgeist_css::CssTransformTranslate::y(&self) -> core::option::Option<&surgeist_css::CssTransformLengthPercentage>
+pub const fn surgeist_css::CssTransformTranslate::new(x: surgeist_css::CssSpecifiedLengthPercentage, y: core::option::Option<surgeist_css::CssSpecifiedLengthPercentage>) -> Self
+pub const fn surgeist_css::CssTransformTranslate::x(&self) -> &surgeist_css::CssSpecifiedLengthPercentage
+pub const fn surgeist_css::CssTransformTranslate::y(&self) -> core::option::Option<&surgeist_css::CssSpecifiedLengthPercentage>
+impl core::cmp::PartialEq for surgeist_css::CssTransformTranslate
+pub fn surgeist_css::CssTransformTranslate::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssTransformTranslate3d
 impl surgeist_css::CssTransformTranslate3d
-pub const fn surgeist_css::CssTransformTranslate3d::new(x: surgeist_css::CssTransformLengthPercentage, y: surgeist_css::CssTransformLengthPercentage, z: surgeist_css::CssTransformLength) -> Self
-pub const fn surgeist_css::CssTransformTranslate3d::x(&self) -> &surgeist_css::CssTransformLengthPercentage
-pub const fn surgeist_css::CssTransformTranslate3d::y(&self) -> &surgeist_css::CssTransformLengthPercentage
-pub const fn surgeist_css::CssTransformTranslate3d::z(&self) -> &surgeist_css::CssTransformLength
+pub const fn surgeist_css::CssTransformTranslate3d::new(x: surgeist_css::CssSpecifiedLengthPercentage, y: surgeist_css::CssSpecifiedLengthPercentage, z: surgeist_css::CssSpecifiedLength) -> Self
+pub const fn surgeist_css::CssTransformTranslate3d::x(&self) -> &surgeist_css::CssSpecifiedLengthPercentage
+pub const fn surgeist_css::CssTransformTranslate3d::y(&self) -> &surgeist_css::CssSpecifiedLengthPercentage
+pub const fn surgeist_css::CssTransformTranslate3d::z(&self) -> &surgeist_css::CssSpecifiedLength
+impl core::cmp::PartialEq for surgeist_css::CssTransformTranslate3d
+pub fn surgeist_css::CssTransformTranslate3d::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssTransition
 impl surgeist_css::CssTransition
 pub const fn surgeist_css::CssTransition::delay(&self) -> core::option::Option<&surgeist_css::CssDelay>
@@ -8506,8 +8449,12 @@ pub fn surgeist_css::CssTranslatePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTranslatePropertyValue::value(&self) -> &surgeist_css::CssTranslate
 pub struct surgeist_css::CssTranslateValues
 impl surgeist_css::CssTranslateValues
-pub fn surgeist_css::CssTranslateValues::try_new(values: alloc::vec::Vec<surgeist_css::CssLength>) -> core::option::Option<Self>
-pub fn surgeist_css::CssTranslateValues::values(&self) -> &[surgeist_css::CssLength]
+pub fn surgeist_css::CssTranslateValues::try_new(x: surgeist_css::CssSpecifiedLengthPercentage, y: core::option::Option<surgeist_css::CssSpecifiedLengthPercentage>, z: core::option::Option<surgeist_css::CssSpecifiedLength>) -> core::option::Option<Self>
+pub const fn surgeist_css::CssTranslateValues::x(&self) -> &surgeist_css::CssSpecifiedLengthPercentage
+pub const fn surgeist_css::CssTranslateValues::y(&self) -> core::option::Option<&surgeist_css::CssSpecifiedLengthPercentage>
+pub const fn surgeist_css::CssTranslateValues::z(&self) -> core::option::Option<&surgeist_css::CssSpecifiedLength>
+impl core::cmp::PartialEq for surgeist_css::CssTranslateValues
+pub fn surgeist_css::CssTranslateValues::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssTypedMediaQuery
 impl surgeist_css::CssTypedMediaQuery
 pub const fn surgeist_css::CssTypedMediaQuery::condition(&self) -> core::option::Option<&surgeist_css::CssMediaCondition>
@@ -8628,10 +8575,6 @@ pub struct surgeist_css::CssVariableReference
 impl surgeist_css::CssVariableReference
 pub const fn surgeist_css::CssVariableReference::fallback(&self) -> core::option::Option<&surgeist_css::CssVariableFallback>
 pub const fn surgeist_css::CssVariableReference::name(&self) -> &surgeist_css::CssCustomPropertyName
-pub struct surgeist_css::CssVerticalAlignLength
-impl surgeist_css::CssVerticalAlignLength
-pub const fn surgeist_css::CssVerticalAlignLength::length(&self) -> &surgeist_css::CssLength
-pub fn surgeist_css::CssVerticalAlignLength::try_new(length: surgeist_css::CssLength) -> core::option::Option<Self>
 pub struct surgeist_css::CssVerticalAlignPropertyValue
 impl surgeist_css::CssVerticalAlignPropertyValue
 pub fn surgeist_css::CssVerticalAlignPropertyValue::as_css(&self) -> &str

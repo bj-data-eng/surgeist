@@ -1,9 +1,4 @@
-use surgeist_css::{
-    CssColorStopListItem, CssErrorCode, CssGlobalKeyword, CssGradient, CssHorizontalGradientSide,
-    CssImageValue, CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
-    CssLinearGradientDirection, CssRadialExtent, CssRadialShape, CssRadialSize, CssRecoveryAction,
-    CssVerticalGradientSide, ErrorKind, parse_style_attribute,
-};
+use surgeist_css::*;
 
 #[test]
 fn c13_images_and_gradients_retain_typed_structure() {
@@ -47,7 +42,7 @@ fn c13_images_and_gradients_retain_typed_structure() {
             CssColorStopListItem::Hint(hint),
             CssColorStopListItem::Stop(last),
         ] if first.position().is_some()
-            && matches!(hint.value(), CssLength::Percent(value) if value.value() == 25.0)
+            && exact_percentage(hint.literal_component(), "25")
             && last.position().is_none()
     ));
 
@@ -200,4 +195,11 @@ fn c13_images_keep_globals_substitutions_and_exact_invalid_recovery_distinct() {
             .diagnostics(),
         report.diagnostics(),
     );
+}
+
+fn exact_percentage(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
 }

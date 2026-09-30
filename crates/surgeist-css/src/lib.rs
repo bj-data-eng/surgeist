@@ -185,18 +185,19 @@
 //! # Property-specific authored positions
 //!
 //! Generic CSS positions retain both axes and distinguish free offsets from offsets authored
-//! against a named edge. [`CssPositionOffset`] accepts only the symbolic length-percentage domain;
+//! against a named edge. [`CssSpecifiedLengthPercentage`] accepts only the symbolic length-percentage domain;
 //! it does not resolve percentages, calculations, writing modes, or positioning boxes.
 //!
 //! ```
-//! use surgeist_css::{CssLength, CssPositionOffset};
+//! use surgeist_css::{CssComponentValue, CssSpecifiedLengthPercentage};
 //!
-//! let offset = CssPositionOffset::try_new(
-//!     CssLength::try_percent(25.0).expect("finite authored percentage"),
-//! )
-//! .expect("position-valid offset");
-//! assert!(matches!(offset.value(), CssLength::Percent(value) if value.value() == 25.0));
-//! assert!(CssPositionOffset::try_new(CssLength::Auto).is_none());
+//! let offset = CssSpecifiedLengthPercentage::try_from_component(
+//!     CssComponentValue::try_token("25%").expect("exact authored percentage"),
+//! ).expect("position-valid offset");
+//! assert!(matches!(offset.literal_component().unwrap().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number)) if number.representation() == "25"));
+//! assert!(CssSpecifiedLengthPercentage::try_from_component(
+//!     CssComponentValue::try_ident("auto").unwrap(),
+//! ).is_err());
 //! ```
 //!
 //! [`CssPosition::try_new`] checks the generic position's cross-axis pairing of edge
@@ -205,11 +206,11 @@
 //! `mask-position` layer use this exact generic grammar. `background-position` instead exposes a
 //! nonempty [`CssBackgroundPositionList`] whose layers also admit the background-only
 //! three-component form. `transform-origin` exposes the directed 2D split plus an optional checked
-//! [`CssTransformOriginZ`] length.
+//! [`CssSpecifiedLength`] length.
 //!
 //! ```
 //! use surgeist_css::{
-//!     CssHorizontalPosition, CssKnownPropertyValueRef, CssLength, CssVerticalPosition,
+//!     CssHorizontalPosition, CssKnownPropertyValueRef, CssVerticalPosition,
 //!     parse_style_attribute,
 //! };
 //!
@@ -228,7 +229,7 @@
 //! assert!(matches!(
 //!     background.positions().positions()[0].horizontal(),
 //!     CssHorizontalPosition::LeftOffset(offset)
-//!         if matches!(offset.value(), CssLength::Px(value) if value.value() == 10.0)
+//!         if matches!(offset.literal_component().unwrap().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "10" && unit == "px")
 //! ));
 //!
 //! let CssKnownPropertyValueRef::MaskPosition(mask) = report.syntax()[1]
@@ -250,10 +251,7 @@
 //!     .known().expect("known transform origin")
 //!     .property_value().expect("ordinary transform origin")
 //! else { panic!("expected transform-origin") };
-//! assert!(matches!(
-//!     transform.origin().z().map(|z| z.value()),
-//!     Some(CssLength::Px(value)) if value.value() == 50.0
-//! ));
+//! assert!(matches!(transform.origin().z().unwrap().literal_component().unwrap().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "50" && unit == "px"));
 //! ```
 //!
 //! A vertical-only planar keyword followed by a length (`top 50px` or

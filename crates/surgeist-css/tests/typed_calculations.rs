@@ -1,16 +1,4 @@
-use surgeist_css::{
-    CssAngleCalculation, CssAngleUnit, CssAspectRatioValue, CssBoxSize, CssCalcLength,
-    CssCalculationExpressionRef, CssCalculationProductOperator, CssCalculationType,
-    CssCalculationValueRef, CssColorComponent, CssColorHue, CssErrorCode, CssFilter,
-    CssFilterAmount, CssFilterFunction, CssFilterNumber, CssFilterPercentage, CssFlexBasisRef,
-    CssFlexValue, CssFlowToleranceRef, CssFontSize, CssFrequencyCalculation, CssFrequencyUnit,
-    CssIntegerCalculation, CssIntegerValue, CssKnownPropertyValueRef, CssLength,
-    CssLengthCalculation, CssLengthPercentageCalculation, CssLengthUnit, CssLineHeight,
-    CssNumberCalculation, CssOpacityValue, CssPercentageCalculation, CssPositiveNumber,
-    CssPositiveNumberValue, CssRecoveryAction, CssRelativeColorChannel,
-    CssRelativeColorExpressionValue, CssRelativeColorResultDomain, CssSizeValue,
-    CssTimeCalculation, CssTimeUnit, CssZIndexValue, parse_style_attribute,
-};
+use surgeist_css::*;
 
 #[test]
 fn core_font_calculations_preserve_number_and_length_percentage_domains() {
@@ -568,7 +556,7 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
     };
     assert!(matches!(
         value.value().as_ref(),
-        CssFlowToleranceRef::LengthPercentage(CssLength::Calc(CssCalcLength::Typed(_)))
+        CssFlowToleranceRef::LengthPercentage(length) if length.calculation().is_some()
     ));
 }
 

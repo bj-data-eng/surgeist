@@ -779,8 +779,8 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::ColumnSpan(v) => assert_eq!(*v, CssColumnSpan::None),
         CssLonghandValueRef::BorderCollapse(v) => assert_eq!(*v, CssBorderCollapse::Separate),
         CssLonghandValueRef::BorderSpacing(v) => {
-            assert_eq!(v.horizontal().value(), &CssLength::Zero);
-            assert_eq!(v.vertical().value(), &CssLength::Zero);
+            assert!(exact_literal(v.horizontal().literal_component(), "0"));
+            assert!(exact_literal(v.vertical().literal_component(), "0"));
         }
         CssLonghandValueRef::BackgroundImage(v) | CssLonghandValueRef::MaskImage(v) => {
             assert!(matches!(v.images(), [CssImageValue::None]));
@@ -1366,4 +1366,33 @@ fn main() {
     memberships_and_resets();
     grammar_identity_and_reentry();
     construction_provenance_and_normalization();
+}
+
+fn exact_literal(component: Option<&surgeist_css::CssComponentValue>, css: &str) -> bool {
+    use surgeist_css::{CssComponentValueRef as Component, CssValueTokenRef as Token};
+    let expected = surgeist_css::CssComponentValue::try_token(css).unwrap();
+    match (
+        component.map(surgeist_css::CssComponentValue::view),
+        expected.view(),
+    ) {
+        (
+            Some(Component::Token(Token::Number(actual))),
+            Component::Token(Token::Number(expected)),
+        )
+        | (
+            Some(Component::Token(Token::Percentage(actual))),
+            Component::Token(Token::Percentage(expected)),
+        ) => actual.representation() == expected.representation(),
+        (
+            Some(Component::Token(Token::Dimension {
+                number: actual,
+                unit: actual_unit,
+            })),
+            Component::Token(Token::Dimension {
+                number: expected,
+                unit: expected_unit,
+            }),
+        ) => actual.representation() == expected.representation() && actual_unit == expected_unit,
+        _ => false,
+    }
 }

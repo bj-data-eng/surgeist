@@ -1,10 +1,4 @@
-use surgeist_css::{
-    CssBackgroundAttachment, CssBackgroundBox, CssBackgroundBoxList, CssBackgroundLayerBoxes,
-    CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize, CssBackgroundSizeComponent,
-    CssCalcLength, CssErrorCode, CssGlobalKeyword, CssGradient, CssHorizontalPosition,
-    CssImageValue, CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
-    CssRecoveryAction, CssVerticalPosition, ErrorKind, parse_style_attribute,
-};
+use surgeist_css::*;
 
 #[test]
 fn c13_background_layers_retain_typed_structure() {
@@ -40,19 +34,19 @@ fn c13_background_layers_retain_typed_structure() {
     assert!(matches!(
         first_position.horizontal(),
         CssHorizontalPosition::LeftOffset(offset)
-            if matches!(offset.value(), CssLength::Px(value) if value.value() == 10.0)
+            if exact_dimension(offset.literal_component(), "10", "px")
     ));
     assert!(matches!(
         first_position.vertical(),
         CssVerticalPosition::TopOffset(offset)
-            if matches!(offset.value(), CssLength::Px(value) if value.value() == 20.0)
+            if exact_dimension(offset.literal_component(), "20", "px")
     ));
     assert!(matches!(
         first.size(),
         Some(CssBackgroundSize::Explicit {
-            width: CssBackgroundSizeComponent::Length(CssLength::Px(width)),
+            width: CssBackgroundSizeComponent::Length(width),
             height: Some(CssBackgroundSizeComponent::Auto),
-        }) if width.value() == 40.0
+        }) if exact_dimension(width.literal_component(), "40", "px")
     ));
     assert_eq!(
         first.repeat(),
@@ -145,7 +139,7 @@ fn background_longhands_preserve_ordered_semantic_lists() {
     ));
     assert!(matches!(positions.positions().positions()[1].horizontal(),
         CssHorizontalPosition::RightOffset(offset)
-            if matches!(offset.value(), CssLength::Px(value) if value.value() == 10.0)));
+            if exact_dimension(offset.literal_component(), "10", "px")));
     assert!(matches!(
         positions.positions().positions()[1].vertical(),
         CssVerticalPosition::Bottom
@@ -157,10 +151,10 @@ fn background_longhands_preserve_ordered_semantic_lists() {
     assert!(matches!(sizes.sizes().sizes(), [
         CssBackgroundSize::Cover,
         CssBackgroundSize::Explicit {
-            width: CssBackgroundSizeComponent::Length(CssLength::Px(length)),
+            width: CssBackgroundSizeComponent::Length(length),
             height: Some(CssBackgroundSizeComponent::Auto),
         },
-    ] if length.value() == 10.0));
+    ] if exact_dimension(length.literal_component(), "10", "px")));
 
     let CssKnownPropertyValueRef::BackgroundRepeat(repeats) = values[3] else {
         panic!("expected background-repeat");
@@ -221,10 +215,8 @@ fn mask_size_and_repeat_expose_ordered_symbolic_lists() {
     else {
         panic!("ordered cover and symbolic explicit mask sizes");
     };
-    assert!(
-        matches!(width, CssBackgroundSizeComponent::Length(CssLength::Calc(CssCalcLength::Typed(calc)))
-        if calc.components().serialize().unwrap().as_css() == "calc(10% + 2px)")
-    );
+    assert!(matches!(width, CssBackgroundSizeComponent::Length(length)
+        if length.calculation().is_some_and(|calc| calc.components().serialize().unwrap().as_css() == "calc(10% + 2px)")));
     assert!(matches!(height, Some(CssBackgroundSizeComponent::Auto)));
 
     let CssKnownDeclaredValueRef::Property(CssKnownPropertyValueRef::MaskRepeat(repeats)) =
@@ -452,4 +444,12 @@ fn background_empty_comma_items_and_eof_report_exact_recovery() {
             panic!("{source}: expected property-specific diagnostic");
         };
     }
+}
+
+fn exact_dimension(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+    expected_unit: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }

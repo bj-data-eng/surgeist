@@ -1,9 +1,8 @@
 use super::color::parse_color;
+use super::values::{parse_length_percentage, parse_nonnegative_length_percentage};
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
-use super::values::{
-    CalculationRoot, LengthGrammar, next_is_comma, parse_length_with, parse_numeric_function,
-};
+use super::values::{CalculationRoot, next_is_comma, parse_numeric_function};
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
 use crate::font_variant::CssFontVariant;
 use crate::syntax::*;
@@ -329,7 +328,7 @@ pub(super) fn parse_text_indent<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextIndent, ParseError<'i, Error>> {
-    let length = parse_length_with(input, numeric, LengthGrammar::TextIndent)?;
+    let length = parse_length_percentage(input, numeric, "text-indent")?;
     let mut hanging = false;
     let mut each_line = false;
 
@@ -371,9 +370,7 @@ pub(super) fn parse_vertical_align<'i, 't>(
         };
     }
 
-    parse_length_with(input, numeric, LengthGrammar::VerticalAlign)
-        .map(CssVerticalAlignLength::new)
-        .map(CssVerticalAlign::Length)
+    parse_length_percentage(input, numeric, "vertical-align").map(CssVerticalAlign::Length)
 }
 
 pub(super) fn parse_font_family_list<'i, 't>(
@@ -1137,8 +1134,7 @@ pub(super) fn parse_text_decoration_thickness<'i, 't>(
         };
     }
 
-    parse_length_with(input, numeric, LengthGrammar::TextDecorationThickness)
-        .map(CssTextDecorationThicknessLength::new)
+    parse_nonnegative_length_percentage(input, numeric, "text-decoration-thickness")
         .map(CssTextDecorationThickness::Length)
 }
 

@@ -20,7 +20,7 @@ fn color(css: &str) -> CssColor {
     value.value().clone()
 }
 
-fn stop(css: &str, position: Option<CssGradientLinePosition>) -> CssGradientColorStop {
+fn stop(css: &str, position: Option<CssSpecifiedLengthPercentage>) -> CssGradientColorStop {
     CssGradientColorStop::from_color(color(css), position)
 }
 
@@ -30,14 +30,6 @@ fn stops() -> CssColorStopList {
         CssColorStopListItem::Stop(Box::new(stop("blue", None))),
     ])
     .unwrap()
-}
-
-fn px(value: f32) -> CssLength {
-    CssLength::try_px(value).unwrap()
-}
-
-fn offset(value: f32) -> CssPositionOffset {
-    CssPositionOffset::try_new(px(value)).unwrap()
 }
 
 #[test]
@@ -78,27 +70,34 @@ fn image_only_boundary_rejects_property_none_and_retains_all_published_families(
 
 #[test]
 fn constructed_color_stops_keep_authored_color_and_signed_line_positions() {
-    let negative = CssGradientLinePosition::try_new(px(-1.0)).unwrap();
+    let negative = signed_length_percentage("-1px");
     let authored = color("currentcolor");
     let built = CssGradientColorStop::from_color(authored.clone(), Some(negative));
     assert_eq!(built.color(), &authored);
-    assert!(
-        matches!(built.position().unwrap().value(), CssLength::Px(value) if value.value() == -1.0)
-    );
+    assert!(exact_dimension(
+        built.position().unwrap().literal_component(),
+        "-1",
+        "px"
+    ));
     assert_eq!(built.color().to_specified_css().unwrap(), "currentcolor");
-    assert!(CssGradientLinePosition::try_new(CssLength::Auto).is_none());
+    assert!(
+        CssSpecifiedLengthPercentage::try_from_component(
+            CssComponentValue::try_ident("auto").unwrap()
+        )
+        .is_err()
+    );
 
     let calculation = CssLengthPercentageCalculation::try_from_components(
         parse_component_values("calc(1px + 5%)").unwrap(),
     )
     .unwrap();
-    let symbolic = CssGradientLinePosition::try_new(CssLength::Calc(CssCalcLength::Typed(
-        calculation.clone(),
-    )))
-    .unwrap();
+    let symbolic = CssSpecifiedLengthPercentage::try_from_calculation(calculation.clone()).unwrap();
     let stop = CssGradientColorStop::from_color(color("red"), Some(symbolic));
     assert!(
-        matches!(stop.position().unwrap().value(), CssLength::Calc(CssCalcLength::Typed(value)) if value == &calculation)
+        stop.position()
+            .unwrap()
+            .calculation()
+            .is_some_and(|value| value.components() == calculation.components())
     );
 }
 
@@ -129,11 +128,7 @@ fn parsed_gradient_stop_equals_checked_reconstruction() {
 fn stop_list_requires_two_stops_and_separates_hints() {
     let red = || CssColorStopListItem::Stop(Box::new(stop("red", None)));
     let blue = || CssColorStopListItem::Stop(Box::new(stop("blue", None)));
-    let hint = || {
-        CssColorStopListItem::Hint(
-            CssGradientLinePosition::try_new(CssLength::try_percent(40.0).unwrap()).unwrap(),
-        )
-    };
+    let hint = || CssColorStopListItem::Hint(signed_length_percentage("40%"));
 
     assert!(CssColorStopList::try_new(vec![red()]).is_none());
     assert!(CssColorStopList::try_new(vec![hint(), red(), blue()]).is_none());
@@ -187,10 +182,11 @@ fn linear_constructor_preserves_omitted_angle_and_side_directions() {
 
 #[test]
 fn radial_constructor_checks_shape_size_matrix_without_inventing_defaults() {
-    let circle = CssRadialSize::Circle(CssRadialCircleSize::try_new(px(10.0)).unwrap());
-    let ellipse = CssRadialSize::Ellipse(
-        CssRadialEllipseSize::try_new(px(10.0), CssLength::try_percent(20.0).unwrap()).unwrap(),
-    );
+    let circle = CssRadialSize::Circle(nonnegative_length("10px"));
+    let ellipse = CssRadialSize::Ellipse(CssRadialEllipseSize::new(
+        nonnegative_length_percentage("10px"),
+        nonnegative_length_percentage("20%"),
+    ));
     let extent = CssRadialSize::Extent(CssRadialExtent::ClosestSide);
 
     assert!(
@@ -229,16 +225,26 @@ fn radial_constructor_checks_shape_size_matrix_without_inventing_defaults() {
         assert!(built.position().is_none());
     }
 
-    assert!(CssRadialCircleSize::try_new(px(-1.0)).is_none());
-    assert!(CssRadialCircleSize::try_new(CssLength::try_percent(10.0).unwrap()).is_none());
+    assert!(
+        CssSpecifiedNonNegativeLength::try_from_component(
+            CssComponentValue::try_dimension("-1", "px").unwrap()
+        )
+        .is_err()
+    );
+    assert!(
+        CssSpecifiedNonNegativeLength::try_from_component(
+            CssComponentValue::try_token("10%").unwrap()
+        )
+        .is_err()
+    );
 
     let symbolic_radius = CssLengthPercentageCalculation::try_from_components(
         parse_component_values("calc(2px + 3px)").unwrap(),
     )
     .unwrap();
-    let radius = CssRadialCircleSize::try_new(CssLength::Calc(CssCalcLength::Typed(
-        symbolic_radius.clone(),
-    )))
+    let radius = CssSpecifiedNonNegativeLength::try_from_calculation(
+        CssLengthCalculation::try_from_components(symbolic_radius.components().clone()).unwrap(),
+    )
     .unwrap();
     let position =
         CssPosition::try_new(CssHorizontalPosition::Left, CssVerticalPosition::Top).unwrap();
@@ -251,7 +257,7 @@ fn radial_constructor_checks_shape_size_matrix_without_inventing_defaults() {
     .unwrap();
     assert_eq!(constructed.position(), Some(&position));
     assert!(
-        matches!(constructed.size(), Some(CssRadialSize::Circle(radius)) if matches!(radius.radius(), CssLength::Calc(CssCalcLength::Typed(value)) if value == &symbolic_radius))
+        matches!(constructed.size(), Some(CssRadialSize::Circle(radius)) if radius.calculation().is_some_and(|value| value.components() == symbolic_radius.components()))
     );
 }
 
@@ -259,7 +265,7 @@ fn radial_constructor_checks_shape_size_matrix_without_inventing_defaults() {
 fn generic_position_requires_edge_offsets_on_both_axes_or_neither() {
     assert!(
         CssPosition::try_new(
-            CssHorizontalPosition::LeftOffset(offset(10.0)),
+            CssHorizontalPosition::LeftOffset(signed_length_percentage("10px")),
             CssVerticalPosition::Center,
         )
         .is_none()
@@ -267,21 +273,21 @@ fn generic_position_requires_edge_offsets_on_both_axes_or_neither() {
     assert!(
         CssPosition::try_new(
             CssHorizontalPosition::Center,
-            CssVerticalPosition::BottomOffset(offset(20.0)),
+            CssVerticalPosition::BottomOffset(signed_length_percentage("20px")),
         )
         .is_none()
     );
 
     let paired = CssPosition::try_new(
-        CssHorizontalPosition::RightOffset(offset(10.0)),
-        CssVerticalPosition::TopOffset(offset(20.0)),
+        CssHorizontalPosition::RightOffset(signed_length_percentage("10px")),
+        CssVerticalPosition::TopOffset(signed_length_percentage("20px")),
     )
     .unwrap();
     assert!(
-        matches!(paired.horizontal(), CssHorizontalPosition::RightOffset(value) if matches!(value.value(), CssLength::Px(n) if n.value() == 10.0))
+        matches!(paired.horizontal(), CssHorizontalPosition::RightOffset(value) if exact_dimension(value.literal_component(), "10", "px"))
     );
     assert!(
-        matches!(paired.vertical(), CssVerticalPosition::TopOffset(value) if matches!(value.value(), CssLength::Px(n) if n.value() == 20.0))
+        matches!(paired.vertical(), CssVerticalPosition::TopOffset(value) if exact_dimension(value.literal_component(), "20", "px"))
     );
 
     assert!(
@@ -289,7 +295,7 @@ fn generic_position_requires_edge_offsets_on_both_axes_or_neither() {
     );
     assert!(
         CssPosition::try_new(
-            CssHorizontalPosition::Offset(offset(15.0)),
+            CssHorizontalPosition::Offset(signed_length_percentage("15px")),
             CssVerticalPosition::Center
         )
         .is_some()
@@ -297,8 +303,60 @@ fn generic_position_requires_edge_offsets_on_both_axes_or_neither() {
     assert!(
         CssPosition::try_new(
             CssHorizontalPosition::Left,
-            CssVerticalPosition::Offset(offset(25.0))
+            CssVerticalPosition::Offset(signed_length_percentage("25px"))
         )
         .is_some()
     );
+}
+
+fn exact_dimension(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+    expected_unit: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+}
+fn nonnegative_length(css: &str) -> surgeist_css::CssSpecifiedNonNegativeLength {
+    let components = surgeist_css::parse_component_values(css).unwrap();
+    if css.contains('(') {
+        surgeist_css::CssSpecifiedNonNegativeLength::try_from_calculation(
+            surgeist_css::CssLengthCalculation::try_from_components(components).unwrap(),
+        )
+        .unwrap()
+    } else {
+        surgeist_css::CssSpecifiedNonNegativeLength::try_from_component(
+            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
+    }
+}
+fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercentage {
+    let components = surgeist_css::parse_component_values(css).unwrap();
+    if css.contains('(') {
+        surgeist_css::CssSpecifiedLengthPercentage::try_from_calculation(
+            surgeist_css::CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+        )
+        .unwrap()
+    } else {
+        surgeist_css::CssSpecifiedLengthPercentage::try_from_component(
+            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
+    }
+}
+fn nonnegative_length_percentage(
+    css: &str,
+) -> surgeist_css::CssSpecifiedNonNegativeLengthPercentage {
+    let components = surgeist_css::parse_component_values(css).unwrap();
+    if css.contains('(') {
+        surgeist_css::CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
+            surgeist_css::CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+        )
+        .unwrap()
+    } else {
+        surgeist_css::CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
+    }
 }

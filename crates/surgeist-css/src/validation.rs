@@ -1,10 +1,4 @@
-use crate::{CssGlobalKeyword, CssKnownProperty, CssLengthUnit};
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum LengthUnitStatus {
-    Supported(CssLengthUnit),
-    Unknown,
-}
+use crate::{CssGlobalKeyword, CssKnownProperty};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PropertyNameStatus {
@@ -27,11 +21,6 @@ pub(crate) fn classify_property_name(name: &str) -> PropertyNameStatus {
     } else {
         PropertyNameStatus::Unknown
     }
-}
-
-pub(crate) fn classify_length_unit(unit: &str) -> LengthUnitStatus {
-    CssLengthUnit::from_css_unit(unit)
-        .map_or(LengthUnitStatus::Unknown, LengthUnitStatus::Supported)
 }
 
 pub(crate) fn parse_global_keyword(name: &str) -> Option<CssGlobalKeyword> {

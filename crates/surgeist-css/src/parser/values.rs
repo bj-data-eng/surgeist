@@ -1,8 +1,8 @@
-use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
+use cssparser::{ParseError, Parser, Token};
 
 use crate::error::{CssFeatureId, Error, basic, unsupported_value_at};
 use crate::syntax::*;
-use crate::validation::{LengthUnitStatus, classify_length_unit, parse_global_keyword};
+use crate::validation::parse_global_keyword;
 
 pub(crate) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("official.value.syntax-token-stream"),
@@ -62,94 +62,6 @@ pub(crate) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("ext.value.color-mix"),
 ];
 
-pub(super) fn parse_shadow_length<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssLength, ParseError<'i, Error>> {
-    parse_length_with(input, numeric, LengthGrammar::ShadowOffset)
-}
-
-pub(super) fn parse_shadow_blur_length<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssLength, ParseError<'i, Error>> {
-    parse_length_with(input, numeric, LengthGrammar::ShadowBlur)
-}
-
-#[derive(Clone, Copy)]
-pub(super) enum LengthGrammar {
-    FlowTolerance,
-    BorderWidth,
-    ShadowOffset,
-    ShadowBlur,
-    BorderSpacing,
-    Clip,
-    OutlineOffset,
-    TextIndent,
-    VerticalAlign,
-    TextDecorationThickness,
-    BackgroundSize,
-    Position,
-}
-
-impl LengthGrammar {
-    const fn allows_percent(self) -> bool {
-        matches!(
-            self,
-            Self::FlowTolerance
-                | Self::TextIndent
-                | Self::VerticalAlign
-                | Self::TextDecorationThickness
-                | Self::BackgroundSize
-                | Self::Position
-        )
-    }
-
-    const fn allows_line_width_keyword(self) -> bool {
-        matches!(self, Self::BorderWidth)
-    }
-
-    const fn allows_calc_percent(self) -> bool {
-        matches!(
-            self,
-            Self::FlowTolerance
-                | Self::TextIndent
-                | Self::VerticalAlign
-                | Self::TextDecorationThickness
-                | Self::BackgroundSize
-                | Self::Position
-        )
-    }
-
-    const fn requires_non_negative(self) -> bool {
-        matches!(
-            self,
-            Self::BorderWidth
-                | Self::ShadowBlur
-                | Self::BorderSpacing
-                | Self::TextDecorationThickness
-                | Self::BackgroundSize
-        )
-    }
-
-    const fn context(self) -> &'static str {
-        match self {
-            Self::FlowTolerance => "flow-tolerance",
-            Self::BorderWidth => "border-width",
-            Self::ShadowOffset => "box-shadow",
-            Self::ShadowBlur => "box-shadow blur",
-            Self::BorderSpacing => "border-spacing",
-            Self::Clip => "clip",
-            Self::OutlineOffset => "outline-offset",
-            Self::TextIndent => "text-indent",
-            Self::VerticalAlign => "vertical-align",
-            Self::TextDecorationThickness => "text-decoration-thickness",
-            Self::BackgroundSize => "background-size",
-            Self::Position => "position",
-        }
-    }
-}
-
 pub(super) fn checked_percentage_value<'i>(
     location: cssparser::SourceLocation,
     token_css: &str,
@@ -165,106 +77,100 @@ pub(super) fn checked_percentage_value<'i>(
     value.ok_or_else(|| unsupported_value_at(location, None, non_finite_reason))
 }
 
-pub(super) fn parse_length_with<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
-    grammar: LengthGrammar,
-) -> std::result::Result<CssLength, ParseError<'i, Error>> {
-    parse_length_with_context(input, numeric, grammar, grammar.context())
-}
-
-pub(super) fn parse_length_with_context<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
-    grammar: LengthGrammar,
-    context: &str,
-) -> std::result::Result<CssLength, ParseError<'i, Error>> {
-    let before_opener = input.state();
-    if matches!(input.next().map_err(basic)?, Token::Function(name) if is_math_function(name)) {
-        let root = if grammar.allows_calc_percent() {
-            CalculationRoot::LengthPercentage
-        } else {
-            CalculationRoot::Length
-        };
-        let expression = parse_numeric_function(input, &before_opener, numeric, root)?;
-        return Ok(CssLength::Calc(CssCalcLength::Typed(
-            CssLengthPercentageCalculation::from_expression(expression),
-        )));
-    }
-    input.reset(&before_opener);
-    parse_literal_length_with_context(input, grammar, context)
-}
-
-/// Literal-only compatibility grammar; current calculations use the numeric owner.
-pub(super) fn parse_literal_length_with_context<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    grammar: LengthGrammar,
-    context: &str,
-) -> std::result::Result<CssLength, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    input.skip_whitespace();
-    let token_start = input.position();
-    match input.next().map_err(basic)? {
-        Token::Dimension { value, .. } if !value.is_finite() => Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported non-finite {context} length"),
-        )),
-        Token::Dimension { value, unit, .. } => match classify_length_unit(unit) {
-            LengthUnitStatus::Supported(_) if grammar.requires_non_negative() && *value < 0.0 => {
-                Err(unsupported_value_at(
-                    location,
+// Ordinary tokens are collected with their exact spelling and origin. Math roots
+// use the owning dimensional context without a float scalar reconstruction.
+macro_rules! checked_length_parser {
+    ($name:ident, $owner:ident, $calculation:ident, $root:ident) => {
+        pub(super) fn $name<'i, 't>(
+            input: &mut Parser<'i, 't>,
+            numeric: &NumericInputContext<'_>,
+            context: &str,
+        ) -> Result<crate::$owner, ParseError<'i, Error>> {
+            input.skip_whitespace();
+            let state = input.state();
+            let location = input.current_source_location();
+            let root_offset = input.position().byte_index();
+            let value = match input.next().map_err(basic)? {
+                Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
+                    input.reset(&state);
+                    let component = numeric.collect(input).map_err(|error| {
+                        unsupported_value_at(
+                            numeric.error_location(&error, location, root_offset),
+                            None,
+                            format!("invalid {context}"),
+                        )
+                    })?;
+                    crate::$owner::try_from_component(component)
+                }
+                Token::Function(name) if is_math_function(name) => {
+                    let expression =
+                        parse_numeric_function(input, &state, numeric, CalculationRoot::$root)?;
+                    crate::$owner::try_from_calculation(crate::$calculation::from_expression(
+                        expression,
+                    ))
+                }
+                Token::Ident(ident) => {
+                    return Err(unsupported_value_at(
+                        location,
+                        None,
+                        format!("unsupported {context} `{ident}`"),
+                    ))
+                }
+                Token::Function(name) => {
+                    return Err(unsupported_value_at(
+                        location,
+                        None,
+                        format!("unsupported length function `{name}` for {context}"),
+                    ))
+                }
+                token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
+            };
+            value.map_err(|error| {
+                unsupported_value_at(
+                    numeric.error_location(&error, location, root_offset),
                     None,
-                    format!("unsupported negative {context} length"),
-                ))
-            }
-            LengthUnitStatus::Supported(unit) => Ok(CssLength::dimension(*value, unit)),
-            LengthUnitStatus::Unknown => Err(unsupported_value_at(
-                location,
-                None,
-                format!("unknown {context} unit `{unit}`"),
-            )),
-        },
-        Token::Percentage { .. } => {
-            let value = checked_percentage_value(
-                location,
-                input.slice_from(token_start),
-                format!("unsupported non-finite {context} percentage"),
-            )?;
-            if grammar.requires_non_negative() && value < 0.0 {
-                Err(unsupported_value_at(
-                    location,
-                    None,
-                    format!("unsupported negative {context} percentage"),
-                ))
-            } else if grammar.allows_percent() {
-                Ok(CssLength::percent(value))
-            } else {
-                Err(unsupported_value_at(
-                    location,
-                    None,
-                    format!("unsupported {context} percentage"),
-                ))
-            }
+                    format!("invalid {context} length domain"),
+                )
+            })
         }
-        Token::Number { value, .. } if *value == 0.0 => Ok(CssLength::Zero),
-        Token::Ident(ident) => match_ignore_ascii_case! { ident,
-            "thin" if grammar.allows_line_width_keyword() => Ok(CssLength::Thin),
-            "medium" if grammar.allows_line_width_keyword() => Ok(CssLength::Medium),
-            "thick" if grammar.allows_line_width_keyword() => Ok(CssLength::Thick),
-            _ => Err(unsupported_value_at(
-                location,
-                None,
-                format!("unsupported {context} `{ident}`"),
-            )),
-        },
-        Token::Function(name) => Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported length function `{name}` for {context}"),
-        )),
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
+    };
+}
+checked_length_parser!(
+    parse_length,
+    CssSpecifiedLength,
+    CssLengthCalculation,
+    Length
+);
+checked_length_parser!(
+    parse_nonnegative_length,
+    CssSpecifiedNonNegativeLength,
+    CssLengthCalculation,
+    Length
+);
+checked_length_parser!(
+    parse_length_percentage,
+    CssSpecifiedLengthPercentage,
+    CssLengthPercentageCalculation,
+    LengthPercentage
+);
+checked_length_parser!(
+    parse_nonnegative_length_percentage,
+    CssSpecifiedNonNegativeLengthPercentage,
+    CssLengthPercentageCalculation,
+    LengthPercentage
+);
+
+pub(super) fn parse_shadow_length<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
+) -> Result<crate::CssSpecifiedLength, ParseError<'i, Error>> {
+    parse_length(input, numeric, "shadow offset")
+}
+pub(super) fn parse_shadow_blur_length<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
+) -> Result<crate::CssSpecifiedNonNegativeLength, ParseError<'i, Error>> {
+    parse_nonnegative_length(input, numeric, "shadow blur")
 }
 
 use crate::numeric::NumericInputContext;

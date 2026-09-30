@@ -1,4 +1,7 @@
 use super::color::parse_color;
+use super::values::{
+    parse_length_percentage, parse_nonnegative_length, parse_nonnegative_length_percentage,
+};
 use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
 
 use super::border_style::parse_border_style;
@@ -7,8 +10,7 @@ use super::position::{
 };
 use super::url::parse_url;
 use super::values::{
-    CalculationRoot, LengthGrammar, checked_percentage_value, next_is_comma, parse_length_with,
-    parse_length_with_context, parse_numeric_function,
+    CalculationRoot, checked_percentage_value, next_is_comma, parse_numeric_function,
 };
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
@@ -401,22 +403,8 @@ fn parse_border_image_width_component<'i, 't>(
             }
         });
     }
-    let location = input.current_source_location();
-    let value = parse_length_with_context(
-        input,
-        numeric,
-        LengthGrammar::BackgroundSize,
-        "border-image-width",
-    )?;
-    CssBorderImageWidthLengthPercentage::try_new(value)
+    parse_nonnegative_length_percentage(input, numeric, "border-image-width")
         .map(CssBorderImageWidthComponent::LengthPercentage)
-        .ok_or_else(|| {
-            unsupported_value_at(
-                location,
-                None,
-                "border-image-width must be a non-negative length-percentage",
-            )
-        })
 }
 
 pub(super) fn parse_border_image_outset<'i, 't>(
@@ -447,22 +435,8 @@ fn parse_border_image_outset_component<'i, 't>(
             }
         });
     }
-    let location = input.current_source_location();
-    let value = parse_length_with_context(
-        input,
-        numeric,
-        LengthGrammar::BorderWidth,
-        "border-image-outset",
-    )?;
-    CssBorderImageOutsetLength::try_new(value)
+    parse_nonnegative_length(input, numeric, "border-image-outset")
         .map(CssBorderImageOutsetComponent::Length)
-        .ok_or_else(|| {
-            unsupported_value_at(
-                location,
-                None,
-                "border-image-outset must be a non-negative length",
-            )
-        })
 }
 
 fn parse_border_image_non_negative_number<'i, 't>(
@@ -975,20 +949,15 @@ fn parse_gradient_color_stop<'i, 't>(
 fn parse_gradient_line_position<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssGradientLinePosition, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let value =
-        parse_length_with_context(input, numeric, LengthGrammar::Position, "gradient stop")?;
-    CssGradientLinePosition::try_new(value).ok_or_else(|| {
-        unsupported_value_at(location, None, "gradient stop requires a length-percentage")
-    })
+) -> Result<CssSpecifiedLengthPercentage, ParseError<'i, Error>> {
+    parse_length_percentage(input, numeric, "gradient stop")
 }
 
 #[derive(Clone, Debug)]
 enum ParsedRadialSize {
     Extent(CssRadialExtent),
     Explicit {
-        values: Vec<CssLength>,
+        values: Vec<crate::CssComponentValue>,
         location: cssparser::SourceLocation,
     },
 }
@@ -1093,7 +1062,7 @@ fn parse_radial_gradient_prelude<'i, 't>(
     }
 
     let size = size
-        .map(|size| validate_radial_size(shape, size))
+        .map(|size| validate_radial_size(shape, size, numeric))
         .transpose()?;
     Ok((shape, size, position))
 }
@@ -1117,29 +1086,35 @@ fn parse_radial_shape<'i, 't>(
 fn parse_radial_size_input<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<ParsedRadialSize, ParseError<'i, Error>> {
+) -> Result<ParsedRadialSize, ParseError<'i, Error>> {
     if let Ok(extent) = input.try_parse(parse_radial_extent) {
         return Ok(ParsedRadialSize::Extent(extent));
     }
     let location = input.current_source_location();
-    let first = parse_length_with_context(
-        input,
-        numeric,
-        LengthGrammar::Position,
-        "radial-gradient size",
-    )?;
+    let first = parse_radial_size_component(input, numeric)?;
     let mut values = vec![first];
-    if let Ok(second) = input.try_parse(|input| {
-        parse_length_with_context(
-            input,
-            numeric,
-            LengthGrammar::Position,
-            "radial-gradient size",
-        )
-    }) {
+    if let Ok(second) = input.try_parse(|input| parse_radial_size_component(input, numeric)) {
         values.push(second);
     }
     Ok(ParsedRadialSize::Explicit { values, location })
+}
+
+fn parse_radial_size_component<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<crate::CssComponentValue, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let state = input.state();
+    let location = input.current_source_location();
+    match input.next().map_err(basic)? {
+        Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {}
+        Token::Function(name) if crate::numeric::is_math_function(name) => {}
+        token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
+    }
+    input.reset(&state);
+    numeric
+        .collect(input)
+        .map_err(|_| unsupported_value_at(location, None, "invalid radial-gradient size"))
 }
 
 fn parse_radial_extent<'i, 't>(
@@ -1163,56 +1138,95 @@ fn parse_radial_extent<'i, 't>(
 fn validate_radial_size<'i>(
     shape: Option<CssRadialShape>,
     size: ParsedRadialSize,
-) -> std::result::Result<CssRadialSize, ParseError<'i, Error>> {
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<CssRadialSize, ParseError<'i, Error>> {
     match size {
         ParsedRadialSize::Extent(extent) => Ok(CssRadialSize::Extent(extent)),
-        ParsedRadialSize::Explicit { values, location } => match values.as_slice() {
-            [radius] => {
-                let size = CssRadialCircleSize::try_new(radius.clone())
-                    .map(CssRadialSize::Circle)
-                    .ok_or_else(|| {
+        ParsedRadialSize::Explicit { values, location } => {
+            let value = match values.as_slice() {
+                [radius] => {
+                    let radius =
+                        if matches!(radius.view(), crate::CssComponentValueRef::Function(_)) {
+                            let components =
+                                crate::CssComponentValues::try_new(vec![radius.clone()])
+                                    .expect("one radial operand");
+                            let expression = numeric
+                                .admit(components, CalculationRoot::Length)
+                                .map_err(|_| {
+                                    unsupported_value_at(
+                                        location,
+                                        None,
+                                        "invalid radial circle calculation",
+                                    )
+                                })?;
+                            CssSpecifiedNonNegativeLength::try_from_calculation(
+                                crate::CssLengthCalculation::from_expression(expression),
+                            )
+                        } else {
+                            CssSpecifiedNonNegativeLength::try_from_component(radius.clone())
+                        };
+                    CssRadialSize::Circle(radius.map_err(|_| {
                         unsupported_value_at(
                             location,
                             None,
-                            "radial-gradient circle size requires a non-negative length",
+                            "radial circle requires a nonnegative length",
                         )
-                    })?;
-                CssRadialGradient::allows_shape_size(shape, Some(&size))
-                    .then_some(size)
-                    .ok_or_else(|| {
-                        unsupported_value_at(
-                            location,
-                            None,
-                            "ellipse radial-gradient requires two explicit radii",
-                        )
-                    })
-            }
-            [horizontal, vertical] => {
-                let size = CssRadialEllipseSize::try_new(horizontal.clone(), vertical.clone())
-                    .map(CssRadialSize::Ellipse)
-                    .ok_or_else(|| {
-                        unsupported_value_at(
-                            location,
-                            None,
-                            "radial-gradient ellipse size requires two non-negative length-percentages",
-                        )
-                    })?;
-                CssRadialGradient::allows_shape_size(shape, Some(&size))
-                    .then_some(size)
-                    .ok_or_else(|| {
-                        unsupported_value_at(
-                            location,
-                            None,
-                            "circle radial-gradient requires one explicit radius",
-                        )
-                    })
-            }
-            _ => Err(unsupported_value_at(
-                location,
-                None,
-                "radial-gradient has an invalid explicit size",
-            )),
-        },
+                    })?)
+                }
+                [horizontal, vertical] => {
+                    let admit = |component: &crate::CssComponentValue| {
+                        let value =
+                            if matches!(component.view(), crate::CssComponentValueRef::Function(_))
+                            {
+                                let components =
+                                    crate::CssComponentValues::try_new(vec![component.clone()])
+                                        .expect("one radial operand");
+                                let expression = numeric
+                                    .admit(components, CalculationRoot::LengthPercentage)
+                                    .map_err(|_| {
+                                        unsupported_value_at(
+                                            location,
+                                            None,
+                                            "invalid radial ellipse calculation",
+                                        )
+                                    })?;
+                                CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
+                                    crate::CssLengthPercentageCalculation::from_expression(
+                                        expression,
+                                    ),
+                                )
+                            } else {
+                                CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+                                    component.clone(),
+                                )
+                            };
+                        value.map_err(|_| {
+                            unsupported_value_at(
+                                location,
+                                None,
+                                "radial ellipse requires nonnegative length-percentages",
+                            )
+                        })
+                    };
+                    CssRadialSize::Ellipse(CssRadialEllipseSize::new(
+                        admit(horizontal)?,
+                        admit(vertical)?,
+                    ))
+                }
+                _ => {
+                    return Err(unsupported_value_at(
+                        location,
+                        None,
+                        "invalid radial-gradient size arity",
+                    ));
+                }
+            };
+            CssRadialGradient::allows_shape_size(shape, Some(&value))
+                .then_some(value)
+                .ok_or_else(|| {
+                    unsupported_value_at(location, None, "radial shape and explicit size disagree")
+                })
+        }
     }
 }
 
@@ -1297,7 +1311,7 @@ pub(super) fn parse_background_size_component<'i, 't>(
     {
         Ok(CssBackgroundSizeComponent::Auto)
     } else {
-        parse_length_with(input, numeric, LengthGrammar::BackgroundSize)
+        parse_nonnegative_length_percentage(input, numeric, "background-size")
             .map(CssBackgroundSizeComponent::Length)
     }
 }
@@ -1602,8 +1616,7 @@ pub(super) fn parse_outline_width<'i, 't>(
             )),
         };
     }
-    parse_length_with_context(input, numeric, LengthGrammar::BorderWidth, "outline-width")
-        .map(CssOutlineWidth::Length)
+    parse_nonnegative_length(input, numeric, "outline-width").map(CssOutlineWidth::Length)
 }
 
 #[cfg(test)]
@@ -1632,12 +1645,12 @@ mod tests {
         assert!(matches!(
             free.horizontal(),
             CssHorizontalPosition::Offset(offset)
-                if matches!(offset.value(), CssLength::Percent(value) if value.value() == 25.0)
+                if matches!(offset.literal_component().unwrap().view(), crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Percentage(number)) if number.representation() == "25")
         ));
         assert!(matches!(
             free.vertical(),
             CssVerticalPosition::Offset(offset)
-                if matches!(offset.value(), CssLength::Px(value) if value.value() == 10.0)
+                if matches!(offset.literal_component().unwrap().view(), crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "10" && unit == "px")
         ));
     }
 
@@ -1648,12 +1661,12 @@ mod tests {
             assert!(matches!(
                 position.horizontal(),
                 CssHorizontalPosition::LeftOffset(offset)
-                    if matches!(offset.value(), CssLength::Px(value) if value.value() == 10.0)
+                    if matches!(offset.literal_component().unwrap().view(), crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "10" && unit == "px")
             ));
             assert!(matches!(
                 position.vertical(),
                 CssVerticalPosition::BottomOffset(offset)
-                    if matches!(offset.value(), CssLength::Percent(value) if value.value() == 20.0)
+                    if matches!(offset.literal_component().unwrap().view(), crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Percentage(number)) if number.representation() == "20")
             ));
         }
 
@@ -1661,12 +1674,12 @@ mod tests {
         assert!(matches!(
             opposite.horizontal(),
             CssHorizontalPosition::RightOffset(offset)
-                if matches!(offset.value(), CssLength::Calc(CssCalcLength::Typed(_)))
+                if offset.calculation().is_some()
         ));
         assert!(matches!(
             opposite.vertical(),
             CssVerticalPosition::TopOffset(offset)
-                if matches!(offset.value(), CssLength::Calc(_))
+                if offset.calculation().is_some()
         ));
     }
 }

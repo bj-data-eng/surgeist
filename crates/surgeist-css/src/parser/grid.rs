@@ -1,9 +1,7 @@
+use super::values::parse_length_percentage;
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
-use super::values::{
-    LengthGrammar, next_is_delim, parse_custom_ident_from_str_at, parse_length_with_context,
-    parse_positive_integer,
-};
+use super::values::{next_is_delim, parse_custom_ident_from_str_at, parse_positive_integer};
 use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
@@ -32,14 +30,8 @@ pub(super) fn parse_flow_tolerance<'i, 't>(
         };
     }
 
-    let length = parse_length_with_context(
-        input,
-        numeric,
-        LengthGrammar::FlowTolerance,
-        "flow-tolerance",
-    )?;
-    CssFlowTolerance::try_length_percentage(length)
-        .ok_or_else(|| unsupported_value(input, None, "invalid flow-tolerance length-percentage"))
+    let length = parse_length_percentage(input, numeric, "flow-tolerance")?;
+    Ok(CssFlowTolerance::length_percentage(length))
 }
 
 pub(super) fn parse_grid_track_list<'i, 't>(

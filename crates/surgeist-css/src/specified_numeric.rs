@@ -457,6 +457,19 @@ pub struct CssSpecifiedLength {
 }
 
 impl CssSpecifiedLength {
+    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
+        match (&self.value, &other.value) {
+            (SpecifiedNumericValue::Literal(left), SpecifiedNumericValue::Literal(right)) => {
+                left.structural_eq_ignoring_origin(right)
+            }
+            (
+                SpecifiedNumericValue::Calculation(left),
+                SpecifiedNumericValue::Calculation(right),
+            ) => left.structural_eq(right),
+            _ => false,
+        }
+    }
+
     /// Checks a literal length or exact unitless zero without floating-point conversion.
     pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
         checked_literal(&component, false, false, false)?;
@@ -972,3 +985,21 @@ impl CssSpecifiedNonNegativePercentage {
         }
     }
 }
+
+// Enclosing syntax owners use the same cumulative projection and output budget.
+macro_rules! append_checked_length {
+    ($($owner:ident),* $(,)?) => { $(
+        impl $owner {
+            pub(crate) fn append_specified(&self, context: &mut SpecifiedSerializationContext, output: &mut String) -> SerializationResult<()> {
+                let captured = self.capture_specified(context)?;
+                context.append(output, &captured)
+            }
+        }
+    )* };
+}
+append_checked_length!(
+    CssSpecifiedLength,
+    CssSpecifiedNonNegativeLength,
+    CssSpecifiedLengthPercentage,
+    CssSpecifiedNonNegativeLengthPercentage
+);

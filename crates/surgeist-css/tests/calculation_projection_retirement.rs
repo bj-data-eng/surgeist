@@ -2,9 +2,7 @@
 
 //! Selected basic shapes retain symbolic calculations in the sole authored graph.
 
-use surgeist_css::{
-    CssBasicShape, CssClipPath, CssKnownPropertyValueRef, CssLength, parse_style_attribute,
-};
+use surgeist_css::*;
 
 fn parsed_shape(shape: &str) -> CssBasicShape {
     let report = parse_style_attribute(&format!("clip-path: {shape}"));
@@ -30,7 +28,7 @@ fn calculated_circle_radius_keeps_typed_shape() {
     };
     assert!(
         matches!(circle.radius(), surgeist_css::CssCircleRadius::LengthPercentage(radius)
-        if matches!(radius.value(), CssLength::Calc(_)))
+        if radius.calculation().is_some())
     );
 }
 
@@ -50,7 +48,7 @@ fn calculated_ellipse_keeps_typed_shape() {
     };
     assert!(
         matches!(ellipse.radius(), surgeist_css::CssEllipseRadius::Radii(radii)
-        if matches!(radii.horizontal().value(), CssLength::Calc(_)))
+        if radii.horizontal().calculation().is_some())
     );
 }
 
@@ -59,7 +57,7 @@ fn calculated_inset_keeps_typed_shape() {
     let CssBasicShape::Inset(inset) = parsed_shape("inset(calc(1px + 2px))") else {
         panic!("inset");
     };
-    assert!(matches!(inset.offsets().values(), [CssLength::Calc(_)]));
+    assert!(matches!(inset.offsets().values(), [value] if value.calculation().is_some()));
 }
 
 #[test]
@@ -68,10 +66,7 @@ fn calculated_polygon_keeps_typed_shape() {
     else {
         panic!("polygon");
     };
-    assert!(matches!(
-        polygon.points().points()[0].x(),
-        CssLength::Calc(_)
-    ));
+    assert!(polygon.points().points()[0].x().calculation().is_some());
 }
 
 #[test]
@@ -91,7 +86,7 @@ fn calculated_blur_keeps_typed_filter_expression() {
     };
     assert!(
         matches!(functions.functions(), [surgeist_css::CssFilterFunction::Blur(blur)]
-        if matches!(blur.length(), surgeist_css::CssLength::Calc(_)))
+        if blur.length().calculation().is_some())
     );
 }
 
@@ -136,6 +131,14 @@ fn literal_blur_keeps_typed_filter_length() {
     };
     assert!(
         matches!(functions.functions(), [surgeist_css::CssFilterFunction::Blur(blur)]
-        if matches!(blur.length(), surgeist_css::CssLength::Px(length) if length.value() == 3.0))
+        if exact_dimension(blur.length().literal_component(), "3", "px"))
     );
+}
+
+fn exact_dimension(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+    expected_unit: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }

@@ -4,7 +4,6 @@ use crate::{
     CssHorizontalPosition, CssPosition, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationLimits, CssVerticalPosition,
     specified_rule_serialization::SpecifiedRuleWriter,
-    specified_serialization::serialize_checked_length_percentage_into,
 };
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
@@ -78,8 +77,8 @@ fn append_vertical(value: &CssVerticalPosition, writer: &mut SpecifiedRuleWriter
 }
 
 fn append_offset(
-    offset: &crate::CssPositionOffset,
+    offset: &crate::CssSpecifiedLengthPercentage,
     writer: &mut SpecifiedRuleWriter,
 ) -> Result<()> {
-    serialize_checked_length_percentage_into(offset.value(), &mut writer.context, &mut writer.css)
+    offset.append_specified(&mut writer.context, &mut writer.css)
 }

@@ -2,13 +2,13 @@
 
 use crate::numeric::{SpecifiedCalculationRef, project_calculation_specified_into};
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
-use crate::specified_serialization::serialize_checked_length_percentage_into;
 use crate::{
     CssAngleUnit, CssColorStopList, CssColorStopListItem, CssGradient, CssGradientAngle,
     CssHorizontalGradientSide, CssHorizontalPosition, CssImage, CssImageValue, CssImageValueList,
-    CssLength, CssLinearGradient, CssLinearGradientDirection, CssPosition, CssRadialExtent,
-    CssRadialGradient, CssRadialShape, CssRadialSize, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, CssVerticalGradientSide, CssVerticalPosition,
+    CssLinearGradient, CssLinearGradientDirection, CssPosition, CssRadialExtent, CssRadialGradient,
+    CssRadialShape, CssRadialSize, CssSpecifiedLengthPercentage,
+    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
+    CssVerticalGradientSide, CssVerticalPosition,
 };
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
@@ -248,12 +248,16 @@ fn append_radial(value: &CssRadialGradient, writer: &mut SpecifiedRuleWriter) ->
                     writer.append(radial_extent(*extent))?;
                 }
                 CssRadialSize::Circle(circle) => {
-                    append_line_position(circle.radius(), writer)?;
+                    circle.append_specified(&mut writer.context, &mut writer.css)?;
                 }
                 CssRadialSize::Ellipse(ellipse) => {
-                    append_line_position(ellipse.horizontal(), writer)?;
+                    ellipse
+                        .horizontal()
+                        .append_specified(&mut writer.context, &mut writer.css)?;
                     writer.append(" ")?;
-                    append_line_position(ellipse.vertical(), writer)?;
+                    ellipse
+                        .vertical()
+                        .append_specified(&mut writer.context, &mut writer.css)?;
                 }
             }
             emitted = true;
@@ -303,16 +307,12 @@ fn radial_center_offset_count(position: &CssPosition) -> usize {
 fn radial_position_is_center(position: &CssPosition) -> bool {
     let horizontal = match position.horizontal() {
         CssHorizontalPosition::Center => true,
-        CssHorizontalPosition::Offset(offset) => {
-            matches!(offset.value(), CssLength::Percent(value) if value.value() == 50.0)
-        }
+        CssHorizontalPosition::Offset(offset) => literal_percentage_is(offset, 5, 1),
         _ => false,
     };
     let vertical = match position.vertical() {
         CssVerticalPosition::Center => true,
-        CssVerticalPosition::Offset(offset) => {
-            matches!(offset.value(), CssLength::Percent(value) if value.value() == 50.0)
-        }
+        CssVerticalPosition::Offset(offset) => literal_percentage_is(offset, 5, 1),
         _ => false,
     };
     horizontal && vertical
@@ -331,35 +331,55 @@ fn append_stops(stops: &CssColorStopList, writer: &mut SpecifiedRuleWriter) -> R
                 stop.color()
                     .append_specified(&mut writer.context, &mut writer.css)?;
                 if let Some(position) = stop.position() {
-                    let omit = (index == 0 && is_direct_zero(position.value()))
-                        || (index == last && is_direct_hundred_percent(position.value()));
+                    let omit = (index == 0 && is_direct_zero(position))
+                        || (index == last && is_direct_hundred_percent(position));
                     if omit {
                         charge(writer, 1)?;
                     } else {
                         writer.append(" ")?;
-                        append_line_position(position.value(), writer)?;
+                        append_line_position(position, writer)?;
                     }
                 }
             }
-            CssColorStopListItem::Hint(position) => append_line_position(position.value(), writer)?,
+            CssColorStopListItem::Hint(position) => append_line_position(position, writer)?,
         }
     }
     Ok(())
 }
 
-fn is_direct_zero(value: &CssLength) -> bool {
-    match value {
-        CssLength::Zero => true,
-        CssLength::Px(number) | CssLength::Percent(number) => number.value() == 0.0,
-        CssLength::Dimension(dimension) => dimension.value() == 0.0,
-        _ => false,
-    }
+fn is_direct_zero(value: &CssSpecifiedLengthPercentage) -> bool {
+    value
+        .literal_component()
+        .is_some_and(|component| match component.view() {
+            crate::CssComponentValueRef::Token(
+                crate::CssValueTokenRef::Number(number)
+                | crate::CssValueTokenRef::Percentage(number)
+                | crate::CssValueTokenRef::Dimension { number, .. },
+            ) => crate::exact_decimal::LexicalDecimal::new(number.representation()).len == 0,
+            _ => false,
+        })
 }
 
-fn is_direct_hundred_percent(value: &CssLength) -> bool {
-    matches!(value, CssLength::Percent(number) if number.value() == 100.0)
+fn literal_percentage_is(value: &CssSpecifiedLengthPercentage, digit: u8, exponent: i128) -> bool {
+    value.literal_component().is_some_and(|component| {
+        let crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Percentage(number)) =
+            component.view()
+        else {
+            return false;
+        };
+        let decimal = crate::exact_decimal::LexicalDecimal::new(number.representation());
+        !decimal.negative
+            && decimal.len == 1
+            && decimal.exponent == Some(exponent)
+            && decimal.digits().next() == Some(digit)
+    })
 }
-
-fn append_line_position(value: &CssLength, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-    serialize_checked_length_percentage_into(value, &mut writer.context, &mut writer.css)
+fn is_direct_hundred_percent(value: &CssSpecifiedLengthPercentage) -> bool {
+    literal_percentage_is(value, 1, 2)
+}
+fn append_line_position(
+    value: &CssSpecifiedLengthPercentage,
+    writer: &mut SpecifiedRuleWriter,
+) -> Result<()> {
+    value.append_specified(&mut writer.context, &mut writer.css)
 }

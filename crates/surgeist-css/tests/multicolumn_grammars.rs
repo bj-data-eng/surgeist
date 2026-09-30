@@ -1,10 +1,4 @@
-use surgeist_css::{
-    CssBoxSize, CssColumnCount, CssColumnFill, CssColumnSpan, CssColumnWidth, CssComponentValue,
-    CssComponentValueRef, CssErrorCode, CssGlobalKeyword, CssKnownDeclaredValueRef,
-    CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssLengthUnit, CssLineStyle,
-    CssLineWidth, CssPositiveIntegerValue, CssRecoveryAction, CssValueTokenRef, ErrorKind,
-    parse_style_attribute,
-};
+use surgeist_css::*;
 
 #[test]
 fn c14_multicolumn_properties_retain_typed_structure() {
@@ -202,13 +196,14 @@ fn multicolumn_calculations_remain_symbolic_and_checked_constructors_reject_lite
         )
         .is_none()
     );
-    assert!(
-        surgeist_css::CssNonNegativeLength::try_new(
-            CssLength::try_dimension(-1.0, CssLengthUnit::Px).unwrap(),
-        )
-        .is_none()
-    );
-    assert!(surgeist_css::CssNonNegativeLength::try_new(CssLength::Auto).is_none());
+    for css in ["-1px", "auto"] {
+        assert!(
+            surgeist_css::CssSpecifiedNonNegativeLength::try_from_component(
+                surgeist_css::CssComponentValue::try_token(css).unwrap()
+            )
+            .is_err()
+        );
+    }
 }
 
 #[test]

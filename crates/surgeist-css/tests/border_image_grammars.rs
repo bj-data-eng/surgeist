@@ -1,10 +1,4 @@
-use surgeist_css::{
-    CssAngleUnit, CssBorderImageOutsetComponent, CssBorderImageRepeatKeyword,
-    CssBorderImageSliceComponent, CssBorderImageWidthComponent, CssErrorCode, CssImageOrientation,
-    CssImageOrientationAngle, CssImageRendering, CssImageValue, CssKnownDeclaredValueRef,
-    CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssObjectFit, CssRecoveryAction,
-    ErrorKind, parse_style_attribute,
-};
+use surgeist_css::*;
 
 #[test]
 fn c13_border_images_retain_typed_structure() {
@@ -60,8 +54,8 @@ fn c13_border_images_retain_typed_structure() {
             CssBorderImageWidthComponent::LengthPercentage(percent),
             CssBorderImageWidthComponent::LengthPercentage(px),
         ] if one.value() == 1.0
-            && matches!(percent.value(), CssLength::Percent(value) if value.value() == 25.0)
-            && matches!(px.value(), CssLength::Px(value) if value.value() == 4.0)
+            && exact_percentage(percent.literal_component(), "25")
+            && exact_dimension(px.literal_component(), "4", "px")
     ));
     assert!(matches!(
         value.outset().expect("outset").values(),
@@ -71,9 +65,9 @@ fn c13_border_images_retain_typed_structure() {
             CssBorderImageOutsetComponent::Number(three),
             CssBorderImageOutsetComponent::Length(four),
         ] if zero.value() == 0.0
-            && matches!(two.value(), CssLength::Px(value) if value.value() == 2.0)
+            && exact_dimension(two.literal_component(), "2", "px")
             && three.value() == 3.0
-            && matches!(four.value(), CssLength::Px(value) if value.value() == 4.0)
+            && exact_dimension(four.literal_component(), "4", "px")
     ));
     let repeat = value.repeat().expect("repeat");
     assert_eq!(repeat.horizontal(), CssBorderImageRepeatKeyword::Round);
@@ -463,4 +457,18 @@ fn invalid_border_image_domains_drop_exact_declaration_and_keep_siblings() {
             "{source}",
         );
     }
+}
+
+fn exact_dimension(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+    expected_unit: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+}
+fn exact_percentage(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
 }

@@ -14,18 +14,7 @@
 //! Exact typed values, occurrence identity, and original token origins are
 //! Surgeist contracts. This consumer neither resolves style nor loads resources.
 
-use surgeist_css::{
-    CssBorderImageOutsetComponent, CssBorderImageRepeatKeyword, CssBorderImageSliceComponent,
-    CssBorderImageWidthComponent, CssBorderStyle, CssBorderWidth, CssColor, CssColorComponent,
-    CssComponentValue, CssComponentValues, CssContributionValueRef, CssContributions,
-    CssCustomPropertyName, CssDeclaration, CssExpansion, CssExpansionErrorKind, CssGlobalKeyword,
-    CssImageValue, CssImportance, CssKnownProperty as Property, CssKnownPropertyValueRef,
-    CssLength, CssLonghandContribution, CssLonghandContributions, CssLonghandValueRef,
-    CssPendingSubstitution, CssPredefinedColorSpace, CssPropertyNameRef, CssPropertyValueErrorKind,
-    CssSerializedOrigin, CssSpecifiedNonNegativeLength, CssTextAlign, CssTextAlignAllValue,
-    CssTextAlignLastValue, CssTextAlignValue, CssUnresolvedStandard, CssValueOrigin,
-    expand_declaration, parse_component_values, parse_property_value, parse_style_attribute,
-};
+use surgeist_css::{CssKnownProperty as Property, *};
 
 const MARGINS: [Property; 4] = [
     Property::MarginTop,
@@ -621,10 +610,10 @@ fn ordinary_longhands_retain_typed_values() {
                 );
                 assert!(matches!(second, CssBorderImageWidthComponent::Auto));
                 assert!(
-                    matches!(third, CssBorderImageWidthComponent::LengthPercentage(value) if value.value() == &CssLength::try_percent(3.0).unwrap())
+                    matches!(third, CssBorderImageWidthComponent::LengthPercentage(value) if exact_literal(value.literal_component(), "3%"))
                 );
                 assert!(
-                    matches!(fourth, CssBorderImageWidthComponent::LengthPercentage(value) if value.value() == &CssLength::try_px(4.0).unwrap())
+                    matches!(fourth, CssBorderImageWidthComponent::LengthPercentage(value) if exact_literal(value.literal_component(), "4px"))
                 );
             }
             CssContributionValueRef::Ordinary(CssLonghandValueRef::BorderImageOutset(value)) => {
@@ -634,13 +623,13 @@ fn ordinary_longhands_retain_typed_values() {
                     matches!(first, CssBorderImageOutsetComponent::Number(number) if number.value() == 1.0)
                 );
                 assert!(
-                    matches!(second, CssBorderImageOutsetComponent::Length(value) if value.value() == &CssLength::try_px(2.0).unwrap())
+                    matches!(second, CssBorderImageOutsetComponent::Length(value) if exact_literal(value.literal_component(), "2px"))
                 );
                 assert!(
                     matches!(third, CssBorderImageOutsetComponent::Number(number) if number.value() == 3.0)
                 );
                 assert!(
-                    matches!(fourth, CssBorderImageOutsetComponent::Length(value) if value.value() == &CssLength::try_px(4.0).unwrap())
+                    matches!(fourth, CssBorderImageOutsetComponent::Length(value) if exact_literal(value.literal_component(), "4px"))
                 );
             }
             CssContributionValueRef::Ordinary(CssLonghandValueRef::BorderImageRepeat(value)) => {
@@ -1116,4 +1105,33 @@ fn main() {
     pending_reentry_preserves_original_and_replacement_provenance();
     strict_reentry_rejects_atomically_and_preserves_out_of_slice_identity();
     custom_properties_preserve_symbolic_values_and_occurrences();
+}
+
+fn exact_literal(component: Option<&surgeist_css::CssComponentValue>, css: &str) -> bool {
+    use surgeist_css::{CssComponentValueRef as Component, CssValueTokenRef as Token};
+    let expected = surgeist_css::CssComponentValue::try_token(css).unwrap();
+    match (
+        component.map(surgeist_css::CssComponentValue::view),
+        expected.view(),
+    ) {
+        (
+            Some(Component::Token(Token::Number(actual))),
+            Component::Token(Token::Number(expected)),
+        )
+        | (
+            Some(Component::Token(Token::Percentage(actual))),
+            Component::Token(Token::Percentage(expected)),
+        ) => actual.representation() == expected.representation(),
+        (
+            Some(Component::Token(Token::Dimension {
+                number: actual,
+                unit: actual_unit,
+            })),
+            Component::Token(Token::Dimension {
+                number: expected,
+                unit: expected_unit,
+            }),
+        ) => actual.representation() == expected.representation() && actual_unit == expected_unit,
+        _ => false,
+    }
 }

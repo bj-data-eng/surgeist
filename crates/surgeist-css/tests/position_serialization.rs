@@ -3,11 +3,8 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#position-serialization
 
 use surgeist_css::{
-    CssCalcLength, CssHorizontalPosition as H, CssKnownPropertyValueRef, CssLength,
-    CssLengthPercentageCalculation, CssPosition, CssPositionOffset,
-    CssSpecifiedValueSerializationErrorKind as ErrorKind,
-    CssSpecifiedValueSerializationLimits as L, CssVerticalPosition as V, parse_component_values,
-    parse_style_attribute,
+    CssHorizontalPosition as H, CssSpecifiedValueSerializationErrorKind as ErrorKind,
+    CssSpecifiedValueSerializationLimits as L, CssVerticalPosition as V, *,
 };
 
 fn parsed(input: &str) -> CssPosition {
@@ -22,14 +19,6 @@ fn parsed(input: &str) -> CssPosition {
         panic!("expected mask-position");
     };
     value.positions().positions()[0].clone()
-}
-
-fn px(value: f32) -> CssPositionOffset {
-    CssPositionOffset::try_new(CssLength::try_px(value).unwrap()).unwrap()
-}
-
-fn percent(value: f32) -> CssPositionOffset {
-    CssPositionOffset::try_new(CssLength::try_percent(value).unwrap()).unwrap()
 }
 
 #[test]
@@ -49,22 +38,30 @@ fn specified_axes_are_explicit_and_horizontal_first() {
 
 #[test]
 fn typed_axes_preserve_offset_origin_and_symbolic_values() {
-    let paired =
-        CssPosition::try_new(H::RightOffset(px(0.0)), V::BottomOffset(percent(2.0))).unwrap();
+    let paired = CssPosition::try_new(
+        H::RightOffset(signed_length_percentage("0px")),
+        V::BottomOffset(signed_length_percentage("2%")),
+    )
+    .unwrap();
     assert!(matches!(paired.horizontal(), H::RightOffset(_)));
     assert!(matches!(paired.vertical(), V::BottomOffset(_)));
     assert_eq!(paired.serialize_specified().unwrap(), "right 0px bottom 2%");
-    assert!(CssPosition::try_new(H::RightOffset(px(0.0)), V::Top).is_none());
+    assert!(
+        CssPosition::try_new(H::RightOffset(signed_length_percentage("0px")), V::Top).is_none()
+    );
 
-    let signed = CssPosition::try_new(H::Offset(px(-1.0)), V::Offset(percent(-2.0))).unwrap();
+    let signed = CssPosition::try_new(
+        H::Offset(signed_length_percentage("-1px")),
+        V::Offset(signed_length_percentage("-2%")),
+    )
+    .unwrap();
     assert_eq!(signed.serialize_specified().unwrap(), "-1px -2%");
 
     let calculation = CssLengthPercentageCalculation::try_from_components(
         parse_component_values("calc(1px + 5%)").unwrap(),
     )
     .unwrap();
-    let offset =
-        CssPositionOffset::try_new(CssLength::Calc(CssCalcLength::Typed(calculation))).unwrap();
+    let offset = CssSpecifiedLengthPercentage::try_from_calculation(calculation).unwrap();
     let symbolic = CssPosition::try_new(H::Offset(offset), V::Center).unwrap();
     assert_eq!(
         symbolic.serialize_specified().unwrap(),
@@ -98,8 +95,11 @@ fn one_budget_covers_aggregate_axes_children_and_full_output() {
         );
     }
 
-    let offsets =
-        CssPosition::try_new(H::RightOffset(px(1.0)), V::BottomOffset(percent(2.0))).unwrap();
+    let offsets = CssPosition::try_new(
+        H::RightOffset(signed_length_percentage("1px")),
+        V::BottomOffset(signed_length_percentage("2%")),
+    )
+    .unwrap();
     let expected = "right 1px bottom 2%";
     assert_eq!(
         offsets
@@ -124,15 +124,7 @@ fn one_budget_covers_aggregate_axes_children_and_full_output() {
 
 #[test]
 fn typed_math_projection_is_cumulative_across_both_axes() {
-    let axis = || {
-        CssPositionOffset::try_new(CssLength::Calc(CssCalcLength::Typed(
-            CssLengthPercentageCalculation::try_from_components(
-                parse_component_values("calc(1px + 2em)").unwrap(),
-            )
-            .unwrap(),
-        )))
-        .unwrap()
-    };
+    let axis = || signed_length_percentage("calc(1px + 2em)");
     let one = CssPosition::try_new(H::Offset(axis()), V::Center).unwrap();
     let two = CssPosition::try_new(H::Offset(axis()), V::Offset(axis())).unwrap();
     let one_css = one.serialize_specified().unwrap();
@@ -175,4 +167,19 @@ fn typed_math_projection_is_cumulative_across_both_axes() {
             .kind(),
         ErrorKind::ByteLimit
     );
+}
+
+fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercentage {
+    let components = surgeist_css::parse_component_values(css).unwrap();
+    if css.contains('(') {
+        surgeist_css::CssSpecifiedLengthPercentage::try_from_calculation(
+            surgeist_css::CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+        )
+        .unwrap()
+    } else {
+        surgeist_css::CssSpecifiedLengthPercentage::try_from_component(
+            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
+    }
 }

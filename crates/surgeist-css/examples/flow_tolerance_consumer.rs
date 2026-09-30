@@ -9,17 +9,7 @@
 //! Values, component origins, contribution ordering, and strict retry behavior
 //! below are asserted independently of serialization followed by reparsing.
 
-use surgeist_css::{
-    CssCalcLength, CssCalculationExpressionRef, CssCalculationProductOperator,
-    CssCalculationSumOperator, CssCalculationType, CssCalculationValueRef, CssComponentValue,
-    CssComponentValues, CssContributionValueRef, CssContributions, CssDeclaration, CssExpansion,
-    CssExpansionErrorKind, CssFlowTolerance, CssFlowToleranceRef, CssGlobalKeyword, CssImportance,
-    CssKnownProperty as Property, CssKnownPropertyValueRef, CssLength,
-    CssLengthPercentageCalculation, CssLengthUnit, CssLonghandContribution, CssLonghandValueRef,
-    CssNormalizedItem, CssPropertyNameRef, CssPropertyValueErrorKind, CssSerializedOrigin,
-    CssValueOrigin, expand_declaration, normalize_report, parse_component_values,
-    parse_property_value, parse_sheet, parse_style_attribute,
-};
+use surgeist_css::{CssKnownProperty as Property, *};
 
 fn value(declaration: &CssDeclaration) -> &CssFlowTolerance {
     let Some(CssKnownPropertyValueRef::FlowTolerance(value)) =
@@ -30,7 +20,7 @@ fn value(declaration: &CssDeclaration) -> &CssFlowTolerance {
     value.value()
 }
 
-fn length(value: &CssFlowTolerance) -> &CssLength {
+fn length(value: &CssFlowTolerance) -> &CssSpecifiedLengthPercentage {
     match value.as_ref() {
         CssFlowToleranceRef::LengthPercentage(length) => length,
         other => panic!("a symbolic length-percentage: {other:?}"),
@@ -70,42 +60,41 @@ fn constructors_preserve_symbolic_keywords_and_signed_numeric_payloads() {
     assert_eq!(CssFlowTolerance::default(), CssFlowTolerance::normal());
     assert_ne!(CssFlowTolerance::normal(), CssFlowTolerance::infinite());
 
-    for expected in [
-        CssLength::Zero,
-        CssLength::try_px(-2.0).unwrap(),
-        CssLength::try_px(0.0).unwrap(),
-        CssLength::try_dimension(-0.5, CssLengthUnit::Em).unwrap(),
-        CssLength::try_dimension(2.0, CssLengthUnit::Rem).unwrap(),
-        CssLength::try_percent(-25.0).unwrap(),
-        CssLength::try_percent(125.0).unwrap(),
-        CssLength::Calc(CssCalcLength::try_px(-3.0).unwrap()),
-        CssLength::Calc(CssCalcLength::try_percent(-4.0).unwrap()),
-        CssLength::Calc(CssCalcLength::try_dimension(-5.0, CssLengthUnit::Em).unwrap()),
-        CssLength::Calc(CssCalcLength::Typed(
-            CssLengthPercentageCalculation::try_dimension(-6.0, CssLengthUnit::Rem).unwrap(),
-        )),
-        CssLength::Calc(CssCalcLength::Typed(
-            CssLengthPercentageCalculation::try_percentage(-7.0).unwrap(),
-        )),
+    for css in [
+        "0",
+        "-2px",
+        "0px",
+        "-0.5em",
+        "2rem",
+        "-25%",
+        "125%",
+        "calc(-3px)",
+        "calc(-4%)",
+        "calc(-5em)",
+        "calc(-6rem)",
+        "calc(-7%)",
     ] {
-        let tolerance = CssFlowTolerance::try_length_percentage(expected.clone())
-            .expect("signed finite lengths and percentages are valid authored values");
+        let expected = signed_length_percentage(css);
+        let tolerance = CssFlowTolerance::length_percentage(expected.clone());
         assert_eq!(length(&tolerance), &expected);
         assert_eq!(tolerance.clone(), tolerance);
     }
-    for invalid in [
-        CssLength::Auto,
-        CssLength::MinContent,
-        CssLength::MaxContent,
-        CssLength::FitContent,
-        CssLength::Normal,
-        CssLength::Thin,
-        CssLength::Medium,
-        CssLength::Thick,
+    for keyword in [
+        "auto",
+        "min-content",
+        "max-content",
+        "fit-content",
+        "normal",
+        "thin",
+        "medium",
+        "thick",
     ] {
         assert!(
-            CssFlowTolerance::try_length_percentage(invalid.clone()).is_none(),
-            "{invalid:?}"
+            CssSpecifiedLengthPercentage::try_from_component(
+                CssComponentValue::try_ident(keyword).unwrap()
+            )
+            .is_err(),
+            "{keyword}"
         );
     }
     println!("checked symbolic and signed values: ok");
@@ -129,28 +118,23 @@ fn checked_sum_construction_preserves_signed_math() {
     )
     .unwrap();
     for valid in [signed, nested] {
-        let expected = CssLength::Calc(CssCalcLength::Typed(valid));
-        let tolerance = CssFlowTolerance::try_length_percentage(expected.clone()).unwrap();
+        let expected = CssSpecifiedLengthPercentage::try_from_calculation(valid).unwrap();
+        let tolerance = CssFlowTolerance::length_percentage(expected.clone());
         assert_eq!(length(&tolerance), &expected);
     }
     println!("checked calculation construction: ok");
 }
 
 fn parsed_and_constructed_payloads_match_independent_signed_expectations() {
-    for (source, expected) in [
-        ("0", CssLength::Zero),
-        ("-2px", CssLength::try_px(-2.0).unwrap()),
-        (
-            "-0.5em",
-            CssLength::try_dimension(-0.5, CssLengthUnit::Em).unwrap(),
-        ),
-        ("-25%", CssLength::try_percent(-25.0).unwrap()),
-        ("+125%", CssLength::try_percent(125.0).unwrap()),
-    ] {
+    for source in ["0", "-2px", "-0.5em", "-25%", "+125%"] {
+        let expected = signed_length_percentage(source);
         let report = parse_style_attribute(&format!("flow-tolerance:{source}"));
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-        let constructed = CssFlowTolerance::try_length_percentage(expected.clone()).unwrap();
-        assert_eq!(length(value(&report.syntax()[0])), &expected);
+        let constructed = CssFlowTolerance::length_percentage(expected.clone());
+        assert!(exact_literal(
+            length(value(&report.syntax()[0])).literal_component(),
+            source
+        ));
         assert_eq!(length(&constructed), &expected);
         assert_eq!(value(&report.syntax()[0]), &constructed);
     }
@@ -171,9 +155,9 @@ fn parsed_and_constructed_payloads_match_independent_signed_expectations() {
 
     let report = parse_style_attribute("flow-tolerance:calc(-2px - 3%)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let CssLength::Calc(CssCalcLength::Typed(calc)) = length(value(&report.syntax()[0])) else {
-        panic!("expected exact signed sum")
-    };
+    let calc = length(value(&report.syntax()[0]))
+        .calculation()
+        .expect("retained exact calculation");
     let CssCalculationExpressionRef::NestedCalc(root) = calc.expression() else {
         panic!("expected calc root")
     };
@@ -194,10 +178,9 @@ fn parsed_and_constructed_payloads_match_independent_signed_expectations() {
 
     let report = parse_style_attribute("flow-tolerance:calc(-2 * 3px)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let CssLength::Calc(CssCalcLength::Typed(calculation)) = length(value(&report.syntax()[0]))
-    else {
-        panic!("the dimensional product retains its typed authored calculation");
-    };
+    let calculation = length(value(&report.syntax()[0]))
+        .calculation()
+        .expect("retained exact calculation");
     assert_eq!(calculation.result_type(), CssCalculationType::Length);
     let CssCalculationExpressionRef::NestedCalc(root) = calculation.expression() else {
         panic!("expected calc root")
@@ -229,10 +212,10 @@ fn component_construction_preserves_value_importance_and_origins() {
     ])
     .unwrap();
     let declaration = checked(components, CssImportance::Important);
-    assert_eq!(
-        length(value(&declaration)),
-        &CssLength::try_dimension(-0.5, CssLengthUnit::Em).unwrap()
-    );
+    assert!(exact_literal(
+        length(value(&declaration)).literal_component(),
+        "-0.5em"
+    ));
     assert_eq!(declaration.importance(), CssImportance::Important);
     assert_eq!(declaration.position(), None);
     assert!(declaration.parsed_name().is_none());
@@ -282,8 +265,7 @@ fn normalization_keeps_occurrence_order_and_symbolic_values() {
         .iter()
         .zip([
             CssFlowTolerance::normal(),
-            CssFlowTolerance::try_length_percentage(CssLength::try_percent(-25.0).unwrap())
-                .unwrap(),
+            CssFlowTolerance::length_percentage(signed_length_percentage("-25%")),
             CssFlowTolerance::infinite(),
         ])
         .enumerate()
@@ -377,10 +359,10 @@ fn pending_reentry_preserves_original_and_replacement_origins_and_is_retryable()
         };
         assert_eq!(item.property(), Property::FlowTolerance);
         match source {
-            "-25%" => assert_eq!(
-                length(contribution(item)),
-                &CssLength::try_percent(-25.0).unwrap()
-            ),
+            "-25%" => assert!(exact_literal(
+                length(contribution(item)).literal_component(),
+                "-25%"
+            )),
             "normal" => assert_eq!(contribution(item), &CssFlowTolerance::normal()),
             "infinite" => assert_eq!(contribution(item), &CssFlowTolerance::infinite()),
             "initial" => assert!(matches!(
@@ -388,10 +370,9 @@ fn pending_reentry_preserves_original_and_replacement_origins_and_is_retryable()
                 CssContributionValueRef::Global(CssGlobalKeyword::Initial)
             )),
             "calc(-2px - 3%)" => {
-                let CssLength::Calc(CssCalcLength::Typed(calculation)) = length(contribution(item))
-                else {
-                    panic!("exact calculation")
-                };
+                let calculation = length(contribution(item))
+                    .calculation()
+                    .expect("retained exact calculation");
                 assert_eq!(
                     calculation.result_type(),
                     CssCalculationType::LengthPercentage
@@ -489,10 +470,10 @@ fn pending_reentry_preserves_original_and_replacement_origins_and_is_retryable()
     let [item] = values.items() else {
         panic!("one contribution after retry");
     };
-    assert_eq!(
-        length(contribution(item)),
-        &CssLength::try_px(-2.0).unwrap()
-    );
+    assert!(exact_literal(
+        length(contribution(item)).literal_component(),
+        "-2px"
+    ));
     assert!(item.source().same_occurrence(authored));
     assert!(
         pending
@@ -513,4 +494,48 @@ fn main() {
     normalization_keeps_occurrence_order_and_symbolic_values();
     global_keywords_are_not_resolved_to_ordinary_defaults();
     pending_reentry_preserves_original_and_replacement_origins_and_is_retryable();
+}
+
+fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercentage {
+    let components = surgeist_css::parse_component_values(css).unwrap();
+    if css.contains('(') {
+        surgeist_css::CssSpecifiedLengthPercentage::try_from_calculation(
+            surgeist_css::CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+        )
+        .unwrap()
+    } else {
+        surgeist_css::CssSpecifiedLengthPercentage::try_from_component(
+            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
+    }
+}
+
+fn exact_literal(component: Option<&surgeist_css::CssComponentValue>, css: &str) -> bool {
+    use surgeist_css::{CssComponentValueRef as Component, CssValueTokenRef as Token};
+    let expected = surgeist_css::CssComponentValue::try_token(css).unwrap();
+    match (
+        component.map(surgeist_css::CssComponentValue::view),
+        expected.view(),
+    ) {
+        (
+            Some(Component::Token(Token::Number(actual))),
+            Component::Token(Token::Number(expected)),
+        )
+        | (
+            Some(Component::Token(Token::Percentage(actual))),
+            Component::Token(Token::Percentage(expected)),
+        ) => actual.representation() == expected.representation(),
+        (
+            Some(Component::Token(Token::Dimension {
+                number: actual,
+                unit: actual_unit,
+            })),
+            Component::Token(Token::Dimension {
+                number: expected,
+                unit: expected_unit,
+            }),
+        ) => actual.representation() == expected.representation() && actual_unit == expected_unit,
+        _ => false,
+    }
 }

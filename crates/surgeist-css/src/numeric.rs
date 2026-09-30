@@ -1130,11 +1130,6 @@ impl CssCalculationExpression {
             }
         }
     }
-    pub(crate) fn to_css_fragment(&self) -> String {
-        let mut output = String::new();
-        self.emit_canonical(|text, _| output.push_str(&text));
-        output
-    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -2535,14 +2530,6 @@ impl CssLengthPercentageCalculation {
     pub(crate) fn structural_eq(&self, other: &Self) -> bool {
         self.expression.structural_eq(&other.expression)
     }
-
-    pub(crate) fn serialize_specified_into(
-        &self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-        output: &mut String,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        project_specified_into(&self.expression, context, output).map(|_| ())
-    }
 }
 
 impl CssIntegerCalculation {
@@ -2559,24 +2546,6 @@ impl CssIntegerCalculation {
     }
 }
 
-/// Rechecks a mixed-context tree at a pure-length consumer boundary without
-/// serialization or loss of original component provenance.
-pub(crate) fn admit_pure_length(mut value: crate::CssLength) -> Option<crate::CssLength> {
-    if let crate::CssLength::Calc(crate::CssCalcLength::Typed(calculation)) = &mut value
-        && calculation.numeric_type() != CssNumericType::dimension(CssNumericDimension::Length)
-    {
-        // A recovered closing origin remains recovered when changing type context.
-        let expression = construct_with_policy(
-            calculation.components().clone(),
-            CalculationRoot::Length,
-            CssComponentValueLimits::default(),
-            AdmissionPolicy::RecoveredSyntax,
-        )
-        .ok()?;
-        *calculation = CssLengthPercentageCalculation::from_expression(expression);
-    }
-    Some(value)
-}
 impl CssIntegerCalculation {
     pub fn requires_rounding(&self) -> bool {
         matches!(self.expression.kind, NodeKind::Function { .. })
@@ -3528,7 +3497,13 @@ mod container_context_tests {
                 CssComponentValueLimits::default(),
             )
             .unwrap();
-            assert_eq!(roundtrip.to_css_fragment(), canonical);
+            assert_eq!(
+                CssNumberCalculation::from_expression(roundtrip)
+                    .serialize()
+                    .unwrap()
+                    .as_css(),
+                canonical
+            );
             assert_eq!(
                 CssNumberCalculation::try_from_components(components)
                     .unwrap_err()
@@ -3552,7 +3527,13 @@ mod container_context_tests {
             )
             .unwrap();
             assert_eq!(expression.result_type(), CssCalculationType::Length);
-            assert_eq!(expression.to_css_fragment(), source);
+            assert_eq!(
+                CssLengthCalculation::from_expression(expression)
+                    .serialize()
+                    .unwrap()
+                    .as_css(),
+                source
+            );
             assert_eq!(
                 CssLengthCalculation::try_from_components(components)
                     .unwrap_err()

@@ -8,25 +8,8 @@
 
 use surgeist_css::*;
 
-fn px(value: f32) -> CssLength {
-    CssLength::try_px(value).unwrap()
-}
-
-fn em(value: f32) -> CssLength {
-    CssLength::try_dimension(value, CssLengthUnit::Em).unwrap()
-}
-
-fn typed_calc(source: &str) -> CssLength {
-    CssLength::Calc(CssCalcLength::Typed(
-        CssLengthPercentageCalculation::try_from_components(
-            parse_component_values(source).unwrap(),
-        )
-        .unwrap(),
-    ))
-}
-
-fn edge(value: CssLength) -> CssClipEdge {
-    CssClipEdge::Length(CssClipLength::try_new(value).unwrap())
+fn edge(value: CssSpecifiedLength) -> CssClipEdge {
+    CssClipEdge::Length(value)
 }
 
 fn parsed(source: &str) -> CssDeclaration {
@@ -49,21 +32,24 @@ fn parsed_clip(declaration: &CssDeclaration) -> &CssClip {
 
 #[test]
 fn checked_edge_construction_accepts_signed_pure_lengths_and_rejects_other_domains() {
-    for (value, css) in [(CssLength::Zero, "0"), (px(-1.0), "-1px"), (em(2.0), "2em")] {
-        let checked = CssClipLength::try_new(value.clone()).unwrap();
-        assert_eq!(checked.value(), &value);
-        assert_eq!(checked.serialize_specified().unwrap(), css);
-        let edge = CssClipEdge::Length(checked);
-        assert_eq!(edge.serialize_specified().unwrap(), css);
+    for css in ["0", "-1px", "2em"] {
+        let value = signed_length(css);
+        assert_eq!(value.serialize_specified().unwrap(), css);
+        assert_eq!(
+            CssClipEdge::Length(value).serialize_specified().unwrap(),
+            css
+        );
     }
-    for rejected in [
-        CssLength::try_percent(1.0).unwrap(),
-        CssLength::Auto,
-        CssLength::MinContent,
-        CssLength::MaxContent,
-    ] {
-        assert!(CssClipLength::try_new(rejected).is_none());
+    for css in ["1%", "auto", "min-content", "max-content"] {
+        assert!(
+            CssSpecifiedLength::try_from_component(CssComponentValue::try_token(css).unwrap())
+                .is_err()
+        );
     }
+    assert!(matches!(
+        signed_length("2em").origin(),
+        CssValueOrigin::Programmatic
+    ));
     assert_eq!(CssClipEdge::Auto.serialize_specified().unwrap(), "auto");
     assert_eq!(CssClip::Auto.serialize_specified().unwrap(), "auto");
 }
@@ -72,15 +58,19 @@ fn checked_edge_construction_accepts_signed_pure_lengths_and_rejects_other_domai
 fn constructed_rectangle_preserves_four_edge_order_and_canonical_commas() {
     let rect = CssClipRect::new(
         CssClipEdge::Auto,
-        edge(px(-1.0)),
-        edge(em(2.0)),
-        edge(CssLength::Zero),
+        edge(signed_length("-1px")),
+        edge(signed_length("2em")),
+        edge(signed_length("0")),
     );
     assert!(matches!(rect.top(), CssClipEdge::Auto));
-    assert!(matches!(rect.right(), CssClipEdge::Length(length) if length.value() == &px(-1.0)));
-    assert!(matches!(rect.bottom(), CssClipEdge::Length(length) if length.value() == &em(2.0)));
     assert!(
-        matches!(rect.left(), CssClipEdge::Length(length) if length.value() == &CssLength::Zero)
+        matches!(rect.right(), CssClipEdge::Length(length) if exact_literal(length.literal_component(), "-1px"))
+    );
+    assert!(
+        matches!(rect.bottom(), CssClipEdge::Length(length) if exact_literal(length.literal_component(), "2em"))
+    );
+    assert!(
+        matches!(rect.left(), CssClipEdge::Length(length) if exact_literal(length.literal_component(), "0"))
     );
     assert_eq!(
         rect.serialize_specified().unwrap(),
@@ -103,35 +93,82 @@ fn constructed_rectangle_preserves_four_edge_order_and_canonical_commas() {
     };
     assert!(matches!(reparsed_rect.top(), CssClipEdge::Auto));
     assert!(
-        matches!(reparsed_rect.right(), CssClipEdge::Length(length) if matches!(length.value(), CssLength::Px(value) if value.value() == -1.0))
+        matches!(reparsed_rect.right(), CssClipEdge::Length(length) if exact_dimension(length.literal_component(), "-1", "px"))
     );
     assert!(
-        matches!(reparsed_rect.bottom(), CssClipEdge::Length(length) if matches!(length.value(), CssLength::Dimension(_)))
+        matches!(reparsed_rect.bottom(), CssClipEdge::Length(length) if exact_dimension(length.literal_component(), "2", "em"))
     );
     assert!(
-        matches!(reparsed_rect.left(), CssClipEdge::Length(length) if length.value() == &CssLength::Zero)
+        matches!(reparsed_rect.left(), CssClipEdge::Length(length) if exact_literal(length.literal_component(), "0"))
     );
+    for edge in [
+        reparsed_rect.right(),
+        reparsed_rect.bottom(),
+        reparsed_rect.left(),
+    ] {
+        let CssClipEdge::Length(length) = edge else {
+            panic!("parsed numeric edge")
+        };
+        let CssValueOrigin::Parsed(origin) = length.origin() else {
+            panic!("parsed numeric origin")
+        };
+        assert_eq!(origin.source().as_str(), "clip:rect(auto, -1px, 2em, 0)");
+        assert!(
+            origin.span().end().byte_offset().value() > origin.span().start().byte_offset().value()
+        );
+    }
 }
 
 #[test]
-fn legacy_and_typed_calculations_remain_wrapped_and_canonical() {
-    let legacy = CssLength::Calc(CssCalcLength::try_px(-2.0).unwrap());
-    let legacy_length = CssClipLength::try_new(legacy.clone()).unwrap();
-    assert_eq!(legacy_length.value(), &legacy);
-    assert_eq!(legacy_length.serialize_specified().unwrap(), "calc(-2px)");
+fn checked_calculations_remain_wrapped_and_canonical() {
+    let literal_math = signed_length("calc(-2px)");
+    assert!(literal_math.literal_component().is_none());
+    let calculation = literal_math.calculation().expect("checked math root");
+    assert_eq!(calculation.result_type(), CssCalculationType::Length);
+    let CssCalculationExpressionRef::NestedCalc(root) = calculation.expression() else {
+        panic!("authored calc wrapper")
+    };
+    let CssCalculationExpressionRef::Value(CssCalculationValueRef::Length(value)) = root.operand()
+    else {
+        panic!("signed length operand")
+    };
+    assert_eq!(value.representation(), "-2");
+    assert_eq!(value.unit(), Some("px"));
+    assert_eq!(literal_math.serialize_specified().unwrap(), "calc(-2px)");
 
-    let folded = typed_calc("calc(1px - 2px)");
-    let mixed = typed_calc("calc(1px + 2em)");
-    assert_eq!(
-        CssClipLength::try_new(folded.clone()).unwrap().value(),
-        &folded
-    );
-    assert_eq!(
-        CssClipLength::try_new(mixed.clone()).unwrap().value(),
-        &mixed
-    );
+    let folded = signed_length("calc(1px - 2px)");
+    let mixed = signed_length("calc(1px + 2em)");
+    for (value, operator, second_unit) in [
+        (&folded, CssCalculationSumOperator::Subtract, "px"),
+        (&mixed, CssCalculationSumOperator::Add, "em"),
+    ] {
+        assert!(value.literal_component().is_none());
+        let calculation = value.calculation().expect("checked length calculation");
+        assert_eq!(calculation.result_type(), CssCalculationType::Length);
+        let CssCalculationExpressionRef::NestedCalc(root) = calculation.expression() else {
+            panic!("authored calc wrapper")
+        };
+        let CssCalculationExpressionRef::Sum(sum) = root.operand() else {
+            panic!("ordered authored arithmetic")
+        };
+        assert_eq!(sum.len(), 2);
+        assert!(sum.term(2).is_none());
+        for (index, expected_operator, representation, unit) in
+            [(0, None, "1", "px"), (1, Some(operator), "2", second_unit)]
+        {
+            let term = sum.term(index).unwrap();
+            assert_eq!(term.operator(), expected_operator);
+            let CssCalculationExpressionRef::Value(CssCalculationValueRef::Length(operand)) =
+                term.expression()
+            else {
+                panic!("exact authored length operand")
+            };
+            assert_eq!(operand.representation(), representation);
+            assert_eq!(operand.unit(), Some(unit));
+        }
+    }
     let clip = CssClip::Rect(CssClipRect::new(
-        edge(legacy),
+        edge(literal_math),
         edge(folded),
         edge(mixed),
         CssClipEdge::Auto,
@@ -144,15 +181,9 @@ fn legacy_and_typed_calculations_remain_wrapped_and_canonical() {
     let CssClip::Rect(rect) = parsed_clip(&parsed) else {
         panic!("math rectangle")
     };
-    assert!(
-        matches!(rect.top(), CssClipEdge::Length(length) if matches!(length.value(), CssLength::Calc(_)))
-    );
-    assert!(
-        matches!(rect.right(), CssClipEdge::Length(length) if matches!(length.value(), CssLength::Calc(_)))
-    );
-    assert!(
-        matches!(rect.bottom(), CssClipEdge::Length(length) if matches!(length.value(), CssLength::Calc(_)))
-    );
+    assert!(matches!(rect.top(), CssClipEdge::Length(length) if length.calculation().is_some()));
+    assert!(matches!(rect.right(), CssClipEdge::Length(length) if length.calculation().is_some()));
+    assert!(matches!(rect.bottom(), CssClipEdge::Length(length) if length.calculation().is_some()));
 }
 
 #[test]
@@ -221,9 +252,9 @@ fn edge_and_rectangle_limits_share_exact_cumulative_budgets() {
     }
     let rect = CssClipRect::new(
         CssClipEdge::Auto,
-        edge(px(-1.0)),
-        edge(em(2.0)),
-        edge(CssLength::Zero),
+        edge(signed_length("-1px")),
+        edge(signed_length("2em")),
+        edge(signed_length("0")),
     );
     let expected = "rect(auto, -1px, 2em, 0)";
     assert_eq!(expected.len(), 24);
@@ -262,7 +293,7 @@ fn edge_and_rectangle_limits_share_exact_cumulative_budgets() {
 
 #[test]
 fn symbolic_math_edges_obey_one_shared_rectangle_byte_budget() {
-    let mixed = edge(typed_calc("calc(1px + 2em)"));
+    let mixed = edge(signed_length("calc(1px + 2em)"));
     assert_eq!(mixed.serialize_specified().unwrap(), "calc(2em + 1px)");
     assert_eq!(
         mixed
@@ -308,4 +339,55 @@ fn symbolic_math_edges_obey_one_shared_rectangle_byte_budget() {
         .kind(),
         CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
     );
+}
+
+fn exact_dimension(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+    expected_unit: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+}
+fn signed_length(css: &str) -> surgeist_css::CssSpecifiedLength {
+    let components = surgeist_css::parse_component_values(css).unwrap();
+    if css.contains('(') {
+        surgeist_css::CssSpecifiedLength::try_from_calculation(
+            surgeist_css::CssLengthCalculation::try_from_components(components).unwrap(),
+        )
+        .unwrap()
+    } else {
+        surgeist_css::CssSpecifiedLength::try_from_component(
+            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
+    }
+}
+
+fn exact_literal(component: Option<&surgeist_css::CssComponentValue>, css: &str) -> bool {
+    use surgeist_css::{CssComponentValueRef as Component, CssValueTokenRef as Token};
+    let expected = surgeist_css::CssComponentValue::try_token(css).unwrap();
+    match (
+        component.map(surgeist_css::CssComponentValue::view),
+        expected.view(),
+    ) {
+        (
+            Some(Component::Token(Token::Number(actual))),
+            Component::Token(Token::Number(expected)),
+        )
+        | (
+            Some(Component::Token(Token::Percentage(actual))),
+            Component::Token(Token::Percentage(expected)),
+        ) => actual.representation() == expected.representation(),
+        (
+            Some(Component::Token(Token::Dimension {
+                number: actual,
+                unit: actual_unit,
+            })),
+            Component::Token(Token::Dimension {
+                number: expected,
+                unit: expected_unit,
+            }),
+        ) => actual.representation() == expected.representation() && actual_unit == expected_unit,
+        _ => false,
+    }
 }

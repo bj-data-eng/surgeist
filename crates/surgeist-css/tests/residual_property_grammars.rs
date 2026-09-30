@@ -1,10 +1,4 @@
-use surgeist_css::{
-    CssBorderCollapse, CssBoxEdgeKeyword, CssBreakBetween, CssBreakInside, CssCaptionSide, CssClip,
-    CssClipEdge, CssComponentValueRef, CssEmptyCells, CssErrorCode, CssGlobalKeyword,
-    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssQuotes,
-    CssRecoveryAction, CssTableLayout, CssTextSpacingAdjustment, CssValueTokenRef, ErrorKind,
-    parse_style_attribute,
-};
+use surgeist_css::*;
 
 #[test]
 fn css2_residual_properties_retain_typed_values() {
@@ -85,13 +79,15 @@ fn css2_residual_properties_retain_typed_values() {
     else {
         panic!("expected border-spacing");
     };
-    assert!(matches!(
-        border_spacing.spacing().horizontal().value(),
-        CssLength::Px(value) if value.value() == 2.0
+    assert!(exact_dimension(
+        border_spacing.spacing().horizontal().literal_component(),
+        "2",
+        "px"
     ));
-    assert!(matches!(
-        border_spacing.spacing().vertical().value(),
-        CssLength::Px(value) if value.value() == 3.0
+    assert!(exact_dimension(
+        border_spacing.spacing().vertical().literal_component(),
+        "3",
+        "px"
     ));
 
     let CssKnownPropertyValueRef::CaptionSide(caption_side) = report.syntax()[2]
@@ -119,7 +115,7 @@ fn css2_residual_properties_retain_typed_values() {
     assert!(matches!(
         rect.left(),
         CssClipEdge::Length(length)
-            if matches!(length.value(), CssLength::Px(value) if value.value() == -1.0)
+            if exact_dimension(length.literal_component(), "-1", "px")
     ));
 
     let CssKnownPropertyValueRef::EmptyCells(empty_cells) = report.syntax()[4]
@@ -531,4 +527,12 @@ fn box_edge_keyword_value_exposes_every_o_box3_branch_and_rejects_adjacent_gramm
     );
     assert_eq!(CssBoxEdgeKeyword::from_keyword("content"), None);
     assert_eq!(CssBoxEdgeKeyword::from_keyword(""), None);
+}
+
+fn exact_dimension(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+    expected_unit: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }

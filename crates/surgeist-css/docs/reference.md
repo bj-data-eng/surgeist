@@ -375,12 +375,11 @@ depth limits apply before admission. `serialize()` emits canonical authored
 syntax with a map to original token and delimiter origins. Equality compares the
 authored graph and provenance, not evaluated numeric equivalence.
 
-Migration: parser-produced `CssCalcLength` values now use `Typed`, including
-simple sums. Its payload is `CssLengthPercentageCalculation`. Percentage
-construction moved from the pure `CssLengthCalculation` to that mixed wrapper.
-Borrowed leaf views replace float or integer payloads; use exact representations
-and unit identities instead of numeric `value()` accessors. Finite convenience
-constructors remain available and delegate to checked programmatic components.
+Pure lengths use `CssLengthCalculation`; mixed length-percentages use
+`CssLengthPercentageCalculation`. Both retain the exact checked component and
+arithmetic graph. Borrowed leaf views expose numeric representations and unit
+identities. Programmatic components use checked exact-token constructors;
+relative units and percentages remain unresolved.
 `CssCalculationType::Integer` is removed: use `Number` with the integer wrapper
 and its `requires_rounding()` flag. `CssCalculationExpressionRef::Negate` is
 removed; signs belong to numeric tokens or the subtraction and product grammar.
@@ -408,17 +407,39 @@ whereas `0px` remains valid. Trusted checked children may retain recovered
 closures during assembly; direct public construction from recovered components
 continues to reject them.
 
-Breaking migration: `CssCalcLength::Sum`, `CssCalcLength::sum`,
-`CssCalcLengthTerm`, and `CssCalcOperator` are removed. `CssCalcLength` retains
-finite scalar leaves and `Typed`. Assemble compound programmatic calculations
-with `CssLengthPercentageCalculation::try_sum` and
-`CssCalculationSumOperator`, then wrap them in `CssCalcLength::Typed`. The first
-operand has no binary operator; signed operand tokens remain valid. Checked
-component construction owns shape and resource admission, so arbitrary recursive
-legacy sums can no longer bypass those invariants.
+Construct compound calculations with `CssLengthPercentageCalculation::try_sum`
+and `CssCalculationSumOperator`, then admit the result through the scalar owner
+for its domain. For pure-length math, construct a `CssLengthCalculation` through
+its checked factories and pass that typed root to the scalar owner's
+`try_from_calculation`. Pure-length parsing selects a length root; scalar
+admission trusts the checked calculation's dimensional root without rechecking
+its contextual function support. The first operand has no binary operator;
+signed operand tokens remain valid. Checked construction owns grammar and
+resource admission.
 
 Positions, basic shapes, and `clip-path` use their typed authored graphs,
 including symbolic calculations.
+
+Ordinary lengths and length-percentages use the shared checked
+`CssSpecifiedLength`, `CssSpecifiedNonNegativeLength`,
+`CssSpecifiedLengthPercentage`, and
+`CssSpecifiedNonNegativeLengthPercentage` owners directly. Admission checks exact
+decimal spelling, units, and ordinary sign without floating-point conversion.
+Only true numeric zero permits an omitted length unit; tiny nonzero values do
+not become zero. Nonnegative domains admit negative lexical zero and defer the
+range of actual symbolic math until contextual resolution. Pure-length math
+uses a length root and excludes a residual percentage dimension.
+
+In length and length-percentage branches, owning aggregates compare exact token
+and arithmetic structure while ignoring numeric source origins. This covers
+positions, transforms, shadows,
+filters, clipping and shapes, gradients, border-image, border-spacing, and
+typography. Variants, keywords, list order, authored arity, and omission remain
+distinct. Shared scalar and raw calculation equality still compares provenance;
+their `origin()` accessors retain parsed spans or programmatic origin. Applying
+this aggregate policy to symbolic AST branches follows the checked owner model;
+the retired raw math equality also compared origins. Equality does not evaluate
+or normalize mathematically equivalent spellings.
 
 ## Authored preferred aspect ratios
 
@@ -448,12 +469,12 @@ defines `flow-tolerance: normal | <length-percentage> | infinite`, with no
 nonnegative restriction. `CssFlowTolerancePropertyValue::value()` exposes its
 checked `CssFlowTolerance`; `as_ref()` returns `Normal`, `Infinite`, or a borrowed
 `LengthPercentage`. Construct the symbolic keywords with `normal()` and
-`infinite()`, or use `try_length_percentage(CssLength)` for numeric values.
+`infinite()`, or use `length_percentage(CssSpecifiedLengthPercentage)` for checked numeric values.
 `Default` is symbolic `normal`. Its 1em used value in grid lanes and 0 used value
 in other layout modes require downstream context and are not computed here.
 
-The checked constructor accepts signed finite lengths, percentages, zero, and
-supported calculations. It rejects unrelated `CssLength` keywords. Signed
+The scalar owner accepts signed exact lengths, percentages, zero, and
+supported calculations. It rejects unrelated keywords. Signed
 operands, later subtraction and typed calculations remain valid and symbolic;
 no computed range evaluation occurs at this boundary.
 
@@ -489,7 +510,7 @@ expand to one typed longhand each. `border-collapse` accepts `collapse | separat
 `empty-cells` accepts `show | hide` (initial `show`), and `table-layout` accepts
 `auto | fixed` (initial `auto`). The first four inherit by default; `table-layout`
 does not. The four keyword enums serialize canonically with bounded specified-value
-limits. Checked `CssBorderSpacingLength` serializes one axis; the checked
+limits. Checked `CssSpecifiedNonNegativeLength` serializes one axis; the checked
 `CssBorderSpacing` serializes the full effective horizontal-then-vertical pair
 under one cumulative budget, repeating a single authored length without resolving
 relative units or typed math. This specified projection does not select CSSOM's
@@ -855,11 +876,9 @@ original spelling and source origin. The value serializers are bounded and
 preserve one- versus two-value specified form; they do not serialize an entire
 stylesheet or resolve used gaps in grid, flex, or multicolumn layout.
 
-Migration: `CssGapPropertyValue`, `CssRowGapPropertyValue`, and
-`CssColumnGapPropertyValue` now expose typed `value()` values. Replace former
-`CssLength` and `i01_subset()` consumers with `CssGapShorthand` for `gap` and
-`CssGapValue` for the longhands. The old lossy compatibility projection is
-removed in this coordinated API change.
+`CssGapPropertyValue::value()` exposes `CssGapShorthand`; the row and column
+wrappers expose `CssGapValue`. Their checked scalar branches retain exact
+literal components and symbolic calculations.
 
 ## Immutable stylesheet normalization
 
@@ -1011,9 +1030,10 @@ animation timelines, or lower values into sibling Surgeist crates.
 
 Authored position values preserve symbolic offsets and expose both axes
 without resolving percentages, calculations, writing modes, positioning boxes,
-object sizes, layout, painting, or transforms. `CssPositionOffset` accepts only
-the position-valid length-percentage domain and retains whether an offset was
-free or authored against a named edge.
+object sizes, layout, painting, or transforms. `CssSpecifiedLengthPercentage`
+owns the checked numeric length-percentage domain. The enclosing horizontal and
+vertical position variants retain whether an offset was free or authored against
+a named edge.
 
 The property grammars and accessors are deliberately distinct:
 
@@ -1025,12 +1045,12 @@ The property grammars and accessors are deliberately distinct:
   nonempty layer list that additionally admits the background-only
   three-component form.
 - `CssTransformOriginPropertyValue::origin()` exposes explicit horizontal and
-  vertical axes plus an optional `CssTransformOriginZ`; the z component is a
+  vertical axes plus an optional `CssSpecifiedLength`; the z component is a
   checked authored length and cannot contain a percentage.
 
 ```rust
 use surgeist_css::{
-    CssHorizontalPosition, CssKnownPropertyValueRef, CssLength,
+    CssHorizontalPosition, CssKnownPropertyValueRef,
     parse_style_attribute,
 };
 
@@ -1048,7 +1068,7 @@ else { panic!("expected background-position") };
 assert!(matches!(
     background.positions().positions()[0].horizontal(),
     CssHorizontalPosition::LeftOffset(offset)
-        if matches!(offset.value(), CssLength::Px(value) if value.value() == 10.0)
+        if matches!(offset.literal_component().unwrap().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "10" && unit == "px")
 ));
 
 let CssKnownPropertyValueRef::ObjectPosition(object) = report.syntax()[1]
@@ -1064,10 +1084,7 @@ let CssKnownPropertyValueRef::TransformOrigin(transform) = report.syntax()[2]
     .known().expect("known transform origin")
     .property_value().expect("ordinary transform origin")
 else { panic!("expected transform-origin") };
-assert!(matches!(
-    transform.origin().z().map(|z| z.value()),
-    Some(CssLength::Px(value)) if value.value() == 50.0
-));
+assert!(matches!(transform.origin().z().unwrap().literal_component().unwrap().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "50" && unit == "px"));
 ```
 
 For `transform-origin`, one planar token or a valid planar pair is accepted;
@@ -1596,9 +1613,7 @@ from `xx-small` through `xxx-large`, the relative `larger` and `smaller`
 keywords, dedicated `math`, and nonnegative lengths or percentages. `math` is
 a keyword with MathML-related downstream behavior, distinct from a numeric
 calculation. `CssFontSize::LengthPercentage` now contains
-`CssSpecifiedNonNegativeLengthPercentage` directly. The old float-backed
-`CssFontSizeLengthPercentage` type and its `try_new(CssLength)` and `value()`
-projection are removed. Use the shared checked value's
+`CssSpecifiedNonNegativeLengthPercentage` directly. Use the shared checked value's
 `try_from_component`, `try_from_calculation`, `literal_component`,
 `calculation`, and `origin` methods to preserve exact authored tokens and
 symbolic math. Exact negative nonzero literals fail even when their magnitude
@@ -2245,7 +2260,7 @@ semantics, blending, or writing-mode resolution.
 supersedes CSS2 §11.1.2 for `clip` while retaining required support for the
 deprecated property. Its noninherited initial is `auto`. A `rect()` has four
 top, right, bottom, left edges, each `auto` or a signed length; both comma-only
-and whitespace-only authored separators are accepted. `CssClipLength`,
+and whitespace-only authored separators are accepted. `CssSpecifiedLength`,
 `CssClipEdge`, `CssClipRect`, and `CssClip` serialize their checked specified
 values under one cumulative budget, with commas in canonical rectangles and
 symbolic calculations left unresolved. Applying a clipping region and the
@@ -3288,8 +3303,8 @@ variant. These grammars follow Sizing 3 (2026-09-04) §§3.1–3.2, the Sizing 4
 (2026-09-04) shared production and explicit definitions, and the required
 Values 5 (2024-11-11) §10 `calc-size()` grammar.
 
-The six physical wrappers now expose `value()` as `CssSizeValue` or
-`CssMaxSizeValue`; their former `i01_subset()` view of `CssLength` is removed.
+The six physical wrappers expose `value()` as `CssSizeValue` or
+`CssMaxSizeValue`.
 Call `literal_component()` for an exact ordinary token or `calculation()` for
 checked math within a `CssBoxSize::LengthPercentage`. The wrapper's `as_css()`
 returns the original authored spelling. `serialize_specified()` produces the
@@ -3368,8 +3383,7 @@ completed expansion reports the unresolved membership.
 The selected Logical 1 draft leaves their reset membership unresolved, so
 normalization does not silently assign a longhand set.
 
-The ten physical wrappers' former `i01_subset()` view of `CssLength` or
-`CssEdges` is removed. Use `value()` for `CssMarginValue`, `CssPaddingValue`,
+The ten physical wrappers expose `value()` for `CssMarginValue`, `CssPaddingValue`,
 `CssMarginShorthand`, or `CssPaddingShorthand`; inspect exact literals or
 calculations through their checked length-percentage values. `as_css()` retains
 the authored spelling, while `serialize_specified()` renders a bounded
@@ -3542,4 +3556,4 @@ cover the four physical and four flow-relative corner longhands. Each accepts on
 
 The physical `border-radius` shorthand accepts one to four horizontal values and an optional slash followed by one to four vertical values. `CssBorderRadiusShorthand` retains the authored lists and supplies the four physical corners in top-left, top-right, bottom-right, bottom-left order. Without a slash, each contributed corner retains an omitted vertical radius; an explicit slash retains its authored vertical value. Intrinsic expansion has four physical longhand members and no reset-only members. Bounded specified serialization shares one resource budget across the aggregate and its authored children.
 
-Physical property wrappers expose the exact checked `value()`. `CssCornerRadius` and `CssBorderRadii` remain owned only by the active basic-shape `inset()` round grammar until its length model is closed. Flow-relative wrappers do not invent a physical corner mapping. Writing-mode and direction mapping, percentage basis, overlapping-radii reduction, geometry, and painting remain downstream.
+Physical property wrappers expose the exact checked `value()`. Basic-shape `inset()` round values use `CssBorderRadiusShorthand`, preserving horizontal and vertical arity and whether the vertical list was omitted. Flow-relative wrappers do not invent a physical corner mapping. Writing-mode and direction mapping, percentage basis, overlapping-radii reduction, geometry, and painting remain downstream.

@@ -1,8 +1,8 @@
+use super::values::parse_nonnegative_length;
 use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
 
 use super::values::{
-    CalculationRoot, LengthGrammar, parse_integer_literal, parse_integer_value, parse_length_with,
-    parse_numeric_function,
+    CalculationRoot, parse_integer_literal, parse_integer_value, parse_numeric_function,
 };
 use crate::CssOverflowValue;
 use crate::display::*;
@@ -94,19 +94,13 @@ pub(super) fn parse_border_spacing<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderSpacing, ParseError<'i, Error>> {
-    let horizontal = parse_length_with(input, numeric, LengthGrammar::BorderSpacing)?;
+    let horizontal = parse_nonnegative_length(input, numeric, "border-spacing")?;
     let vertical = if input.is_exhausted() {
         horizontal.clone()
     } else {
-        parse_length_with(input, numeric, LengthGrammar::BorderSpacing)?
+        parse_nonnegative_length(input, numeric, "border-spacing")?
     };
-    CssBorderSpacing::try_new(horizontal, vertical).ok_or_else(|| {
-        unsupported_value(
-            input,
-            None,
-            "border-spacing requires one or two non-negative lengths",
-        )
-    })
+    Ok(CssBorderSpacing::new(horizontal, vertical))
 }
 
 pub(super) fn parse_caption_side<'i, 't>(

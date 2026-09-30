@@ -1,10 +1,4 @@
-use surgeist_css::{
-    CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize, CssCalcLength, CssErrorCode,
-    CssHorizontalPosition, CssImageValue, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
-    CssLengthPercentageCalculation, CssLengthUnit, CssMaskLayer, CssMaskList, CssPosition,
-    CssPositionOffset, CssRecoveryAction, CssTokenKind, CssTransformOrigin, CssTransformOriginZ,
-    CssUrl, CssVerticalPosition, CssVerticalPositionKeyword, ErrorKind, parse_style_attribute,
-};
+use surgeist_css::*;
 
 fn object_position(value: &str) -> CssPosition {
     let source = format!("object-position: {value}");
@@ -130,7 +124,7 @@ fn background_position_preserves_three_component_edge_origin() {
     assert!(matches!(
         positions[0].horizontal(),
         CssHorizontalPosition::LeftOffset(offset)
-            if matches!(offset.value(), CssLength::Px(length) if length.value() == 10.0)
+            if exact_dimension(offset.literal_component(), "10", "px")
     ));
     assert!(matches!(positions[0].vertical(), CssVerticalPosition::Top));
 }
@@ -152,7 +146,9 @@ fn transform_origin_preserves_two_planar_axes_plus_z() {
     assert!(matches!(origin.horizontal(), CssHorizontalPosition::Left));
     assert!(matches!(origin.vertical(), CssVerticalPosition::Top));
     assert!(
-        matches!(origin.z().map(CssTransformOriginZ::value), Some(CssLength::Px(length)) if length.value() == 10.0)
+        origin
+            .z()
+            .is_some_and(|value| exact_dimension(value.literal_component(), "10", "px"))
     );
 }
 
@@ -202,12 +198,12 @@ fn object_position_exposes_the_exact_generic_position_model() {
     assert!(matches!(
         position.horizontal(),
         CssHorizontalPosition::RightOffset(offset)
-            if matches!(offset.value(), CssLength::Percent(value) if value.value() == 5.0)
+            if exact_percentage(offset.literal_component(), "5")
     ));
     assert!(matches!(
         position.vertical(),
         CssVerticalPosition::BottomOffset(offset)
-            if matches!(offset.value(), CssLength::Px(value) if value.value() == 2.0)
+            if exact_dimension(offset.literal_component(), "2", "px")
     ));
 
     for value in [
@@ -274,7 +270,7 @@ fn transform_origin_exposes_the_directed_two_dimension_and_optional_z_split() {
         assert!(matches!(
             origin.vertical(),
             CssVerticalPosition::Offset(offset)
-                if matches!(offset.value(), CssLength::Px(value) if value.value() == 50.0)
+                if exact_dimension(offset.literal_component(), "50", "px")
         ));
     }
 
@@ -292,59 +288,55 @@ fn transform_origin_exposes_the_directed_two_dimension_and_optional_z_split() {
                     CssVerticalPositionKeyword::Bottom
                 )
         ));
-        assert!(matches!(
-            origin.z().map(CssTransformOriginZ::value),
-            Some(CssLength::Px(length)) if length.value() == 50.0
-        ));
+        assert!(origin.z().is_some_and(|value| exact_dimension(
+            value.literal_component(),
+            "50",
+            "px"
+        )));
     }
 
     let origin = transform_origin("left top calc(1px * 2)");
     assert!(matches!(origin.horizontal(), CssHorizontalPosition::Left));
     assert!(matches!(origin.vertical(), CssVerticalPosition::Top));
-    assert!(matches!(
-        origin.z().map(CssTransformOriginZ::value),
-        Some(CssLength::Calc(CssCalcLength::Typed(calculation)))
-            if calculation.result_type() == surgeist_css::CssCalculationType::Length
-    ));
+    assert!(
+        origin
+            .z()
+            .and_then(|value| value.calculation())
+            .is_some_and(
+                |calculation| calculation.result_type() == surgeist_css::CssCalculationType::Length
+            )
+    );
 
     for value in ["left calc(1px * 2)", "center calc(1px * 2)"] {
         assert!(transform_origin(value).z().is_none(), "{value}");
     }
     for value in ["left top calc(1px * 2)", "left bottom calc(1px * 2)"] {
-        assert!(matches!(
-            transform_origin(value).z().map(CssTransformOriginZ::value),
-            Some(CssLength::Calc(CssCalcLength::Typed(calculation)))
-                if calculation.result_type() == surgeist_css::CssCalculationType::Length
-        ));
+        assert!(
+            transform_origin(value)
+                .z()
+                .and_then(|value| value.calculation())
+                .is_some_and(|calculation| calculation.result_type()
+                    == surgeist_css::CssCalculationType::Length)
+        );
     }
 }
 
 #[test]
 fn transform_origin_z_construction_accepts_only_authored_lengths() {
-    for value in [
-        CssLength::try_px(10.0).expect("finite px"),
-        CssLength::try_dimension(-2.0, CssLengthUnit::Em).expect("finite dimension"),
-        CssLength::Zero,
-        CssLength::Calc(CssCalcLength::Typed(
-            CssLengthPercentageCalculation::try_dimension(2.0, CssLengthUnit::Px)
-                .expect("finite length calculation"),
-        )),
-    ] {
-        let z = CssTransformOriginZ::try_new(value.clone()).expect("transform z length");
-        assert_eq!(z.value(), &value);
+    for css in ["10px", "-2em", "0", "calc(2px)"] {
+        let z = signed_length(css);
+        assert_eq!(z.serialize_specified().unwrap(), css);
     }
-
-    for value in [
-        CssLength::try_percent(25.0).expect("finite percentage"),
-        CssLength::Calc(CssCalcLength::Typed(
-            CssLengthPercentageCalculation::try_percentage(40.0)
-                .expect("finite percentage calculation"),
-        )),
-        CssLength::Auto,
-        CssLength::Normal,
-    ] {
-        assert!(CssTransformOriginZ::try_new(value).is_none());
+    for css in ["25%", "auto", "normal"] {
+        assert!(
+            CssSpecifiedLength::try_from_component(CssComponentValue::try_token(css).unwrap())
+                .is_err()
+        );
     }
+    assert!(
+        CssLengthCalculation::try_from_components(parse_component_values("calc(40%)").unwrap())
+            .is_err()
+    );
 }
 
 #[test]
@@ -502,27 +494,23 @@ fn object_and_transform_origin_invalid_z_mutations_drop_only_the_declaration() {
 
 #[test]
 fn position_offset_construction_accepts_only_authored_length_percentages() {
-    for value in [
-        CssLength::try_px(10.0).expect("finite px"),
-        CssLength::try_dimension(-2.0, CssLengthUnit::Em).expect("finite dimension"),
-        CssLength::try_percent(25.0).expect("finite percentage"),
-        CssLength::Zero,
-        CssLength::Calc(CssCalcLength::Typed(
-            CssLengthPercentageCalculation::try_percentage(40.0).expect("finite calculation leaf"),
-        )),
-    ] {
-        let offset = CssPositionOffset::try_new(value.clone()).expect("position-valid offset");
-        assert_eq!(offset.value(), &value);
+    for css in ["10px", "-2em", "25%", "0", "calc(40%)"] {
+        let offset = signed_length_percentage(css);
+        assert_eq!(offset.serialize_specified().unwrap(), css);
     }
-
-    for value in [
-        CssLength::Auto,
-        CssLength::MinContent,
-        CssLength::MaxContent,
-        CssLength::FitContent,
-        CssLength::Normal,
+    for keyword in [
+        "auto",
+        "min-content",
+        "max-content",
+        "fit-content",
+        "normal",
     ] {
-        assert!(CssPositionOffset::try_new(value).is_none());
+        assert!(
+            CssSpecifiedLengthPercentage::try_from_component(
+                CssComponentValue::try_ident(keyword).unwrap()
+            )
+            .is_err()
+        );
     }
 }
 
@@ -594,7 +582,7 @@ fn background_and_mask_position_lists_expose_each_exact_layer() {
     assert!(matches!(
         background_layers[0].horizontal(),
         CssHorizontalPosition::LeftOffset(offset)
-            if matches!(offset.value(), CssLength::Px(value) if value.value() == 10.0)
+            if exact_dimension(offset.literal_component(), "10", "px")
     ));
     assert!(matches!(
         background_layers[0].vertical(),
@@ -607,7 +595,7 @@ fn background_and_mask_position_lists_expose_each_exact_layer() {
     assert!(matches!(
         background_layers[1].vertical(),
         CssVerticalPosition::BottomOffset(offset)
-            if matches!(offset.value(), CssLength::Percent(value) if value.value() == 25.0)
+            if exact_percentage(offset.literal_component(), "25")
     ));
 
     let CssKnownPropertyValueRef::MaskPosition(mask) = report.syntax()[1]
@@ -623,17 +611,17 @@ fn background_and_mask_position_lists_expose_each_exact_layer() {
     assert!(matches!(
         mask_layers[0].horizontal(),
         CssHorizontalPosition::RightOffset(offset)
-            if matches!(offset.value(), CssLength::Percent(value) if value.value() == 5.0)
+            if exact_percentage(offset.literal_component(), "5")
     ));
     assert!(matches!(
         mask_layers[0].vertical(),
         CssVerticalPosition::BottomOffset(offset)
-            if matches!(offset.value(), CssLength::Px(value) if value.value() == 2.0)
+            if exact_dimension(offset.literal_component(), "2", "px")
     ));
     assert!(matches!(
         mask_layers[1].horizontal(),
         CssHorizontalPosition::Offset(offset)
-            if matches!(offset.value(), CssLength::Calc(_))
+            if offset.calculation().is_some()
     ));
     assert!(matches!(
         mask_layers[1].vertical(),
@@ -871,7 +859,7 @@ fn layered_positions_retain_order_and_symbolic_calculations() {
     let first = background(0);
     assert_eq!(first.len(), 2);
     assert!(
-        matches!(first[0].horizontal(), CssHorizontalPosition::LeftOffset(offset) if matches!(offset.value(), CssLength::Px(n) if n.value() == 10.0))
+        matches!(first[0].horizontal(), CssHorizontalPosition::LeftOffset(offset) if exact_dimension(offset.literal_component(), "10", "px"))
     );
     assert!(matches!(first[0].vertical(), CssVerticalPosition::Top));
     assert!(matches!(
@@ -882,7 +870,7 @@ fn layered_positions_retain_order_and_symbolic_calculations() {
     let second = background(1);
     assert_eq!(second.len(), 1);
     assert!(
-        matches!(second[0].horizontal(), CssHorizontalPosition::LeftOffset(offset) if matches!(offset.value(), CssLength::Calc(_)))
+        matches!(second[0].horizontal(), CssHorizontalPosition::LeftOffset(offset) if offset.calculation().is_some())
     );
     assert!(matches!(second[0].vertical(), CssVerticalPosition::Top));
     let third = mask(2);
@@ -890,15 +878,58 @@ fn layered_positions_retain_order_and_symbolic_calculations() {
     assert!(matches!(third[0].horizontal(), CssHorizontalPosition::Left));
     assert!(matches!(third[0].vertical(), CssVerticalPosition::Top));
     assert!(
-        matches!(third[1].horizontal(), CssHorizontalPosition::Offset(offset) if matches!(offset.value(), CssLength::Percent(n) if n.value() == 10.0))
+        matches!(third[1].horizontal(), CssHorizontalPosition::Offset(offset) if exact_percentage(offset.literal_component(), "10"))
     );
     assert!(
-        matches!(third[1].vertical(), CssVerticalPosition::Offset(offset) if matches!(offset.value(), CssLength::Percent(n) if n.value() == 20.0))
+        matches!(third[1].vertical(), CssVerticalPosition::Offset(offset) if exact_percentage(offset.literal_component(), "20"))
     );
     let fourth = mask(3);
     assert_eq!(fourth.len(), 1);
     assert!(
-        matches!(fourth[0].horizontal(), CssHorizontalPosition::Offset(offset) if matches!(offset.value(), CssLength::Calc(_)))
+        matches!(fourth[0].horizontal(), CssHorizontalPosition::Offset(offset) if offset.calculation().is_some())
     );
     assert!(matches!(fourth[0].vertical(), CssVerticalPosition::Top));
+}
+
+fn exact_dimension(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+    expected_unit: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+}
+fn exact_percentage(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
+}
+
+fn signed_length(css: &str) -> surgeist_css::CssSpecifiedLength {
+    let components = surgeist_css::parse_component_values(css).unwrap();
+    if css.contains('(') {
+        surgeist_css::CssSpecifiedLength::try_from_calculation(
+            surgeist_css::CssLengthCalculation::try_from_components(components).unwrap(),
+        )
+        .unwrap()
+    } else {
+        surgeist_css::CssSpecifiedLength::try_from_component(
+            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
+    }
+}
+fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercentage {
+    let components = surgeist_css::parse_component_values(css).unwrap();
+    if css.contains('(') {
+        surgeist_css::CssSpecifiedLengthPercentage::try_from_calculation(
+            surgeist_css::CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+        )
+        .unwrap()
+    } else {
+        surgeist_css::CssSpecifiedLengthPercentage::try_from_component(
+            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
+    }
 }

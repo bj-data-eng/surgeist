@@ -1,40 +1,12 @@
 //! Bounded specified serialization for the deprecated CSS Masking `clip` value.
 
-use crate::specified_serialization::{
-    SpecifiedSerializationContext, serialize_checked_pure_length_into,
-};
+use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssClip, CssClipEdge, CssClipLength, CssClipRect, CssSpecifiedValueSerializationError,
+    CssClip, CssClipEdge, CssClipRect, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationLimits,
 };
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
-
-impl CssClipLength {
-    /// Serializes one checked signed clip length before layout resolution.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes one checked length under input, projection, and byte limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let mut output = String::new();
-        self.serialize_specified_into(&mut context, &mut output)?;
-        Ok(output)
-    }
-
-    fn serialize_specified_into(
-        &self,
-        context: &mut SpecifiedSerializationContext,
-        output: &mut String,
-    ) -> Result<()> {
-        serialize_checked_pure_length_into(self.value(), context, output)
-    }
-}
 
 impl CssClipEdge {
     /// Serializes one `auto` or signed-length rectangle edge.
@@ -64,7 +36,7 @@ impl CssClipEdge {
                 context.charge_projection(1)?;
                 context.append(output, "auto")
             }
-            Self::Length(length) => length.serialize_specified_into(context, output),
+            Self::Length(length) => length.append_specified(context, output),
         }
     }
 }

@@ -69,13 +69,13 @@ fn rect_edges_retain_order_signed_lengths_and_symbolic_math() {
         };
         assert!(matches!(rect.top(), CssClipEdge::Auto));
         assert!(
-            matches!(rect.right(), CssClipEdge::Length(length) if matches!(length.value(), CssLength::Px(value) if value.value() == -1.0))
+            matches!(rect.right(), CssClipEdge::Length(length) if exact_dimension(length.literal_component(), "-1", "px"))
         );
         assert!(
-            matches!(rect.bottom(), CssClipEdge::Length(length) if matches!(length.value(), CssLength::Calc(_)))
+            matches!(rect.bottom(), CssClipEdge::Length(length) if length.calculation().is_some())
         );
         assert!(
-            matches!(rect.left(), CssClipEdge::Length(length) if length.value() == &CssLength::Zero)
+            matches!(rect.left(), CssClipEdge::Length(length) if matches!(length.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation()=="0"))
         );
         let [item] = expanded(&declaration)
             .try_into()
@@ -240,4 +240,12 @@ fn normalization_preserves_mixed_order_and_fails_at_contribution_boundary() {
         error.declaration().unwrap().known().unwrap().property(),
         CssKnownProperty::Clip
     );
+}
+
+fn exact_dimension(
+    component: Option<&surgeist_css::CssComponentValue>,
+    representation: &str,
+    expected_unit: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }
