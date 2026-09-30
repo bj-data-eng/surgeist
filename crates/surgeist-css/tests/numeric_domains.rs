@@ -107,7 +107,14 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
             .unwrap(),
         "1000"
     );
-    assert_eq!(CssGridRepeatInteger::try_new(1).unwrap().value(), 1);
+    assert_eq!(
+        CssPositiveIntegerLiteral::try_new(CssIntegerLiteral::from_i32(1))
+            .unwrap()
+            .integer()
+            .numeric()
+            .representation(),
+        "1"
+    );
     assert_eq!(
         CssDurationLiteral::try_new(0.0, CssTimeUnit::Seconds)
             .unwrap()

@@ -106,7 +106,7 @@ fn intrinsic_body_and_fixed_surroundings_remain_distinct() {
             .unwrap(),
         "10px"
     );
-    assert_eq!(after.count().value(), 2);
+    assert_eq!(after.count().integer().numeric().representation(), "2");
     let [CssGridFixedRepeatComponent::FixedSize(size)] = after.content().components() else {
         panic!("surrounding integer repetition retains fixed-size content");
     };

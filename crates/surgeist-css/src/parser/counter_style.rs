@@ -6,7 +6,7 @@ use cssparser::{
 
 use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
 use super::url::parse_url;
-use super::values::parse_integer;
+use super::values::parse_integer_literal;
 use super::{
     block_item_diagnostic, is_declaration_recovery_unit, parse_descriptor_boundary,
     top_level_only_at_rule_placement,
@@ -176,7 +176,7 @@ impl<'i> DeclarationParser<'i> for CounterStyleDescriptorParser<'i> {
         let result = (|| {
             Ok(match_ignore_ascii_case! { &name,
                 "system" => CssCounterStyleDescriptor::System(CssDescriptorOccurrence::new(
-                    parse_descriptor_boundary(input, "counter-style", "system", parse_system)?,
+                    parse_descriptor_boundary(input, "counter-style", "system", |input| parse_system(input, &numeric))?,
                     position,
                 )),
                 "negative" => CssCounterStyleDescriptor::Negative(CssDescriptorOccurrence::new(
@@ -196,7 +196,7 @@ impl<'i> DeclarationParser<'i> for CounterStyleDescriptorParser<'i> {
                     position,
                 )),
                 "range" => CssCounterStyleDescriptor::Range(CssDescriptorOccurrence::new(
-                    parse_descriptor_boundary(input, "counter-style", "range", parse_range)?,
+                    parse_descriptor_boundary(input, "counter-style", "range", |input| parse_range(input, &numeric))?,
                     position,
                 )),
                 "pad" => CssCounterStyleDescriptor::Pad(CssDescriptorOccurrence::new(
@@ -237,6 +237,7 @@ impl<'i> DeclarationParser<'i> for CounterStyleDescriptorParser<'i> {
 
 fn parse_system<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssCounterStyleSystem, ParseError<'i, Error>> {
     let ident = input.expect_ident_cloned().map_err(basic)?;
     let system = match_ignore_ascii_case! { &ident,
@@ -249,7 +250,7 @@ fn parse_system<'i, 't>(
             let first_symbol_value = if input.is_exhausted() {
                 None
             } else {
-                Some(parse_integer(input, "fixed counter-style starting value")?)
+                Some(parse_integer_literal(input, numeric)?)
             };
             CssCounterStyleSystem::Fixed(CssCounterStyleFixedSystem::new(first_symbol_value))
         },
@@ -298,6 +299,7 @@ fn parse_negative<'i, 't>(
 
 fn parse_range<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssCounterStyleRange, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("auto"))
@@ -310,33 +312,29 @@ fn parse_range<'i, 't>(
     let mut ranges = Vec::new();
     loop {
         let lower_location = input.current_source_location();
-        let lower = parse_range_bound(input)?;
-        let upper = parse_range_bound(input)?;
-        if let (
-            CssCounterStyleRangeBound::Integer(lower),
-            CssCounterStyleRangeBound::Integer(upper),
-        ) = (lower, upper)
-            && lower > upper
-        {
-            return Err(unsupported_value_at(
+        let lower = parse_range_bound(input, numeric)?;
+        let upper = parse_range_bound(input, numeric)?;
+        let interval = CssCounterStyleRangeInterval::try_new(lower, upper).ok_or_else(|| {
+            unsupported_value_at(
                 lower_location,
                 None,
                 "counter-style range lower bound exceeds its upper bound",
-            ));
-        }
-        ranges.push(CssCounterStyleRangeInterval::new(lower, upper));
+            )
+        })?;
+        ranges.push(interval);
         if input.is_exhausted() {
             break;
         }
         input.expect_comma().map_err(basic)?;
     }
-    Ok(CssCounterStyleRange::Ranges(CssCounterStyleRanges::new(
-        ranges,
-    )))
+    Ok(CssCounterStyleRange::Ranges(
+        CssCounterStyleRanges::try_new(ranges).expect("parsed nonempty counter ranges"),
+    ))
 }
 
 fn parse_range_bound<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssCounterStyleRangeBound, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("infinite"))
@@ -344,7 +342,7 @@ fn parse_range_bound<'i, 't>(
     {
         Ok(CssCounterStyleRangeBound::Infinite)
     } else {
-        parse_integer(input, "counter-style range bound").map(CssCounterStyleRangeBound::Integer)
+        parse_integer_literal(input, numeric).map(CssCounterStyleRangeBound::Integer)
     }
 }
 
@@ -352,15 +350,19 @@ fn parse_pad<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssCounterStylePad, ParseError<'i, Error>> {
-    let (minimum_length, symbol) =
-        if let Ok(minimum_length) = input.try_parse(parse_nonnegative_integer) {
-            (minimum_length, parse_symbol_component(input, numeric)?)
-        } else {
-            let symbol = parse_symbol_component(input, numeric)?;
-            (parse_nonnegative_integer(input)?, symbol)
-        };
+    let (minimum_length, symbol) = if let Ok(minimum_length) =
+        input.try_parse(|input| parse_nonnegative_integer(input, numeric))
+    {
+        (minimum_length, parse_symbol_component(input, numeric)?)
+    } else {
+        let symbol = parse_symbol_component(input, numeric)?;
+        (parse_nonnegative_integer(input, numeric)?, symbol)
+    };
     input.expect_exhausted().map_err(basic)?;
-    Ok(CssCounterStylePad::new(minimum_length, symbol))
+    Ok(
+        CssCounterStylePad::try_new(minimum_length, symbol)
+            .expect("checked nonnegative pad length"),
+    )
 }
 
 fn parse_fallback<'i, 't>(
@@ -376,24 +378,24 @@ fn parse_additive_symbols<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssCounterAdditiveSymbols, ParseError<'i, Error>> {
     let mut tuples = Vec::new();
-    let mut previous_weight = None;
     loop {
         let (tuple, weight_location) = parse_additive_tuple(input, numeric)?;
-        if previous_weight.is_some_and(|previous| previous <= tuple.weight()) {
+        tuples.push(tuple);
+        if !CssCounterAdditiveSymbols::weights_strictly_descend(
+            &tuples[tuples.len().saturating_sub(2)..],
+        ) {
             return Err(unsupported_value_at(
                 weight_location,
                 None,
                 "additive-symbol weights must be strictly descending",
             ));
         }
-        previous_weight = Some(tuple.weight());
-        tuples.push(tuple);
         if input.is_exhausted() {
             break;
         }
         input.expect_comma().map_err(basic)?;
     }
-    Ok(CssCounterAdditiveSymbols::new(tuples))
+    Ok(CssCounterAdditiveSymbols::try_new(tuples).expect("checked descending additive list"))
 }
 
 fn parse_additive_tuple<'i, 't>(
@@ -402,7 +404,7 @@ fn parse_additive_tuple<'i, 't>(
 ) -> Result<(CssCounterAdditiveTuple, cssparser::SourceLocation), ParseError<'i, Error>> {
     let initial_location = input.current_source_location();
     let (weight, symbol, weight_location) =
-        if let Ok(weight) = input.try_parse(parse_nonnegative_integer) {
+        if let Ok(weight) = input.try_parse(|input| parse_nonnegative_integer(input, numeric)) {
             (
                 weight,
                 parse_symbol_component(input, numeric)?,
@@ -411,10 +413,15 @@ fn parse_additive_tuple<'i, 't>(
         } else {
             let symbol = parse_symbol_component(input, numeric)?;
             let weight_location = input.current_source_location();
-            (parse_nonnegative_integer(input)?, symbol, weight_location)
+            (
+                parse_nonnegative_integer(input, numeric)?,
+                symbol,
+                weight_location,
+            )
         };
     Ok((
-        CssCounterAdditiveTuple::new(weight, symbol),
+        CssCounterAdditiveTuple::try_new(weight, symbol)
+            .expect("checked nonnegative additive weight"),
         weight_location,
     ))
 }
@@ -440,12 +447,19 @@ fn parse_speak_as<'i, 't>(
 
 fn parse_nonnegative_integer<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> Result<u32, ParseError<'i, Error>> {
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<crate::CssIntegerLiteral, ParseError<'i, Error>> {
     let location = input.current_source_location();
-    let value = parse_integer(input, "nonnegative counter-style integer")?;
-    u32::try_from(value).map_err(|_| {
-        unsupported_value_at(location, None, "counter-style integer must be nonnegative")
-    })
+    let value = parse_integer_literal(input, numeric)?;
+    if value.is_negative() {
+        Err(unsupported_value_at(
+            location,
+            None,
+            "counter-style integer must be nonnegative",
+        ))
+    } else {
+        Ok(value)
+    }
 }
 
 fn parse_counter_style_name_component<'i, 't>(

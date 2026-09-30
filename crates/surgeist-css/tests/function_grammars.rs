@@ -926,12 +926,18 @@ fn every_steps_position_is_typed_and_jump_none_keeps_its_count_rule() {
     let CssEasing::Steps(symbolic) = &values[7] else {
         panic!("expected symbolic typed steps value");
     };
-    assert!(symbolic.count().calculation().is_some());
+    assert!(matches!(
+        symbolic.count(),
+        CssPositiveIntegerValue::Calculation(_)
+    ));
 
-    let one = CssStepCount::try_literal(1).expect("positive step count");
+    let one = CssPositiveIntegerValue::Literal(
+        CssPositiveIntegerLiteral::try_new(CssIntegerLiteral::from_i32(1))
+            .expect("positive step count"),
+    );
     assert!(CssSteps::try_new(one, Some(CssStepPosition::JumpNone)).is_none());
-    assert!(CssStepCount::try_literal(0).is_none());
-    assert!(CssStepCount::try_literal(-1).is_none());
+    assert!(CssPositiveIntegerLiteral::try_new(CssIntegerLiteral::from_i32(0)).is_none());
+    assert!(CssPositiveIntegerLiteral::try_new(CssIntegerLiteral::from_i32(-1)).is_none());
     assert!(CssEasingList::try_new(Vec::new()).is_none());
 }
 

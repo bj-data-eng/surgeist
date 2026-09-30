@@ -565,20 +565,20 @@ pub enum CssCounterStyleSystem {
 }
 
 /// The optional starting integer of an authored `fixed` system.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssCounterStyleFixedSystem {
-    first_symbol_value: Option<i32>,
+    first_symbol_value: Option<crate::CssIntegerLiteral>,
 }
 
 impl CssCounterStyleFixedSystem {
     #[must_use]
-    pub(crate) const fn new(first_symbol_value: Option<i32>) -> Self {
+    pub const fn new(first_symbol_value: Option<crate::CssIntegerLiteral>) -> Self {
         Self { first_symbol_value }
     }
 
     #[must_use]
-    pub const fn first_symbol_value(self) -> Option<i32> {
-        self.first_symbol_value
+    pub const fn first_symbol_value(&self) -> Option<&crate::CssIntegerLiteral> {
+        self.first_symbol_value.as_ref()
     }
 }
 
@@ -624,9 +624,8 @@ pub struct CssCounterStyleRanges {
 
 impl CssCounterStyleRanges {
     #[must_use]
-    pub(crate) fn new(ranges: Vec<CssCounterStyleRangeInterval>) -> Self {
-        debug_assert!(!ranges.is_empty());
-        Self { ranges }
+    pub fn try_new(ranges: Vec<CssCounterStyleRangeInterval>) -> Option<Self> {
+        (!ranges.is_empty()).then_some(Self { ranges })
     }
 
     /// Returns the valid inclusive ranges in authored order.
@@ -637,7 +636,7 @@ impl CssCounterStyleRanges {
 }
 
 /// One intrinsically valid inclusive range from a `range` descriptor.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssCounterStyleRangeInterval {
     lower: CssCounterStyleRangeBound,
     upper: CssCounterStyleRangeBound,
@@ -645,54 +644,65 @@ pub struct CssCounterStyleRangeInterval {
 
 impl CssCounterStyleRangeInterval {
     #[must_use]
-    pub(crate) const fn new(
+    pub fn try_new(
         lower: CssCounterStyleRangeBound,
         upper: CssCounterStyleRangeBound,
-    ) -> Self {
-        Self { lower, upper }
+    ) -> Option<Self> {
+        if let (
+            CssCounterStyleRangeBound::Integer(lower),
+            CssCounterStyleRangeBound::Integer(upper),
+        ) = (&lower, &upper)
+            && lower.compare_value(upper).is_gt()
+        {
+            return None;
+        }
+        Some(Self { lower, upper })
     }
 
     /// Returns the inclusive lower bound, where `Infinite` means negative infinity.
     #[must_use]
-    pub const fn lower(self) -> CssCounterStyleRangeBound {
-        self.lower
+    pub const fn lower(&self) -> &CssCounterStyleRangeBound {
+        &self.lower
     }
 
     /// Returns the inclusive upper bound, where `Infinite` means positive infinity.
     #[must_use]
-    pub const fn upper(self) -> CssCounterStyleRangeBound {
-        self.upper
+    pub const fn upper(&self) -> &CssCounterStyleRangeBound {
+        &self.upper
     }
 }
 
 /// One authored finite integer or contextual `infinite` range bound.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssCounterStyleRangeBound {
-    Integer(i32),
+    Integer(crate::CssIntegerLiteral),
     Infinite,
 }
 
 /// One valid authored zero-padding descriptor.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssCounterStylePad {
-    minimum_length: u32,
+    minimum_length: crate::CssIntegerLiteral,
     symbol: CssCounterSymbol,
 }
 
 impl CssCounterStylePad {
     #[must_use]
-    pub(crate) const fn new(minimum_length: u32, symbol: CssCounterSymbol) -> Self {
-        Self {
+    pub fn try_new(
+        minimum_length: crate::CssIntegerLiteral,
+        symbol: CssCounterSymbol,
+    ) -> Option<Self> {
+        (!minimum_length.is_negative()).then_some(Self {
             minimum_length,
             symbol,
-        }
+        })
     }
 
     /// Returns the nonnegative minimum representation length.
     #[must_use]
-    pub const fn minimum_length(&self) -> u32 {
-        self.minimum_length
+    pub const fn minimum_length(&self) -> &crate::CssIntegerLiteral {
+        &self.minimum_length
     }
 
     /// Returns the authored padding symbol.
@@ -710,14 +720,14 @@ pub struct CssCounterAdditiveSymbols {
 
 impl CssCounterAdditiveSymbols {
     #[must_use]
-    pub(crate) fn new(tuples: Vec<CssCounterAdditiveTuple>) -> Self {
-        debug_assert!(!tuples.is_empty());
-        debug_assert!(
-            tuples
-                .windows(2)
-                .all(|pair| pair[0].weight > pair[1].weight)
-        );
-        Self { tuples }
+    pub fn try_new(tuples: Vec<CssCounterAdditiveTuple>) -> Option<Self> {
+        (!tuples.is_empty() && Self::weights_strictly_descend(&tuples)).then_some(Self { tuples })
+    }
+
+    pub(crate) fn weights_strictly_descend(tuples: &[CssCounterAdditiveTuple]) -> bool {
+        tuples
+            .windows(2)
+            .all(|pair| pair[0].weight.compare_value(&pair[1].weight).is_gt())
     }
 
     /// Returns the additive tuples in strictly descending authored weight order.
@@ -730,20 +740,20 @@ impl CssCounterAdditiveSymbols {
 /// One nonnegative integer weight and counter symbol in an additive list.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssCounterAdditiveTuple {
-    weight: u32,
+    weight: crate::CssIntegerLiteral,
     symbol: CssCounterSymbol,
 }
 
 impl CssCounterAdditiveTuple {
     #[must_use]
-    pub(crate) const fn new(weight: u32, symbol: CssCounterSymbol) -> Self {
-        Self { weight, symbol }
+    pub fn try_new(weight: crate::CssIntegerLiteral, symbol: CssCounterSymbol) -> Option<Self> {
+        (!weight.is_negative()).then_some(Self { weight, symbol })
     }
 
     /// Returns the nonnegative additive weight.
     #[must_use]
-    pub const fn weight(&self) -> u32 {
-        self.weight
+    pub const fn weight(&self) -> &crate::CssIntegerLiteral {
+        &self.weight
     }
 
     /// Returns the counter symbol associated with the weight.
@@ -3069,23 +3079,6 @@ impl<T> CssRangeFeature<T> {
     #[must_use]
     pub const fn value(&self) -> &T {
         &self.value
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssNonNegativeInteger {
-    value: u32,
-}
-
-impl CssNonNegativeInteger {
-    #[must_use]
-    pub const fn new(value: u32) -> Self {
-        Self { value }
-    }
-
-    #[must_use]
-    pub const fn value(self) -> u32 {
-        self.value
     }
 }
 
@@ -8968,65 +8961,45 @@ pub enum CssStepPosition {
     End,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-enum CssStepCountValue {
-    Literal(i32),
-    Calculation(CssIntegerCalculation),
-}
-
-/// A positive authored step count or a symbolic integer calculation.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssStepCount {
-    value: CssStepCountValue,
-}
-
-impl CssStepCount {
-    #[must_use]
-    pub const fn try_literal(value: i32) -> Option<Self> {
-        if value > 0 {
-            Some(Self {
-                value: CssStepCountValue::Literal(value),
-            })
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub const fn from_calculation(value: CssIntegerCalculation) -> Self {
-        Self {
-            value: CssStepCountValue::Calculation(value),
-        }
-    }
-
-    #[must_use]
-    pub const fn literal(&self) -> Option<i32> {
-        match self.value {
-            CssStepCountValue::Literal(value) => Some(value),
-            CssStepCountValue::Calculation(_) => None,
-        }
-    }
-
-    #[must_use]
-    pub const fn calculation(&self) -> Option<&CssIntegerCalculation> {
-        match &self.value {
-            CssStepCountValue::Literal(_) => None,
-            CssStepCountValue::Calculation(value) => Some(value),
-        }
-    }
-}
-
 /// A checked authored `steps()` value.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssSteps {
-    count: CssStepCount,
+    count: CssPositiveIntegerValue,
     position: Option<CssStepPosition>,
 }
 
 impl CssSteps {
     #[must_use]
-    pub fn try_new(count: CssStepCount, position: Option<CssStepPosition>) -> Option<Self> {
-        if matches!(position, Some(CssStepPosition::JumpNone)) && matches!(count.literal(), Some(1))
+    pub fn try_new(
+        count: CssPositiveIntegerValue,
+        position: Option<CssStepPosition>,
+    ) -> Option<Self> {
+        let count = match count {
+            CssPositiveIntegerValue::Literal(literal) => CssPositiveIntegerValue::Literal(literal),
+            CssPositiveIntegerValue::Calculation(calculation) => {
+                let root =
+                    crate::specified_numeric::significant_root(calculation.components()).ok()?;
+                match root.view() {
+                    crate::CssComponentValueRef::Token(_) => {
+                        let integer =
+                            crate::CssIntegerLiteral::try_from_component(root.clone()).ok()?;
+                        CssPositiveIntegerValue::Literal(CssPositiveIntegerLiteral::try_new(
+                            integer,
+                        )?)
+                    }
+                    crate::CssComponentValueRef::Function(_) => {
+                        CssPositiveIntegerValue::Calculation(calculation)
+                    }
+                    _ => return None,
+                }
+            }
+        };
+        if matches!(position, Some(CssStepPosition::JumpNone))
+            && let CssPositiveIntegerValue::Literal(literal) = &count
+            && literal
+                .integer()
+                .compare_value(&crate::CssIntegerLiteral::from_i32(1))
+                .is_eq()
         {
             None
         } else {
@@ -9035,7 +9008,7 @@ impl CssSteps {
     }
 
     #[must_use]
-    pub const fn count(&self) -> &CssStepCount {
+    pub const fn count(&self) -> &CssPositiveIntegerValue {
         &self.count
     }
 

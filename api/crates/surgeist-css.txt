@@ -771,7 +771,7 @@ pub surgeist_css::CssCounterStyleRange::Auto
 pub surgeist_css::CssCounterStyleRange::Ranges(surgeist_css::CssCounterStyleRanges)
 #[non_exhaustive] pub enum surgeist_css::CssCounterStyleRangeBound
 pub surgeist_css::CssCounterStyleRangeBound::Infinite
-pub surgeist_css::CssCounterStyleRangeBound::Integer(i32)
+pub surgeist_css::CssCounterStyleRangeBound::Integer(surgeist_css::CssIntegerLiteral)
 #[non_exhaustive] pub enum surgeist_css::CssCounterStyleSpeakAs
 pub surgeist_css::CssCounterStyleSpeakAs::Auto
 pub surgeist_css::CssCounterStyleSpeakAs::Bullets
@@ -5314,11 +5314,13 @@ impl core::cmp::PartialEq for surgeist_css::CssCornerRadiusValue
 pub fn surgeist_css::CssCornerRadiusValue::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssCounterAdditiveSymbols
 impl surgeist_css::CssCounterAdditiveSymbols
+pub fn surgeist_css::CssCounterAdditiveSymbols::try_new(tuples: alloc::vec::Vec<surgeist_css::CssCounterAdditiveTuple>) -> core::option::Option<Self>
 pub fn surgeist_css::CssCounterAdditiveSymbols::tuples(&self) -> &[surgeist_css::CssCounterAdditiveTuple]
 pub struct surgeist_css::CssCounterAdditiveTuple
 impl surgeist_css::CssCounterAdditiveTuple
 pub const fn surgeist_css::CssCounterAdditiveTuple::symbol(&self) -> &surgeist_css::CssCounterSymbol
-pub const fn surgeist_css::CssCounterAdditiveTuple::weight(&self) -> u32
+pub fn surgeist_css::CssCounterAdditiveTuple::try_new(weight: surgeist_css::CssIntegerLiteral, symbol: surgeist_css::CssCounterSymbol) -> core::option::Option<Self>
+pub const fn surgeist_css::CssCounterAdditiveTuple::weight(&self) -> &surgeist_css::CssIntegerLiteral
 pub struct surgeist_css::CssCounterChangeValue
 impl surgeist_css::CssCounterChangeValue
 pub const fn surgeist_css::CssCounterChangeValue::name(&self) -> &surgeist_css::CssContentCounterName
@@ -5359,7 +5361,8 @@ pub const fn surgeist_css::CssCounterStyleDescriptors::symbols(&self) -> core::o
 pub const fn surgeist_css::CssCounterStyleDescriptors::system(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleSystem>>
 pub struct surgeist_css::CssCounterStyleFixedSystem
 impl surgeist_css::CssCounterStyleFixedSystem
-pub const fn surgeist_css::CssCounterStyleFixedSystem::first_symbol_value(self) -> core::option::Option<i32>
+pub const fn surgeist_css::CssCounterStyleFixedSystem::first_symbol_value(&self) -> core::option::Option<&surgeist_css::CssIntegerLiteral>
+pub const fn surgeist_css::CssCounterStyleFixedSystem::new(first_symbol_value: core::option::Option<surgeist_css::CssIntegerLiteral>) -> Self
 pub struct surgeist_css::CssCounterStyleName
 impl surgeist_css::CssCounterStyleName
 pub fn surgeist_css::CssCounterStyleName::as_str(&self) -> &str
@@ -5370,15 +5373,18 @@ pub const fn surgeist_css::CssCounterStyleNegative::prefix(&self) -> &surgeist_c
 pub const fn surgeist_css::CssCounterStyleNegative::suffix(&self) -> core::option::Option<&surgeist_css::CssCounterSymbol>
 pub struct surgeist_css::CssCounterStylePad
 impl surgeist_css::CssCounterStylePad
-pub const fn surgeist_css::CssCounterStylePad::minimum_length(&self) -> u32
+pub const fn surgeist_css::CssCounterStylePad::minimum_length(&self) -> &surgeist_css::CssIntegerLiteral
 pub const fn surgeist_css::CssCounterStylePad::symbol(&self) -> &surgeist_css::CssCounterSymbol
+pub fn surgeist_css::CssCounterStylePad::try_new(minimum_length: surgeist_css::CssIntegerLiteral, symbol: surgeist_css::CssCounterSymbol) -> core::option::Option<Self>
 pub struct surgeist_css::CssCounterStyleRangeInterval
 impl surgeist_css::CssCounterStyleRangeInterval
-pub const fn surgeist_css::CssCounterStyleRangeInterval::lower(self) -> surgeist_css::CssCounterStyleRangeBound
-pub const fn surgeist_css::CssCounterStyleRangeInterval::upper(self) -> surgeist_css::CssCounterStyleRangeBound
+pub const fn surgeist_css::CssCounterStyleRangeInterval::lower(&self) -> &surgeist_css::CssCounterStyleRangeBound
+pub fn surgeist_css::CssCounterStyleRangeInterval::try_new(lower: surgeist_css::CssCounterStyleRangeBound, upper: surgeist_css::CssCounterStyleRangeBound) -> core::option::Option<Self>
+pub const fn surgeist_css::CssCounterStyleRangeInterval::upper(&self) -> &surgeist_css::CssCounterStyleRangeBound
 pub struct surgeist_css::CssCounterStyleRanges
 impl surgeist_css::CssCounterStyleRanges
 pub fn surgeist_css::CssCounterStyleRanges::ranges(&self) -> &[surgeist_css::CssCounterStyleRangeInterval]
+pub fn surgeist_css::CssCounterStyleRanges::try_new(ranges: alloc::vec::Vec<surgeist_css::CssCounterStyleRangeInterval>) -> core::option::Option<Self>
 pub struct surgeist_css::CssCounterStyleReference(_)
 impl surgeist_css::CssCounterStyleReference
 pub fn surgeist_css::CssCounterStyleReference::as_str(&self) -> &str
@@ -6232,13 +6238,13 @@ pub fn surgeist_css::CssGridGeneralTrackList::try_new(components: alloc::vec::Ve
 #[non_exhaustive] pub struct surgeist_css::CssGridIntegerFixedRepeat
 impl surgeist_css::CssGridIntegerFixedRepeat
 pub const fn surgeist_css::CssGridIntegerFixedRepeat::content(&self) -> &surgeist_css::CssGridFixedRepeatContent
-pub const fn surgeist_css::CssGridIntegerFixedRepeat::count(&self) -> surgeist_css::CssGridRepeatInteger
-pub const fn surgeist_css::CssGridIntegerFixedRepeat::new(count: surgeist_css::CssGridRepeatInteger, content: surgeist_css::CssGridFixedRepeatContent) -> Self
+pub const fn surgeist_css::CssGridIntegerFixedRepeat::count(&self) -> &surgeist_css::CssPositiveIntegerLiteral
+pub const fn surgeist_css::CssGridIntegerFixedRepeat::new(count: surgeist_css::CssPositiveIntegerLiteral, content: surgeist_css::CssGridFixedRepeatContent) -> Self
 #[non_exhaustive] pub struct surgeist_css::CssGridIntegerTrackRepeat
 impl surgeist_css::CssGridIntegerTrackRepeat
 pub const fn surgeist_css::CssGridIntegerTrackRepeat::content(&self) -> &surgeist_css::CssGridTrackRepeatContent
-pub const fn surgeist_css::CssGridIntegerTrackRepeat::count(&self) -> surgeist_css::CssGridRepeatInteger
-pub const fn surgeist_css::CssGridIntegerTrackRepeat::new(count: surgeist_css::CssGridRepeatInteger, content: surgeist_css::CssGridTrackRepeatContent) -> Self
+pub const fn surgeist_css::CssGridIntegerTrackRepeat::count(&self) -> &surgeist_css::CssPositiveIntegerLiteral
+pub const fn surgeist_css::CssGridIntegerTrackRepeat::new(count: surgeist_css::CssPositiveIntegerLiteral, content: surgeist_css::CssGridTrackRepeatContent) -> Self
 pub struct surgeist_css::CssGridLineIndex
 impl surgeist_css::CssGridLineIndex
 pub fn surgeist_css::CssGridLineIndex::name(&self) -> core::option::Option<&surgeist_css::CssGridLineName>
@@ -6271,10 +6277,6 @@ pub struct surgeist_css::CssGridPropertyValue
 impl surgeist_css::CssGridPropertyValue
 pub fn surgeist_css::CssGridPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssGridPropertyValue::value(&self) -> &surgeist_css::CssGrid
-pub struct surgeist_css::CssGridRepeatInteger
-impl surgeist_css::CssGridRepeatInteger
-pub const fn surgeist_css::CssGridRepeatInteger::try_new(value: i32) -> core::option::Option<Self>
-pub const fn surgeist_css::CssGridRepeatInteger::value(self) -> i32
 pub struct surgeist_css::CssGridRowEndPropertyValue
 impl surgeist_css::CssGridRowEndPropertyValue
 pub fn surgeist_css::CssGridRowEndPropertyValue::as_css(&self) -> &str
@@ -6514,6 +6516,7 @@ pub fn surgeist_css::CssIntegerCalculation::literal(value: i32) -> Self
 pub fn surgeist_css::CssIntegerCalculation::requires_rounding(&self) -> bool
 pub struct surgeist_css::CssIntegerLiteral
 impl surgeist_css::CssIntegerLiteral
+pub fn surgeist_css::CssIntegerLiteral::compare_value(&self, other: &Self) -> core::cmp::Ordering
 pub const fn surgeist_css::CssIntegerLiteral::component(&self) -> &surgeist_css::CssComponentValue
 pub fn surgeist_css::CssIntegerLiteral::from_i32(value: i32) -> Self
 pub fn surgeist_css::CssIntegerLiteral::is_negative(&self) -> bool
@@ -7002,10 +7005,6 @@ pub struct surgeist_css::CssNeverMediaQuery
 impl surgeist_css::CssNeverMediaQuery
 pub const fn surgeist_css::CssNeverMediaQuery::origin(&self) -> &surgeist_css::CssValueOrigin
 pub const fn surgeist_css::CssNeverMediaQuery::position(&self) -> surgeist_css::CssSourcePosition
-pub struct surgeist_css::CssNonNegativeInteger
-impl surgeist_css::CssNonNegativeInteger
-pub const fn surgeist_css::CssNonNegativeInteger::new(value: u32) -> Self
-pub const fn surgeist_css::CssNonNegativeInteger::value(self) -> u32
 pub struct surgeist_css::CssNonNegativeNumber
 impl surgeist_css::CssNonNegativeNumber
 pub fn surgeist_css::CssNonNegativeNumber::try_new(value: f32) -> core::option::Option<Self>
@@ -8072,17 +8071,11 @@ pub const fn surgeist_css::CssSpecifiedValueSerializationLimits::max_projection_
 pub const fn surgeist_css::CssSpecifiedValueSerializationLimits::new(max_input_nodes: usize, max_projection_nodes: usize, max_css_bytes: usize) -> Self
 impl core::default::Default for surgeist_css::CssSpecifiedValueSerializationLimits
 pub fn surgeist_css::CssSpecifiedValueSerializationLimits::default() -> Self
-pub struct surgeist_css::CssStepCount
-impl surgeist_css::CssStepCount
-pub const fn surgeist_css::CssStepCount::calculation(&self) -> core::option::Option<&surgeist_css::CssIntegerCalculation>
-pub const fn surgeist_css::CssStepCount::from_calculation(value: surgeist_css::CssIntegerCalculation) -> Self
-pub const fn surgeist_css::CssStepCount::literal(&self) -> core::option::Option<i32>
-pub const fn surgeist_css::CssStepCount::try_literal(value: i32) -> core::option::Option<Self>
 pub struct surgeist_css::CssSteps
 impl surgeist_css::CssSteps
-pub const fn surgeist_css::CssSteps::count(&self) -> &surgeist_css::CssStepCount
+pub const fn surgeist_css::CssSteps::count(&self) -> &surgeist_css::CssPositiveIntegerValue
 pub const fn surgeist_css::CssSteps::position(&self) -> core::option::Option<surgeist_css::CssStepPosition>
-pub fn surgeist_css::CssSteps::try_new(count: surgeist_css::CssStepCount, position: core::option::Option<surgeist_css::CssStepPosition>) -> core::option::Option<Self>
+pub fn surgeist_css::CssSteps::try_new(count: surgeist_css::CssPositiveIntegerValue, position: core::option::Option<surgeist_css::CssStepPosition>) -> core::option::Option<Self>
 pub struct surgeist_css::CssStyleBlock
 impl surgeist_css::CssStyleBlock
 pub const fn surgeist_css::CssStyleBlock::declarations(&self) -> &surgeist_css::CssDeclarationList

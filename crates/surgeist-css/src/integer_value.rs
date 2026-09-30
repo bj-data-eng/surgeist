@@ -1,5 +1,7 @@
 //! Exact ordinary signed integers and specified integer-value serialization.
 
+use std::cmp::Ordering;
+
 use crate::{
     CssComponentValue, CssComponentValueError, CssComponentValueErrorKind, CssComponentValueRef,
     CssIntegerValue, CssNumericTokenKind, CssNumericTokenRef, CssSpecifiedValueSerializationError,
@@ -60,6 +62,37 @@ impl CssIntegerLiteral {
     #[must_use]
     pub fn is_negative(&self) -> bool {
         self.numeric().representation().starts_with('-') && !self.is_zero()
+    }
+
+    /// Compares mathematical integer values without changing authored identity.
+    ///
+    /// Explicit plus signs, leading zeroes and provenance do not affect this
+    /// ordering. Negative values precede zero and positive values; signed zeroes
+    /// compare equally. Equality remains sensitive to spelling and origin.
+    #[must_use]
+    pub fn compare_value(&self, other: &Self) -> Ordering {
+        fn significant_digits(value: &CssIntegerLiteral) -> &str {
+            let text = value.numeric().representation();
+            text.strip_prefix(['+', '-'])
+                .unwrap_or(text)
+                .trim_start_matches('0')
+        }
+        let left = significant_digits(self);
+        let right = significant_digits(other);
+        let left_negative = self.numeric().representation().starts_with('-') && !left.is_empty();
+        let right_negative = other.numeric().representation().starts_with('-') && !right.is_empty();
+        match (left_negative, right_negative) {
+            (true, false) => Ordering::Less,
+            (false, true) => Ordering::Greater,
+            _ => {
+                let magnitude = left.len().cmp(&right.len()).then_with(|| left.cmp(right));
+                if left_negative {
+                    magnitude.reverse()
+                } else {
+                    magnitude
+                }
+            }
+        }
     }
 
     /// Returns the original sign and digits without numeric approximation.

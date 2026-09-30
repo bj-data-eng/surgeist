@@ -210,7 +210,7 @@ pub(super) fn parse_integer_value<'i, 't>(
     match input.next().map_err(basic)? {
         Token::Number { .. } => {
             input.reset(&numeric_start);
-            parse_integer_literal(input, numeric)
+            parse_integer_literal(input, numeric).map(CssIntegerValue::Literal)
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Integer)
@@ -224,7 +224,7 @@ pub(super) fn parse_integer_value<'i, 't>(
 pub(super) fn parse_integer_literal<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssIntegerValue, ParseError<'i, Error>> {
+) -> Result<crate::CssIntegerLiteral, ParseError<'i, Error>> {
     input.skip_whitespace();
     let location = input.current_source_location();
     let offset = input.position().byte_index();
@@ -235,7 +235,7 @@ pub(super) fn parse_integer_literal<'i, 't>(
             "invalid integer component",
         )
     })?;
-    crate::integer_value::admit_integer_literal(component)
+    crate::CssIntegerLiteral::try_from_component(component)
         .map_err(|_| unsupported_value_at(location, None, "value must have integer token syntax"))
 }
 
@@ -243,42 +243,6 @@ pub(super) fn parse_number<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<f32, ParseError<'i, Error>> {
     input.expect_number().map_err(basic)
-}
-
-pub(super) fn parse_integer<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    context: &str,
-) -> std::result::Result<i32, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Number {
-            int_value: Some(value),
-            ..
-        } => Ok(*value),
-        Token::Number { .. } => Err(unsupported_value_at(
-            location,
-            None,
-            format!("{context} must be an integer"),
-        )),
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
-}
-
-pub(super) fn parse_positive_integer<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    context: &str,
-) -> std::result::Result<i32, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let value = parse_integer(input, context)?;
-    if value <= 0 {
-        Err(unsupported_value_at(
-            location,
-            None,
-            format!("{context} must be a positive integer"),
-        ))
-    } else {
-        Ok(value)
-    }
 }
 
 pub(super) fn parse_custom_ident_from_str_at<'i>(
