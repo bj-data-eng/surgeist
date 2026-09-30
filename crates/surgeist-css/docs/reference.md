@@ -1202,6 +1202,33 @@ symbolic even when their authored expression is `calc(1)`. Ordinary zero,
 negative, decimal-point and exponent counts are rejected. Position omission
 remains distinct from explicit `end` or `JumpEnd`.
 
+Filter amounts use `CssFilterAmount::Default`, `Number` or `Percentage`.
+The scalar branches hold `CssSpecifiedNonNegativeNumber` and
+`CssSpecifiedNonNegativePercentage` directly, preserving ordinary spelling,
+numeric token kind, signed zero and origins. Tiny negative nonzero literals are
+rejected exactly; amounts above one or 100% remain authored without clamping.
+Genuine function math stays symbolic. All seven amount-function identities,
+omission and list order are preserved for both filter properties.
+
+Animation iteration counts use `Infinite` or
+`Number(CssSpecifiedNonNegativeNumber)`, including symbolic number math.
+Fractional and zero ordinary counts remain valid, and an omitted shorthand count
+stays omitted. The nonempty count list retains order.
+
+Border-image slice uses shared nonnegative `Number` and `Percentage`
+payloads with a separate `fill` flag. Width keeps `Auto`,
+`LengthPercentage` and `Number`; outset keeps `Length` and
+`Number`. Each list expands one to four authored components using CSS edge
+rules; the shorthand retains coupled member requirements and omission. Intrinsic
+initials are programmatic `0` for outset, `100%` for slice and `1` for width.
+This model does not retain original edge arity or add whole-property serialization.
+
+These scalar aggregates compare exact numeric structure while ignoring numeric
+origins. Direct shared nonnegative Number equality retains provenance; direct
+shared nonnegative Percentage equality retains its established origin-insensitive
+policy, including font-width and font-face consumers. Branches, nonnumeric fields,
+order and omission remain part of aggregate identity.
+
 Box shadows
 and filter `drop-shadow()` use
 different models, so filter shadows cannot contain `inset` or spread. Filter
@@ -1683,9 +1710,8 @@ functions remain symbolic. Line-height equality ignores source origin
 while preserving authored structure, whereas the shared number scalar's own
 equality retains provenance. Both support bounded specified serialization.
 `CssLineHeightPropertyValue::line_height()` borrows the checked line height;
-the historical `i01_subset()`, `CssLineHeightLengthPercentage`, and
-`CssLineHeight::Number(CssNonNegativeNumberValue)` payload are removed. Construct
-new numeric payloads with `CssSpecifiedNonNegativeNumber::try_from_component`
+numeric payloads retain exact ordinary tokens or symbolic calculations. Construct
+the number payloads with `CssSpecifiedNonNegativeNumber::try_from_component`
 or `try_from_calculation`, then inspect them with `literal_component()`,
 `calculation()`, and `origin()`.
 Its inherited initial is `normal`, and intrinsic longhand expansion produces one

@@ -25,7 +25,8 @@ use crate::{
 };
 pub(crate) use crate::{
     CssSpecifiedLength, CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeLength,
-    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNumber, CssSpecifiedPercentage,
+    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
+    CssSpecifiedNonNegativePercentage, CssSpecifiedNumber, CssSpecifiedPercentage,
 };
 use std::sync::Arc;
 
@@ -4266,62 +4267,6 @@ impl CssFiniteNumber {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssNonNegativeNumber {
-    value: CssFiniteNumber,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssNonNegativeNumberValue {
-    Literal(CssNonNegativeNumber),
-    Calculation(CssNumberCalculation),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssPositiveNumber {
-    value: CssFiniteNumber,
-}
-
-impl CssPositiveNumber {
-    #[must_use]
-    pub fn try_new(value: f32) -> Option<Self> {
-        if value > 0.0 {
-            CssFiniteNumber::try_new(value).map(|value| Self { value })
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub const fn value(self) -> f32 {
-        self.value.value()
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssPositiveNumberValue {
-    Literal(CssPositiveNumber),
-    Calculation(CssNumberCalculation),
-}
-
-impl CssNonNegativeNumber {
-    #[must_use]
-    pub fn try_new(value: f32) -> Option<Self> {
-        if value >= 0.0 {
-            CssFiniteNumber::try_new(value).map(|value| Self { value })
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub const fn value(self) -> f32 {
-        self.value.value()
-    }
-}
-
 /// An exact ordinary scalar or a domain-checked symbolic opacity calculation.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
@@ -6463,13 +6408,21 @@ pub enum CssImageValue {
 }
 
 /// One non-negative authored `border-image-slice` component.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssBorderImageSliceComponent {
-    Number(CssNonNegativeNumber),
-    Percentage(CssNonNegativeNumber),
-    NumberCalculation(CssNumberCalculation),
-    PercentageCalculation(CssPercentageCalculation),
+    Number(CssSpecifiedNonNegativeNumber),
+    Percentage(CssSpecifiedNonNegativePercentage),
+}
+
+impl PartialEq for CssBorderImageSliceComponent {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
+            (Self::Percentage(left), Self::Percentage(right)) => left == right,
+            _ => false,
+        }
+    }
 }
 
 /// The expanded four-edge authored `border-image-slice` value.
@@ -6502,8 +6455,7 @@ impl CssBorderImageSlice {
 pub enum CssBorderImageWidthComponent {
     Auto,
     LengthPercentage(CssSpecifiedNonNegativeLengthPercentage),
-    Number(CssNonNegativeNumber),
-    NumberCalculation(CssNumberCalculation),
+    Number(CssSpecifiedNonNegativeNumber),
 }
 
 impl PartialEq for CssBorderImageWidthComponent {
@@ -6513,8 +6465,7 @@ impl PartialEq for CssBorderImageWidthComponent {
             (Self::LengthPercentage(left), Self::LengthPercentage(right)) => {
                 left.structural_eq(right)
             }
-            (Self::Number(left), Self::Number(right)) => left == right,
-            (Self::NumberCalculation(left), Self::NumberCalculation(right)) => left == right,
+            (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
             _ => false,
         }
     }
@@ -6543,16 +6494,14 @@ impl CssBorderImageWidth {
 #[non_exhaustive]
 pub enum CssBorderImageOutsetComponent {
     Length(CssSpecifiedNonNegativeLength),
-    Number(CssNonNegativeNumber),
-    NumberCalculation(CssNumberCalculation),
+    Number(CssSpecifiedNonNegativeNumber),
 }
 
 impl PartialEq for CssBorderImageOutsetComponent {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Length(left), Self::Length(right)) => left.structural_eq(right),
-            (Self::Number(left), Self::Number(right)) => left == right,
-            (Self::NumberCalculation(left), Self::NumberCalculation(right)) => left == right,
+            (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
             _ => false,
         }
     }
@@ -8268,29 +8217,24 @@ impl CssScaleValues {
     }
 }
 
-/// A checked authored non-negative filter `<number>`.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssFilterNumber {
-    Literal(CssNonNegativeNumber),
-    Calculation(CssNumberCalculation),
-}
-
-/// A checked authored non-negative filter `<percentage>`.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssFilterPercentage {
-    Literal(CssNonNegativeNumber),
-    Calculation(CssPercentageCalculation),
-}
-
-/// The optional amount accepted by a filter amount function.
-#[derive(Clone, Debug, PartialEq)]
+/// The optional authored amount accepted by a filter amount function.
+#[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssFilterAmount {
     Default,
-    Number(CssFilterNumber),
-    Percentage(CssFilterPercentage),
+    Number(CssSpecifiedNonNegativeNumber),
+    Percentage(CssSpecifiedNonNegativePercentage),
+}
+
+impl PartialEq for CssFilterAmount {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Default, Self::Default) => true,
+            (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
+            (Self::Percentage(left), Self::Percentage(right)) => left == right,
+            _ => false,
+        }
+    }
 }
 
 /// A checked specified filter blur length, including the omitted radius's 0px default.
@@ -9120,42 +9064,22 @@ impl CssAnimationNameList {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
-pub struct CssAnimationIterationNumber {
-    value: CssFiniteNumber,
-}
-
-impl std::fmt::Debug for CssAnimationIterationNumber {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("CssAnimationIterationNumber")
-            .field("value", &self.value.value())
-            .finish()
-    }
-}
-
-impl CssAnimationIterationNumber {
-    #[must_use]
-    pub const fn try_new(value: f32) -> Option<Self> {
-        match CssFiniteNumber::try_new(value) {
-            Some(value) if value.value() >= 0.0 => Some(Self { value }),
-            Some(_) | None => None,
-        }
-    }
-
-    #[must_use]
-    pub const fn value(self) -> f32 {
-        self.value.value()
-    }
-}
-
-/// An authored animation iteration count.
-#[derive(Clone, Debug, PartialEq)]
+/// An authored animation iteration count, retaining an exact number or symbolic math.
+#[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssAnimationIterationCount {
     Infinite,
-    Number(CssAnimationIterationNumber),
-    Calculation(CssNumberCalculation),
+    Number(CssSpecifiedNonNegativeNumber),
+}
+
+impl PartialEq for CssAnimationIterationCount {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Infinite, Self::Infinite) => true,
+            (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
+            _ => false,
+        }
+    }
 }
 
 /// A non-empty list of authored animation iteration counts.

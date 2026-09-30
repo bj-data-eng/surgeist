@@ -709,28 +709,7 @@ fn scalar_property_accessors_preserve_exact_literal_domains() {
 }
 
 #[test]
-fn positive_number_model_checks_literals_while_calculation_range_stays_authored() {
-    assert!(CssPositiveNumber::try_new(0.0).is_none());
-    assert!(CssPositiveNumber::try_new(-1.0).is_none());
-    assert!(CssPositiveNumber::try_new(f32::INFINITY).is_none());
-    let literal = CssPositiveNumber::try_new(0.25).expect("finite positive literal");
-    assert_eq!(literal.value(), 0.25);
-    assert!(matches!(
-        CssPositiveNumberValue::Literal(literal),
-        CssPositiveNumberValue::Literal(value) if value.value() == 0.25
-    ));
-
-    let calculation = CssNumberCalculation::try_literal(-2.0).expect("finite authored number");
-    assert!(matches!(
-        CssPositiveNumberValue::Calculation(calculation),
-        CssPositiveNumberValue::Calculation(value)
-            if matches!(
-                value.expression(),
-                CssCalculationExpressionRef::Value(CssCalculationValueRef::Integer(number))
-                    if number.representation() == "-2"
-            )
-    ));
-
+fn ratio_literal_zero_and_symbolic_negative_math_keep_their_existing_domains() {
     let literal_report = parse_style_attribute("aspect-ratio: 0; color: red");
     assert_eq!(literal_report.syntax().len(), 2);
     assert!(literal_report.is_clean());
@@ -757,14 +736,12 @@ fn filter_amount_calculations_keep_number_and_percentage_roots_symbolic() {
         panic!("expected filter functions");
     };
     assert!(matches!(
-        functions.functions()[0],
-        CssFilterFunction::Brightness(CssFilterAmount::Number(CssFilterNumber::Calculation(_)))
+        &functions.functions()[0],
+        CssFilterFunction::Brightness(CssFilterAmount::Number(value)) if value.calculation().is_some()
     ));
     assert!(matches!(
-        functions.functions()[1],
-        CssFilterFunction::Opacity(CssFilterAmount::Percentage(
-            CssFilterPercentage::Calculation(_)
-        ))
+        &functions.functions()[1],
+        CssFilterFunction::Opacity(CssFilterAmount::Percentage(value)) if value.calculation().is_some()
     ));
 }
 

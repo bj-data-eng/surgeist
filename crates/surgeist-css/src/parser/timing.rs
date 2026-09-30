@@ -1,7 +1,8 @@
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::values::{
-    CalculationRoot, next_is_comma, parse_custom_ident_from_str_at, parse_numeric_function,
+    CalculationRoot, next_is_comma, parse_custom_ident_from_str_at, parse_nonnegative_number,
+    parse_numeric_function,
 };
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
@@ -458,31 +459,14 @@ pub(super) fn parse_animation_iteration_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssAnimationIterationCount, ParseError<'i, Error>> {
-    let numeric_start = input.state();
     if input
         .try_parse(|input| input.expect_ident_matching("infinite"))
         .is_ok()
     {
         return Ok(CssAnimationIterationCount::Infinite);
     }
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Number { value, .. } => CssAnimationIterationNumber::try_new(*value)
-            .map(CssAnimationIterationCount::Number)
-            .ok_or_else(|| {
-                unsupported_value_at(
-                    location,
-                    None,
-                    "animation iteration count must be finite and non-negative",
-                )
-            }),
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)
-                .map(CssNumberCalculation::from_expression)
-                .map(CssAnimationIterationCount::Calculation)
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
+    parse_nonnegative_number(input, numeric, "animation iteration count")
+        .map(CssAnimationIterationCount::Number)
 }
 
 pub(super) fn parse_animation_direction_list<'i, 't>(

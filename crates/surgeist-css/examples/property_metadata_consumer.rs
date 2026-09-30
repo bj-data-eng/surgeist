@@ -671,21 +671,21 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
             assert!(!v.fill());
             assert!(!v.values().is_empty());
             assert!(v.values().iter().all(
-                |v| matches!(v, CssBorderImageSliceComponent::Percentage(n) if n.value() == 100.0)
+                |v| matches!(v, CssBorderImageSliceComponent::Percentage(n) if exact_literal(n.literal_component(), "100%"))
             ));
         }
         CssLonghandValueRef::BorderImageWidth(v) => {
             assert!(!v.values().is_empty());
             assert!(
                 v.values().iter().all(
-                    |v| matches!(v, CssBorderImageWidthComponent::Number(n) if n.value() == 1.0)
+                    |v| matches!(v, CssBorderImageWidthComponent::Number(n) if exact_literal(n.literal_component(), "1"))
                 )
             );
         }
         CssLonghandValueRef::BorderImageOutset(v) => {
             assert!(!v.values().is_empty());
             assert!(v.values().iter().all(
-                |v| matches!(v, CssBorderImageOutsetComponent::Number(n) if n.value() == 0.0)
+                |v| matches!(v, CssBorderImageOutsetComponent::Number(n) if exact_literal(n.literal_component(), "0"))
             ));
         }
         CssLonghandValueRef::BorderImageRepeat(v) => {

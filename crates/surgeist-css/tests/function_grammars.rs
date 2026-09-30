@@ -502,26 +502,20 @@ fn every_filter_amount_function_has_exact_typed_domain() {
         CssFilterFunction::Brightness(CssFilterAmount::Default)
     ));
     assert!(matches!(
-        functions.functions()[1],
-        CssFilterFunction::Contrast(CssFilterAmount::Number(
-            CssFilterNumber::Literal(value)
-        )) if value.value() == 2.0
+        &functions.functions()[1],
+        CssFilterFunction::Contrast(CssFilterAmount::Number(value)) if exact_number(value.literal_component(), "2")
     ));
     assert!(matches!(
-        functions.functions()[2],
-        CssFilterFunction::Grayscale(CssFilterAmount::Percentage(
-            CssFilterPercentage::Literal(value)
-        )) if value.value() == 25.0
+        &functions.functions()[2],
+        CssFilterFunction::Grayscale(CssFilterAmount::Percentage(value)) if exact_percentage(value.literal_component(), "25")
     ));
     assert!(matches!(
-        functions.functions()[3],
-        CssFilterFunction::Invert(CssFilterAmount::Number(CssFilterNumber::Calculation(_)))
+        &functions.functions()[3],
+        CssFilterFunction::Invert(CssFilterAmount::Number(value)) if value.calculation().is_some()
     ));
     assert!(matches!(
-        functions.functions()[4],
-        CssFilterFunction::Opacity(CssFilterAmount::Percentage(
-            CssFilterPercentage::Calculation(_)
-        ))
+        &functions.functions()[4],
+        CssFilterFunction::Opacity(CssFilterAmount::Percentage(value)) if value.calculation().is_some()
     ));
 
     for value in [

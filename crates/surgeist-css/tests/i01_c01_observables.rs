@@ -2653,8 +2653,8 @@ fn assert_known_property_value(
 ) {
     use surgeist_css::{
         CssBorderStyle as BorderStyle, CssBoxShadow, CssFilter, CssFilterAmount, CssFilterFunction,
-        CssFilterPercentage, CssOutlineStyle, CssOutlineWidth, CssTextDecorationLineComponent,
-        CssTextDecorationStyle, CssTextDecorationThickness,
+        CssOutlineStyle, CssOutlineWidth, CssTextDecorationLineComponent, CssTextDecorationStyle,
+        CssTextDecorationThickness,
     };
     // Captured scalar inputs now use the sole checked lexical owners. Keep the
     // archive immutable and assert its concrete semantics without recreating Debug.
@@ -3046,8 +3046,8 @@ fn assert_known_property_value(
             assert_captured_px(blur.length().literal_component(), "4");
             assert!(matches!(
                 amount,
-                CssFilterAmount::Percentage(CssFilterPercentage::Literal(number))
-                    if number.value() == 50.0
+                CssFilterAmount::Percentage(number)
+                    if exact_percentage(number.literal_component(), "50")
             ));
             Some(value.as_css())
         }
@@ -3963,7 +3963,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::AnimationIterationCount(value),
         ) => {
             assert!(
-                matches!(value.iteration_counts().values(), [Iteration::Number(n), Iteration::Infinite] if n.value() == 2.0)
+                matches!(value.iteration_counts().values(), [Iteration::Number(n), Iteration::Infinite] if exact_number(n.literal_component(), "2"))
             );
             Some(value.as_css())
         }
@@ -4007,7 +4007,7 @@ fn assert_known_property_value(
                 Some(CssEasing::Keyword(Keyword::EaseIn))
             ));
             assert!(
-                matches!(item.iteration_count(), Some(Iteration::Number(n)) if n.value() == 3.0)
+                matches!(item.iteration_count(), Some(Iteration::Number(n)) if exact_number(n.literal_component(), "3"))
             );
             assert_eq!(item.direction(), Some(Direction::Alternate));
             assert_eq!(item.fill_mode(), Some(Fill::Both));

@@ -168,7 +168,7 @@ fn filter_amount_keeps_authored_thirty_percent() {
         panic!("expected filter functions");
     };
     assert!(
-        matches!(functions.functions()[0], CssFilterFunction::Grayscale(CssFilterAmount::Percentage(CssFilterPercentage::Literal(number))) if number.value() == 30.0)
+        matches!(&functions.functions()[0], CssFilterFunction::Grayscale(CssFilterAmount::Percentage(number)) if exact_percentage(number.literal_component(), "30"))
     );
 }
 
@@ -185,7 +185,7 @@ fn border_image_slice_keeps_authored_thirty_percent() {
         panic!("expected border-image-slice");
     };
     assert!(
-        matches!(slice.slice().values()[0], CssBorderImageSliceComponent::Percentage(number) if number.value() == 30.0)
+        matches!(&slice.slice().values()[0], CssBorderImageSliceComponent::Percentage(number) if exact_percentage(number.literal_component(), "30"))
     );
 }
 

@@ -1,10 +1,10 @@
 use surgeist_css::{
     CssAnimation, CssAnimationComponents, CssAnimationDirection, CssAnimationFillMode,
-    CssAnimationIterationCount, CssAnimationIterationNumber, CssAnimationList, CssAnimationName,
-    CssAnimationPlayState, CssCubicBezier, CssDelay, CssDelayLiteral, CssDuration,
-    CssDurationLiteral, CssEasing, CssEasingKeyword, CssIntegerLiteral, CssKnownPropertyValueRef,
-    CssPositiveIntegerLiteral, CssPositiveIntegerValue, CssStepPosition, CssSteps, CssTimeUnit,
-    CssTransition, CssTransitionList, CssTransitionProperty, parse_style_attribute,
+    CssAnimationIterationCount, CssAnimationList, CssAnimationName, CssAnimationPlayState,
+    CssCubicBezier, CssDelay, CssDelayLiteral, CssDuration, CssDurationLiteral, CssEasing,
+    CssEasingKeyword, CssIntegerLiteral, CssKnownPropertyValueRef, CssPositiveIntegerLiteral,
+    CssPositiveIntegerValue, CssStepPosition, CssSteps, CssTimeUnit, CssTransition,
+    CssTransitionList, CssTransitionProperty, parse_style_attribute,
 };
 
 #[test]
@@ -60,7 +60,10 @@ fn checked_animation_preserves_eight_semantic_slots() {
         )),
         timing_function: Some(CssEasing::Keyword(CssEasingKeyword::EaseOut)),
         iteration_count: Some(CssAnimationIterationCount::Number(
-            CssAnimationIterationNumber::try_new(3.0).unwrap(),
+            surgeist_css::CssSpecifiedNonNegativeNumber::try_from_component(
+                surgeist_css::CssComponentValue::try_number("3").unwrap(),
+            )
+            .unwrap(),
         )),
         direction: Some(CssAnimationDirection::Alternate),
         fill_mode: Some(CssAnimationFillMode::Both),
@@ -77,7 +80,7 @@ fn checked_animation_preserves_eight_semantic_slots() {
         Some(CssEasing::Keyword(CssEasingKeyword::EaseOut))
     ));
     assert!(
-        matches!(animation.iteration_count(), Some(CssAnimationIterationCount::Number(value)) if value.value() == 3.0)
+        matches!(animation.iteration_count(), Some(CssAnimationIterationCount::Number(value)) if value.serialize_specified().unwrap() == "3")
     );
     assert_eq!(
         animation.direction(),

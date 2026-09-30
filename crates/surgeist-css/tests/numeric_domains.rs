@@ -4,7 +4,6 @@ use surgeist_css::*;
 fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_boundaries() {
     for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
         assert_eq!(CssFiniteNumber::try_new(value), None);
-        assert_eq!(CssNonNegativeNumber::try_new(value), None);
         assert_eq!(CssRatio::try_new(value, 1.0), None);
         assert_eq!(CssRatio::try_new(1.0, value), None);
         assert_eq!(CssKeyframePercent::try_new(value), None);
@@ -15,7 +14,6 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
             None
         );
         assert_eq!(CssDelayLiteral::try_new(value, CssTimeUnit::Seconds), None);
-        assert_eq!(CssAnimationIterationNumber::try_new(value), None);
     }
 
     for invalid in ["NaN", "infinity", "-infinity"] {
@@ -44,7 +42,6 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         CssFiniteNumber::try_new(f32::MAX).unwrap().value(),
         f32::MAX
     );
-    assert_eq!(CssNonNegativeNumber::try_new(-0.0).unwrap().value(), -0.0);
     let max_spelling = f32::MAX.to_string();
     let adjust = CssFontSizeAdjust::Number(
         CssSpecifiedNonNegativeNumber::try_from_component(
@@ -119,12 +116,6 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
             .unwrap()
             .value(),
         0.0
-    );
-    assert_eq!(
-        CssAnimationIterationNumber::try_new(f32::MAX)
-            .unwrap()
-            .value(),
-        f32::MAX
     );
 
     let tolerance = CssFlowTolerance::length_percentage(
@@ -284,54 +275,40 @@ fn non_finite_time_parse_drops_only_its_declaration_with_exact_diagnostic() {
 }
 
 #[test]
-fn non_finite_iteration_parse_retains_sheet_siblings_with_exact_diagnostic() {
-    let invalid = "animation-iteration-count: 1e999;";
-    let source = format!(
-        ".before {{ width: 1px; }}\n.bad {{ {invalid} opacity: .5; }}\n.after {{ height: 2px; }}"
-    );
-    let report = parse_sheet(&source);
-
+fn exact_huge_iteration_parse_retains_sheet_payload_and_siblings() {
+    let source = ".before { width: 1px; }\n.middle { animation-iteration-count: 1e999; opacity: .5; }\n.after { height: 2px; }";
+    let report = parse_sheet(source);
+    assert!(report.is_clean());
     assert_eq!(report.syntax().rules().len(), 3);
-    let CssRule::Style(bad) = &report.syntax().rules()[1] else {
-        panic!("middle sibling must remain a style rule");
+    let CssRule::Style(middle) = &report.syntax().rules()[1] else {
+        panic!("middle sibling remains a style rule");
     };
-    assert_eq!(bad.declarations().len(), 1);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("non-finite iteration count must produce one diagnostic");
+    assert_eq!(middle.declarations().len(), 2);
+    let CssKnownPropertyValueRef::AnimationIterationCount(counts) = middle.declarations()[0]
+        .known()
+        .unwrap()
+        .property_value()
+        .unwrap()
+    else {
+        panic!("exact iteration count");
     };
-    assert_eq!(
-        diagnostic.error().code(),
-        CssErrorCode::InvalidPropertyValue
+    let [CssAnimationIterationCount::Number(number)] = counts.iteration_counts().values() else {
+        panic!("one shared ordinary count");
+    };
+    assert!(
+        matches!(number.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(token)) if token.representation() == "1e999")
     );
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let value_start = source.find("1e999").unwrap();
-    let declaration_start = source.find(invalid).unwrap();
+    let CssValueOrigin::Parsed(origin) = number.origin() else {
+        panic!("original origin");
+    };
+    let start = source.find("1e999").unwrap();
+    assert_eq!(origin.source().as_str(), source);
+    assert_eq!(origin.span().start().byte_offset().value(), start);
+    assert_eq!(origin.span().end().byte_offset().value(), start + 5);
     assert_eq!(
-        diagnostic.error().position().byte_offset().value(),
-        value_start
+        middle.declarations()[1].known().unwrap().property(),
+        CssKnownProperty::Opacity
     );
-    assert_eq!(diagnostic.error().position().line().value(), 1);
-    assert_eq!(
-        diagnostic.error().position().column().value(),
-        (value_start - source.find("\n").unwrap() - 1) as u32
-    );
-    assert_eq!(
-        diagnostic.span().start().byte_offset().value(),
-        declaration_start
-    );
-    assert_eq!(
-        diagnostic.span().end().byte_offset().value(),
-        declaration_start + invalid.len()
-    );
-    match diagnostic.error().kind() {
-        ErrorKind::InvalidPropertyValue(detail) => {
-            assert_eq!(detail.property(), CssKnownProperty::AnimationIterationCount);
-            let encountered = detail.encountered().expect("non-finite number token");
-            assert_eq!(encountered.kind(), CssTokenKind::Number);
-            assert_eq!(encountered.authored(), "1e999");
-        }
-        _ => panic!("expected invalid property value"),
-    }
 }
 
 #[test]

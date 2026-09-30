@@ -68,9 +68,10 @@ pub surgeist_css::CssAnimationFillMode::Both
 pub surgeist_css::CssAnimationFillMode::Forwards
 pub surgeist_css::CssAnimationFillMode::None
 #[non_exhaustive] pub enum surgeist_css::CssAnimationIterationCount
-pub surgeist_css::CssAnimationIterationCount::Calculation(surgeist_css::CssNumberCalculation)
 pub surgeist_css::CssAnimationIterationCount::Infinite
-pub surgeist_css::CssAnimationIterationCount::Number(surgeist_css::CssAnimationIterationNumber)
+pub surgeist_css::CssAnimationIterationCount::Number(surgeist_css::CssSpecifiedNonNegativeNumber)
+impl core::cmp::PartialEq for surgeist_css::CssAnimationIterationCount
+pub fn surgeist_css::CssAnimationIterationCount::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssAnimationName
 pub surgeist_css::CssAnimationName::Custom(surgeist_css::CssCustomIdent)
 pub surgeist_css::CssAnimationName::None
@@ -197,8 +198,7 @@ pub fn surgeist_css::CssBorderCollapse::serialize_specified(&self) -> core::resu
 pub fn surgeist_css::CssBorderCollapse::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssBorderImageOutsetComponent
 pub surgeist_css::CssBorderImageOutsetComponent::Length(surgeist_css::CssSpecifiedNonNegativeLength)
-pub surgeist_css::CssBorderImageOutsetComponent::Number(surgeist_css::CssNonNegativeNumber)
-pub surgeist_css::CssBorderImageOutsetComponent::NumberCalculation(surgeist_css::CssNumberCalculation)
+pub surgeist_css::CssBorderImageOutsetComponent::Number(surgeist_css::CssSpecifiedNonNegativeNumber)
 impl core::cmp::PartialEq for surgeist_css::CssBorderImageOutsetComponent
 pub fn surgeist_css::CssBorderImageOutsetComponent::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssBorderImageRepeatKeyword
@@ -207,15 +207,14 @@ pub surgeist_css::CssBorderImageRepeatKeyword::Round
 pub surgeist_css::CssBorderImageRepeatKeyword::Space
 pub surgeist_css::CssBorderImageRepeatKeyword::Stretch
 #[non_exhaustive] pub enum surgeist_css::CssBorderImageSliceComponent
-pub surgeist_css::CssBorderImageSliceComponent::Number(surgeist_css::CssNonNegativeNumber)
-pub surgeist_css::CssBorderImageSliceComponent::NumberCalculation(surgeist_css::CssNumberCalculation)
-pub surgeist_css::CssBorderImageSliceComponent::Percentage(surgeist_css::CssNonNegativeNumber)
-pub surgeist_css::CssBorderImageSliceComponent::PercentageCalculation(surgeist_css::CssPercentageCalculation)
+pub surgeist_css::CssBorderImageSliceComponent::Number(surgeist_css::CssSpecifiedNonNegativeNumber)
+pub surgeist_css::CssBorderImageSliceComponent::Percentage(surgeist_css::CssSpecifiedNonNegativePercentage)
+impl core::cmp::PartialEq for surgeist_css::CssBorderImageSliceComponent
+pub fn surgeist_css::CssBorderImageSliceComponent::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssBorderImageWidthComponent
 pub surgeist_css::CssBorderImageWidthComponent::Auto
 pub surgeist_css::CssBorderImageWidthComponent::LengthPercentage(surgeist_css::CssSpecifiedNonNegativeLengthPercentage)
-pub surgeist_css::CssBorderImageWidthComponent::Number(surgeist_css::CssNonNegativeNumber)
-pub surgeist_css::CssBorderImageWidthComponent::NumberCalculation(surgeist_css::CssNumberCalculation)
+pub surgeist_css::CssBorderImageWidthComponent::Number(surgeist_css::CssSpecifiedNonNegativeNumber)
 impl core::cmp::PartialEq for surgeist_css::CssBorderImageWidthComponent
 pub fn surgeist_css::CssBorderImageWidthComponent::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssBorderStyle
@@ -1048,8 +1047,10 @@ pub surgeist_css::CssFilter::Functions(surgeist_css::CssFilterFunctionList)
 pub surgeist_css::CssFilter::None
 #[non_exhaustive] pub enum surgeist_css::CssFilterAmount
 pub surgeist_css::CssFilterAmount::Default
-pub surgeist_css::CssFilterAmount::Number(surgeist_css::CssFilterNumber)
-pub surgeist_css::CssFilterAmount::Percentage(surgeist_css::CssFilterPercentage)
+pub surgeist_css::CssFilterAmount::Number(surgeist_css::CssSpecifiedNonNegativeNumber)
+pub surgeist_css::CssFilterAmount::Percentage(surgeist_css::CssSpecifiedNonNegativePercentage)
+impl core::cmp::PartialEq for surgeist_css::CssFilterAmount
+pub fn surgeist_css::CssFilterAmount::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssFilterFunction
 pub surgeist_css::CssFilterFunction::Blur(surgeist_css::CssFilterBlur)
 pub surgeist_css::CssFilterFunction::Brightness(surgeist_css::CssFilterAmount)
@@ -1062,12 +1063,6 @@ pub surgeist_css::CssFilterFunction::Opacity(surgeist_css::CssFilterAmount)
 pub surgeist_css::CssFilterFunction::Saturate(surgeist_css::CssFilterAmount)
 pub surgeist_css::CssFilterFunction::Sepia(surgeist_css::CssFilterAmount)
 pub surgeist_css::CssFilterFunction::Url(surgeist_css::CssUrl)
-#[non_exhaustive] pub enum surgeist_css::CssFilterNumber
-pub surgeist_css::CssFilterNumber::Calculation(surgeist_css::CssNumberCalculation)
-pub surgeist_css::CssFilterNumber::Literal(surgeist_css::CssNonNegativeNumber)
-#[non_exhaustive] pub enum surgeist_css::CssFilterPercentage
-pub surgeist_css::CssFilterPercentage::Calculation(surgeist_css::CssPercentageCalculation)
-pub surgeist_css::CssFilterPercentage::Literal(surgeist_css::CssNonNegativeNumber)
 #[non_exhaustive] pub enum surgeist_css::CssFlexBasisRef<'a>
 pub surgeist_css::CssFlexBasisRef::CalcSize(&'a surgeist_css::CssCalcSize)
 pub surgeist_css::CssFlexBasisRef::Content
@@ -2985,9 +2980,6 @@ pub surgeist_css::CssNamespaceConstraint::Any
 pub surgeist_css::CssNamespaceConstraint::Default
 pub surgeist_css::CssNamespaceConstraint::ExplicitNone
 pub surgeist_css::CssNamespaceConstraint::Named(surgeist_css::CssNamespacePrefix)
-#[non_exhaustive] pub enum surgeist_css::CssNonNegativeNumberValue
-pub surgeist_css::CssNonNegativeNumberValue::Calculation(surgeist_css::CssNumberCalculation)
-pub surgeist_css::CssNonNegativeNumberValue::Literal(surgeist_css::CssNonNegativeNumber)
 #[non_exhaustive] pub enum surgeist_css::CssNormalizationErrorKind
 pub surgeist_css::CssNormalizationErrorKind::LimitExceeded
 pub surgeist_css::CssNormalizationErrorKind::LimitExceeded::limit: usize
@@ -3114,9 +3106,6 @@ pub fn surgeist_css::CssPositiveIntegerValue::serialize_specified(&self) -> core
 pub fn surgeist_css::CssPositiveIntegerValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::cmp::PartialEq for surgeist_css::CssPositiveIntegerValue
 pub fn surgeist_css::CssPositiveIntegerValue::eq(&self, other: &Self) -> bool
-#[non_exhaustive] pub enum surgeist_css::CssPositiveNumberValue
-pub surgeist_css::CssPositiveNumberValue::Calculation(surgeist_css::CssNumberCalculation)
-pub surgeist_css::CssPositiveNumberValue::Literal(surgeist_css::CssPositiveNumber)
 #[non_exhaustive] pub enum surgeist_css::CssPredefinedColorSpace
 pub surgeist_css::CssPredefinedColorSpace::A98Rgb
 pub surgeist_css::CssPredefinedColorSpace::DisplayP3
@@ -4076,12 +4065,6 @@ pub struct surgeist_css::CssAnimationIterationCountPropertyValue
 impl surgeist_css::CssAnimationIterationCountPropertyValue
 pub fn surgeist_css::CssAnimationIterationCountPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssAnimationIterationCountPropertyValue::iteration_counts(&self) -> &surgeist_css::CssAnimationIterationCountList
-pub struct surgeist_css::CssAnimationIterationNumber
-impl surgeist_css::CssAnimationIterationNumber
-pub const fn surgeist_css::CssAnimationIterationNumber::try_new(value: f32) -> core::option::Option<Self>
-pub const fn surgeist_css::CssAnimationIterationNumber::value(self) -> f32
-impl core::fmt::Debug for surgeist_css::CssAnimationIterationNumber
-pub fn surgeist_css::CssAnimationIterationNumber::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssAnimationList
 impl surgeist_css::CssAnimationList
 pub fn surgeist_css::CssAnimationList::try_new(values: alloc::vec::Vec<surgeist_css::CssAnimation>) -> core::option::Option<Self>
@@ -6990,10 +6973,6 @@ pub struct surgeist_css::CssNeverMediaQuery
 impl surgeist_css::CssNeverMediaQuery
 pub const fn surgeist_css::CssNeverMediaQuery::origin(&self) -> &surgeist_css::CssValueOrigin
 pub const fn surgeist_css::CssNeverMediaQuery::position(&self) -> surgeist_css::CssSourcePosition
-pub struct surgeist_css::CssNonNegativeNumber
-impl surgeist_css::CssNonNegativeNumber
-pub fn surgeist_css::CssNonNegativeNumber::try_new(value: f32) -> core::option::Option<Self>
-pub const fn surgeist_css::CssNonNegativeNumber::value(self) -> f32
 pub struct surgeist_css::CssNormalizationError
 impl surgeist_css::CssNormalizationError
 pub fn surgeist_css::CssNormalizationError::declaration(&self) -> core::option::Option<&surgeist_css::CssDeclaration>
@@ -7415,10 +7394,6 @@ pub const fn surgeist_css::CssPositiveIntegerLiteral::integer(&self) -> &surgeis
 pub fn surgeist_css::CssPositiveIntegerLiteral::try_new(integer: surgeist_css::CssIntegerLiteral) -> core::option::Option<Self>
 impl core::cmp::PartialEq for surgeist_css::CssPositiveIntegerLiteral
 pub fn surgeist_css::CssPositiveIntegerLiteral::eq(&self, other: &Self) -> bool
-pub struct surgeist_css::CssPositiveNumber
-impl surgeist_css::CssPositiveNumber
-pub fn surgeist_css::CssPositiveNumber::try_new(value: f32) -> core::option::Option<Self>
-pub const fn surgeist_css::CssPositiveNumber::value(self) -> f32
 pub struct surgeist_css::CssPredefinedColor
 impl surgeist_css::CssPredefinedColor
 pub const fn surgeist_css::CssPredefinedColor::alpha(&self) -> core::option::Option<&surgeist_css::CssColorComponent>
