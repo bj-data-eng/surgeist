@@ -3729,7 +3729,7 @@ fn assert_known_property_value(
             );
             assert_eq!(
                 font.stretch(),
-                Some(surgeist_css::CssFontStretch::Condensed)
+                Some(surgeist_css::CssFontWidthKeyword::Condensed)
             );
             assert_eq!(
                 font.size(),
@@ -4400,7 +4400,7 @@ fn assert_known_property_value(
             };
             let expected = CssMaskList::try_new(vec![
                 CssMaskLayer::try_new(
-                    Some(CssImageValue::Url(CssUrl::try_new("mask.png").unwrap())),
+                    Some(CssImageValue::Url(CssUrl::new("mask.png"))),
                     Some(CssPosition::try_new(Horizontal::Center, Vertical::Center).unwrap()),
                     Some(CssBackgroundSize::Contain),
                     Some(CssBackgroundRepeat::Axes {
@@ -4974,7 +4974,10 @@ fn assert_known_property_value(
                 "unknown archived {property:?} expectation: {expected}"
             );
             let typed = value.value();
-            assert!(matches!(typed, CssImageValue::Url(url) if url.as_str() == "marker.svg"));
+            assert!(matches!(typed, CssImageValue::Url(url)
+                if url.as_str() == "marker.svg"
+                    && url.function() == surgeist_css::CssUrlFunction::Url
+                    && url.modifiers().is_empty()));
         }
         (CssKnownProperty::ListStyle, CssKnownPropertyValueRef::ListStyle(value)) => {
             assert_archive_wrapper(property, value.as_css(), semantic, authored);
@@ -4995,9 +4998,10 @@ fn assert_known_property_value(
             assert!(
                 matches!(typed.style_type(), Some(CssListStyleTypeValue::CounterStyle(style)) if style.named().unwrap().as_str() == "square")
             );
-            assert!(
-                matches!(typed.image(), Some(CssImageValue::Url(url)) if url.as_str() == "marker.svg")
-            );
+            assert!(matches!(typed.image(), Some(CssImageValue::Url(url))
+                    if url.as_str() == "marker.svg"
+                        && url.function() == surgeist_css::CssUrlFunction::Url
+                        && url.modifiers().is_empty()));
         }
         (CssKnownProperty::CounterReset, CssKnownPropertyValueRef::CounterReset(value)) => {
             assert_archive_wrapper(property, value.as_css(), semantic, authored);

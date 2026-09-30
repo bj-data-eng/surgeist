@@ -45,7 +45,7 @@ fn assert_clean_urls(value: &str, expected: &[&str]) -> CssParseReport<CssSheet>
         .sources()
         .iter()
         .map(|source| match source {
-            CssFontFaceSource::Url(url) => url.url(),
+            CssFontFaceSource::Url(url) => url.url().as_str(),
             other => panic!("expected URL source, found {other:?}"),
         })
         .collect::<Vec<_>>();
@@ -84,11 +84,16 @@ fn empty_font_url_members_preserve_the_complete_source_order() {
 #[test]
 fn empty_and_whitespace_font_urls_cross_the_typed_constructor_boundary() {
     for authored in ["", " ", " \t "] {
-        let source = CssFontFaceUrlSource::try_new(authored, None, Vec::new())
-            .expect("an authored URL does not need to identify a loadable resource");
-        assert_eq!(source.url(), authored);
+        let source =
+            CssFontFaceUrlSource::new(surgeist_css::CssUrl::new(authored), None, Vec::new());
+        assert_eq!(source.url().as_str(), authored);
+        assert_eq!(
+            source
+                .format()
+                .and_then(surgeist_css::CssFontFormat::recognized_format),
+            None
+        );
         assert_eq!(source.format(), None);
-        assert_eq!(source.formats(), None);
         assert!(source.tech().is_empty());
     }
 }
@@ -102,14 +107,20 @@ fn empty_font_urls_preserve_valid_format_and_technology_hints() {
     else {
         panic!("expected exactly one URL source");
     };
-    let constructed = CssFontFaceUrlSource::try_new(
-        "",
-        Some(CssFontFormatHint::Woff2),
+    let constructed = CssFontFaceUrlSource::new(
+        surgeist_css::CssUrl::new(""),
+        Some(surgeist_css::CssFontFormat::Keyword(
+            CssFontFormatHint::Woff2,
+        )),
         vec![CssFontTechHint::Variations],
-    )
-    .expect("format and technology hints do not make an empty authored URL invalid");
+    );
     assert_eq!(parsed, &constructed);
-    assert_eq!(constructed.format(), Some(&CssFontFormatHint::Woff2));
+    assert_eq!(
+        constructed
+            .format()
+            .and_then(surgeist_css::CssFontFormat::recognized_format),
+        Some(CssFontFormatHint::Woff2)
+    );
     assert_eq!(constructed.tech(), &[CssFontTechHint::Variations]);
 }
 
@@ -121,7 +132,8 @@ fn nonempty_font_urls_remain_authored_values_without_resource_resolution() {
         &urls,
     );
     for authored in urls {
-        let source = CssFontFaceUrlSource::try_new(authored, None, Vec::new()).unwrap();
-        assert_eq!(source.url(), authored);
+        let source =
+            CssFontFaceUrlSource::new(surgeist_css::CssUrl::new(authored), None, Vec::new());
+        assert_eq!(source.url().as_str(), authored);
     }
 }

@@ -269,7 +269,7 @@ fn shorthand_uses_one_cumulative_budget_for_all_components() {
         Some(CssFontStyle::Keyword(CssFontStyleKeyword::Normal)),
         Some(CssFontVariant::Normal),
         Some(CssFontWeight::Absolute(CssAbsoluteFontWeight::Normal)),
-        Some(CssFontStretch::Normal),
+        Some(CssFontWidthKeyword::Normal),
         CssFontSize::Medium,
         Some(CssLineHeight::Normal),
         CssFontFamilyList::try_new(vec![CssFontFamilyName::generic(

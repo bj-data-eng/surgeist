@@ -54,7 +54,7 @@ fn assert_url_payload(name: &str, value: CssKnownPropertyValueRef<'_>, expected:
         CssKnownPropertyValueRef::Mask(value) => {
             let expected_mask = CssMaskList::try_new(vec![
                 CssMaskLayer::try_new(
-                    Some(CssImageValue::Url(CssUrl::try_new(expected).unwrap())),
+                    Some(CssImageValue::Url(CssUrl::new(expected))),
                     None,
                     None,
                     None,
@@ -90,8 +90,8 @@ fn assert_clean_url(name: &str, authored: &str, expected: &str) {
 
 #[test]
 fn empty_url_is_checked_rust_value_and_distinct_from_whitespace() {
-    assert_eq!(CssUrl::try_new("").unwrap().as_str(), "");
-    assert_eq!(CssUrl::try_new(" ").unwrap().as_str(), " ");
+    assert_eq!(CssUrl::new("").as_str(), "");
+    assert_eq!(CssUrl::new(" ").as_str(), " ");
 }
 
 #[test]

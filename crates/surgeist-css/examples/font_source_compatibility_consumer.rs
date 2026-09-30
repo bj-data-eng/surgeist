@@ -15,8 +15,8 @@
 
 use surgeist_css::{
     CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
-    CssFontFaceSource, CssFontFaceUrlSource, CssFontFormatHint, CssFontFormatList,
-    CssFontFormatString, CssFontTechHint, CssRule, parse_sheet,
+    CssFontFaceSource, CssFontFaceUrlSource, CssFontFormat, CssFontFormatHint, CssFontFormatString,
+    CssFontTechHint, CssRule, parse_sheet,
 };
 
 fn parsed_source(hints: &str) -> CssFontFaceUrlSource {
@@ -46,8 +46,15 @@ fn parsed_source(hints: &str) -> CssFontFaceUrlSource {
     url.clone()
 }
 
-fn authored_format(value: &str) -> CssFontFormatList {
-    CssFontFormatList::try_new(vec![CssFontFormatString::try_new(value).unwrap()]).unwrap()
+fn authored_format(value: &str) -> CssFontFormat {
+    CssFontFormat::String(CssFontFormatString::new(value))
+}
+
+fn string_format(source: &CssFontFaceUrlSource) -> &str {
+    let Some(CssFontFormat::String(value)) = source.format() else {
+        panic!("expected a string format");
+    };
+    value.as_str()
 }
 
 fn required(source: &CssFontFaceUrlSource) -> Vec<CssFontTechHint> {
@@ -62,17 +69,19 @@ fn legacy_compatibility_and_construction() {
         ("OPENTYPE-VARIATIONS", CssFontFormatHint::OpenType),
     ] {
         let parsed = parsed_source(&format!("format(\"{authored}\")"));
-        let constructed: CssFontFaceUrlSource = CssFontFaceUrlSource::new_with_formats(
-            "font",
+        let constructed: CssFontFaceUrlSource = CssFontFaceUrlSource::new(
+            surgeist_css::CssUrl::new("font"),
             Some(authored_format(authored)),
             Vec::new(),
         );
         assert_eq!(constructed, parsed);
-        assert_eq!(constructed.format(), Some(&expected));
         assert_eq!(
-            constructed.formats().unwrap().formats()[0].as_str(),
-            authored
+            constructed
+                .format()
+                .and_then(surgeist_css::CssFontFormat::recognized_format),
+            Some(expected)
         );
+        assert_eq!(string_format(&constructed), authored);
         assert!(constructed.tech().is_empty());
         assert_eq!(required(&constructed), [CssFontTechHint::Variations]);
         // Repeated projection must be observationally pure, including authored Eq.
@@ -82,21 +91,20 @@ fn legacy_compatibility_and_construction() {
     }
     let escaped = parsed_source(r#"format("\77 off2-variations")"#);
     assert_eq!(required(&escaped), [CssFontTechHint::Variations]);
-    assert_eq!(
-        escaped.formats().unwrap().formats()[0].as_str(),
-        "woff2-variations"
-    );
-    let literal = CssFontFaceUrlSource::new_with_formats(
-        "font",
+    assert_eq!(string_format(&escaped), "woff2-variations");
+    let literal = CssFontFaceUrlSource::new(
+        surgeist_css::CssUrl::new("font"),
         Some(authored_format(r"\77 off2-variations")),
         Vec::new(),
     );
-    assert_eq!(literal.format(), None);
-    assert!(required(&literal).is_empty());
     assert_eq!(
-        literal.formats().unwrap().formats()[0].as_str(),
-        r"\77 off2-variations"
+        literal
+            .format()
+            .and_then(surgeist_css::CssFontFormat::recognized_format),
+        None
     );
+    assert!(required(&literal).is_empty());
+    assert_eq!(string_format(&literal), r"\77 off2-variations");
     println!("legacy compatibility and construction: ok");
 }
 
@@ -161,9 +169,9 @@ fn conjunctive_technology_requirements() {
         assert_eq!(required(&source), expected, "{hints}");
         assert_eq!(source.tech(), authored, "{hints}");
         assert_eq!(source, before);
-        let reconstructed = CssFontFaceUrlSource::new_with_formats(
-            source.url(),
-            source.formats().cloned(),
+        let reconstructed = CssFontFaceUrlSource::new(
+            source.url().clone(),
+            source.format().cloned(),
             source.tech().to_vec(),
         );
         assert_eq!(reconstructed, source);
@@ -173,9 +181,15 @@ fn conjunctive_technology_requirements() {
 }
 
 fn absent_and_unknown_format_hints() {
-    let absent: CssFontFaceUrlSource = CssFontFaceUrlSource::new_with_formats("", None, Vec::new());
-    assert_eq!(absent.formats(), None);
+    let absent: CssFontFaceUrlSource =
+        CssFontFaceUrlSource::new(surgeist_css::CssUrl::new(""), None, Vec::new());
     assert_eq!(absent.format(), None);
+    assert_eq!(
+        absent
+            .format()
+            .and_then(surgeist_css::CssFontFormat::recognized_format),
+        None
+    );
     assert!(required(&absent).is_empty());
     for authored in [
         "",
@@ -184,14 +198,20 @@ fn absent_and_unknown_format_hints() {
         "woff2-variations ",
         "woff2-variationſ",
     ] {
-        let source = CssFontFaceUrlSource::new_with_formats(
-            "",
+        let source = CssFontFaceUrlSource::new(
+            surgeist_css::CssUrl::new(""),
             Some(authored_format(authored)),
             vec![CssFontTechHint::Palettes, CssFontTechHint::Palettes],
         );
-        assert_eq!(source.url(), "");
-        assert_eq!(source.formats().unwrap().formats()[0].as_str(), authored);
-        assert_eq!(source.format(), None, "{authored}");
+        assert_eq!(source.url().as_str(), "");
+        assert_eq!(string_format(&source), authored);
+        assert_eq!(
+            source
+                .format()
+                .and_then(surgeist_css::CssFontFormat::recognized_format),
+            None,
+            "{authored}"
+        );
         assert_eq!(required(&source), [CssFontTechHint::Palettes]);
         assert_eq!(
             source.tech(),
@@ -199,10 +219,15 @@ fn absent_and_unknown_format_hints() {
         );
         assert_ne!(source, absent);
     }
-    // Existing known-keyword construction remains compatible and contributes no
+    // Keyword construction contributes no
     // technology that the author did not request or a legacy alias did not imply.
-    let keyword =
-        CssFontFaceUrlSource::try_new("font", Some(CssFontFormatHint::Woff2), Vec::new()).unwrap();
+    let keyword = CssFontFaceUrlSource::new(
+        surgeist_css::CssUrl::new("font"),
+        Some(surgeist_css::CssFontFormat::Keyword(
+            CssFontFormatHint::Woff2,
+        )),
+        Vec::new(),
+    );
     assert!(required(&keyword).is_empty());
     assert_eq!(keyword, parsed_source("format(woff2)"));
     for ordinary in [
@@ -253,8 +278,14 @@ fn format_equivalence_and_authored_equality() {
     assert!(
         truetype
             .format()
+            .and_then(surgeist_css::CssFontFormat::recognized_format)
             .unwrap()
-            .is_equivalent_to(*opentype.format().unwrap())
+            .is_equivalent_to(
+                opentype
+                    .format()
+                    .and_then(surgeist_css::CssFontFormat::recognized_format)
+                    .unwrap()
+            )
     );
     assert_eq!(required(&truetype), required(&opentype));
     println!("format equivalence and authored equality: ok");

@@ -123,7 +123,6 @@ fn selectors3_pseudos_legacy_forms_and_repeated_ids_are_typed() {
         panic!("expected preserved child combinator")
     };
     assert_eq!(complex.first().ids(), ["first", "second"]);
-    assert_eq!(complex.first().key().map(String::as_str), Some("second"));
     assert_eq!(complex.first().classes(), ["card"]);
     assert_eq!(complex.first().attributes().len(), 1);
     let [subject] = complex.rest() else {
@@ -376,7 +375,6 @@ fn namespace_qualified_type_universal_and_attribute_selectors_use_active_binding
     ));
     assert_eq!(named_type_name.local_name(), Some("a"));
     assert!(!named_type_name.is_universal());
-    assert_eq!(named_type.tag().map(String::as_str), Some("a"));
 
     let named_universal = compound_selector(&report.syntax().rules()[3]);
     let named_universal = named_universal

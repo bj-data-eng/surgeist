@@ -14,3 +14,12 @@ macro_rules! ordinary_face {
             })
     }};
 }
+
+macro_rules! string_format {
+    ($source:expr) => {{
+        let Some(surgeist_css::CssFontFormat::String(value)) = $source.format() else {
+            panic!("expected an authored string format");
+        };
+        value.as_str()
+    }};
+}

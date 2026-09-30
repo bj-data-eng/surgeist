@@ -65,8 +65,6 @@ fn nine_keywords_have_the_fonts_four_exact_percentage_mapping() {
         (ExtraExpanded, "extra-expanded", "150%"),
         (UltraExpanded, "ultra-expanded", "200%"),
     ] {
-        let legacy: CssFontStretch = keyword;
-        assert_eq!(legacy, keyword);
         assert_eq!(
             keyword.percentage().serialize_specified().unwrap(),
             percentage

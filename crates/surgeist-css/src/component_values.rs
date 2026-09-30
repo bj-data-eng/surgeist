@@ -301,8 +301,6 @@ pub enum CssNumericTokenKind {
 
 #[derive(Clone, Eq, PartialEq)]
 struct NumericToken {
-    // Cached solely for legacy f32 consumers; exact spelling owns typed numerics.
-    tokenizer_value_bits: u32,
     representation: Box<str>,
     kind: CssNumericTokenKind,
     has_sign: bool,
@@ -1453,16 +1451,24 @@ mod tests {
     }
 
     #[test]
-    fn private_structural_comparison_retains_exact_token_representation() {
-        let parsed = parse_component_values("2px").unwrap();
-        let parsed = &parsed.items()[0];
-        let programmatic = CssComponentValue::try_dimension("2", "px").unwrap();
-        assert_ne!(parsed, &programmatic);
-        assert!(parsed.structural_eq_ignoring_origin(&programmatic));
-        assert!(
-            !parsed.structural_eq_ignoring_origin(
-                &CssComponentValue::try_dimension("02", "px").unwrap()
-            )
-        );
+    fn private_structural_comparison_retains_exact_numeric_spelling_without_origins() {
+        for (spelling, different) in [
+            ("2px", "02px"),
+            ("+01", "01"),
+            ("1e50", "1E50"),
+            ("-0.0%", "0.0%"),
+            ("1e-50PX", "1e-50px"),
+        ] {
+            let parsed = parse_component_values(spelling).unwrap();
+            let parsed = &parsed.items()[0];
+            let programmatic = CssComponentValue::try_token(spelling).unwrap();
+            assert_ne!(parsed, &programmatic);
+            assert!(parsed.structural_eq_ignoring_origin(&programmatic));
+            assert!(
+                !parsed.structural_eq_ignoring_origin(
+                    &CssComponentValue::try_token(different).unwrap()
+                )
+            );
+        }
     }
 }

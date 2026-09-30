@@ -492,7 +492,7 @@ pub(super) fn consume_selector_whitespace<'i, 't>(
 
 struct ParsedTypeSelector {
     name: CssQualifiedSelectorName,
-    legacy_projection: bool,
+    unqualified_any_namespace: bool,
 }
 
 fn parse_type_selector<'i, 't>(
@@ -532,25 +532,27 @@ fn parse_type_selector<'i, 't>(
                     };
                     Ok(Some(ParsedTypeSelector {
                         name,
-                        legacy_projection: false,
+                        unqualified_any_namespace: false,
                     }))
                 }
                 Ok(_) => {
                     input.reset(&after_ident);
                     let namespace = recovery.unqualified_type_namespace();
-                    let legacy_projection = matches!(namespace, CssNamespaceConstraint::Any);
+                    let unqualified_any_namespace =
+                        matches!(namespace, CssNamespaceConstraint::Any);
                     Ok(Some(ParsedTypeSelector {
                         name: CssQualifiedSelectorName::new(namespace, prefix_or_name),
-                        legacy_projection,
+                        unqualified_any_namespace,
                     }))
                 }
                 Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
                     input.reset(&after_ident);
                     let namespace = recovery.unqualified_type_namespace();
-                    let legacy_projection = matches!(namespace, CssNamespaceConstraint::Any);
+                    let unqualified_any_namespace =
+                        matches!(namespace, CssNamespaceConstraint::Any);
                     Ok(Some(ParsedTypeSelector {
                         name: CssQualifiedSelectorName::new(namespace, prefix_or_name),
-                        legacy_projection,
+                        unqualified_any_namespace,
                     }))
                 }
                 Err(error) => Err(selector_basic(error)),
@@ -568,7 +570,7 @@ fn parse_type_selector<'i, 't>(
                 };
                 Ok(Some(ParsedTypeSelector {
                     name,
-                    legacy_projection: false,
+                    unqualified_any_namespace: false,
                 }))
             } else {
                 input.reset(&after_star);
@@ -576,7 +578,7 @@ fn parse_type_selector<'i, 't>(
                     name: CssQualifiedSelectorName::universal(
                         recovery.unqualified_type_namespace(),
                     ),
-                    legacy_projection: false,
+                    unqualified_any_namespace: false,
                 }))
             }
         }
@@ -590,7 +592,7 @@ fn parse_type_selector<'i, 't>(
             };
             Ok(Some(ParsedTypeSelector {
                 name,
-                legacy_projection: false,
+                unqualified_any_namespace: false,
             }))
         }
         _ => {
@@ -644,7 +646,8 @@ fn parse_compound_selector_model_with_options<'i, 't>(
     }
 
     let parsed_type_selector = parse_type_selector(input, recovery)?;
-    let type_selector = parsed_type_selector.map(|parsed| (parsed.name, parsed.legacy_projection));
+    let type_selector =
+        parsed_type_selector.map(|parsed| (parsed.name, parsed.unqualified_any_namespace));
     let mut scope_anchors = 0;
     let mut nesting_selectors = 0;
     let mut id_names = Vec::new();
@@ -796,16 +799,18 @@ fn compound_selector_to_selector(selector: CssCompoundSelector) -> CssSelector {
     ) {
         return CssSelector::Class(class.clone());
     }
-    if selector.has_legacy_type_projection()
+    if selector.has_unqualified_any_namespace()
         && let (Some(tag), [], [], [], []) = (
-            selector.tag(),
+            selector
+                .type_selector()
+                .and_then(CssQualifiedSelectorName::local_name),
             selector.ids(),
             selector.classes(),
             selector.attributes(),
             selector.pseudo_classes(),
         )
     {
-        return CssSelector::Tag(tag.clone());
+        return CssSelector::Tag(tag.to_owned());
     }
     if let (None, [key], [], [], []) = (
         selector.type_selector(),

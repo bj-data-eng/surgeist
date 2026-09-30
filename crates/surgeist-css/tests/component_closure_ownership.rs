@@ -143,7 +143,7 @@ fn unquoted_url_tokens_keep_their_eof_closures() {
         else {
             panic!("expected retained URL token: {source}");
         };
-        assert_eq!(url.url(), "valid");
+        assert_eq!(url.url().as_str(), "valid");
         assert_actions(source, 0, 2);
     }
 }

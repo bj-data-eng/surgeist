@@ -185,7 +185,7 @@ fn checked_track_sizes_reject_flexible_minima_and_preserve_exact_lengths() {
 
 #[test]
 fn checked_lists_reject_empty_tracks_and_repeat_cross_products() {
-    let names = CssGridLineNames::try_new(vec![]).unwrap();
+    let names = CssGridLineNames::new(vec![]);
     assert!(
         CssGridTrackRepeatContent::try_new(vec![CssGridTrackRepeatComponent::LineNames(
             names.clone()
@@ -231,7 +231,7 @@ fn checked_lists_reject_empty_tracks_and_repeat_cross_products() {
 
 #[test]
 fn checked_track_graph_rejects_adjacent_line_name_blocks() {
-    let empty = CssGridLineNames::try_new(vec![]).unwrap();
+    let empty = CssGridLineNames::new(vec![]);
     let size =
         CssGridTrackSize::from_breadth(CssGridTrackBreadth::from_length_percentage(length("10")));
     assert!(

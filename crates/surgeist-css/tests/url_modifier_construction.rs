@@ -181,7 +181,7 @@ fn ordinary_and_checked_import_and_font_urls_keep_original_sources() {
     let [CssFontFaceSource::Url(font)] = sources.sources() else {
         panic!("font URL");
     };
-    assert_parsed_child_from_source(modifier(font.authored_url()), source, "fonted");
+    assert_parsed_child_from_source(modifier(font.url()), source, "fonted");
 
     let authored_import = "@import src(\"a\" m(imported));";
     let components = parse_component_values(authored_import).unwrap();
@@ -221,7 +221,7 @@ fn ordinary_and_checked_import_and_font_urls_keep_original_sources() {
     let [CssFontFaceSource::Url(font)] = sources.sources() else {
         panic!("checked font URL");
     };
-    let [child] = modifier(font.authored_url()).argument_components().items() else {
+    let [child] = modifier(font.url()).argument_components().items() else {
         panic!("one child");
     };
     let CssValueOrigin::Parsed(origin) = child.origin() else {
@@ -319,7 +319,7 @@ fn checked_property_import_and_font_preserve_programmatic_modifier_children() {
         panic!("checked font URL");
     };
     assert!(matches!(
-        modifier(font.authored_url()).argument_components().items()[0].origin(),
+        modifier(font.url()).argument_components().items()[0].origin(),
         CssValueOrigin::Programmatic
     ));
 }

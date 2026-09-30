@@ -23,9 +23,6 @@ pub enum CssFontWidthKeyword {
     UltraExpanded,
 }
 
-/// Historical keyword type name for the unchanged `font` shorthand component.
-pub type CssFontStretch = CssFontWidthKeyword;
-
 /// An exact authored CSS Fonts 4 `font-width` property value.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]

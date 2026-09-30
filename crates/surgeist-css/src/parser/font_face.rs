@@ -512,7 +512,7 @@ fn parse_font_face_source<'i, 't>(
     }
 
     let url = parse_font_source_url(input, numeric)?;
-    let mut formats = None;
+    let mut format = None;
     let mut tech = Vec::new();
     let mut saw_tech = false;
 
@@ -528,14 +528,14 @@ fn parse_font_face_source<'i, 't>(
                     "font source format hint must precede tech hint",
                 ));
             }
-            if formats.is_some() {
+            if format.is_some() {
                 return Err(unsupported_value(
                     input,
                     None,
                     "font source has duplicate format hint",
                 ));
             }
-            formats = Some(input.parse_nested_block(parse_font_format_list)?);
+            format = Some(input.parse_nested_block(parse_font_format)?);
         } else if input
             .try_parse(|input| input.expect_function_matching("tech"))
             .is_ok()
@@ -558,8 +558,8 @@ fn parse_font_face_source<'i, 't>(
         }
     }
 
-    Ok(CssFontFaceSource::Url(CssFontFaceUrlSource::new_with_url(
-        url, formats, tech,
+    Ok(CssFontFaceSource::Url(CssFontFaceUrlSource::new(
+        url, format, tech,
     )))
 }
 
@@ -578,9 +578,9 @@ fn parse_local_name<'i, 't>(
     Ok(name)
 }
 
-fn parse_font_format_list<'i, 't>(
+fn parse_font_format<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontFormatList, ParseError<'i, Error>> {
+) -> std::result::Result<CssFontFormat, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let format = if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         let hint = CssFontFormatHint::from_ascii_name(ident.as_bytes()).ok_or_else(|| {
@@ -590,14 +590,14 @@ fn parse_font_format_list<'i, 't>(
                 format!("unsupported font format hint `{ident}`"),
             )
         })?;
-        CssFontFormatString::new(hint.as_str())
+        CssFontFormat::Keyword(hint)
     } else {
         let value = input.expect_string_cloned().map_err(basic)?;
-        CssFontFormatString::new(value.to_string())
+        CssFontFormat::String(CssFontFormatString::new(value.to_string()))
     };
     input.expect_exhausted().map_err(basic)?;
 
-    Ok(CssFontFormatList::new(format))
+    Ok(format)
 }
 
 fn parse_font_tech_hints<'i, 't>(

@@ -22,7 +22,7 @@ fn assert_url(source: &str, expected: &str) -> CssParseReport<CssSheet> {
     else {
         panic!("expected one retained URL source: {source}: {face:?}");
     };
-    assert_eq!(url.url(), expected, "decoded URL: {source}");
+    assert_eq!(url.url().as_str(), expected, "decoded URL: {source}");
     report
 }
 

@@ -28,10 +28,7 @@ fn authored(source: &CssDeclaration) -> &CssImageValueList {
 #[test]
 fn mask_shorthand_retains_url_and_none_and_rejects_gradients() {
     for (css, image) in [
-        (
-            "url(mask.svg)",
-            CssImageValue::Url(CssUrl::try_new("mask.svg").unwrap()),
-        ),
+        ("url(mask.svg)", CssImageValue::Url(CssUrl::new("mask.svg"))),
         ("none", CssImageValue::None),
     ] {
         let source = declaration(&format!("mask: {css}"));
@@ -64,7 +61,7 @@ fn mask_layer_construction_preserves_the_supported_image_subset_and_nonempty_bou
     assert!(CssMaskLayer::try_new(Some(CssImageValue::None), None, None, None).is_some());
     assert!(
         CssMaskLayer::try_new(
-            Some(CssImageValue::Url(CssUrl::try_new("mask.svg").unwrap())),
+            Some(CssImageValue::Url(CssUrl::new("mask.svg"))),
             None,
             None,
             None,

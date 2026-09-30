@@ -653,8 +653,8 @@ fn empty_media_list_is_valid_authored_and_constructed_syntax() {
     };
     assert!(media.query().queries().is_empty());
     assert_eq!(
-        surgeist_css::CssMediaQueryList::try_new(Vec::new()).as_ref(),
-        Some(media.query())
+        &surgeist_css::CssMediaQueryList::new(Vec::new()),
+        media.query()
     );
 
     assert_eq!(

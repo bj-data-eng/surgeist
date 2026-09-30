@@ -82,7 +82,7 @@ fn font_face_family_descriptor_rejects_reserved_default_tokens() {
         else {
             panic!("unrelated source descriptor must survive: {source}; {report:?}");
         };
-        assert_eq!(url.url(), "fallback.woff2");
+        assert_eq!(url.url().as_str(), "fallback.woff2");
         let [diagnostic] = report.diagnostics() else {
             panic!("expected one invalid family descriptor: {source}; {report:?}");
         };

@@ -73,8 +73,13 @@ fn legacy_variation_strings_project_to_their_base_format_without_rewriting_autho
         let [url] = urls.as_slice() else {
             panic!("expected exactly one source");
         };
-        assert_eq!(url.format(), Some(&expected), "{authored}");
-        assert_eq!(url.formats().unwrap().formats()[0].as_str(), authored);
+        assert_eq!(
+            url.format()
+                .and_then(surgeist_css::CssFontFormat::recognized_format),
+            Some(expected),
+            "{authored}"
+        );
+        assert_eq!(string_format!(url), authored);
         assert!(
             url.tech().is_empty(),
             "variations was not authored in tech()"
@@ -119,8 +124,13 @@ fn compatibility_matching_preserves_ascii_case_and_decodes_css_string_escapes() 
         let [url] = urls.as_slice() else {
             panic!("expected exactly one source");
         };
-        assert_eq!(url.format(), Some(&expected), "{argument}");
-        assert_eq!(url.formats().unwrap().formats()[0].as_str(), decoded);
+        assert_eq!(
+            url.format()
+                .and_then(surgeist_css::CssFontFormat::recognized_format),
+            Some(expected),
+            "{argument}"
+        );
+        assert_eq!(string_format!(url), decoded);
         assert!(url.tech().is_empty());
     }
 }
@@ -136,12 +146,16 @@ fn missing_and_unrecognized_format_hints_remain_distinct_authored_states() {
     ));
     let urls = url_sources(&report);
     assert_eq!(urls.len(), 3);
-    assert_eq!(urls[0].formats(), None);
+    assert_eq!(urls[0].format(), None);
     for (url, authored) in [(urls[1], ""), (urls[2], "zebra")] {
-        assert_eq!(url.formats().unwrap().formats()[0].as_str(), authored);
+        assert_eq!(string_format!(url), authored);
     }
     for url in urls {
-        assert_eq!(url.format(), None);
+        assert_eq!(
+            url.format()
+                .and_then(surgeist_css::CssFontFormat::recognized_format),
+            None
+        );
         assert!(url.tech().is_empty());
     }
 }
@@ -163,8 +177,13 @@ fn compatibility_does_not_trim_strings_fold_unicode_or_accept_arbitrary_variatio
         let [url] = urls.as_slice() else {
             panic!("expected exactly one source");
         };
-        assert_eq!(url.format(), None, "{authored}");
-        assert_eq!(url.formats().unwrap().formats()[0].as_str(), authored);
+        assert_eq!(
+            url.format()
+                .and_then(surgeist_css::CssFontFormat::recognized_format),
+            None,
+            "{authored}"
+        );
+        assert_eq!(string_format!(url), authored);
         assert!(url.tech().is_empty());
     }
 }
@@ -179,11 +198,12 @@ fn legacy_format_projection_preserves_explicit_technology_order_and_repetition()
     let [url] = urls.as_slice() else {
         panic!("expected exactly one source");
     };
-    assert_eq!(url.format(), Some(&CssFontFormatHint::Woff2));
     assert_eq!(
-        url.formats().unwrap().formats()[0].as_str(),
-        "woff2-variations"
+        url.format()
+            .and_then(surgeist_css::CssFontFormat::recognized_format),
+        Some(CssFontFormatHint::Woff2)
     );
+    assert_eq!(string_format!(url), "woff2-variations");
     assert_eq!(
         url.tech(),
         [
@@ -218,7 +238,7 @@ fn string_compatibility_does_not_expand_the_keyword_or_hint_function_grammar() {
         assert_eq!(
             url_sources(&report)
                 .iter()
-                .map(|url| url.url())
+                .map(|url| url.url().as_str())
                 .collect::<Vec<_>>(),
             ["first", "last"],
             "{invalid}"

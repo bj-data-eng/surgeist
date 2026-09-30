@@ -11,7 +11,6 @@ pub enum CssSelector {
     Complex(CssComplexSelector),
 }
 
-#[allow(dead_code)] // Staged for native nesting flattening in the parser.
 impl CssSelector {
     #[must_use]
     pub fn has_pseudo_elements(&self) -> bool {
@@ -20,53 +19,6 @@ impl CssSelector {
             Self::PseudoClass(pseudo_class) => pseudo_class.has_pseudo_elements(),
             Self::Compound(selector) => selector.has_pseudo_elements(),
             Self::Complex(selector) => selector.has_pseudo_elements(),
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn combine_descendant(parent: Self, child: Self) -> Option<Self> {
-        let (child_first, child_rest) = child.into_complex_parts();
-        let combined =
-            Self::combine_with_combinator(parent, CssSelectorCombinator::Descendant, child_first)?;
-        let (first, mut rest) = combined.into_complex_parts();
-        rest.extend(child_rest);
-        CssComplexSelector::try_new(first, rest).map(Self::Complex)
-    }
-
-    #[must_use]
-    pub(crate) fn combine_with_combinator(
-        parent: Self,
-        combinator: CssSelectorCombinator,
-        child: CssCompoundSelector,
-    ) -> Option<Self> {
-        let (first, mut rest) = parent.into_complex_parts();
-        rest.push(CssComplexSelectorPart::new(combinator, child));
-        CssComplexSelector::try_new(first, rest).map(Self::Complex)
-    }
-
-    #[must_use]
-    pub(crate) fn append_to_subject(parent: Self, suffix: CssCompoundSelector) -> Option<Self> {
-        if suffix.type_selector().is_some() || !suffix.ids().is_empty() {
-            return None;
-        }
-
-        match parent {
-            Self::Complex(mut selector) => {
-                selector.append_to_subject(suffix)?;
-                Some(Self::Complex(selector))
-            }
-            selector => {
-                let mut selector = selector.into_compound_selector();
-                selector.append_suffix(suffix)?;
-                Some(Self::Compound(selector))
-            }
-        }
-    }
-
-    fn into_complex_parts(self) -> (CssCompoundSelector, Vec<CssComplexSelectorPart>) {
-        match self {
-            Self::Complex(selector) => selector.into_parts(),
-            selector => (selector.into_compound_selector(), Vec::new()),
         }
     }
 
@@ -134,17 +86,6 @@ impl CssComplexSelector {
                 .rest
                 .iter()
                 .any(|part| part.selector().has_pseudo_elements())
-    }
-
-    #[allow(dead_code)] // Used by staged selector composition helpers.
-    fn into_parts(self) -> (CssCompoundSelector, Vec<CssComplexSelectorPart>) {
-        (self.first, self.rest)
-    }
-
-    #[allow(dead_code)] // Used by staged selector composition helpers.
-    fn append_to_subject(&mut self, suffix: CssCompoundSelector) -> Option<()> {
-        let subject = self.rest.last_mut()?;
-        subject.selector.append_suffix(suffix)
     }
 }
 
@@ -1028,11 +969,6 @@ impl CssQualifiedSelectorName {
     pub const fn is_universal(&self) -> bool {
         self.local_name.is_none()
     }
-
-    #[must_use]
-    const fn local_name_string(&self) -> Option<&String> {
-        self.local_name.as_ref()
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1063,7 +999,6 @@ pub struct CssCompoundSelector {
     scope_anchors: usize,
     nesting_selectors: usize,
     type_selector: Option<Box<(CssQualifiedSelectorName, bool)>>,
-    tag: Option<String>,
     ids: Vec<String>,
     classes: Vec<String>,
     attributes: Vec<CssAttributeSelector>,
@@ -1141,15 +1076,10 @@ impl CssCompoundSelector {
         pseudo_classes: Vec<CssPseudoClass>,
         pseudo_elements: Option<CssPseudoElementSequence>,
     ) -> Self {
-        let tag = type_selector
-            .as_ref()
-            .and_then(|(type_selector, _)| type_selector.local_name_string())
-            .cloned();
         Self {
             scope_anchors,
             nesting_selectors: 0,
             type_selector: type_selector.map(Box::new),
-            tag,
             ids,
             classes,
             attributes,
@@ -1190,7 +1120,7 @@ impl CssCompoundSelector {
         self.scope_anchors
     }
 
-    /// Returns the current namespace-aware type or universal selector.
+    /// Returns the authored namespace-aware type or universal selector.
     #[must_use]
     pub fn type_selector(&self) -> Option<&CssQualifiedSelectorName> {
         match self.type_selector.as_deref() {
@@ -1199,23 +1129,10 @@ impl CssCompoundSelector {
         }
     }
 
+    /// Whether the authored unqualified form has Any namespace; a simple tag also needs a local name.
     #[must_use]
-    pub(crate) fn has_legacy_type_projection(&self) -> bool {
+    pub(crate) fn has_unqualified_any_namespace(&self) -> bool {
         matches!(self.type_selector.as_deref(), Some((_, true)))
-    }
-
-    /// Returns the local type-name compatibility projection.
-    ///
-    /// Universal selectors have no tag projection.
-    #[must_use]
-    pub const fn tag(&self) -> Option<&String> {
-        self.tag.as_ref()
-    }
-
-    /// Returns the last authored ID as the I01 compatibility projection.
-    #[must_use]
-    pub fn key(&self) -> Option<&String> {
-        self.ids.last()
     }
 
     /// Returns the parser-retained IDs in authored order.
@@ -1247,21 +1164,6 @@ impl CssCompoundSelector {
     #[must_use]
     pub const fn has_pseudo_elements(&self) -> bool {
         self.pseudo_elements.is_some()
-    }
-
-    #[allow(dead_code)] // Used by staged selector composition helpers.
-    fn append_suffix(&mut self, suffix: Self) -> Option<()> {
-        debug_assert!(suffix.type_selector.is_none());
-        debug_assert!(suffix.ids.is_empty());
-        debug_assert!(!suffix.has_scope_anchor());
-        if self.pseudo_elements.is_some() {
-            return None;
-        }
-        self.classes.extend(suffix.classes);
-        self.attributes.extend(suffix.attributes);
-        self.pseudo_classes.extend(suffix.pseudo_classes);
-        self.pseudo_elements = suffix.pseudo_elements;
-        Some(())
     }
 }
 
