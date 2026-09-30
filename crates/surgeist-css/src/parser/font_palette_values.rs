@@ -363,7 +363,7 @@ fn parse_index<'i>(
     let value = match input.next().map_err(basic)? {
         Token::Number { .. } => {
             input.reset(&state);
-            super::values::parse_integer_literal(input, numeric)?
+            CssIntegerValue::Literal(super::values::parse_integer_literal(input, numeric)?)
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             let expression = super::values::parse_numeric_function(

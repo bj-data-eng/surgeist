@@ -5,14 +5,15 @@
 //! https://www.w3.org/TR/2023/CRD-css-easing-1-20230213/#step-easing-functions
 
 use surgeist_css::{
-    CssIntegerCalculation, CssStepCount, CssStepPosition, CssSteps, parse_component_values,
+    CssIntegerCalculation, CssPositiveIntegerValue, CssStepPosition, CssSteps,
+    parse_component_values,
 };
 
 fn admitted(root: &str, position: Option<CssStepPosition>) -> bool {
     let calculation =
         CssIntegerCalculation::try_from_components(parse_component_values(root).unwrap())
             .expect("integer-domain calculation root");
-    CssSteps::try_new(CssStepCount::from_calculation(calculation), position).is_some()
+    CssSteps::try_new(CssPositiveIntegerValue::Calculation(calculation), position).is_some()
 }
 
 #[test]

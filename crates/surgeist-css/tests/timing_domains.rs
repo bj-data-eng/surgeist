@@ -3,9 +3,9 @@ use surgeist_css::{
     CssAnimationIterationCountList, CssAnimationIterationNumber, CssAnimationName,
     CssAnimationPlayState, CssCalculationExpressionRef, CssCalculationType, CssDelay, CssDelayList,
     CssDelayLiteral, CssDuration, CssDurationList, CssDurationLiteral, CssEasing, CssEasingKeyword,
-    CssErrorCode, CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction, CssSourcePosition,
-    CssStepPosition, CssTimeUnit, CssTokenKind, CssTransitionProperty, ErrorKind,
-    parse_style_attribute,
+    CssErrorCode, CssKnownProperty, CssKnownPropertyValueRef, CssPositiveIntegerValue,
+    CssRecoveryAction, CssSourcePosition, CssStepPosition, CssTimeUnit, CssTokenKind,
+    CssTransitionProperty, ErrorKind, parse_style_attribute,
 };
 
 fn for_each_permutation(
@@ -458,7 +458,7 @@ fn timing_shorthands_propagate_typed_cubic_and_step_values() {
     assert!(matches!(
         transition.transitions().values()[1].timing_function(),
         Some(CssEasing::Steps(steps))
-            if steps.count().literal() == Some(2)
+            if matches!(steps.count(), CssPositiveIntegerValue::Literal(value) if value.integer().numeric().representation() == "2")
                 && steps.position() == Some(CssStepPosition::JumpNone)
     ));
 
@@ -473,7 +473,7 @@ fn timing_shorthands_propagate_typed_cubic_and_step_values() {
     assert!(matches!(
         animation.animations().values()[0].timing_function(),
         Some(CssEasing::Steps(steps))
-            if steps.count().literal() == Some(3)
+            if matches!(steps.count(), CssPositiveIntegerValue::Literal(value) if value.integer().numeric().representation() == "3")
                 && steps.position() == Some(CssStepPosition::JumpBoth)
     ));
 }

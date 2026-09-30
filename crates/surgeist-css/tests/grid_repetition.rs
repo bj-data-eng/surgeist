@@ -61,7 +61,7 @@ fn grid_repeat_models_accept_each_structural_language() {
     let CssGridGeneralTrackComponent::Repeat(repeat) = &general.components()[1] else {
         panic!("integer repeat")
     };
-    assert_eq!(repeat.count().value(), 2);
+    assert_eq!(repeat.count().integer().numeric().representation(), "2");
 
     let CssKnownPropertyValueRef::GridTemplateRows(rows) = report.syntax()[1]
         .known()

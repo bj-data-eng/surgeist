@@ -266,33 +266,19 @@ fn parse_steps<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssSteps, ParseError<'i, Error>> {
-    let numeric_start = input.state();
     let count_location = input.current_source_location();
-    let count = match input.next().map_err(basic)? {
-        Token::Number {
-            int_value: Some(value),
-            ..
-        } => CssStepCount::try_literal(*value).ok_or_else(|| {
-            unsupported_value_at(
-                count_location,
-                None,
-                "steps() count must be a positive integer",
-            )
-        })?,
-        Token::Number { .. } => {
-            return Err(unsupported_value_at(
-                count_location,
-                None,
-                "steps() count must be an integer",
-            ));
+    let count = match super::values::parse_integer_value(input, numeric)? {
+        CssIntegerValue::Literal(literal) => {
+            let literal = CssPositiveIntegerLiteral::try_new(literal).ok_or_else(|| {
+                unsupported_value_at(
+                    count_location,
+                    None,
+                    "steps() count must be a positive integer",
+                )
+            })?;
+            CssPositiveIntegerValue::Literal(literal)
         }
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            let calculation =
-                parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Integer)
-                    .map(CssIntegerCalculation::from_expression)?;
-            CssStepCount::from_calculation(calculation)
-        }
-        token => return Err(count_location.new_unexpected_token_error::<Error>(token.clone())),
+        CssIntegerValue::Calculation(value) => CssPositiveIntegerValue::Calculation(value),
     };
 
     let position = if input.is_exhausted() {

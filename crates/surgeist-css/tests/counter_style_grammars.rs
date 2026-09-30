@@ -143,23 +143,23 @@ fn counter_style_descriptor_models_preserve_authored_duplicates_and_effective_la
     assert_eq!(ranges.ranges().len(), 2);
     assert_eq!(
         ranges.ranges()[0].lower(),
-        CssCounterStyleRangeBound::Infinite
+        &CssCounterStyleRangeBound::Infinite
     );
-    assert_eq!(
+    assert!(matches!(
         ranges.ranges()[0].upper(),
-        CssCounterStyleRangeBound::Integer(-1)
-    );
-    assert_eq!(
+        CssCounterStyleRangeBound::Integer(value) if value.numeric().representation() == "-1"
+    ));
+    assert!(matches!(
         ranges.ranges()[1].lower(),
-        CssCounterStyleRangeBound::Integer(1)
-    );
+        CssCounterStyleRangeBound::Integer(value) if value.numeric().representation() == "1"
+    ));
     assert_eq!(
         ranges.ranges()[1].upper(),
-        CssCounterStyleRangeBound::Infinite
+        &CssCounterStyleRangeBound::Infinite
     );
 
     let pad = rule.descriptors().pad().unwrap();
-    assert_eq!(pad.minimum_length(), 3);
+    assert_eq!(pad.minimum_length().numeric().representation(), "3");
     assert!(matches!(
         pad.symbol(),
         CssCounterSymbol::String(value) if value.as_str() == "_"
@@ -169,9 +169,9 @@ fn counter_style_descriptor_models_preserve_authored_duplicates_and_effective_la
     assert_eq!(
         tuples
             .iter()
-            .map(|tuple| tuple.weight())
+            .map(|tuple| tuple.weight().numeric().representation())
             .collect::<Vec<_>>(),
-        vec![100, 10, 1, 0]
+        vec!["100", "10", "1", "0"]
     );
     assert!(matches!(
         rule.descriptors().speak_as().map(|value| value.value()),
@@ -209,7 +209,15 @@ fn invalid_counter_style_descriptor_values_drop_only_the_descriptor_and_keep_eff
     assert!(
         matches!(rule.descriptors().range().unwrap().value(), CssCounterStyleRange::Ranges(ranges) if ranges.ranges().len() == 1)
     );
-    assert_eq!(rule.descriptors().pad().unwrap().minimum_length(), 2);
+    assert_eq!(
+        rule.descriptors()
+            .pad()
+            .unwrap()
+            .minimum_length()
+            .numeric()
+            .representation(),
+        "2"
+    );
     assert_eq!(rule.descriptors().fallback().unwrap().as_str(), "decimal");
     assert!(matches!(
         rule.descriptors().speak_as().map(|value| value.value()),
@@ -281,7 +289,7 @@ fn counter_style_system_model_retains_fixed_and_extends_forms() {
     };
     assert!(matches!(
         fixed.descriptors().system().map(|value| value.value()),
-        Some(CssCounterStyleSystem::Fixed(value)) if value.first_symbol_value() == Some(-2)
+        Some(CssCounterStyleSystem::Fixed(value)) if value.first_symbol_value().is_some_and(|integer| integer.numeric().representation() == "-2")
     ));
     assert!(matches!(
         extended.descriptors().system().map(|value| value.value()),

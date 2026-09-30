@@ -10185,7 +10185,10 @@ fn checked_grid_constructors_reject_parser_invalid_states() {
     assert_eq!(CssCustomIdent::try_new("auto"), None);
     assert_eq!(CssGridLineNames::new(Vec::new()).names(), &[]);
     assert_eq!(CssGridGeneralTrackList::try_new(Vec::new()), None);
-    assert_eq!(CssGridRepeatInteger::try_new(0), None);
+    assert_eq!(
+        CssPositiveIntegerLiteral::try_new(CssIntegerLiteral::from_i32(0)),
+        None
+    );
     assert_eq!(CssGridTrackSizeList::try_new(Vec::new()), None);
     assert!(CssGridTemplateAreas::try_rows(Vec::new()).is_err());
     assert_eq!(

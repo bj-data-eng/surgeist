@@ -1,7 +1,7 @@
 use super::values::parse_length_percentage;
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
-use super::values::{next_is_delim, parse_custom_ident_from_str_at, parse_positive_integer};
+use super::values::{next_is_delim, parse_custom_ident_from_str_at, parse_integer_literal};
 use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
@@ -146,7 +146,7 @@ fn parse_grid_repeat<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<ParsedGridTrackComponent, ParseError<'i, Error>> {
     enum Count {
-        Integer(i32),
+        Integer(CssPositiveIntegerLiteral),
         Auto(CssGridAutoRepeatKind),
     }
 
@@ -161,7 +161,15 @@ fn parse_grid_repeat<'i, 't>(
             )),
         }
     } else {
-        let count = parse_positive_integer(input, "grid repeat count")?;
+        let location = input.current_source_location();
+        let integer = parse_integer_literal(input, numeric)?;
+        let count = CssPositiveIntegerLiteral::try_new(integer).ok_or_else(|| {
+            unsupported_value_at(
+                location,
+                None,
+                "grid repeat count must be a positive integer",
+            )
+        })?;
         Count::Integer(count)
     };
 
@@ -175,7 +183,7 @@ fn parse_grid_repeat<'i, 't>(
 fn parse_integer_grid_repeat<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-    count: i32,
+    count: CssPositiveIntegerLiteral,
 ) -> std::result::Result<ParsedGridTrackComponent, ParseError<'i, Error>> {
     let mut track_components = Vec::new();
     let mut fixed_components = Vec::new();
@@ -217,15 +225,14 @@ fn parse_integer_grid_repeat<'i, 't>(
             "grid repeat content is missing a track",
         ));
     }
-    let count_value = CssGridRepeatInteger::try_new(count).expect("positive repeat count");
     Ok(ParsedGridTrackComponent::IntegerRepeat {
         track: CssGridIntegerTrackRepeat::new(
-            count_value,
+            count.clone(),
             CssGridTrackRepeatContent::try_new(track_components).expect("checked repeat content"),
         ),
         fixed: fixed.then(|| {
             CssGridIntegerFixedRepeat::new(
-                count_value,
+                count,
                 CssGridFixedRepeatContent::try_new(fixed_components)
                     .expect("checked fixed repeat content"),
             )

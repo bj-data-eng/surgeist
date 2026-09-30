@@ -5,12 +5,13 @@ use surgeist_css::{
     CssFlexCalculation, CssGridAutoRepeat, CssGridAutoRepeatKind, CssGridAutoTrackComponent,
     CssGridAutoTrackList, CssGridFixedRepeatComponent, CssGridFixedRepeatContent, CssGridFixedSize,
     CssGridGeneralTrackComponent, CssGridGeneralTrackList, CssGridIntegerTrackRepeat,
-    CssGridLineNames, CssGridRepeatInteger, CssGridTrackBreadth, CssGridTrackList,
-    CssGridTrackRepeatComponent, CssGridTrackRepeatContent, CssGridTrackSize, CssGridTrackSizeList,
-    CssKnownPropertyValueRef, CssLengthPercentageCalculation, CssNumericConstructionErrorKind,
-    CssNumericDimension, CssSpecifiedNonNegativeFlex, CssSpecifiedNonNegativeLengthPercentage,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
-    parse_component_values, parse_style_attribute,
+    CssGridLineNames, CssGridTrackBreadth, CssGridTrackList, CssGridTrackRepeatComponent,
+    CssGridTrackRepeatContent, CssGridTrackSize, CssGridTrackSizeList, CssKnownPropertyValueRef,
+    CssLengthPercentageCalculation, CssNumericConstructionErrorKind, CssNumericDimension,
+    CssPositiveIntegerLiteral, CssSpecifiedNonNegativeFlex,
+    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedValueSerializationErrorKind,
+    CssSpecifiedValueSerializationLimits, CssValueOrigin, parse_component_values,
+    parse_style_attribute,
 };
 
 fn flex(text: &str) -> CssSpecifiedNonNegativeFlex {
@@ -204,8 +205,10 @@ fn checked_lists_reject_empty_tracks_and_repeat_cross_products() {
         size.clone(),
     )])
     .unwrap();
-    let repeat =
-        CssGridIntegerTrackRepeat::new(CssGridRepeatInteger::try_new(2).unwrap(), content.clone());
+    let repeat = CssGridIntegerTrackRepeat::new(
+        CssPositiveIntegerLiteral::try_new(surgeist_css::CssIntegerLiteral::from_i32(2)).unwrap(),
+        content.clone(),
+    );
     let general = CssGridTrackList::general(
         CssGridGeneralTrackList::try_new(vec![CssGridGeneralTrackComponent::Repeat(repeat)])
             .unwrap(),

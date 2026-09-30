@@ -637,7 +637,11 @@ parsed or programmatic origin at every magnitude. Decimal points, exponent
 notation, dimensions and other token kinds are rejected by literal construction.
 `CssIntegerLiteral::from_i32` constructs canonical programmatic tokens for
 machine integers. `is_zero` and `is_negative` classify the exact integer,
-including signed zero, without a machine-range bound. `serialize_specified()`
+including signed zero, without a machine-range bound. `compare_value` returns
+mathematical `Ordering` across signs and arbitrary magnitudes, ignoring explicit
+plus signs, leading zeros and provenance and equating signed zeros. It does not
+change lexical/provenance-sensitive equality or supply an incompatible `Ord`.
+`serialize_specified()`
 removes redundant signs and leading zeros without rounding the magnitude or
 changing the retained token. Its bounded variant charges one input and
 projection node for an ordinary value, then checks canonical output bytes.
@@ -1172,7 +1176,16 @@ omitted second operands and symbolic calculations. `translate3d` keeps a pure
 length on Z while X and Y accept length-percentages; `perspective` keeps a
 checked nonnegative length or `none`. Transform evaluation remains downstream.
 
-Easing values distinguish keywords, `cubic-bezier()`, and `steps()`. Box shadows
+Easing values distinguish keywords, `cubic-bezier()`, and `steps()`.
+`steps()` stores its count as the shared `CssPositiveIntegerValue`: an exact
+`CssPositiveIntegerLiteral` or symbolic `CssIntegerCalculation`.
+`CssSteps::try_new` validates bare calculation tokens as ordinary literals and
+rejects literal one only with `JumpNone`. Genuine function calculations remain
+symbolic even when their authored expression is `calc(1)`. Ordinary zero,
+negative, decimal-point and exponent counts are rejected. Position omission
+remains distinct from explicit `end` or `JumpEnd`.
+
+Box shadows
 and filter `drop-shadow()` use
 different models, so filter shadows cannot contain `inset` or spread. Filter
 lists preserve URL/function order and typed function-specific operands. The
@@ -1408,6 +1421,14 @@ the complete line or shorthand.
 The six Grid repetition consumers expose their authored value through `value()`.
 Grid track lists distinguish general lists from lists containing exactly
 one automatic repetition. Integer and automatic repetitions are non-recursive.
+Integer repeat counts are `CssPositiveIntegerLiteral` values in both
+`CssGridIntegerTrackRepeat` and `CssGridIntegerFixedRepeat`. Constructors store the
+checked exact token, including its sign, leading zeros and origin; `count()`
+borrows that value. Counts remain literal-only and strictly positive. Canonical
+serialization removes redundant plus signs and leading zeros without narrowing
+the magnitude, and charges the count within the enclosing cumulative input,
+projection and output budgets.
+
 The [selected Grid 3 publication](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#intrinsic-auto-repeat)
 admits general track sizes inside automatic repetition, including intrinsic
 keywords, flexible tracks, `minmax()`, and `fit-content()`. Surrounding tracks
@@ -2163,6 +2184,21 @@ the effective last valid occurrence. The model preserves symbolic
 `extends` names, infinite range bounds, nonempty symbol lists, and strictly
 descending additive weights without registering, resolving, inheriting, or
 evaluating a counter style.
+
+The optional `fixed` starting value is `Option<CssIntegerLiteral>`, preserving
+omission separately from explicit `1` and `+0001`. Finite range bounds retain
+`CssIntegerLiteral` beside contextual `Infinite`. `CssCounterStyleRangeInterval::try_new`
+rejects mathematically reversed finite bounds, and `CssCounterStyleRanges::try_new`
+requires a nonempty list while preserving authored interval order.
+`CssCounterStylePad::try_new` and `CssCounterAdditiveTuple::try_new` accept checked
+nonnegative integer tokens, including signed zero, without machine-sized limits.
+`CssCounterAdditiveSymbols::try_new` requires a nonempty list with strictly
+descending mathematical weights, rejecting equal alternate spellings without
+sorting or deduplication. These owners retain exact token components and origins.
+The selected Counter Styles standard permits supported-range clamping; this
+specified-value model preserves exact authored bounds and leaves any implementation
+range policy downstream. Counter integer fields remain literal-only; this model
+does not add a counter-rule serializer.
 
 An invalid or unknown counter-style descriptor is dropped individually with a
 typed `DropDescriptor` diagnostic, preserving valid neighboring descriptors.

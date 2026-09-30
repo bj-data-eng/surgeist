@@ -803,7 +803,9 @@ pub(super) fn parse_z_index<'i, 't>(
         )),
         Token::Number { .. } => {
             input.reset(&numeric_start);
-            parse_integer_literal(input, numeric).map(CssZIndexValue::Integer)
+            parse_integer_literal(input, numeric)
+                .map(CssIntegerValue::Literal)
+                .map(CssZIndexValue::Integer)
         }
         Token::Dimension { unit, .. } => Err(unsupported_value_at(
             location,

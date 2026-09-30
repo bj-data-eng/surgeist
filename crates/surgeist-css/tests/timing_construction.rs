@@ -3,7 +3,8 @@ use surgeist_css::{
     CssAnimationIterationCount, CssAnimationIterationNumber, CssAnimationList, CssAnimationName,
     CssAnimationPlayState, CssCubicBezier, CssDelay, CssDelayLiteral, CssDuration,
     CssDurationLiteral, CssEasing, CssEasingKeyword, CssEasingNumber, CssFiniteNumber,
-    CssKnownPropertyValueRef, CssStepCount, CssStepPosition, CssSteps, CssTimeUnit, CssTransition,
+    CssIntegerLiteral, CssKnownPropertyValueRef, CssPositiveIntegerLiteral,
+    CssPositiveIntegerValue, CssStepPosition, CssSteps, CssTimeUnit, CssTransition,
     CssTransitionList, CssTransitionProperty, parse_style_attribute,
 };
 
@@ -105,14 +106,18 @@ fn easing_construction_checks_bezier_and_step_ranges() {
     );
     assert!(
         CssSteps::try_new(
-            CssStepCount::try_literal(1).unwrap(),
+            CssPositiveIntegerValue::Literal(
+                CssPositiveIntegerLiteral::try_new(CssIntegerLiteral::from_i32(1)).unwrap()
+            ),
             Some(CssStepPosition::JumpNone)
         )
         .is_none()
     );
     assert!(
         CssSteps::try_new(
-            CssStepCount::try_literal(2).unwrap(),
+            CssPositiveIntegerValue::Literal(
+                CssPositiveIntegerLiteral::try_new(CssIntegerLiteral::from_i32(2)).unwrap()
+            ),
             Some(CssStepPosition::JumpNone)
         )
         .is_some()
@@ -134,7 +139,10 @@ fn parsed_symbolic_easing_remains_typed_through_checked_aggregates() {
     let [easing @ CssEasing::Steps(steps)] = wrapper.timing_functions().values() else {
         panic!("one steps function");
     };
-    assert!(steps.count().calculation().is_some());
+    assert!(matches!(
+        steps.count(),
+        CssPositiveIntegerValue::Calculation(_)
+    ));
     assert_eq!(steps.position(), Some(CssStepPosition::JumpNone));
     let transition = CssTransition::try_new(None, None, None, Some(easing.clone())).unwrap();
     let animation = CssAnimation::try_new(CssAnimationComponents {
@@ -143,10 +151,10 @@ fn parsed_symbolic_easing_remains_typed_through_checked_aggregates() {
     })
     .unwrap();
     assert!(
-        matches!(transition.timing_function(), Some(CssEasing::Steps(value)) if value.count().calculation().is_some())
+        matches!(transition.timing_function(), Some(CssEasing::Steps(value)) if matches!(value.count(), CssPositiveIntegerValue::Calculation(_)))
     );
     assert!(
-        matches!(animation.timing_function(), Some(CssEasing::Steps(value)) if value.count().calculation().is_some())
+        matches!(animation.timing_function(), Some(CssEasing::Steps(value)) if matches!(value.count(), CssPositiveIntegerValue::Calculation(_)))
     );
     assert!(animation.name().is_none());
     assert!(animation.duration().is_none());

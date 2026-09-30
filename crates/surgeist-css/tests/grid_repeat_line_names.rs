@@ -172,7 +172,7 @@ fn ordered_repeat_content(
             let [CssGridGeneralTrackComponent::Repeat(repeat)] = list.components() else {
                 panic!("exactly one integer repeat must remain");
             };
-            assert_eq!(repeat.count().value(), 2);
+            assert_eq!(repeat.count().integer().numeric().representation(), "2");
             match (case, repeat.content().components()) {
                 (
                     ContentCase::TypedLeading,

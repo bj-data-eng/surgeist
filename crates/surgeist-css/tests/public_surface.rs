@@ -64,11 +64,22 @@ fn public_surface_exposes_checked_counter_style_descriptor_models() {
         rule.descriptors().range().map(|value| value.value()),
         Some(CssCounterStyleRange::Ranges(ranges)) if ranges.ranges().len() == 2
     ));
-    assert_eq!(rule.descriptors().pad().unwrap().minimum_length(), 3);
+    assert_eq!(
+        rule.descriptors()
+            .pad()
+            .unwrap()
+            .minimum_length()
+            .numeric()
+            .representation(),
+        "3"
+    );
     assert_eq!(rule.descriptors().fallback().unwrap().as_str(), "decimal");
     assert_eq!(
-        rule.descriptors().additive_symbols().unwrap().tuples()[0].weight(),
-        100
+        rule.descriptors().additive_symbols().unwrap().tuples()[0]
+            .weight()
+            .numeric()
+            .representation(),
+        "100"
     );
     assert!(matches!(
         rule.descriptors().speak_as().map(|value| value.value()),

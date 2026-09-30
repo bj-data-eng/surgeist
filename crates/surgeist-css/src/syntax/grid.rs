@@ -28,27 +28,6 @@ impl CssGridLineNames {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssGridRepeatInteger {
-    value: i32,
-}
-
-impl CssGridRepeatInteger {
-    #[must_use]
-    pub const fn try_new(value: i32) -> Option<Self> {
-        if value > 0 {
-            Some(Self { value })
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub const fn value(self) -> i32 {
-        self.value
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssGridAutoFlowAxis {
     Row,
@@ -437,18 +416,21 @@ impl CssGridFixedRepeatContent {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct CssGridIntegerTrackRepeat {
-    count: CssGridRepeatInteger,
+    count: crate::CssPositiveIntegerLiteral,
     content: CssGridTrackRepeatContent,
 }
 
 impl CssGridIntegerTrackRepeat {
-    pub const fn new(count: CssGridRepeatInteger, content: CssGridTrackRepeatContent) -> Self {
+    pub const fn new(
+        count: crate::CssPositiveIntegerLiteral,
+        content: CssGridTrackRepeatContent,
+    ) -> Self {
         Self { count, content }
     }
 
     #[must_use]
-    pub const fn count(&self) -> CssGridRepeatInteger {
-        self.count
+    pub const fn count(&self) -> &crate::CssPositiveIntegerLiteral {
+        &self.count
     }
 
     #[must_use]
@@ -461,18 +443,21 @@ impl CssGridIntegerTrackRepeat {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct CssGridIntegerFixedRepeat {
-    count: CssGridRepeatInteger,
+    count: crate::CssPositiveIntegerLiteral,
     content: CssGridFixedRepeatContent,
 }
 
 impl CssGridIntegerFixedRepeat {
-    pub const fn new(count: CssGridRepeatInteger, content: CssGridFixedRepeatContent) -> Self {
+    pub const fn new(
+        count: crate::CssPositiveIntegerLiteral,
+        content: CssGridFixedRepeatContent,
+    ) -> Self {
         Self { count, content }
     }
 
     #[must_use]
-    pub const fn count(&self) -> CssGridRepeatInteger {
-        self.count
+    pub const fn count(&self) -> &crate::CssPositiveIntegerLiteral {
+        &self.count
     }
 
     #[must_use]
@@ -959,7 +944,7 @@ impl GridSpecified for CssGridIntegerTrackRepeat {
     ) -> GridSerializationResult<()> {
         grid_node(context)?;
         context.append(output, "repeat(")?;
-        context.append(output, &self.count.value().to_string())?;
+        self.count.integer().append_specified(context, output)?;
         context.append(output, ", ")?;
         grid_items(&self.content.components, context, output)?;
         context.append(output, ")")
@@ -974,7 +959,7 @@ impl GridSpecified for CssGridIntegerFixedRepeat {
     ) -> GridSerializationResult<()> {
         grid_node(context)?;
         context.append(output, "repeat(")?;
-        context.append(output, &self.count.value().to_string())?;
+        self.count.integer().append_specified(context, output)?;
         context.append(output, ", ")?;
         grid_items(&self.content.components, context, output)?;
         context.append(output, ")")
