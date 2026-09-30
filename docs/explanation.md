@@ -34,14 +34,12 @@ remain useful provenance.
 
 Every imported crate's `plans` directories are omitted. Source, tests, fixtures,
 and legal material remain with their owning crates, subject to the reviewed
-workspace and tooling adaptations. Root's existing `plans/` is retained. Its
-completed records describe their original source basis and do not override
-current manifests, ownership, or verification policy.
+workspace and tooling adaptations. Current plans live in PISCT ledgers under the
+[repository administration guidance](../.agents/skills/surgeist-admin/SKILL.md).
 
 ## What Remains From The Reset Baseline
 
-The [August 9, 2026 reset specification](../plans/specs/2026-08-09-root-baseline-reset.md)
-records the earlier transition to a small root facade with independent crates.
+The earlier reset established a small root facade with independent crates.
 It retained production path dependencies, compatible feature forwards, direct
 reexports, and root-owned API audits. It removed former adapters, integration
 tests, requirements, examples, the native development harness, and a fixture
@@ -63,9 +61,7 @@ CPU-heavy layout suites, GPU tests, platform hosts, or browser tooling.
 Checks run serially with one Cargo job and one test thread, selected for the
 affected domain and supported feature/platform configuration. This makes the
 verification scope deliberate; it does not turn facade success into evidence
-for every crate. The earlier reset's
-[completed cycle](../plans/cycles/2026-08-09-root-baseline-reset-C01-latest-leaves.md)
-is historical evidence, not a current whole-workspace test result.
+for every crate.
 
 The API generator stays in a separate Cargo workspace because its rustdoc
 toolchain and dependencies serve source auditing. The optional layout Dylint
