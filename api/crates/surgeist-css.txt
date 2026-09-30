@@ -2491,6 +2491,7 @@ pub surgeist_css::CssLonghandValueRef::AlignItems(&'a surgeist_css::CssAlignItem
 pub surgeist_css::CssLonghandValueRef::AlignSelf(&'a surgeist_css::CssAlignSelfValue)
 pub surgeist_css::CssLonghandValueRef::AspectRatio(&'a surgeist_css::CssAspectRatioValue)
 pub surgeist_css::CssLonghandValueRef::BackgroundImage(&'a surgeist_css::CssImageValueList)
+pub surgeist_css::CssLonghandValueRef::BackgroundPosition(&'a surgeist_css::CssBackgroundPositionList)
 pub surgeist_css::CssLonghandValueRef::BlockSize(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::BorderBlockEndColor(&'a surgeist_css::CssColor)
 pub surgeist_css::CssLonghandValueRef::BorderBlockEndStyle(&'a surgeist_css::CssBorderStyle)
@@ -4189,10 +4190,16 @@ impl surgeist_css::CssBackgroundPosition
 pub const fn surgeist_css::CssBackgroundPosition::horizontal(&self) -> &surgeist_css::CssHorizontalPosition
 pub fn surgeist_css::CssBackgroundPosition::try_new(horizontal: surgeist_css::CssHorizontalPosition, vertical: surgeist_css::CssVerticalPosition) -> core::option::Option<Self>
 pub const fn surgeist_css::CssBackgroundPosition::vertical(&self) -> &surgeist_css::CssVerticalPosition
+impl surgeist_css::CssBackgroundPosition
+pub fn surgeist_css::CssBackgroundPosition::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBackgroundPosition::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssBackgroundPositionList
 impl surgeist_css::CssBackgroundPositionList
 pub fn surgeist_css::CssBackgroundPositionList::positions(&self) -> &[surgeist_css::CssBackgroundPosition]
 pub fn surgeist_css::CssBackgroundPositionList::try_new(positions: alloc::vec::Vec<surgeist_css::CssBackgroundPosition>) -> core::option::Option<Self>
+impl surgeist_css::CssBackgroundPositionList
+pub fn surgeist_css::CssBackgroundPositionList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBackgroundPositionList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssBackgroundPositionPropertyValue
 impl surgeist_css::CssBackgroundPositionPropertyValue
 pub fn surgeist_css::CssBackgroundPositionPropertyValue::as_css(&self) -> &str

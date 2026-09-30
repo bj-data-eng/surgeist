@@ -205,7 +205,10 @@
 //! edge origins explicit. `object-position` and every
 //! `mask-position` layer use this exact generic grammar. `background-position` instead exposes a
 //! nonempty [`CssBackgroundPositionList`] whose layers also admit the background-only
-//! three-component form. `transform-origin` exposes the directed 2D split plus an optional checked
+//! three-component form. Its noninherited longhand initial is one `0% 0%` layer.
+//! [`CssBackgroundPosition::serialize_specified`] and the list's matching method
+//! emit horizontal-first specified values, preserving an omitted edge offset.
+//! `transform-origin` exposes the directed 2D split plus an optional checked
 //! [`CssSpecifiedLength`] length.
 //!
 //! ```
@@ -231,6 +234,8 @@
 //!     CssHorizontalPosition::LeftOffset(offset)
 //!         if matches!(offset.literal_component().unwrap().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "10" && unit == "px")
 //! ));
+//!
+//! assert_eq!(background.positions().serialize_specified().unwrap(), "left 10px top");
 //!
 //! let CssKnownPropertyValueRef::MaskPosition(mask) = report.syntax()[1]
 //!     .known().expect("known mask position")

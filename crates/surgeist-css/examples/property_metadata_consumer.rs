@@ -93,6 +93,7 @@ const LONGHANDS: &[P] = &[
     P::BorderImageOutset,
     P::BorderImageRepeat,
     P::BackgroundImage,
+    P::BackgroundPosition,
     P::MaskImage,
     P::Content,
     P::CounterReset,
@@ -785,6 +786,21 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::BackgroundImage(v) | CssLonghandValueRef::MaskImage(v) => {
             assert!(matches!(v.images(), [CssImageValue::None]));
         }
+        CssLonghandValueRef::BackgroundPosition(v) => {
+            let [position] = v.positions() else {
+                panic!("one initial background position");
+            };
+            let (CssHorizontalPosition::Offset(x), CssVerticalPosition::Offset(y)) =
+                (position.horizontal(), position.vertical())
+            else {
+                panic!("initial background position has two free offsets");
+            };
+            for offset in [x, y] {
+                assert!(matches!(offset.literal_component().unwrap().view(),
+                    CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
+                        if number.representation() == "0"));
+            }
+        }
         CssLonghandValueRef::Content(v) => assert_eq!(v, &CssContentValue::Normal),
         CssLonghandValueRef::CaptionSide(v) => assert_eq!(*v, CssCaptionSide::Top),
         CssLonghandValueRef::Clip(v) => assert_eq!(*v, CssClip::Auto),
@@ -882,7 +898,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 249);
+    assert_eq!(expected.len(), 250);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {

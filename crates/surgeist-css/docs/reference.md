@@ -1065,6 +1065,21 @@ The property grammars and accessors are deliberately distinct:
   vertical axes plus an optional `CssSpecifiedLength`; the z component is a
   checked authored length and cannot contain a percentage.
 
+`background-position` expands to one noninherited longhand whose intrinsic initial
+is a single `0% 0%` layer. Ordinary contributions preserve the entire ordered
+authored list, and CSS-wide keywords remain symbolic. Substitution-dependent values
+retain a pending handle whose strict reentry checks the same property grammar and
+preserves the original declaration's identity and importance.
+
+`CssBackgroundPosition` and `CssBackgroundPositionList` expose
+`serialize_specified()` and `serialize_specified_with_limits()`. They serialize
+horizontal before vertical, make implied `center` explicit, and preserve the
+omitted offset in background's three-component form: `bottom 20% left` becomes
+`left bottom 20%`. Lists keep comma order. One cumulative input-node,
+projection-node and byte budget covers every layer and numeric child; errors
+return no partial text. Offsets remain signed and symbolic. Matching lists to
+background image counts and resolving positioning geometry belong downstream.
+
 ```rust
 use surgeist_css::{
     CssHorizontalPosition, CssKnownPropertyValueRef,
