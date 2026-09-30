@@ -2522,14 +2522,19 @@ single-layer initials are `auto`, `repeat`, `padding-box`, `border-box`, and
 reenter their original property grammar with unchanged occurrence and importance.
 
 Their scalar and list owners expose `serialize_specified()` and
-`serialize_specified_with_limits()`. Specified size serialization omits an
-optional `auto` height; repeat serialization collapses equal axes and uses
-`repeat-x`/`repeat-y` for the equivalent directional pairs. Boxes and attachments
-emit canonical keywords. Every layer, numeric child and separator shares one
+`serialize_specified_with_limits()`. Specified size serialization emits the
+effective `auto` height after a non-auto width, whether the authored height is
+absent or explicit; `auto auto` collapses to `auto`. Repeat serialization collapses
+equal axes and uses `repeat-x`/`repeat-y` for the equivalent directional pairs.
+Boxes and attachments emit canonical keywords. Every layer, numeric child and
+separator shares one
 cumulative input-node, projection-node and byte budget. Authored components
-omitted by canonicalization still count toward node budgets. Failure returns no
-partial CSS and leaves the authored value unchanged. These generic size/repeat
-serializers also serve their existing mask value owners.
+omitted by canonicalization still count toward node budgets. An effective `auto`
+height generated for an absent authored height adds one projection node and five
+output bytes (` auto`), without inventing an authored input node or changing the
+authored height. An explicit `auto` height counts once toward both node budgets.
+Failure returns no partial CSS and leaves the authored value unchanged. These
+generic size/repeat serializers also serve their existing mask value owners.
 
 These are the authored semantic values, including symbolic size calculations;
 global keywords and substitution-dependent declarations remain separate branches.

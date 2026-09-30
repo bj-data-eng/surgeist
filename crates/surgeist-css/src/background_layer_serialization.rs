@@ -83,15 +83,23 @@ impl CssBackgroundSize {
             Self::Contain => writer.append("contain"),
             Self::Explicit { width, height } => {
                 append_size_component(width, writer)?;
-                if let Some(height) = height {
-                    if matches!(height, CssBackgroundSizeComponent::Auto) {
-                        // The omitted second component already means auto. Its
-                        // authored node still participates in resource accounting.
+                match height {
+                    Some(CssBackgroundSizeComponent::Auto)
+                        if matches!(width, CssBackgroundSizeComponent::Auto) =>
+                    {
+                        // Only auto/auto collapses; the authored height still counts.
                         charge(writer, 1)?;
-                    } else {
+                    }
+                    Some(height) => {
                         writer.append(" ")?;
                         append_size_component(height, writer)?;
                     }
+                    None if !matches!(width, CssBackgroundSizeComponent::Auto) => {
+                        // The effective default is generated output, not authored input.
+                        writer.context.charge_projection(1)?;
+                        writer.append(" auto")?;
+                    }
+                    None => {}
                 }
                 Ok(())
             }

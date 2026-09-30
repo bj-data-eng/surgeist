@@ -870,8 +870,11 @@
 //! retaining its complete ordered list. Initial layers are `auto`, `repeat`,
 //! `padding-box`, `border-box`, and `scroll`, respectively. The checked scalar and
 //! list owners expose bounded specified serialization: equal repeat axes and
-//! equivalent repeat aliases use their shorter form, and an implied `auto` height
-//! is omitted. Every layer shares one cumulative serialization budget.
+//! equivalent repeat aliases use their shorter form. Sizes emit the effective
+//! `auto` height after a non-auto width; `auto auto` collapses to `auto`. Authored
+//! height omissions remain unchanged. Every layer shares one cumulative
+//! serialization budget; a generated height adds projection and output bytes,
+//! without adding an authored input node.
 //!
 //! ```
 //! use surgeist_css::{

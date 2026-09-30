@@ -1,8 +1,9 @@
 #![forbid(unsafe_code)]
 //! Functional Backgrounds 3 list lifecycle and specified serialization.
 //! https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/
-//! CSSOM 1 §6.7.2 requires omission/replacement by shorter equivalent syntax.
+//! CSSOM 1 §6.7.2 requires shorter equivalents subject to property-specific exceptions.
 //! https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-value
+//! Size height exception: https://github.com/w3c/csswg-drafts/issues/7802#issuecomment-2770612154
 
 use surgeist_css::{
     CssBackgroundRepeatStyle as R, CssSpecifiedValueSerializationErrorKind as E,
@@ -101,7 +102,7 @@ fn ordinary_contributions_preserve_typed_list_order_and_parsed_numeric_origin() 
         (
             CssKnownProperty::BackgroundSize,
             "cover, 10px auto",
-            "cover, 10px",
+            "cover, 10px auto",
         ),
         (
             CssKnownProperty::BackgroundRepeat,
@@ -256,23 +257,23 @@ fn strict_reentry_retains_programmatic_components_and_expected_typed_values() {
 }
 
 #[test]
-fn specified_sizes_omit_only_implied_auto_height_and_preserve_symbolic_values() {
+fn specified_sizes_preserve_effective_auto_height_and_symbolic_values() {
     for (css, expected) in [
         ("AUTO AUTO", "auto"),
         ("auto", "auto"),
-        ("10px auto", "10px"),
+        ("10px auto", "10px auto"),
         ("10px 20%", "10px 20%"),
         ("auto 20%", "auto 20%"),
-        ("cover, contain, 50% auto", "cover, contain, 50%"),
-        ("calc(10px + 5%) auto", "calc(5% + 10px)"),
-        ("calc(10px - 5%)", "calc(-5% + 10px)"),
+        ("cover, contain, 50% auto", "cover, contain, 50% auto"),
+        ("calc(10px + 5%) auto", "calc(5% + 10px) auto"),
+        ("calc(10px - 5%)", "calc(-5% + 10px) auto"),
     ] {
         let value = size(css);
         assert_eq!(value.serialize_specified().unwrap(), expected);
         for layer in value.sizes() {
             assert!(layer.serialize_specified().is_ok());
         }
-        // Canonical auto omission/math reordering need not preserve authored AST Eq.
+        // Canonical auto collapse/math reordering need not preserve authored AST Eq.
         assert_eq!(size(expected).serialize_specified().unwrap(), expected);
     }
     let value = size("calc(10px - 5%)");
@@ -435,7 +436,7 @@ fn scalar_budgets_account_for_authored_alias_axes_and_omitted_auto_components() 
                 width: CssBackgroundSizeComponent::Length(length("10px")),
                 height: Some(CssBackgroundSizeComponent::Auto),
             },
-            "10px",
+            "10px auto",
             4,
         ),
     ] {
@@ -458,8 +459,8 @@ fn scalar_budgets_account_for_authored_alias_axes_and_omitted_auto_components() 
 fn list_budgets_cover_all_owned_layers_numeric_children_and_separators() {
     let sizes = size("cover, 10px auto");
     let original = sizes.clone();
-    // List + cover + explicit size + width component/literal + omitted auto.
-    exact_bounds("cover, 10px", 6, 6, |limits| {
+    // List + cover + explicit size + width component/literal + explicit auto.
+    exact_bounds("cover, 10px auto", 6, 6, |limits| {
         sizes.serialize_specified_with_limits(limits)
     });
     assert_eq!(sizes, original);
@@ -499,10 +500,11 @@ fn list_budgets_cover_all_owned_layers_numeric_children_and_separators() {
 #[test]
 fn symbolic_size_projection_uses_one_monotonic_budget_across_layers() {
     let sizes = size("calc(1px + 2em), calc(1px + 2em)");
-    let expected = "calc(2em + 1px), calc(2em + 1px)";
+    let expected = "calc(2em + 1px) auto, calc(2em + 1px) auto";
     // One list plus two explicit size/component/math subgraphs. Each math
-    // contributes four input nodes and five projection nodes.
-    exact_bounds(expected, 13, 15, |limits| {
+    // contributes four input nodes and five projection nodes, and each generated
+    // auto adds one projection node without adding authored input.
+    exact_bounds(expected, 13, 17, |limits| {
         sizes.serialize_specified_with_limits(limits)
     });
     let original = sizes.clone();
