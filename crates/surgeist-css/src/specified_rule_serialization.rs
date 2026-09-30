@@ -102,6 +102,18 @@ impl SpecifiedRuleWriter {
         self.context.append(&mut self.css, text)
     }
 
+    /// Visits a proved simple initial through its provider without producing bytes.
+    /// Restores the enclosing emission mode even when a nested visit fails.
+    pub(crate) fn without_output<T>(
+        &mut self,
+        visit: impl FnOnce(&mut Self) -> Result<T, CssSpecifiedValueSerializationError>,
+    ) -> Result<T, CssSpecifiedValueSerializationError> {
+        let previous = self.context.replace_output_suppression(true);
+        let result = visit(self);
+        self.context.replace_output_suppression(previous);
+        result
+    }
+
     pub(crate) fn append_identifier(
         &mut self,
         value: &str,
@@ -228,5 +240,58 @@ fn append_rule(
             .named_supports_rule(rule)
             .map_err(|error| CssSpecifiedRuleSerializationError::resource(error, index)),
         _ => Err(CssSpecifiedRuleSerializationError::unsupported_rule(index)),
+    }
+}
+
+#[cfg(test)]
+mod suppression_tests {
+    use super::*;
+
+    #[test]
+    fn nested_suppression_restores_enclosing_mode_on_success_and_failure() {
+        let mut writer =
+            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(1, 1, 1));
+        writer
+            .without_output(|writer| {
+                writer.append("discarded outer text")?;
+                writer.without_output(|writer| writer.append("discarded nested text"))?;
+                assert!(writer.context.output_suppressed());
+                let error = writer
+                    .without_output(|writer| writer.context.charge_input(2))
+                    .unwrap_err();
+                assert_eq!(
+                    error.kind(),
+                    CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+                );
+                assert!(writer.context.output_suppressed());
+                writer.append("still discarded")
+            })
+            .unwrap();
+        assert!(!writer.context.output_suppressed());
+        assert!(writer.css.is_empty());
+        writer.append("x").unwrap();
+        assert_eq!(writer.css, "x");
+    }
+
+    #[test]
+    fn failing_suppressed_literal_preserves_nodes_and_resumes_final_emission() {
+        let mut writer =
+            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(1, 0, 1));
+        let zero = crate::CssSpecifiedLengthPercentage::zero();
+        let error = writer
+            .without_output(|writer| zero.append_specified(&mut writer.context, &mut writer.css))
+            .unwrap_err();
+        assert_eq!(
+            error.kind(),
+            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+        );
+        assert!(!writer.context.output_suppressed());
+        assert!(writer.css.is_empty());
+        assert_eq!(
+            writer.context.charge_input(1).unwrap_err().kind(),
+            CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+        );
+        writer.append("x").unwrap();
+        assert_eq!(writer.css, "x");
     }
 }

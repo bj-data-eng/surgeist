@@ -505,6 +505,7 @@ unfinished. This property migration does not complete the other Grid3 families.
 `expand_declaration` currently covers custom declarations, physical and logical
 margin/padding longhands, their logical axis pairs, border width, style and color,
 the four side-border shorthands, `border`,
+the `background` shorthand and its eight longhands,
 the five border-image longhands, `border-collapse`, `border-spacing`, `caption-side`, `clip`, `empty-cells`,
 `table-layout`, `flow-tolerance`, `color`, `font-family`,
 `text-orientation`, its legacy `glyph-orientation-vertical` grammar, `opacity`, `display`, `box-sizing`,
@@ -515,6 +516,31 @@ member lists, initial values and reset-only components. Other known properties
 return typed unsupported errors preserving their identity. The stylesheet
 normalizer uses this same expansion boundary, so its complete property coverage
 remains unfinished.
+
+`background` owns eight ordered settable members: image, position, size, repeat,
+attachment, origin, clip, and color, without extra reset-only members. Every
+checked authored layer supplies one entry to each of the seven lists, filling
+omissions from the corresponding schema initial. Color appears once from the
+final layer or the transparent schema initial. This intrinsic projection does
+not match list lengths to used images or resolve positioning geometry.
+
+`CssBackgroundLayer::try_new` retains its seven optional typed components and
+rejects an empty layer or size without position. `CssBackground::try_new` rejects
+an empty list and color in a nonfinal layer through
+`CssBackgroundConstructionError`. Parsed values use the same checked boundaries
+while preserving precise authored diagnostic locations and child origins.
+
+`CssBackground::serialize_specified` and its bounded variant emit image,
+position, `/ size`, repeat, attachment, origin/clip, and final color in grammar
+order. Proved simple initials may be omitted; a remaining size retains its
+position, equal boxes compact to one, and an empty effective layer emits `none`.
+Keyword positions, unresolved calculations, images, and contextual colors use
+their existing specified providers. One cumulative budget counts root/layer and
+all actually authored child visits, including omitted children. Omitted text
+consumes no final bytes; generated `none` and implicit size height consume
+projection nodes only. Failure returns no partial text and does not mutate the
+retained authored graph. These operations do not establish complete Backgrounds
+or shared color/numeric grammar support.
 
 The five [selected CSS2 table properties](https://www.w3.org/TR/2011/REC-CSS2-20110607/tables.html)
 expand to one typed longhand each. `border-collapse` accepts `collapse | separate`

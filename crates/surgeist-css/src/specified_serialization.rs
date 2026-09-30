@@ -108,6 +108,7 @@ pub(crate) struct SpecifiedSerializationContext {
     input_nodes: usize,
     projection_nodes: usize,
     css_bytes: usize,
+    output_suppressed: bool,
 }
 
 impl SpecifiedSerializationContext {
@@ -117,6 +118,7 @@ impl SpecifiedSerializationContext {
             input_nodes: 0,
             projection_nodes: 0,
             css_bytes: 0,
+            output_suppressed: false,
         }
     }
 
@@ -153,7 +155,18 @@ impl SpecifiedSerializationContext {
         self.limits.max_css_bytes() - self.css_bytes
     }
 
+    pub(crate) const fn output_suppressed(&self) -> bool {
+        self.output_suppressed
+    }
+
+    pub(crate) fn replace_output_suppression(&mut self, suppressed: bool) -> bool {
+        std::mem::replace(&mut self.output_suppressed, suppressed)
+    }
+
     pub(crate) fn append(&mut self, output: &mut String, text: &str) -> Result<()> {
+        if self.output_suppressed {
+            return Ok(());
+        }
         debug_assert_eq!(output.len(), self.css_bytes);
         let next = self
             .css_bytes

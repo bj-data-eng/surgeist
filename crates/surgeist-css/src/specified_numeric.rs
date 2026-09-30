@@ -197,13 +197,13 @@ enum LiteralUnit {
     Percentage,
 }
 
-pub(crate) fn capture_literal(
-    component: &CssComponentValue,
+fn visit_literal<'a>(
+    component: &'a CssComponentValue,
     context: &mut SpecifiedSerializationContext,
-) -> SerializationResult<String> {
+) -> SerializationResult<(crate::CssNumericTokenRef<'a>, &'static str)> {
     context.charge_input(1)?;
     context.charge_projection(1)?;
-    let (number, suffix) = match component.view() {
+    let parts = match component.view() {
         CssComponentValueRef::Token(CssValueTokenRef::Number(number)) => (number, ""),
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) => (
             number,
@@ -214,6 +214,14 @@ pub(crate) fn capture_literal(
         CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) => (number, "%"),
         _ => unreachable!("checked specified numeric literal"),
     };
+    Ok(parts)
+}
+
+pub(crate) fn capture_literal(
+    component: &CssComponentValue,
+    context: &mut SpecifiedSerializationContext,
+) -> SerializationResult<String> {
+    let (number, suffix) = visit_literal(component, context)?;
     let coefficient_limit = context
         .remaining_bytes()
         .checked_sub(suffix.len())
@@ -1094,6 +1102,12 @@ macro_rules! append_checked_length {
     ($($owner:ident),* $(,)?) => { $(
         impl $owner {
             pub(crate) fn append_specified(&self, context: &mut SpecifiedSerializationContext, output: &mut String) -> SerializationResult<()> {
+                if context.output_suppressed() {
+                    // Suppression is selected only for independently proved literal initials.
+                    let literal = self.literal_component().expect("suppressed simple literal");
+                    visit_literal(literal, context)?;
+                    return Ok(());
+                }
                 let captured = self.capture_specified(context)?;
                 context.append(output, &captured)
             }

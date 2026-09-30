@@ -208,6 +208,15 @@
 //! three-component form. Its noninherited longhand initial is one `0% 0%` layer.
 //! [`CssBackgroundPosition::serialize_specified`] and the list's matching method
 //! emit horizontal-first specified values, preserving an omitted edge offset.
+//! The checked [`CssBackgroundLayer::try_new`] and [`CssBackground::try_new`]
+//! constructors retain optional authored components, couple size to position, and
+//! restrict color to the final layer. Intrinsic `background` expansion fills each
+//! of seven per-layer lists from the terminal schema initial and emits one color.
+//! [`CssBackground::serialize_specified`] composes canonical specified children in
+//! grammar order, omitting proved simple initials under one cumulative budget.
+//! Omitted authored children still consume input and projection visits; an empty
+//! effective layer emits `none`. Keywords, calculations, and contextual colors
+//! retain their symbolic meaning.
 //! `transform-origin` exposes the directed 2D split plus an optional checked
 //! [`CssSpecifiedLength`] length.
 //!
@@ -1098,6 +1107,7 @@
 //! mutable CSSOM; or lower CSS into sibling Surgeist types.
 
 mod background_layer_serialization;
+mod background_serialization;
 mod border_color;
 mod component_values;
 mod conformance;

@@ -407,6 +407,79 @@ macro_rules! define_expansion_schema {
 
 crate::properties::property_schema!(define_expansion_schema, expansion_input, numeric_input);
 
+// Sparse authored layers need one scalar default per slot, not a whole-list fallback.
+// Each projection obtains its typed initial once from the central property schema.
+macro_rules! background_list_projection {
+    ($function:ident, $property:ident, $list:ty, $items:ident, $project:expr) => {
+        pub(crate) fn $function(background: &CssBackground) -> Option<$list> {
+            let initial = Longhand::$property.initial_value();
+            let InitialValue::Value(initial) = initial.value else {
+                unreachable!("background list has an ordinary schema initial")
+            };
+            let OwnedLonghandValue::$property(initial) = *initial.value else {
+                unreachable!("schema initial belongs to its longhand")
+            };
+            let initial = &initial.$items()[0];
+            let values = background
+                .layers()
+                .iter()
+                .map(|layer| ($project)(layer).unwrap_or_else(|| initial.clone()))
+                .collect();
+            Some(<$list>::try_new(values).expect("background has nonempty checked layers"))
+        }
+    };
+}
+
+background_list_projection!(
+    background_images,
+    BackgroundImage,
+    CssImageValueList,
+    images,
+    |layer: &CssBackgroundLayer| layer.image().cloned()
+);
+background_list_projection!(
+    background_positions,
+    BackgroundPosition,
+    CssBackgroundPositionList,
+    positions,
+    |layer: &CssBackgroundLayer| layer.position().cloned()
+);
+background_list_projection!(
+    background_sizes,
+    BackgroundSize,
+    CssBackgroundSizeList,
+    sizes,
+    |layer: &CssBackgroundLayer| layer.size().cloned()
+);
+background_list_projection!(
+    background_repeats,
+    BackgroundRepeat,
+    CssBackgroundRepeatList,
+    repeats,
+    |layer: &CssBackgroundLayer| layer.repeat()
+);
+background_list_projection!(
+    background_attachments,
+    BackgroundAttachment,
+    CssBackgroundAttachmentList,
+    attachments,
+    |layer: &CssBackgroundLayer| layer.attachment()
+);
+background_list_projection!(
+    background_origins,
+    BackgroundOrigin,
+    CssBackgroundBoxList,
+    boxes,
+    |layer: &CssBackgroundLayer| layer.boxes().map(CssBackgroundLayerBoxes::origin)
+);
+background_list_projection!(
+    background_clips,
+    BackgroundClip,
+    CssBackgroundBoxList,
+    boxes,
+    |layer: &CssBackgroundLayer| layer.boxes().map(CssBackgroundLayerBoxes::clip)
+);
+
 #[derive(Clone, Copy, Debug)]
 enum ExpansionShape {
     Longhands(&'static [Longhand]),

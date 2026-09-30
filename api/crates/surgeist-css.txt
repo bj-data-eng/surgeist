@@ -133,6 +133,15 @@ pub surgeist_css::CssBackgroundBox::PaddingBox
 impl surgeist_css::CssBackgroundBox
 pub fn surgeist_css::CssBackgroundBox::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssBackgroundBox::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssBackgroundConstructionError
+pub surgeist_css::CssBackgroundConstructionError::EmptyLayer
+pub surgeist_css::CssBackgroundConstructionError::EmptyLayers
+pub surgeist_css::CssBackgroundConstructionError::NonFinalColor
+pub surgeist_css::CssBackgroundConstructionError::NonFinalColor::layer_index: usize
+pub surgeist_css::CssBackgroundConstructionError::SizeWithoutPosition
+impl core::error::Error for surgeist_css::CssBackgroundConstructionError
+impl core::fmt::Display for surgeist_css::CssBackgroundConstructionError
+pub fn surgeist_css::CssBackgroundConstructionError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssBackgroundLayerBoxes
 pub surgeist_css::CssBackgroundLayerBoxes::One(surgeist_css::CssBackgroundBox)
 pub surgeist_css::CssBackgroundLayerBoxes::OriginAndClip
@@ -4162,6 +4171,10 @@ pub const fn surgeist_css::CssBackdropFilterPropertyValue::value(&self) -> &surg
 pub struct surgeist_css::CssBackground
 impl surgeist_css::CssBackground
 pub fn surgeist_css::CssBackground::layers(&self) -> &[surgeist_css::CssBackgroundLayer]
+pub fn surgeist_css::CssBackground::try_new(layers: alloc::vec::Vec<surgeist_css::CssBackgroundLayer>) -> core::result::Result<Self, surgeist_css::CssBackgroundConstructionError>
+impl surgeist_css::CssBackground
+pub fn surgeist_css::CssBackground::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBackground::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssBackgroundAttachmentList
 impl surgeist_css::CssBackgroundAttachmentList
 pub fn surgeist_css::CssBackgroundAttachmentList::attachments(&self) -> &[surgeist_css::CssBackgroundAttachment]
@@ -4205,6 +4218,7 @@ pub const fn surgeist_css::CssBackgroundLayer::image(&self) -> core::option::Opt
 pub const fn surgeist_css::CssBackgroundLayer::position(&self) -> core::option::Option<&surgeist_css::CssBackgroundPosition>
 pub const fn surgeist_css::CssBackgroundLayer::repeat(&self) -> core::option::Option<surgeist_css::CssBackgroundRepeat>
 pub const fn surgeist_css::CssBackgroundLayer::size(&self) -> core::option::Option<&surgeist_css::CssBackgroundSize>
+pub fn surgeist_css::CssBackgroundLayer::try_new(image: core::option::Option<surgeist_css::CssImageValue>, position: core::option::Option<surgeist_css::CssBackgroundPosition>, size: core::option::Option<surgeist_css::CssBackgroundSize>, repeat: core::option::Option<surgeist_css::CssBackgroundRepeat>, attachment: core::option::Option<surgeist_css::CssBackgroundAttachment>, boxes: core::option::Option<surgeist_css::CssBackgroundLayerBoxes>, color: core::option::Option<surgeist_css::CssColor>) -> core::result::Result<Self, surgeist_css::CssBackgroundConstructionError>
 pub struct surgeist_css::CssBackgroundOriginPropertyValue
 impl surgeist_css::CssBackgroundOriginPropertyValue
 pub fn surgeist_css::CssBackgroundOriginPropertyValue::as_css(&self) -> &str

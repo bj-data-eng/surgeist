@@ -7245,10 +7245,10 @@ impl CssBackgroundLayerBoxes {
     }
 }
 
-/// One parser-produced authored `background` shorthand layer.
+/// One checked authored `background` shorthand layer.
 ///
-/// Construction is parser-owned so a size cannot exist without an immediately
-/// preceding position and a color cannot occur outside the final layer.
+/// Checked construction retains omissions and requires a position with a size.
+/// The enclosing background additionally restricts colors to its final layer.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssBackgroundLayer {
     image: Option<CssImageValue>,
@@ -7261,8 +7261,9 @@ pub struct CssBackgroundLayer {
 }
 
 impl CssBackgroundLayer {
-    #[must_use]
-    pub(crate) const fn new(
+    /// Constructs one nonempty authored layer without filling omitted components.
+    /// A size requires a position; final-layer color validity belongs to [`CssBackground`].
+    pub fn try_new(
         image: Option<CssImageValue>,
         position: Option<CssBackgroundPosition>,
         size: Option<CssBackgroundSize>,
@@ -7270,8 +7271,21 @@ impl CssBackgroundLayer {
         attachment: Option<CssBackgroundAttachment>,
         boxes: Option<CssBackgroundLayerBoxes>,
         color: Option<CssColor>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, CssBackgroundConstructionError> {
+        if size.is_some() && position.is_none() {
+            return Err(CssBackgroundConstructionError::SizeWithoutPosition);
+        }
+        if image.is_none()
+            && position.is_none()
+            && size.is_none()
+            && repeat.is_none()
+            && attachment.is_none()
+            && boxes.is_none()
+            && color.is_none()
+        {
+            return Err(CssBackgroundConstructionError::EmptyLayer);
+        }
+        Ok(Self {
             image,
             position,
             size,
@@ -7279,7 +7293,7 @@ impl CssBackgroundLayer {
             attachment,
             boxes,
             color,
-        }
+        })
     }
 
     /// Returns this layer's authored image, if present.
@@ -7325,6 +7339,32 @@ impl CssBackgroundLayer {
     }
 }
 
+/// Why checked authored background construction cannot represent a valid shorthand.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssBackgroundConstructionError {
+    EmptyLayer,
+    SizeWithoutPosition,
+    EmptyLayers,
+    NonFinalColor { layer_index: usize },
+}
+
+impl std::fmt::Display for CssBackgroundConstructionError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyLayer => formatter.write_str("background layer is empty"),
+            Self::SizeWithoutPosition => formatter.write_str("background size requires a position"),
+            Self::EmptyLayers => formatter.write_str("background layer list is empty"),
+            Self::NonFinalColor { layer_index } => write!(
+                formatter,
+                "background color in nonfinal layer {layer_index}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for CssBackgroundConstructionError {}
+
 /// A nonempty authored comma list of `background` shorthand layers.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssBackground {
@@ -7332,9 +7372,19 @@ pub struct CssBackground {
 }
 
 impl CssBackground {
-    #[must_use]
-    pub(crate) const fn new(layers: Vec<CssBackgroundLayer>) -> Self {
-        Self { layers }
+    /// Constructs a nonempty authored list with a color only on its final layer.
+    pub fn try_new(
+        layers: Vec<CssBackgroundLayer>,
+    ) -> Result<Self, CssBackgroundConstructionError> {
+        if layers.is_empty() {
+            return Err(CssBackgroundConstructionError::EmptyLayers);
+        }
+        for (layer_index, layer) in layers[..layers.len() - 1].iter().enumerate() {
+            if layer.color().is_some() {
+                return Err(CssBackgroundConstructionError::NonFinalColor { layer_index });
+            }
+        }
+        Ok(Self { layers })
     }
 
     /// Returns the authored layers in comma order.

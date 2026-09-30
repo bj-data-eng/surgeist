@@ -219,6 +219,20 @@ const LONGHANDS: &[P] = &[
     P::TextCombineUpright,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
+    (
+        P::Background,
+        &[
+            P::BackgroundImage,
+            P::BackgroundPosition,
+            P::BackgroundSize,
+            P::BackgroundRepeat,
+            P::BackgroundAttachment,
+            P::BackgroundOrigin,
+            P::BackgroundClip,
+            P::BackgroundColor,
+        ],
+        &[],
+    ),
     (P::Flex, &[P::FlexGrow, P::FlexShrink, P::FlexBasis], &[]),
     (P::FlexFlow, &[P::FlexDirection, P::FlexWrap], &[]),
     (P::PlaceContent, &[P::AlignContent, P::JustifyContent], &[]),
@@ -928,7 +942,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 256);
+    assert_eq!(expected.len(), 257);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {

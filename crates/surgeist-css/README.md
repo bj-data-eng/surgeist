@@ -8,6 +8,13 @@ unsupported productions; consult the [support reference](docs/reference.md#confo
 for exact boundaries. Cascade, substitution, matching, resource loading, and
 layout belong to downstream consumers.
 
+Checked `CssBackgroundLayer` and `CssBackground` construction retains authored
+omissions and enforces size/position and final-color constraints. Intrinsic
+`background` expansion supplies all eight longhands with per-layer schema
+initials. Its bounded specified serializer composes canonical children under
+one cumulative resource policy, preserving symbolic values and counting omitted
+authored nodes without charging discarded output bytes.
+
 ## Start
 
 ```rust

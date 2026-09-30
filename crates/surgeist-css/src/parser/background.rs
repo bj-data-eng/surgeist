@@ -91,7 +91,8 @@ pub(super) fn parse_background<'i, 't>(
         }
     }
 
-    Ok(CssBackground::new(layers))
+    CssBackground::try_new(layers)
+        .map_err(|_| unsupported_value(input, None, "background layer list is empty"))
 }
 
 fn parse_background_layer<'i, 't>(
@@ -173,7 +174,8 @@ fn parse_background_layer<'i, 't>(
         _ => None,
     };
     Ok((
-        CssBackgroundLayer::new(image, position, size, repeat, attachment, boxes, color),
+        CssBackgroundLayer::try_new(image, position, size, repeat, attachment, boxes, color)
+            .map_err(|_| unsupported_value(input, None, "background layer is empty"))?,
         color_location,
     ))
 }
