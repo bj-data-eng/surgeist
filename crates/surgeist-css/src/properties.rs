@@ -319,7 +319,7 @@ macro_rules! property_schema {
             TransformOrigin, "transform-origin", [], "baseline.property.transform-origin", crate::CssTransformOrigin, CssTransformOriginPropertyValue, origin, parse_transform_origin, { parse_transform_origin($input, $numeric)? };
             Translate, "translate", [], "baseline.property.translate", crate::CssTranslate, CssTranslatePropertyValue, value, parse_translate, { parse_translate($input, $numeric)? };
             Rotate, "rotate", [], "baseline.property.rotate", crate::CssRotate, CssRotatePropertyValue, value, parse_rotate, { parse_rotate($input)? };
-            Scale, "scale", [], "baseline.property.scale", crate::CssScale, CssScalePropertyValue, value, parse_scale, { parse_scale($input)? };
+            Scale, "scale", [], "baseline.property.scale", crate::CssScale, CssScalePropertyValue, value, parse_scale, { parse_scale($input, $numeric)? };
             Filter, "filter", [], "baseline.property.filter", crate::CssFilter, CssFilterPropertyValue, value, parse_filter, { parse_filter($input, $numeric)? };
             BackdropFilter, "backdrop-filter", [], "baseline.property.backdrop-filter", crate::CssFilter, CssBackdropFilterPropertyValue, value, parse_filter, { parse_filter($input, $numeric)? };
             ClipPath, "clip-path", [], "baseline.property.clip-path", crate::CssClipPath, CssClipPathPropertyValue, value, parse_clip_path, { parse_clip_path($input, $numeric)? };

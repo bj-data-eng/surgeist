@@ -1,4 +1,4 @@
-use cssparser::{ParseError, Parser, Token};
+use cssparser::{ParseError, Parser, ToCss, Token};
 
 use crate::error::{CssFeatureId, Error, basic, unsupported_value_at};
 use crate::syntax::*;
@@ -237,12 +237,6 @@ pub(super) fn parse_integer_literal<'i, 't>(
     })?;
     crate::CssIntegerLiteral::try_from_component(component)
         .map_err(|_| unsupported_value_at(location, None, "value must have integer token syntax"))
-}
-
-pub(super) fn parse_number<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<f32, ParseError<'i, Error>> {
-    input.expect_number().map_err(basic)
 }
 
 pub(super) fn parse_custom_ident_from_str_at<'i>(
@@ -505,5 +499,153 @@ mod typed_calculation_tests {
         })
         .expect_err("depth 257 must fail");
         assert_eq!(error.code(), CssErrorCode::UnexpectedEnd);
+    }
+}
+
+// Admission is shared; calling properties retain their own grammar and diagnostics.
+macro_rules! specified_scalar_parser {
+    ($name:ident, $token:ident, $owner:ident, $calculation:ident, $root:ident) => {
+        pub(super) fn $name<'i, 't>(
+            input: &mut Parser<'i, 't>,
+            numeric: &crate::numeric::NumericInputContext<'_>,
+            context: &str,
+        ) -> Result<$owner, ParseError<'i, Error>> {
+            input.skip_whitespace();
+            let start = input.state();
+            let location = input.current_source_location();
+            let root_offset = input.position().byte_index();
+            let value = match input.next().map_err(basic)? {
+                Token::$token { .. } => {
+                    input.reset(&start);
+                    let component = numeric.collect(input).map_err(|_| {
+                        unsupported_value_at(
+                            location,
+                            None,
+                            format!("invalid {context} numeric literal"),
+                        )
+                    })?;
+                    $owner::try_from_component(component)
+                }
+                Token::Function(name) if crate::numeric::is_math_function(name) => {
+                    let expression =
+                        parse_numeric_function(input, &start, numeric, CalculationRoot::$root)?;
+                    $owner::try_from_calculation($calculation::from_expression(expression))
+                }
+                token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
+            };
+            value.map_err(|error| {
+                unsupported_value_at(
+                    numeric.error_location(&error, location, root_offset),
+                    None,
+                    format!(
+                        "{context} requires a {}",
+                        stringify!($root).to_ascii_lowercase()
+                    ),
+                )
+            })
+        }
+    };
+}
+specified_scalar_parser!(
+    parse_specified_number,
+    Number,
+    CssSpecifiedNumber,
+    CssNumberCalculation,
+    Number
+);
+specified_scalar_parser!(
+    parse_specified_percentage,
+    Percentage,
+    CssSpecifiedPercentage,
+    CssPercentageCalculation,
+    Percentage
+);
+
+pub(super) fn parse_specified_number_literal<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+    context: &str,
+) -> Result<CssSpecifiedNumber, ParseError<'i, Error>> {
+    let start = input.state();
+    let location = input.current_source_location();
+    match input.next().map_err(basic)? {
+        Token::Number { .. } => {}
+        token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
+    }
+    input.reset(&start);
+    parse_specified_number(input, numeric, context)
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum AngleParserContext {
+    Transform,
+    Filter,
+    Gradient,
+    ImageOrientation,
+}
+impl AngleParserContext {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Transform => "transform",
+            Self::Filter => "filter",
+            Self::Gradient => "gradient",
+            Self::ImageOrientation => "image-orientation",
+        }
+    }
+}
+
+pub(super) fn parse_angle_value<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+    context: AngleParserContext,
+) -> Result<CssAngleValue, ParseError<'i, Error>> {
+    let start = input.state();
+    let location = input.current_source_location();
+    match input.next().map_err(basic)? {
+        Token::Number { value, .. } if *value == 0.0 => Ok(CssAngleValue::Zero),
+        Token::Dimension { value, unit, .. } => {
+            let checked_unit = match unit.to_ascii_lowercase().as_str() {
+                "deg" => CssAngleUnit::Degrees,
+                "grad" => CssAngleUnit::Gradians,
+                "rad" => CssAngleUnit::Radians,
+                "turn" => CssAngleUnit::Turns,
+                _ => {
+                    return Err(unsupported_value_at(
+                        location,
+                        None,
+                        if matches!(context, AngleParserContext::Filter) {
+                            "hue-rotate() requires an angle".to_owned()
+                        } else {
+                            format!("unsupported {} angle unit `{unit}`", context.label())
+                        },
+                    ));
+                }
+            };
+            CssAngleLiteral::try_new(*value, checked_unit)
+                .map(CssAngleValue::Literal)
+                .ok_or_else(|| {
+                    unsupported_value_at(
+                        location,
+                        None,
+                        format!("{} angle must be finite", context.label()),
+                    )
+                })
+        }
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            parse_numeric_function(input, &start, numeric, CalculationRoot::Angle)
+                .map(CssAngleCalculation::from_expression)
+                .map(CssAngleValue::Calculation)
+        }
+        token if matches!(context, AngleParserContext::ImageOrientation) => {
+            Err(unsupported_value_at(
+                location,
+                None,
+                format!(
+                    "unsupported image-orientation angle `{}`",
+                    token.to_css_string()
+                ),
+            ))
+        }
+        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
 }

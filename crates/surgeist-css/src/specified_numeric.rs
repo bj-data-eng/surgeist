@@ -339,6 +339,109 @@ impl CssSpecifiedNumber {
     }
 }
 
+/// A signed CSS `<percentage>` retaining its exact token or symbolic math.
+/// Equality includes source provenance; semantic owners compare structure.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssSpecifiedPercentage {
+    value: SpecifiedNumericValue<CssPercentageCalculation>,
+}
+
+impl CssSpecifiedPercentage {
+    /// Accepts a percentage token without narrowing its coefficient to a machine float.
+    pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
+        checked_literal(&component, true, false, true)?;
+        Ok(Self {
+            value: SpecifiedNumericValue::Literal(Box::new(component)),
+        })
+    }
+
+    /// Retains checked percentage math; a bare root reenters literal admission.
+    pub fn try_from_calculation(calculation: CssPercentageCalculation) -> ConstructionResult<Self> {
+        let root = significant_root(calculation.components())?;
+        if matches!(root.view(), CssComponentValueRef::Token(_)) {
+            return Self::try_from_component(root.clone());
+        }
+        if !matches!(root.view(), CssComponentValueRef::Function(_)) {
+            return Err(CssNumericConstructionError::at(
+                CssNumericConstructionErrorKind::RootDomainMismatch,
+                Some(root),
+            ));
+        }
+        Ok(Self {
+            value: SpecifiedNumericValue::Calculation(calculation),
+        })
+    }
+
+    /// Borrows the original ordinary percentage token, if present.
+    #[must_use]
+    pub fn literal_component(&self) -> Option<&CssComponentValue> {
+        match &self.value {
+            SpecifiedNumericValue::Literal(value) => Some(value),
+            SpecifiedNumericValue::Calculation(_) => None,
+        }
+    }
+
+    /// Borrows the symbolic checked percentage calculation, if present.
+    #[must_use]
+    pub fn calculation(&self) -> Option<&CssPercentageCalculation> {
+        match &self.value {
+            SpecifiedNumericValue::Literal(_) => None,
+            SpecifiedNumericValue::Calculation(value) => Some(value),
+        }
+    }
+
+    /// Returns the parsed or programmatic root origin.
+    #[must_use]
+    pub fn origin(&self) -> &CssValueOrigin {
+        match &self.value {
+            SpecifiedNumericValue::Literal(value) => value.origin(),
+            SpecifiedNumericValue::Calculation(value) => value.origin(),
+        }
+    }
+
+    /// Serializes the specified percentage with default resource limits.
+    pub fn serialize_specified(&self) -> SerializationResult<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Serializes atomically under the shared input, projection, and byte limits.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult<String> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let captured = self.capture_specified(&mut context)?;
+        let mut output = String::new();
+        context.append(&mut output, &captured)?;
+        Ok(output)
+    }
+
+    pub(crate) fn capture_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> SerializationResult<String> {
+        match &self.value {
+            SpecifiedNumericValue::Literal(value) => capture_literal(value, context),
+            SpecifiedNumericValue::Calculation(value) => {
+                crate::numeric::capture_specified(&value.expression, context).map(|(text, _)| text)
+            }
+        }
+    }
+
+    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
+        match (&self.value, &other.value) {
+            (SpecifiedNumericValue::Literal(left), SpecifiedNumericValue::Literal(right)) => {
+                left.structural_eq_ignoring_origin(right)
+            }
+            (
+                SpecifiedNumericValue::Calculation(left),
+                SpecifiedNumericValue::Calculation(right),
+            ) => left.expression.structural_eq(&right.expression),
+            _ => false,
+        }
+    }
+}
+
 /// A nonnegative CSS `<number>` retaining its exact token or symbolic math.
 /// Equality includes source provenance; semantic owners can compare structure separately.
 #[derive(Clone, Debug, Eq, PartialEq)]

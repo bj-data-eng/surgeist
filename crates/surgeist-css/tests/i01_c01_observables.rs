@@ -2850,11 +2850,9 @@ fn assert_known_property_value(
                 "px"
             ));
             assert!(
-                matches!(angle, CssTransformAngle::Literal(literal) if literal.value() == 45.0 && literal.unit() == CssAngleUnit::Degrees)
+                matches!(angle, CssAngleValue::Literal(literal) if literal.value() == 45.0 && literal.unit() == CssAngleUnit::Degrees)
             );
-            assert!(
-                matches!(scale.x(), CssTransformNumber::Literal(number) if number.value() == 1.5)
-            );
+            assert!(exact_number((scale.x()).literal_component(), "1.5"));
             assert!(scale.y().is_none());
             Some(value.as_css())
         }
@@ -3884,11 +3882,10 @@ fn assert_known_property_value(
             else {
                 panic!("captured transition easings");
             };
-            use surgeist_css::CssEasingNumber::Literal;
-            assert!(matches!(bezier.x1().value(), Literal(x) if x.value() == 0.1));
-            assert!(matches!(bezier.y1(), Literal(y) if y.value() == 0.2));
-            assert!(matches!(bezier.x2().value(), Literal(x) if x.value() == 0.3));
-            assert!(matches!(bezier.y2(), Literal(y) if y.value() == 1.0));
+            assert!(exact_number(bezier.x1().value().literal_component(), "0.1"));
+            assert!(exact_number(bezier.y1().literal_component(), "0.2"));
+            assert!(exact_number(bezier.x2().value().literal_component(), "0.3"));
+            assert!(exact_number(bezier.y2().literal_component(), "1"));
             Some(value.as_css())
         }
         (
@@ -6045,7 +6042,9 @@ fn assert_known_property_value(
             let CssScale::Values(values) = typed else {
                 panic!("captured scale");
             };
-            assert_eq!(values.values(), &[1.5, 2.0]);
+            assert_eq!(values.values().len(), 2);
+            assert!(exact_number(values.values()[0].literal_component(), "1.5"));
+            assert!(exact_number(values.values()[1].literal_component(), "2"));
         }
         (CssKnownProperty::OutlineStyle, CssKnownPropertyValueRef::OutlineStyle(value)) => {
             assert_archive_wrapper(property, value.as_css(), semantic, authored);
@@ -6463,4 +6462,8 @@ fn exact_percentage(
     representation: &str,
 ) -> bool {
     matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
+}
+
+fn exact_number(component: Option<&surgeist_css::CssComponentValue>, representation: &str) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number))) if number.representation() == representation)
 }

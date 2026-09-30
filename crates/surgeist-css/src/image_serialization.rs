@@ -3,7 +3,7 @@
 use crate::numeric::{SpecifiedCalculationRef, project_calculation_specified_into};
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
-    CssAngleUnit, CssColorStopList, CssColorStopListItem, CssGradient, CssGradientAngle,
+    CssAngleUnit, CssAngleValue, CssColorStopList, CssColorStopListItem, CssGradient,
     CssHorizontalGradientSide, CssHorizontalPosition, CssImage, CssImageValue, CssImageValueList,
     CssLinearGradient, CssLinearGradientDirection, CssPosition, CssRadialExtent, CssRadialGradient,
     CssRadialShape, CssRadialSize, CssSpecifiedLengthPercentage,
@@ -148,7 +148,7 @@ fn append_direction(
     charge(writer, 1)?;
     match direction {
         CssLinearGradientDirection::Angle(angle) => {
-            if let CssGradientAngle::Literal(literal) = angle {
+            if let CssAngleValue::Literal(literal) = angle {
                 charge(writer, 1)?;
                 let omitted = matches!(
                     (literal.unit(), literal.value()),
@@ -163,18 +163,18 @@ fn append_direction(
                 Ok(!omitted)
             } else {
                 match angle {
-                    CssGradientAngle::Zero => {
+                    CssAngleValue::Zero => {
                         charge(writer, 1)?;
                         writer.append("0")?;
                     }
-                    CssGradientAngle::Calculation(calculation) => {
+                    CssAngleValue::Calculation(calculation) => {
                         project_calculation_specified_into(
                             SpecifiedCalculationRef::Angle(calculation),
                             &mut writer.context,
                             &mut writer.css,
                         )?;
                     }
-                    CssGradientAngle::Literal(_) => unreachable!(),
+                    CssAngleValue::Literal(_) => unreachable!(),
                 }
                 Ok(true)
             }

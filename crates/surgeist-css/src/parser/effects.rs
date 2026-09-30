@@ -9,8 +9,9 @@ use super::box_model::parse_drop_shadow;
 use super::position::parse_css_position;
 use super::url::parse_url;
 use super::values::{
-    CalculationRoot, checked_percentage_value, next_is_comma, next_is_delim, next_is_ident,
-    parse_number, parse_numeric_function,
+    AngleParserContext, CalculationRoot, checked_percentage_value, next_is_comma, next_is_delim,
+    next_is_ident, parse_angle_value, parse_numeric_function, parse_specified_number,
+    parse_specified_number_literal, parse_specified_percentage,
 };
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
@@ -255,16 +256,18 @@ fn parse_transform_function_value<'i, 't>(
 ) -> std::result::Result<CssTransformFunction, ParseError<'i, Error>> {
     let value = match kind {
         CssTransformFunctionKind::Matrix => {
-            let components =
-                parse_exact_comma_list(input, 6, |input| parse_transform_number(input, numeric))?;
+            let components = parse_exact_comma_list(input, 6, |input| {
+                parse_specified_number(input, numeric, "transform")
+            })?;
             let components = components.try_into().map_err(|_| {
                 unsupported_value(input, None, "matrix() requires exactly six numbers")
             })?;
             CssTransformFunction::Matrix(CssTransformMatrix::new(components))
         }
         CssTransformFunctionKind::Matrix3d => {
-            let components =
-                parse_exact_comma_list(input, 16, |input| parse_transform_number(input, numeric))?;
+            let components = parse_exact_comma_list(input, 16, |input| {
+                parse_specified_number(input, numeric, "transform")
+            })?;
             let components = components.try_into().map_err(|_| {
                 unsupported_value(input, None, "matrix3d() requires exactly sixteen numbers")
             })?;
@@ -285,37 +288,39 @@ fn parse_transform_function_value<'i, 't>(
         }
         CssTransformFunctionKind::Rotate => {
             CssTransformFunction::Rotate(parse_one(input, |input| {
-                parse_transform_angle(input, numeric)
+                parse_angle_value(input, numeric, AngleParserContext::Transform)
             })?)
         }
         CssTransformFunctionKind::Rotate3d => {
-            let x = parse_transform_number(input, numeric)?;
+            let x = parse_specified_number(input, numeric, "transform")?;
             input.expect_comma().map_err(basic)?;
-            let y = parse_transform_number(input, numeric)?;
+            let y = parse_specified_number(input, numeric, "transform")?;
             input.expect_comma().map_err(basic)?;
-            let z = parse_transform_number(input, numeric)?;
+            let z = parse_specified_number(input, numeric, "transform")?;
             input.expect_comma().map_err(basic)?;
-            let angle = parse_transform_angle(input, numeric)?;
+            let angle = parse_angle_value(input, numeric, AngleParserContext::Transform)?;
             input.expect_exhausted().map_err(basic)?;
             CssTransformFunction::Rotate3d(CssTransformRotate3d::new(x, y, z, angle))
         }
         CssTransformFunctionKind::RotateX => {
             CssTransformFunction::RotateX(parse_one(input, |input| {
-                parse_transform_angle(input, numeric)
+                parse_angle_value(input, numeric, AngleParserContext::Transform)
             })?)
         }
         CssTransformFunctionKind::RotateY => {
             CssTransformFunction::RotateY(parse_one(input, |input| {
-                parse_transform_angle(input, numeric)
+                parse_angle_value(input, numeric, AngleParserContext::Transform)
             })?)
         }
         CssTransformFunctionKind::RotateZ => {
             CssTransformFunction::RotateZ(parse_one(input, |input| {
-                parse_transform_angle(input, numeric)
+                parse_angle_value(input, numeric, AngleParserContext::Transform)
             })?)
         }
         CssTransformFunctionKind::Scale => {
-            let (x, y) = parse_one_or_two(input, |input| parse_transform_number(input, numeric))?;
+            let (x, y) = parse_one_or_two(input, |input| {
+                parse_specified_number(input, numeric, "transform")
+            })?;
             CssTransformFunction::Scale(CssTransformScale::new(x, y))
         }
         CssTransformFunctionKind::Scale3d => {
@@ -335,12 +340,12 @@ fn parse_transform_function_value<'i, 't>(
         }
         CssTransformFunctionKind::ScaleX => {
             CssTransformFunction::ScaleX(parse_one(input, |input| {
-                parse_transform_number(input, numeric)
+                parse_specified_number(input, numeric, "transform")
             })?)
         }
         CssTransformFunctionKind::ScaleY => {
             CssTransformFunction::ScaleY(parse_one(input, |input| {
-                parse_transform_number(input, numeric)
+                parse_specified_number(input, numeric, "transform")
             })?)
         }
         CssTransformFunctionKind::ScaleZ => {
@@ -349,17 +354,19 @@ fn parse_transform_function_value<'i, 't>(
             })?)
         }
         CssTransformFunctionKind::Skew => {
-            let (x, y) = parse_one_or_two(input, |input| parse_transform_angle(input, numeric))?;
+            let (x, y) = parse_one_or_two(input, |input| {
+                parse_angle_value(input, numeric, AngleParserContext::Transform)
+            })?;
             CssTransformFunction::Skew(CssTransformSkew::new(x, y))
         }
         CssTransformFunctionKind::SkewX => {
             CssTransformFunction::SkewX(parse_one(input, |input| {
-                parse_transform_angle(input, numeric)
+                parse_angle_value(input, numeric, AngleParserContext::Transform)
             })?)
         }
         CssTransformFunctionKind::SkewY => {
             CssTransformFunction::SkewY(parse_one(input, |input| {
-                parse_transform_angle(input, numeric)
+                parse_angle_value(input, numeric, AngleParserContext::Transform)
             })?)
         }
         CssTransformFunctionKind::Translate => {
@@ -436,102 +443,18 @@ fn parse_one_or_two<'i, 't, T>(
     Ok((first, second))
 }
 
-fn parse_transform_number<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssTransformNumber, ParseError<'i, Error>> {
-    let numeric_start = input.state();
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Number { value, .. } => CssFiniteNumber::try_new(*value)
-            .map(CssTransformNumber::Literal)
-            .ok_or_else(|| unsupported_value_at(location, None, "transform number must be finite")),
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)
-                .map(CssNumberCalculation::from_expression)
-                .map(CssTransformNumber::Calculation)
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
-}
-
-fn parse_transform_percentage<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssTransformPercentage, ParseError<'i, Error>> {
-    let numeric_start = input.state();
-    let location = input.current_source_location();
-    input.skip_whitespace();
-    let token_start = input.position();
-    match input.next().map_err(basic)? {
-        Token::Percentage { .. } => {
-            let value = checked_percentage_value(
-                location,
-                input.slice_from(token_start),
-                "transform percentage must be finite",
-            )?;
-            CssFiniteNumber::try_new(value)
-                .map(CssTransformPercentage::Literal)
-                .ok_or_else(|| {
-                    unsupported_value_at(location, None, "transform percentage must be finite")
-                })
-        }
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Percentage)
-                .map(CssPercentageCalculation::from_expression)
-                .map(CssTransformPercentage::Calculation)
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
-}
-
 fn parse_transform_scale_component<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTransformScaleComponent, ParseError<'i, Error>> {
     let state = input.state();
-    if let Ok(number) = input.try_parse(|input| parse_transform_number(input, numeric)) {
+    if let Ok(number) = input.try_parse(|input| parse_specified_number(input, numeric, "transform"))
+    {
         return Ok(CssTransformScaleComponent::Number(number));
     }
     input.reset(&state);
-    parse_transform_percentage(input, numeric).map(CssTransformScaleComponent::Percentage)
-}
-
-fn parse_transform_angle<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssTransformAngle, ParseError<'i, Error>> {
-    let numeric_start = input.state();
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Number { value, .. } if *value == 0.0 => Ok(CssTransformAngle::Zero),
-        Token::Dimension { value, unit, .. } => {
-            let unit = match unit.to_ascii_lowercase().as_str() {
-                "deg" => CssAngleUnit::Degrees,
-                "grad" => CssAngleUnit::Gradians,
-                "rad" => CssAngleUnit::Radians,
-                "turn" => CssAngleUnit::Turns,
-                _ => {
-                    return Err(unsupported_value_at(
-                        location,
-                        None,
-                        format!("unsupported transform angle unit `{unit}`"),
-                    ));
-                }
-            };
-            CssAngleLiteral::try_new(*value, unit)
-                .map(CssTransformAngle::Literal)
-                .ok_or_else(|| {
-                    unsupported_value_at(location, None, "transform angle must be finite")
-                })
-        }
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Angle)
-                .map(CssAngleCalculation::from_expression)
-                .map(CssTransformAngle::Calculation)
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
+    parse_specified_percentage(input, numeric, "transform")
+        .map(CssTransformScaleComponent::Percentage)
 }
 
 fn parse_transform_length_percentage<'i, 't>(
@@ -828,6 +751,7 @@ pub(super) fn parse_rotate<'i, 't>(
 
 pub(super) fn parse_scale<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssScale, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
@@ -837,7 +761,7 @@ pub(super) fn parse_scale<'i, 't>(
     }
     let mut values = Vec::new();
     while !input.is_exhausted() {
-        values.push(parse_number(input)?);
+        values.push(parse_specified_number_literal(input, numeric, "scale")?);
         if values.len() > 3 {
             return Err(unsupported_value(input, None, "scale has too many values"));
         }
@@ -904,7 +828,11 @@ fn parse_filter_function_value<'i, 't>(
             Ok(CssFilterFunction::DropShadow(shadow))
         }
         "grayscale" => parse_filter_amount(input, numeric).map(CssFilterFunction::Grayscale),
-        "hue-rotate" => parse_filter_angle(input, numeric).map(CssFilterFunction::HueRotate),
+        "hue-rotate" => {
+            let angle = parse_angle_value(input, numeric, AngleParserContext::Filter)?;
+            input.expect_exhausted().map_err(basic)?;
+            Ok(CssFilterFunction::HueRotate(angle))
+        }
         "invert" => parse_filter_amount(input, numeric).map(CssFilterFunction::Invert),
         "opacity" => parse_filter_amount(input, numeric).map(CssFilterFunction::Opacity),
         "saturate" => parse_filter_amount(input, numeric).map(CssFilterFunction::Saturate),
@@ -986,38 +914,6 @@ fn parse_filter_percentage<'i, 't>(
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
-}
-
-fn parse_filter_angle<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssFilterAngle, ParseError<'i, Error>> {
-    let numeric_start = input.state();
-    let location = input.current_source_location();
-    let angle = match input.next().map_err(basic)? {
-        Token::Number { value, .. } if *value == 0.0 => CssFilterAngle::Zero,
-        Token::Dimension { value, unit, .. } => {
-            let unit = match_ignore_ascii_case! { unit,
-                "deg" => CssAngleUnit::Degrees,
-                "grad" => CssAngleUnit::Gradians,
-                "rad" => CssAngleUnit::Radians,
-                "turn" => CssAngleUnit::Turns,
-                _ => return Err(unsupported_value_at(location, None, "hue-rotate() requires an angle")),
-            };
-            let value = CssAngleLiteral::try_new(*value, unit).ok_or_else(|| {
-                unsupported_value_at(location, None, "filter angle must be finite")
-            })?;
-            CssFilterAngle::Literal(value)
-        }
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            let expression =
-                parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Angle)?;
-            CssFilterAngle::Calculation(CssAngleCalculation::from_expression(expression))
-        }
-        token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    };
-    input.expect_exhausted().map_err(basic)?;
-    Ok(angle)
 }
 
 pub(super) fn parse_clip_path<'i, 't>(

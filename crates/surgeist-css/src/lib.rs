@@ -322,7 +322,14 @@
 //!
 //! The typed transform family covers the selected two-dimensional Transforms 1
 //! functions and the selected three-dimensional subset with exact arity,
-//! separators, and dimensions. Easing values distinguish keywords,
+//! separators, and dimensions. Matrices, rotation axes, scale numbers, and easing
+//! coordinates share `CssSpecifiedNumber`, which retains exact literals and symbolic
+//! math. Three-dimensional scale percentage branches use `CssSpecifiedPercentage`.
+//! Ordinary cubic-bezier X coordinates are checked exactly against inclusive [0, 1];
+//! genuine calculations remain unresolved. The independent `scale` property retains
+//! its selected one-to-three literal-number subset. Transform, filter, gradient, and
+//! image-orientation angles share `CssAngleValue` with finite literal precision,
+//! unitless zero, and symbolic Angle-root calculations. Easing values distinguish keywords,
 //! `cubic-bezier()`, and `steps()`. Box shadows and filter `drop-shadow()` have
 //! separate models, filter lists preserve URL/function order, and the selected
 //! basic-shape family exposes `inset()`, `circle()`, `ellipse()`, and `polygon()`,
@@ -1237,6 +1244,7 @@ pub use specified_numeric::{
     CssSpecifiedLength, CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeFlex,
     CssSpecifiedNonNegativeLength, CssSpecifiedNonNegativeLengthPercentage,
     CssSpecifiedNonNegativeNumber, CssSpecifiedNonNegativePercentage, CssSpecifiedNumber,
+    CssSpecifiedPercentage,
 };
 pub use specified_serialization::{
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,

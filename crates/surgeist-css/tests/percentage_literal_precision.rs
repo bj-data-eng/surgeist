@@ -148,7 +148,7 @@ fn transform_scale_keeps_authored_thirty_percent() {
         panic!("expected scale3d");
     };
     assert!(
-        matches!(scale.y(), CssTransformScaleComponent::Percentage(CssTransformPercentage::Literal(number)) if number.value() == 30.0)
+        matches!(scale.y(), CssTransformScaleComponent::Percentage(number) if exact_percentage(number.literal_component(), "30"))
     );
 }
 

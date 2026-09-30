@@ -4927,10 +4927,8 @@ fn constructor_invariants_reject_invalid_public_numeric_values() {
     assert!(exact_dimension(exact.literal_component(), "4", "px"));
     assert!(matches!(exact.origin(), CssValueOrigin::Programmatic));
 
-    assert_eq!(CssScaleValues::try_new(vec![1.0, f32::NAN]), None);
-    assert_eq!(CssScaleValues::try_new(vec![f32::INFINITY]), None);
-
     assert!(CssComponentValue::try_number("NaN").is_err());
+    assert!(CssComponentValue::try_number("inf").is_err());
     assert!(
         CssSpecifiedNonNegativeNumber::try_from_component(
             CssComponentValue::try_number("-1").unwrap()
@@ -9044,7 +9042,7 @@ fn authored_transform_filter_and_basic_shape_values_preserve_family_context() {
     ));
     assert!(matches!(
         functions.functions()[1],
-        CssTransformFunction::Rotate(CssTransformAngle::Literal(_))
+        CssTransformFunction::Rotate(CssAngleValue::Literal(_))
     ));
 
     let CssFilter::Functions(functions) =
@@ -9079,8 +9077,11 @@ fn authored_transform_filter_and_basic_shape_values_preserve_family_context() {
     let CssEasing::CubicBezier(bezier) = &easings.values()[0] else {
         panic!("expected cubic-bezier easing");
     };
-    assert!(matches!(bezier.x1().value(), CssEasingNumber::Literal(value) if value.value() == 0.1));
-    assert!(matches!(bezier.y2(), CssEasingNumber::Literal(value) if value.value() == 1.0));
+    assert!(exact_number(
+        (bezier.x1().value()).literal_component(),
+        "0.1"
+    ));
+    assert!(exact_number((bezier.y2()).literal_component(), "1"));
 }
 
 #[test]
@@ -9209,7 +9210,15 @@ fn background_effect_and_animation_constructors_reject_invalid_states() {
         assert!(!parse_style_attribute(&format!("transform: {css}")).is_clean());
     }
     assert_eq!(CssScaleValues::try_new(Vec::new()), None);
-    assert_eq!(CssScaleValues::try_new(vec![1.0, 2.0, 3.0, 4.0]), None);
+    assert_eq!(
+        CssScaleValues::try_new(vec![
+            checked_number("1"),
+            checked_number("2"),
+            checked_number("3"),
+            checked_number("4")
+        ]),
+        None
+    );
     assert_eq!(CssMaskList::try_new(Vec::new()), None);
     assert_eq!(CssTransitionList::try_new(Vec::new()), None);
     assert_eq!(CssTransition::try_new(None, None, None, None), None);
@@ -10310,4 +10319,14 @@ fn nonnegative_length_percentage(css: &str) -> crate::CssSpecifiedNonNegativeLen
         )
         .unwrap()
     }
+}
+
+fn exact_number(component: Option<&crate::CssComponentValue>, representation: &str) -> bool {
+    matches!(component.map(crate::CssComponentValue::view), Some(crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Number(number))) if number.representation() == representation)
+}
+fn checked_number(representation: &str) -> crate::CssSpecifiedNumber {
+    crate::CssSpecifiedNumber::try_from_component(
+        crate::CssComponentValue::try_number(representation).unwrap(),
+    )
+    .unwrap()
 }
