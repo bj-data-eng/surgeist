@@ -94,6 +94,11 @@ const LONGHANDS: &[P] = &[
     P::BorderImageRepeat,
     P::BackgroundImage,
     P::BackgroundPosition,
+    P::BackgroundSize,
+    P::BackgroundRepeat,
+    P::BackgroundOrigin,
+    P::BackgroundClip,
+    P::BackgroundAttachment,
     P::MaskImage,
     P::Content,
     P::CounterReset,
@@ -801,6 +806,29 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
                         if number.representation() == "0"));
             }
         }
+        CssLonghandValueRef::BackgroundSize(v) => assert!(matches!(
+            v.sizes(),
+            [CssBackgroundSize::Explicit {
+                width: CssBackgroundSizeComponent::Auto,
+                height: None
+            }]
+        )),
+        CssLonghandValueRef::BackgroundRepeat(v) => assert_eq!(
+            v.repeats(),
+            &[CssBackgroundRepeat::Axes {
+                x: CssBackgroundRepeatStyle::Repeat,
+                y: CssBackgroundRepeatStyle::Repeat
+            },]
+        ),
+        CssLonghandValueRef::BackgroundOrigin(v) => {
+            assert_eq!(v.boxes(), &[CssBackgroundBox::PaddingBox])
+        }
+        CssLonghandValueRef::BackgroundClip(v) => {
+            assert_eq!(v.boxes(), &[CssBackgroundBox::BorderBox])
+        }
+        CssLonghandValueRef::BackgroundAttachment(v) => {
+            assert_eq!(v.attachments(), &[CssBackgroundAttachment::Scroll])
+        }
         CssLonghandValueRef::Content(v) => assert_eq!(v, &CssContentValue::Normal),
         CssLonghandValueRef::CaptionSide(v) => assert_eq!(*v, CssCaptionSide::Top),
         CssLonghandValueRef::Clip(v) => assert_eq!(*v, CssClip::Auto),
@@ -898,7 +926,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 250);
+    assert_eq!(expected.len(), 255);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {

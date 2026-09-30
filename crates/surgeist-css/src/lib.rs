@@ -866,6 +866,12 @@
 //! Background and mask size/repeat longhands expose ordered semantic lists through
 //! `sizes()` and `repeats()`; background origin/clip expose all authored boxes
 //! through `boxes()`, and background attachment exposes `attachments()`.
+//! Each of these five background properties expands to one noninherited longhand,
+//! retaining its complete ordered list. Initial layers are `auto`, `repeat`,
+//! `padding-box`, `border-box`, and `scroll`, respectively. The checked scalar and
+//! list owners expose bounded specified serialization: equal repeat axes and
+//! equivalent repeat aliases use their shorter form, and an implied `auto` height
+//! is omitted. Every layer shares one cumulative serialization budget.
 //!
 //! ```
 //! use surgeist_css::{
@@ -1085,6 +1091,7 @@
 //! resources, units, or colors; perform layout, painting, or animation; expose a
 //! mutable CSSOM; or lower CSS into sibling Surgeist types.
 
+mod background_layer_serialization;
 mod border_color;
 mod component_values;
 mod conformance;

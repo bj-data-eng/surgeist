@@ -2515,6 +2515,22 @@ The `background-size` and `mask-size` wrappers expose their ordered
 expose `CssBackgroundRepeatList` through `repeats()`. `background-origin` and
 `background-clip` expose the full `CssBackgroundBoxList` through `boxes()`, and
 `background-attachment` exposes its ordered list through `attachments()`.
+The five background longhands each contribute one noninherited terminal value,
+preserving the authored list without aligning it to the image count. Their
+single-layer initials are `auto`, `repeat`, `padding-box`, `border-box`, and
+`scroll`, respectively. CSS-wide keywords remain symbolic; pending values
+reenter their original property grammar with unchanged occurrence and importance.
+
+Their scalar and list owners expose `serialize_specified()` and
+`serialize_specified_with_limits()`. Specified size serialization omits an
+optional `auto` height; repeat serialization collapses equal axes and uses
+`repeat-x`/`repeat-y` for the equivalent directional pairs. Boxes and attachments
+emit canonical keywords. Every layer, numeric child and separator shares one
+cumulative input-node, projection-node and byte budget. Authored components
+omitted by canonicalization still count toward node budgets. Failure returns no
+partial CSS and leaves the authored value unchanged. These generic size/repeat
+serializers also serve their existing mask value owners.
+
 These are the authored semantic values, including symbolic size calculations;
 global keywords and substitution-dependent declarations remain separate branches.
 

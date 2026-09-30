@@ -123,10 +123,16 @@ pub surgeist_css::CssAuthoredFontFeatureValue::On
 pub surgeist_css::CssBackgroundAttachment::Fixed
 pub surgeist_css::CssBackgroundAttachment::Local
 pub surgeist_css::CssBackgroundAttachment::Scroll
+impl surgeist_css::CssBackgroundAttachment
+pub fn surgeist_css::CssBackgroundAttachment::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBackgroundAttachment::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssBackgroundBox
 pub surgeist_css::CssBackgroundBox::BorderBox
 pub surgeist_css::CssBackgroundBox::ContentBox
 pub surgeist_css::CssBackgroundBox::PaddingBox
+impl surgeist_css::CssBackgroundBox
+pub fn surgeist_css::CssBackgroundBox::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBackgroundBox::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssBackgroundLayerBoxes
 pub surgeist_css::CssBackgroundLayerBoxes::One(surgeist_css::CssBackgroundBox)
 pub surgeist_css::CssBackgroundLayerBoxes::OriginAndClip
@@ -141,6 +147,9 @@ pub surgeist_css::CssBackgroundRepeat::Axes::x: surgeist_css::CssBackgroundRepea
 pub surgeist_css::CssBackgroundRepeat::Axes::y: surgeist_css::CssBackgroundRepeatStyle
 pub surgeist_css::CssBackgroundRepeat::RepeatX
 pub surgeist_css::CssBackgroundRepeat::RepeatY
+impl surgeist_css::CssBackgroundRepeat
+pub fn surgeist_css::CssBackgroundRepeat::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBackgroundRepeat::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssBackgroundRepeatStyle
 pub surgeist_css::CssBackgroundRepeatStyle::NoRepeat
 pub surgeist_css::CssBackgroundRepeatStyle::Repeat
@@ -152,6 +161,9 @@ pub surgeist_css::CssBackgroundSize::Cover
 pub surgeist_css::CssBackgroundSize::Explicit
 pub surgeist_css::CssBackgroundSize::Explicit::height: core::option::Option<surgeist_css::CssBackgroundSizeComponent>
 pub surgeist_css::CssBackgroundSize::Explicit::width: surgeist_css::CssBackgroundSizeComponent
+impl surgeist_css::CssBackgroundSize
+pub fn surgeist_css::CssBackgroundSize::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBackgroundSize::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssBackgroundSizeComponent
 pub surgeist_css::CssBackgroundSizeComponent::Auto
 pub surgeist_css::CssBackgroundSizeComponent::Length(surgeist_css::CssSpecifiedNonNegativeLengthPercentage)
@@ -2490,8 +2502,13 @@ pub surgeist_css::CssLonghandValueRef::AlignContent(&'a surgeist_css::CssAlignCo
 pub surgeist_css::CssLonghandValueRef::AlignItems(&'a surgeist_css::CssAlignItemsValue)
 pub surgeist_css::CssLonghandValueRef::AlignSelf(&'a surgeist_css::CssAlignSelfValue)
 pub surgeist_css::CssLonghandValueRef::AspectRatio(&'a surgeist_css::CssAspectRatioValue)
+pub surgeist_css::CssLonghandValueRef::BackgroundAttachment(&'a surgeist_css::CssBackgroundAttachmentList)
+pub surgeist_css::CssLonghandValueRef::BackgroundClip(&'a surgeist_css::CssBackgroundBoxList)
 pub surgeist_css::CssLonghandValueRef::BackgroundImage(&'a surgeist_css::CssImageValueList)
+pub surgeist_css::CssLonghandValueRef::BackgroundOrigin(&'a surgeist_css::CssBackgroundBoxList)
 pub surgeist_css::CssLonghandValueRef::BackgroundPosition(&'a surgeist_css::CssBackgroundPositionList)
+pub surgeist_css::CssLonghandValueRef::BackgroundRepeat(&'a surgeist_css::CssBackgroundRepeatList)
+pub surgeist_css::CssLonghandValueRef::BackgroundSize(&'a surgeist_css::CssBackgroundSizeList)
 pub surgeist_css::CssLonghandValueRef::BlockSize(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::BorderBlockEndColor(&'a surgeist_css::CssColor)
 pub surgeist_css::CssLonghandValueRef::BorderBlockEndStyle(&'a surgeist_css::CssBorderStyle)
@@ -4148,6 +4165,9 @@ pub struct surgeist_css::CssBackgroundAttachmentList
 impl surgeist_css::CssBackgroundAttachmentList
 pub fn surgeist_css::CssBackgroundAttachmentList::attachments(&self) -> &[surgeist_css::CssBackgroundAttachment]
 pub fn surgeist_css::CssBackgroundAttachmentList::try_new(attachments: alloc::vec::Vec<surgeist_css::CssBackgroundAttachment>) -> core::option::Option<Self>
+impl surgeist_css::CssBackgroundAttachmentList
+pub fn surgeist_css::CssBackgroundAttachmentList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBackgroundAttachmentList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssBackgroundAttachmentPropertyValue
 impl surgeist_css::CssBackgroundAttachmentPropertyValue
 pub fn surgeist_css::CssBackgroundAttachmentPropertyValue::as_css(&self) -> &str
@@ -4160,6 +4180,9 @@ pub struct surgeist_css::CssBackgroundBoxList
 impl surgeist_css::CssBackgroundBoxList
 pub fn surgeist_css::CssBackgroundBoxList::boxes(&self) -> &[surgeist_css::CssBackgroundBox]
 pub fn surgeist_css::CssBackgroundBoxList::try_new(boxes: alloc::vec::Vec<surgeist_css::CssBackgroundBox>) -> core::option::Option<Self>
+impl surgeist_css::CssBackgroundBoxList
+pub fn surgeist_css::CssBackgroundBoxList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBackgroundBoxList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssBackgroundClipPropertyValue
 impl surgeist_css::CssBackgroundClipPropertyValue
 pub fn surgeist_css::CssBackgroundClipPropertyValue::as_css(&self) -> &str
@@ -4212,11 +4235,17 @@ pub struct surgeist_css::CssBackgroundRepeatList
 impl surgeist_css::CssBackgroundRepeatList
 pub fn surgeist_css::CssBackgroundRepeatList::repeats(&self) -> &[surgeist_css::CssBackgroundRepeat]
 pub fn surgeist_css::CssBackgroundRepeatList::try_new(repeats: alloc::vec::Vec<surgeist_css::CssBackgroundRepeat>) -> core::option::Option<Self>
+impl surgeist_css::CssBackgroundRepeatList
+pub fn surgeist_css::CssBackgroundRepeatList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBackgroundRepeatList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssBackgroundRepeatPropertyValue
 impl surgeist_css::CssBackgroundRepeatPropertyValue
 pub fn surgeist_css::CssBackgroundRepeatPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBackgroundRepeatPropertyValue::repeats(&self) -> &surgeist_css::CssBackgroundRepeatList
 pub struct surgeist_css::CssBackgroundSizeList
+impl surgeist_css::CssBackgroundSizeList
+pub fn surgeist_css::CssBackgroundSizeList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBackgroundSizeList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl surgeist_css::CssBackgroundSizeList
 pub fn surgeist_css::CssBackgroundSizeList::sizes(&self) -> &[surgeist_css::CssBackgroundSize]
 pub fn surgeist_css::CssBackgroundSizeList::try_new(sizes: alloc::vec::Vec<surgeist_css::CssBackgroundSize>) -> core::option::Option<Self>
