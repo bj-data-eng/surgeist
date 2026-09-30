@@ -494,6 +494,31 @@ fn main() {
     normalization_keeps_occurrence_order_and_symbolic_values();
     global_keywords_are_not_resolved_to_ordinary_defaults();
     pending_reentry_preserves_original_and_replacement_origins_and_is_retryable();
+    canonical_specified_values_keep_context_dependent_operands_symbolic();
+}
+
+fn canonical_specified_values_keep_context_dependent_operands_symbolic() {
+    assert_eq!(
+        CssFlowTolerance::normal().serialize_specified().unwrap(),
+        "normal"
+    );
+    assert_eq!(
+        CssFlowTolerance::infinite().serialize_specified().unwrap(),
+        "infinite"
+    );
+    let tolerance =
+        CssFlowTolerance::length_percentage(signed_length_percentage("calc(-2px - 3%)"));
+    assert_eq!(tolerance.serialize_specified().unwrap(), "calc(-3% - 2px)");
+    let before = tolerance.clone();
+    assert_eq!(
+        tolerance
+            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(100, 100, 1))
+            .unwrap_err()
+            .kind(),
+        CssSpecifiedValueSerializationErrorKind::ByteLimit
+    );
+    assert_eq!(tolerance, before);
+    println!("canonical symbolic specified serialization: ok");
 }
 
 fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercentage {

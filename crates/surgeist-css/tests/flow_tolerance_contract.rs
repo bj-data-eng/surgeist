@@ -23,6 +23,7 @@ fn public_flow_tolerance_consumer_preserves_checked_values_and_longhand_contribu
             "ordered symbolic longhand normalization: ok\n",
             "global values remain symbolic: ok\n",
             "strict pending reentry and preserved origins: ok\n",
+            "canonical symbolic specified serialization: ok\n",
         )
     );
 }

@@ -478,6 +478,19 @@ supported calculations. It rejects unrelated keywords. Signed
 operands, later subtraction and typed calculations remain valid and symbolic;
 no computed range evaluation occurs at this boundary.
 
+`serialize_specified()` emits canonical specified CSS: `normal` and `infinite`
+stay keywords, exact signed literal magnitudes retain their meaning, and supported
+math uses the shared length-percentage projection. For example, `+02.500EM`
+becomes `2.5em`, `calc(2px + 3px)` becomes `calc(5px)`, and `calc(-2px - 3%)`
+becomes `calc(-3% - 2px)`. Relative units and percentage bases remain unresolved.
+Determinate math retains a `calc()` wrapper under the shared numeric specified
+serialization policy, including folded `min()`, `max()`, and `clamp()` values.
+`serialize_specified_with_limits()` applies one cumulative input-node,
+projection-node, and output-byte budget, returning a typed
+`CssSpecifiedValueSerializationError` without partial public output or input
+mutation. A keyword or literal costs one input and one projection node;
+calculations use the scalar owner's existing costs.
+
 Migration: use `flow-tolerance` and `CssKnownProperty::FlowTolerance`. Both
 `grid-flow-tolerance` and `item-tolerance` are unknown properties, without aliases.
 The obsolete `CssGridFlowTolerance`/`CssGridFlowToleranceValue` types and their

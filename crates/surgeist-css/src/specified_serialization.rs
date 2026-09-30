@@ -329,6 +329,44 @@ impl CssTableLayout {
     }
 }
 
+impl crate::CssFlowTolerance {
+    /// Serializes canonical specified tolerance without resolving `normal`,
+    /// relative lengths, or the percentage basis.
+    pub fn serialize_specified(&self) -> Result<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Serializes atomically under cumulative input, projection, and byte limits.
+    /// Exact ordinary magnitudes and supported symbolic math use the shared
+    /// length-percentage serializer. Failure leaves the authored value unchanged.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let mut output = String::new();
+        self.append_specified(&mut context, &mut output)?;
+        Ok(output)
+    }
+
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<()> {
+        let keyword = match self.as_ref() {
+            crate::CssFlowToleranceRef::Normal => "normal",
+            crate::CssFlowToleranceRef::Infinite => "infinite",
+            crate::CssFlowToleranceRef::LengthPercentage(value) => {
+                return value.append_specified(context, output);
+            }
+        };
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        context.append(output, keyword)
+    }
+}
+
 impl CssOpacityValue {
     /// Produces canonical specified opacity, without computed-value clamping.
     ///
@@ -383,6 +421,56 @@ fn format_lexical(text: &str, percentage: bool, limit: usize) -> Result<String> 
 mod composed_value_tests {
     use super::*;
     use crate::{CssColor, CssIntegerCalculation, CssIntegerValue};
+
+    #[test]
+    fn flow_tolerance_keywords_and_math_share_monotonic_resources() {
+        let keyword = crate::CssFlowTolerance::normal();
+        let math = crate::CssFlowTolerance::length_percentage(
+            crate::CssSpecifiedLengthPercentage::try_from_calculation(
+                crate::CssLengthPercentageCalculation::try_from_components(
+                    crate::parse_component_values("calc(1px + 2em)").unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap(),
+        );
+        let expected = "normal calc(2em + 1px)";
+        let mut context = SpecifiedSerializationContext::new(
+            CssSpecifiedValueSerializationLimits::new(5, 6, expected.len()),
+        );
+        let mut output = String::new();
+        keyword.append_specified(&mut context, &mut output).unwrap();
+        context.append(&mut output, " ").unwrap();
+        math.append_specified(&mut context, &mut output).unwrap();
+        assert_eq!(output, expected);
+
+        for (limits, kind) in [
+            (
+                CssSpecifiedValueSerializationLimits::new(4, 6, expected.len()),
+                Kind::InputNodeLimit,
+            ),
+            (
+                CssSpecifiedValueSerializationLimits::new(5, 5, expected.len()),
+                Kind::ProjectionNodeLimit,
+            ),
+            (
+                CssSpecifiedValueSerializationLimits::new(5, 6, expected.len() - 1),
+                Kind::ByteLimit,
+            ),
+        ] {
+            let mut context = SpecifiedSerializationContext::new(limits);
+            let mut output = String::new();
+            keyword.append_specified(&mut context, &mut output).unwrap();
+            context.append(&mut output, " ").unwrap();
+            assert_eq!(
+                math.append_specified(&mut context, &mut output)
+                    .unwrap_err()
+                    .kind(),
+                kind
+            );
+            assert_eq!(output, "normal ");
+        }
+    }
 
     #[test]
     fn color_and_integer_share_input_projection_and_output_limits() {

@@ -5701,6 +5701,9 @@ pub const fn surgeist_css::CssFlowTolerance::as_ref(&self) -> surgeist_css::CssF
 pub const fn surgeist_css::CssFlowTolerance::infinite() -> Self
 pub fn surgeist_css::CssFlowTolerance::length_percentage(value: surgeist_css::CssSpecifiedLengthPercentage) -> Self
 pub const fn surgeist_css::CssFlowTolerance::normal() -> Self
+impl surgeist_css::CssFlowTolerance
+pub fn surgeist_css::CssFlowTolerance::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFlowTolerance::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::cmp::PartialEq for surgeist_css::CssFlowTolerance
 pub fn surgeist_css::CssFlowTolerance::eq(&self, other: &Self) -> bool
 impl core::default::Default for surgeist_css::CssFlowTolerance
