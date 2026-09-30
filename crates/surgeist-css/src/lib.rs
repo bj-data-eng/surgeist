@@ -147,6 +147,10 @@
 //! from literal names, and decoded identifier boundaries are retained rather
 //! than projected into the obsolete joined-string payload.
 //!
+//! The `background-image` and `mask-image` wrappers expose their sole checked
+//! [`CssImageValueList`] through `images()`, preserving URL, `none`, and gradient
+//! branches in authored order.
+//!
 //! The generated [`CssOverflowPropertyValue`] exposes a checked [`CssOverflowValue`]
 //! through `current()`. Its `i01_subset()` retains the older
 //! [`CssOverflowI01PropertyValue`] `Single` and `Pair` shapes only when every

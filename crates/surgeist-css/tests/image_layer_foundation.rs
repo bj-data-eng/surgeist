@@ -25,6 +25,66 @@ fn authored(source: &CssDeclaration) -> &CssImageValueList {
     }
 }
 
+#[test]
+fn mask_shorthand_retains_url_and_none_and_rejects_gradients() {
+    for (css, image) in [
+        (
+            "url(mask.svg)",
+            CssImageValue::Url(CssUrl::try_new("mask.svg").unwrap()),
+        ),
+        ("none", CssImageValue::None),
+    ] {
+        let source = declaration(&format!("mask: {css}"));
+        let CssKnownPropertyValueRef::Mask(value) =
+            source.known().unwrap().property_value().unwrap()
+        else {
+            panic!("mask shorthand");
+        };
+        let expected = CssMaskList::try_new(vec![
+            CssMaskLayer::try_new(Some(image), None, None, None).unwrap(),
+        ])
+        .unwrap();
+        assert_eq!(value.value(), &expected);
+        assert_eq!(value.as_css(), css);
+    }
+    let report = parse_style_attribute("mask: linear-gradient(red, blue); color: red");
+    assert_eq!(report.diagnostics().len(), 1);
+    let [retained] = report.syntax().as_slice() else {
+        panic!("only the valid sibling remains");
+    };
+    assert_eq!(
+        retained.known().unwrap().property(),
+        CssKnownProperty::Color
+    );
+}
+
+#[test]
+fn mask_layer_construction_preserves_the_supported_image_subset_and_nonempty_boundary() {
+    assert!(CssMaskLayer::try_new(None, None, None, None).is_none());
+    assert!(CssMaskLayer::try_new(Some(CssImageValue::None), None, None, None).is_some());
+    assert!(
+        CssMaskLayer::try_new(
+            Some(CssImageValue::Url(CssUrl::try_new("mask.svg").unwrap())),
+            None,
+            None,
+            None,
+        )
+        .is_some()
+    );
+    assert!(CssMaskLayer::try_new(None, None, Some(CssBackgroundSize::Contain), None).is_some());
+    let source = declaration("background-image: linear-gradient(red, blue)");
+    let gradient = authored(&source).images()[0].clone();
+    assert!(matches!(
+        gradient,
+        CssImageValue::Gradient(CssGradient::Linear(_))
+    ));
+    assert!(CssMaskLayer::try_new(Some(gradient.clone()), None, None, None).is_none());
+    assert!(
+        CssMaskLayer::try_new(Some(gradient), None, Some(CssBackgroundSize::Contain), None)
+            .is_none()
+    );
+}
+
 fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
     let CssExpansion::Contributions(CssContributions::Longhands(items)) =
         expand_declaration(source).unwrap()
@@ -118,7 +178,7 @@ fn mask_image_is_one_noninherited_longhand_initially_none() {
 }
 
 #[test]
-fn ordered_current_images_expand_once_with_source_and_importance() {
+fn ordered_images_expand_once_with_source_and_importance() {
     let source = declaration(concat!(
         "background-image:none, src(\"hero.svg\"), linear-gradient(red, blue), ",
         "radial-gradient(circle, red, blue), ",

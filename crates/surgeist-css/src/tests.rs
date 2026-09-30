@@ -63,6 +63,12 @@ macro_rules! declaration_value {
     ($input:expr, Color) => {
         semantic_value!($input, Color)
     };
+    ($input:expr, BackgroundImage) => {
+        semantic_accessor_value!($input, BackgroundImage, images)
+    };
+    ($input:expr, MaskImage) => {
+        semantic_accessor_value!($input, MaskImage, images)
+    };
     ($input:expr, BackgroundColor) => {
         semantic_value!($input, BackgroundColor)
     };
@@ -8880,10 +8886,11 @@ fn parses_background_properties_as_authored_syntax() {
             ".panel { background-image: url(\"hero.png\"), none; }",
             BackgroundImage
         ),
-        CssImageLayerList::new(vec![
-            CssImageLayer::Url(CssUrl::new("hero.png")),
-            CssImageLayer::None,
+        CssImageValueList::try_new(vec![
+            CssImageValue::Url(CssUrl::new("hero.png")),
+            CssImageValue::None,
         ])
+        .unwrap()
     );
     assert_eq!(
         declaration_value!(
@@ -9035,10 +9042,11 @@ fn parses_transform_effect_and_mask_properties_as_authored_syntax() {
     assert!(circle.position().is_some());
     assert_eq!(
         declaration_value!(".panel { mask-image: url(mask.png), none; }", MaskImage),
-        CssImageLayerList::new(vec![
-            CssImageLayer::Url(CssUrl::new("mask.png")),
-            CssImageLayer::None,
+        CssImageValueList::try_new(vec![
+            CssImageValue::Url(CssUrl::new("mask.png")),
+            CssImageValue::None,
         ])
+        .unwrap()
     );
     let mask_layers = declaration_value!(
         ".panel { mask: url(mask.png) center / contain no-repeat; }",
@@ -9198,7 +9206,7 @@ fn parses_animation_properties_and_preserves_comma_lists() {
 
 #[test]
 fn background_effect_and_animation_constructors_reject_invalid_states() {
-    assert_eq!(CssImageLayerList::try_new(Vec::new()), None);
+    assert_eq!(CssImageValueList::try_new(Vec::new()), None);
     assert_eq!(CssCursorUrlList::try_new(Vec::new()), None);
     assert!(CssCursor::try_urls(Vec::new(), CssCursorKeyword::Pointer).is_none());
     let horizontal = CssPositionOffset::try_new(CssLength::px(1.0)).unwrap();

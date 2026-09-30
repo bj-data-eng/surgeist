@@ -1,8 +1,8 @@
 use surgeist_css::{
     CssBackgroundAttachment, CssBackgroundBox, CssBackgroundBoxList, CssBackgroundLayerBoxes,
     CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize, CssBackgroundSizeComponent,
-    CssCalcLength, CssErrorCode, CssGlobalKeyword, CssHorizontalPosition, CssImageValue,
-    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
+    CssCalcLength, CssErrorCode, CssGlobalKeyword, CssGradient, CssHorizontalPosition,
+    CssImageValue, CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
     CssRecoveryAction, CssVerticalPosition, ErrorKind, parse_style_attribute,
 };
 
@@ -123,7 +123,13 @@ fn background_longhands_preserve_ordered_semantic_lists() {
         panic!("expected background-image");
     };
     assert_eq!(images.images().images().len(), 2);
-    assert!(images.i01_subset().is_none());
+    assert!(matches!(
+        images.images().images(),
+        [
+            CssImageValue::None,
+            CssImageValue::Gradient(CssGradient::Linear(_))
+        ]
+    ));
 
     let CssKnownPropertyValueRef::BackgroundPosition(positions) = values[1] else {
         panic!("expected background-position");

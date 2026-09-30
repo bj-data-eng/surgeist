@@ -4417,12 +4417,12 @@ fn assert_known_property_value(
         ) => {
             use surgeist_css::{
                 CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize,
-                CssHorizontalPosition as Horizontal, CssImageLayer, CssMaskLayer, CssMaskList,
+                CssHorizontalPosition as Horizontal, CssImageValue, CssMaskLayer, CssMaskList,
                 CssPosition, CssUrl, CssVerticalPosition as Vertical,
             };
             let expected = CssMaskList::try_new(vec![
                 CssMaskLayer::try_new(
-                    Some(CssImageLayer::Url(CssUrl::try_new("mask.png").unwrap())),
+                    Some(CssImageValue::Url(CssUrl::try_new("mask.png").unwrap())),
                     Some(CssPosition::try_new(Horizontal::Center, Vertical::Center).unwrap()),
                     Some(CssBackgroundSize::Contain),
                     Some(CssBackgroundRepeat::Axes {
@@ -4449,6 +4449,43 @@ fn assert_known_property_value(
         assert_eq!(authored.value_capability, "deferred-i01");
         assert_eq!(css, authored.value);
         assert!(semantic.is_some_and(|item| item.id == property.stable_id()));
+        return;
+    }
+    // The immutable archive records the former URL/none Debug representation.
+    // Compare its captured inputs with the sole authored image model explicitly.
+    let image_authored = match (property, value) {
+        (
+            surgeist_css::CssKnownProperty::BackgroundImage,
+            surgeist_css::CssKnownPropertyValueRef::BackgroundImage(value),
+        ) => Some((value.as_css(), value.images())),
+        (
+            surgeist_css::CssKnownProperty::MaskImage,
+            surgeist_css::CssKnownPropertyValueRef::MaskImage(value),
+        ) => Some((value.as_css(), value.images())),
+        _ => None,
+    };
+    if let Some((css, images)) = image_authored {
+        use surgeist_css::CssImageValue;
+        assert_eq!(authored.id, property.stable_id());
+        assert_eq!(authored.value_capability, "deferred-i01");
+        assert_eq!(css, authored.value);
+        assert!(semantic.is_some_and(|item| item.id == property.stable_id()));
+        match (property, authored.value) {
+            (_, "url(\"\")") => assert!(
+                matches!(images.images(), [CssImageValue::Url(url)] if url.as_str().is_empty())
+            ),
+            (surgeist_css::CssKnownProperty::BackgroundImage, "url(\"hero.png\"), none") => {
+                assert!(
+                    matches!(images.images(), [CssImageValue::Url(url), CssImageValue::None]
+                    if url.as_str() == "hero.png")
+                )
+            }
+            (surgeist_css::CssKnownProperty::MaskImage, "url(mask.png), none") => assert!(
+                matches!(images.images(), [CssImageValue::Url(url), CssImageValue::None]
+                    if url.as_str() == "mask.png")
+            ),
+            _ => panic!("unexpected captured image-list witness: {}", frozen.case_id),
+        }
         return;
     }
     assert_property_specific_value!(
@@ -4516,7 +4553,6 @@ fn assert_known_property_value(
             BorderRightWidth,
             BorderBottomWidth,
             BorderLeftWidth,
-            BackgroundImage,
             BorderStyle,
             BorderTopStyle,
             BorderRightStyle,
@@ -4544,7 +4580,6 @@ fn assert_known_property_value(
             Translate,
             Rotate,
             Scale,
-            MaskImage,
     );
 }
 fn global_keyword_css(keyword: surgeist_css::CssGlobalKeyword) -> &'static str {

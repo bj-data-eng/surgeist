@@ -1,6 +1,6 @@
 use surgeist_css::{
     CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize, CssCalcLength, CssErrorCode,
-    CssHorizontalPosition, CssImageLayer, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
+    CssHorizontalPosition, CssImageValue, CssKnownProperty, CssKnownPropertyValueRef, CssLength,
     CssLengthPercentageCalculation, CssLengthUnit, CssMaskLayer, CssMaskList, CssPosition,
     CssPositionOffset, CssRecoveryAction, CssTokenKind, CssTransformOrigin, CssTransformOriginZ,
     CssUrl, CssVerticalPosition, CssVerticalPositionKeyword, ErrorKind, parse_style_attribute,
@@ -748,7 +748,7 @@ fn mask_shorthand_preserves_valid_image_position_size_and_repeat_components() {
 
     let expected = CssMaskList::try_new(vec![
         CssMaskLayer::try_new(
-            Some(CssImageLayer::Url(
+            Some(CssImageValue::Url(
                 CssUrl::try_new("mask.png").expect("nonempty URL"),
             )),
             Some(

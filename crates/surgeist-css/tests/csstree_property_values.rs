@@ -3,7 +3,7 @@
 //! Width, Color and BackgroundImage grammars, independently of captured output.
 //! Literal expectations use numeric/color/URL semantics rather than serialization.
 use surgeist_css::{
-    CssBoxSize, CssCalculationType, CssComponentValueRef, CssErrorCode, CssImageLayer,
+    CssBoxSize, CssCalculationType, CssComponentValueRef, CssErrorCode, CssImageValue,
     CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
     CssRecoveryAction, CssSizeValue, CssTokenKind, CssValueOrigin, CssValueTokenRef, ErrorKind,
     parse_property_value_text,
@@ -707,7 +707,7 @@ fn raw_property_corpus_obeys_selected_grammar_and_original_coordinates() {
                 else {
                     panic!("expected background image: {id}");
                 };
-                let [CssImageLayer::Url(url)] = value.i01_subset().unwrap().layers() else {
+                let [CssImageValue::Url(url)] = value.images().images() else {
                     panic!("expected one URL layer: {id}");
                 };
                 assert_eq!(url.as_str(), expected, "{id}");

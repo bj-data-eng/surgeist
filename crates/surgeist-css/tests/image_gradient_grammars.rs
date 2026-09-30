@@ -70,7 +70,6 @@ fn c13_images_and_gradients_retain_typed_structure() {
         value.images().images()[5],
         CssImageValue::Gradient(CssGradient::RepeatingRadial(_))
     ));
-    assert!(value.i01_subset().is_none());
 }
 
 #[test]
@@ -154,7 +153,6 @@ fn c13_images_keep_globals_substitutions_and_exact_invalid_recovery_distinct() {
         panic!("expected ordinary URL image");
     };
     assert!(matches!(url.images().images(), [CssImageValue::Url(_)]));
-    assert!(url.i01_subset().is_some());
 
     let source = concat!(
         "--😀: kept; ",

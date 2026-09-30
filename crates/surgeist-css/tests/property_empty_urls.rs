@@ -5,10 +5,9 @@
 
 use surgeist_css::{
     CssComponentValue, CssComponentValues, CssContent, CssContentItem, CssCursor, CssCursorKeyword,
-    CssImageLayer, CssImageValue, CssImportance, CssKnownProperty, CssKnownPropertyValueRef,
-    CssListStyleImage, CssMaskLayer, CssMaskList, CssPropertyNameRef, CssRecoveryAction, CssUrl,
-    CssUrlModifier, CssValueOrigin, parse_property_value, parse_style_attribute,
-    validate_style_attribute,
+    CssImageValue, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssListStyleImage,
+    CssMaskLayer, CssMaskList, CssPropertyNameRef, CssRecoveryAction, CssUrl, CssUrlModifier,
+    CssValueOrigin, parse_property_value, parse_style_attribute, validate_style_attribute,
 };
 
 fn assert_url_payload(name: &str, value: CssKnownPropertyValueRef<'_>, expected: &str) {
@@ -55,7 +54,7 @@ fn assert_url_payload(name: &str, value: CssKnownPropertyValueRef<'_>, expected:
         CssKnownPropertyValueRef::Mask(value) => {
             let expected_mask = CssMaskList::try_new(vec![
                 CssMaskLayer::try_new(
-                    Some(CssImageLayer::Url(CssUrl::try_new(expected).unwrap())),
+                    Some(CssImageValue::Url(CssUrl::try_new(expected).unwrap())),
                     None,
                     None,
                     None,

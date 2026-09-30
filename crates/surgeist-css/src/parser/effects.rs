@@ -1,6 +1,6 @@
 use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
 
-use super::background::{parse_background_repeat, parse_background_size, parse_image_layer};
+use super::background::{parse_background_repeat, parse_background_size, parse_mask_image};
 use super::box_model::{expand_radius_components, parse_drop_shadow};
 use super::position::parse_css_position;
 use super::url::parse_url;
@@ -1190,7 +1190,7 @@ pub(super) fn parse_mask_layer<'i, 't>(
 
     while !input.is_exhausted() && !next_is_comma(input) {
         if image.is_none()
-            && let Ok(parsed_image) = input.try_parse(|input| parse_image_layer(input, numeric))
+            && let Ok(parsed_image) = input.try_parse(|input| parse_mask_image(input, numeric))
         {
             image = Some(parsed_image);
             continue;

@@ -1684,9 +1684,6 @@ pub surgeist_css::CssHueInterpolationMethod::Decreasing
 pub surgeist_css::CssHueInterpolationMethod::Increasing
 pub surgeist_css::CssHueInterpolationMethod::Longer
 pub surgeist_css::CssHueInterpolationMethod::Shorter
-#[non_exhaustive] pub enum surgeist_css::CssImageLayer
-pub surgeist_css::CssImageLayer::None
-pub surgeist_css::CssImageLayer::Url(surgeist_css::CssUrl)
 #[non_exhaustive] pub enum surgeist_css::CssImageOrientation
 pub surgeist_css::CssImageOrientation::Angle(surgeist_css::CssImageOrientationAngle)
 pub surgeist_css::CssImageOrientation::Flip(core::option::Option<surgeist_css::CssImageOrientationAngle>)
@@ -4343,7 +4340,6 @@ pub const fn surgeist_css::CssBackgroundColorPropertyValue::value(&self) -> &sur
 pub struct surgeist_css::CssBackgroundImagePropertyValue
 impl surgeist_css::CssBackgroundImagePropertyValue
 pub fn surgeist_css::CssBackgroundImagePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBackgroundImagePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssImageLayerList>
 pub const fn surgeist_css::CssBackgroundImagePropertyValue::images(&self) -> &surgeist_css::CssImageValueList
 pub struct surgeist_css::CssBackgroundLayer
 impl surgeist_css::CssBackgroundLayer
@@ -6689,10 +6685,6 @@ pub fn surgeist_css::CssImage::serialize_specified_with_limits(&self, limits: su
 impl surgeist_css::CssImage
 pub fn surgeist_css::CssImage::try_new(value: surgeist_css::CssImageValue) -> core::option::Option<Self>
 pub const fn surgeist_css::CssImage::value(&self) -> &surgeist_css::CssImageValue
-pub struct surgeist_css::CssImageLayerList
-impl surgeist_css::CssImageLayerList
-pub fn surgeist_css::CssImageLayerList::layers(&self) -> &[surgeist_css::CssImageLayer]
-pub fn surgeist_css::CssImageLayerList::try_new(layers: alloc::vec::Vec<surgeist_css::CssImageLayer>) -> core::option::Option<Self>
 pub struct surgeist_css::CssImageOrientationPropertyValue
 impl surgeist_css::CssImageOrientationPropertyValue
 pub fn surgeist_css::CssImageOrientationPropertyValue::as_css(&self) -> &str
@@ -7140,12 +7132,11 @@ pub const fn surgeist_css::CssMarkerSidePropertyValue::current(&self) -> &surgei
 pub struct surgeist_css::CssMaskImagePropertyValue
 impl surgeist_css::CssMaskImagePropertyValue
 pub fn surgeist_css::CssMaskImagePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMaskImagePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssImageLayerList>
 pub const fn surgeist_css::CssMaskImagePropertyValue::images(&self) -> &surgeist_css::CssImageValueList
 pub struct surgeist_css::CssMaskLayer
 impl surgeist_css::CssMaskLayer
 pub const fn surgeist_css::CssMaskLayer::position(&self) -> core::option::Option<&surgeist_css::CssPosition>
-pub fn surgeist_css::CssMaskLayer::try_new(image: core::option::Option<surgeist_css::CssImageLayer>, position: core::option::Option<surgeist_css::CssPosition>, size: core::option::Option<surgeist_css::CssBackgroundSize>, repeat: core::option::Option<surgeist_css::CssBackgroundRepeat>) -> core::option::Option<Self>
+pub fn surgeist_css::CssMaskLayer::try_new(image: core::option::Option<surgeist_css::CssImageValue>, position: core::option::Option<surgeist_css::CssPosition>, size: core::option::Option<surgeist_css::CssBackgroundSize>, repeat: core::option::Option<surgeist_css::CssBackgroundRepeat>) -> core::option::Option<Self>
 pub struct surgeist_css::CssMaskList
 impl surgeist_css::CssMaskList
 pub fn surgeist_css::CssMaskList::layers(&self) -> &[surgeist_css::CssMaskLayer]

@@ -103,7 +103,7 @@ fn constructed_color_stops_keep_authored_color_and_signed_line_positions() {
 }
 
 #[test]
-fn current_gradient_stop_equality_ignores_unexposed_legacy_color_projection() {
+fn parsed_gradient_stop_equals_checked_reconstruction() {
     let report = parse_style_attribute("background-image: linear-gradient(red, blue)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BackgroundImage(value) = report.syntax()[0]

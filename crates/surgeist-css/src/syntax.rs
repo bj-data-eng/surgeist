@@ -7556,40 +7556,7 @@ impl CssAuthoredFunctionArguments {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssImageLayer {
-    None,
-    Url(CssUrl),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssImageLayerList {
-    layers: Vec<CssImageLayer>,
-}
-
-impl CssImageLayerList {
-    #[must_use]
-    pub fn try_new(layers: Vec<CssImageLayer>) -> Option<Self> {
-        if layers.is_empty() {
-            None
-        } else {
-            Some(Self::new(layers))
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn new(layers: Vec<CssImageLayer>) -> Self {
-        Self { layers }
-    }
-
-    #[must_use]
-    pub fn layers(&self) -> &[CssImageLayer] {
-        &self.layers
-    }
-}
-
-/// A current authored image value accepted by Images 3 consumers.
+/// An authored image value accepted by Images 3 consumers.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssImageValue {
@@ -7918,28 +7885,6 @@ impl CssImageValueList {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct CssParsedImageValueList {
-    current: CssImageValueList,
-    i01_subset: Option<CssImageLayerList>,
-}
-
-impl CssParsedImageValueList {
-    pub(crate) const fn new(
-        current: CssImageValueList,
-        i01_subset: Option<CssImageLayerList>,
-    ) -> Self {
-        Self {
-            current,
-            i01_subset,
-        }
-    }
-
-    pub(crate) fn into_parts(self) -> (CssImageValueList, Option<CssImageLayerList>) {
-        (self.current, self.i01_subset)
-    }
-}
-
 /// One of the four authored Images 3 gradient functions.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
@@ -8097,7 +8042,7 @@ impl CssColorStopList {
     }
 }
 
-/// A current authored linear or repeating-linear gradient payload.
+/// An authored linear or repeating-linear gradient payload.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssLinearGradient {
     direction: Option<CssLinearGradientDirection>,
@@ -10055,21 +10000,25 @@ pub enum CssClipPath {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssMaskLayer {
-    image: Option<CssImageLayer>,
+    image: Option<CssImageValue>,
     position: Option<CssPosition>,
     size: Option<CssBackgroundSize>,
     repeat: Option<CssBackgroundRepeat>,
 }
 
 impl CssMaskLayer {
+    /// Constructs a nonempty mask layer in the supported URL/`none` image subset.
+    /// Gradient images remain outside this shorthand's selected grammar.
     #[must_use]
     pub fn try_new(
-        image: Option<CssImageLayer>,
+        image: Option<CssImageValue>,
         position: Option<CssPosition>,
         size: Option<CssBackgroundSize>,
         repeat: Option<CssBackgroundRepeat>,
     ) -> Option<Self> {
-        if image.is_none() && position.is_none() && size.is_none() && repeat.is_none() {
+        if matches!(image, Some(CssImageValue::Gradient(_)))
+            || (image.is_none() && position.is_none() && size.is_none() && repeat.is_none())
+        {
             None
         } else {
             Some(Self::new(image, position, size, repeat))
@@ -10078,7 +10027,7 @@ impl CssMaskLayer {
 
     #[must_use]
     pub(crate) const fn new(
-        image: Option<CssImageLayer>,
+        image: Option<CssImageValue>,
         position: Option<CssPosition>,
         size: Option<CssBackgroundSize>,
         repeat: Option<CssBackgroundRepeat>,

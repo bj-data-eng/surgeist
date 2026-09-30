@@ -287,7 +287,7 @@ macro_rules! property_schema {
             BorderInlineEndColor, "border-inline-end-color", [], "official.property.border-inline-end-color", CssColor, CssBorderInlineEndColorPropertyValue, CssBorderInlineEndColorPropertyValueRepresentation, parse_color, { parse_color($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssColor, accessor: value, inherited: false, initial_kind: value, initial: CssColor::current_color() };
             BorderBlockColor, "border-block-color", [], "official.property.border-block-color", CssBorderColorPair, CssBorderBlockColorPropertyValue, CssBorderBlockColorPropertyValueRepresentation, parse_border_color_pair, { parse_border_color_pair($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: value, members: [ BorderBlockStartColor => |value: &CssBorderColorPair| Some(value.start().clone()), BorderBlockEndColor => |value: &CssBorderColorPair| Some(value.end().clone()) ], reset_only: [] };
             BorderInlineColor, "border-inline-color", [], "official.property.border-inline-color", CssBorderColorPair, CssBorderInlineColorPropertyValue, CssBorderInlineColorPropertyValueRepresentation, parse_border_color_pair, { parse_border_color_pair($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: value, members: [ BorderInlineStartColor => |value: &CssBorderColorPair| Some(value.start().clone()), BorderInlineEndColor => |value: &CssBorderColorPair| Some(value.end().clone()) ], reset_only: [] };
-            BackgroundImage, "background-image", [], "baseline.property.background-image", CssImageLayerList, CssBackgroundImagePropertyValue, CssBackgroundImagePropertyValueRepresentation, parse_image_layer_list, { parse_image_layer_list($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssImageValueList, accessor: images, inherited: false, initial_kind: value, initial: CssImageValueList::try_new(vec![CssImageValue::None]).expect("one initial image") };
+            BackgroundImage, "background-image", [], "baseline.property.background-image", CssImageValueList, CssBackgroundImagePropertyValue, CssBackgroundImagePropertyValueRepresentation, parse_image_layer_list, { parse_image_layer_list($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssImageValueList, accessor: images, inherited: false, initial_kind: value, initial: CssImageValueList::try_new(vec![CssImageValue::None]).expect("one initial image") };
             BackgroundPosition, "background-position", [], "baseline.property.background-position", CssBackgroundPositionList, CssBackgroundPositionPropertyValue, CssBackgroundPositionPropertyValueRepresentation, parse_background_position_list, { parse_background_position_list($input, $numeric)? };
             ObjectPosition, "object-position", [], "official.property.object-position", CssPosition, CssObjectPositionPropertyValue, CssObjectPositionPropertyValueRepresentation, parse_object_position, { parse_object_position($input, $numeric)? };
             BackgroundSize, "background-size", [], "baseline.property.background-size", CssBackgroundSizeList, CssBackgroundSizePropertyValue, CssBackgroundSizePropertyValueRepresentation, parse_background_size_list, { parse_background_size_list($input, $numeric)? };
@@ -358,7 +358,7 @@ macro_rules! property_schema {
             Isolation, "isolation", [], "official.property.isolation", CssIsolation, CssIsolationPropertyValue, CssIsolationPropertyValueRepresentation, parse_isolation, { parse_isolation($input)? };
             MixBlendMode, "mix-blend-mode", [], "official.property.mix-blend-mode", CssBlendMode, CssMixBlendModePropertyValue, CssMixBlendModePropertyValueRepresentation, parse_blend_mode, { parse_blend_mode($input)? };
             Mask, "mask", [], "baseline.property.mask", CssMaskList, CssMaskPropertyValue, CssMaskPropertyValueRepresentation, parse_mask_list, { parse_mask_list($input, $numeric)? };
-            MaskImage, "mask-image", [], "baseline.property.mask-image", CssImageLayerList, CssMaskImagePropertyValue, CssMaskImagePropertyValueRepresentation, parse_image_layer_list, { parse_image_layer_list($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssImageValueList, accessor: images, inherited: false, initial_kind: value, initial: CssImageValueList::try_new(vec![CssImageValue::None]).expect("one initial image") };
+            MaskImage, "mask-image", [], "baseline.property.mask-image", CssImageValueList, CssMaskImagePropertyValue, CssMaskImagePropertyValueRepresentation, parse_image_layer_list, { parse_image_layer_list($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssImageValueList, accessor: images, inherited: false, initial_kind: value, initial: CssImageValueList::try_new(vec![CssImageValue::None]).expect("one initial image") };
             MaskSize, "mask-size", [], "baseline.property.mask-size", CssBackgroundSizeList, CssMaskSizePropertyValue, CssMaskSizePropertyValueRepresentation, parse_background_size_list, { parse_background_size_list($input, $numeric)? };
             MaskPosition, "mask-position", [], "baseline.property.mask-position", CssPositionList, CssMaskPositionPropertyValue, CssMaskPositionPropertyValueRepresentation, parse_mask_position_list, { parse_mask_position_list($input, $numeric)? };
             MaskRepeat, "mask-repeat", [], "baseline.property.mask-repeat", CssBackgroundRepeatList, CssMaskRepeatPropertyValue, CssMaskRepeatPropertyValueRepresentation, parse_background_repeat_list, { parse_background_repeat_list($input)? };
@@ -1903,7 +1903,13 @@ macro_rules! define_property_value {
         BackgroundImage, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_image_property_value!($canonical, $wrapper, $representation);
+        define_semantic_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssImageValueList,
+            images
+        );
     };
     (
         BorderImage, $canonical:literal, $value:ty, $wrapper:ident,
@@ -2046,7 +2052,13 @@ macro_rules! define_property_value {
         MaskImage, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_image_property_value!($canonical, $wrapper, $representation);
+        define_semantic_property_value!(
+            $canonical,
+            $wrapper,
+            $representation,
+            CssImageValueList,
+            images
+        );
     };
     (
         Filter, $canonical:literal, $value:ty, $wrapper:ident,
@@ -2686,58 +2698,6 @@ macro_rules! define_property_value {
 macro_rules! define_filter_property_value {
     ($canonical:literal, $wrapper:ident, $representation:ident) => {
         define_semantic_property_value!($canonical, $wrapper, $representation, CssFilter, value);
-    };
-}
-
-macro_rules! define_image_property_value {
-    ($canonical:literal, $wrapper:ident, $representation:ident) => {
-        #[derive(Clone, Debug, PartialEq)]
-        pub(crate) struct $representation {
-            current: CssImageValueList,
-            i01_subset: Option<CssImageLayerList>,
-        }
-
-        #[doc = concat!("A grammar-checked authored ordinary value for `", $canonical, "`.")]
-        #[derive(Clone, Debug, PartialEq)]
-        pub struct $wrapper {
-            authored: CssAuthoredDeclarationValue,
-            representation: $representation,
-        }
-
-        impl $wrapper {
-            #[must_use]
-            pub(crate) fn new(
-                authored: CssAuthoredDeclarationValue,
-                parsed: CssParsedImageValueList,
-            ) -> Self {
-                let (current, i01_subset) = parsed.into_parts();
-                Self {
-                    authored,
-                    representation: $representation {
-                        current,
-                        i01_subset,
-                    },
-                }
-            }
-
-            #[must_use]
-            pub fn as_css(&self) -> &str {
-                self.authored.as_css()
-            }
-
-            /// Returns the exact checked current authored image list.
-            #[must_use]
-            pub const fn images(&self) -> &CssImageValueList {
-                &self.representation.current
-            }
-
-            /// Returns the frozen URL/`none` compatibility projection when every image belongs
-            /// to that representation.
-            #[must_use]
-            pub const fn i01_subset(&self) -> Option<&CssImageLayerList> {
-                self.representation.i01_subset.as_ref()
-            }
-        }
     };
 }
 

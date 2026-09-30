@@ -40,19 +40,10 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
 pub(super) fn parse_image_layer_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssParsedImageValueList, ParseError<'i, Error>> {
+) -> std::result::Result<CssImageValueList, ParseError<'i, Error>> {
     let mut images = Vec::new();
-    let mut i01_layers = Some(Vec::new());
     loop {
         let image = parse_image_value(input, numeric)?;
-        match (&image, i01_layers.as_mut()) {
-            (CssImageValue::None, Some(layers)) => layers.push(CssImageLayer::None),
-            (CssImageValue::Url(url), Some(layers)) => {
-                layers.push(CssImageLayer::Url(url.clone()));
-            }
-            (CssImageValue::Gradient(_), _) => i01_layers = None,
-            (CssImageValue::None | CssImageValue::Url(_), None) => {}
-        }
         images.push(image);
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
@@ -65,10 +56,8 @@ pub(super) fn parse_image_layer_list<'i, 't>(
             ));
         }
     }
-    let current = CssImageValueList::try_new(images)
-        .ok_or_else(|| unsupported_value(input, None, "image list is empty"))?;
-    let i01_subset = i01_layers.and_then(CssImageLayerList::try_new);
-    Ok(CssParsedImageValueList::new(current, i01_subset))
+    CssImageValueList::try_new(images)
+        .ok_or_else(|| unsupported_value(input, None, "image list is empty"))
 }
 
 pub(super) fn parse_background<'i, 't>(
@@ -1227,17 +1216,17 @@ fn validate_radial_size<'i>(
     }
 }
 
-pub(super) fn parse_image_layer<'i, 't>(
+pub(super) fn parse_mask_image<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssImageLayer, ParseError<'i, Error>> {
+) -> std::result::Result<CssImageValue, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
         .is_ok()
     {
-        return Ok(CssImageLayer::None);
+        return Ok(CssImageValue::None);
     }
-    parse_url(input, numeric).map(CssImageLayer::Url)
+    parse_url(input, numeric).map(CssImageValue::Url)
 }
 
 pub(super) fn parse_background_size_list<'i, 't>(
