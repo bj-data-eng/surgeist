@@ -7124,11 +7124,6 @@ pub struct surgeist_css::CssOutlineWidthPropertyValue
 impl surgeist_css::CssOutlineWidthPropertyValue
 pub fn surgeist_css::CssOutlineWidthPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssOutlineWidthPropertyValue::value(&self) -> &surgeist_css::CssOutlineWidth
-pub struct surgeist_css::CssOverflowAxes
-pub surgeist_css::CssOverflowAxes::x: surgeist_css::CssOverflow
-pub surgeist_css::CssOverflowAxes::y: surgeist_css::CssOverflow
-impl surgeist_css::CssOverflowAxes
-pub const fn surgeist_css::CssOverflowAxes::new(x: surgeist_css::CssOverflow, y: surgeist_css::CssOverflow) -> Self
 pub struct surgeist_css::CssOverflowBlockPropertyValue
 impl surgeist_css::CssOverflowBlockPropertyValue
 pub fn surgeist_css::CssOverflowBlockPropertyValue::as_css(&self) -> &str

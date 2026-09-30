@@ -776,7 +776,7 @@ constructor uses the same admission rule. `CssPendingSubstitution::reenter`
 requires a complete replacement component tree and rejects residual `attr()`
 before checking the ordinary property grammar; it cannot return another
 pending value. Parsed `content` with a valid `attr()` now exposes
-`substitution_dependent()` rather than typed `CssContent`; the existing checked
+`substitution_dependent()` rather than typed `CssContentValue`; the existing checked
 typed content constructors remain available for concrete values.
 
 The selected grammar is `attr(<attr-name> <syntax>?, <declaration-value>?)`.
