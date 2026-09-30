@@ -30,23 +30,26 @@ fn positive_integer_constructor_rejects_zero_and_negative_without_narrowing() {
         ));
     }
     assert_eq!(
-        CssPositiveIntegerValue::ExactLiteral(exact_positive("+0002147483648"))
+        CssPositiveIntegerValue::Literal(exact_positive("+0002147483648"))
             .serialize_specified()
             .unwrap(),
         "2147483648"
     );
     assert_eq!(
-        CssPositiveIntegerValue::ExactLiteral(exact_positive("9999999999999999999999"))
+        CssPositiveIntegerValue::Literal(exact_positive("9999999999999999999999"))
             .serialize_specified()
             .unwrap(),
         "9999999999999999999999"
     );
-    assert_eq!(CssPositiveInteger::try_new(1).unwrap().value(), 1);
+    assert_eq!(
+        exact_positive("1").integer().numeric().representation(),
+        "1"
+    );
 }
 
 #[test]
 fn exact_count_and_columns_emit_all_effective_values_under_one_budget() {
-    let large = CssPositiveIntegerValue::ExactLiteral(exact_positive("2147483648"));
+    let large = CssPositiveIntegerValue::Literal(exact_positive("2147483648"));
     assert_eq!(large.serialize_specified().unwrap(), "2147483648");
     let count = CssColumnCount::Count(large);
     assert_eq!(count.serialize_specified().unwrap(), "2147483648");
@@ -101,13 +104,13 @@ fn parsed_and_programmatic_exact_counts_agree_without_origin_equality() {
     else {
         panic!("column-count")
     };
-    let direct = CssColumnCount::Count(CssPositiveIntegerValue::ExactLiteral(exact_positive(
+    let direct = CssColumnCount::Count(CssPositiveIntegerValue::Literal(exact_positive(
         "2147483648",
     )));
     assert_eq!(parsed.count(), &direct);
     let (
-        CssColumnCount::Count(CssPositiveIntegerValue::ExactLiteral(from_source)),
-        CssColumnCount::Count(CssPositiveIntegerValue::ExactLiteral(programmatic)),
+        CssColumnCount::Count(CssPositiveIntegerValue::Literal(from_source)),
+        CssColumnCount::Count(CssPositiveIntegerValue::Literal(programmatic)),
     ) = (parsed.count(), &direct)
     else {
         panic!("exact counts")
@@ -118,7 +121,7 @@ fn parsed_and_programmatic_exact_counts_agree_without_origin_equality() {
     );
     assert_ne!(
         direct,
-        CssColumnCount::Count(CssPositiveIntegerValue::ExactLiteral(exact_positive(
+        CssColumnCount::Count(CssPositiveIntegerValue::Literal(exact_positive(
             "2147483649"
         )))
     );

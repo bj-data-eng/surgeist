@@ -28,7 +28,7 @@ fn c14_multicolumn_properties_retain_typed_structure() {
     };
     assert!(matches!(
         count.count(),
-        CssColumnCount::Count(CssPositiveIntegerValue::Literal(value)) if value.value() == 3
+        CssColumnCount::Count(CssPositiveIntegerValue::Literal(value)) if value.integer().numeric().representation() == "3"
     ));
 
     let CssKnownPropertyValueRef::ColumnFill(fill) = ordinary(&report.syntax()[1]) else {
@@ -92,7 +92,7 @@ fn c14_multicolumn_properties_retain_typed_structure() {
     };
     assert!(matches!(
         columns.columns().count(),
-        CssColumnCount::Count(CssPositiveIntegerValue::Literal(value)) if value.value() == 4
+        CssColumnCount::Count(CssPositiveIntegerValue::Literal(value)) if value.integer().numeric().representation() == "4"
     ));
     assert!(matches!(
         columns.columns().width(),
@@ -190,8 +190,18 @@ fn multicolumn_calculations_remain_symbolic_and_checked_constructors_reject_lite
         CssLineWidth::Length(value) if value.calculation().is_some()
     ));
 
-    assert!(surgeist_css::CssPositiveInteger::try_new(0).is_none());
-    assert!(surgeist_css::CssPositiveInteger::try_new(-1).is_none());
+    assert!(
+        surgeist_css::CssPositiveIntegerLiteral::try_new(
+            surgeist_css::CssIntegerLiteral::from_i32(0)
+        )
+        .is_none()
+    );
+    assert!(
+        surgeist_css::CssPositiveIntegerLiteral::try_new(
+            surgeist_css::CssIntegerLiteral::from_i32(-1)
+        )
+        .is_none()
+    );
     assert!(
         surgeist_css::CssNonNegativeLength::try_new(
             CssLength::try_dimension(-1.0, CssLengthUnit::Px).unwrap(),

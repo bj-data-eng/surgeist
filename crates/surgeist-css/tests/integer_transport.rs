@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 //! Display3 2026-06-05 §3 defines order:<integer>, initial 0, noninherited.
 //! Values4 2024-03-12 §§5/5.2 define integer spelling; finite implementation
-//! ranges are permitted. Exact ordinary transport and truthful I01 projection
+//! ranges are permitted. Exact ordinary transport and lexical provenance
 //! are adopted Surgeist product contracts, not an arbitrary-precision CSS claim.
 use surgeist_css::*;
 
@@ -32,20 +32,19 @@ fn parsed(property: CssKnownProperty, text: &str) -> CssDeclaration {
     declaration.clone()
 }
 
-fn frozen_integer(declaration: &CssDeclaration) -> Option<i32> {
-    match declaration.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::Order(value) => match value.i01_subset() {
-            Some(CssOrder::Integer(value)) => Some(*value),
-            None => None,
-            _ => panic!("unexpected future I01 order"),
-        },
-        CssKnownPropertyValueRef::ZIndex(value) => match value.i01_subset() {
-            Some(CssZIndex::Integer(value)) => Some(*value),
-            None => None,
-            _ => panic!("ordinary integer, not auto"),
+fn retained_integer(declaration: &CssDeclaration) -> &CssIntegerLiteral {
+    let value = match declaration.known().unwrap().property_value().unwrap() {
+        CssKnownPropertyValueRef::Order(value) => value.value(),
+        CssKnownPropertyValueRef::ZIndex(value) => match value.value() {
+            CssZIndexValue::Integer(value) => value,
+            _ => panic!("ordinary integer"),
         },
         _ => panic!("selected integer wrapper"),
-    }
+    };
+    let CssIntegerValue::Literal(literal) = value else {
+        panic!("ordinary integer")
+    };
+    literal
 }
 
 fn assert_authored_integer(declaration: &CssDeclaration, text: &str) {
@@ -70,7 +69,7 @@ fn assert_authored_integer(declaration: &CssDeclaration, text: &str) {
 }
 
 fn assert_parsed_outside_i32(property: CssKnownProperty) {
-    for text in OUTSIDE_I32 {
+    for &text in OUTSIDE_I32 {
         let declaration = parsed(property, text);
         assert_authored_integer(&declaration, text);
         assert_eq!(declaration.importance(), CssImportance::Important);
@@ -83,14 +82,16 @@ fn assert_parsed_outside_i32(property: CssKnownProperty) {
                 .source()
                 .same_snapshot(declaration.parsed_value().unwrap().source())
         );
-        // Independent contract: none of these mathematical integers fits i32.
-        // A saturated boundary is not an exact frozen representation.
-        assert_eq!(frozen_integer(&declaration), None, "{property:?}: {text}");
+        // Independent contract: every supplied integer token retains its exact lexeme.
+        assert_eq!(
+            retained_integer(&declaration).numeric().representation(),
+            text
+        );
     }
 }
 
 fn assert_checked_outside_i32(property: CssKnownProperty) {
-    for text in OUTSIDE_I32 {
+    for &text in OUTSIDE_I32 {
         let programmatic =
             CssComponentValues::try_new(vec![CssComponentValue::try_number(text).unwrap()])
                 .unwrap();
@@ -120,33 +121,36 @@ fn assert_checked_outside_i32(property: CssKnownProperty) {
             assert!(declaration.position().is_none());
             assert!(declaration.parsed_name().is_none());
             assert!(declaration.parsed_value().is_none());
-            assert_eq!(frozen_integer(&declaration), None, "{property:?}: {text}");
+            assert_eq!(
+                retained_integer(&declaration).numeric().representation(),
+                text
+            );
         }
     }
 }
 
 #[test]
-fn parsed_order_refuses_inexact_i01_boundary_substitution() {
+fn parsed_order_retains_exact_integer_tokens() {
     assert_parsed_outside_i32(CssKnownProperty::Order);
 }
 
 #[test]
-fn parsed_z_index_refuses_inexact_i01_boundary_substitution() {
+fn parsed_z_index_retains_exact_integer_tokens() {
     assert_parsed_outside_i32(CssKnownProperty::ZIndex);
 }
 
 #[test]
-fn checked_order_refuses_inexact_i01_boundary_substitution() {
+fn checked_order_retains_exact_integer_tokens() {
     assert_checked_outside_i32(CssKnownProperty::Order);
 }
 
 #[test]
-fn checked_z_index_refuses_inexact_i01_boundary_substitution() {
+fn checked_z_index_retains_exact_integer_tokens() {
     assert_checked_outside_i32(CssKnownProperty::ZIndex);
 }
 
 #[test]
-fn exact_i32_boundaries_signs_and_leading_zeros_keep_frozen_views() {
+fn exact_i32_boundaries_signs_and_leading_zeros_retain_tokens() {
     for property in [CssKnownProperty::Order, CssKnownProperty::ZIndex] {
         for (text, expected) in [
             ("2147483647", i32::MAX),
@@ -161,7 +165,16 @@ fn exact_i32_boundaries_signs_and_leading_zeros_keep_frozen_views() {
         ] {
             let declaration = parsed(property, text);
             assert_authored_integer(&declaration, text);
-            assert_eq!(frozen_integer(&declaration), Some(expected));
+            assert_eq!(
+                retained_integer(&declaration).numeric().representation(),
+                text
+            );
+            assert_eq!(
+                CssIntegerValue::Literal(retained_integer(&declaration).clone())
+                    .serialize_specified()
+                    .unwrap(),
+                expected.to_string()
+            );
             let components =
                 CssComponentValues::try_new(vec![CssComponentValue::try_number(text).unwrap()])
                     .unwrap();
@@ -173,7 +186,7 @@ fn exact_i32_boundaries_signs_and_leading_zeros_keep_frozen_views() {
             .unwrap();
             assert_authored_integer(&checked, text);
             assert_eq!(checked.value_components(), &components);
-            assert_eq!(frozen_integer(&checked), Some(expected));
+            assert_eq!(retained_integer(&checked).numeric().representation(), text);
         }
     }
 }
@@ -199,7 +212,6 @@ fn z_index_auto_and_integer_math_keep_existing_typed_boundaries() {
             };
             assert_eq!(value.as_css(), text);
             assert_eq!(value.value(), &CssZIndexValue::Auto);
-            assert_eq!(value.i01_subset(), Some(&CssZIndex::Auto));
         }
     }
     for property in [CssKnownProperty::Order, CssKnownProperty::ZIndex] {
@@ -217,7 +229,6 @@ fn z_index_auto_and_integer_math_keep_existing_typed_boundaries() {
                 _ => panic!("integer property"),
             };
             assert_eq!(calculation.result_type(), CssCalculationType::Number);
-            assert_eq!(frozen_integer(&declaration), None);
         }
     }
 }

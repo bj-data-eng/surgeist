@@ -45,8 +45,7 @@ impl PartialEq for CssGridLineIndex {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name
             && match (&self.value, &other.value) {
-                (CssIntegerValue::Literal(left), CssIntegerValue::Literal(right)) => left == right,
-                (CssIntegerValue::ExactLiteral(left), CssIntegerValue::ExactLiteral(right)) => left
+                (CssIntegerValue::Literal(left), CssIntegerValue::Literal(right)) => left
                     .component()
                     .structural_eq_ignoring_origin(right.component()),
                 (CssIntegerValue::Calculation(left), CssIntegerValue::Calculation(right)) => {
@@ -61,14 +60,7 @@ impl CssGridLineIndex {
     #[must_use]
     pub fn try_new(value: CssIntegerValue, name: Option<CssGridLineName>) -> Option<Self> {
         let valid = match &value {
-            CssIntegerValue::Literal(number) => *number != 0,
-            CssIntegerValue::ExactLiteral(number) => number
-                .numeric()
-                .representation()
-                .strip_prefix(['+', '-'])
-                .unwrap_or(number.numeric().representation())
-                .bytes()
-                .any(|digit| digit != b'0'),
+            CssIntegerValue::Literal(number) => !number.is_zero(),
             CssIntegerValue::Calculation(_) => true,
         };
         valid.then_some(Self { value, name })
@@ -184,11 +176,7 @@ impl CssGridLine {
                 if let Some(integer) = &span.integer {
                     writer.append(" ")?;
                     match integer {
-                        CssPositiveIntegerValue::Literal(value) => {
-                            CssIntegerValue::Literal(value.value())
-                                .append_specified(&mut writer.context, &mut writer.css)?
-                        }
-                        CssPositiveIntegerValue::ExactLiteral(value) => value
+                        CssPositiveIntegerValue::Literal(value) => value
                             .integer()
                             .append_specified(&mut writer.context, &mut writer.css)?,
                         CssPositiveIntegerValue::Calculation(value) => {

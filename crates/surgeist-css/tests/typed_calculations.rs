@@ -474,8 +474,10 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
     else {
         panic!("expected opacity wrapper");
     };
-    assert!(matches!(value.value(), CssOpacityValue::Calculation(_)));
-    assert!(value.i01_subset().is_none());
+    assert!(matches!(
+        value.value(),
+        CssOpacityValue::NumberCalculation(_)
+    ));
 
     let CssKnownPropertyValueRef::FlexGrow(value) = report.syntax()[1]
         .known()
@@ -589,7 +591,7 @@ fn opacity_keeps_number_and_percentage_calculation_roots_symbolic() {
     else {
         panic!("expected number-root opacity");
     };
-    let CssOpacityValue::Calculation(number_calculation) = number.value() else {
+    let CssOpacityValue::NumberCalculation(number_calculation) = number.value() else {
         panic!("expected retained number calculation");
     };
     assert_eq!(number_calculation.result_type(), CssCalculationType::Number);
@@ -597,7 +599,7 @@ fn opacity_keeps_number_and_percentage_calculation_roots_symbolic() {
         calculation_body(number_calculation.expression()),
         CssCalculationExpressionRef::Product(_)
     ));
-    assert!(number.i01_subset().is_none());
+    assert_eq!(number_calculation.result_type(), CssCalculationType::Number);
 
     let CssKnownPropertyValueRef::Opacity(percentage) = report.syntax()[1]
         .known()
@@ -618,7 +620,10 @@ fn opacity_keeps_number_and_percentage_calculation_roots_symbolic() {
         calculation_body(percentage_calculation.expression()),
         CssCalculationExpressionRef::Product(_)
     ));
-    assert!(percentage.i01_subset().is_none());
+    assert_eq!(
+        percentage_calculation.result_type(),
+        CssCalculationType::Percentage
+    );
 }
 
 #[test]
@@ -637,8 +642,10 @@ fn scalar_property_accessors_preserve_literal_compatibility_projections() {
     else {
         panic!("expected opacity wrapper");
     };
-    assert!(matches!(value.value(), CssOpacityValue::Literal(value) if value.value() == 0.5));
-    assert_eq!(value.i01_subset().unwrap().value(), 0.5);
+    assert!(
+        matches!(value.value(), CssOpacityValue::Scalar(value) if value.numeric().representation() == "0.5")
+    );
+    assert_eq!(value.value().serialize_specified().unwrap(), "0.5");
 
     let CssKnownPropertyValueRef::FlexGrow(value) = report.syntax()[1]
         .known()
@@ -670,11 +677,10 @@ fn scalar_property_accessors_preserve_literal_compatibility_projections() {
     else {
         panic!("expected order wrapper");
     };
-    assert!(matches!(value.value(), CssIntegerValue::Literal(-2)));
-    assert!(matches!(
-        value.i01_subset(),
-        Some(surgeist_css::CssOrder::Integer(-2))
-    ));
+    assert!(
+        matches!(value.value(), CssIntegerValue::Literal(value) if value.numeric().representation() == "-2")
+    );
+    assert_eq!(value.value().serialize_specified().unwrap(), "-2");
 
     let CssKnownPropertyValueRef::ZIndex(value) = report.syntax()[4]
         .known()
@@ -685,10 +691,6 @@ fn scalar_property_accessors_preserve_literal_compatibility_projections() {
         panic!("expected z-index wrapper");
     };
     assert!(matches!(value.value(), CssZIndexValue::Auto));
-    assert!(matches!(
-        value.i01_subset(),
-        Some(surgeist_css::CssZIndex::Auto)
-    ));
 
     let CssKnownPropertyValueRef::AspectRatio(value) = report.syntax()[5]
         .known()

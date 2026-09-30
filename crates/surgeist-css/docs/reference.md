@@ -609,32 +609,31 @@ bounded variant charges one input node, one projection node, and exact output
 bytes. Skipped-content state, user relevance, used containment, layout, painting,
 and interaction need downstream context and are not decided by this authored API.
 
-Order is a non-inherited longhand with ordinary initial `CssIntegerValue::Literal(0)`.
+Order is a non-inherited longhand with a checked programmatic integer initial of zero.
 Its specified integer value expands to one contribution; normalization retains
 source order and does not sort declarations by their numeric values. Layout
 item ordering and computed integer rounding belong to downstream consumers.
 
 `CssIntegerValue` is shared by Order and the integer branch of ZIndex.
-`Literal(i32)` holds an exactly representable ordinary integer. Parsed values
-outside i32 use `ExactLiteral(CssIntegerLiteral)`, retaining the complete numeric
-token and its parsed or programmatic origin. Checked construction accepts an
-integer Number token; decimal points, exponent notation, dimensions and other
-token kinds are rejected. Direct construction of a small `ExactLiteral` remains
-valid. `serialize_specified()` removes redundant signs and leading zeros without
-rounding the magnitude. Its bounded variant charges one input and projection
-node for an ordinary value, then checks canonical output bytes before allocation.
-
-The frozen Order/ZIndex `i01_subset()` now returns `None` for ordinary integers
-outside i32, instead of a saturated boundary. Consumers that need those values
-must read `value()` and handle `ExactLiteral`; existing `Literal(i32)` and ZIndex
-`Auto` remain available. This shared transport change does not complete ZIndex
-metadata or stacking semantics.
+`Literal(CssIntegerLiteral)` retains the complete checked integer token and its
+parsed or programmatic origin at every magnitude. Decimal points, exponent
+notation, dimensions and other token kinds are rejected by literal construction.
+`CssIntegerLiteral::from_i32` constructs canonical programmatic tokens for
+machine integers. `is_zero` and `is_negative` classify the exact integer,
+including signed zero, without a machine-range bound. `serialize_specified()`
+removes redundant signs and leading zeros without rounding the magnitude or
+changing the retained token. Its bounded variant charges one input and
+projection node for an ordinary value, then checks canonical output bytes.
+Order and ZIndex wrappers expose their semantic models through `value()`;
+ZIndex `Auto` remains a distinct unresolved keyword. Positive ordinary counts
+use `CssPositiveIntegerValue::Literal(CssPositiveIntegerLiteral)`, whose checked
+integer must be greater than zero. This transport does not determine stacking.
 
 `Calculation` retains the authored numeric expression and uses the shared
 binary64 specified math projection. Fractional results retain a math wrapper:
 `calc(1.5)` remains `calc(1.5)` without integer rounding. An explicitly constructed
 Calculation leaf `9007199254740993` retains those original digits but serializes
-as `calc(9007199254740992)` under that precision policy; an ordinary ExactLiteral
+as `calc(9007199254740992)` under that precision policy; an ordinary Literal
 serializes exactly as `9007199254740993`. Serialization never mutates either
 representation. The output remains stable when reparsed and serialized again.
 Exact ordinary integer fidelity is a Surgeist contract; the selected Values4
@@ -1278,17 +1277,13 @@ gamut mapping, contrast selection, or rendering.
 
 ## Authored opacity and specified serialization
 
-`CssOpacityValue` retains a finite number or percentage, including signed
-and out-of-range specified values. Ordinary scalars retain the exact authored
-decimal even when the tokenizer's binary32 cache underflows or overflows.
-`ExactScalar` owns a checked `CssOpacityScalar` with numeric spelling,
-number/percentage kind, and original component provenance. Its constructor
-accepts only number and percentage components, not dimensions or calculations.
-Exactly representable binary32 values keep the existing `Literal`, `Number`,
-and `Percentage` branches. For example, `.5` remains `Literal`, while `.1`,
-`1e-47`, and `1e100%` use `ExactScalar`. Percentage classification uses the
-authored coefficient rather than a rounded fractional cache. Rust constructors
-retain their finite binary32 contracts. Authored transport does not clamp opacity.
+`CssOpacityValue::Scalar(CssOpacityScalar)` retains every ordinary number or
+percentage, including signed and out-of-range specified values. The checked
+component preserves exact decimal spelling, number/percentage kind, and original
+parsed or programmatic provenance even when a floating-point cache underflows
+or overflows. Scalar construction accepts only number and percentage components.
+`NumberCalculation` and `PercentageCalculation` retain domain-checked symbolic
+math roots. Authored transport does not clamp opacity.
 
 `CssOpacityValue::serialize_specified()` produces canonical specified text;
 `serialize_specified_with_limits()` supplies independent input-node, cumulative
@@ -1299,8 +1294,8 @@ These logical bounds do not guarantee allocator availability.
 
 Ordinary scalars use their exact retained magnitude. Percentages divide by 100
 symbolically and serialize as numbers: `.1` becomes `0.1`, `25%` becomes `0.25`,
-and `150%` becomes `1.5`. Direct binary32 constructors serialize the exact
-binary value, so constructed `1.0 / 3.0` differs from parsed `0.33333334`.
+and `150%` becomes `1.5`. Programmatic scalars retain the supplied checked
+decimal token just as parsed scalars do.
 Subnormal percentages keep their nonzero magnitude. Exponents that would
 exceed the output cap return a byte-limit error before expanding zeros.
 
@@ -2594,8 +2589,8 @@ adds `<box-size>` to `column-width`; `columns` consumes that expanded width
 grammar. `CssColumnWidth` is now an alias of `CssSizeValue`, so callers migrate
 `CssColumnWidth::Length` to `CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(...))`.
 The `width()` and `count()` accessors remain; `CssColumns::serialize_specified()`
-emits both effective values in width-then-count order. Exact ordinary positive
-column counts beyond `i32` use `CssPositiveIntegerValue::ExactLiteral`, preserving
+emits both effective values in width-then-count order. Ordinary positive
+column counts use `CssPositiveIntegerValue::Literal`, preserving
 their digits without clamping. Integer calculations and box-size math stay
 symbolic until their computed-value owners resolve them. Shorthand expansion
 sets only `column-width` and `column-count`, with no reset-only members.

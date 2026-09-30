@@ -1,8 +1,8 @@
 use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
 
 use super::values::{
-    CalculationRoot, LengthGrammar, parse_current_integer_literal, parse_integer_value,
-    parse_length_with, parse_numeric_function,
+    CalculationRoot, LengthGrammar, parse_integer_literal, parse_integer_value, parse_length_with,
+    parse_numeric_function,
 };
 use crate::CssOverflowValue;
 use crate::display::*;
@@ -663,7 +663,7 @@ pub(super) fn parse_opacity<'i, 't>(
             if let Ok(calculation) = input.try_parse(|input| {
                 parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)
             }) {
-                return Ok(CssOpacityValue::Calculation(
+                return Ok(CssOpacityValue::NumberCalculation(
                     CssNumberCalculation::from_expression(calculation),
                 ));
             }
@@ -777,7 +777,7 @@ pub(super) fn parse_z_index<'i, 't>(
         )),
         Token::Number { .. } => {
             input.reset(&numeric_start);
-            parse_current_integer_literal(input, numeric).map(CssZIndexValue::Integer)
+            parse_integer_literal(input, numeric).map(CssZIndexValue::Integer)
         }
         Token::Dimension { unit, .. } => Err(unsupported_value_at(
             location,

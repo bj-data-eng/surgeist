@@ -75,12 +75,17 @@ fn opacity_has_noninherited_terminal_metadata_and_ordinary_initial() {
     };
     let literal_one = declaration("opacity:1");
     assert!(
-        matches!(authored_opacity(&literal_one), CssOpacityValue::Literal(value) if value.value() == 1.0)
+        matches!(authored_opacity(&literal_one), CssOpacityValue::Scalar(value) if value.numeric().representation() == "1")
     );
     let values = ordinary(&literal_one);
     // Consistency evidence only: both outputs could share a wrong transport.
     // New-variant tests must independently assert the initial's numeric one.
-    assert_eq!(initial, values.items()[0].ordinary_value().unwrap());
+    assert!(
+        matches!(initial.view(), CssLonghandValueRef::Opacity(CssOpacityValue::Scalar(scalar)) if scalar.numeric().representation() == "1" && scalar.origin() == &CssValueOrigin::Programmatic)
+    );
+    assert!(
+        matches!(values.items()[0].ordinary_value().unwrap().view(), CssLonghandValueRef::Opacity(CssOpacityValue::Scalar(scalar)) if scalar.numeric().representation() == "1")
+    );
 
     let CssPropertyKindRef::Longhand(color) = CssKnownProperty::Color.metadata().unwrap().kind()
     else {
@@ -113,12 +118,22 @@ fn opacity_expansion_accepts_and_keeps_distinct_authored_numeric_branches() {
         let input = format!("opacity:{value}!important");
         let source = declaration(&input);
         match (index, authored_opacity(&source)) {
-            (0, CssOpacityValue::Literal(value)) => assert_eq!(value.value(), 0.5),
-            (1, CssOpacityValue::Number(value)) => assert_eq!(value.value(), -0.5),
-            (2, CssOpacityValue::Number(value)) => assert_eq!(value.value(), 1.5),
-            (3, CssOpacityValue::Percentage(value)) => assert_eq!(value.value(), -25.0),
-            (4, CssOpacityValue::Percentage(value)) => assert_eq!(value.value(), 150.0),
-            (5, CssOpacityValue::Calculation(_))
+            (0, CssOpacityValue::Scalar(value)) => {
+                assert_eq!(value.numeric().representation(), "0.5")
+            }
+            (1, CssOpacityValue::Scalar(value)) => {
+                assert_eq!(value.numeric().representation(), "-0.5")
+            }
+            (2, CssOpacityValue::Scalar(value)) => {
+                assert_eq!(value.numeric().representation(), "1.5")
+            }
+            (3, CssOpacityValue::Scalar(value)) => {
+                assert_eq!(value.numeric().representation(), "-25")
+            }
+            (4, CssOpacityValue::Scalar(value)) => {
+                assert_eq!(value.numeric().representation(), "150")
+            }
+            (5, CssOpacityValue::NumberCalculation(_))
             | (6, CssOpacityValue::PercentageCalculation(_)) => {}
             _ => panic!("independently specified authored numeric branch: {input}"),
         }
@@ -201,7 +216,6 @@ fn opacity_pending_reentry_is_strict_atomic_and_reusable() {
         );
     }
     let replacement = parse_component_values("150%").unwrap();
-    let expected = ordinary(&declaration("opacity:150%"));
     for _ in 0..2 {
         let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
         else {
@@ -211,7 +225,20 @@ fn opacity_pending_reentry_is_strict_atomic_and_reusable() {
             panic!("one replacement contribution")
         };
         assert_eq!(value.property(), CssKnownProperty::Opacity);
-        assert_eq!(value.ordinary_value(), expected.items()[0].ordinary_value());
+        let CssLonghandValueRef::Opacity(CssOpacityValue::Scalar(scalar)) =
+            value.ordinary_value().unwrap().view()
+        else {
+            panic!("exact replacement scalar")
+        };
+        assert_eq!(scalar.component(), &replacement.items()[0]);
+        assert_eq!(scalar.numeric().representation(), "150");
+        assert_eq!(scalar.kind(), CssOpacityScalarKind::Percentage);
+        assert_eq!(
+            CssOpacityValue::Scalar(scalar.clone())
+                .serialize_specified()
+                .unwrap(),
+            "1.5"
+        );
         assert!(value.source().same_occurrence(&source));
         assert_eq!(value.source().importance(), CssImportance::Important);
         let actual = value.replacement_components().unwrap();
@@ -400,7 +427,7 @@ fn opacity_normalization_consumes_one_declaration_and_one_contribution() {
     assert_eq!(values[0].order(), 0);
     assert_eq!(values[0].source().importance(), CssImportance::Important);
     assert!(
-        matches!(authored_opacity(values[0].source()), CssOpacityValue::Percentage(value) if value.value() == 150.0)
+        matches!(authored_opacity(values[0].source()), CssOpacityValue::Scalar(value) if value.numeric().representation() == "150")
     );
     let pending = parse_sheet(".p{opacity:var(--fade)}");
     assert!(pending.is_clean());

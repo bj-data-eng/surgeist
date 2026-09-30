@@ -227,7 +227,7 @@ macro_rules! property_schema {
             InsetInlineEnd, "inset-inline-end", [], "official.property.inset-inline-end", CssInsetValue, CssInsetInlineEndPropertyValue, CssInsetInlineEndPropertyValueRepresentation, parse_inset_value, { parse_inset_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssInsetValue, accessor: current, inherited: false, initial_kind: value, initial: CssInsetValue::Auto };
             InsetBlock, "inset-block", [], "official.property.inset-block", CssInsetPair, CssInsetBlockPropertyValue, CssInsetBlockPropertyValueRepresentation, parse_inset_pair, { parse_inset_pair($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: current, members: [ InsetBlockStart => |value: &CssInsetPair| Some(value.start().clone()), InsetBlockEnd => |value: &CssInsetPair| Some(value.end().clone()) ], reset_only: [] };
             InsetInline, "inset-inline", [], "official.property.inset-inline", CssInsetPair, CssInsetInlinePropertyValue, CssInsetInlinePropertyValueRepresentation, parse_inset_pair, { parse_inset_pair($input, $numeric)? }, expansion = shorthand { wrapper: additive, accessor: current, members: [ InsetInlineStart => |value: &CssInsetPair| Some(value.start().clone()), InsetInlineEnd => |value: &CssInsetPair| Some(value.end().clone()) ], reset_only: [] };
-            ZIndex, "z-index", [], "baseline.property.z-index", CssZIndex, CssZIndexPropertyValue, CssZIndexPropertyValueRepresentation, parse_z_index, { parse_z_index($input, $numeric)? };
+            ZIndex, "z-index", [], "baseline.property.z-index", CssZIndexValue, CssZIndexPropertyValue, CssZIndexPropertyValueRepresentation, parse_z_index, { parse_z_index($input, $numeric)? };
             BoxDecorationBreak, "box-decoration-break", [], "baseline.property.box-decoration-break", CssBoxDecorationBreak, CssBoxDecorationBreakPropertyValue, CssBoxDecorationBreakPropertyValueRepresentation, parse_box_decoration_break, { parse_box_decoration_break($input)? };
             Margin, "margin", [], "baseline.property.margin", CssMarginShorthand, CssMarginPropertyValue, CssMarginPropertyValueRepresentation, parse_box_margin_shorthand, { parse_box_margin_shorthand($input, $numeric)? }, expansion = unresolved { wrapper: additive, reason: CssUnresolvedStandard::LogicalShorthandResetMembership };
             MarginTop, "margin-top", [], "baseline.property.margin-top", CssMarginValue, CssMarginTopPropertyValue, CssMarginTopPropertyValueRepresentation, parse_box_margin_value, { parse_box_margin_value($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssMarginValue, accessor: current, inherited: false, initial_kind: value, initial: CssMarginValue::LengthPercentage(CssSpecifiedLengthPercentage::zero()) };
@@ -325,10 +325,10 @@ macro_rules! property_schema {
             BorderEndStartRadius, "border-end-start-radius", [], "official.property.border-end-start-radius", CssCornerRadiusValue, CssBorderEndStartRadiusPropertyValue, CssBorderEndStartRadiusPropertyValueRepresentation, parse_exact_corner_radius, { parse_exact_corner_radius($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssCornerRadiusValue, accessor: current, inherited: false, initial_kind: value, initial: CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None) };
             BorderEndEndRadius, "border-end-end-radius", [], "official.property.border-end-end-radius", CssCornerRadiusValue, CssBorderEndEndRadiusPropertyValue, CssBorderEndEndRadiusPropertyValueRepresentation, parse_exact_corner_radius, { parse_exact_corner_radius($input, $numeric)? }, expansion = longhand { wrapper: additive, value: CssCornerRadiusValue, accessor: current, inherited: false, initial_kind: value, initial: CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None) };
             BoxShadow, "box-shadow", [], "baseline.property.box-shadow", CssBoxShadow, CssBoxShadowPropertyValue, CssBoxShadowPropertyValueRepresentation, parse_box_shadow, { parse_box_shadow($input, $numeric)? };
-            Opacity, "opacity", [], "baseline.property.opacity", CssOpacity, CssOpacityPropertyValue, CssOpacityPropertyValueRepresentation, parse_opacity, { parse_opacity($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssOpacityValue, accessor: value, inherited: false, initial_kind: value, initial: CssOpacityValue::Literal(CssOpacity::try_new(1.0).expect("one is a valid opacity")) };
+            Opacity, "opacity", [], "baseline.property.opacity", CssOpacityValue, CssOpacityPropertyValue, CssOpacityPropertyValueRepresentation, parse_opacity, { parse_opacity($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssOpacityValue, accessor: value, inherited: false, initial_kind: value, initial: CssOpacityValue::Scalar(crate::CssOpacityScalar::try_from_component(crate::CssComponentValue::try_number("1").expect("valid initial number")).expect("valid opacity scalar")) };
             FlexGrow, "flex-grow", ["-webkit-flex-grow"], "baseline.property.flex-grow", CssFlexFactor, CssFlexGrowPropertyValue, CssFlexGrowPropertyValueRepresentation, parse_flex_factor, { parse_flex_factor($input, $numeric, "flex-grow")? }, expansion = longhand { wrapper: existing, value: CssSpecifiedNonNegativeNumber, accessor: factor, inherited: false, initial_kind: value, initial: crate::flex::initial_grow() };
             FlexShrink, "flex-shrink", ["-webkit-flex-shrink"], "baseline.property.flex-shrink", CssFlexFactor, CssFlexShrinkPropertyValue, CssFlexShrinkPropertyValueRepresentation, parse_flex_factor, { parse_flex_factor($input, $numeric, "flex-shrink")? }, expansion = longhand { wrapper: existing, value: CssSpecifiedNonNegativeNumber, accessor: factor, inherited: false, initial_kind: value, initial: crate::flex::initial_shrink() };
-            Order, "order", ["-webkit-order"], "baseline.property.order", CssOrder, CssOrderPropertyValue, CssOrderPropertyValueRepresentation, parse_order, { parse_order($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssIntegerValue, accessor: value, inherited: false, initial_kind: value, initial: CssIntegerValue::Literal(0) };
+            Order, "order", ["-webkit-order"], "baseline.property.order", CssIntegerValue, CssOrderPropertyValue, CssOrderPropertyValueRepresentation, parse_order, { parse_order($input, $numeric)? }, expansion = longhand { wrapper: existing, value: CssIntegerValue, accessor: value, inherited: false, initial_kind: value, initial: CssIntegerValue::Literal(crate::CssIntegerLiteral::from_i32(0)) };
             Flex, "flex", ["-webkit-flex"], "baseline.property.flex", CssFlex, CssFlexPropertyValue, CssFlexPropertyValueRepresentation, parse_flex, { parse_flex($input, $numeric)? }, expansion = shorthand { wrapper: existing, accessor: value, members: [ FlexGrow => crate::flex::effective_grow, FlexShrink => crate::flex::effective_shrink, FlexBasis => crate::flex::effective_basis ], reset_only: [] };
             JustifyTracks, "justify-tracks", [], "baseline.property.justify-tracks", CssAlignment, CssJustifyTracksPropertyValue, CssJustifyTracksPropertyValueRepresentation, parse_content_alignment, { parse_content_alignment($input)? };
             AlignTracks, "align-tracks", [], "baseline.property.align-tracks", CssAlignment, CssAlignTracksPropertyValue, CssAlignTracksPropertyValueRepresentation, parse_content_alignment, { parse_content_alignment($input)? };
@@ -482,17 +482,6 @@ fn display_i01_projection(value: &CssDisplayValue) -> Option<CssDisplay> {
     }
 }
 
-fn opacity_i01_projection(value: &CssOpacityValue) -> Option<CssOpacity> {
-    match value {
-        CssOpacityValue::Literal(value) => Some(*value),
-        CssOpacityValue::Calculation(_)
-        | CssOpacityValue::Number(_)
-        | CssOpacityValue::Percentage(_)
-        | CssOpacityValue::PercentageCalculation(_)
-        | CssOpacityValue::ExactScalar(_) => None,
-    }
-}
-
 fn flex_factor_i01_projection(value: &CssSpecifiedNonNegativeNumber) -> Option<CssFlexFactor> {
     let component = value.literal_component()?;
     let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = component.view() else {
@@ -536,16 +525,6 @@ fn flex_basis_i01_projection(value: &CssFlexBasisValue) -> Option<CssLength> {
             }
             _ => None,
         },
-    }
-}
-
-fn integer_i01_projection(value: &CssIntegerValue) -> Option<i32> {
-    match value {
-        CssIntegerValue::Literal(value) => Some(*value),
-        CssIntegerValue::ExactLiteral(value) => {
-            crate::integer_value::exact_i32(value.numeric().representation())
-        }
-        CssIntegerValue::Calculation(_) => None,
     }
 }
 
@@ -2458,14 +2437,12 @@ macro_rules! define_property_value {
         Opacity, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
             CssOpacityValue,
-            CssOpacity,
-            value,
-            opacity_i01_projection
+            value
         );
     };
     (
@@ -2514,33 +2491,24 @@ macro_rules! define_property_value {
         Order, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
             CssIntegerValue,
-            CssOrder,
-            value,
-            |value: &CssIntegerValue| integer_i01_projection(value).map(CssOrder::Integer)
+            value
         );
     };
     (
         ZIndex, $canonical:literal, $value:ty, $wrapper:ident,
         $representation:ident
     ) => {
-        define_current_property_value!(
+        define_semantic_property_value!(
             $canonical,
             $wrapper,
             $representation,
             CssZIndexValue,
-            CssZIndex,
-            value,
-            |value: &CssZIndexValue| match value {
-                CssZIndexValue::Auto => Some(CssZIndex::Auto),
-                CssZIndexValue::Integer(value) => {
-                    integer_i01_projection(value).map(CssZIndex::Integer)
-                }
-            }
+            value
         );
     };
     (

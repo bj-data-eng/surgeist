@@ -80,8 +80,7 @@ pub(crate) fn changes_i01(value: &CssCounterChangesValue) -> Option<CssCounterCh
         let name = CssCounterName::try_new(change.name().as_str())?;
         let number = match change.value() {
             None => None,
-            Some(CssIntegerValue::Literal(value)) => Some(*value),
-            Some(CssIntegerValue::ExactLiteral(value)) => Some(crate::integer_value::exact_i32(
+            Some(CssIntegerValue::Literal(value)) => Some(crate::integer_value::exact_i32(
                 value.numeric().representation(),
             )?),
             Some(CssIntegerValue::Calculation(_)) => return None,

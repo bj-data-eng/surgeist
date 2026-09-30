@@ -1770,8 +1770,7 @@ impl core::cmp::PartialEq for surgeist_css::CssInsetValue
 pub fn surgeist_css::CssInsetValue::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssIntegerValue
 pub surgeist_css::CssIntegerValue::Calculation(surgeist_css::CssIntegerCalculation)
-pub surgeist_css::CssIntegerValue::ExactLiteral(surgeist_css::CssIntegerLiteral)
-pub surgeist_css::CssIntegerValue::Literal(i32)
+pub surgeist_css::CssIntegerValue::Literal(surgeist_css::CssIntegerLiteral)
 impl surgeist_css::CssIntegerValue
 pub fn surgeist_css::CssIntegerValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssIntegerValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -3170,17 +3169,12 @@ pub surgeist_css::CssObjectFit::ScaleDown
 pub surgeist_css::CssOpacityScalarKind::Number
 pub surgeist_css::CssOpacityScalarKind::Percentage
 #[non_exhaustive] pub enum surgeist_css::CssOpacityValue
-pub surgeist_css::CssOpacityValue::Calculation(surgeist_css::CssNumberCalculation)
-pub surgeist_css::CssOpacityValue::ExactScalar(surgeist_css::CssOpacityScalar)
-pub surgeist_css::CssOpacityValue::Literal(surgeist_css::CssOpacity)
-pub surgeist_css::CssOpacityValue::Number(surgeist_css::CssFiniteNumber)
-pub surgeist_css::CssOpacityValue::Percentage(surgeist_css::CssFiniteNumber)
+pub surgeist_css::CssOpacityValue::NumberCalculation(surgeist_css::CssNumberCalculation)
 pub surgeist_css::CssOpacityValue::PercentageCalculation(surgeist_css::CssPercentageCalculation)
+pub surgeist_css::CssOpacityValue::Scalar(surgeist_css::CssOpacityScalar)
 impl surgeist_css::CssOpacityValue
 pub fn surgeist_css::CssOpacityValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssOpacityValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-#[non_exhaustive] pub enum surgeist_css::CssOrder
-pub surgeist_css::CssOrder::Integer(i32)
 #[non_exhaustive] pub enum surgeist_css::CssOrientation
 pub surgeist_css::CssOrientation::Landscape
 pub surgeist_css::CssOrientation::Portrait
@@ -3238,8 +3232,7 @@ pub surgeist_css::CssPolygonFillRule::Evenodd
 pub surgeist_css::CssPolygonFillRule::Nonzero
 #[non_exhaustive] pub enum surgeist_css::CssPositiveIntegerValue
 pub surgeist_css::CssPositiveIntegerValue::Calculation(surgeist_css::CssIntegerCalculation)
-pub surgeist_css::CssPositiveIntegerValue::ExactLiteral(surgeist_css::CssPositiveIntegerLiteral)
-pub surgeist_css::CssPositiveIntegerValue::Literal(surgeist_css::CssPositiveInteger)
+pub surgeist_css::CssPositiveIntegerValue::Literal(surgeist_css::CssPositiveIntegerLiteral)
 impl surgeist_css::CssPositiveIntegerValue
 pub fn surgeist_css::CssPositiveIntegerValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssPositiveIntegerValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -4079,9 +4072,6 @@ pub surgeist_css::CssWritingMode::VerticalRl
 impl surgeist_css::CssWritingMode
 pub fn surgeist_css::CssWritingMode::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssWritingMode::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-#[non_exhaustive] pub enum surgeist_css::CssZIndex
-pub surgeist_css::CssZIndex::Auto
-pub surgeist_css::CssZIndex::Integer(i32)
 #[non_exhaustive] pub enum surgeist_css::CssZIndexValue
 pub surgeist_css::CssZIndexValue::Auto
 pub surgeist_css::CssZIndexValue::Integer(surgeist_css::CssIntegerValue)
@@ -6805,6 +6795,9 @@ pub fn surgeist_css::CssIntegerCalculation::requires_rounding(&self) -> bool
 pub struct surgeist_css::CssIntegerLiteral
 impl surgeist_css::CssIntegerLiteral
 pub const fn surgeist_css::CssIntegerLiteral::component(&self) -> &surgeist_css::CssComponentValue
+pub fn surgeist_css::CssIntegerLiteral::from_i32(value: i32) -> Self
+pub fn surgeist_css::CssIntegerLiteral::is_negative(&self) -> bool
+pub fn surgeist_css::CssIntegerLiteral::is_zero(&self) -> bool
 pub fn surgeist_css::CssIntegerLiteral::numeric(&self) -> surgeist_css::CssNumericTokenRef<'_>
 pub const fn surgeist_css::CssIntegerLiteral::origin(&self) -> &surgeist_css::CssValueOrigin
 pub fn surgeist_css::CssIntegerLiteral::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
@@ -7430,14 +7423,9 @@ pub struct surgeist_css::CssObjectPositionPropertyValue
 impl surgeist_css::CssObjectPositionPropertyValue
 pub fn surgeist_css::CssObjectPositionPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssObjectPositionPropertyValue::position(&self) -> &surgeist_css::CssPosition
-pub struct surgeist_css::CssOpacity
-impl surgeist_css::CssOpacity
-pub fn surgeist_css::CssOpacity::try_new(value: f32) -> core::option::Option<Self>
-pub const fn surgeist_css::CssOpacity::value(self) -> f32
 pub struct surgeist_css::CssOpacityPropertyValue
 impl surgeist_css::CssOpacityPropertyValue
 pub fn surgeist_css::CssOpacityPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssOpacityPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssOpacity>
 pub const fn surgeist_css::CssOpacityPropertyValue::value(&self) -> &surgeist_css::CssOpacityValue
 pub struct surgeist_css::CssOpacityScalar
 impl surgeist_css::CssOpacityScalar
@@ -7453,7 +7441,6 @@ pub fn surgeist_css::CssOpenTypeTag::try_new(value: impl core::convert::Into<all
 pub struct surgeist_css::CssOrderPropertyValue
 impl surgeist_css::CssOrderPropertyValue
 pub fn surgeist_css::CssOrderPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssOrderPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssOrder>
 pub const fn surgeist_css::CssOrderPropertyValue::value(&self) -> &surgeist_css::CssIntegerValue
 pub struct surgeist_css::CssOrphansPropertyValue
 impl surgeist_css::CssOrphansPropertyValue
@@ -7775,10 +7762,6 @@ pub fn surgeist_css::CssPositionPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssPositionPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLayoutPosition>
 impl surgeist_css::CssPositionPropertyValue
 pub const fn surgeist_css::CssPositionPropertyValue::current(&self) -> &surgeist_css::CssLayoutPosition
-pub struct surgeist_css::CssPositiveInteger
-impl surgeist_css::CssPositiveInteger
-pub const fn surgeist_css::CssPositiveInteger::try_new(value: i32) -> core::option::Option<Self>
-pub const fn surgeist_css::CssPositiveInteger::value(self) -> i32
 pub struct surgeist_css::CssPositiveIntegerLiteral
 impl surgeist_css::CssPositiveIntegerLiteral
 pub const fn surgeist_css::CssPositiveIntegerLiteral::integer(&self) -> &surgeist_css::CssIntegerLiteral
@@ -8993,7 +8976,6 @@ pub const fn surgeist_css::CssWritingModePropertyValue::current(&self) -> &surge
 pub struct surgeist_css::CssZIndexPropertyValue
 impl surgeist_css::CssZIndexPropertyValue
 pub fn surgeist_css::CssZIndexPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssZIndexPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssZIndex>
 pub const fn surgeist_css::CssZIndexPropertyValue::value(&self) -> &surgeist_css::CssZIndexValue
 pub struct surgeist_css::Error
 impl surgeist_css::Error

@@ -114,7 +114,7 @@ fn property_bridge_retains_the_programmatic_root_and_original_parsed_children() 
     else {
         panic!("expected opacity")
     };
-    let CssOpacityValue::Calculation(calculation) = opacity.value() else {
+    let CssOpacityValue::NumberCalculation(calculation) = opacity.value() else {
         panic!("expected retained calculation")
     };
     assert_eq!(calculation.components(), &values);
@@ -159,7 +159,7 @@ fn supports_math_keeps_full_stylesheet_coordinates_after_unicode_prefix() {
     else {
         panic!("expected opacity")
     };
-    let CssOpacityValue::Calculation(calculation) = opacity.value() else {
+    let CssOpacityValue::NumberCalculation(calculation) = opacity.value() else {
         panic!("expected math")
     };
     let CssValueOrigin::Parsed(origin) = calculation.origin() else {

@@ -2,9 +2,8 @@
 
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssColumnCount, CssColumnFill, CssColumnSpan, CssColumns, CssIntegerValue,
-    CssPositiveIntegerValue, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits,
+    CssColumnCount, CssColumnFill, CssColumnSpan, CssColumns, CssPositiveIntegerValue,
+    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
 };
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
@@ -85,10 +84,7 @@ impl CssPositiveIntegerValue {
         output: &mut String,
     ) -> Result<()> {
         match self {
-            Self::Literal(value) => {
-                CssIntegerValue::Literal(value.value()).append_specified(context, output)
-            }
-            Self::ExactLiteral(value) => value.integer().append_specified(context, output),
+            Self::Literal(value) => value.integer().append_specified(context, output),
             Self::Calculation(value) => value.serialize_specified_into(context, output),
         }
     }

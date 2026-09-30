@@ -945,23 +945,23 @@ fn opacity_preserves_finite_authored_number_and_percentage_branches() {
     });
 
     let value = opacity.next().unwrap();
-    assert!(matches!(value.value(), CssOpacityValue::Literal(value) if value.value() == 0.5));
-    assert_eq!(value.i01_subset().map(|value| value.value()), Some(0.5));
+    assert!(
+        matches!(value.value(), CssOpacityValue::Scalar(value) if value.numeric().representation() == "0.5")
+    );
+    assert_eq!(value.value().serialize_specified().unwrap(), "0.5");
 
-    for expected in [-0.5, 1.5] {
+    for input in ["-0.5", "1.5"] {
         let value = opacity.next().unwrap();
         assert!(
-            matches!(value.value(), CssOpacityValue::Number(value) if value.value() == expected)
+            matches!(value.value(), CssOpacityValue::Scalar(value) if value.numeric().representation() == input)
         );
-        assert!(value.i01_subset().is_none());
     }
 
-    for expected in [-25.0, 150.0] {
+    for input in ["-25%", "150%"] {
         let value = opacity.next().unwrap();
         assert!(
-            matches!(value.value(), CssOpacityValue::Percentage(value) if value.value() == expected)
+            matches!(value.value(), CssOpacityValue::Scalar(value) if value.numeric().representation() == input.trim_end_matches('%'))
         );
-        assert!(value.i01_subset().is_none());
     }
 }
 

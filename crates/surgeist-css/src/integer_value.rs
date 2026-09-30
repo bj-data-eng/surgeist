@@ -36,6 +36,32 @@ impl CssIntegerLiteral {
         }
     }
 
+    /// Constructs the canonical programmatic spelling of a machine integer.
+    #[must_use]
+    pub fn from_i32(value: i32) -> Self {
+        Self::try_from_component(
+            CssComponentValue::try_number(&value.to_string()).expect("valid integer spelling"),
+        )
+        .expect("checked integer token")
+    }
+
+    /// Whether this lexical integer is mathematically zero, regardless of sign.
+    #[must_use]
+    pub fn is_zero(&self) -> bool {
+        self.numeric()
+            .representation()
+            .strip_prefix(['+', '-'])
+            .unwrap_or(self.numeric().representation())
+            .bytes()
+            .all(|digit| digit == b'0')
+    }
+
+    /// Whether this lexical integer is mathematically negative; signed zero is not negative.
+    #[must_use]
+    pub fn is_negative(&self) -> bool {
+        self.numeric().representation().starts_with('-') && !self.is_zero()
+    }
+
     /// Returns the original sign and digits without numeric approximation.
     #[must_use]
     pub fn numeric(&self) -> CssNumericTokenRef<'_> {
@@ -74,10 +100,7 @@ pub(crate) fn admit_integer_literal(
     component: CssComponentValue,
 ) -> Result<CssIntegerValue, CssComponentValueError> {
     let literal = CssIntegerLiteral::try_from_component(component)?;
-    Ok(match exact_i32(literal.numeric().representation()) {
-        Some(value) => CssIntegerValue::Literal(value),
-        None => CssIntegerValue::ExactLiteral(literal),
-    })
+    Ok(CssIntegerValue::Literal(literal))
 }
 
 // Input has already been checked as a lexical integer. Accumulating negatively
@@ -131,36 +154,8 @@ impl CssIntegerValue {
             crate::numeric::project_specified_into(&calculation.expression, context, output)?;
             return Ok(());
         }
-        if let Self::ExactLiteral(literal) = self {
-            return literal.append_specified(context, output);
-        }
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
         match self {
-            Self::Literal(value) => {
-                // The entire i32 decimal representation fits on the stack.
-                let mut buffer = [b'0'; 11];
-                let mut start = buffer.len();
-                let mut magnitude = value.unsigned_abs();
-                loop {
-                    start -= 1;
-                    buffer[start] = b'0' + (magnitude % 10) as u8;
-                    magnitude /= 10;
-                    if magnitude == 0 {
-                        break;
-                    }
-                }
-                if *value < 0 {
-                    start -= 1;
-                    buffer[start] = b'-';
-                }
-                let text = serialize_integer_digits(
-                    std::str::from_utf8(&buffer[start..]).expect("ASCII integer digits"),
-                    context.remaining_bytes(),
-                )?;
-                context.append(output, &text)
-            }
-            Self::ExactLiteral(_) => unreachable!("exact literal handled above"),
+            Self::Literal(literal) => literal.append_specified(context, output),
             Self::Calculation(_) => unreachable!("calculation handled above"),
         }
     }

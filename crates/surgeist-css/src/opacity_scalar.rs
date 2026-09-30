@@ -1,11 +1,8 @@
-//! Exact ordinary opacity scalars and lossless legacy-payload admission.
-
-use crate::exact_decimal::exact_legacy_value;
+//! Exact ordinary opacity scalars.
 
 use crate::{
     CssComponentValue, CssComponentValueError, CssComponentValueErrorKind, CssComponentValueRef,
-    CssFiniteNumber, CssNumericTokenRef, CssOpacity, CssOpacityValue, CssValueOrigin,
-    CssValueTokenRef,
+    CssNumericTokenRef, CssOpacityValue, CssValueOrigin, CssValueTokenRef,
 };
 
 /// The authored numeric token kind of an exact ordinary opacity scalar.
@@ -89,14 +86,5 @@ pub(crate) fn admit_opacity_scalar(
     component: CssComponentValue,
 ) -> Result<CssOpacityValue, CssComponentValueError> {
     let scalar = CssOpacityScalar::try_from_component(component)?;
-    if let Some(value) = exact_legacy_value(scalar.numeric().representation()) {
-        let finite = CssFiniteNumber::try_new(value).expect("checked finite legacy value");
-        return Ok(match scalar.kind() {
-            CssOpacityScalarKind::Number => CssOpacity::try_new(value)
-                .map(CssOpacityValue::Literal)
-                .unwrap_or(CssOpacityValue::Number(finite)),
-            CssOpacityScalarKind::Percentage => CssOpacityValue::Percentage(finite),
-        });
-    }
-    Ok(CssOpacityValue::ExactScalar(scalar))
+    Ok(CssOpacityValue::Scalar(scalar))
 }

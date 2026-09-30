@@ -215,10 +215,10 @@ pub(super) fn parse_text_combine_upright<'i, 't>(
             let count = match input.next().map_err(basic)? {
                 Token::Number { .. } => {
                     input.reset(&start);
-                    let value = super::values::parse_current_integer_literal(input, numeric)?;
+                    let value = super::values::parse_integer_literal(input, numeric)?;
                     let count = match value {
-                        CssIntegerValue::Literal(value) => CssTextCombineDigitCount::try_literal(value),
-                        CssIntegerValue::ExactLiteral(_) | CssIntegerValue::Calculation(_) => None,
+                        CssIntegerValue::Literal(value) => crate::integer_value::exact_i32(value.numeric().representation()).and_then(CssTextCombineDigitCount::try_literal),
+                        CssIntegerValue::Calculation(_) => None,
                     };
                     count.ok_or_else(|| unsupported_value_at(location, None,
                         "text-combine-upright literal count must be between two and four"))?

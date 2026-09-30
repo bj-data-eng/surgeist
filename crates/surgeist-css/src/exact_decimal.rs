@@ -1984,21 +1984,6 @@ impl Decimal {
     }
 }
 
-pub(crate) fn serialize_binary32(
-    value: f32,
-    percentage: bool,
-    limit: usize,
-) -> Result<String, crate::CssSpecifiedValueSerializationError> {
-    let value = Decimal::binary32(value);
-    crate::specified_serialization::format_digits(
-        value.digits[..value.len].iter().copied(),
-        value.len,
-        value.exponent - if percentage { 2 } else { 0 },
-        value.negative,
-        limit,
-    )
-}
-
 // Shared exact-fidelity proof for ordinary numeric consumers. The input must be
 // a checked CSS numeric representation, without a unit or percentage suffix.
 pub(crate) fn exact_legacy_value(text: &str) -> Option<f32> {

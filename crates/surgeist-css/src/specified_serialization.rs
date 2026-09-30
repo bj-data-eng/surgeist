@@ -402,7 +402,7 @@ impl CssOpacityValue {
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
         match self {
-            Self::Calculation(value) => {
+            Self::NumberCalculation(value) => {
                 return crate::numeric::project_specified(&value.expression, limits);
             }
             Self::PercentageCalculation(value) => {
@@ -421,27 +421,12 @@ impl CssOpacityValue {
             ));
         }
         match self {
-            Self::Literal(value) => crate::exact_decimal::serialize_binary32(
-                value.value(),
-                false,
-                limits.max_css_bytes(),
-            ),
-            Self::Number(value) => crate::exact_decimal::serialize_binary32(
-                value.value(),
-                false,
-                limits.max_css_bytes(),
-            ),
-            Self::Percentage(value) => crate::exact_decimal::serialize_binary32(
-                value.value(),
-                true,
-                limits.max_css_bytes(),
-            ),
-            Self::ExactScalar(value) => format_lexical(
+            Self::Scalar(value) => format_lexical(
                 value.numeric().representation(),
                 value.kind() == CssOpacityScalarKind::Percentage,
                 limits.max_css_bytes(),
             ),
-            Self::Calculation(_) | Self::PercentageCalculation(_) => {
+            Self::NumberCalculation(_) | Self::PercentageCalculation(_) => {
                 unreachable!("calculation branches handled above")
             }
         }
@@ -460,7 +445,7 @@ mod composed_value_tests {
     #[test]
     fn color_and_integer_share_input_projection_and_output_limits() {
         let color = CssColor::transparent();
-        let integer = CssIntegerValue::Literal(7);
+        let integer = CssIntegerValue::Literal(crate::CssIntegerLiteral::from_i32(7));
 
         let mut context =
             SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(2, 2, 13));

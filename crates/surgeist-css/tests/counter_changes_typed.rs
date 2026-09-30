@@ -43,8 +43,14 @@ fn checked_entries_keep_omission_order_duplicates_and_none_distinct() {
     }
     let value = CssCounterChangesValue::try_changes(vec![
         entry("Chapter", None),
-        entry("Chapter", Some(CssIntegerValue::Literal(0))),
-        entry("chapter", Some(CssIntegerValue::Literal(-2))),
+        entry(
+            "Chapter",
+            Some(CssIntegerValue::Literal(CssIntegerLiteral::from_i32(0))),
+        ),
+        entry(
+            "chapter",
+            Some(CssIntegerValue::Literal(CssIntegerLiteral::from_i32(-2))),
+        ),
     ])
     .unwrap();
     let [first, second, third] = value.changes().unwrap() else {
@@ -53,16 +59,23 @@ fn checked_entries_keep_omission_order_duplicates_and_none_distinct() {
     assert_eq!(first.name().as_str(), "Chapter");
     assert!(first.value().is_none());
     assert_eq!(second.name().as_str(), "Chapter");
-    assert!(matches!(second.value(), Some(CssIntegerValue::Literal(0))));
+    assert!(
+        matches!(second.value(), Some(CssIntegerValue::Literal(value)) if value.numeric().representation() == "0")
+    );
     assert_eq!(third.name().as_str(), "chapter");
-    assert!(matches!(third.value(), Some(CssIntegerValue::Literal(-2))));
+    assert!(
+        matches!(third.value(), Some(CssIntegerValue::Literal(value)) if value.numeric().representation() == "-2")
+    );
 }
 
 #[test]
 fn one_checked_value_uses_explicit_property_context_for_missing_operands() {
     let value = CssCounterChangesValue::try_changes(vec![
         entry("chapter", None),
-        entry("section", Some(CssIntegerValue::Literal(-2))),
+        entry(
+            "section",
+            Some(CssIntegerValue::Literal(CssIntegerLiteral::from_i32(-2))),
+        ),
     ])
     .unwrap();
     for (property, expected) in [
@@ -94,7 +107,7 @@ fn decoded_names_are_escaped_and_exact_large_integers_stay_exact() {
         CssIntegerLiteral::try_from_component(CssComponentValue::try_token(huge).unwrap()).unwrap();
     assert!(matches!(literal.origin(), CssValueOrigin::Programmatic));
     let value = CssCounterChangesValue::try_changes(vec![
-        entry("1chapter", Some(CssIntegerValue::ExactLiteral(literal))),
+        entry("1chapter", Some(CssIntegerValue::Literal(literal))),
         entry("chapter name", None),
     ])
     .unwrap();
@@ -119,7 +132,7 @@ fn exact_small_tokens_project_to_legacy_only_when_names_and_values_fit() {
             .unwrap();
     let representable = CssCounterChangesValue::try_changes(vec![entry(
         "chapter",
-        Some(CssIntegerValue::ExactLiteral(padded)),
+        Some(CssIntegerValue::Literal(padded)),
     )])
     .unwrap();
     let old_view = {
@@ -176,9 +189,13 @@ fn parsed_current_values_preserve_full_source_origins_and_conditional_legacy() {
         assert_eq!(first.name().as_str(), "chapter");
         assert!(first.value().is_none());
         assert_eq!(second.name().as_str(), "section");
-        assert!(matches!(second.value(), Some(CssIntegerValue::Literal(-2))));
+        assert!(
+            matches!(second.value(), Some(CssIntegerValue::Literal(value)) if value.numeric().representation() == "-2")
+        );
         assert_eq!(third.name().as_str(), "chapter");
-        assert!(matches!(third.value(), Some(CssIntegerValue::Literal(0))));
+        assert!(
+            matches!(third.value(), Some(CssIntegerValue::Literal(value)) if value.numeric().representation() == "0")
+        );
         assert_eq!(
             current(&ordinary)
                 .serialize_specified(match property {
@@ -208,7 +225,7 @@ fn parsed_current_values_preserve_full_source_origins_and_conditional_legacy() {
         let [change] = current(&huge).changes().unwrap() else {
             panic!("one huge integer")
         };
-        let Some(CssIntegerValue::ExactLiteral(literal)) = change.value() else {
+        let Some(CssIntegerValue::Literal(literal)) = change.value() else {
             panic!("exact out-of-i32 integer")
         };
         assert_eq!(literal.numeric().representation(), "2147483648");

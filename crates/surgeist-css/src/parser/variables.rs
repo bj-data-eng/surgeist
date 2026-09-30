@@ -353,12 +353,7 @@ fn env_valid(
             {
                 let nonnegative =
                     match crate::integer_value::admit_integer_literal(argument.clone()) {
-                        Ok(crate::CssIntegerValue::Literal(value)) => value >= 0,
-                        // The shared exact owner already reduces every spelling of
-                        // signed zero to Literal(0). A negative ExactLiteral is nonzero.
-                        Ok(crate::CssIntegerValue::ExactLiteral(value)) => {
-                            !value.numeric().representation().starts_with('-')
-                        }
+                        Ok(crate::CssIntegerValue::Literal(value)) => !value.is_negative(),
                         _ => false,
                     };
                 if !nonnegative {

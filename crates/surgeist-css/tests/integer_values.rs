@@ -17,7 +17,7 @@ fn order(text: &str) -> CssIntegerValue {
 }
 
 fn exact(text: &str) -> CssIntegerValue {
-    CssIntegerValue::ExactLiteral(
+    CssIntegerValue::Literal(
         CssIntegerLiteral::try_from_component(CssComponentValue::try_number(text).unwrap())
             .unwrap(),
     )
@@ -111,7 +111,7 @@ fn both_integer_properties_preserve_exact_payloads_and_original_origins() {
                     },
                     _ => panic!("integer property"),
                 };
-                let CssIntegerValue::ExactLiteral(literal) = payload else {
+                let CssIntegerValue::Literal(literal) = payload else {
                     panic!("exact payload")
                 };
                 assert_eq!(literal.component(), &supplied.items()[0]);
@@ -125,7 +125,11 @@ fn both_integer_properties_preserve_exact_payloads_and_original_origins() {
         ("-0002147483648", i32::MIN),
         ("-000", 0),
     ] {
-        assert_eq!(order(text), CssIntegerValue::Literal(expected));
+        assert_output(&order(text), &expected.to_string());
+        let CssIntegerValue::Literal(literal) = order(text) else {
+            panic!("ordinary integer")
+        };
+        assert_eq!(literal.numeric().representation(), text);
     }
 }
 
@@ -152,7 +156,10 @@ fn ordinary_integer_serialization_is_exact_and_canonical_without_magnitude_round
         (i32::MAX, "2147483647"),
         (0, "0"),
     ] {
-        assert_output(&CssIntegerValue::Literal(input), expected);
+        assert_output(
+            &CssIntegerValue::Literal(CssIntegerLiteral::from_i32(input)),
+            expected,
+        );
     }
     let digits = "9".repeat(4096);
     assert_output(&exact(&digits), &digits);
@@ -162,7 +169,10 @@ fn ordinary_integer_serialization_is_exact_and_canonical_without_magnitude_round
 
 #[test]
 fn ordinary_integer_limits_charge_canonical_bytes_and_one_node_per_stage() {
-    for value in [CssIntegerValue::Literal(-2), exact("-0002")] {
+    for value in [
+        CssIntegerValue::Literal(surgeist_css::CssIntegerLiteral::from_i32(-2)),
+        exact("-0002"),
+    ] {
         for (limits, expected) in [
             (
                 CssSpecifiedValueSerializationLimits::new(0, 0, 0),
@@ -289,7 +299,7 @@ fn parsed_exact_payloads_retain_the_original_source_token() {
             },
             _ => panic!("integer property"),
         };
-        let CssIntegerValue::ExactLiteral(literal) = value else {
+        let CssIntegerValue::Literal(literal) = value else {
             panic!("exact")
         };
         assert_eq!(literal.numeric().representation(), expected);

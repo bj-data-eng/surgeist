@@ -85,12 +85,7 @@ pub struct CssFontPaletteIndex {
 impl CssFontPaletteIndex {
     pub fn try_new(value: CssIntegerValue) -> Result<Self, CssFontPaletteConstructionError> {
         let negative = match &value {
-            CssIntegerValue::Literal(value) => *value < 0,
-            CssIntegerValue::ExactLiteral(value) => {
-                let spelling = value.numeric().representation();
-                let digits = spelling.strip_prefix(['+', '-']).unwrap_or(spelling);
-                spelling.starts_with('-') && !digits.trim_start_matches('0').is_empty()
-            }
+            CssIntegerValue::Literal(value) => value.is_negative(),
             CssIntegerValue::Calculation(_) => false,
         };
         if negative {

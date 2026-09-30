@@ -691,7 +691,7 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::ContentVisibility(v) => {
             assert_eq!(v, &CssContentVisibility::Visible)
         }
-        CssLonghandValueRef::Order(v) => assert_eq!(v, &CssIntegerValue::Literal(0)),
+        CssLonghandValueRef::Order(v) => assert_eq!(v.serialize_specified().unwrap(), "0"),
         CssLonghandValueRef::AspectRatio(v) => {
             assert!(matches!(v, CssAspectRatioValue::Auto));
         }
@@ -854,7 +854,9 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
             assert_eq!(*v, CssSpecifiedLength::zero())
         }
         CssLonghandValueRef::Opacity(v) => {
-            assert!(matches!(v, CssOpacityValue::Literal(value) if value.value() == 1.0));
+            assert!(
+                matches!(v, CssOpacityValue::Scalar(value) if value.numeric().representation() == "1")
+            );
         }
         other => panic!("unexpected ordinary initial: {other:?}"),
     }

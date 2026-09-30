@@ -40,18 +40,28 @@ fn opacity(contribution: &CssLonghandContribution) -> &CssOpacityValue {
 
 fn assert_numeric(value: &CssOpacityValue, index: usize) {
     match (index, value) {
-        (0, CssOpacityValue::Literal(number)) => assert_eq!(number.value(), 0.5),
-        (1, CssOpacityValue::Number(number)) => assert_eq!(number.value(), -0.5),
-        (2, CssOpacityValue::Number(number)) => assert_eq!(number.value(), 1.5),
-        (3, CssOpacityValue::Percentage(number)) => assert_eq!(number.value(), -25.0),
-        (4, CssOpacityValue::Percentage(number)) => assert_eq!(number.value(), 150.0),
+        (0, CssOpacityValue::Scalar(number)) => {
+            assert_eq!(number.numeric().representation(), "0.5")
+        }
+        (1, CssOpacityValue::Scalar(number)) => {
+            assert_eq!(number.numeric().representation(), "-0.5")
+        }
+        (2, CssOpacityValue::Scalar(number)) => {
+            assert_eq!(number.numeric().representation(), "1.5")
+        }
+        (3, CssOpacityValue::Scalar(number)) => {
+            assert_eq!(number.numeric().representation(), "-25")
+        }
+        (4, CssOpacityValue::Scalar(number)) => {
+            assert_eq!(number.numeric().representation(), "150")
+        }
         _ => panic!("independently specified numeric branch {index}: {value:?}"),
     }
 }
 
 fn assert_calculation(value: &CssOpacityValue, percentage: bool, programmatic: bool) {
     let expression = match (percentage, value) {
-        (false, CssOpacityValue::Calculation(value)) => {
+        (false, CssOpacityValue::NumberCalculation(value)) => {
             assert_eq!(value.result_type(), CssCalculationType::Number);
             value.expression()
         }
@@ -134,7 +144,7 @@ fn opacity_initial_is_exactly_one_and_all_reset_includes_its_terminal() {
     assert_eq!(value.property().known_property(), CssKnownProperty::Opacity);
     assert!(matches!(
         value.view(),
-        CssLonghandValueRef::Opacity(CssOpacityValue::Literal(number)) if number.value() == 1.0
+        CssLonghandValueRef::Opacity(CssOpacityValue::Scalar(number)) if number.numeric().representation() == "1"
     ));
 
     let CssPropertyKindRef::UniversalReset(metadata) =

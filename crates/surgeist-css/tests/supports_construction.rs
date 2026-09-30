@@ -177,7 +177,7 @@ fn identical_numeric_spellings_from_distinct_snapshots_keep_distinct_leaf_identi
     else {
         panic!("opacity")
     };
-    let CssOpacityValue::Calculation(calculation) = opacity.value() else {
+    let CssOpacityValue::NumberCalculation(calculation) = opacity.value() else {
         panic!("calculation")
     };
     assert_eq!(calculation.origin(), &CssValueOrigin::Programmatic);
@@ -501,7 +501,7 @@ fn nested_math_preserves_function_and_literal_origins_from_the_original_value_tr
     else {
         panic!("opacity")
     };
-    let CssOpacityValue::Calculation(calculation) = opacity.value() else {
+    let CssOpacityValue::NumberCalculation(calculation) = opacity.value() else {
         panic!("calculation")
     };
     let mut expression = calculation.expression();

@@ -304,7 +304,7 @@ pub(super) fn parse_integer_value<'i, 't>(
     match input.next().map_err(basic)? {
         Token::Number { .. } => {
             input.reset(&numeric_start);
-            parse_current_integer_literal(input, numeric)
+            parse_integer_literal(input, numeric)
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Integer)
@@ -315,7 +315,7 @@ pub(super) fn parse_integer_value<'i, 't>(
     }
 }
 
-pub(super) fn parse_current_integer_literal<'i, 't>(
+pub(super) fn parse_integer_literal<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssIntegerValue, ParseError<'i, Error>> {

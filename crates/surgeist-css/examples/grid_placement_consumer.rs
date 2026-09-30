@@ -31,7 +31,7 @@ fn main() {
     let CssGridLine::Indexed(index) = area.row_start() else {
         panic!("indexed row start")
     };
-    let surgeist_css::CssIntegerValue::ExactLiteral(literal) = index.value() else {
+    let surgeist_css::CssIntegerValue::Literal(literal) = index.value() else {
         panic!("exact ordinary integer")
     };
     assert!(matches!(literal.origin(), CssValueOrigin::Parsed(_)));

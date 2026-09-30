@@ -2737,6 +2737,78 @@ fn assert_known_property_value(
         CssFilterPercentage, CssOutlineStyle, CssOutlineWidth, CssTextDecorationLineComponent,
         CssTextDecorationStyle, CssTextDecorationThickness,
     };
+    // Captured scalar inputs now use the sole checked lexical owners. Keep the
+    // archive immutable and assert its concrete semantics without recreating Debug.
+    let scalar_authored = match (property, &value) {
+        (
+            surgeist_css::CssKnownProperty::Opacity,
+            surgeist_css::CssKnownPropertyValueRef::Opacity(value),
+        ) => {
+            let surgeist_css::CssOpacityValue::Scalar(scalar) = value.value() else {
+                panic!("captured ordinary opacity")
+            };
+            assert_eq!(scalar.kind(), surgeist_css::CssOpacityScalarKind::Number);
+            assert_eq!(scalar.numeric().representation(), authored.value);
+            let expected = match authored.value {
+                "0" => "0",
+                ".5" | "0.5" => "0.5",
+                "1" => "1",
+                _ => panic!("unexpected captured opacity"),
+            };
+            assert_eq!(value.value().serialize_specified().unwrap(), expected);
+            if let Some(semantic) = semantic {
+                let captured = match expected {
+                    "0.5" => "typed:CssOpacity { value: CssFiniteNumber { value: 0.5 } }",
+                    "1" => "typed:CssOpacity { value: CssFiniteNumber { value: 1.0 } }",
+                    _ => panic!("unexpected captured semantic opacity"),
+                };
+                assert_eq!(semantic.payload, captured);
+            }
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::Order,
+            surgeist_css::CssKnownPropertyValueRef::Order(value),
+        ) => {
+            assert_eq!(authored.value, "-2");
+            let surgeist_css::CssIntegerValue::Literal(literal) = value.value() else {
+                panic!("captured order integer")
+            };
+            assert_eq!(literal.numeric().representation(), "-2");
+            assert_eq!(value.value().serialize_specified().unwrap(), "-2");
+            if let Some(semantic) = semantic {
+                assert_eq!(semantic.payload, "typed:Integer(-2)");
+            }
+            Some(value.as_css())
+        }
+        (
+            surgeist_css::CssKnownProperty::ZIndex,
+            surgeist_css::CssKnownPropertyValueRef::ZIndex(value),
+        ) => {
+            assert_eq!(authored.value, "-2");
+            let surgeist_css::CssZIndexValue::Integer(surgeist_css::CssIntegerValue::Literal(
+                literal,
+            )) = value.value()
+            else {
+                panic!("captured stacking integer")
+            };
+            assert_eq!(literal.numeric().representation(), "-2");
+            if let Some(semantic) = semantic {
+                assert_eq!(semantic.payload, "typed:Integer(-2)");
+            }
+            Some(value.as_css())
+        }
+        _ => None,
+    };
+    if let Some(css) = scalar_authored {
+        assert_eq!(authored.id, property.stable_id());
+        assert_eq!(authored.value_capability, "deferred-i01");
+        assert_eq!(css, authored.value);
+        if let Some(semantic) = semantic {
+            assert_eq!(semantic.id, property.stable_id());
+        }
+        return;
+    }
     let migrated_authored = match (property, &value) {
         (
             surgeist_css::CssKnownProperty::BackgroundSize,
@@ -4546,7 +4618,6 @@ fn assert_known_property_value(
             Right,
             Bottom,
             Left,
-            ZIndex,
             BoxDecorationBreak,
             BorderWidth,
             BorderTopWidth,
@@ -4563,10 +4634,8 @@ fn assert_known_property_value(
             BorderTopRightRadius,
             BorderBottomRightRadius,
             BorderBottomLeftRadius,
-            Opacity,
             FlexGrow,
             FlexShrink,
-            Order,
             Flex,
             JustifyTracks,
             AlignTracks,

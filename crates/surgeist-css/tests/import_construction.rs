@@ -338,7 +338,7 @@ fn programmatic_import_and_mixed_numeric_children_keep_honest_independent_origin
     else {
         panic!("opacity")
     };
-    let CssOpacityValue::Calculation(calculation) = opacity.value() else {
+    let CssOpacityValue::NumberCalculation(calculation) = opacity.value() else {
         panic!("calc")
     };
     assert_eq!(calculation.origin(), &CssValueOrigin::Programmatic);

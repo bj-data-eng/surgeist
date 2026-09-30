@@ -46,14 +46,7 @@ fn parse_positive_integer_value<'i, 't>(
                     format!("{context} must be a positive integer"),
                 )
             })?;
-            Ok(
-                match crate::integer_value::exact_i32(positive.integer().numeric().representation())
-                    .and_then(CssPositiveInteger::try_new)
-                {
-                    Some(value) => CssPositiveIntegerValue::Literal(value),
-                    None => CssPositiveIntegerValue::ExactLiteral(positive),
-                },
-            )
+            Ok(CssPositiveIntegerValue::Literal(positive))
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Integer)

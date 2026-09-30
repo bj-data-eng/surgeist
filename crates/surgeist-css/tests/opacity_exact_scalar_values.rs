@@ -20,7 +20,7 @@ fn wrapper(declaration: &CssDeclaration) -> &CssOpacityPropertyValue {
 }
 
 fn exact(value: &CssOpacityValue) -> &CssOpacityScalar {
-    let CssOpacityValue::ExactScalar(value) = value else {
+    let CssOpacityValue::Scalar(value) = value else {
         panic!("exact authored decimal: {value:?}")
     };
     value
@@ -52,7 +52,6 @@ fn parsed_exact_scalars_preserve_kind_spelling_and_original_span() {
                 CssOpacityScalarKind::Number
             }
         );
-        assert!(wrapper(&source).i01_subset().is_none());
         let CssValueOrigin::Parsed(origin) = value.origin() else {
             panic!("original parsed origin")
         };
@@ -92,9 +91,7 @@ fn checked_scalar_constructor_retains_numeric_components_without_rounding() {
         )
         .unwrap();
         assert_eq!(source.value_components(), &values);
-        if text != ".5" {
-            assert_eq!(exact(wrapper(&source).value()), &scalar);
-        }
+        assert_eq!(exact(wrapper(&source).value()), &scalar);
     }
 }
 
@@ -128,70 +125,60 @@ fn checked_scalar_rejects_other_component_kinds_with_their_actual_origins() {
 }
 
 #[test]
-fn exact_dyadics_keep_legacy_branches_and_nearby_decimals_do_not() {
-    for (text, expected) in [
-        (".5", 0.5),
-        ("5e-1", 0.5),
-        ("0.5000", 0.5),
-        ("0.100000001490116119384765625", f32::from_bits(0x3dcc_cccd)),
-        (
-            "0.00000000000000000000000000000000000000000000140129846432481707092372958328991613128026194187651577175706828388979108268586060148663818836212158203125",
-            f32::from_bits(1),
-        ),
-    ] {
-        let source = declaration(text);
-        let CssOpacityValue::Literal(value) = wrapper(&source).value() else {
-            panic!("exact binary32 dyadic {text}")
-        };
-        assert_eq!(value.value().to_bits(), expected.to_bits());
-        assert!(wrapper(&source).i01_subset().is_some());
-    }
-    for (text, expected) in [
-        ("-0.5", -0.5_f32),
-        ("1.5", 1.5),
-        ("340282346638528859811704183484516925440", f32::MAX),
-    ] {
-        let source = declaration(text);
-        let CssOpacityValue::Number(value) = wrapper(&source).value() else {
-            panic!("exact out-of-range number")
-        };
-        assert_eq!(value.value().to_bits(), expected.to_bits());
-    }
+fn all_scalar_magnitudes_retain_lexemes_and_kinds() {
     for text in [
+        ".5",
+        "5e-1",
+        "0.5000",
+        "-0.5",
+        "1.5",
+        "0.00000000000000000000000000000000000000000000140129846432481707092372958328991613128026194187651577175706828388979108268586060148663818836212158203125",
+        "0.100000001490116119384765625",
+        "340282346638528859811704183484516925440",
         "0.100000001490116119384765624",
         "0.100000001490116119384765626",
         "340282346638528859811704183484516925441",
+        "-0",
+        "0e99999999999999999999",
+        "-0e-99999999999999999999",
+        "-0%",
+        "-0e99999999999999999999%",
     ] {
         let source = declaration(text);
+        let scalar = exact(wrapper(&source).value());
         assert_eq!(
-            exact(wrapper(&source).value()).numeric().representation(),
-            text
+            scalar.numeric().representation(),
+            text.trim_end_matches('%')
+        );
+        assert_eq!(
+            scalar.kind(),
+            if text.ends_with('%') {
+                CssOpacityScalarKind::Percentage
+            } else {
+                CssOpacityScalarKind::Number
+            }
+        );
+        assert_eq!(
+            scalar.component(),
+            source
+                .value_components()
+                .items()
+                .iter()
+                .find(|component| matches!(
+                    component.view(),
+                    CssComponentValueRef::Token(
+                        CssValueTokenRef::Number(_) | CssValueTokenRef::Percentage(_)
+                    )
+                ))
+                .unwrap()
         );
     }
-}
-
-#[test]
-fn percentage_classification_uses_coefficient_and_true_zero_is_positive() {
     for coefficient in 0..=100 {
-        let source = declaration(&format!("{coefficient}%"));
-        let CssOpacityValue::Percentage(value) = wrapper(&source).value() else {
-            panic!("integer percentage coefficient")
-        };
-        assert_eq!(value.value(), coefficient as f32);
-    }
-    for text in ["-0", "0e99999999999999999999", "-0e-99999999999999999999"] {
-        let source = declaration(text);
-        let CssOpacityValue::Literal(value) = wrapper(&source).value() else {
-            panic!("true zero")
-        };
-        assert_eq!(value.value().to_bits(), 0);
-    }
-    for text in ["-0%", "-0e99999999999999999999%"] {
-        let source = declaration(text);
-        let CssOpacityValue::Percentage(value) = wrapper(&source).value() else {
-            panic!("true percentage zero")
-        };
-        assert_eq!(value.value().to_bits(), 0);
+        let text = format!("{coefficient}%");
+        let source = declaration(&text);
+        let scalar = exact(wrapper(&source).value());
+        assert_eq!(scalar.numeric().representation(), coefficient.to_string());
+        assert_eq!(scalar.kind(), CssOpacityScalarKind::Percentage);
     }
 }
 

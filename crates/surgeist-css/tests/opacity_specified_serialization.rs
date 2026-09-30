@@ -55,7 +55,7 @@ fn authored_decimal_scalars_format_exactly_without_clamping() {
         let scalar =
             CssOpacityScalar::try_from_component(CssComponentValue::try_token(input).unwrap())
                 .unwrap();
-        assert_output(&CssOpacityValue::ExactScalar(scalar), output);
+        assert_output(&CssOpacityValue::Scalar(scalar), output);
     }
     for percent in 0..=100 {
         let expected = if percent == 100 {
@@ -73,36 +73,29 @@ fn authored_decimal_scalars_format_exactly_without_clamping() {
 }
 
 #[test]
-fn constructed_binary32_magnitudes_are_not_replaced_by_shortest_approximations() {
-    assert_output(
-        &CssOpacityValue::Number(CssFiniteNumber::try_new(f32::MAX).unwrap()),
-        "340282346638528859811704183484516925440",
-    );
-    assert_output(
-        &CssOpacityValue::Percentage(CssFiniteNumber::try_new(f32::MAX).unwrap()),
-        "3402823466385288598117041834845169254.4",
-    );
-    assert_output(
-        &CssOpacityValue::Literal(CssOpacity::try_new(1.0 / 3.0).unwrap()),
-        "0.3333333432674407958984375",
-    );
-    assert_output(&opacity("0.33333334"), "0.33333334");
-    let expected = "0.0000000000000000000000000000000000000000000000140129846432481707092372958328991613128026194187651577175706828388979108268586060148663818836212158203125";
-    for (value, expected) in [
-        (f32::from_bits(1), expected.to_owned()),
-        (-f32::from_bits(1), format!("-{expected}")),
+fn constructed_decimal_scalars_serialize_without_approximation() {
+    for (input, expected) in [
+        (
+            "340282346638528859811704183484516925440",
+            "340282346638528859811704183484516925440",
+        ),
+        (
+            "340282346638528859811704183484516925440%",
+            "3402823466385288598117041834845169254.4",
+        ),
+        ("0.3333333432674407958984375", "0.3333333432674407958984375"),
+        ("0.33333334", "0.33333334"),
+        ("-0", "0"),
+        ("-0%", "0"),
     ] {
-        assert_output(
-            &CssOpacityValue::Percentage(CssFiniteNumber::try_new(value).unwrap()),
-            &expected,
-        );
-    }
-    for value in [
-        CssOpacityValue::Literal(CssOpacity::try_new(-0.0).unwrap()),
-        CssOpacityValue::Number(CssFiniteNumber::try_new(-0.0).unwrap()),
-        CssOpacityValue::Percentage(CssFiniteNumber::try_new(-0.0).unwrap()),
-    ] {
-        assert_output(&value, "0");
+        let component = CssComponentValue::try_token(input).unwrap();
+        let scalar = CssOpacityScalar::try_from_component(component.clone()).unwrap();
+        let value = CssOpacityValue::Scalar(scalar);
+        assert_output(&value, expected);
+        let CssOpacityValue::Scalar(scalar) = value else {
+            unreachable!()
+        };
+        assert_eq!(scalar.component(), &component);
     }
 }
 
@@ -213,14 +206,15 @@ fn percentage_subnormals_keep_exact_magnitude_across_former_underflow_boundary()
         let expected = format!("0.{}{coefficient}", "0".repeat(151 - coefficient.len()))
             .trim_end_matches('0')
             .to_owned();
-        for (value, expected) in [
-            (f32::from_bits(n), expected.clone()),
-            (-f32::from_bits(n), format!("-{expected}")),
+        let input = format!("{coefficient}e-149%");
+        for (input, expected) in [
+            (input.clone(), expected.clone()),
+            (format!("-{input}"), format!("-{expected}")),
         ] {
-            assert_output(
-                &CssOpacityValue::Percentage(CssFiniteNumber::try_new(value).unwrap()),
-                &expected,
-            );
+            let scalar =
+                CssOpacityScalar::try_from_component(CssComponentValue::try_token(&input).unwrap())
+                    .unwrap();
+            assert_output(&CssOpacityValue::Scalar(scalar), &expected);
         }
     }
 }
@@ -426,7 +420,7 @@ fn checked_calculation_construction_and_deep_projection_share_specified_semantic
                 CssPercentageCalculation::try_from_components(components).unwrap(),
             )
         } else {
-            CssOpacityValue::Calculation(
+            CssOpacityValue::NumberCalculation(
                 CssNumberCalculation::try_from_components(components).unwrap(),
             )
         };
@@ -441,9 +435,9 @@ fn checked_calculation_construction_and_deep_projection_share_specified_semantic
         CssNumberCalculation::try_from_components(parse_component_values(&source).unwrap())
             .unwrap();
     let original = calculation.clone();
-    let value = CssOpacityValue::Calculation(calculation);
+    let value = CssOpacityValue::NumberCalculation(calculation);
     assert_output(&value, "calc(1)");
-    let CssOpacityValue::Calculation(calculation) = value else {
+    let CssOpacityValue::NumberCalculation(calculation) = value else {
         unreachable!()
     };
     assert_eq!(calculation, original);

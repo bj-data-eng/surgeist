@@ -5,7 +5,7 @@ use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
 use crate::numeric::NumericInputContext;
 use crate::syntax::{
     CssGridArea, CssGridLine, CssGridLineName, CssGridLineRange, CssIdent, CssIntegerValue,
-    CssPositiveInteger, CssPositiveIntegerLiteral, CssPositiveIntegerValue,
+    CssPositiveIntegerLiteral, CssPositiveIntegerValue,
 };
 
 pub(super) fn parse_grid_line<'i, 't>(
@@ -69,17 +69,10 @@ pub(super) fn parse_grid_line<'i, 't>(
     if span {
         let positive = match integer {
             Some(CssIntegerValue::Literal(value)) => Some(CssPositiveIntegerValue::Literal(
-                CssPositiveInteger::try_new(value).ok_or_else(|| {
+                CssPositiveIntegerLiteral::try_new(value).ok_or_else(|| {
                     unsupported_value(input, None, "grid span requires a positive integer")
                 })?,
             )),
-            Some(CssIntegerValue::ExactLiteral(value)) => {
-                Some(CssPositiveIntegerValue::ExactLiteral(
-                    CssPositiveIntegerLiteral::try_new(value).ok_or_else(|| {
-                        unsupported_value(input, None, "grid span requires a positive integer")
-                    })?,
-                ))
-            }
             Some(CssIntegerValue::Calculation(value)) => {
                 Some(CssPositiveIntegerValue::Calculation(value))
             }

@@ -46,7 +46,7 @@ fn coupled_adjacent_properties_expose_distinct_typed_values() {
     else {
         panic!("expected typed opacity declaration");
     };
-    assert_eq!(value.i01_subset().expect("typed opacity").value(), 0.5);
+    assert_eq!(value.value().serialize_specified().unwrap(), "0.5");
 }
 
 #[test]

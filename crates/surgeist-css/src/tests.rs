@@ -60,6 +60,15 @@ macro_rules! face_value {
 }
 
 macro_rules! declaration_value {
+    ($input:expr, Opacity) => {
+        semantic_value!($input, Opacity)
+    };
+    ($input:expr, Order) => {
+        semantic_value!($input, Order)
+    };
+    ($input:expr, ZIndex) => {
+        semantic_value!($input, ZIndex)
+    };
     ($input:expr, Color) => {
         semantic_value!($input, Color)
     };
@@ -244,6 +253,33 @@ macro_rules! single_declaration_value {
 }
 
 macro_rules! declaration_payload {
+    ($declaration:expr, Opacity) => {{
+        let declaration = &$declaration;
+        let CssKnownPropertyValueRef::Opacity(value) =
+            declaration.known().unwrap().property_value().unwrap()
+        else {
+            panic!("semantic property")
+        };
+        value.value().clone()
+    }};
+    ($declaration:expr, Order) => {{
+        let declaration = &$declaration;
+        let CssKnownPropertyValueRef::Order(value) =
+            declaration.known().unwrap().property_value().unwrap()
+        else {
+            panic!("semantic property")
+        };
+        value.value().clone()
+    }};
+    ($declaration:expr, ZIndex) => {{
+        let declaration = &$declaration;
+        let CssKnownPropertyValueRef::ZIndex(value) =
+            declaration.known().unwrap().property_value().unwrap()
+        else {
+            panic!("semantic property")
+        };
+        value.value().clone()
+    }};
     ($declaration:expr, $variant:ident) => {{
         let declaration = &$declaration;
         let value = declaration
@@ -4910,8 +4946,10 @@ fn rejection_negative_numbers_and_public_constructor_invariants_matrix() {
 #[test]
 fn numeric_properties_use_property_specific_authored_models() {
     assert_eq!(
-        declaration_payload!(single_declaration(".panel { opacity: 0.5; }"), Opacity),
-        CssOpacity::try_new(0.5).unwrap()
+        declaration_payload!(single_declaration(".panel { opacity: 0.5; }"), Opacity)
+            .serialize_specified()
+            .unwrap(),
+        "0.5"
     );
     assert_eq!(
         declaration_payload!(single_declaration(".panel { flex-grow: 2; }"), FlexGrow),
@@ -4935,7 +4973,13 @@ fn numeric_properties_use_property_specific_authored_models() {
         ),
         CssScrollbarWidth::Thin
     );
-    assert_eq!(CssOpacity::try_new(0.5).unwrap().value(), 0.5);
+    assert_eq!(
+        CssOpacityScalar::try_from_component(CssComponentValue::try_number("0.5").unwrap())
+            .unwrap()
+            .numeric()
+            .representation(),
+        "0.5"
+    );
     assert_eq!(CssFlexFactor::try_new(2.0).unwrap().value(), 2.0);
     assert_eq!(CssAspectRatio::try_new(1.5).unwrap().value(), 1.5);
 }
@@ -4990,9 +5034,6 @@ fn numeric_property_models_reject_invalid_authored_values() {
         },
     ]);
 
-    assert_eq!(CssOpacity::try_new(-0.1), None);
-    assert_eq!(CssOpacity::try_new(1.1), None);
-    assert_eq!(CssOpacity::try_new(f32::NAN), None);
     assert_eq!(CssFlexFactor::try_new(-1.0), None);
     assert_eq!(CssFlexFactor::try_new(f32::INFINITY), None);
     assert_eq!(CssAspectRatio::try_new(0.0), None);
@@ -9488,8 +9529,11 @@ fn parses_spacing_inset_and_z_index_values() {
     assert_eq!(top.result_type(), CssCalculationType::LengthPercentage);
     assert_eq!(top.serialize().unwrap().as_css(), "calc(10px + 5%)");
     assert_eq!(
-        declaration_value!(".panel { z-index: -2; }", ZIndex),
-        CssZIndex::Integer(-2)
+        match declaration_value!(".panel { z-index: -2; }", ZIndex) {
+            CssZIndexValue::Integer(value) => value.serialize_specified().unwrap(),
+            _ => panic!("integer z-index"),
+        },
+        "-2"
     );
     assert_eq!(
         declaration_value!(
@@ -10011,8 +10055,10 @@ fn parses_grid_template_and_grid_shorthands() {
 #[test]
 fn parses_order_flex_and_track_alignment() {
     assert_eq!(
-        declaration_value!(".panel { order: -2; }", Order),
-        CssOrder::Integer(-2)
+        declaration_value!(".panel { order: -2; }", Order)
+            .serialize_specified()
+            .unwrap(),
+        "-2"
     );
     assert_eq!(
         declaration_value!(".panel { flex: 2 0 10rem; }", Flex),
@@ -10132,7 +10178,10 @@ fn checked_grid_constructors_reject_parser_invalid_states() {
     assert_eq!(CssGridTrackSizeList::try_new(Vec::new()), None);
     assert!(CssGridTemplateAreas::try_rows(Vec::new()).is_err());
     assert_eq!(
-        CssGridLine::try_indexed(CssIntegerValue::Literal(0), None),
+        CssGridLine::try_indexed(
+            CssIntegerValue::Literal(CssIntegerLiteral::from_i32(0)),
+            None
+        ),
         None
     );
     assert_eq!(CssGridLine::try_span(None, None), None);

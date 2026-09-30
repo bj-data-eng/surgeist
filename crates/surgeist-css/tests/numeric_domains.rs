@@ -3,10 +3,10 @@ use surgeist_css::{
     CssDurationLiteral, CssErrorCode, CssFiniteNumber, CssFlexFactor, CssFlowTolerance,
     CssFlowToleranceRef, CssFontObliqueAngle, CssFontSizeAdjust, CssFontWeightNumber,
     CssGridRepeatInteger, CssKeyframePercent, CssKnownProperty, CssKnownPropertyValueRef,
-    CssLength, CssLengthDimension, CssLengthUnit, CssNonNegativeNumber, CssOpacity,
-    CssOpacityScalarKind, CssOpacityValue, CssRatio, CssRecoveryAction, CssResolution,
-    CssResolutionUnit, CssRule, CssScaleValues, CssSpecifiedNonNegativeNumber, CssTimeUnit,
-    CssTokenKind, ErrorKind, parse_sheet, parse_style_attribute,
+    CssLength, CssLengthDimension, CssLengthUnit, CssNonNegativeNumber, CssOpacityScalarKind,
+    CssOpacityValue, CssRatio, CssRecoveryAction, CssResolution, CssResolutionUnit, CssRule,
+    CssScaleValues, CssSpecifiedNonNegativeNumber, CssTimeUnit, CssTokenKind, ErrorKind,
+    parse_sheet, parse_style_attribute,
 };
 
 #[test]
@@ -14,7 +14,6 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
     for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
         assert_eq!(CssFiniteNumber::try_new(value), None);
         assert_eq!(CssNonNegativeNumber::try_new(value), None);
-        assert_eq!(CssOpacity::try_new(value), None);
         assert_eq!(CssFlexFactor::try_new(value), None);
         assert_eq!(CssAspectRatio::try_new(value), None);
         assert_eq!(CssRatio::try_new(value, 1.0), None);
@@ -60,7 +59,15 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         adjust,
         CssFontSizeAdjust::Number(value) if value.serialize_specified().unwrap() == max_spelling
     ));
-    assert_eq!(CssOpacity::try_new(1.0).unwrap().value(), 1.0);
+    assert_eq!(
+        surgeist_css::CssOpacityScalar::try_from_component(
+            surgeist_css::CssComponentValue::try_number("1").unwrap()
+        )
+        .unwrap()
+        .numeric()
+        .representation(),
+        "1"
+    );
     assert_eq!(CssFlexFactor::try_new(f32::MAX).unwrap().value(), f32::MAX);
     assert_eq!(
         CssRatio::try_new(0.0, f32::MAX)
@@ -178,7 +185,7 @@ fn opacity_preserves_finite_decimal_exponents_beyond_float_storage() {
         else {
             panic!("ordinary opacity")
         };
-        let CssOpacityValue::ExactScalar(scalar) = opacity.value() else {
+        let CssOpacityValue::Scalar(scalar) = opacity.value() else {
             panic!("exact finite decimal")
         };
         assert_eq!(scalar.numeric().representation(), "1e999");

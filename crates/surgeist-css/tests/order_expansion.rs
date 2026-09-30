@@ -22,7 +22,7 @@ fn order_initial_is_literal_zero_and_ordinary_values_keep_identity() {
     let CssLonghandValueRef::Order(value) = initial.view() else {
         panic!("order")
     };
-    assert_eq!(value, &CssIntegerValue::Literal(0));
+    assert_eq!(value.serialize_specified().unwrap(), "0");
     for text in ["0", "-2", "2147483648", "-2147483649", "calc(1.5)"] {
         let source = declaration(&format!("order:{text}!important"));
         let CssKnownPropertyValueRef::Order(authored) =
@@ -121,7 +121,7 @@ fn order_reentry_is_atomic_and_preserves_exact_replacement_origin() {
             assert!(item.source().same_occurrence(&source));
             assert_eq!(item.source().importance(), CssImportance::Important);
             assert_eq!(item.replacement_components(), Some(&replacement));
-            let CssLonghandValueRef::Order(CssIntegerValue::ExactLiteral(literal)) =
+            let CssLonghandValueRef::Order(CssIntegerValue::Literal(literal)) =
                 item.ordinary_value().unwrap().view()
             else {
                 panic!("exact order")

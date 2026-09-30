@@ -4340,38 +4340,13 @@ impl CssNonNegativeNumber {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssOpacity {
-    value: CssFiniteNumber,
-}
-
-impl CssOpacity {
-    #[must_use]
-    pub fn try_new(value: f32) -> Option<Self> {
-        if (0.0..=1.0).contains(&value) {
-            let value = CssFiniteNumber::try_new(value)?;
-            Some(Self { value })
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub const fn value(self) -> f32 {
-        self.value.value()
-    }
-}
-
+/// An exact ordinary scalar or a domain-checked symbolic opacity calculation.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssOpacityValue {
-    Literal(CssOpacity),
-    Calculation(CssNumberCalculation),
-    Number(CssFiniteNumber),
-    Percentage(CssFiniteNumber),
+    Scalar(crate::CssOpacityScalar),
+    NumberCalculation(CssNumberCalculation),
     PercentageCalculation(CssPercentageCalculation),
-    /// A finite decimal scalar that retains its exact authored numeric token.
-    ExactScalar(crate::CssOpacityScalar),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -4489,35 +4464,12 @@ impl CssOverflowAxes {
     }
 }
 
-/// A checked positive authored integer.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssPositiveInteger {
-    value: i32,
-}
-
-impl CssPositiveInteger {
-    #[must_use]
-    pub const fn try_new(value: i32) -> Option<Self> {
-        if value > 0 {
-            Some(Self { value })
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub const fn value(self) -> i32 {
-        self.value
-    }
-}
-
-/// A positive integer whose calculated range remains authored and symbolic.
+/// A checked positive literal or a calculation whose range remains authored and symbolic.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssPositiveIntegerValue {
-    Literal(CssPositiveInteger),
+    Literal(CssPositiveIntegerLiteral),
     Calculation(CssIntegerCalculation),
-    ExactLiteral(CssPositiveIntegerLiteral),
 }
 
 /// A positive integer whose ordinary authored magnitude is not machine-bounded.
@@ -4555,7 +4507,6 @@ impl PartialEq for CssPositiveIntegerValue {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Literal(left), Self::Literal(right)) => left == right,
-            (Self::ExactLiteral(left), Self::ExactLiteral(right)) => left == right,
             (Self::Calculation(left), Self::Calculation(right)) => left.structural_eq(right),
             _ => false,
         }
@@ -5291,12 +5242,6 @@ pub use grid::*;
 mod grid_placement;
 pub use grid_placement::*;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssOrder {
-    Integer(i32),
-}
-
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFlex {
@@ -5312,10 +5257,8 @@ pub enum CssFlex {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssIntegerValue {
-    Literal(i32),
+    Literal(crate::CssIntegerLiteral),
     Calculation(CssIntegerCalculation),
-    /// An exact ordinary integer token, including values beyond i32 magnitude.
-    ExactLiteral(crate::CssIntegerLiteral),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -5338,13 +5281,6 @@ impl CssFlex {
             basis,
         }
     }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssZIndex {
-    Auto,
-    Integer(i32),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

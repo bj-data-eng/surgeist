@@ -20,7 +20,10 @@ fn checked_construction_rejects_missing_family_negative_index_and_tight_componen
         CssFontPaletteConstructionError::InvalidName
     );
     assert_eq!(
-        CssFontPaletteIndex::try_new(CssIntegerValue::Literal(-1)).unwrap_err(),
+        CssFontPaletteIndex::try_new(CssIntegerValue::Literal(
+            surgeist_css::CssIntegerLiteral::from_i32(-1)
+        ))
+        .unwrap_err(),
         CssFontPaletteConstructionError::NegativeIndex
     );
     assert_eq!(
