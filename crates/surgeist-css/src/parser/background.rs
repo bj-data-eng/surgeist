@@ -957,7 +957,7 @@ fn parse_gradient_line_position<'i, 't>(
 enum ParsedRadialSize {
     Extent(CssRadialExtent),
     Explicit {
-        values: Vec<crate::CssComponentValue>,
+        values: Vec<(crate::CssComponentValue, cssparser::SourceLocation)>,
         location: cssparser::SourceLocation,
     },
 }
@@ -1102,7 +1102,7 @@ fn parse_radial_size_input<'i, 't>(
 fn parse_radial_size_component<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<crate::CssComponentValue, ParseError<'i, Error>> {
+) -> Result<(crate::CssComponentValue, cssparser::SourceLocation), ParseError<'i, Error>> {
     input.skip_whitespace();
     let state = input.state();
     let location = input.current_source_location();
@@ -1114,6 +1114,7 @@ fn parse_radial_size_component<'i, 't>(
     input.reset(&state);
     numeric
         .collect(input)
+        .map(|component| (component, location))
         .map_err(|_| unsupported_value_at(location, None, "invalid radial-gradient size"))
 }
 
@@ -1144,7 +1145,7 @@ fn validate_radial_size<'i>(
         ParsedRadialSize::Extent(extent) => Ok(CssRadialSize::Extent(extent)),
         ParsedRadialSize::Explicit { values, location } => {
             let value = match values.as_slice() {
-                [radius] => {
+                [(radius, radius_location)] => {
                     let radius =
                         if matches!(radius.view(), crate::CssComponentValueRef::Function(_)) {
                             let components =
@@ -1154,7 +1155,7 @@ fn validate_radial_size<'i>(
                                 .admit(components, CalculationRoot::Length)
                                 .map_err(|_| {
                                     unsupported_value_at(
-                                        location,
+                                        *radius_location,
                                         None,
                                         "invalid radial circle calculation",
                                     )
@@ -1167,14 +1168,17 @@ fn validate_radial_size<'i>(
                         };
                     CssRadialSize::Circle(radius.map_err(|_| {
                         unsupported_value_at(
-                            location,
+                            *radius_location,
                             None,
                             "radial circle requires a nonnegative length",
                         )
                     })?)
                 }
                 [horizontal, vertical] => {
-                    let admit = |component: &crate::CssComponentValue| {
+                    let admit = |(component, component_location): &(
+                        crate::CssComponentValue,
+                        cssparser::SourceLocation,
+                    )| {
                         let value =
                             if matches!(component.view(), crate::CssComponentValueRef::Function(_))
                             {
@@ -1185,7 +1189,7 @@ fn validate_radial_size<'i>(
                                     .admit(components, CalculationRoot::LengthPercentage)
                                     .map_err(|_| {
                                         unsupported_value_at(
-                                            location,
+                                            *component_location,
                                             None,
                                             "invalid radial ellipse calculation",
                                         )
@@ -1202,7 +1206,7 @@ fn validate_radial_size<'i>(
                             };
                         value.map_err(|_| {
                             unsupported_value_at(
-                                location,
+                                *component_location,
                                 None,
                                 "radial ellipse requires nonnegative length-percentages",
                             )
