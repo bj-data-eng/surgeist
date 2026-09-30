@@ -914,6 +914,10 @@
 //!     .property_value().expect("ordinary border image")
 //! else { panic!("expected border-image") };
 //! assert!(border.border_image().slice().expect("slice").fill());
+//! assert_eq!(
+//!     border.border_image().serialize_specified().unwrap(),
+//!     "url(\"frame.png\") 10 fill / 2 / 1 round",
+//! );
 //!
 //! let gradient = feature_metadata("official.value.linear-gradient")
 //!     .expect("linear-gradient metadata");
@@ -1109,6 +1113,7 @@
 mod background_layer_serialization;
 mod background_serialization;
 mod border_color;
+mod border_image_serialization;
 mod component_values;
 mod conformance;
 mod content_serialization;

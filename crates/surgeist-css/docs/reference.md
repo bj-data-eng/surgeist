@@ -506,7 +506,7 @@ unfinished. This property migration does not complete the other Grid3 families.
 margin/padding longhands, their logical axis pairs, border width, style and color,
 the four side-border shorthands, `border`,
 the `background` shorthand and its eight longhands,
-the five border-image longhands, `border-collapse`, `border-spacing`, `caption-side`, `clip`, `empty-cells`,
+the `border-image` shorthand and its five longhands, `border-collapse`, `border-spacing`, `caption-side`, `clip`, `empty-cells`,
 `table-layout`, `flow-tolerance`, `color`, `font-family`,
 `text-orientation`, its legacy `glyph-orientation-vertical` grammar, `opacity`, `display`, `box-sizing`,
 `order`, `aspect-ratio`, `visibility`, `direction`, `unicode-bidi`, `writing-mode`, `text-combine-upright`,
@@ -541,6 +541,39 @@ consumes no final bytes; generated `none` and implicit size height consume
 projection nodes only. Failure returns no partial text and does not mutate the
 retained authored graph. These operations do not establish complete Backgrounds
 or shared color/numeric grammar support.
+
+`border-image` has five ordered settable members: source, slice, width, outset,
+and repeat, with no reset-only members. Its checked `try_new` returns `None`
+for an empty value or width/outset without slice. Parsing uses that same boundary.
+Expansion projects supplied components and obtains omitted values from the schema:
+`none`, `100%` without fill, number `1`, number `0`, and `stretch stretch`.
+The parent `border` shorthand continues to reset all five members.
+
+`CssBorderImage`, `CssBorderImageSlice`, `CssBorderImageWidth`,
+`CssBorderImageOutset`, and `CssBorderImageRepeat` expose `serialize_specified`
+and `serialize_specified_with_limits`. Scalars compress their expanded edges to
+the shortest one-to-four canonical sequence; slice appends `fill` after its edges,
+and repeat emits one keyword for equal axes. Composition follows source,
+slice with slash width/outset, then repeat. Only exact ordinary literal initials
+are omitted; retained width/outset retains its required slice. Omitted initial
+width permits two slash components, and an empty effective shorthand emits `none`.
+Programmatic unitless length zero in width/outset emits `0px`, preserving its
+length branch alongside the distinct number-zero branch.
+
+Each edge group charges one parent plus four variant components and each
+numeric provider's own input/projection costs. Thus an ordinary numeric group
+costs nine input and nine projection nodes, an all-auto width costs five each,
+`fill` adds one each, and repeat costs three each. All four providers are visited
+even when equal edges compress. Captures precede group output and each remains
+bounded by remaining final byte space. Proved initial omissions visit the same
+providers without formatting discarded literals or charging final bytes.
+The shorthand adds one parent; generated fallback `none` adds one projection
+node, so all five explicit simple initials cost 32 input, 33 projection and four
+output bytes. Failure returns no partial text and does not mutate authored data.
+Canonical math comparison inherits the shared numeric projection contract;
+calculations remain symbolic where context is unavailable and are not treated
+as literal initials. These APIs do not complete shared Images/Values grammars
+or perform CSSOM, cascade, image loading, or layout.
 
 The five [selected CSS2 table properties](https://www.w3.org/TR/2011/REC-CSS2-20110607/tables.html)
 expand to one typed longhand each. `border-collapse` accepts `collapse | separate`

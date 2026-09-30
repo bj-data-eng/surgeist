@@ -1098,7 +1098,7 @@ impl CssSpecifiedNonNegativePercentage {
 }
 
 // Enclosing syntax owners use the same cumulative projection and output budget.
-macro_rules! append_checked_length {
+macro_rules! append_checked_numeric {
     ($($owner:ident),* $(,)?) => { $(
         impl $owner {
             pub(crate) fn append_specified(&self, context: &mut SpecifiedSerializationContext, output: &mut String) -> SerializationResult<()> {
@@ -1114,9 +1114,11 @@ macro_rules! append_checked_length {
         }
     )* };
 }
-append_checked_length!(
+append_checked_numeric!(
     CssSpecifiedLength,
     CssSpecifiedNonNegativeLength,
     CssSpecifiedLengthPercentage,
-    CssSpecifiedNonNegativeLengthPercentage
+    CssSpecifiedNonNegativeLengthPercentage,
+    CssSpecifiedNonNegativeNumber,
+    CssSpecifiedNonNegativePercentage
 );

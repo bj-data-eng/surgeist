@@ -4403,7 +4403,13 @@ pub const fn surgeist_css::CssBorderImage::slice(&self) -> core::option::Option<
 pub const fn surgeist_css::CssBorderImage::source(&self) -> core::option::Option<&surgeist_css::CssImageValue>
 pub fn surgeist_css::CssBorderImage::try_new(source: core::option::Option<surgeist_css::CssImageValue>, slice: core::option::Option<surgeist_css::CssBorderImageSlice>, width: core::option::Option<surgeist_css::CssBorderImageWidth>, outset: core::option::Option<surgeist_css::CssBorderImageOutset>, repeat: core::option::Option<surgeist_css::CssBorderImageRepeat>) -> core::option::Option<Self>
 pub const fn surgeist_css::CssBorderImage::width(&self) -> core::option::Option<&surgeist_css::CssBorderImageWidth>
+impl surgeist_css::CssBorderImage
+pub fn surgeist_css::CssBorderImage::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBorderImage::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssBorderImageOutset
+impl surgeist_css::CssBorderImageOutset
+pub fn surgeist_css::CssBorderImageOutset::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBorderImageOutset::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl surgeist_css::CssBorderImageOutset
 pub fn surgeist_css::CssBorderImageOutset::try_new(values: alloc::vec::Vec<surgeist_css::CssBorderImageOutsetComponent>) -> core::option::Option<Self>
 pub const fn surgeist_css::CssBorderImageOutset::values(&self) -> &[surgeist_css::CssBorderImageOutsetComponent; 4]
@@ -4420,6 +4426,9 @@ impl surgeist_css::CssBorderImageRepeat
 pub const fn surgeist_css::CssBorderImageRepeat::horizontal(self) -> surgeist_css::CssBorderImageRepeatKeyword
 pub const fn surgeist_css::CssBorderImageRepeat::new(horizontal: surgeist_css::CssBorderImageRepeatKeyword, vertical: surgeist_css::CssBorderImageRepeatKeyword) -> Self
 pub const fn surgeist_css::CssBorderImageRepeat::vertical(self) -> surgeist_css::CssBorderImageRepeatKeyword
+impl surgeist_css::CssBorderImageRepeat
+pub fn surgeist_css::CssBorderImageRepeat::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBorderImageRepeat::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssBorderImageRepeatPropertyValue
 impl surgeist_css::CssBorderImageRepeatPropertyValue
 pub fn surgeist_css::CssBorderImageRepeatPropertyValue::as_css(&self) -> &str
@@ -4429,6 +4438,9 @@ impl surgeist_css::CssBorderImageSlice
 pub const fn surgeist_css::CssBorderImageSlice::fill(&self) -> bool
 pub fn surgeist_css::CssBorderImageSlice::try_new(values: alloc::vec::Vec<surgeist_css::CssBorderImageSliceComponent>, fill: bool) -> core::option::Option<Self>
 pub const fn surgeist_css::CssBorderImageSlice::values(&self) -> &[surgeist_css::CssBorderImageSliceComponent; 4]
+impl surgeist_css::CssBorderImageSlice
+pub fn surgeist_css::CssBorderImageSlice::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBorderImageSlice::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssBorderImageSlicePropertyValue
 impl surgeist_css::CssBorderImageSlicePropertyValue
 pub fn surgeist_css::CssBorderImageSlicePropertyValue::as_css(&self) -> &str
@@ -4438,6 +4450,9 @@ impl surgeist_css::CssBorderImageSourcePropertyValue
 pub fn surgeist_css::CssBorderImageSourcePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBorderImageSourcePropertyValue::source(&self) -> &surgeist_css::CssImageValue
 pub struct surgeist_css::CssBorderImageWidth
+impl surgeist_css::CssBorderImageWidth
+pub fn surgeist_css::CssBorderImageWidth::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBorderImageWidth::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl surgeist_css::CssBorderImageWidth
 pub fn surgeist_css::CssBorderImageWidth::try_new(values: alloc::vec::Vec<surgeist_css::CssBorderImageWidthComponent>) -> core::option::Option<Self>
 pub const fn surgeist_css::CssBorderImageWidth::values(&self) -> &[surgeist_css::CssBorderImageWidthComponent; 4]

@@ -6608,23 +6608,6 @@ impl CssBorderImage {
     }
 
     #[must_use]
-    pub(crate) const fn new(
-        source: Option<CssImageValue>,
-        slice: Option<CssBorderImageSlice>,
-        width: Option<CssBorderImageWidth>,
-        outset: Option<CssBorderImageOutset>,
-        repeat: Option<CssBorderImageRepeat>,
-    ) -> Self {
-        Self {
-            source,
-            slice,
-            width,
-            outset,
-            repeat,
-        }
-    }
-
-    #[must_use]
     pub const fn source(&self) -> Option<&CssImageValue> {
         self.source.as_ref()
     }

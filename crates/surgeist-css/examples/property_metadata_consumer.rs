@@ -220,6 +220,17 @@ const LONGHANDS: &[P] = &[
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
     (
+        P::BorderImage,
+        &[
+            P::BorderImageSource,
+            P::BorderImageSlice,
+            P::BorderImageWidth,
+            P::BorderImageOutset,
+            P::BorderImageRepeat,
+        ],
+        &[],
+    ),
+    (
         P::Background,
         &[
             P::BackgroundImage,
@@ -942,7 +953,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 257);
+    assert_eq!(expected.len(), 258);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {

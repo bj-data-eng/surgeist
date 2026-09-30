@@ -486,15 +486,9 @@ pub(super) fn parse_border_image<'i, 't>(
         ));
     }
 
-    if source.is_none() && slice.is_none() && repeat.is_none() {
-        Err(unsupported_value(
-            input,
-            None,
-            "border-image shorthand is missing a component",
-        ))
-    } else {
-        Ok(CssBorderImage::new(source, slice, width, outset, repeat))
-    }
+    CssBorderImage::try_new(source, slice, width, outset, repeat).ok_or_else(|| {
+        unsupported_value(input, None, "border-image shorthand is missing a component")
+    })
 }
 
 fn parse_border_image_slice_prefix<'i, 't>(

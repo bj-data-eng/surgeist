@@ -15,6 +15,12 @@ initials. Its bounded specified serializer composes canonical children under
 one cumulative resource policy, preserving symbolic values and counting omitted
 authored nodes without charging discarded output bytes.
 
+Checked `CssBorderImage` construction retains its five optional components and
+requires a slice before width or outset. Intrinsic expansion supplies the five
+ordered longhands from authored values or schema initials. Bounded specified
+serialization compresses all four stored edges, preserves numeric branches and
+symbolic calculations, and counts every child even when its initial is omitted.
+
 ## Start
 
 ```rust
