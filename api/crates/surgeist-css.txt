@@ -2504,6 +2504,7 @@ pub surgeist_css::CssLonghandValueRef::AlignSelf(&'a surgeist_css::CssAlignSelfV
 pub surgeist_css::CssLonghandValueRef::AspectRatio(&'a surgeist_css::CssAspectRatioValue)
 pub surgeist_css::CssLonghandValueRef::BackgroundAttachment(&'a surgeist_css::CssBackgroundAttachmentList)
 pub surgeist_css::CssLonghandValueRef::BackgroundClip(&'a surgeist_css::CssBackgroundBoxList)
+pub surgeist_css::CssLonghandValueRef::BackgroundColor(&'a surgeist_css::CssColor)
 pub surgeist_css::CssLonghandValueRef::BackgroundImage(&'a surgeist_css::CssImageValueList)
 pub surgeist_css::CssLonghandValueRef::BackgroundOrigin(&'a surgeist_css::CssBackgroundBoxList)
 pub surgeist_css::CssLonghandValueRef::BackgroundPosition(&'a surgeist_css::CssBackgroundPositionList)

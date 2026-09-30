@@ -2521,7 +2521,14 @@ single-layer initials are `auto`, `repeat`, `padding-box`, `border-box`, and
 `scroll`, respectively. CSS-wide keywords remain symbolic; pending values
 reenter their original property grammar with unchanged occurrence and importance.
 
-Their scalar and list owners expose `serialize_specified()` and
+`background-color` also contributes one noninherited terminal, retaining its
+checked `CssColor` with transparent intrinsic initial. Its existing
+`to_specified_css()` provider preserves symbolic color dependencies. CSS-wide
+keywords remain symbolic; pending replacements reenter the selected color grammar
+with the original occurrence and importance. This lifecycle support does not
+extend the color grammar or the `background` shorthand.
+
+The five list longhands' scalar and list owners expose `serialize_specified()` and
 `serialize_specified_with_limits()`. Specified size serialization emits the
 effective `auto` height after a non-auto width, whether the authored height is
 absent or explicit; `auto auto` collapses to `auto`. Repeat serialization collapses
