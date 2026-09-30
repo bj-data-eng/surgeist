@@ -66,7 +66,7 @@ Dependencies still retain their own manifest-defined defaults.
 | Root package, dependencies, features, and workspace | [Cargo.toml](../Cargo.toml) |
 | Product dependency resolution | [Cargo.lock](../Cargo.lock) |
 | Crate source and domain guides | [crates/](../crates/); each package's manifest, `AGENTS.md`, README, and `src/lib.rs` |
-| Snapshot origins and retained root history | [Explanation](explanation.md#snapshot-import-basis) |
+| Crate ownership and integration boundaries | [Explanation](explanation.md#one-repository-distinct-crate-boundaries) |
 | Shared corpus tooling | [surgeist-generator](../crates/surgeist-generator/README.md) |
 | API-generator CLI and target discovery | [api/generator/src/lib.rs](../api/generator/src/lib.rs) |
 | Facade API audit | [api/public-api.txt](../api/public-api.txt) |

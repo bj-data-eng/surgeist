@@ -34,7 +34,7 @@ Find the package in [Cargo.toml](../Cargo.toml), then inspect its manifest,
 domain contracts and focused checks. For example, run the task library tests:
 
 ```sh
-cargo test --offline --locked -j 1 -p surgeist-task --lib -- --test-threads=1
+cargo test --offline --locked -j 1 -p surgeist-task --lib
 ```
 
 A successful exit reports that selected library suite's results. Choose
@@ -70,9 +70,8 @@ is disabled for this profile.
 
 ## Refresh Audits After An Authorized Source Change
 
-Refresh from the changed source in this repository. External crate publication
-is no longer an intermediate step. Never repair an audit by editing its text
-manually. To refresh the task crate's audit:
+Refresh from the changed source in this repository through the generator. To
+refresh the task crate's audit:
 
 ```sh
 CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo run --offline -j 1 --manifest-path api/generator/Cargo.toml -- --crate surgeist-task
@@ -94,6 +93,6 @@ verification mode; generation and browser/source acquisition are separate
 operations that need their own task scope.
 
 The [layout Dylint catalog](../crates/surgeist-layout/tools/surgeist-layout-audits/README.md)
-is an optional separate workspace with nightly compiler tooling. Its historical
+is an optional separate workspace with nightly compiler tooling. Its
 audit questions are selected explicitly, not included in ordinary product
 verification.

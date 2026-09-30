@@ -33,7 +33,7 @@ optional audit tools have additional prerequisites described in their sources.
 2. From the root directory, run the serial library check:
 
    ```sh
-   cargo test --offline --locked -j 1 -p surgeist --lib -- --test-threads=1
+   cargo test --offline --locked -j 1 -p surgeist --lib
    ```
 
 ## Observe First Success
