@@ -144,15 +144,13 @@ fn linear_constructor_preserves_omitted_angle_and_side_directions() {
     assert_eq!(omitted.stops().items().len(), 2);
 
     let angle = CssLinearGradient::new(
-        Some(CssLinearGradientDirection::Angle(
-            CssGradientAngle::Literal(
-                CssAngleLiteral::try_new(25.0, CssAngleUnit::Degrees).unwrap(),
-            ),
-        )),
+        Some(CssLinearGradientDirection::Angle(CssAngleValue::Literal(
+            CssAngleLiteral::try_new(25.0, CssAngleUnit::Degrees).unwrap(),
+        ))),
         stops(),
     );
     assert!(
-        matches!(angle.direction(), Some(CssLinearGradientDirection::Angle(CssGradientAngle::Literal(value))) if value.value() == 25.0)
+        matches!(angle.direction(), Some(CssLinearGradientDirection::Angle(CssAngleValue::Literal(value))) if value.value() == 25.0)
     );
 
     let side = CssSideOrCorner::try_new(Some(CssHorizontalGradientSide::Right), None).unwrap();
@@ -171,12 +169,12 @@ fn linear_constructor_preserves_omitted_angle_and_side_directions() {
     .unwrap();
     let calculated = CssLinearGradient::new(
         Some(CssLinearGradientDirection::Angle(
-            CssGradientAngle::Calculation(symbolic_angle.clone()),
+            CssAngleValue::Calculation(symbolic_angle.clone()),
         )),
         stops(),
     );
     assert!(
-        matches!(calculated.direction(), Some(CssLinearGradientDirection::Angle(CssGradientAngle::Calculation(value))) if value == &symbolic_angle)
+        matches!(calculated.direction(), Some(CssLinearGradientDirection::Angle(CssAngleValue::Calculation(value))) if value == &symbolic_angle)
     );
 }
 

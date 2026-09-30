@@ -658,7 +658,11 @@ pub(super) fn parse_image_orientation<'i, 't>(
     {
         return Ok(CssImageOrientation::Flip(None));
     }
-    let angle = parse_image_orientation_angle(input, numeric)?;
+    let angle = super::values::parse_angle_value(
+        input,
+        numeric,
+        super::values::AngleParserContext::ImageOrientation,
+    )?;
     if input
         .try_parse(|input| input.expect_ident_matching("flip"))
         .is_ok()
@@ -666,50 +670,6 @@ pub(super) fn parse_image_orientation<'i, 't>(
         Ok(CssImageOrientation::Flip(Some(angle)))
     } else {
         Ok(CssImageOrientation::Angle(angle))
-    }
-}
-
-fn parse_image_orientation_angle<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssImageOrientationAngle, ParseError<'i, Error>> {
-    let numeric_start = input.state();
-    let location = input.current_source_location();
-    match input.next().map_err(basic)?.clone() {
-        Token::Number { value: 0.0, .. } => Ok(CssImageOrientationAngle::Zero),
-        Token::Dimension { value, unit, .. } => {
-            let unit = match unit.to_ascii_lowercase().as_str() {
-                "deg" => CssAngleUnit::Degrees,
-                "grad" => CssAngleUnit::Gradians,
-                "rad" => CssAngleUnit::Radians,
-                "turn" => CssAngleUnit::Turns,
-                _ => {
-                    return Err(unsupported_value_at(
-                        location,
-                        None,
-                        format!("unsupported image-orientation angle unit `{unit}`"),
-                    ));
-                }
-            };
-            CssAngleLiteral::try_new(value, unit)
-                .map(CssImageOrientationAngle::Literal)
-                .ok_or_else(|| {
-                    unsupported_value_at(location, None, "image-orientation angle must be finite")
-                })
-        }
-        Token::Function(name) if crate::numeric::is_math_function(&name) => {
-            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Angle)
-                .map(CssAngleCalculation::from_expression)
-                .map(CssImageOrientationAngle::Calculation)
-        }
-        token => Err(unsupported_value_at(
-            location,
-            None,
-            format!(
-                "unsupported image-orientation angle `{}`",
-                token.to_css_string()
-            ),
-        )),
     }
 }
 
@@ -828,44 +788,8 @@ fn parse_linear_gradient_direction<'i, 't>(
     {
         return parse_side_or_corner(input).map(CssLinearGradientDirection::SideOrCorner);
     }
-    parse_gradient_angle(input, numeric).map(CssLinearGradientDirection::Angle)
-}
-
-fn parse_gradient_angle<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssGradientAngle, ParseError<'i, Error>> {
-    let numeric_start = input.state();
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Number { value, .. } if *value == 0.0 => Ok(CssGradientAngle::Zero),
-        Token::Dimension { value, unit, .. } => {
-            let unit = match unit.to_ascii_lowercase().as_str() {
-                "deg" => CssAngleUnit::Degrees,
-                "grad" => CssAngleUnit::Gradians,
-                "rad" => CssAngleUnit::Radians,
-                "turn" => CssAngleUnit::Turns,
-                _ => {
-                    return Err(unsupported_value_at(
-                        location,
-                        None,
-                        format!("unsupported gradient angle unit `{unit}`"),
-                    ));
-                }
-            };
-            CssAngleLiteral::try_new(*value, unit)
-                .map(CssGradientAngle::Literal)
-                .ok_or_else(|| {
-                    unsupported_value_at(location, None, "gradient angle must be finite")
-                })
-        }
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Angle)
-                .map(CssAngleCalculation::from_expression)
-                .map(CssGradientAngle::Calculation)
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
+    super::values::parse_angle_value(input, numeric, super::values::AngleParserContext::Gradient)
+        .map(CssLinearGradientDirection::Angle)
 }
 
 fn parse_side_or_corner<'i, 't>(

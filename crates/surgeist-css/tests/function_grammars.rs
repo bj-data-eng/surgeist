@@ -549,7 +549,7 @@ fn blur_hue_rotate_and_drop_shadow_expose_distinct_typed_payloads() {
     ));
     assert!(matches!(
         functions.functions()[1],
-        CssFilterFunction::HueRotate(CssFilterAngle::Literal(value))
+        CssFilterFunction::HueRotate(CssAngleValue::Literal(value))
             if value.value() == -0.25
     ));
     let CssFilterFunction::DropShadow(shadow) = &functions.functions()[2] else {
@@ -869,34 +869,27 @@ fn cubic_bezier_coordinates_are_typed_and_keep_symbolic_number_math() {
     else {
         panic!("expected two typed cubic-bezier values");
     };
-    assert!(
-        matches!(literal.x1().value(), CssEasingNumber::Literal(value) if value.value() == 0.0)
-    );
-    assert!(matches!(literal.y1(), CssEasingNumber::Literal(value) if value.value() == -20.0));
-    assert!(
-        matches!(literal.x2().value(), CssEasingNumber::Literal(value) if value.value() == 1.0)
-    );
-    assert!(matches!(literal.y2(), CssEasingNumber::Literal(value) if value.value() == 30.0));
-    assert!(matches!(
-        symbolic.x1().value(),
-        CssEasingNumber::Calculation(_)
+    assert!(exact_number(
+        (literal.x1().value()).literal_component(),
+        "0"
     ));
-    assert!(matches!(symbolic.y1(), CssEasingNumber::Calculation(_)));
-    assert!(matches!(
-        symbolic.x2().value(),
-        CssEasingNumber::Calculation(_)
+    assert!(exact_number((literal.y1()).literal_component(), "-20"));
+    assert!(exact_number(
+        (literal.x2().value()).literal_component(),
+        "1"
     ));
-    assert!(matches!(symbolic.y2(), CssEasingNumber::Calculation(_)));
+    assert!(exact_number((literal.y2()).literal_component(), "30"));
+    assert!((symbolic.x1().value()).calculation().is_some());
+    assert!((symbolic.y1()).calculation().is_some());
+    assert!((symbolic.x2().value()).calculation().is_some());
+    assert!((symbolic.y2()).calculation().is_some());
 
-    let finite =
-        CssEasingNumber::Literal(CssFiniteNumber::try_new(0.5).expect("finite easing coordinate"));
+    let finite = checked_number("0.5");
     assert!(
         CssCubicBezier::try_new(finite.clone(), finite.clone(), finite.clone(), finite).is_some()
     );
-    let out_of_range = CssEasingNumber::Literal(
-        CssFiniteNumber::try_new(1.01).expect("finite out-of-range coordinate"),
-    );
-    let zero = CssEasingNumber::Literal(CssFiniteNumber::try_new(0.0).expect("finite zero"));
+    let out_of_range = checked_number("1.01");
+    let zero = checked_number("0");
     assert!(CssCubicBezier::try_new(out_of_range, zero.clone(), zero.clone(), zero).is_none());
 }
 
@@ -948,7 +941,7 @@ fn easing_functions_require_exact_separators_arities_and_domains() {
         "cubic-bezier(0, 0, 1)",
         "cubic-bezier(0, 0, 1, 1, 2)",
         "cubic-bezier(0%, 0, 1, 1)",
-        "cubic-bezier(0, 1e999, 1, 1)",
+        "cubic-bezier(0, NaN, 1, 1)",
         "steps(0)",
         "steps(-1)",
         "steps(1.5)",
@@ -960,6 +953,11 @@ fn easing_functions_require_exact_separators_arities_and_domains() {
     ] {
         assert_easing_rejected(value);
     }
+    let property = parsed_easing_property("cubic-bezier(0, 1e999, 1, 1)");
+    let [CssEasing::CubicBezier(value)] = property.timing_functions().values() else {
+        panic!("exact unrestricted Y coordinate")
+    };
+    assert!(exact_number(value.y1().literal_component(), "1e999"));
 }
 
 #[test]
@@ -1088,7 +1086,7 @@ fn every_selected_two_dimensional_transform_function_preserves_authored_order() 
     assert!(matches!(
         &functions.functions()[0],
         CssTransformFunction::Matrix(matrix)
-            if matches!(matrix.components()[4], CssTransformNumber::Literal(value) if value.value() == 10.0)
+            if exact_number((matrix.components()[4]).literal_component(), "10")
     ));
     assert!(matches!(
         &functions.functions()[1],
@@ -1099,11 +1097,11 @@ fn every_selected_two_dimensional_transform_function_preserves_authored_order() 
     assert!(matches!(
         &functions.functions()[2],
         CssTransformFunction::Scale(scale)
-            if matches!(scale.y(), Some(CssTransformNumber::Calculation(_)))
+            if scale.y().is_some_and(|value| value.calculation().is_some())
     ));
     assert!(matches!(
         functions.functions()[3],
-        CssTransformFunction::Rotate(CssTransformAngle::Calculation(_))
+        CssTransformFunction::Rotate(CssAngleValue::Calculation(_))
     ));
 }
 
@@ -1122,13 +1120,13 @@ fn transform_matrix3d_exposes_sixteen_finite_components() {
     let CssTransformFunction::Matrix3d(matrix) = &functions.functions()[0] else {
         panic!("expected typed matrix3d");
     };
-    assert!(matches!(
-        matrix.components()[12],
-        CssTransformNumber::Literal(value) if value.value() == 10.0
+    assert!(exact_number(
+        (matrix.components()[12]).literal_component(),
+        "10"
     ));
-    assert!(matches!(
-        matrix.components()[15],
-        CssTransformNumber::Literal(value) if value.value() == 1.0
+    assert!(exact_number(
+        (matrix.components()[15]).literal_component(),
+        "1"
     ));
 }
 
@@ -1187,11 +1185,11 @@ fn transform_three_dimensional_rotations_are_typed() {
     let CssTransformFunction::Rotate3d(rotation) = &functions.functions()[0] else {
         panic!("expected typed rotate3d");
     };
-    assert!(matches!(rotation.z(), CssTransformNumber::Literal(value) if value.value() == -1.0));
-    assert!(matches!(rotation.angle(), CssTransformAngle::Literal(value) if value.value() == 45.0));
+    assert!(exact_number((rotation.z()).literal_component(), "-1"));
+    assert!(matches!(rotation.angle(), CssAngleValue::Literal(value) if value.value() == 45.0));
     assert!(matches!(
         functions.functions()[1],
-        CssTransformFunction::RotateZ(CssTransformAngle::Calculation(_))
+        CssTransformFunction::RotateZ(CssAngleValue::Calculation(_))
     ));
 }
 
@@ -1250,7 +1248,7 @@ fn transform_angles_reject_percentage_calculations_and_recover_siblings() {
     };
     assert!(matches!(
         functions.functions()[0],
-        CssTransformFunction::Rotate(CssTransformAngle::Calculation(_))
+        CssTransformFunction::Rotate(CssAngleValue::Calculation(_))
     ));
 }
 
@@ -1275,29 +1273,23 @@ fn transform_three_dimensional_scales_preserve_number_and_percentage_operands() 
     };
     assert!(matches!(
         scale.x(),
-        CssTransformScaleComponent::Number(CssTransformNumber::Literal(value))
-            if value.value() == 1.0
+        CssTransformScaleComponent::Number(value) if exact_number(value.literal_component(), "1")
     ));
     assert!(matches!(
         scale.y(),
-        CssTransformScaleComponent::Percentage(CssTransformPercentage::Literal(value))
-            if value.value() == 50.0
+        CssTransformScaleComponent::Percentage(value) if exact_percentage(value.literal_component(), "50")
     ));
     assert!(matches!(
         scale.z(),
-        CssTransformScaleComponent::Number(CssTransformNumber::Calculation(_))
+        CssTransformScaleComponent::Number(value) if value.calculation().is_some()
     ));
     assert!(matches!(
-        functions.functions()[1],
-        CssTransformFunction::ScaleZ(CssTransformScaleComponent::Number(
-            CssTransformNumber::Literal(value)
-        )) if value.value() == 2.0
+        &functions.functions()[1],
+        CssTransformFunction::ScaleZ(CssTransformScaleComponent::Number(value)) if exact_number(value.literal_component(), "2")
     ));
     assert!(matches!(
-        functions.functions()[2],
-        CssTransformFunction::ScaleZ(CssTransformScaleComponent::Percentage(
-            CssTransformPercentage::Literal(value)
-        )) if value.value() == 125.0
+        &functions.functions()[2],
+        CssTransformFunction::ScaleZ(CssTransformScaleComponent::Percentage(value)) if exact_percentage(value.literal_component(), "125")
     ));
 }
 
@@ -1485,4 +1477,14 @@ fn nonnegative_length_percentage(
         )
         .unwrap()
     }
+}
+
+fn exact_number(component: Option<&surgeist_css::CssComponentValue>, representation: &str) -> bool {
+    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number))) if number.representation() == representation)
+}
+fn checked_number(representation: &str) -> surgeist_css::CssSpecifiedNumber {
+    surgeist_css::CssSpecifiedNumber::try_from_component(
+        surgeist_css::CssComponentValue::try_number(representation).unwrap(),
+    )
+    .unwrap()
 }

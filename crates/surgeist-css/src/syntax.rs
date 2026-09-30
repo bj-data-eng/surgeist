@@ -25,7 +25,7 @@ use crate::{
 };
 pub(crate) use crate::{
     CssSpecifiedLength, CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeLength,
-    CssSpecifiedNonNegativeLengthPercentage,
+    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNumber, CssSpecifiedPercentage,
 };
 use std::sync::Arc;
 
@@ -6714,10 +6714,11 @@ impl CssBorderImage {
     }
 }
 
-/// A finite authored angle used by `image-orientation`.
+/// An authored angle shared by transforms, filters, gradients, and image orientation.
+/// Retains unitless zero, the existing finite literal precision, and Angle-root math.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub enum CssImageOrientationAngle {
+pub enum CssAngleValue {
     Zero,
     Literal(CssAngleLiteral),
     Calculation(CssAngleCalculation),
@@ -6728,8 +6729,8 @@ pub enum CssImageOrientationAngle {
 #[non_exhaustive]
 pub enum CssImageOrientation {
     FromImage,
-    Angle(CssImageOrientationAngle),
-    Flip(Option<CssImageOrientationAngle>),
+    Angle(CssAngleValue),
+    Flip(Option<CssAngleValue>),
 }
 
 /// The authored Images 3 `image-rendering` keyword.
@@ -6778,15 +6779,6 @@ pub enum CssGradient {
     Radial(CssRadialGradient),
     RepeatingLinear(CssLinearGradient),
     RepeatingRadial(CssRadialGradient),
-}
-
-/// A finite authored gradient angle, including the Images 3 unitless-zero branch.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssGradientAngle {
-    Zero,
-    Literal(CssAngleLiteral),
-    Calculation(CssAngleCalculation),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -6840,7 +6832,7 @@ impl CssSideOrCorner {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssLinearGradientDirection {
-    Angle(CssGradientAngle),
+    Angle(CssAngleValue),
     SideOrCorner(CssSideOrCorner),
 }
 
@@ -7810,67 +7802,70 @@ pub enum CssTransformFunctionKind {
     TranslateZ,
 }
 
-/// A finite authored transform `<number>`.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssTransformNumber {
-    Literal(CssFiniteNumber),
-    Calculation(CssNumberCalculation),
-}
-
-/// A finite authored transform `<percentage>`.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssTransformPercentage {
-    Literal(CssFiniteNumber),
-    Calculation(CssPercentageCalculation),
-}
-
 /// One authored operand in a transform scale function.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssTransformScaleComponent {
-    Number(CssTransformNumber),
-    Percentage(CssTransformPercentage),
+    Number(CssSpecifiedNumber),
+    Percentage(CssSpecifiedPercentage),
 }
 
-/// An authored transform angle, including the unitless-zero branch.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssTransformAngle {
-    Zero,
-    Literal(CssAngleLiteral),
-    Calculation(CssAngleCalculation),
-}
-
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CssTransformMatrix {
-    components: [CssTransformNumber; 6],
+    components: [CssSpecifiedNumber; 6],
+}
+
+impl PartialEq for CssTransformScaleComponent {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
+            (Self::Percentage(left), Self::Percentage(right)) => left.structural_eq(right),
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq for CssTransformMatrix {
+    fn eq(&self, other: &Self) -> bool {
+        self.components
+            .iter()
+            .zip(&other.components)
+            .all(|(left, right)| left.structural_eq(right))
+    }
 }
 
 impl CssTransformMatrix {
-    pub const fn new(components: [CssTransformNumber; 6]) -> Self {
+    pub const fn new(components: [CssSpecifiedNumber; 6]) -> Self {
         Self { components }
     }
 
     #[must_use]
-    pub const fn components(&self) -> &[CssTransformNumber; 6] {
+    pub const fn components(&self) -> &[CssSpecifiedNumber; 6] {
         &self.components
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CssTransformMatrix3d {
-    components: [CssTransformNumber; 16],
+    components: [CssSpecifiedNumber; 16],
+}
+
+impl PartialEq for CssTransformMatrix3d {
+    fn eq(&self, other: &Self) -> bool {
+        self.components
+            .iter()
+            .zip(&other.components)
+            .all(|(left, right)| left.structural_eq(right))
+    }
 }
 
 impl CssTransformMatrix3d {
-    pub const fn new(components: [CssTransformNumber; 16]) -> Self {
+    pub const fn new(components: [CssSpecifiedNumber; 16]) -> Self {
         Self { components }
     }
 
     #[must_use]
-    pub const fn components(&self) -> &[CssTransformNumber; 16] {
+    pub const fn components(&self) -> &[CssSpecifiedNumber; 16] {
         &self.components
     }
 }
@@ -7892,63 +7887,67 @@ impl PartialEq for CssTransformPerspective {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CssTransformRotate3d {
-    x: CssTransformNumber,
-    y: CssTransformNumber,
-    z: CssTransformNumber,
-    angle: CssTransformAngle,
+    x: CssSpecifiedNumber,
+    y: CssSpecifiedNumber,
+    z: CssSpecifiedNumber,
+    angle: CssAngleValue,
 }
+
+numeric_fields_eq!(CssTransformRotate3d, [x, y, z], [], [angle]);
 
 impl CssTransformRotate3d {
     pub const fn new(
-        x: CssTransformNumber,
-        y: CssTransformNumber,
-        z: CssTransformNumber,
-        angle: CssTransformAngle,
+        x: CssSpecifiedNumber,
+        y: CssSpecifiedNumber,
+        z: CssSpecifiedNumber,
+        angle: CssAngleValue,
     ) -> Self {
         Self { x, y, z, angle }
     }
 
     #[must_use]
-    pub const fn x(&self) -> &CssTransformNumber {
+    pub const fn x(&self) -> &CssSpecifiedNumber {
         &self.x
     }
 
     #[must_use]
-    pub const fn y(&self) -> &CssTransformNumber {
+    pub const fn y(&self) -> &CssSpecifiedNumber {
         &self.y
     }
 
     #[must_use]
-    pub const fn z(&self) -> &CssTransformNumber {
+    pub const fn z(&self) -> &CssSpecifiedNumber {
         &self.z
     }
 
     #[must_use]
-    pub const fn angle(&self) -> &CssTransformAngle {
+    pub const fn angle(&self) -> &CssAngleValue {
         &self.angle
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CssTransformScale {
-    x: CssTransformNumber,
-    y: Option<CssTransformNumber>,
+    x: CssSpecifiedNumber,
+    y: Option<CssSpecifiedNumber>,
 }
 
+numeric_fields_eq!(CssTransformScale, [x], [y], []);
+
 impl CssTransformScale {
-    pub const fn new(x: CssTransformNumber, y: Option<CssTransformNumber>) -> Self {
+    pub const fn new(x: CssSpecifiedNumber, y: Option<CssSpecifiedNumber>) -> Self {
         Self { x, y }
     }
 
     #[must_use]
-    pub const fn x(&self) -> &CssTransformNumber {
+    pub const fn x(&self) -> &CssSpecifiedNumber {
         &self.x
     }
 
     #[must_use]
-    pub const fn y(&self) -> Option<&CssTransformNumber> {
+    pub const fn y(&self) -> Option<&CssSpecifiedNumber> {
         self.y.as_ref()
     }
 }
@@ -7987,22 +7986,22 @@ impl CssTransformScale3d {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssTransformSkew {
-    x: CssTransformAngle,
-    y: Option<CssTransformAngle>,
+    x: CssAngleValue,
+    y: Option<CssAngleValue>,
 }
 
 impl CssTransformSkew {
-    pub const fn new(x: CssTransformAngle, y: Option<CssTransformAngle>) -> Self {
+    pub const fn new(x: CssAngleValue, y: Option<CssAngleValue>) -> Self {
         Self { x, y }
     }
 
     #[must_use]
-    pub const fn x(&self) -> &CssTransformAngle {
+    pub const fn x(&self) -> &CssAngleValue {
         &self.x
     }
 
     #[must_use]
-    pub const fn y(&self) -> Option<&CssTransformAngle> {
+    pub const fn y(&self) -> Option<&CssAngleValue> {
         self.y.as_ref()
     }
 }
@@ -8073,19 +8072,19 @@ pub enum CssTransformFunction {
     Matrix(CssTransformMatrix),
     Matrix3d(Box<CssTransformMatrix3d>),
     Perspective(CssTransformPerspective),
-    Rotate(CssTransformAngle),
+    Rotate(CssAngleValue),
     Rotate3d(CssTransformRotate3d),
-    RotateX(CssTransformAngle),
-    RotateY(CssTransformAngle),
-    RotateZ(CssTransformAngle),
+    RotateX(CssAngleValue),
+    RotateY(CssAngleValue),
+    RotateZ(CssAngleValue),
     Scale(CssTransformScale),
     Scale3d(CssTransformScale3d),
-    ScaleX(CssTransformNumber),
-    ScaleY(CssTransformNumber),
+    ScaleX(CssSpecifiedNumber),
+    ScaleY(CssSpecifiedNumber),
     ScaleZ(CssTransformScaleComponent),
     Skew(CssTransformSkew),
-    SkewX(CssTransformAngle),
-    SkewY(CssTransformAngle),
+    SkewX(CssAngleValue),
+    SkewY(CssAngleValue),
     Translate(CssTransformTranslate),
     Translate3d(CssTransformTranslate3d),
     TranslateX(CssSpecifiedLengthPercentage),
@@ -8110,7 +8109,7 @@ impl PartialEq for CssTransformFunction {
             (Self::Scale(left), Self::Scale(right)) => left == right,
             (Self::Scale3d(left), Self::Scale3d(right)) => left == right,
             (Self::ScaleX(left), Self::ScaleX(right))
-            | (Self::ScaleY(left), Self::ScaleY(right)) => left == right,
+            | (Self::ScaleY(left), Self::ScaleY(right)) => left.structural_eq(right),
             (Self::ScaleZ(left), Self::ScaleZ(right)) => left == right,
             (Self::Skew(left), Self::Skew(right)) => left == right,
             (Self::SkewX(left), Self::SkewX(right)) | (Self::SkewY(left), Self::SkewY(right)) => {
@@ -8230,28 +8229,41 @@ pub enum CssScale {
     Values(CssScaleValues),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CssScaleValues {
-    values: Vec<f32>,
+    values: Vec<CssSpecifiedNumber>,
+}
+
+impl PartialEq for CssScaleValues {
+    fn eq(&self, other: &Self) -> bool {
+        self.values.len() == other.values.len()
+            && self
+                .values
+                .iter()
+                .zip(&other.values)
+                .all(|(left, right)| left.structural_eq(right))
+    }
 }
 
 impl CssScaleValues {
+    /// Retains one to three ordinary number tokens in authored axis order.
+    /// This independent property currently accepts literal numbers only.
     #[must_use]
-    pub fn try_new(values: Vec<f32>) -> Option<Self> {
-        if values.is_empty() || values.len() > 3 || values.iter().any(|value| !value.is_finite()) {
+    pub fn try_new(values: Vec<CssSpecifiedNumber>) -> Option<Self> {
+        if values.is_empty()
+            || values.len() > 3
+            || values
+                .iter()
+                .any(|value| value.literal_component().is_none())
+        {
             None
         } else {
-            Some(Self::new(values))
+            Some(Self { values })
         }
     }
 
     #[must_use]
-    pub(crate) fn new(values: Vec<f32>) -> Self {
-        Self { values }
-    }
-
-    #[must_use]
-    pub fn values(&self) -> &[f32] {
+    pub fn values(&self) -> &[CssSpecifiedNumber] {
         &self.values
     }
 }
@@ -8324,15 +8336,6 @@ impl CssFilterBlur {
     }
 }
 
-/// A typed authored angle accepted by `hue-rotate()`.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssFilterAngle {
-    Zero,
-    Literal(CssAngleLiteral),
-    Calculation(CssAngleCalculation),
-}
-
 /// A filter `drop-shadow()` value, distinct from a box shadow.
 #[derive(Clone, Debug)]
 pub struct CssDropShadow {
@@ -8381,7 +8384,7 @@ pub enum CssFilterFunction {
     Contrast(CssFilterAmount),
     DropShadow(CssDropShadow),
     Grayscale(CssFilterAmount),
-    HueRotate(CssFilterAngle),
+    HueRotate(CssAngleValue),
     Invert(CssFilterAmount),
     Opacity(CssFilterAmount),
     Saturate(CssFilterAmount),
@@ -8874,51 +8877,55 @@ pub enum CssEasingKeyword {
     StepEnd,
 }
 
-/// A finite authored easing `<number>` or a symbolic number calculation.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssEasingNumber {
-    Literal(CssFiniteNumber),
-    Calculation(CssNumberCalculation),
+/// A checked cubic-bezier x coordinate.
+#[derive(Clone, Debug)]
+pub struct CssCubicBezierX {
+    value: CssSpecifiedNumber,
 }
 
-/// A checked cubic-bezier x coordinate.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssCubicBezierX {
-    value: CssEasingNumber,
-}
+numeric_fields_eq!(CssCubicBezierX, [value], [], []);
 
 impl CssCubicBezierX {
     #[must_use]
-    pub fn try_new(value: CssEasingNumber) -> Option<Self> {
-        match value {
-            CssEasingNumber::Literal(value) if !(0.0..=1.0).contains(&value.value()) => None,
-            value => Some(Self { value }),
+    pub fn try_new(value: CssSpecifiedNumber) -> Option<Self> {
+        if let Some(component) = value.literal_component() {
+            let crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Number(number)) =
+                component.view()
+            else {
+                unreachable!("checked number literal")
+            };
+            let decimal = crate::exact_decimal::LexicalDecimal::new(number.representation());
+            if decimal.len != 0 && (decimal.negative || !decimal.absolute_at_most("1", 0)) {
+                return None;
+            }
         }
+        Some(Self { value })
     }
 
     #[must_use]
-    pub const fn value(&self) -> &CssEasingNumber {
+    pub const fn value(&self) -> &CssSpecifiedNumber {
         &self.value
     }
 }
 
 /// A checked authored `cubic-bezier()` value.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CssCubicBezier {
     x1: CssCubicBezierX,
-    y1: CssEasingNumber,
+    y1: CssSpecifiedNumber,
     x2: CssCubicBezierX,
-    y2: CssEasingNumber,
+    y2: CssSpecifiedNumber,
 }
+
+numeric_fields_eq!(CssCubicBezier, [y1, y2], [], [x1, x2]);
 
 impl CssCubicBezier {
     #[must_use]
     pub fn try_new(
-        x1: CssEasingNumber,
-        y1: CssEasingNumber,
-        x2: CssEasingNumber,
-        y2: CssEasingNumber,
+        x1: CssSpecifiedNumber,
+        y1: CssSpecifiedNumber,
+        x2: CssSpecifiedNumber,
+        y2: CssSpecifiedNumber,
     ) -> Option<Self> {
         Some(Self {
             x1: CssCubicBezierX::try_new(x1)?,
@@ -8934,7 +8941,7 @@ impl CssCubicBezier {
     }
 
     #[must_use]
-    pub const fn y1(&self) -> &CssEasingNumber {
+    pub const fn y1(&self) -> &CssSpecifiedNumber {
         &self.y1
     }
 
@@ -8944,7 +8951,7 @@ impl CssCubicBezier {
     }
 
     #[must_use]
-    pub const fn y2(&self) -> &CssEasingNumber {
+    pub const fn y2(&self) -> &CssSpecifiedNumber {
         &self.y2
     }
 }

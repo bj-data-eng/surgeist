@@ -6,8 +6,7 @@ use crate::validation::unsupported_keyword_reason;
 use crate::{
     CssAuthoredFontFeature, CssAuthoredFontFeatureList, CssAuthoredFontFeatureSettings,
     CssAuthoredFontFeatureValue, CssFontFeatureIndex, CssFontVariation, CssFontVariationList,
-    CssFontVariationSettings, CssIntegerCalculation, CssNumberCalculation, CssOpenTypeTag,
-    CssSpecifiedNumber,
+    CssFontVariationSettings, CssIntegerCalculation, CssOpenTypeTag,
 };
 
 fn tag<'i, 't>(input: &mut Parser<'i, 't>) -> Result<CssOpenTypeTag, ParseError<'i, Error>> {
@@ -119,7 +118,7 @@ pub(super) fn parse_font_variation_settings<'i, 't>(
     let mut variations = Vec::new();
     loop {
         let tag = tag(input)?;
-        let value = parse_variation_number(input, numeric)?;
+        let value = super::values::parse_specified_number(input, numeric, "variation axis")?;
         variations.push(CssFontVariation::new(tag, value));
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
@@ -135,38 +134,4 @@ pub(super) fn parse_font_variation_settings<'i, 't>(
     CssFontVariationList::try_new(variations)
         .map(CssFontVariationSettings::Variations)
         .ok_or_else(|| unsupported_value(input, None, "font-variation-settings list is empty"))
-}
-
-fn parse_variation_number<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<CssSpecifiedNumber, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let start = input.state();
-    let location = input.current_source_location();
-    let root_offset = input.position().byte_index();
-    let value = match input.next().map_err(basic)? {
-        Token::Number { .. } => {
-            input.reset(&start);
-            let component = numeric
-                .collect(input)
-                .map_err(|_| unsupported_value_at(location, None, "invalid variation number"))?;
-            CssSpecifiedNumber::try_from_component(component)
-        }
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            let expression =
-                parse_numeric_function(input, &start, numeric, CalculationRoot::Number)?;
-            CssSpecifiedNumber::try_from_calculation(CssNumberCalculation::from_expression(
-                expression,
-            ))
-        }
-        token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    };
-    value.map_err(|error| {
-        unsupported_value_at(
-            numeric.error_location(&error, location, root_offset),
-            None,
-            "variation axis requires a number",
-        )
-    })
 }

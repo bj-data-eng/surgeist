@@ -9,7 +9,6 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         assert_eq!(CssRatio::try_new(1.0, value), None);
         assert_eq!(CssKeyframePercent::try_new(value), None);
 
-        assert_eq!(CssScaleValues::try_new(vec![value]), None);
         assert_eq!(CssResolution::try_new(value, CssResolutionUnit::Dppx), None);
         assert_eq!(
             CssDurationLiteral::try_new(value, CssTimeUnit::Seconds),

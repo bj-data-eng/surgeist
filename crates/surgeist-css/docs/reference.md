@@ -1174,9 +1174,26 @@ operands and `kind()` discriminator. Public fixed-field constructors accept
 checked matrix, rotation, scale, skew, and translation operands, preserving
 omitted second operands and symbolic calculations. `translate3d` keeps a pure
 length on Z while X and Y accept length-percentages; `perspective` keeps a
-checked nonnegative length or `none`. Transform evaluation remains downstream.
+checked nonnegative length or `none`. Matrix operands, rotate3d axes, scale
+numbers, and cubic-bezier coordinates use `CssSpecifiedNumber`; three-dimensional
+scale percentage branches use `CssSpecifiedPercentage`. Both retain exact token
+spelling and provenance, or genuine symbolic calculations. Numeric aggregate
+equality compares exact structure while ignoring numeric source origins; direct
+scalar equality retains provenance. The independent `scale` property accepts
+one to three ordinary shared numbers and retains its literal-only subset.
+Transform evaluation remains downstream.
+
+`CssAngleValue` supplies unitless zero, `CssAngleLiteral`, or
+`CssAngleCalculation` to transforms, hue-rotate filters, linear-gradient
+directions, and image orientation. It preserves finite literal precision, the
+four angle units, symbolic math, and provenance-sensitive calculation equality.
+Each outer context retains its own grammar and omission rules.
 
 Easing values distinguish keywords, `cubic-bezier()`, and `steps()`.
+`CssCubicBezierX` checks an ordinary exact number against inclusive [0, 1],
+including signed zero and exponent spelling. A bare calculation root reenters
+that check, while genuine function calculations remain symbolic. Y coordinates
+remain unrestricted signed numbers; coordinate order is preserved.
 `steps()` stores its count as the shared `CssPositiveIntegerValue`: an exact
 `CssPositiveIntegerLiteral` or symbolic `CssIntegerCalculation`.
 `CssSteps::try_new` validates bare calculation tokens as ordinary literals and

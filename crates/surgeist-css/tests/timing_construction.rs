@@ -2,10 +2,9 @@ use surgeist_css::{
     CssAnimation, CssAnimationComponents, CssAnimationDirection, CssAnimationFillMode,
     CssAnimationIterationCount, CssAnimationIterationNumber, CssAnimationList, CssAnimationName,
     CssAnimationPlayState, CssCubicBezier, CssDelay, CssDelayLiteral, CssDuration,
-    CssDurationLiteral, CssEasing, CssEasingKeyword, CssEasingNumber, CssFiniteNumber,
-    CssIntegerLiteral, CssKnownPropertyValueRef, CssPositiveIntegerLiteral,
-    CssPositiveIntegerValue, CssStepPosition, CssSteps, CssTimeUnit, CssTransition,
-    CssTransitionList, CssTransitionProperty, parse_style_attribute,
+    CssDurationLiteral, CssEasing, CssEasingKeyword, CssIntegerLiteral, CssKnownPropertyValueRef,
+    CssPositiveIntegerLiteral, CssPositiveIntegerValue, CssStepPosition, CssSteps, CssTimeUnit,
+    CssTransition, CssTransitionList, CssTransitionProperty, parse_style_attribute,
 };
 
 #[test]
@@ -97,12 +96,14 @@ fn checked_animation_preserves_eight_semantic_slots() {
 
 #[test]
 fn easing_construction_checks_bezier_and_step_ranges() {
-    let literal = |value| CssEasingNumber::Literal(CssFiniteNumber::try_new(value).unwrap());
+    let literal = checked_number;
     assert!(
-        CssCubicBezier::try_new(literal(-0.1), literal(0.0), literal(0.5), literal(1.0)).is_none()
+        CssCubicBezier::try_new(literal("-0.1"), literal("0"), literal("0.5"), literal("1"))
+            .is_none()
     );
     assert!(
-        CssCubicBezier::try_new(literal(0.1), literal(-2.0), literal(0.9), literal(3.0)).is_some()
+        CssCubicBezier::try_new(literal("0.1"), literal("-2"), literal("0.9"), literal("3"))
+            .is_some()
     );
     assert!(
         CssSteps::try_new(
@@ -158,4 +159,11 @@ fn parsed_symbolic_easing_remains_typed_through_checked_aggregates() {
     );
     assert!(animation.name().is_none());
     assert!(animation.duration().is_none());
+}
+
+fn checked_number(representation: &str) -> surgeist_css::CssSpecifiedNumber {
+    surgeist_css::CssSpecifiedNumber::try_from_component(
+        surgeist_css::CssComponentValue::try_number(representation).unwrap(),
+    )
+    .unwrap()
 }

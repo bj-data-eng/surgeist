@@ -205,38 +205,19 @@ enum CssEasingFunctionKind {
     Steps,
 }
 
-fn parse_easing_number<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssEasingNumber, ParseError<'i, Error>> {
-    let numeric_start = input.state();
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Number { value, .. } => CssFiniteNumber::try_new(*value)
-            .map(CssEasingNumber::Literal)
-            .ok_or_else(|| unsupported_value_at(location, None, "easing number must be finite")),
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)
-                .map(CssNumberCalculation::from_expression)
-                .map(CssEasingNumber::Calculation)
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
-}
-
 fn parse_cubic_bezier<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssCubicBezier, ParseError<'i, Error>> {
     let x1_location = input.current_source_location();
-    let x1 = parse_easing_number(input, numeric)?;
+    let x1 = super::values::parse_specified_number(input, numeric, "easing")?;
     input.expect_comma().map_err(basic)?;
-    let y1 = parse_easing_number(input, numeric)?;
+    let y1 = super::values::parse_specified_number(input, numeric, "easing")?;
     input.expect_comma().map_err(basic)?;
     let x2_location = input.current_source_location();
-    let x2 = parse_easing_number(input, numeric)?;
+    let x2 = super::values::parse_specified_number(input, numeric, "easing")?;
     input.expect_comma().map_err(basic)?;
-    let y2 = parse_easing_number(input, numeric)?;
+    let y2 = super::values::parse_specified_number(input, numeric, "easing")?;
     input.expect_exhausted().map_err(basic)?;
 
     if CssCubicBezierX::try_new(x1.clone()).is_none() {
