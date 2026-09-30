@@ -1,11 +1,11 @@
 use surgeist_css::{
     CssAnimationDirection, CssAnimationFillMode, CssAnimationIterationCount,
-    CssAnimationIterationCountList, CssAnimationIterationNumber, CssAnimationName,
-    CssAnimationPlayState, CssCalculationExpressionRef, CssCalculationType, CssDelay, CssDelayList,
-    CssDelayLiteral, CssDuration, CssDurationList, CssDurationLiteral, CssEasing, CssEasingKeyword,
-    CssErrorCode, CssKnownProperty, CssKnownPropertyValueRef, CssPositiveIntegerValue,
-    CssRecoveryAction, CssSourcePosition, CssStepPosition, CssTimeUnit, CssTokenKind,
-    CssTransitionProperty, ErrorKind, parse_style_attribute,
+    CssAnimationIterationCountList, CssAnimationName, CssAnimationPlayState,
+    CssCalculationExpressionRef, CssCalculationType, CssDelay, CssDelayList, CssDelayLiteral,
+    CssDuration, CssDurationList, CssDurationLiteral, CssEasing, CssEasingKeyword, CssErrorCode,
+    CssKnownProperty, CssKnownPropertyValueRef, CssPositiveIntegerValue, CssRecoveryAction,
+    CssSourcePosition, CssStepPosition, CssTimeUnit, CssTokenKind, CssTransitionProperty,
+    ErrorKind, parse_style_attribute,
 };
 
 fn for_each_permutation(
@@ -149,12 +149,19 @@ fn duration_and_delay_literals_enforce_distinct_finite_sign_domains() {
 
 #[test]
 fn iteration_values_check_literals_and_keep_infinite_and_calculation_branches() {
-    assert!(CssAnimationIterationNumber::try_new(-0.25).is_none());
-    for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-        assert!(CssAnimationIterationNumber::try_new(value).is_none());
+    for text in ["-0.25", "-1e-999"] {
+        assert!(
+            surgeist_css::CssSpecifiedNonNegativeNumber::try_from_component(
+                surgeist_css::CssComponentValue::try_number(text).unwrap()
+            )
+            .is_err()
+        );
     }
-    let number = CssAnimationIterationNumber::try_new(2.5).expect("finite iteration number");
-    assert_eq!(number.value(), 2.5);
+    let number = surgeist_css::CssSpecifiedNonNegativeNumber::try_from_component(
+        surgeist_css::CssComponentValue::try_number("2.5").unwrap(),
+    )
+    .unwrap();
+    assert_eq!(number.serialize_specified().unwrap(), "2.5");
     assert!(CssAnimationIterationCountList::try_new(Vec::new()).is_none());
     let values = CssAnimationIterationCountList::try_new(vec![
         CssAnimationIterationCount::Infinite,
@@ -258,12 +265,12 @@ fn timing_longhands_expose_exact_typed_values() {
     let values = value.iteration_counts().values();
     assert!(matches!(values[0], CssAnimationIterationCount::Infinite));
     assert!(matches!(
-        values[1],
-        CssAnimationIterationCount::Number(number) if number.value() == 2.5
+        &values[1],
+        CssAnimationIterationCount::Number(number) if number.serialize_specified().unwrap() == "2.5"
     ));
     assert!(matches!(
-        values[2],
-        CssAnimationIterationCount::Calculation(_)
+        &values[2],
+        CssAnimationIterationCount::Number(number) if number.calculation().is_some()
     ));
 }
 
@@ -312,7 +319,7 @@ fn ordinary_timing_inputs_retain_each_typed_component() {
     };
     assert!(matches!(counts.iteration_counts().values(), [
         CssAnimationIterationCount::Infinite, CssAnimationIterationCount::Number(value)
-    ] if value.value() == 2.0));
+    ] if value.serialize_specified().unwrap() == "2"));
     let CssKnownPropertyValueRef::Transition(transition) = values[5] else {
         panic!("transition");
     };
@@ -348,7 +355,7 @@ fn ordinary_timing_inputs_retain_each_typed_component() {
         Some(CssEasing::Keyword(CssEasingKeyword::Linear))
     ));
     assert!(
-        matches!(animation.iteration_count(), Some(CssAnimationIterationCount::Number(value)) if value.value() == 2.0)
+        matches!(animation.iteration_count(), Some(CssAnimationIterationCount::Number(value)) if value.serialize_specified().unwrap() == "2")
     );
     assert_eq!(animation.direction(), Some(CssAnimationDirection::Reverse));
     assert_eq!(animation.fill_mode(), Some(CssAnimationFillMode::Both));
@@ -427,7 +434,7 @@ fn animation_shorthand_exposes_all_eight_components() {
     ));
     assert!(matches!(
         animation.iteration_count(),
-        Some(CssAnimationIterationCount::Calculation(_))
+        Some(CssAnimationIterationCount::Number(number)) if number.calculation().is_some()
     ));
     assert_eq!(animation.direction(), Some(CssAnimationDirection::Reverse));
     assert_eq!(animation.fill_mode(), Some(CssAnimationFillMode::Both));
@@ -595,7 +602,7 @@ fn every_animation_component_order_preserves_all_eight_typed_domains() {
             "{source}",
         );
         assert!(
-            matches!(animation.iteration_count(), Some(CssAnimationIterationCount::Number(number)) if number.value() == 2.0),
+            matches!(animation.iteration_count(), Some(CssAnimationIterationCount::Number(number)) if number.serialize_specified().unwrap() == "2"),
             "{source}",
         );
         assert_eq!(
@@ -695,13 +702,6 @@ fn every_invalid_timing_category_has_exact_public_diagnostics_and_strict_parity(
             position: 18,
             span_end: 26,
             encountered: Some((CssTokenKind::Dimension, "-1e999s")),
-        },
-        InvalidTimingCase {
-            source: "animation-iteration-count: 1e999; color: red",
-            property: CssKnownProperty::AnimationIterationCount,
-            position: 27,
-            span_end: 33,
-            encountered: Some((CssTokenKind::Number, "1e999")),
         },
         InvalidTimingCase {
             source: "transition-duration: calc(1px + 2px); color: red",

@@ -160,6 +160,64 @@ checked_length_parser!(
     LengthPercentage
 );
 
+// Scalar consumers share exact ordinary admission and typed symbolic roots.
+macro_rules! checked_scalar_parser {
+    ($name:ident, $owner:ident, $calculation:ident, $root:ident, $token:ident) => {
+        pub(super) fn $name<'i, 't>(
+            input: &mut Parser<'i, 't>,
+            numeric: &NumericInputContext<'_>,
+            context: &str,
+        ) -> Result<crate::$owner, ParseError<'i, Error>> {
+            input.skip_whitespace();
+            let state = input.state();
+            let location = input.current_source_location();
+            let root_offset = input.position().byte_index();
+            let value = match input.next().map_err(basic)? {
+                Token::$token { .. } => {
+                    input.reset(&state);
+                    let component = numeric.collect(input).map_err(|error| {
+                        unsupported_value_at(
+                            numeric.error_location(&error, location, root_offset),
+                            None,
+                            format!("invalid {context}"),
+                        )
+                    })?;
+                    crate::$owner::try_from_component(component)
+                }
+                Token::Function(name) if is_math_function(name) => {
+                    let expression =
+                        parse_numeric_function(input, &state, numeric, CalculationRoot::$root)?;
+                    crate::$owner::try_from_calculation(crate::$calculation::from_expression(
+                        expression,
+                    ))
+                }
+                token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
+            };
+            value.map_err(|error| {
+                unsupported_value_at(
+                    numeric.error_location(&error, location, root_offset),
+                    None,
+                    format!("invalid {context} nonnegative domain"),
+                )
+            })
+        }
+    };
+}
+checked_scalar_parser!(
+    parse_nonnegative_number,
+    CssSpecifiedNonNegativeNumber,
+    CssNumberCalculation,
+    Number,
+    Number
+);
+checked_scalar_parser!(
+    parse_nonnegative_percentage,
+    CssSpecifiedNonNegativePercentage,
+    CssPercentageCalculation,
+    Percentage,
+    Percentage
+);
+
 pub(super) fn parse_shadow_length<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,

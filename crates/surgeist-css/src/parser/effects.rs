@@ -9,8 +9,8 @@ use super::box_model::parse_drop_shadow;
 use super::position::parse_css_position;
 use super::url::parse_url;
 use super::values::{
-    AngleParserContext, CalculationRoot, checked_percentage_value, next_is_comma, next_is_delim,
-    next_is_ident, parse_angle_value, parse_numeric_function, parse_specified_number,
+    AngleParserContext, next_is_comma, next_is_delim, next_is_ident, parse_angle_value,
+    parse_nonnegative_number, parse_nonnegative_percentage, parse_specified_number,
     parse_specified_number_literal, parse_specified_percentage,
 };
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
@@ -852,68 +852,19 @@ fn parse_filter_amount<'i, 't>(
     if input.is_exhausted() {
         return Ok(CssFilterAmount::Default);
     }
-    let amount = if let Ok(number) = input.try_parse(|input| parse_filter_number(input, numeric)) {
+    let amount = if let Ok(number) =
+        input.try_parse(|input| parse_nonnegative_number(input, numeric, "filter amount"))
+    {
         CssFilterAmount::Number(number)
     } else {
-        CssFilterAmount::Percentage(parse_filter_percentage(input, numeric)?)
+        CssFilterAmount::Percentage(parse_nonnegative_percentage(
+            input,
+            numeric,
+            "filter amount",
+        )?)
     };
     input.expect_exhausted().map_err(basic)?;
     Ok(amount)
-}
-
-fn parse_filter_number<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssFilterNumber, ParseError<'i, Error>> {
-    let numeric_start = input.state();
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Number { value, .. } => CssNonNegativeNumber::try_new(*value)
-            .map(CssFilterNumber::Literal)
-            .ok_or_else(|| {
-                unsupported_value_at(
-                    location,
-                    None,
-                    "filter amount must be a finite non-negative number",
-                )
-            }),
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)
-                .map(CssNumberCalculation::from_expression)
-                .map(CssFilterNumber::Calculation)
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
-}
-
-fn parse_filter_percentage<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssFilterPercentage, ParseError<'i, Error>> {
-    let numeric_start = input.state();
-    let location = input.current_source_location();
-    input.skip_whitespace();
-    let token_start = input.position();
-    match input.next().map_err(basic)? {
-        Token::Percentage { .. } => {
-            let value = checked_percentage_value(
-                location,
-                input.slice_from(token_start),
-                "filter percentage must be finite",
-            )?;
-            CssNonNegativeNumber::try_new(value)
-                .map(CssFilterPercentage::Literal)
-                .ok_or_else(|| {
-                    unsupported_value_at(location, None, "filter percentage must be non-negative")
-                })
-        }
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Percentage)
-                .map(CssPercentageCalculation::from_expression)
-                .map(CssFilterPercentage::Calculation)
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
 }
 
 pub(super) fn parse_clip_path<'i, 't>(

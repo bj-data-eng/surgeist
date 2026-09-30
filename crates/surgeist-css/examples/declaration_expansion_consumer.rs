@@ -243,21 +243,21 @@ fn assert_image_initials(values: &CssLonghandContributions) {
     };
     assert!(!slice.fill());
     assert!(slice.values().iter().all(|value| matches!(value,
-        CssBorderImageSliceComponent::Percentage(number) if number.value() == 100.0)));
+        CssBorderImageSliceComponent::Percentage(number) if exact_literal(number.literal_component(), "100%"))));
     let CssContributionValueRef::Ordinary(CssLonghandValueRef::BorderImageWidth(width)) =
         member(values, Property::BorderImageWidth).value()
     else {
         panic!("typed border-image-width initial");
     };
     assert!(width.values().iter().all(|value| matches!(value,
-        CssBorderImageWidthComponent::Number(number) if number.value() == 1.0)));
+        CssBorderImageWidthComponent::Number(number) if exact_literal(number.literal_component(), "1"))));
     let CssContributionValueRef::Ordinary(CssLonghandValueRef::BorderImageOutset(outset)) =
         member(values, Property::BorderImageOutset).value()
     else {
         panic!("typed border-image-outset initial");
     };
     assert!(outset.values().iter().all(|value| matches!(value,
-        CssBorderImageOutsetComponent::Number(number) if number.value() == 0.0)));
+        CssBorderImageOutsetComponent::Number(number) if exact_literal(number.literal_component(), "0"))));
     let CssContributionValueRef::Ordinary(CssLonghandValueRef::BorderImageRepeat(repeat)) =
         member(values, Property::BorderImageRepeat).value()
     else {
@@ -586,17 +586,17 @@ fn ordinary_longhands_retain_typed_values() {
                 assert_eq!(property, Property::BorderImageSlice);
                 assert!(value.fill());
                 for (component, (percentage, expected)) in value.values().iter().zip([
-                    (true, 7.0),
-                    (false, 11.0),
-                    (true, 13.0),
-                    (false, 17.0),
+                    (true, "7%"),
+                    (false, "11"),
+                    (true, "13%"),
+                    (false, "17"),
                 ]) {
                     match component {
                         CssBorderImageSliceComponent::Percentage(number) if percentage => {
-                            assert_eq!(number.value(), expected)
+                            assert!(exact_literal(number.literal_component(), expected))
                         }
                         CssBorderImageSliceComponent::Number(number) if !percentage => {
-                            assert_eq!(number.value(), expected)
+                            assert!(exact_literal(number.literal_component(), expected))
                         }
                         other => panic!("preserved slice component: {other:?}"),
                     }
@@ -606,7 +606,7 @@ fn ordinary_longhands_retain_typed_values() {
                 assert_eq!(property, Property::BorderImageWidth);
                 let [first, second, third, fourth] = value.values();
                 assert!(
-                    matches!(first, CssBorderImageWidthComponent::Number(number) if number.value() == 2.0)
+                    matches!(first, CssBorderImageWidthComponent::Number(number) if exact_literal(number.literal_component(), "2"))
                 );
                 assert!(matches!(second, CssBorderImageWidthComponent::Auto));
                 assert!(
@@ -620,13 +620,13 @@ fn ordinary_longhands_retain_typed_values() {
                 assert_eq!(property, Property::BorderImageOutset);
                 let [first, second, third, fourth] = value.values();
                 assert!(
-                    matches!(first, CssBorderImageOutsetComponent::Number(number) if number.value() == 1.0)
+                    matches!(first, CssBorderImageOutsetComponent::Number(number) if exact_literal(number.literal_component(), "1"))
                 );
                 assert!(
                     matches!(second, CssBorderImageOutsetComponent::Length(value) if exact_literal(value.literal_component(), "2px"))
                 );
                 assert!(
-                    matches!(third, CssBorderImageOutsetComponent::Number(number) if number.value() == 3.0)
+                    matches!(third, CssBorderImageOutsetComponent::Number(number) if exact_literal(number.literal_component(), "3"))
                 );
                 assert!(
                     matches!(fourth, CssBorderImageOutsetComponent::Length(value) if exact_literal(value.literal_component(), "4px"))

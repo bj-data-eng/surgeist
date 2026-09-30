@@ -1044,7 +1044,7 @@ fn timing_wrappers_expose_exact_property_specific_accessors() {
             CssKnownPropertyValueRef::AnimationIterationCount(value) => {
                 assert!(matches!(
                     value.iteration_counts().values(),
-                    [CssAnimationIterationCount::Calculation(_)]
+                    [CssAnimationIterationCount::Number(number)] if number.calculation().is_some()
                 ));
             }
             CssKnownPropertyValueRef::Transition(value) => {
@@ -1068,7 +1068,7 @@ fn timing_wrappers_expose_exact_property_specific_accessors() {
                 );
                 assert!(matches!(item.delay(), Some(CssDelay::Literal(t)) if t.value() == -4.0));
                 assert!(
-                    matches!(item.iteration_count(), Some(CssAnimationIterationCount::Number(n)) if n.value() == 2.0)
+                    matches!(item.iteration_count(), Some(CssAnimationIterationCount::Number(n)) if n.serialize_specified().unwrap() == "2")
                 );
             }
             _ => panic!("unexpected property wrapper"),
@@ -1335,8 +1335,8 @@ fn shadow_and_filter_wrappers_expose_ordered_typed_values() {
     ));
     assert!(matches!(
         amount,
-        CssFilterAmount::Percentage(CssFilterPercentage::Literal(value))
-            if value.value() == 50.0
+        CssFilterAmount::Percentage(value)
+            if exact_percentage(value.literal_component(), "50")
     ));
 
     let CssKnownPropertyValueRef::BackdropFilter(backdrop) = report.syntax()[2]

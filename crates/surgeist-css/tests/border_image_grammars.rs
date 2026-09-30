@@ -38,10 +38,10 @@ fn c13_border_images_retain_typed_structure() {
                 CssBorderImageSliceComponent::Number(right),
                 CssBorderImageSliceComponent::Percentage(bottom),
                 CssBorderImageSliceComponent::Number(left),
-            ] if top.value() == 10.0
-                && right.value() == 20.0
-                && (bottom.value() - 30.0).abs() < 0.000_01
-                && left.value() == 40.0
+            ] if exact_percentage(top.literal_component(), "10")
+                && exact_number(right.literal_component(), "20")
+                && exact_percentage(bottom.literal_component(), "30")
+                && exact_number(left.literal_component(), "40")
         ),
         "{:?}",
         slice.values()
@@ -53,7 +53,7 @@ fn c13_border_images_retain_typed_structure() {
             CssBorderImageWidthComponent::Auto,
             CssBorderImageWidthComponent::LengthPercentage(percent),
             CssBorderImageWidthComponent::LengthPercentage(px),
-        ] if one.value() == 1.0
+        ] if exact_number(one.literal_component(), "1")
             && exact_percentage(percent.literal_component(), "25")
             && exact_dimension(px.literal_component(), "4", "px")
     ));
@@ -64,9 +64,9 @@ fn c13_border_images_retain_typed_structure() {
             CssBorderImageOutsetComponent::Length(two),
             CssBorderImageOutsetComponent::Number(three),
             CssBorderImageOutsetComponent::Length(four),
-        ] if zero.value() == 0.0
+        ] if exact_number(zero.literal_component(), "0")
             && exact_dimension(two.literal_component(), "2", "px")
-            && three.value() == 3.0
+            && exact_number(three.literal_component(), "3")
             && exact_dimension(four.literal_component(), "4", "px")
     ));
     let repeat = value.repeat().expect("repeat");
@@ -145,10 +145,10 @@ fn border_image_longhands_preserve_domains_and_expanded_arity() {
 #[test]
 fn border_image_one_to_four_arity_expands_by_css_edge_rules() {
     for (authored, expected) in [
-        ("1", [1.0, 1.0, 1.0, 1.0]),
-        ("1 2", [1.0, 2.0, 1.0, 2.0]),
-        ("1 2 3", [1.0, 2.0, 3.0, 2.0]),
-        ("1 2 3 4", [1.0, 2.0, 3.0, 4.0]),
+        ("1", ["1", "1", "1", "1"]),
+        ("1 2", ["1", "2", "1", "2"]),
+        ("1 2 3", ["1", "2", "3", "2"]),
+        ("1 2 3 4", ["1", "2", "3", "4"]),
     ] {
         for property in [
             "border-image-slice",
@@ -169,7 +169,9 @@ fn border_image_one_to_four_arity_expands_by_css_edge_rules() {
                     .values()
                     .iter()
                     .map(|value| match value {
-                        CssBorderImageSliceComponent::Number(value) => value.value(),
+                        CssBorderImageSliceComponent::Number(value) => {
+                            value.serialize_specified().unwrap()
+                        }
                         _ => panic!("{source}: expected number"),
                     })
                     .collect::<Vec<_>>(),
@@ -178,7 +180,9 @@ fn border_image_one_to_four_arity_expands_by_css_edge_rules() {
                     .values()
                     .iter()
                     .map(|value| match value {
-                        CssBorderImageWidthComponent::Number(value) => value.value(),
+                        CssBorderImageWidthComponent::Number(value) => {
+                            value.serialize_specified().unwrap()
+                        }
                         _ => panic!("{source}: expected number"),
                     })
                     .collect::<Vec<_>>(),
@@ -187,7 +191,9 @@ fn border_image_one_to_four_arity_expands_by_css_edge_rules() {
                     .values()
                     .iter()
                     .map(|value| match value {
-                        CssBorderImageOutsetComponent::Number(value) => value.value(),
+                        CssBorderImageOutsetComponent::Number(value) => {
+                            value.serialize_specified().unwrap()
+                        }
                         _ => panic!("{source}: expected number"),
                     })
                     .collect::<Vec<_>>(),
@@ -310,24 +316,24 @@ fn border_image_numeric_and_orientation_calculations_remain_symbolic() {
         values[0],
         CssKnownPropertyValueRef::BorderImageSlice(value)
             if matches!(
-                value.slice().values()[0],
-                CssBorderImageSliceComponent::PercentageCalculation(_)
+                &value.slice().values()[0],
+                CssBorderImageSliceComponent::Percentage(number) if number.calculation().is_some()
             )
     ));
     assert!(matches!(
         values[1],
         CssKnownPropertyValueRef::BorderImageWidth(value)
             if matches!(
-                value.widths().values()[0],
-                CssBorderImageWidthComponent::NumberCalculation(_)
+                &value.widths().values()[0],
+                CssBorderImageWidthComponent::Number(number) if number.calculation().is_some()
             )
     ));
     assert!(matches!(
         values[2],
         CssKnownPropertyValueRef::BorderImageOutset(value)
             if matches!(
-                value.outsets().values()[0],
-                CssBorderImageOutsetComponent::NumberCalculation(_)
+                &value.outsets().values()[0],
+                CssBorderImageOutsetComponent::Number(number) if number.calculation().is_some()
             )
     ));
     assert!(matches!(
@@ -468,4 +474,8 @@ fn exact_percentage(
     representation: &str,
 ) -> bool {
     matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
+}
+
+fn exact_number(component: Option<&CssComponentValue>, expected: &str) -> bool {
+    matches!(component.map(CssComponentValue::view), Some(CssComponentValueRef::Token(CssValueTokenRef::Number(number))) if number.representation() == expected)
 }

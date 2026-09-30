@@ -4915,10 +4915,6 @@ fn constructor_invariants_reject_invalid_public_numeric_values() {
     assert_eq!(CssFiniteNumber::try_new(f32::NAN), None);
     assert_eq!(CssFiniteNumber::try_new(f32::INFINITY), None);
 
-    assert_eq!(CssNonNegativeNumber::try_new(1.25).unwrap().value(), 1.25);
-    assert_eq!(CssNonNegativeNumber::try_new(-0.1), None);
-    assert_eq!(CssNonNegativeNumber::try_new(f32::NEG_INFINITY), None);
-
     for number in ["NaN", "inf", "-inf"] {
         assert!(CssComponentValue::try_dimension(number, "rem").is_err());
         assert!(CssComponentValue::try_token(&format!("{number}%")).is_err());
@@ -9053,10 +9049,7 @@ fn authored_transform_filter_and_basic_shape_values_preserve_family_context() {
     let CssFilterFunction::Opacity(amount) = &functions.functions()[1] else {
         panic!("expected opacity filter");
     };
-    assert!(matches!(
-        amount,
-        CssFilterAmount::Percentage(CssFilterPercentage::Literal(_))
-    ));
+    assert!(matches!(amount, CssFilterAmount::Percentage(_)));
 
     let CssClipPath::BasicShape(CssBasicShape::Circle(circle)) =
         declaration_value!(".panel { clip-path: circle(50% at center); }", ClipPath)
@@ -9152,7 +9145,7 @@ fn parses_animation_properties_and_preserves_comma_lists() {
             iteration_counts
         ),
         CssAnimationIterationCountList::try_new(vec![
-            CssAnimationIterationCount::Number(CssAnimationIterationNumber::try_new(2.0).unwrap()),
+            CssAnimationIterationCount::Number(nonnegative_number("2")),
             CssAnimationIterationCount::Infinite,
         ])
         .unwrap()
@@ -9231,7 +9224,12 @@ fn background_effect_and_animation_constructors_reject_invalid_states() {
         CssDurationLiteral::try_new(-1.0, CssTimeUnit::Seconds),
         None
     );
-    assert_eq!(CssAnimationIterationNumber::try_new(-1.0), None);
+    assert!(
+        CssSpecifiedNonNegativeNumber::try_from_component(
+            CssComponentValue::try_number("-1").unwrap()
+        )
+        .is_err()
+    );
     assert_eq!(CssOutline::try_new(None, None, None), None);
 }
 

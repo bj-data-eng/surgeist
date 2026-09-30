@@ -2,7 +2,7 @@ use super::color::parse_color;
 use super::values::{
     parse_length_percentage, parse_nonnegative_length, parse_nonnegative_length_percentage,
 };
-use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
+use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::border_style::parse_border_style;
 use super::position::{
@@ -10,7 +10,7 @@ use super::position::{
 };
 use super::url::parse_url;
 use super::values::{
-    CalculationRoot, checked_percentage_value, next_is_comma, parse_numeric_function,
+    CalculationRoot, next_is_comma, parse_nonnegative_number, parse_nonnegative_percentage,
 };
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
@@ -324,49 +324,13 @@ fn parse_border_image_slice_component<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageSliceComponent, ParseError<'i, Error>> {
-    let numeric_start = input.state();
-    let location = input.current_source_location();
-    input.skip_whitespace();
-    let token_start = input.position();
-    match input.next().map_err(basic)?.clone() {
-        Token::Number { value, .. } => CssNonNegativeNumber::try_new(value)
-            .map(CssBorderImageSliceComponent::Number)
-            .ok_or_else(|| {
-                unsupported_value_at(location, None, "border-image-slice must be non-negative")
-            }),
-        Token::Percentage { .. } => {
-            let value = checked_percentage_value(
-                location,
-                input.slice_from(token_start),
-                "border-image-slice must be non-negative",
-            )?;
-            CssNonNegativeNumber::try_new(value)
-                .map(CssBorderImageSliceComponent::Percentage)
-                .ok_or_else(|| {
-                    unsupported_value_at(location, None, "border-image-slice must be non-negative")
-                })
-        }
-        Token::Function(name) if crate::numeric::is_math_function(&name) => {
-            if let Ok(expression) = input.try_parse(|input| {
-                parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)
-            }) {
-                return Ok(CssBorderImageSliceComponent::NumberCalculation(
-                    CssNumberCalculation::from_expression(expression),
-                ));
-            }
-            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Percentage)
-                .map(CssPercentageCalculation::from_expression)
-                .map(CssBorderImageSliceComponent::PercentageCalculation)
-        }
-        token => Err(unsupported_value_at(
-            location,
-            None,
-            format!(
-                "unsupported border-image-slice component `{}`",
-                token.to_css_string()
-            ),
-        )),
+    if let Ok(number) =
+        input.try_parse(|input| parse_nonnegative_number(input, numeric, "border-image-slice"))
+    {
+        return Ok(CssBorderImageSliceComponent::Number(number));
     }
+    parse_nonnegative_percentage(input, numeric, "border-image-slice")
+        .map(CssBorderImageSliceComponent::Percentage)
 }
 
 pub(super) fn parse_border_image_width<'i, 't>(
@@ -391,17 +355,10 @@ fn parse_border_image_width_component<'i, 't>(
     {
         return Ok(CssBorderImageWidthComponent::Auto);
     }
-    if let Ok(number) = input.try_parse(|input| {
-        parse_border_image_non_negative_number(input, numeric, "border-image-width")
-    }) {
-        return Ok(match number {
-            CssNonNegativeNumberValue::Literal(value) => {
-                CssBorderImageWidthComponent::Number(value)
-            }
-            CssNonNegativeNumberValue::Calculation(value) => {
-                CssBorderImageWidthComponent::NumberCalculation(value)
-            }
-        });
+    if let Ok(number) =
+        input.try_parse(|input| parse_nonnegative_number(input, numeric, "border-image-width"))
+    {
+        return Ok(CssBorderImageWidthComponent::Number(number));
     }
     parse_nonnegative_length_percentage(input, numeric, "border-image-width")
         .map(CssBorderImageWidthComponent::LengthPercentage)
@@ -423,49 +380,13 @@ fn parse_border_image_outset_component<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageOutsetComponent, ParseError<'i, Error>> {
-    if let Ok(number) = input.try_parse(|input| {
-        parse_border_image_non_negative_number(input, numeric, "border-image-outset")
-    }) {
-        return Ok(match number {
-            CssNonNegativeNumberValue::Literal(value) => {
-                CssBorderImageOutsetComponent::Number(value)
-            }
-            CssNonNegativeNumberValue::Calculation(value) => {
-                CssBorderImageOutsetComponent::NumberCalculation(value)
-            }
-        });
+    if let Ok(number) =
+        input.try_parse(|input| parse_nonnegative_number(input, numeric, "border-image-outset"))
+    {
+        return Ok(CssBorderImageOutsetComponent::Number(number));
     }
     parse_nonnegative_length(input, numeric, "border-image-outset")
         .map(CssBorderImageOutsetComponent::Length)
-}
-
-fn parse_border_image_non_negative_number<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-    context: &str,
-) -> std::result::Result<CssNonNegativeNumberValue, ParseError<'i, Error>> {
-    let numeric_start = input.state();
-    let location = input.current_source_location();
-    match input.next().map_err(basic)?.clone() {
-        Token::Number { value, .. } => CssNonNegativeNumber::try_new(value)
-            .map(CssNonNegativeNumberValue::Literal)
-            .ok_or_else(|| {
-                unsupported_value_at(location, None, format!("{context} must be non-negative"))
-            }),
-        Token::Function(name) if crate::numeric::is_math_function(&name) => {
-            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)
-                .map(CssNumberCalculation::from_expression)
-                .map(CssNonNegativeNumberValue::Calculation)
-        }
-        token => Err(unsupported_value_at(
-            location,
-            None,
-            format!(
-                "unsupported {context} component `{}`",
-                token.to_css_string()
-            ),
-        )),
-    }
 }
 
 pub(super) fn parse_border_image_repeat<'i, 't>(
